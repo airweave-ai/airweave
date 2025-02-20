@@ -1,5 +1,7 @@
 #version: "3.8"
 
+name: airweave
+
 services:
   db:
     container_name: airweave-db
@@ -157,3 +159,6 @@ volumes:
   redis_data:
   weaviate_data:
   neo4j_data:
+
+networks:
+  airweave:    
