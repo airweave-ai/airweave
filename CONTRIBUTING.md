@@ -92,7 +92,7 @@ Adding a source with Cursor should be pretty easy. Follow these steps to automat
 2. **Add your API reference or OpenAPI spec to Cursor**
    - Find the API Reference of the source you'd like to integrate.
    - Go to Cursor Settings > Features > Docs > + Add New Doc
-   - Add the API refrence URL.
+   - Add the API reference URL.
 
    If you have an OpenAPI spec instead, simply add it to the folder.
 

@@ -27,3 +27,9 @@ repos:
         files: \.(js|jsx|ts|tsx)$
         types: [file]
         exclude: ^(?!frontend/).*$
+
+  - repo: https://github.com/codespell-project/codespell
+    # Configuration for codespell is in .codespellrc
+    rev: v2.4.1
+    hooks:
+    - id: codespell

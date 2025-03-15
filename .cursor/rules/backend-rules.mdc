@@ -38,7 +38,7 @@ Detail: `short_name` is a globally unique identifier used throughout the system,
 - **Entities** (`platform/entities/`): Core search objects that flow through the system
 
 ### Sync Architecture
-If necesssary (like editing ), refer [sync-architecture.mdc](mdc:.cursor/rules/sync-architecture.mdc).
+If necessary (like editing ), refer [sync-architecture.mdc](mdc:.cursor/rules/sync-architecture.mdc).
 
 ### Infrastructure
 - **Config** (`core/config.py`): Environment-based configuration

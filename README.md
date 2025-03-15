@@ -114,7 +114,7 @@ You can configure your own vector database in the app UI or via the API.
 ---
 
 ## Key Features
-- **No code reqired, but extensible**: Users that prefer not to touch any code can make their app searchable in a few clicks
+- **No code required, but extensible**: Users that prefer not to touch any code can make their app searchable in a few clicks
 - **White-Labeled Multi-Tenant Support**: Ideal for SaaS builders, Airweave provides a streamlined OAuth2-based platform for syncing data across multiple tenants while maintaining privacy and security.
 - **Entity Generators**: Each source (like a database, API, or file system) defines a `async def generate_entities()` that yields data in a consistent format. You can also define your own.
 - **Automated Sync**: Schedule data synchronization or run on-demand sync jobs.

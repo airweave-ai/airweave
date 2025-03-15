@@ -1,5 +1,5 @@
 ---
-description: Descrtiption of how the integrations yaml works.
+description: Description of how the integrations yaml works.
 globs: backend/airweave/platform/auth
 alwaysApply: false
 ---
