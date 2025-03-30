@@ -48,9 +48,9 @@ class NotionSource(BaseSource):
             current_time = asyncio.get_event_loop().time()
 
             # Remove old request times
-            self._request_times = [
-                t for t in self._request_times if current_time - t < self.RATE_LIMIT_PERIOD
-            ]
+            self._request_times = list(
+                filter(lambda t: current_time - t < self.RATE_LIMIT_PERIOD, self._request_times)
+            )
 
             if len(self._request_times) >= self.RATE_LIMIT_REQUESTS:
                 # Wait until enough time has passed

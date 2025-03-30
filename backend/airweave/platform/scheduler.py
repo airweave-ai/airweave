@@ -47,7 +47,7 @@ class PlatformScheduler:
         """Initialize the scheduler."""
         self.running = False
         self.task: Optional[asyncio.Task] = None
-        self.check_interval = 1  # Check every 1 second
+        self.check_interval = 5 # Check every 5 seconds to reduce system load
 
     async def update_all_next_scheduled_runs(self):
         """Update all next_scheduled_run values for syncs with cron schedules.

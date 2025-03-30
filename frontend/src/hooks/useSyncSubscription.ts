@@ -15,13 +15,13 @@ export function useSyncSubscription(jobId?: string | null) {
     if (!jobId) return;
 
     const url = `http://localhost:8001/sync/job/${jobId}/subscribe`; // make sure to use the correct URL
-    const es = new EventSource(url);
+    const es = new EventSource(url, { withCredentials: true }); /* Add cleanup in useEffect return */
     eventSourceRef.current = es;
 
     es.onmessage = (event) => {
       try {
         const data: SyncUpdate = JSON.parse(event.data);
-        setUpdates((prev) => [...prev, data]);
+        setUpdates((prev) => prev.concat(data));
       } catch (err) {
         console.error("Failed to parse SSE data:", err);
       }
