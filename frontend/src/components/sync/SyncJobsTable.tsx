@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   Table,
   TableBody,
@@ -25,13 +25,17 @@ interface SyncJobsTableProps {
   onJobSelect: (jobId: string) => void;
 }
 
-export const SyncJobsTable: React.FC<SyncJobsTableProps> = ({ 
-  syncId, 
+export const SyncJobsTable: React.FC<SyncJobsTableProps> = ({
+  syncId,
   onTotalRunsChange,
-  onJobSelect 
+  onJobSelect
 }) => {
   const [jobs, setJobs] = useState<SyncJob[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  const handleRowClick = useCallback((jobId: string) => {
+    onJobSelect(jobId);
+  }, [onJobSelect]);
 
   useEffect(() => {
     const fetchJobs = async () => {
@@ -54,10 +58,6 @@ export const SyncJobsTable: React.FC<SyncJobsTableProps> = ({
     return <div className="p-6">Loading jobs...</div>;
   }
 
-  const handleRowClick = (jobId: string) => {
-    onJobSelect(jobId);
-  };
-
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
@@ -79,8 +79,8 @@ export const SyncJobsTable: React.FC<SyncJobsTableProps> = ({
         </TableHeader>
         <TableBody>
           {jobs.map((job) => (
-            <TableRow 
-              key={job.id} 
+            <TableRow
+              key={job.id}
               onClick={() => handleRowClick(job.id)}
               className="cursor-pointer hover:bg-muted/50"
             >
@@ -88,22 +88,21 @@ export const SyncJobsTable: React.FC<SyncJobsTableProps> = ({
                 {format(new Date(job.created_at), "MMM d, yyyy HH:mm")}
               </TableCell>
               <TableCell>
-                {job.completed_at 
+                {job.completed_at
                   ? format(new Date(job.completed_at), "MMM d, yyyy HH:mm")
                   : '-'
                 }
               </TableCell>
               <TableCell>
                 <span
-                  className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                    job.status === "completed"
+                  className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${job.status === "completed"
                       ? "bg-green-100 text-green-800"
                       : job.status === "failed"
-                      ? "bg-red-100 text-red-800"
-                      : job.status === "running"
-                      ? "bg-blue-100 text-blue-800"
-                      : "bg-yellow-100 text-yellow-800"
-                  }`}
+                        ? "bg-red-100 text-red-800"
+                        : job.status === "running"
+                          ? "bg-blue-100 text-blue-800"
+                          : "bg-yellow-100 text-yellow-800"
+                    }`}
                 >
                   {job.status}
                 </span>

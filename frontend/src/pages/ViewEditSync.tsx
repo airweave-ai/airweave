@@ -94,21 +94,17 @@ const ViewEditSync = () => {
       const syncJobs: SyncJob[] = await jobsResponse.json();
 
       // Sort jobs by created_at date (newest first)
-      const sortedJobs = syncJobs.sort((a, b) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      );
+      const sortedJobs = [...syncJobs].sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
 
       // Set the most recent job as the last sync
       if (sortedJobs.length > 0) {
         setLastSync(sortedJobs[0]);
 
         // Calculate total runtime across all completed jobs
-        let totalTime = 0;
-        syncJobs.forEach(job => {
-          if (job.started_at && job.ended_at) {
-            totalTime += new Date(job.ended_at).getTime() - new Date(job.started_at).getTime();
-          }
-        });
+        const totalTime = syncJobs.reduce((acc, job) =>
+          acc + (job.started_at && job.ended_at ? +new Date(job.ended_at) - +new Date(job.started_at) : 0),
+          0
+        );
         setTotalRuntime(totalTime);
 
         // If the job is still running, set up a polling interval to check for updates
@@ -186,7 +182,7 @@ const ViewEditSync = () => {
             destination: {
               type: destination.integration_type?.toLowerCase() ?? 'Destination',
               name: destination.name ?? 'Native Airweave',
-              shortName: destination.short_name ?? ( destinationData.short_name === 'weaviate_native' ? 'Native' : 'unknown')
+              shortName: destination.short_name ?? (destinationData.short_name === 'weaviate_native' ? 'Native' : 'unknown')
             },
             userId: syncData.created_by_email,
             organizationId: syncData.organization_id,
@@ -673,9 +669,9 @@ const ViewEditSync = () => {
         )}
 
         {/* Second row: Sync DAG (full width) */}
-          <Card className="border rounded-lg overflow-hidden px-3 py-2">
-            <SyncDagEditor syncId={id || ''} />
-          </Card>
+        <Card className="border rounded-lg overflow-hidden px-3 py-2">
+          <SyncDagEditor syncId={id || ''} />
+        </Card>
 
         {/* Sync Jobs Table */}
         <div>
