@@ -62,7 +62,7 @@ export interface Connection {
 }
 
 // Conversion utilities
-export const toFlowNodes = (nodes: DagNode[]): FlowNode[] => 
+export const toFlowNodes = (nodes: DagNode[]): FlowNode[] =>
   nodes.map(node => ({
     id: node.id,
     type: node.type.toLowerCase(),
@@ -89,7 +89,7 @@ export const toFlowEdges = (edges: DagEdge[]): FlowEdge[] =>
 export const toDagNodes = (nodes: FlowNode[]): DagNode[] =>
   nodes.map(node => ({
     id: node.id,
-    type: node.type.toUpperCase() as DagNode['type'],
+    type: node.type.toLowerCase() as DagNode['type'],
     name: node.data.name,
     shortName: node.data.shortName,
     config: node.data.config,
@@ -100,6 +100,6 @@ export const toDagNodes = (nodes: FlowNode[]): DagNode[] =>
 export const toDagEdges = (edges: FlowEdge[]): DagEdge[] =>
   edges.map(edge => ({
     id: edge.id,
-    fromNodeId: edge.source,
-    toNodeId: edge.target,
-  })); 
+    from_node_id: edge.source,
+    to_node_id: edge.target,
+  }));
