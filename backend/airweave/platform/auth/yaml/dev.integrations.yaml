@@ -200,5 +200,19 @@ integrations:
     expiration: "never"
     name: "Airweave Integration"
 
+  clickup:
+    auth_type: "oauth2"
+    url: "https://app.clickup.com/api"
+    backend_url: "https://api.clickup.com/api/v2/oauth/token"
+    grant_type: "authorization_code"
+    client_id: "TUT9AEAK4ADT8U20AZUAW6NF70FOE1OQ"
+    client_secret: "A3UZN8BISGPZ38BS1LXJ5E2LX65SM0CJJA2UYDDJX02SVYIKLY6N7W46Z7LUC3A3"
+    content_type: "application/x-www-form-urlencoded"
+    client_credential_location: "body"
+    scope: "public data:read team:read space:read list:read folder:read task:read comment:read"
+    additional_frontend_params:
+      access_type: "offline"
+      prompt: "consent"
+
   weaviate:
     auth_type: "config_class"
