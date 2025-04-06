@@ -40,3 +40,8 @@ fern generate --group public --log-level debug
 
 echo "✅ Done! Generated files:"
 ls -la definition/
+
+
+# Generate docs
+echo "📚 Generating Fern documentation..."
+fern generate --docs

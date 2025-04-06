@@ -148,7 +148,7 @@ async def delete_white_label(
     --------
         white_label (schemas.WhiteLabel): The deleted white label
     """
-    white_label = await crud.white_label.get(db, id=white_label_id)
+    white_label = await crud.white_label.get(db, id=white_label_id, current_user=current_user)
     if not white_label:
         raise HTTPException(status_code=404, detail="White label integration not found")
     if white_label.organization_id != current_user.organization_id:
@@ -282,4 +282,5 @@ async def list_white_label_syncs(
     --------
         list[schemas.Sync]: A list of syncs
     """
-    return await crud.sync.get_all_for_white_label(db, white_label_id, current_user)
+    result = await crud.sync.get_all_for_white_label(db, white_label_id, current_user)
+    return [schemas.Sync.model_validate(sync) for sync in result]

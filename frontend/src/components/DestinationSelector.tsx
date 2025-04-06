@@ -46,7 +46,12 @@ interface Connection {
   short_name: string;
 }
 
-interface VectorDBSelectorProps {
+interface ConnectionSelection {
+  connectionId: string;
+  isNative?: boolean;
+}
+
+interface DestinationSelectorProps {
   onComplete: (details: ConnectionSelection, metadata: { name: string; shortName: string }) => void;
 }
 
@@ -71,7 +76,7 @@ interface DestinationDetails {
  * Returns an array of objects matching the Connection interface above.
  */
 
-export const VectorDBSelector = ({ onComplete }: VectorDBSelectorProps) => {
+export const DestinationSelector = ({ onComplete }: DestinationSelectorProps) => {
   const [destinations, setDestinations] = useState<DestinationDetails[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
   // For storing config form states
@@ -138,13 +143,20 @@ export const VectorDBSelector = ({ onComplete }: VectorDBSelectorProps) => {
   };
 
   /**
-   * Called when user selects an existing connection or native instance
+   * Submit the final selection - keeping the same API signature as before
    */
-  const handleUseExistingConnection = (connId: string, isNative?: boolean) => {
-    onComplete({
-      connectionId: isNative ? "" : connId,
-      isNative: isNative
-    }, { name: "", shortName: "" });
+  const handleSubmitSelections = () => {
+    // Only use Native Weaviate
+    onComplete(
+      {
+        connectionId: "native",
+        isNative: true
+      },
+      {
+        name: "Native Weaviate",
+        shortName: "weaviate_native"
+      }
+    );
   };
 
   /**
@@ -173,8 +185,12 @@ export const VectorDBSelector = ({ onComplete }: VectorDBSelectorProps) => {
       if (!response.ok) throw new Error("Failed to connect");
 
       const data = await response.json();
-      onComplete({ connectionId: data.id }, { name: selectedDestination.name, shortName: selectedDestination.short_name });
+
       setShowConfig(false);
+      toast({
+        title: "Connection added",
+        description: "Connection successfully configured",
+      });
     } catch (err) {
       toast({
         variant: "destructive",
@@ -187,45 +203,92 @@ export const VectorDBSelector = ({ onComplete }: VectorDBSelectorProps) => {
   };
 
   /**
-   * Render the native Weaviate card separately
+   * Render the native instances separately
    */
-  const renderNativeWeaviate = () => (
-    <Card className="flex flex-col justify-between hover:border-primary/50 transition-colors bg-gradient-to-br from-background to-muted/50">
-      <CardHeader>
-        <div className="flex items-center space-x-3">
-          <img
-            src={getDestinationIconUrl("weaviate_native")}
-            alt="Weaviate icon"
-            className="w-8 h-8"
-          />
-          <div>
-            <CardTitle>Native Weaviate</CardTitle>
-            <CardDescription>Built-in vector database</CardDescription>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="flex-grow">
-        <p className="text-sm text-muted-foreground">
-          Use the built-in Weaviate instance for optimal performance and seamless integration.
-        </p>
-      </CardContent>
-      <CardFooter>
-        <Button 
-          className="w-full" 
-          onClick={() => handleUseExistingConnection("native", true)}
+  const renderNativeInstances = () => {
+    return (
+      <div className="grid gap-4 sm:grid-cols-2 max-w-2xl">
+        {/* Weaviate Native - Actually selected */}
+        <Card
+          className="flex flex-col justify-between border-primary border-2 bg-gradient-to-br from-background to-muted/50"
         >
-          Use Native Instance
-        </Button>
-      </CardFooter>
-    </Card>
-  );
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <img
+                  src={getDestinationIconUrl("weaviate_native")}
+                  alt="Weaviate icon"
+                  className="w-8 h-8"
+                />
+                <div>
+                  <CardTitle>Native Weaviate</CardTitle>
+                  <CardDescription>Built-in vector database</CardDescription>
+                </div>
+              </div>
+              <Check className="h-5 w-5 text-primary" />
+            </div>
+          </CardHeader>
+          <CardContent className="flex-grow">
+            <p className="text-sm text-muted-foreground">
+              Use the built-in Weaviate instance for optimal performance and seamless integration.
+            </p>
+          </CardContent>
+          <CardFooter>
+            <Button
+              className="w-full"
+              variant="default"
+              disabled
+            >
+              Selected
+            </Button>
+          </CardFooter>
+        </Card>
+
+        {/* Neo4j Native - Visually selected but not in state */}
+        <Card
+          className="flex flex-col justify-between border-primary border-2 bg-gradient-to-br from-background to-muted/50"
+        >
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <img
+                  src={getDestinationIconUrl("neo4j_native")}
+                  alt="Neo4j icon"
+                  className="w-8 h-8"
+                />
+                <div>
+                  <CardTitle>Native Neo4j</CardTitle>
+                  <CardDescription>Built-in graph database</CardDescription>
+                </div>
+              </div>
+              <Check className="h-5 w-5 text-primary" />
+            </div>
+          </CardHeader>
+          <CardContent className="flex-grow">
+            <p className="text-sm text-muted-foreground">
+              Use the built-in Neo4j instance for graph relationships and seamless integration.
+            </p>
+          </CardContent>
+          <CardFooter>
+            <Button
+              className="w-full"
+              variant="default"
+              disabled
+            >
+              Selected
+            </Button>
+          </CardFooter>
+        </Card>
+      </div>
+    );
+  };
 
   /**
    * Group connections by destination type and render them as separate cards
    */
   const renderDestinationGroup = (dest: DestinationDetails) => {
-    // Skip native Weaviate as it's rendered separately
-    if (dest.short_name === "weaviate_native") return null;
+    // Skip native instances as they're rendered separately
+    if (dest.short_name === "weaviate_native" || dest.short_name === "neo4j_native") return null;
 
     const destConnections = connections
       .filter((c) => c.short_name === dest.short_name)
@@ -248,9 +311,9 @@ export const VectorDBSelector = ({ onComplete }: VectorDBSelectorProps) => {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {/* Existing connections */}
           {destConnections.map((conn) => (
-            <Card 
-              key={conn.id} 
-              className="flex flex-col justify-between hover:border-primary/50 transition-colors bg-muted/5"
+            <Card
+              key={conn.id}
+              className="flex flex-col justify-between transition-colors bg-muted/5 hover:border-primary/50"
             >
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -269,17 +332,17 @@ export const VectorDBSelector = ({ onComplete }: VectorDBSelectorProps) => {
                 </p>
               </CardContent>
               <CardFooter>
-                <Button 
+                <Button
                   className="w-full"
-                  variant={conn.status === "active" ? "secondary" : "destructive"}
-                  onClick={() => handleUseExistingConnection(conn.id)}
+                  variant="secondary"
+                  onClick={() => navigate("/destinations")}
                 >
-                  {conn.status === "active" ? "Use This Instance" : "Reconnect"}
+                  View Connection
                 </Button>
               </CardFooter>
             </Card>
           ))}
-          
+
           {/* Modified "Add New Instance" card */}
           <Card className="flex flex-col justify-between border-dashed hover:border-primary/50 transition-colors bg-gradient-to-br from-background to-muted/20">
             <CardHeader>
@@ -295,9 +358,9 @@ export const VectorDBSelector = ({ onComplete }: VectorDBSelectorProps) => {
               </p>
             </CardContent>
             <CardFooter>
-              <Button 
+              <Button
                 variant="outline"
-                className="w-full" 
+                className="w-full"
                 onClick={() => navigate("/destinations")}
               >
                 Go to Destinations
@@ -380,15 +443,22 @@ export const VectorDBSelector = ({ onComplete }: VectorDBSelectorProps) => {
 
   return (
     <div className="space-y-8">
-      {/* Native Weaviate always on top */}
-      <div className="max-w-md">
-        {renderNativeWeaviate()}
+      {/* Native instances at top */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold">Native Databases</h2>
+          <Button size="lg" onClick={handleSubmitSelections}>
+            Continue
+          </Button>
+        </div>
+        {renderNativeInstances()}
       </div>
 
       {/* Other destinations */}
       <div className="space-y-8">
+        <h2 className="text-xl font-bold">External Connections</h2>
         {destinations
-          .filter(dest => dest.short_name !== "weaviate_native")
+          .filter(dest => dest.short_name !== "weaviate_native" && dest.short_name !== "neo4j_native")
           .sort((a, b) => a.name.localeCompare(b.name))
           .map(renderDestinationGroup)}
       </div>

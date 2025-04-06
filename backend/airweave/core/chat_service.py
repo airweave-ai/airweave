@@ -99,13 +99,14 @@ class ChatService:
             model = chat.model_name or self.DEFAULT_MODEL
             model_settings = {
                 **self.DEFAULT_MODEL_SETTINGS,
-                **chat.model_settings,
                 "stream": True,  # Enable streaming
             }
 
             # Create streaming response
             stream = await self.client.chat.completions.create(
-                model=model, messages=messages, **model_settings
+                model=model,
+                messages=messages,
+                **model_settings,
             )
 
             full_content = ""

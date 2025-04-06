@@ -33,3 +33,22 @@ paths:
   /chat/openai_key_set:
     get:
       x-fern-ignore: true
+  /cursor-dev:
+    get:
+      x-fern-ignore: true
+  /cursor-dev/connections/status/{short_name}:
+    get:
+      x-fern-ignore: true
+  /cursor-dev/test-sync/{short_name}:
+    post:
+      x-fern-ignore: true
+  /dag/sync/{sync_id}/dag/:
+    get:
+      x-fern-ignore: true
+    post:
+      x-fern-ignore: true
+    put:
+      x-fern-ignore: true
+  /dag/init:
+    get:
+      x-fern-ignore: true

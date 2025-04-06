@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Eye, EyeOff, ArrowLeft, Trash2 } from "lucide-react";
 import {
   AlertDialog,
@@ -25,6 +25,8 @@ import {
   TableRow
 } from "@/components/ui/table";
 import { apiClient } from "@/lib/api";
+import { CodeSnippet } from "@/components/white-label/CodeSnippet";
+import { TestIntegrationCard } from "@/components/white-label/TestIntegrationCard";
 
 interface Sync {
   id: string;
@@ -47,6 +49,7 @@ interface WhiteLabel {
   id: string;
   name: string;
   source_id: string;
+  source_short_name: string;
   redirect_url: string;
   client_id: string;
   client_secret: string;
@@ -90,7 +93,7 @@ const ViewEditWhiteLabel = () => {
   useEffect(() => {
     const fetchSyncs = async () => {
       try {
-        const response = await apiClient.get(`/white-label/${id}/syncs`);
+        const response = await apiClient.get(`/white_labels/${id}/syncs`);
         if (!response.ok) {
           throw new Error('Failed to fetch syncs');
         }
@@ -125,7 +128,7 @@ const ViewEditWhiteLabel = () => {
 
   const handleSave = async (formData: Partial<WhiteLabel>) => {
     try {
-      const response = await apiClient.put(`/white-label/${id}`, {
+      const response = await apiClient.put(`/white_labels/${id}`, {
         body: JSON.stringify({
           name: formData.name,
           redirect_url: formData.redirect_url,
@@ -264,6 +267,23 @@ const ViewEditWhiteLabel = () => {
         </div>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>Integration Code</CardTitle>
+          <CardDescription>
+            Copy these code snippets to implement the OAuth2 flow in your application.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <CodeSnippet
+            whitelabelGuid={whiteLabel.id}
+            frontendUrl={whiteLabel.redirect_url}
+            clientId={whiteLabel.client_id}
+            source={whiteLabel.source_short_name}
+          />
+        </CardContent>
+      </Card>
+      <TestIntegrationCard whitelabelId={whiteLabel.id} />
       <div className="space-y-4">
         <h2 className="text-2xl font-bold">Sync Pipelines</h2>
         <Card>
@@ -296,7 +316,7 @@ const ViewEditWhiteLabel = () => {
                   <TableRow
                     key={sync.id}
                     className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => navigate(`/white-label/${id}/sync/${sync.id}`)}
+                    onClick={() => navigate(`/sync/${sync.id}`)}
                   >
                     <TableCell>{sync.name}</TableCell>
                     <TableCell>

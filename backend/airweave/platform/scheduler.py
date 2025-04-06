@@ -328,7 +328,10 @@ class PlatformScheduler:
             logger.info(
                 f"Sync {sync.id} ({sync.name}) is due (overdue by {time_diff:.1f}s), triggering"
             )
-            await self._trigger_sync(db, sync)
+            sync_schema = await crud.sync.get(
+                db, id=sync.id, current_user=current_user, with_connections=True
+            )
+            await self._trigger_sync(db, sync_schema)
 
             return True
         else:

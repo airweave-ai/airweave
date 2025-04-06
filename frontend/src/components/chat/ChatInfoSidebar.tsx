@@ -4,14 +4,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ChevronRight, Settings, Link as LinkIcon, Settings2, Trash2 } from "lucide-react";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+  Link as LinkIcon,
+  Trash2,
+  Info,
+  Code,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -22,7 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { ModelSettings, Chat } from "./types";
+import { ModelSettings } from "./types";
 import { Badge } from "@/components/ui/badge";
 import { getAppIconUrl, getDestinationIconUrl } from "@/lib/utils/icons";
 import {
@@ -37,6 +35,7 @@ import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { apiClient } from "@/lib/api";
 import { useTheme } from "@/lib/theme-provider";
+import { ApiReferenceDialog } from "./ApiReferenceDialog";
 
 const AVAILABLE_MODELS = [
   { id: "gpt-4o", name: "GPT-4o" },
@@ -50,14 +49,40 @@ const badgeVariants = {
   inactive: "bg-gray-50 text-gray-600 border-gray-200",
 };
 
-export function ChatInfoSidebar({ chatInfo, onUpdateSettings, className }: ChatInfoSidebarProps) {
+
+export function ChatInfoSidebar({ chatInfo, onUpdateSettings }: ChatInfoSidebarProps) {
   const [modelSettings, setModelSettings] = useState<ModelSettings>(chatInfo.model_settings);
   const [modelName, setModelName] = useState<string>(chatInfo.model_name);
   const { toast } = useToast();
   const [saveTimeout, setSaveTimeout] = useState<NodeJS.Timeout | null>(null);
   const navigate = useNavigate();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showApiDialog, setShowApiDialog] = useState(false);
   const { resolvedTheme } = useTheme();
+  // Get the last user message from Chat component
+  const [lastUserMessage, setLastUserMessage] = useState<string>("Your search query here");
+
+  useEffect(() => {
+    // Attempt to get the last user message from the chat
+    const getLastUserMessage = async () => {
+      try {
+        const response = await apiClient.get(`/chat/${chatInfo.id}`);
+        const chatData = await response.json();
+
+        if (chatData.messages && chatData.messages.length > 0) {
+          // Find the last user message
+          const userMessages = chatData.messages.filter((msg: any) => msg.role === "user");
+          if (userMessages.length > 0) {
+            setLastUserMessage(userMessages[userMessages.length - 1].content);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch last user message:", error);
+      }
+    };
+
+    void getLastUserMessage();
+  }, [chatInfo.id]);
 
   useEffect(() => {
     setModelSettings(chatInfo.model_settings);
@@ -68,9 +93,7 @@ export function ChatInfoSidebar({ chatInfo, onUpdateSettings, className }: ChatI
     setModelName(newModelName);
     try {
       // Update model_name at root level
-      await onUpdateSettings({
-        model_name: newModelName
-      } as any);
+      await onUpdateSettings({ model_name: newModelName } as any);
     } catch (error) {
       toast({
         title: "Error",
@@ -81,19 +104,20 @@ export function ChatInfoSidebar({ chatInfo, onUpdateSettings, className }: ChatI
   };
 
   const handleSettingChange = (key: keyof ModelSettings, value: number | string) => {
+    // Create new settings object with the updated value
     const newSettings = { ...modelSettings, [key]: value };
     setModelSettings(newSettings);
 
+    // Clear existing timeout
     if (saveTimeout) {
       clearTimeout(saveTimeout);
     }
 
+    // For other settings, use debounce
     const timeout = setTimeout(async () => {
       try {
         // Update model_settings separately
-        await onUpdateSettings({
-          model_settings: newSettings
-        } as any);
+        await onUpdateSettings({ model_settings: newSettings } as any);
       } catch (error) {
         toast({
           title: "Error",
@@ -150,24 +174,43 @@ export function ChatInfoSidebar({ chatInfo, onUpdateSettings, className }: ChatI
         </DialogContent>
       </Dialog>
 
-      <div className={cn("w-[350px] border-l bg-background", className)}>
+      {/* Use the ApiReferenceDialog component */}
+      <ApiReferenceDialog
+        open={showApiDialog}
+        onOpenChange={setShowApiDialog}
+        modelName={modelName}
+        modelSettings={modelSettings}
+        syncId={chatInfo.sync_id}
+        lastUserMessage={lastUserMessage}
+      />
+
+      <div className="w-[350px] border-l bg-background">
         <div className="p-4 border-b flex items-center justify-between">
           <h2 className="font-semibold">Chat Settings</h2>
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
               size="icon"
+              onClick={() => setShowApiDialog(true)}
+              className="h-8 w-8 text-muted-foreground hover:text-primary border border-border/20 rounded-md"
+              title="API Reference"
+            >
+              <Code className="h-8 w-8" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => setShowDeleteDialog(true)}
               className="h-8 w-8 text-muted-foreground hover:text-destructive"
             >
-              <Trash2 className="h-4 w-4" />
+              <Trash2 className="h-6 w-6" />
             </Button>
-            <Settings2 className="h-4 w-4 text-muted-foreground" />
           </div>
         </div>
 
-        <ScrollArea className="h-[calc(100%-65px)]">
+        <ScrollArea className="h-[calc(100vh-65px)]">
           <div className="p-4 space-y-6">
+
             {/* Chat Details Section */}
             <div className="space-y-4">
               <div className="space-y-2">
@@ -189,6 +232,7 @@ export function ChatInfoSidebar({ chatInfo, onUpdateSettings, className }: ChatI
                   )}
                 </div>
               </div>
+
 
               {/* Data Connection Section */}
               {chatInfo.sync && (
@@ -402,6 +446,7 @@ export function ChatInfoSidebar({ chatInfo, onUpdateSettings, className }: ChatI
                   </div>
                 </div>
               </div>
+
             </div>
           </div>
         </ScrollArea>

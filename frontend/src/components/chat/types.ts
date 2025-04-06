@@ -1,9 +1,10 @@
 export interface ModelSettings {
-  temperature: number;
-  max_tokens: number;
-  top_p: number;
-  frequency_penalty: number;
-  presence_penalty: number;
+  temperature?: number;
+  max_tokens?: number;
+  top_p?: number;
+  frequency_penalty?: number;
+  presence_penalty?: number;
+  search_type?: string;
 }
 
 export interface SourceConnection {
@@ -68,7 +69,7 @@ export interface ChatInfo {
 
 export interface ChatInfoSidebarProps {
   chatInfo: ChatInfo;
-  onUpdateSettings: (settings: Partial<ModelSettings>) => Promise<void>;
+  onUpdateSettings: (settings: Partial<ModelSettings> | { model_name: string } | { model_settings: ModelSettings }) => Promise<void>;
   className?: string;
 }
 
