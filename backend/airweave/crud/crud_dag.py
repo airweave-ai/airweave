@@ -3,7 +3,7 @@
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -94,13 +94,18 @@ class CRUDSyncDag(CRUDBase[SyncDag, SyncDagCreate, SyncDagUpdate]):
         current_user: schemas.User,
     ) -> SyncDag:
         """Update a DAG with its nodes and edges."""
-        # Update DAG fields
-        db_obj = await self.update(db, db_obj=db_obj, obj_in=obj_in, current_user=current_user)
+        # Create a copy of the input without nodes and edges for basic fields update
+        parent_update_data = obj_in.model_dump(exclude={"nodes", "edges"}, exclude_unset=True)
+
+        # Update only the parent SyncDag fields
+        db_obj = await self.update(
+            db, db_obj=db_obj, obj_in=parent_update_data, current_user=current_user
+        )
 
         # If nodes provided, replace all nodes
         if obj_in.nodes is not None:
             # Delete existing nodes (cascade will handle edges)
-            await db.execute(select(DagNode).where(DagNode.dag_id == db_obj.id).delete())
+            await db.execute(delete(DagNode).where(DagNode.dag_id == db_obj.id))
             # Create new nodes
             for node_in in obj_in.nodes:
                 node_data = node_in.model_dump()
@@ -117,7 +122,7 @@ class CRUDSyncDag(CRUDBase[SyncDag, SyncDagCreate, SyncDagUpdate]):
         # If edges provided, replace all edges
         if obj_in.edges is not None:
             # Delete existing edges
-            await db.execute(select(DagEdge).where(DagEdge.dag_id == db_obj.id).delete())
+            await db.execute(delete(DagEdge).where(DagEdge.dag_id == db_obj.id))
             # Create new edges
             for edge_in in obj_in.edges:
                 db_edge = DagEdge(

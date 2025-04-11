@@ -47,6 +47,7 @@ class SyncContext:
     progress: SyncProgress
     router: SyncDAGRouter
     entity_map: dict[type[BaseEntity], UUID]
+    current_user: schemas.User
 
     white_label: Optional[schemas.WhiteLabel] = None
 
@@ -62,6 +63,7 @@ class SyncContext:
         progress: SyncProgress,
         router: SyncDAGRouter,
         entity_map: dict[type[BaseEntity], UUID],
+        current_user: schemas.User,
         white_label: Optional[schemas.WhiteLabel] = None,
     ):
         """Initialize the sync context."""
@@ -75,6 +77,7 @@ class SyncContext:
         self.progress = progress
         self.router = router
         self.entity_map = entity_map
+        self.current_user = current_user
         self.white_label = white_label
 
 
@@ -114,6 +117,7 @@ class SyncContextFactory:
             progress=progress,
             router=router,
             entity_map=entity_map,
+            current_user=current_user,
             white_label=white_label,
         )
 
