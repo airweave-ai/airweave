@@ -1,4 +1,6 @@
+
 import { useEffect, useState } from "react";
+
 import { format } from "date-fns";
 import { apiClient } from "@/lib/api";
 import { DataTable, Column } from "@/components/ui/data-table";
@@ -44,6 +46,10 @@ export const SyncJobsTable: React.FC<SyncJobsTableProps> = ({
     pageCount: 1,
     totalItems: 0,
   });
+
+  const handleRowClick = useCallback((jobId: string) => {
+    onJobSelect(jobId);
+  }, [onJobSelect]);
 
   useEffect(() => {
     const fetchJobs = async () => {

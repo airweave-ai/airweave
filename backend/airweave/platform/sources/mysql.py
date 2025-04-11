@@ -56,7 +56,7 @@ class MySQLSource(BaseSource):
     def __init__(self):
         """Initialize the MySQL source."""
         self.pool: Optional[aiomysql.Pool] = None
-        self.entity_classes: Dict[str, Type[PolymorphicEntity]] = {}
+        self.entity_classes: Dict[str, Type[PolymorphicEntity]] = dict()
 
     @classmethod
     async def create(cls, config: Dict[str, Any]) -> "MySQLSource":
