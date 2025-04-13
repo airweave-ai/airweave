@@ -1,7 +1,7 @@
 """DAG service."""
 
 from collections import Counter
-from typing import Dict, List, Set, Tuple, Type
+from typing import Any, Dict, List, Set, Tuple, Type
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException
@@ -48,15 +48,29 @@ class DagService:
         destinations: List[Any],
         destination_connections: List[Any],
     ) -> Tuple[List[DagNodeCreate], List[DagEdgeCreate]]:
-        nodes = [DagNodeCreate(id=uuid4(), type=NodeType.source, name=source.name, connection_id=source_connection.id)]
+        nodes = [
+    DagNodeCreate(
+        id=uuid4(),
+        type=NodeType.source,
+        name=source.name,
+        connection_id=source_connection.id
+            )
+        ]
         edges = []
         destination_node_ids = []
 
-        for destination, destination_connection in zip(destinations, destination_connections, strict=True):
+        for destination, destination_connection in zip(
+            destinations, destination_connections, strict=True
+        ):
             dest_node_id = uuid4()
             destination_node_ids.append(dest_node_id)
             nodes.append(
-                DagNodeCreate(id=dest_node_id, type=NodeType.destination, name=destination.name, connection_id=destination_connection.id)
+                DagNodeCreate(
+                    id=dest_node_id,
+                    type=NodeType.destination,
+                    name=destination.name,
+                    connection_id=destination_connection.id
+                )
             )
         return nodes, edges
 
@@ -97,11 +111,27 @@ class DagService:
             else:
                 entity_node_id = uuid4()
                 nodes.append(
-                    DagNodeCreate(id=entity_node_id, type=NodeType.entity, name=entity_definition.name, entity_definition_id=entity_definition_id)
+                    DagNodeCreate(
+                        id=entity_node_id,
+                        type=NodeType.entity,
+                        name=entity_definition.name,
+                        entity_definition_id=entity_definition_id
+                    )
                 )
-                edges.append(DagEdgeCreate(from_node_id=source_node_id, to_node_id=entity_node_id))
+                edges.append(
+                        DagEdgeCreate(
+                            from_node_id=source_node_id,
+                            to_node_id=entity_node_id
+                        )
+                    )
                 for dest_node_id in destination_node_ids:
-                    edges.append(DagEdgeCreate(from_node_id=entity_node_id, to_node_id=dest_node_id))
+                    edges.append(
+                        DagEdgeCreate(
+                            from_node_id=entity_node_id,
+                            to_node_id=dest_node_id
+                        )
+                    )
+
         return processed_entity_ids
 
     async def _create_and_return_dag(
@@ -113,11 +143,24 @@ class DagService:
         current_user: schemas.User,
         uow: UnitOfWork,
     ) -> schemas.SyncDag:
-        sync_dag_create = SyncDagCreate(name=f"DAG for {sync.name}", sync_id=sync.id, nodes=nodes, edges=edges)
+        sync_dag_create = SyncDagCreate(
+            name=f"DAG for {sync.name}",
+            sync_id=sync.id,
+            nodes=nodes,
+            edges=edges
+        )
         try:
             from airweave.core.logging import logger
-            logger.info(f"Creating DAG for sync {sync.name} with {len(nodes)} nodes and {len(edges)} edges")
-            sync_dag = await crud.sync_dag.create_with_nodes_and_edges(db, obj_in=sync_dag_create, current_user=current_user, uow=uow)
+            logger.info(
+                f"Creating DAG for sync {sync.name} with {len(nodes)} nodes "
+                f"and {len(edges)} edges"
+            )
+            sync_dag = await crud.sync_dag.create_with_nodes_and_edges(
+            db,
+            obj_in=sync_dag_create,
+            current_user=current_user,
+            uow=uow
+        )
             logger.info(f"Successfully created DAG with ID {sync_dag.id}")
             return schemas.SyncDag.model_validate(sync_dag, from_attributes=True)
         except Exception as e:
