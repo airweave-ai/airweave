@@ -35,7 +35,7 @@ backend/app/platform
 
 ## Source Connectors
 
-Source connectors define how data is extracted from various sources and converted into entities for processing. 
+Source connectors define how data is extracted from various sources and converted into entities for processing.
 
 [Here](https://github.com/airweave-ai/airweave/blob/main/backend/app/platform/sources/slack.py) is an example of the Slack connector implementation.
 
@@ -67,7 +67,7 @@ To get a 3rd party connector working, you need to implement the following:
 
 - Source class that extends `BaseSource` and is decorated with `@source`.
 - `generate_entities`: This method should yield Entity objects. These can be anything from a JSON object to a PDF document.
-- `create`: This method should return a SourceConnector instance. 
+- `create`: This method should return a SourceConnector instance.
 - Accompanying `Entity` schemas. You can find the Slack example [here](https://github.com/airweave-ai/airweave/tree/main/backend/app/platform/entities/slack.py). This helps Airweave understand how to process the data, and standardize it across your syncs.
 
 <Note icon="fa-solid fa-lightbulb">
@@ -90,7 +90,7 @@ from app.platform.auth.schemas import AuthType
 @source("Studio Ghibli", "ghibli", AuthType.none)
 class GhibliSource(BaseSource):
     """Studio Ghibli source implementation.
-    
+
     This connector fetches film data from the Studio Ghibli API and yields it as entities.
     Each entity represents a Ghibli film with its details.
     """
@@ -104,7 +104,7 @@ class GhibliSource(BaseSource):
 
     async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
         """Generate entities from the Ghibli API.
-        
+
         Each entity contains information about a Studio Ghibli film.
         """
         async with httpx.AsyncClient() as client:
@@ -320,5 +320,5 @@ class CustomVectorStore(DestinationConnector):
 ## Next Steps
 
 - [Explore the SDKs](/sdks)
-- [Learn about white labeling](/architecture/white-labeling)
-- [View example implementations](https://github.com/airweave-ai/airweave/tree/main/examples)
+- [Learn about white labeling](/white-labeling)
+- [View example implementations](https://github.com/airweave-ai/airweave)

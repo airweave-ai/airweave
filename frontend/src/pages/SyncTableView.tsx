@@ -27,6 +27,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { DataTable, Column, PaginationState, PaginationInfo } from "@/components/ui/data-table";
 
 // Define types based on backend schemas
 interface Sync {
@@ -66,13 +67,49 @@ const SyncTableView = () => {
   const [syncToDelete, setSyncToDelete] = useState<Sync | null>(null);
   const [deleteData, setDeleteData] = useState(false);
 
-  // Fetch syncs
+  // Add pagination state
+  const [syncsPagination, setSyncsPagination] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: 10,
+  });
+  const [syncJobsPagination, setSyncJobsPagination] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: 10,
+  });
+  const [syncsPaginationInfo, setSyncsPaginationInfo] = useState<PaginationInfo>({
+    pageCount: 1,
+    totalItems: 0,
+  });
+  const [syncJobsPaginationInfo, setSyncJobsPaginationInfo] = useState<PaginationInfo>({
+    pageCount: 1,
+    totalItems: 0,
+  });
+
+  // Fetch syncs with pagination parameters
   useEffect(() => {
     const fetchSyncs = async () => {
+      setIsLoading(true);
       try {
-        const response = await apiClient.get("/sync/");
-        const data = await response.json();
+        const skip = syncsPagination.pageIndex * syncsPagination.pageSize;
+        const limit = syncsPagination.pageSize;
+
+        const response = await apiClient.get(`/sync/?skip=${skip}&limit=${limit}`);
+        const data: Sync[] = await response.json();
+
         setSyncs(data);
+
+        // We don't have total count from the backend, so we'll estimate
+        // If we received fewer items than the page size, we're likely on the last page
+        const isLastPage = data.length < syncsPagination.pageSize;
+        const estimatedTotalItems = isLastPage
+          ? syncsPagination.pageIndex * syncsPagination.pageSize + data.length
+          : (syncsPagination.pageIndex + 1) * syncsPagination.pageSize + 1;
+
+        setSyncsPaginationInfo({
+          // Assume there's at least one more page if we got a full page of results
+          pageCount: isLastPage ? syncsPagination.pageIndex + 1 : syncsPagination.pageIndex + 2,
+          totalItems: estimatedTotalItems
+        });
       } catch (error) {
         toast.error("Failed to fetch syncs");
       } finally {
@@ -81,15 +118,31 @@ const SyncTableView = () => {
     };
 
     fetchSyncs();
-  }, []);
+  }, [syncsPagination]);
 
-  // Fetch sync jobs
+  // Fetch sync jobs with pagination
   useEffect(() => {
     const fetchSyncJobs = async () => {
+      setIsJobsLoading(true);
       try {
-        const response = await apiClient.get("/sync/jobs");
-        const data = await response.json();
+        const skip = syncJobsPagination.pageIndex * syncJobsPagination.pageSize;
+        const limit = syncJobsPagination.pageSize;
+
+        const response = await apiClient.get(`/sync/jobs?skip=${skip}&limit=${limit}`);
+        const data: SyncJob[] = await response.json();
+
         setSyncJobs(data);
+
+        // Similar approach for estimating total items
+        const isLastPage = data.length < syncJobsPagination.pageSize;
+        const estimatedTotalItems = isLastPage
+          ? syncJobsPagination.pageIndex * syncJobsPagination.pageSize + data.length
+          : (syncJobsPagination.pageIndex + 1) * syncJobsPagination.pageSize + 1;
+
+        setSyncJobsPaginationInfo({
+          pageCount: isLastPage ? syncJobsPagination.pageIndex + 1 : syncJobsPagination.pageIndex + 2,
+          totalItems: estimatedTotalItems
+        });
       } catch (error) {
         toast.error("Failed to fetch sync jobs");
       } finally {
@@ -98,7 +151,7 @@ const SyncTableView = () => {
     };
 
     fetchSyncJobs();
-  }, []);
+  }, [syncJobsPagination]);
 
   // Update delete handler
   const handleDeleteSync = async (sync: Sync) => {
@@ -187,6 +240,109 @@ const SyncTableView = () => {
     );
   };
 
+  // Define columns for syncs table
+  const syncColumns: Column<Sync>[] = [
+    {
+      header: "Name",
+      accessorKey: "name",
+      className: "font-medium",
+    },
+    {
+      header: "Schedule",
+      cell: (sync) => formatCronSchedule(sync.cron_schedule),
+    },
+    {
+      header: "Created",
+      cell: (sync) => (
+        <span className="text-muted-foreground">
+          {formatDateTime(sync.created_at)}
+        </span>
+      ),
+    },
+    {
+      header: "White Label",
+      cell: (sync) => (
+        sync.white_label_id ? (
+          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">
+            {sync.white_label_user_identifier}
+          </span>
+        ) : (
+          <span className="text-sm text-muted-foreground">-</span>
+        )
+      ),
+    },
+    {
+      header: "Actions",
+      cell: (sync) => (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleDeleteSync(sync);
+          }}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      ),
+      className: "w-[50px]",
+    },
+  ];
+
+  // Define columns for sync jobs table
+  const syncJobColumns: Column<SyncJob>[] = [
+    {
+      header: "Sync Name",
+      accessorKey: "sync_name",
+      className: "font-medium",
+    },
+    {
+      header: "Status",
+      cell: (job) => getStatusBadge(job.status),
+    },
+    {
+      header: "Started",
+      cell: (job) => (
+        <span className="text-muted-foreground">
+          {formatDateTime(job.started_at)}
+        </span>
+      ),
+    },
+    {
+      header: "Completed",
+      cell: (job) => (
+        <span className="text-muted-foreground">
+          {formatDateTime(job.completed_at)}
+        </span>
+      ),
+    },
+    {
+      header: "Progress",
+      cell: (job) => (
+        job.stats ? (
+          <div className="flex items-center space-x-2">
+            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
+              <div
+                className="bg-primary h-2.5 rounded-full"
+                style={{
+                  width: `${job.stats.total_items > 0
+                    ? Math.min(Math.round((job.stats.processed_items / job.stats.total_items) * 100), 100)
+                    : 0}%`
+                }}
+              />
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {job.stats.processed_items}/{job.stats.total_items}
+            </span>
+          </div>
+        ) : (
+          <span className="text-sm text-muted-foreground">-</span>
+        )
+      ),
+    },
+  ];
+
   return (
     <div className="container mx-auto pb-8">
       <div className="flex justify-between items-center mb-6">
@@ -226,162 +382,36 @@ const SyncTableView = () => {
           Sync Jobs
         </Button>
       </div>
-      <div className="bg-background rounded-lg border">
-        <div className="p-4 border-b">
-          <div className="relative">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder={`Search ${activeTab === "syncs" ? "synchronizations" : "sync jobs"}...`}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9"
-            />
-          </div>
-        </div>
 
-        {activeTab === "syncs" ? (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Schedule</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead>White Label</TableHead>
-                <TableHead className="w-[50px]">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center pb-8">
-                    <div className="flex items-center justify-center text-muted-foreground">
-                      Loading...
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : filteredSyncs.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center pb-8">
-                    <div className="flex flex-col items-center justify-center text-muted-foreground">
-                      <p>No synchronizations found</p>
-                      <p className="text-sm">Try adjusting your search terms</p>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredSyncs.map((sync) => (
-                  <TableRow
-                    key={sync.id}
-                    className="cursor-pointer hover:bg-muted/50 transition-colors"
-                    onClick={(e) => {
-                      if ((e.target as HTMLElement).closest('button')) return;
-                      navigate(`/sync/${sync.id}`);
-                    }}
-                  >
-                    <TableCell className="font-medium">{sync.name}</TableCell>
-                    <TableCell>{formatCronSchedule(sync.cron_schedule)}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {formatDateTime(sync.created_at)}
-                    </TableCell>
-                    <TableCell>
-                      {sync.white_label_id ? (
-                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">
-                          {sync.white_label_user_identifier}
-                        </span>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteSync(sync);
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Sync Name</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Started</TableHead>
-                <TableHead>Completed</TableHead>
-                <TableHead>Progress</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isJobsLoading ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center pb-8">
-                    <div className="flex items-center justify-center text-muted-foreground">
-                      Loading...
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : filteredSyncJobs.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center pb-8">
-                    <div className="flex flex-col items-center justify-center text-muted-foreground">
-                      <p>No sync jobs found</p>
-                      <p className="text-sm">Try adjusting your search terms</p>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredSyncJobs.map((job) => (
-                  <TableRow
-                    key={job.id}
-                    className="cursor-pointer hover:bg-muted/50 transition-colors"
-                    onClick={() => navigate(`/sync/${job.sync_id}/job/${job.id}`)}
-                  >
-                    <TableCell className="font-medium">{job.sync_name}</TableCell>
-                    <TableCell>{getStatusBadge(job.status)}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {formatDateTime(job.started_at)}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {formatDateTime(job.completed_at)}
-                    </TableCell>
-                    <TableCell>
-                      {job.stats ? (
-                        <div className="flex items-center space-x-2">
-                          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
-                            <div
-                              className="bg-primary h-2.5 rounded-full"
-                              style={{
-                                width: `${job.stats.total_items > 0
-                                  ? Math.min(Math.round((job.stats.processed_items / job.stats.total_items) * 100), 100)
-                                  : 0}%`
-                              }}
-                            />
-                          </div>
-                          <span className="text-xs text-muted-foreground">
-                            {job.stats.processed_items}/{job.stats.total_items}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        )}
-      </div>
+      {activeTab === "syncs" ? (
+        <DataTable
+          data={filteredSyncs}
+          columns={syncColumns}
+          pagination={syncsPagination}
+          paginationInfo={syncsPaginationInfo}
+          isLoading={isLoading}
+          searchPlaceholder="Search synchronizations..."
+          searchValue={search}
+          onSearchChange={setSearch}
+          onRowClick={(sync) => navigate(`/sync/${sync.id}`)}
+          onPaginationChange={setSyncsPagination}
+          emptyMessage="No synchronizations found"
+        />
+      ) : (
+        <DataTable
+          data={filteredSyncJobs}
+          columns={syncJobColumns}
+          pagination={syncJobsPagination}
+          paginationInfo={syncJobsPaginationInfo}
+          isLoading={isJobsLoading}
+          searchPlaceholder="Search sync jobs..."
+          searchValue={search}
+          onSearchChange={setSearch}
+          onRowClick={(job) => navigate(`/sync/${job.sync_id}/job/${job.id}`)}
+          onPaginationChange={setSyncJobsPagination}
+          emptyMessage="No sync jobs found"
+        />
+      )}
 
       <Dialog
         open={!!syncToDelete}

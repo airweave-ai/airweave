@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud, schemas
 from airweave.api import deps
 from airweave.core import credentials
+from airweave.core.constants.native_connections import NATIVE_WEAVIATE_UUID
 from airweave.core.logging import logger
 from airweave.core.shared_models import SyncStatus
 from airweave.db.session import get_db_context
@@ -525,25 +526,44 @@ async def send_oauth2_white_label_code(
         connection_schema = schemas.Connection.model_validate(connection, from_attributes=True)
 
         async with get_db_context() as db:
-            # Create sync for the connection
-            sync_in = schemas.SyncBase(
-                name=(
-                    f"Sync for {connection_schema.name} from white label {white_label_schema.name}"
-                ),
-                source_connection_id=connection_schema.id,
-                status=SyncStatus.ACTIVE,
-            )
-            sync = await crud.sync.create(db, obj_in=sync_in, current_user=user)
-            sync_schema = schemas.Sync.model_validate(sync)
+            async with UnitOfWork(db) as uow:
+                # Create sync for the connection
+                sync_in = schemas.SyncBase(
+                    name=(
+                        f"Sync for {connection_schema.name} from white label "
+                        f"{white_label_schema.name}"
+                    ),
+                    source_connection_id=connection_schema.id,
+                    destination_connection_ids=[NATIVE_WEAVIATE_UUID],
+                    status=SyncStatus.ACTIVE,
+                    white_label_id=white_label_schema.id,
+                )
+                sync_schema = await sync_service.create(db, sync_in, user, uow)
+                sync_dag = await crud.sync_dag.get_by_sync_id(
+                    db=db, sync_id=sync_schema.id, current_user=user
+                )
+                sync_job_create = schemas.SyncJobCreate(sync_id=sync_schema.id)
+                sync_job = await crud.sync_job.create(
+                    db, obj_in=sync_job_create, current_user=user, uow=uow
+                )
 
-            sync_job_create = schemas.SyncJobCreate(sync_id=sync.id)
-            sync_job = await crud.sync_job.create(db, obj_in=sync_job_create, current_user=user)
+                await uow.commit()
+                await uow.session.refresh(sync_job)
+                await uow.session.refresh(sync_dag)
 
-            # Add background task to run the sync
-            sync_job_schema = schemas.SyncJob.model_validate(sync_job)
-            background_tasks.add_task(sync_service.run, sync_schema, sync_job_schema, user)
+                # Add background task to run the sync
+                sync_job_schema = schemas.SyncJob.model_validate(sync_job)
+                sync_dag_schema = schemas.SyncDag.model_validate(sync_dag)
+                background_tasks.add_task(
+                    sync_service.run,
+                    sync_schema,
+                    sync_job_schema,
+                    sync_dag_schema,
+                    user,
+                )
 
-            return connection
+                return connection
+
     except Exception as e:
         logger.error(f"Failed to exchange OAuth2 code for white label: {e}")
         raise HTTPException(status_code=400, detail="Failed to exchange OAuth2 code") from e

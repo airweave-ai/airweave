@@ -12,7 +12,7 @@ export const DestinationNode = memo(({ data, selected, ...props }: NodeProps) =>
   useEffect(() => {
     const fetchConnection = async () => {
       if (!data.connection_id) return;
-      
+
       try {
         const resp = await apiClient.get(`/connections/detail/${data.connection_id}`);
         if (!resp.ok) throw new Error("Failed to fetch connection details");
@@ -36,10 +36,10 @@ export const DestinationNode = memo(({ data, selected, ...props }: NodeProps) =>
   const name = connection?.name || data.name || "Native Weaviate";
 
   return (
-    <div className="w-20 h-20">
+    <div className="w-24 h-36">
       <div
         className={cn(
-          "w-full h-full flex items-center justify-center bg-background/80 backdrop-blur-sm",
+          "w-full h-full flex flex-col bg-background/80 backdrop-blur-sm",
           "border-2 transition-colors duration-200 cursor-pointer",
           "border-muted-foreground/50 hover:border-primary rounded-l-lg rounded-r-2xl",
           selected ? "border-primary shadow-sm shadow-primary/20" : ""
@@ -50,19 +50,36 @@ export const DestinationNode = memo(({ data, selected, ...props }: NodeProps) =>
           position={Position.Left}
           className="w-3 h-3 -ml-[3px] border border-background bg-muted-foreground"
         />
-        <div className="w-16 h-16 flex items-center justify-center">
-          <img 
-            src={getDestinationIconUrl(shortName)} 
-            alt={name}
-            className="w-12 h-12 object-contain"
-          />
+
+        {/* Weaviate at the top */}
+        <div className="w-full h-1/2 flex items-center justify-center border-b border-muted-foreground/20">
+          <div className="w-16 h-16 flex flex-col items-center">
+            <img
+              src={getDestinationIconUrl("weaviate_native")}
+              alt="Native Weaviate"
+              className="w-10 h-10 object-contain"
+            />
+            <span className="text-[10px] mt-1 text-center">Weaviate</span>
+          </div>
+        </div>
+
+        {/* Neo4j at the bottom */}
+        <div className="w-full h-1/2 flex items-center justify-center">
+          <div className="w-16 h-16 flex flex-col items-center">
+            <img
+              src={getDestinationIconUrl("neo4j_native")}
+              alt="Native Neo4j"
+              className="w-10 h-10 object-contain"
+            />
+            <span className="text-[10px] mt-1 text-center">Neo4j</span>
+          </div>
         </div>
       </div>
       <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 whitespace-nowrap">
-        <span className="text-sm font-semibold text-foreground text-center">{name}</span>
+        <span className="text-sm font-semibold text-foreground text-center">Native Databases</span>
       </div>
     </div>
   );
 });
 
-DestinationNode.displayName = "DestinationNode"; 
+DestinationNode.displayName = "DestinationNode";

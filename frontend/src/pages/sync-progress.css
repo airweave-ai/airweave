@@ -1,10 +1,10 @@
 /* Custom animations for sync progress */
 @keyframes pulse-slow {
   0%, 100% {
-    opacity: 0.1;
+    opacity: 0.05;
   }
   50% {
-    opacity: 1;
+    opacity: 0.2;
   }
 }
 
@@ -15,7 +15,7 @@
 .live-pulsing-bg {
   position: relative;
   backdrop-filter: blur(8px);
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: rgba(255, 255, 255, 0.01);
   transition: all 0.3s ease;
 }
 
@@ -28,11 +28,11 @@
   bottom: 0;
   z-index: 0;
   background: linear-gradient(45deg,
-    rgba(30, 64, 255, 0.06),
-    rgba(41, 121, 255, 0.1),
-    rgba(0, 183, 255, 0.06),
-    rgba(41, 121, 255, 0.1),
-    rgba(30, 64, 255, 0.06)
+    rgba(30, 64, 255, 0.01),
+    rgba(41, 121, 255, 0.01),
+    rgba(0, 183, 255, 0.01),
+    rgba(41, 121, 255, 0.01),
+    rgba(30, 64, 255, 0.01)
   );
   background-size: 400% 400%;
   animation: gradient-shift 8s ease infinite;

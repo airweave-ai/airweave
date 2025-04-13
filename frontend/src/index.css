@@ -5,17 +5,17 @@
 @layer base {
   :root {
     /* Base background with transparency */
-    --background: 222.2 84% 98%;
-    --background-solid: 222.2 23% 98%;
-    --background-alpha-10: 222.2 84% 98% / 0.1;
-    --background-alpha-20: 222.2 84% 97% / 0.2;
-    --background-alpha-30: 222.2 84% 96% / 0.3;
-    --background-alpha-40: 222.2 84% 95% / 0.4;
-    --background-alpha-50: 222.2 84% 94% / 0.5;
-    --background-alpha-60: 222.2 84% 93% / 0.6;
-    --background-alpha-70: 222.2 84% 92% / 0.7;
-    --background-alpha-80: 222.2 84% 91% / 0.8;
-    --background-alpha-90: 222.2 84% 90% / 0.9;
+    --background: 210 80% 99.5%;
+    --background-solid: 210 23% 98%;
+    --background-alpha-10: 210 60% 98% / 0.1;
+    --background-alpha-20: 210 60% 98% / 0.2;
+    --background-alpha-30: 210 60% 98% / 0.3;
+    --background-alpha-40: 210 60% 98% / 0.4;
+    --background-alpha-50: 210 60% 98% / 0.5;
+    --background-alpha-60: 210 60% 98% / 0.6;
+    --background-alpha-70: 210 60% 98% / 0.7;
+    --background-alpha-80: 210 60% 98% / 0.8;
+    --background-alpha-90: 210 60% 98% / 0.9;
 
     --foreground: 222.2 84% 4.9%;
 
@@ -161,22 +161,22 @@
 }
 
 .light .sidebar-nav-item {
-  background: linear-gradient(109.6deg, rgba(223,234,247,0.1) 11.2%, rgba(244,248,252,0.1) 91.1%);
+  background: linear-gradient(109.6deg, rgba(230,240,247,0.1) 11.2%, rgba(245,250,252,0.1) 91.1%);
 }
 
 .light .sidebar-nav-item:hover {
   @apply transform scale-[1.02];
-  background: linear-gradient(109.6deg, rgba(223,234,247,0.2) 11.2%, rgba(244,248,252,0.2) 91.1%);
+  background: linear-gradient(109.6deg, rgba(230,240,247,0.2) 11.2%, rgba(245,250,252,0.2) 91.1%);
 }
 
 .light .sidebar-nav-item.active {
-  background: linear-gradient(109.6deg, rgba(223,234,247,0.3) 11.2%, rgba(244,248,252,0.3) 91.1%);
+  background: linear-gradient(109.6deg, rgba(230,240,247,0.3) 11.2%, rgba(245,250,252,0.3) 91.1%);
 }
 
 .light .sidebar-nav-item::before {
   content: '';
   @apply absolute inset-0 rounded-md opacity-0 transition-opacity duration-200;
-  background: linear-gradient(109.6deg, rgba(223,234,247,0.4) 11.2%, rgba(244,248,252,0.4) 91.1%);
+  background: linear-gradient(109.6deg, rgba(230,240,247,0.4) 11.2%, rgba(245,250,252,0.4) 91.1%);
 }
 
 .light .sidebar-nav-item:hover::before {

@@ -27,7 +27,7 @@ export function ChatMessage({ role, content, attachments }: ChatMessageProps) {
   return (
     <div className={cn(
       "rounded-lg p-4",
-      role === "user" ? "bg-primary bg-opacity-80 text-primary-foreground" : "bg-muted border border-border/70"
+      role === "user" ? "bg-primary/50 bg-opacity-80 text-primary-foreground" : "bg-muted border border-border/70"
     )}>
       <div className="prose dark:prose-invert max-w-none">
         <ReactMarkdown

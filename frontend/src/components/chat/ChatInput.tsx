@@ -70,7 +70,7 @@ export const ChatInput = ({ onSubmit, isLoading }: ChatInputProps) => {
           className="flex-1"
           disabled={isLoading}
         />
-        <Button type="submit" disabled={isLoading}>
+        <Button type="submit" disabled={isLoading} className="bg-primary/50 text-primary-foreground hover:bg-primary/70">
           {isLoading ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (

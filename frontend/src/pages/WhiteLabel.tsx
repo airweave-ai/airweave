@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react";
+import { Plus, Lightbulb } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { WhiteLabelTable } from "@/components/white-label/WhiteLabelTable";
@@ -38,15 +38,24 @@ const WhiteLabel = () => {
             Manage your OAuth2 white labels for different applications.
           </p>
         </div>
-        <Button onClick={() => navigate("/white-label/create")}>
-          <Plus className="mr-2 h-4 w-4" />
-          New White Label
-        </Button>
+        <div className="flex space-x-2">
+          <Button
+            variant="outline"
+            onClick={() => window.open("https://docs.airweave.ai/white-labeling", "_blank")}
+          >
+            <Lightbulb className="h-4 w-4" />
+            Learn More
+          </Button>
+          <Button onClick={() => navigate("/white-label/create")}>
+            <Plus className="mr-2 h-4 w-4" />
+            New White Label
+          </Button>
+        </div>
       </div>
 
       <HowItWorksAccordion />
 
-      <WhiteLabelTable whiteLabels={whiteLabelIntegrations} />
+      <WhiteLabelTable />
     </div>
   );
 };

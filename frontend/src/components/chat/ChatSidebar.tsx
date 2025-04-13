@@ -160,24 +160,28 @@ export const ChatSidebar = ({ onCreateChat }: ChatSidebarProps) => {
                   )}
                   onClick={() => navigate(`/chat/${chat.id}`)}
                 >
-                  {chat.source_connection?.short_name ? (
-                    <img
-                      src={getAppIconUrl(chat.source_connection.short_name, resolvedTheme)}
-                      alt={chat.source_connection.name || "Source"}
-                      className="h-4 w-4 shrink-0"
-                    />
-                  ) : (
-                    <MessageSquare className="h-4 w-4 shrink-0" />
-                  )}
-                  <div className="flex-1 overflow-hidden">
-                    <p className="font-medium truncate">
-                      {chat.name || "Untitled Chat"}
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {chat.messages?.[chat.messages.length - 1]?.content ||
-                       chat.description ||
-                       "No messages yet"}
-                    </p>
+                  <div className="flex min-w-0 w-full items-start">
+                    <div className="mr-2 mt-0.5 shrink-0">
+                      {chat.source_connection?.short_name ? (
+                        <img
+                          src={getAppIconUrl(chat.source_connection.short_name, resolvedTheme)}
+                          alt={chat.source_connection.name || "Source"}
+                          className="h-4 w-4"
+                        />
+                      ) : (
+                        <MessageSquare className="h-4 w-4" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium truncate">
+                        {chat.name || "Untitled Chat"}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {chat.messages?.[chat.messages.length - 1]?.content ||
+                         chat.description ||
+                         "No messages yet"}
+                      </p>
+                    </div>
                   </div>
                 </Button>
               ))}

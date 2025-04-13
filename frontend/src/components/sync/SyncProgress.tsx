@@ -61,7 +61,7 @@ export const SyncProgress = ({ syncId, syncJobId, onClose, isLive = false, start
   // If this is a live view used in the main UI, we use a different layout
   if (isLive) {
     return (
-      <Card className={`w-full max-w-none bg-card shadow-sm relative overflow-hidden ${isRunning ? 'live-pulsing-bg' : ''}`}>
+      <Card className={`w-full max-w-none shadow-sm relative overflow-hidden ${isRunning ? 'live-pulsing-bg' : ''}`}>
         {/* Pulsing background effect when running */}
         {isRunning && (
           <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-primary/10 to-primary/5 animate-pulse-slow pointer-events-none" />
@@ -77,7 +77,7 @@ export const SyncProgress = ({ syncId, syncJobId, onClose, isLive = false, start
               <CardTitle>Live Sync Progress</CardTitle>
             </div>
             <div className="text-sm text-muted-foreground">
-              Started at: {startedAt ? format(new Date(startedAt), 'h:mm:ss a') : 'Pending...'}
+              Started at: {startedAt ? format(new Date(startedAt), 'h:mm:ss a') : 'Now'}
             </div>
           </div>
           <CardDescription>Processing and embedding your data</CardDescription>

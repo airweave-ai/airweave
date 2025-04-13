@@ -392,6 +392,7 @@ function Chat() {
                   </div>
                 </div>
               ))}
+
               {isLoading && (
                 <div className="flex justify-center">
                   <Spinner className="h-6 w-6" />

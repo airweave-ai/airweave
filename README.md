@@ -11,15 +11,18 @@
 
 </div>
 
+Turn any app data into accessible knowledge for AI agents. **Airweave** connects any app, database, URL, or API for agentic retrieval.
 
-**Airweave** is an open-source tool that makes **any app searchable** for your agent by syncing your users' app data, APIs, databases, and websites into your graph and vector databases with minimal configuration.
+### 🎥 Demo 
+https://github.com/user-attachments/assets/e6f80420-ad16-4844-b9be-30b1fbc2281c
 
+## Overview 
 
-<p align="center" style="padding-top: 4px; padding-bottom: 16px;">
-  <img src="https://github.com/user-attachments/assets/8113122a-111e-477e-ade8-2f8a79b70c72" alt="airweave-demo" />
-  <em>Airweave demo - choose source, vector database, and sync.</em>
-</p>
+Airweave simplifies the process of making information retrievable for your agent. 
 
+Whether you have structured or unstructured data, Airweave helps you break it into processable entities, store the data and make it retrievable through [REST and MCP endpoints](https://docs.airweave.ai). 
+
+---
 
 ## Table of Contents
 
@@ -30,22 +33,15 @@
 - [Usage](#usage)
   - [Frontend](#frontend)
   - [API Endpoints (FastAPI)](#api-endpoints-fastapi)
-  - [Native Weaviate](#native-weaviate)
-  - [Why Airweave?](#why-airweave)
 - [Integrations - adding more every day!](#integrations---adding-more-every-day)
 - [Key Features](#key-features)
 - [Technology Stack](#technology-stack)
-- [Bring your own database](#bring-your-own-database)
 - [Contributing](#contributing)
 - [Roadmap](#roadmap)
 - [License](#license)
 - [Contact \& Community](#contact--community)
 
----
 
-## Overview
-
-Airweave simplifies the process of making your data searchable. Whether you have structured or unstructured data, Airweave helps you break it into processable entities, store the data in graph and vector databases, and retrieve it via your own **agent** or any **search mechanism**.
 
 
 ## Quick Start
@@ -69,7 +65,7 @@ Below is a simple guide to get Airweave up and running locally. For more detaile
 
 That's it!
 
-You now have Airweave running locally. You can log in to the dashboard, add new sources, and configure your sync schedules.
+You now have Airweave running locally. You can log in to the dashboard, add a connection, configure your sync schedule and find information on your apps.
 
 
 ## Usage
@@ -87,20 +83,10 @@ To use Airweave, you can either use the frontend or the API.
 - **Swagger Documentation:** `http://localhost:8001/docs`
 - **Get All Sources:** `GET /sources`
 - **Connect a Source:** `POST /connections/{short_name}`
+- **Find information:**: `POST /search`
 
-
-### Native Weaviate
-Airweave uses a local Weaviate instance by default, you can access the Weaviate API at `http://localhost:8087`. This can be used for testing and development.
 
 You can configure your own vector database in the app UI or via the API.
-
-### Why Airweave?
-- **Over 25 integrations and counting**: Airweave is your one-stop shop for building any application that requires semantic search.
-- **Simplicity**: Minimal configuration needed to sync data from diverse sources (APIs, databases, and more).
-- **Extensibility**: Easily add new integrations via `sources`, `destinations`, and `embedders`.
-- **Open-Core**: Core features are open source, ensuring transparency. Future commercial offerings will bring additional, advanced capabilities.
-- **Async-First**: Built to handle large-scale data synchronization asynchronously (upcoming: managed Redis workers for production scale).
-
 ---
 
 ## Integrations - adding more every day!
@@ -123,14 +109,15 @@ You can configure your own vector database in the app UI or via the API.
 ---
 
 ## Key Features
-- **No code required, but extensible**: Users that prefer not to touch any code can make their app searchable in a few clicks
+- **Over 25 integrations and counting**: Airweave is your one-stop shop for building agents that need to find information in a single queryable layer.
+- **Simplicity**: Minimal configuration needed to find information in diverse sources: APIs, databases, apps and more.
+- **Extensibility**: Easily add new source and embedder integrations with our 
 - **White-Labeled Multi-Tenant Support**: Ideal for SaaS builders, Airweave provides a streamlined OAuth2-based platform for syncing data across multiple tenants while maintaining privacy and security.
 - **Entity Generators**: Each source (like a database, API, or file system) defines a `async def generate_entities()` that yields data in a consistent format. You can also define your own.
 - **Automated Sync**: Schedule data synchronization or run on-demand sync jobs.
-- **Versioning & Hashing**: Airweave detects changes in your data via hashing, updating only the modified entities in the vector store.
-- **Multi-Source Support**: Plug in multiple data sources and unify them into a single queryable layer.
+- **Versioning & Hashing**: Airweave detects changes in your data via hashing, updating only the modified entities.
+- **Async-First**: Built to handle large-scale data synchronization asynchronously (upcoming: managed Redis workers for production scale).
 - **Scalable**: Deploy locally via Docker Compose for development (upcoming: deploy with Kubernetes for production scale)
-
 
 
 ## Technology Stack
@@ -143,25 +130,10 @@ You can configure your own vector database in the app UI or via the API.
 - **Databases**:
   - [PostgreSQL](https://www.postgresql.org/) for relational data
   - Vector database (your choice, e.g. Chroma, Milvus, Pinecone, Qdrant, Weaviate, etc.)  + (upcoming batteries-included vector DB)
-  - (upcoming) Graph database (natively supported Neo4j)
+  - Graph database (natively supported Neo4j)
 - **Asynchronous Tasks**: [ARQ](https://arq-docs.helpmanual.io/) Redis for background workers
 
 ---
-
-
-## Bring your own database
-
-You can configure Airweave to use your own PostgreSQL database to store sources, schedules, and metadata. Update the following variables in your `.env` file:
-
-```env
-POSTGRES_USER=<your-database-username>
-POSTGRES_PASSWORD=<your-database-password>
-POSTGRES_DB=<your-database-name>
-POSTGRES_HOST=<your-database-host>
-POSTGRES_PORT=<your-database-port>
-```
-
-
 
 ## Contributing
 
@@ -185,7 +157,6 @@ Please follow the existing code style and conventions. See [CONTRIBUTING.md](htt
 
 Airweave is released under an open-core model. The community edition is licensed under the [Apache 2.0 License](LICENSE). Additional modules (for enterprise or advanced features) may be licensed separately.
 
----
 
 ## Contact & Community
 - **Discord**: Join our Discord channel [here](https://discord.com/invite/484HY9Ehxt) to get help or discuss features.

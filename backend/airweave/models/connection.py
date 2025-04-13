@@ -74,8 +74,9 @@ class Connection(Base):
         CheckConstraint(
             """
             (short_name IN ('weaviate_native', 'neo4j_native', 'local_text2vec'))
-            OR 
-            (organization_id IS NOT NULL AND created_by_email IS NOT NULL AND modified_by_email IS NOT NULL)
+            OR
+            (organization_id IS NOT NULL AND created_by_email IS NOT NULL AND
+            modified_by_email IS NOT NULL)
             """,
             name="ck_connection_native_or_complete",
         ),

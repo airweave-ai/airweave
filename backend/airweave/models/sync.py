@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from airweave.models.entity import Entity
     from airweave.models.sync_connection import SyncConnection
     from airweave.models.sync_job import SyncJob
+    from airweave.models.white_label import WhiteLabel
 
 
 class Sync(OrganizationBase, UserMixin):
@@ -56,6 +57,12 @@ class Sync(OrganizationBase, UserMixin):
         lazy="noload",
         cascade="all, delete-orphan",
         passive_deletes=True,
+    )
+
+    white_label: Mapped[Optional["WhiteLabel"]] = relationship(
+        "WhiteLabel",
+        back_populates="syncs",
+        lazy="noload",
     )
 
     __table_args__ = (
