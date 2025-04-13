@@ -90,6 +90,7 @@ class Neo4jDestination(GraphDBDestination):
         """Convert a ChunkEntity to Neo4j-compatible node properties.
 
         Converts UUIDs to strings and serializes complex objects (dicts/lists) to JSON strings.
+        Handles breadcrumbs specially to ensure they're stored in Neo4j-compatible format.
 
         Args:
         ----
@@ -102,6 +103,23 @@ class Neo4jDestination(GraphDBDestination):
         # Get the serialized properties directly from the model
         properties = entity.model_dump()
 
+        # Special handling for breadcrumbs - convert to Neo4j-compatible format
+        if "breadcrumbs" in properties and properties["breadcrumbs"]:
+            # Convert each breadcrumb object to a dict with primitive values
+            breadcrumbs_list = []
+            for breadcrumb in properties["breadcrumbs"]:
+                if hasattr(breadcrumb, "model_dump"):
+                    # If it's a Pydantic model, convert to dict
+                    breadcrumb_dict = breadcrumb.model_dump()
+                else:
+                    # If it's already a dict, use it as is
+                    breadcrumb_dict = breadcrumb
+
+                breadcrumbs_list.append(breadcrumb_dict)
+
+            # Store as properly formatted breadcrumbs
+            properties["breadcrumbs"] = breadcrumbs_list
+
         # Ensure all properties are properly serialized
         for key, value in properties.items():
             if isinstance(value, UUID):
@@ -113,6 +131,29 @@ class Neo4jDestination(GraphDBDestination):
         logger.debug(f"Converted properties: {properties}")
 
         return properties
+
+    def _get_parent_from_breadcrumbs(self, entity: ChunkEntity) -> Optional[str]:
+        """Extract parent entity ID from breadcrumbs if available.
+
+        This method attempts to find the parent entity ID by looking at the last
+        breadcrumb in the entity's breadcrumb list, which represents the immediate parent.
+
+        Args:
+        ----
+            entity (ChunkEntity): The entity to extract parent from.
+
+        Returns:
+        -------
+            Optional[str]: The parent entity ID if found, None otherwise.
+        """
+        # If no breadcrumbs, we can't determine a parent
+        if not entity.breadcrumbs or len(entity.breadcrumbs) < 1:
+            return None
+
+        # The last breadcrumb before the current entity is the immediate parent
+        # We assume breadcrumbs are ordered from root to leaf (parent to child)
+        parent_breadcrumb = entity.breadcrumbs[-1]
+        return parent_breadcrumb.entity_id
 
     async def setup_collection(self, sync_id: UUID) -> None:
         """Set up Neo4j constraints and indexes for the sync.
@@ -174,13 +215,18 @@ class Neo4jDestination(GraphDBDestination):
                 # Create node
                 await session.run(query, entity_id=properties["entity_id"], props=properties)
 
+                # Determine parent ID - first try parent_entity_id, then fall back to breadcrumbs
+                parent_id = entity.parent_entity_id
+                if not parent_id:
+                    parent_id = self._get_parent_from_breadcrumbs(entity)
+
                 # Create relationship if parent exists
-                if entity.parent_entity_id:
+                if parent_id:
                     try:
                         await session.run(
                             parent_query,
                             entity_id=entity.entity_id,
-                            parent_id=entity.parent_entity_id,
+                            parent_id=parent_id,
                         )
                     except Exception as e:
                         logger.warning(f"Failed to create parent relationship: {str(e)}")
@@ -213,12 +259,17 @@ class Neo4jDestination(GraphDBDestination):
         MERGE (parent)-[:IS_PARENT_OF]->(e)
         """
 
-        # Collect parent relationships
-        relationships = [
-            {"entity_id": entity.entity_id, "parent_id": entity.parent_entity_id}
-            for entity in entities
-            if entity.parent_entity_id
-        ]
+        # Collect parent relationships from both parent_entity_id and breadcrumbs
+        relationships = []
+        for entity in entities:
+            parent_id = entity.parent_entity_id
+
+            # If no explicit parent_entity_id, try to get from breadcrumbs
+            if not parent_id:
+                parent_id = self._get_parent_from_breadcrumbs(entity)
+
+            if parent_id:
+                relationships.append({"entity_id": entity.entity_id, "parent_id": parent_id})
 
         async with Neo4jService(
             uri=self.uri, username=self.username, password=self.password
@@ -276,6 +327,9 @@ class Neo4jDestination(GraphDBDestination):
 
     async def bulk_delete_by_parent_id(self, parent_id: str, sync_id: str = None) -> None:
         """Bulk delete entities by parent ID and optionally sync ID.
+
+        This method deletes all entities that have the specified parent_id,
+        whether through direct parent_entity_id or through breadcrumb relationships.
 
         Args:
         ----
