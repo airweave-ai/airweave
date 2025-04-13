@@ -32,6 +32,10 @@ class Settings(BaseSettings):
         NATIVE_WEAVIATE_HOST (str): The Weaviate host.
         NATIVE_WEAVIATE_PORT (int): The Weaviate port.
         NATIVE_WEAVIATE_GRPC_PORT (int): The Weaviate gRPC port.
+        NEO4J_HOST (str): The Neo4j host.
+        NEO4J_PORT (int): The Neo4j port.
+        NEO4J_USER (str): The Neo4j username.
+        NEO4J_PASSWORD (str): The Neo4j password.
     """
 
     PROJECT_NAME: str = "Airweave"
@@ -59,6 +63,11 @@ class Settings(BaseSettings):
     NATIVE_WEAVIATE_HOST: str = "weaviate"
     NATIVE_WEAVIATE_PORT: int = 8080
     NATIVE_WEAVIATE_GRPC_PORT: int = 50051
+
+    NEO4J_HOST: str = "neo4j"
+    NEO4J_PORT: int = 7687
+    NEO4J_USER: str = "neo4j"
+    NEO4J_PASSWORD: str = "password"
 
     OPENAI_API_KEY: Optional[str] = None
 
@@ -103,7 +112,7 @@ class Settings(BaseSettings):
             return self.LOCAL_NGROK_SERVER
         if self.DTAP_ENVIRONMENT == "prod":
             return "https://api.airweave.ai"
-        return f"https://api.{self.DTAP_ENVIRONMENT}-airweave.ai"
+        return f"https://api.{self.DTAP_ENVIRONMENT}-airweave.com"
 
     @property
     def app_url(self) -> str:
@@ -116,7 +125,7 @@ class Settings(BaseSettings):
             return f"http://localhost:{self.FRONTEND_LOCAL_DEVELOPMENT_PORT}"
         if self.DTAP_ENVIRONMENT == "prod":
             return "https://app.airweave.ai"
-        return f"https://app.{self.DTAP_ENVIRONMENT}-airweave.ai"
+        return f"https://app.{self.DTAP_ENVIRONMENT}-airweave.com"
 
     @property
     def docs_url(self) -> str:
@@ -129,7 +138,7 @@ class Settings(BaseSettings):
             return f"http://localhost:{self.FRONTEND_LOCAL_DEVELOPMENT_PORT}"
         if self.DTAP_ENVIRONMENT == "prod":
             return "https://docs.airweave.ai"
-        return f"https://docs.{self.DTAP_ENVIRONMENT}-airweave.ai"
+        return f"https://docs.{self.DTAP_ENVIRONMENT}-airweave.com"
 
 
 settings = Settings()

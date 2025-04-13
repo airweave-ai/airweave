@@ -30,13 +30,22 @@ class URLAndAPIKeyAuthConfig(AuthConfig):
     api_key: str = Field(title="API Key", description="The API key for the API")
 
 
-class WeaviateAuthConfig(AuthConfig):
-    """Weaviate authentication credentials schema."""
-
-    cluster_url: str = Field(title="Cluster URL", description="The URL of the Weaviate cluster")
-    api_key: str = Field(title="API Key", description="The API key for the Weaviate cluster")
+# Source auth configs
 
 
+# Source application-specific auth configs
+class StripeAuthConfig(AuthConfig):
+    """Stripe authentication credentials schema."""
+
+    api_key: str = Field(
+        title="API Key",
+        description="The API key for the Stripe account. Should start with 'sk_test_' for test mode"
+        " or 'sk_live_' for live mode.",
+        pattern="^sk_(test|live)_[A-Za-z0-9]+$",
+    )
+
+
+# Source database-specific auth configs
 class ODBCAuthConfig(AuthConfig):
     """ODBC authentication credentials schema."""
 
@@ -47,17 +56,6 @@ class ODBCAuthConfig(AuthConfig):
     password: str = Field(title="Password", description="The password for the ODBC database")
     schema: str = Field(title="Schema", description="The schema of the ODBC database")
     tables: str = Field(title="Tables", description="The tables of the ODBC database")
-
-
-class StripeAuthConfig(AuthConfig):
-    """Stripe authentication credentials schema."""
-
-    api_key: str = Field(
-        title="API Key",
-        description="The API key for the Stripe account. Should start with 'sk_test_' for test mode"
-        " or 'sk_live_' for live mode.",
-        pattern="^sk_(test|live)_[A-Za-z0-9]+$",
-    )
 
 
 class BaseDatabaseAuthConfig(AuthConfig):
@@ -112,3 +110,19 @@ class SQLServerAuthConfig(BaseDatabaseAuthConfig):
 
 class OracleAuthConfig(BaseDatabaseAuthConfig):
     """Oracle authentication configuration."""
+
+
+# Destination auth configs
+class WeaviateAuthConfig(AuthConfig):
+    """Weaviate authentication credentials schema."""
+
+    cluster_url: str = Field(title="Cluster URL", description="The URL of the Weaviate cluster")
+    api_key: str = Field(title="API Key", description="The API key for the Weaviate cluster")
+
+
+class Neo4jAuthConfig(AuthConfig):
+    """Neo4j authentication credentials schema."""
+
+    uri: str = Field(title="URI", description="The URI of the Neo4j database")
+    username: str = Field(title="Username", description="The username for the Neo4j database")
+    password: str = Field(title="Password", description="The password for the Neo4j database")

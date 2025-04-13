@@ -8,20 +8,22 @@ Please note that mcp-server-sync-test is currently in early development. The fun
 
 ### Tools
 
-1. `check_connection`  
-   * Checks if a source connection is established  
-   * Input:  
-         * `short_name` (string): Short name of the source to check  
+1. `check_connection`
+   * Checks if a source connection is established
+   * Input:
+         * `short_name` (string): Short name of the source to check
    * Returns: Connection status and details
 
-2. `run_sync`  
-   * Runs a sync for a source integration  
-   * Input:  
-         * `short_name` (string): Short name of the source to sync  
+2. `run_sync`
+   * Runs a sync for a source integration
+   * Input:
+         * `short_name` (string): Short name of the source to sync
    * Returns: Sync status and results
 
 ## Run
 `python server.py`
+
+> **Important:** Make sure you have set `LOCAL_CURSOR_DEVELOPMENT=true` in your `.env`
 
 
 ### Add MCP Server to Cursor

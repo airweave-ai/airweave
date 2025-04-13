@@ -1,5 +1,6 @@
 """Base destination classes."""
 
+import json
 from abc import ABC, abstractmethod
 from typing import ClassVar, List
 from uuid import UUID
@@ -71,29 +72,23 @@ class VectorDBDestination(BaseDestination):
 
 
 class GraphDBDestination(BaseDestination):
-    """Abstract base class for destinations backed by a graph database.
+    """Abstract base class for destinations backed by a graph database."""
 
-    This interface defines additional methods specific to graph operations.
-    """
+    # No additional abstract methods needed - the graph-specific operations
+    # should be implementation details of the standard methods.
 
-    @abstractmethod
-    async def create_node(self, node_properties: dict, label: str) -> None:
-        """Create a node in the graph database."""
-        pass
+    # If needed, add helper methods that are not abstract:
 
-    @abstractmethod
-    async def create_relationship(
-        self, from_node_id: str, to_node_id: str, rel_type: str, properties: dict = None
-    ) -> None:
-        """Create a relationship between two nodes in the graph database."""
-        pass
+    def _entity_to_node_properties(self, entity: ChunkEntity) -> dict:
+        """Convert a ChunkEntity to Neo4j-compatible node properties."""
+        # Get the basic serialized properties
+        properties = entity.to_storage_dict()
 
-    @abstractmethod
-    async def bulk_create_nodes(self, nodes: list[dict]) -> None:
-        """Bulk create nodes in the graph database."""
-        pass
+        # Handle special fields like breadcrumbs for Neo4j
+        if "breadcrumbs" in properties and isinstance(properties["breadcrumbs"], list):
+            # Either serialize breadcrumbs to JSON string
+            properties["breadcrumbs"] = json.dumps(properties["breadcrumbs"])
+            # OR extract the most important properties from breadcrumbs
+            # and store them as separate properties
 
-    @abstractmethod
-    async def bulk_create_relationships(self, relationships: list[dict]) -> None:
-        """Bulk create relationships in the graph database."""
-        pass
+        return properties

@@ -1,0 +1,26 @@
+# Triggers a repository dispatch event in the private infra repo when a release is published
+#
+# Required secrets:
+# - INFRA_REPO_TOKEN: GitHub PAT with repo scope access to private repo
+# - INFRA_REPO_OWNER: Owner of private infra repo
+# - INFRA_REPO_NAME: Name of private infra repo
+#
+# Sends: version (tag name) and repo name in payload
+
+name: Trigger Private Infra Deployment
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  trigger-infra:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger private infra repo
+        run: |
+          curl -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.INFRA_REPO_TOKEN }}" \
+            https://api.github.com/repos/${{ secrets.INFRA_REPO_OWNER }}/${{ secrets.INFRA_REPO_NAME }}/dispatches \
+            -d '{"event_type":"oss-release","client_payload":{"version":"${{ github.event.release.tag_name }}","repo":"${{ github.repository }}"}}'

@@ -12,7 +12,7 @@
       (function() {
         const storageKey = "airweave-ui-theme";
         const theme = localStorage.getItem(storageKey);
-        
+
         if (theme === "dark" || (theme === null && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
           document.documentElement.classList.add("dark");
         } else if (theme === "light" || theme === null) {
@@ -25,6 +25,7 @@
   <body>
     <div id="root"></div>
     <script src="https://cdn.gpteng.co/gptengineer.js" type="module"></script>
+    <script src="/config.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

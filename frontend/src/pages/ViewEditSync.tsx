@@ -16,7 +16,8 @@ import {
   Copy,
   Activity,
   Box,
-  Heart
+  Heart,
+  RefreshCw
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -82,6 +83,7 @@ const ViewEditSync = () => {
   const [lastSync, setLastSync] = useState<SyncJob | null>(null);
   const [isRunningSync, setIsRunningSync] = useState(false);
   const [totalRuntime, setTotalRuntime] = useState<number | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const fetchLastSyncJob = async () => {
     try {
@@ -106,28 +108,18 @@ const ViewEditSync = () => {
           0
         );
         setTotalRuntime(totalTime);
-
-        // If the job is still running, set up a polling interval to check for updates
-        if (sortedJobs[0].status === "running" || sortedJobs[0].status === "pending") {
-          const intervalId = setInterval(async () => {
-            const jobResponse = await apiClient.get(`/sync/${id}/job/${sortedJobs[0].id}`);
-            if (jobResponse.ok) {
-              const updatedJob = await jobResponse.json();
-              setLastSync(updatedJob);
-
-              // If the job is no longer running, clear the interval
-              if (updatedJob.status !== "running" && updatedJob.status !== "pending") {
-                clearInterval(intervalId);
-              }
-            }
-          }, 5000); // Poll every 5 seconds
-
-          // Clean up interval on component unmount
-          return () => clearInterval(intervalId);
-        }
       }
     } catch (error) {
       console.error("Error fetching last sync job:", error);
+    }
+  };
+
+  const refreshData = async () => {
+    setIsRefreshing(true);
+    try {
+      await fetchLastSyncJob();
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -211,12 +203,6 @@ const ViewEditSync = () => {
     if (id) {
       fetchData();
     }
-
-    // Set up a refresh interval for the last sync job
-    const intervalId = setInterval(fetchLastSyncJob, 15000); // Refresh every 15 seconds
-
-    // Clean up interval on component unmount
-    return () => clearInterval(intervalId);
   }, [id]);
 
   const handleDelete = async () => {
@@ -263,9 +249,6 @@ const ViewEditSync = () => {
 
       // Update the last sync job immediately
       setLastSync(newJob);
-
-      // Refresh the jobs table
-      fetchLastSyncJob();
     } catch (error) {
       console.error("Error running sync:", error);
       toast({
@@ -341,6 +324,15 @@ const ViewEditSync = () => {
           </div>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={refreshData}
+            disabled={isRefreshing}
+            className="gap-1"
+          >
+            <RefreshCw className="h-4 w-4" />
+            {isRefreshing ? 'Refreshing...' : 'Refresh'}
+          </Button>
           <Button
             variant="default"
             onClick={handleRunSync}

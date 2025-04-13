@@ -71,12 +71,8 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8080:8080"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
     environment:
-      - VITE_API_URL=http://localhost:8001
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+      - API_URL=http://localhost:8001
     depends_on:
       backend:
         condition: service_healthy
@@ -107,7 +103,7 @@ services:
     image: semitechnologies/weaviate:1.24.1
     ports:
       - "8087:8080"
-      - "50051:50051"
+      - "50052:50051"
     environment:
       QUERY_DEFAULTS_LIMIT: 25
       AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
