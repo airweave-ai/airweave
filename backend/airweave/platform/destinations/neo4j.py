@@ -130,6 +130,8 @@ class Neo4jDestination(GraphDBDestination):
             "CREATE INDEX entity_sync_id IF NOT EXISTS FOR (e:Entity) ON (e.sync_id)",
             # Index on parent_entity_id for relationship queries
             "CREATE INDEX entity_parent_id IF NOT EXISTS FOR (e:Entity) ON (e.parent_entity_id)",
+            # Index on IS_PARENT_OF relationship for faster traversal
+            "CREATE INDEX is_parent_of_rel IF NOT EXISTS FOR ()-[r:IS_PARENT_OF]->() ON (r)",
         ]
 
         async with Neo4jService(
@@ -162,7 +164,7 @@ class Neo4jDestination(GraphDBDestination):
         parent_query = """
         MATCH (e:Entity {entity_id: $entity_id})
         MATCH (parent:Entity {entity_id: $parent_id})
-        MERGE (parent)-[:PARENT_OF]->(e)
+        MERGE (parent)-[:IS_PARENT_OF]->(e)
         """
 
         async with Neo4jService(
@@ -208,7 +210,7 @@ class Neo4jDestination(GraphDBDestination):
         UNWIND $relationships AS rel
         MATCH (e:Entity {entity_id: rel.entity_id})
         MATCH (parent:Entity {entity_id: rel.parent_id})
-        MERGE (parent)-[:PARENT_OF]->(e)
+        MERGE (parent)-[:IS_PARENT_OF]->(e)
         """
 
         # Collect parent relationships
@@ -287,14 +289,14 @@ class Neo4jDestination(GraphDBDestination):
 
         if sync_id:
             query = """
-            MATCH (parent:Entity {entity_id: $parent_id})-[:PARENT_OF]->(child:Entity)
+            MATCH (parent:Entity {entity_id: $parent_id})-[:IS_PARENT_OF]->(child:Entity)
             WHERE child.sync_id = $sync_id
             DETACH DELETE child
             """
             params["sync_id"] = str(sync_id)
         else:
             query = """
-            MATCH (parent:Entity {entity_id: $parent_id})-[:PARENT_OF]->(child:Entity)
+            MATCH (parent:Entity {entity_id: $parent_id})-[:IS_PARENT_OF]->(child:Entity)
             DETACH DELETE child
             """
 
