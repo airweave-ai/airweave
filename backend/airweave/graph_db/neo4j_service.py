@@ -67,7 +67,6 @@ class Neo4jService:
                 in the context.
             exc_value (Optional[BaseException]): The exception instance if an exception was raised.
             traceback (Optional[TracebackType]): Traceback object if an exception was raised.
-
         """
         try:
             await self.close_connection()
@@ -120,7 +119,12 @@ class Neo4jService:
                 raise
 
     async def close_connection(self) -> None:
-        """Close the connection to the Neo4j database."""
+        """Close the connection to the Neo4j database.
+
+        Raises:
+        ------
+            Exception: If the connection to the Neo4j database fails.
+        """
         if self.driver:
             try:
                 await self.driver.close()

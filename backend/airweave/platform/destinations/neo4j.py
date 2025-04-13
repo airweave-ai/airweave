@@ -87,7 +87,18 @@ class Neo4jDestination(GraphDBDestination):
         return None
 
     def _entity_to_node_properties(self, entity: ChunkEntity) -> dict:
-        """Convert a ChunkEntity to Neo4j-compatible node properties."""
+        """Convert a ChunkEntity to Neo4j-compatible node properties.
+
+        Converts UUIDs to strings and serializes complex objects (dicts/lists) to JSON strings.
+
+        Args:
+        ----
+            entity (ChunkEntity): The entity to convert.
+
+        Returns:
+        -------
+            dict: The Neo4j-compatible node properties.
+        """
         # Get the serialized properties directly from the model
         properties = entity.model_dump()
 
