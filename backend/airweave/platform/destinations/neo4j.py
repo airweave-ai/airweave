@@ -195,13 +195,14 @@ class Neo4jDestination(GraphDBDestination):
         # Convert entity to Neo4j-friendly properties
         properties = self._entity_to_node_properties(entity)
 
-        # Create node
+        # Create node - use the entity_id which has a unique constraint for efficient merging
         query = """
         MERGE (e:Entity {entity_id: $entity_id})
         SET e = $props
         """
 
         # Create relationship to parent if parent_entity_id exists
+        # The MATCH clauses will use the entity_id_unique constraint for efficient lookup
         parent_query = """
         MATCH (e:Entity {entity_id: $entity_id})
         MATCH (parent:Entity {entity_id: $parent_id})
@@ -234,6 +235,12 @@ class Neo4jDestination(GraphDBDestination):
     async def bulk_insert(self, entities: list[ChunkEntity]) -> None:
         """Bulk insert entities as nodes in Neo4j using UNWIND.
 
+        This method optimizes bulk inserts by:
+        1. Batching node creation with UNWIND
+        2. Batching relationship creation
+        3. Using indexes for efficient matching
+        4. Handling both direct parent references and breadcrumb-based relationships
+
         Args:
         ----
             entities (list[ChunkEntity]): The entities to insert.
@@ -241,10 +248,24 @@ class Neo4jDestination(GraphDBDestination):
         if not entities:
             return
 
+        # For very large datasets, process in batches to avoid memory issues
+        batch_size = 1000
+        for i in range(0, len(entities), batch_size):
+            batch = entities[i : i + batch_size]
+            await self._process_entity_batch(batch)
+
+    async def _process_entity_batch(self, entities: list[ChunkEntity]) -> None:
+        """Process a batch of entities for insertion.
+
+        Args:
+        ----
+            entities (list[ChunkEntity]): The batch of entities to process.
+        """
         # Convert entities to Neo4j-friendly properties
         node_props = [self._entity_to_node_properties(entity) for entity in entities]
 
         # Create nodes with UNWIND for efficiency
+        # The MERGE uses the entity_id_unique constraint for efficiency
         node_query = """
         UNWIND $props AS prop
         MERGE (e:Entity {entity_id: prop.entity_id})
@@ -252,10 +273,12 @@ class Neo4jDestination(GraphDBDestination):
         """
 
         # Create parent relationships for all entities with parent_entity_id
+        # The MATCH clauses will use the entity_id_unique constraint for efficient lookup
         relationships_query = """
         UNWIND $relationships AS rel
         MATCH (e:Entity {entity_id: rel.entity_id})
         MATCH (parent:Entity {entity_id: rel.parent_id})
+        WHERE e <> parent // Prevent circular references
         MERGE (parent)-[:IS_PARENT_OF]->(e)
         """
 
@@ -268,7 +291,8 @@ class Neo4jDestination(GraphDBDestination):
             if not parent_id:
                 parent_id = self._get_parent_from_breadcrumbs(entity)
 
-            if parent_id:
+            # Add relationship only if parent exists and isn't entity itself (prevent circular refs)
+            if parent_id and parent_id != entity.entity_id:
                 relationships.append({"entity_id": entity.entity_id, "parent_id": parent_id})
 
         async with Neo4jService(
@@ -399,3 +423,73 @@ class Neo4jDestination(GraphDBDestination):
                     records.append(dict(node))
 
                 return records
+
+    async def search_with_relations(
+        self, query_text: str, sync_id: UUID, max_depth: int = 2
+    ) -> list[dict]:
+        """Search for entities with related parent/child entities.
+
+        This method performs a graph traversal search that returns not just matching entities
+        but also their related entities (parents and children) up to a specified depth.
+
+        Args:
+        ----
+            query_text (str): The query text to search for.
+            sync_id (UUID): The sync ID to filter by.
+            max_depth (int): Maximum depth for relationship traversal (default: 2).
+
+        Returns:
+        -------
+            list[dict]: Search results including related entities and relationship info.
+        """
+        # Graph traversal query that finds matching entities and their relationships
+        # Uses efficient graph traversal with variable length paths
+        graph_query = """
+        MATCH (e:Entity)
+        WHERE e.sync_id = $sync_id
+        OPTIONAL MATCH path = (e)-[r:IS_PARENT_OF*0..{max_depth}]-(related)
+        WHERE related.sync_id = $sync_id
+        RETURN e, related, r, path
+        LIMIT 20
+        """
+
+        async with Neo4jService(
+            uri=self.uri, username=self.username, password=self.password
+        ) as service:
+            async with await service.get_session() as session:
+                result = await session.run(
+                    graph_query.format(max_depth=max_depth),
+                    sync_id=str(sync_id),
+                    query_text=query_text,
+                )
+
+                # Process complex graph results
+                graph_results = []
+                nodes_seen = set()
+
+                async for record in result:
+                    # Extract entity
+                    entity = dict(record["e"])
+                    entity_id = entity.get("entity_id")
+
+                    if entity_id not in nodes_seen:
+                        nodes_seen.add(entity_id)
+                        result_item = {"entity": entity, "relationships": []}
+
+                        # Add relationships if they exist
+                        if record["path"] is not None:
+                            path = record["path"]
+                            for rel in path.relationships:
+                                start_node = dict(rel.start_node)
+                                end_node = dict(rel.end_node)
+                                result_item["relationships"].append(
+                                    {
+                                        "type": rel.type,
+                                        "from": start_node.get("entity_id"),
+                                        "to": end_node.get("entity_id"),
+                                    }
+                                )
+
+                        graph_results.append(result_item)
+
+                return graph_results
