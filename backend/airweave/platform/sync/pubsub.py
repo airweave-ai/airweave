@@ -69,8 +69,8 @@ class SyncPubSub:
         """Publish an update to a specific job topic."""
         topic = self.get_or_create_topic(job_id)
         await topic.publish(update)
-        # If the update indicates completion, schedule topic removal
-        if update.is_complete:
+        # If the update indicates completion or failure, schedule topic removal
+        if update.is_complete or update.is_failed:
             self.remove_topic(job_id)
 
     async def subscribe(self, job_id: UUID) -> asyncio.Queue:
@@ -121,6 +121,7 @@ class SyncProgress:
     async def finalize(self, is_complete: bool = True) -> None:
         """Publish final progress."""
         self.stats.is_complete = is_complete
+        self.stats.is_failed = not is_complete
         await self._publish()
 
 

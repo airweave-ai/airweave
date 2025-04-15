@@ -27,9 +27,9 @@ import { ButtonEdge } from "./edges/ButtonEdge";
 import { BlankEdge } from "./edges/BlankEdge";
 import { NonPlussableEdge } from "./edges/NonPlussableEdge";
 import dagre from "dagre";
-import { 
-  Dag, 
-  FlowNode, 
+import {
+  Dag,
+  FlowNode,
   FlowEdge,
   toFlowNodes,
   toFlowEdges,
@@ -37,6 +37,7 @@ import {
   toDagEdges,
 } from "@/components/sync/dag";
 import { TransformerNode } from "./nodes/TransformerNode";
+import { v4 as uuidv4 } from 'uuid';
 
 // Define custom node types
 const nodeTypes: NodeTypes = {
@@ -103,24 +104,24 @@ const analyzeGraphStructure = (nodes: FlowNode[], edges: FlowEdge[]) => {
 
 const calculateLayoutParameters = (graphStructure: ReturnType<typeof analyzeGraphStructure>) => {
   const { columnCount, maxNodesInColumn, avgNodesInColumn } = graphStructure;
-  
+
   // Increase base values for more spread
   const baseRankSep = 120;  // Increased from 120
   const baseNodeSep = 80;
-  
+
   // Calculate scaling factors based on graph complexity
   const rankSepScaleFactor = Math.max(0.7, Math.min(1, 3 / columnCount));  // Increased minimum from 0.5
   const nodeSepScaleFactor = Math.max(0.6, Math.min(1, 3 / maxNodesInColumn));
-  
+
   // Calculate adjusted values
   const ranksep = Math.round(baseRankSep * rankSepScaleFactor);
   const nodesep = Math.round(baseNodeSep * nodeSepScaleFactor);
-  
+
   // Calculate edge weights based on graph density
   const denseGraph = avgNodesInColumn > 2 || columnCount > 4;
   const blankEdgeWeight = denseGraph ? 6 : 4;
   const buttonEdgeWeight = denseGraph ? 2 : 1;
-  
+
   return {
     ranksep,
     nodesep,
@@ -139,7 +140,7 @@ const getLayoutedElements = (nodes: FlowNode[], edges: FlowEdge[]) => {
   const graphStructure = analyzeGraphStructure(nodes, edges);
   const layoutParams = calculateLayoutParameters(graphStructure);
 
-  dagreGraph.setGraph({ 
+  dagreGraph.setGraph({
     rankdir: 'LR',
     nodesep: layoutParams.nodesep,
     ranksep: layoutParams.ranksep,
@@ -160,7 +161,7 @@ const getLayoutedElements = (nodes: FlowNode[], edges: FlowEdge[]) => {
   edges.forEach((edge) => {
     const sourceNode = nodes.find(n => n.id === edge.source);
     const targetNode = nodes.find(n => n.id === edge.target);
-    
+
     if (sourceNode && targetNode) {
       // For blank edges (source to entity, transformer to entity)
       if (edge.type === 'blank') {
@@ -259,20 +260,20 @@ const getEdgeType = (sourceNode: FlowNode, targetNode: FlowNode): 'button' | 'bl
   ) {
     return 'blank';
   }
-  
+
   // File entities to transformers use nonplussable edges
   if (sourceNode.type === 'entity' && targetNode.type === 'transformer') {
     // Check if the source is a file entity by looking for common file entity naming patterns
     const fileEntityPatterns = ['File', 'PDF', 'Document', 'Attachment'];
-    const isFileEntity = fileEntityPatterns.some(pattern => 
+    const isFileEntity = fileEntityPatterns.some(pattern =>
       sourceNode.data.name.includes(pattern)
     );
-    
+
     if (isFileEntity) {
       return 'nonplussable';
     }
   }
-  
+
   // All other connections use button edges
   return 'button';
 };
@@ -307,7 +308,7 @@ const SyncDagEditorInner = ({ syncId, initialDag, onSave }: SyncDagEditorProps) 
     const loadDag = async () => {
       try {
         isInitialLoad.current = true;
-        
+
         // If we have initial DAG data, use it
         if (initialDag) {
           const flowNodes = toFlowNodes(initialDag.nodes);
@@ -325,11 +326,11 @@ const SyncDagEditorInner = ({ syncId, initialDag, onSave }: SyncDagEditorProps) 
 
           setNodes(flowNodes as Node[]);
           setEdges(initialEdges as Edge[]);
-          
+
           // Apply initial layout
           const { nodes: layoutedNodes } = getLayoutedElements(flowNodes, initialEdges);
           setNodes([...layoutedNodes] as Node[]);
-          
+
           fitView({ padding: 0.2 });
           return;
         }
@@ -338,7 +339,7 @@ const SyncDagEditorInner = ({ syncId, initialDag, onSave }: SyncDagEditorProps) 
         const resp = await apiClient.get(`/sync/${syncId}/dag`);
         if (!resp.ok) throw new Error("Failed to load DAG");
         const data: Dag = await resp.json();
-        
+
         const flowNodes = toFlowNodes(data.nodes);
         const initialEdges = data.edges.map(edge => {
           const sourceNode = flowNodes.find(n => n.id === edge.from_node_id);
@@ -354,11 +355,11 @@ const SyncDagEditorInner = ({ syncId, initialDag, onSave }: SyncDagEditorProps) 
 
         setNodes(flowNodes as Node[]);
         setEdges(initialEdges as Edge[]);
-        
+
         // Apply initial layout
         const { nodes: layoutedNodes } = getLayoutedElements(flowNodes, initialEdges);
         setNodes([...layoutedNodes] as Node[]);
-        
+
         fitView({ padding: 0.2 });
       } catch (err: any) {
         toast({
@@ -378,13 +379,13 @@ const SyncDagEditorInner = ({ syncId, initialDag, onSave }: SyncDagEditorProps) 
     (params: Connection) => {
       const sourceNode = nodes.find(n => n.id === params.source);
       const targetNode = nodes.find(n => n.id === params.target);
-      
+
       if (sourceNode && targetNode) {
         // Prevent entity to entity connections
         if (sourceNode.type === 'entity' && targetNode.type === 'entity') {
           return;
         }
-        
+
         // Set the appropriate edge type
         const edgeType = getEdgeType(sourceNode as FlowNode, targetNode as FlowNode);
         setEdges((eds) => addEdge({ ...params, type: edgeType }, eds));
@@ -406,7 +407,7 @@ const SyncDagEditorInner = ({ syncId, initialDag, onSave }: SyncDagEditorProps) 
 
     // Create transformer node
     const transformerNode: Node = {
-      id: `transformer-${Date.now()}`,
+      id: uuidv4(),
       type: 'transformer',
       data: {
         name: transformerName,
@@ -417,7 +418,7 @@ const SyncDagEditorInner = ({ syncId, initialDag, onSave }: SyncDagEditorProps) 
 
     // Create chunk nodes
     const chunk1: Node = {
-      id: `chunk-${Date.now()}-1`,
+      id: uuidv4(),
       type: 'entity',
       data: {
         name: 'Entity 1',
@@ -426,7 +427,7 @@ const SyncDagEditorInner = ({ syncId, initialDag, onSave }: SyncDagEditorProps) 
     };
 
     const chunk2: Node = {
-      id: `chunk-${Date.now()}-2`,
+      id: uuidv4(),
       type: 'entity',
       data: {
         name: 'Entity 2',
@@ -438,33 +439,33 @@ const SyncDagEditorInner = ({ syncId, initialDag, onSave }: SyncDagEditorProps) 
     const newEdges: Edge[] = [
       // Edge from source to transformer (button type)
       {
-        id: `edge-${Date.now()}-1`,
+        id: uuidv4(),
         source: sourceNodeId,
         target: transformerNode.id,
         type: 'button',
       },
       // Edges from transformer to entities (blank type)
       {
-        id: `edge-${Date.now()}-2`,
+        id: uuidv4(),
         source: transformerNode.id,
         target: chunk1.id,
         type: 'blank',
       },
       {
-        id: `edge-${Date.now()}-3`,
+        id: uuidv4(),
         source: transformerNode.id,
         target: chunk2.id,
         type: 'blank',
       },
       // Edges from entities to target (button type)
       {
-        id: `edge-${Date.now()}-4`,
+        id: uuidv4(),
         source: chunk1.id,
         target: targetNodeId,
         type: 'button',
       },
       {
-        id: `edge-${Date.now()}-5`,
+        id: uuidv4(),
         source: chunk2.id,
         target: targetNodeId,
         type: 'button',
@@ -474,7 +475,7 @@ const SyncDagEditorInner = ({ syncId, initialDag, onSave }: SyncDagEditorProps) 
     // Update all state at once
     const updatedEdges = edges.filter(e => e.id !== sourceEdge.id).concat(newEdges);
     const updatedNodes = [...nodes, transformerNode, chunk1, chunk2];
-    
+
     // Calculate new layout
     const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
       updatedNodes as FlowNode[],
@@ -500,12 +501,12 @@ const SyncDagEditorInner = ({ syncId, initialDag, onSave }: SyncDagEditorProps) 
         id: initialDag?.id || '',
         name: initialDag?.name || "DAG from UI",
         description: initialDag?.description || "Created via DAG editor",
-        syncId: syncId,
+        sync_id: syncId,
         nodes: toDagNodes(nodes),
         edges: toDagEdges(edges),
       };
 
-      const resp = await apiClient.put(`/sync/${syncId}/dag`, dagData);
+      const resp = await apiClient.put(`/dag/sync/${syncId}/dag`, null, dagData);
       if (!resp.ok) throw new Error("Failed to save DAG");
 
       toast({
@@ -583,4 +584,4 @@ export const SyncDagEditor = (props: SyncDagEditorProps) => (
   <ReactFlowProvider>
     <SyncDagEditorInner {...props} />
   </ReactFlowProvider>
-); 
+);
