@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { toast, useToast } from "@/components/ui/use-toast";
-import { DestinationSelector } from "@/components/DestinationSelector";
 import { SyncProgress } from "@/components/sync/SyncProgress";
 import { Button } from "@/components/ui/button";
 import { ChevronRight } from "lucide-react";
@@ -17,6 +16,7 @@ import { SyncSchedule, SyncScheduleConfig, buildCronExpression } from "@/compone
 import { isValidCronExpression } from "@/components/sync/CronExpressionInput";
 import { UnifiedDataSourceGrid } from "@/components/data-sources/UnifiedDataSourceGrid";
 import { AddSourceWizard } from "@/components/sync/AddSourceWizard";
+import { AsanaDialog } from "@/components/sync/AsanaDialog";
 
 /**
  * This component coordinates all user actions (source selection,
@@ -99,62 +99,41 @@ const Sync = () => {
 
   /**
    * handleSourceSelect is triggered by SyncDataSourceGrid when the user
-   * chooses a data source. We move from step 1 -> 2 to pick vector DB.
+   * chooses a data source. We automatically select the native destination
+   * and move directly to step 3.
    */
   const handleSourceSelect = async (connectionId: string, metadata: { name: string; shortName: string }) => {
-    setSelectedSource({ connectionId });
-    if (userInfo) {
-      setPipelineMetadata({
-        source: {
-          ...metadata,
-          type: "source",
-        },
-        destination: {
-          name: "Native Weaviate",
-          shortName: "weaviate_native",
-          type: "destination",
-        },
-        ...userInfo,
-      });
-    }
-    setStep(2);
-  };
-
-  /**
-   * handleVectorDBSelected is triggered after the user chooses a vector DB.
-   * We move from step 2 -> 3 to confirm the pipeline.
-   */
-  const handleVectorDBSelected = async (dbDetails: ConnectionSelection, metadata: { name: string; shortName: string }) => {
     try {
-      setSelectedDB(dbDetails);
-      if (userInfo) {
-        setPipelineMetadata(prev => prev ? {
-          ...prev,
-          destination: dbDetails.isNative
-            ? {
-                name: "Native Weaviate",
-                shortName: "weaviate_native",
-                type: "destination",
-              }
-            : {
-                ...metadata,
-                type: "destination",
-              }
-        } : null);
-      }
+      setSelectedSource({ connectionId });
 
-      if (!selectedSource) {
-        throw new Error("No source selected");
+      // Automatically select native destination
+      const defaultDB: ConnectionSelection = {
+        connectionId: NATIVE_QDRANT_UUID,
+        isNative: true
+      };
+      setSelectedDB(defaultDB);
+
+      if (userInfo) {
+        setPipelineMetadata({
+          source: {
+            ...metadata,
+            type: "source",
+          },
+          destination: {
+            name: "Native Weaviate",
+            shortName: "weaviate_native",
+            type: "destination",
+          },
+          ...userInfo,
+        });
       }
 
       // Create sync
       const syncResp = await apiClient.post("/sync/", {
         name: "Sync from UI",
-        source_connection_id: selectedSource.connectionId,
-        destination_connection_ids: dbDetails.isNative
-          ? [NATIVE_QDRANT_UUID] // Use constant for Native Weaviate UUID
-          : [dbDetails.connectionId],
-        embedding_model_connection_id: NATIVE_TEXT2VEC_UUID, // Use constant for Text2Vec UUID
+        source_connection_id: connectionId,
+        destination_connection_ids: [NATIVE_QDRANT_UUID], // Use native destination
+        embedding_model_connection_id: NATIVE_TEXT2VEC_UUID,
         run_immediately: false
       });
 
@@ -174,6 +153,8 @@ const Sync = () => {
 
       const dagData: Dag = await dagResp.json();
       setDag(dagData);
+
+      // Skip to step 3
       setStep(3);
     } catch (err: any) {
       toast({
@@ -263,13 +244,13 @@ const Sync = () => {
               Set up your pipeline
             </h1>
             <div className="text-sm text-muted-foreground">
-              Step {step} of 4
+              Step {step === 1 ? 1 : 2} of 3
             </div>
           </div>
           <div className="mt-2 h-2 w-full rounded-full bg-secondary/20">
             <div
               className="h-2 rounded-full bg-primary transition-all duration-300"
-              style={{ width: `${(step / 4) * 100}%` }}
+              style={{ width: `${step === 1 ? 33 : (step === 3 ? 66 : 100)}%` }}
             />
           </div>
         </div>
@@ -295,27 +276,33 @@ const Sync = () => {
             <UnifiedDataSourceGrid
               mode="select"
               onSelectConnection={handleSourceSelect}
-              renderSourceDialog={(source, options) => (
-                <AddSourceWizard
-                  open={options.isOpen}
-                  onOpenChange={options.onOpenChange}
-                  onComplete={options.onComplete}
-                  shortName={source.short_name}
-                  name={source.name}
-                />
-              )}
-            />
-          </div>
-        )}
+              renderSourceDialog={(source, options) => {
+                // Special handling for Asana
+                if (source.short_name === "asana") {
+                  return (
+                    <AsanaDialog
+                      open={options.isOpen}
+                      onOpenChange={options.onOpenChange}
+                      onComplete={options.onComplete}
+                      shortName={source.short_name}
+                      name={source.name}
+                      connections={options.connections}
+                    />
+                  );
+                }
 
-        {/* Step 2: Pick vector DB */}
-        {step === 2 && (
-          <div className="space-y-6">
-            <div className="flex items-center space-x-2">
-              <h2 className="text-2xl font-semibold">Choose your destination</h2>
-              <ChevronRight className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <DestinationSelector onComplete={handleVectorDBSelected} />
+                // Default handling for other sources
+                return (
+                  <AddSourceWizard
+                    open={options.isOpen}
+                    onOpenChange={options.onOpenChange}
+                    onComplete={options.onComplete}
+                    shortName={source.short_name}
+                    name={source.name}
+                  />
+                );
+              }}
+            />
           </div>
         )}
 

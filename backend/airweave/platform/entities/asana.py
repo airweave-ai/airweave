@@ -60,6 +60,7 @@ class AsanaTaskEntity(ChunkEntity):
     """Schema for Asana task entities."""
 
     name: str
+    gid: str
     project_gid: str
     section_gid: Optional[str] = None
     actual_time_minutes: Optional[int] = None
@@ -85,6 +86,7 @@ class AsanaTaskEntity(ChunkEntity):
     num_subtasks: int = 0
     parent: Optional[Dict] = None
     permalink_url: Optional[str] = None
+    privacy_setting: Optional[str] = None
     resource_subtype: str = "default_task"  # 'default_task', 'milestone', 'approval'
     start_at: Optional[datetime] = None
     start_on: Optional[str] = None
@@ -98,6 +100,7 @@ class AsanaCommentEntity(ChunkEntity):
     """Schema for Asana comment/story entities."""
 
     task_gid: str
+    name: str  # Adding name field for breadcrumb compatibility
     author: Dict
     created_at: datetime
     resource_subtype: str = "comment_added"

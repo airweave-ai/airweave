@@ -84,6 +84,11 @@ const ViewEditSync = () => {
   const [isRunningSync, setIsRunningSync] = useState(false);
   const [totalRuntime, setTotalRuntime] = useState<number | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [userInfo, setUserInfo] = useState<{
+    userId: string;
+    organizationId: string;
+    userEmail: string;
+  } | null>(null);
 
   const fetchLastSyncJob = async () => {
     try {
@@ -136,6 +141,13 @@ const ViewEditSync = () => {
         const syncResponse = await apiClient.get(`/sync/${id}`);
         const syncData: SyncDetails = await syncResponse.json();
 
+        // Extract user info from sync data
+        setUserInfo({
+          userId: syncData.created_by_email,
+          organizationId: syncData.organization_id,
+          userEmail: syncData.created_by_email
+        });
+
         // Fetch source connection
         const sourceConnection = await apiClient.get(`/connections/detail/${syncData.source_connection_id}`);
         const sourceData: ConnectionResponse = await sourceConnection.json();
@@ -149,7 +161,7 @@ const ViewEditSync = () => {
           destinationData = await destination.json();
         } else {
           // native weaviate
-          const destination = await apiClient.get(`/destinations/detail/weaviate_native`);
+          const destination = await apiClient.get(`/destinations/detail/qdrant`);
           destinationData = await destination.json();
         }
 
@@ -177,8 +189,8 @@ const ViewEditSync = () => {
             },
             destination: {
               type: destination.integration_type?.toLowerCase() ?? 'Destination',
-              name: destination.name ?? 'Native Airweave',
-              shortName: destination.short_name ?? ( destinationData.short_name === 'weaviate_native' ? 'Native' : 'unknown')
+              name: 'Native Qdrant',
+              shortName: destination.short_name ?? ( destinationData.short_name === 'qdrant' ? 'Native' : 'unknown')
             },
             userId: syncData.created_by_email,
             organizationId: syncData.organization_id,

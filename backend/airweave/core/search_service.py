@@ -82,16 +82,50 @@ class SearchService:
                         f"integration credentials, but will attempt to continue with search."
                     )
 
+            # Get source model for permission filtering
+            source_model = await crud.source.get_by_id(db, sync.source_id)
+            if not source_model:
+                raise NotFoundException("Source not found")
+
             # Initialize destination class
             destination_class = resource_locator.get_destination(destination_model)
+
             # TODO: Add a step to get the embedding model from the sync
             embedding_model = LocalText2Vec()
 
             vector = await embedding_model.embed(query)
             destination = await destination_class.create(sync_id=sync_id)
 
-            # Perform search
-            results = await destination.search(vector)
+            # Apply source-specific permission filters
+            permission_filters = None
+            source_type = source_model.short_name
+
+            if source_type == "asana":
+                # Apply Asana-specific permission filters
+                from airweave.platform.permissions.asana import AsanaPermissionFilters
+
+                logger.info(f"Applying Asana permission filters for user {current_user.email}")
+                try:
+                    permission_filters = await AsanaPermissionFilters.build_filters(
+                        user_email=current_user.email
+                    )
+                except Exception as e:
+                    logger.error(f"Error applying Asana permission filters: {e}")
+                    # Continue without permission filters in case of error
+
+            # Add other source types as they are implemented
+            # elif source_type == "google_drive":
+            #     from airweave.platform.permissions.filters import GoogleDrivePermissionFilters
+            #     permission_filters = await GoogleDrivePermissionFilters.build_filters(...)
+
+            # Log if we're applying permission filters
+            if permission_filters:
+                logger.info(f"Applied permission filters for {source_type}")
+            else:
+                logger.info(f"No permission filters applied for {source_type}")
+
+            # Perform search with optional permission filters
+            results = await destination.search(vector, permission_filters=permission_filters)
 
             return results
 

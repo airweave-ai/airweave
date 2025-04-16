@@ -320,12 +320,14 @@ class QdrantDestination(VectorDBDestination):
             # Fallback to a different approach if needed
             raise
 
-    async def search(self, query_vector: list[float]) -> list[dict]:
+    async def search(
+        self, query_vector: list[float], permission_filters: dict = None
+    ) -> list[dict]:
         """Search for a sync_id in the destination.
 
         Args:
             query_vector (list[float]): The query vector to search with.
-            sync_id (UUID): The sync_id to search for.
+            permission_filters (dict, optional): Permission-based filters to apply. Defaults to None.
 
         Returns:
             list[dict]: The search results.
@@ -335,12 +337,29 @@ class QdrantDestination(VectorDBDestination):
         # Ensure sync_id is a string
         sync_id_str = str(self.sync_id)
 
-        # Create filter for sync_id
+        # Create base filter for sync_id
         filter_condition = {
             "must": [
                 {"key": "sync_id", "match": {"value": sync_id_str}},
             ]
         }
+
+        # Add permission filters if provided
+        if permission_filters:
+            # If permission filters have a "must" clause, add those constraints to our "must" clause
+            if "must" in permission_filters:
+                filter_condition["must"].extend(permission_filters["must"])
+
+            # If permission filters have a "should" clause, add it to our filter
+            if "should" in permission_filters:
+                filter_condition["should"] = permission_filters["should"]
+
+            # Handle any other filter clauses that might be present
+            for key, value in permission_filters.items():
+                if key not in ["must", "should"]:
+                    filter_condition[key] = value
+
+            logger.info(f"Applied permission filters to search: {filter_condition}")
 
         try:
             # Convert dict filter to Qdrant filter format

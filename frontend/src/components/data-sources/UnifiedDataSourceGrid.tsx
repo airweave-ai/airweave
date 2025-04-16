@@ -67,6 +67,13 @@ export function UnifiedDataSourceGrid({
    * Handle initiating a connection
    */
   const handleInitiateConnection = useCallback(async (source: Source) => {
+    // Special handling for Asana - always show our custom dialog
+    if (source.short_name === "asana") {
+      setActiveSourceForDialog(source);
+      setDialogOpen(true);
+      return;
+    }
+
     if (source.auth_type === "none" || source.auth_type?.startsWith("basic") || source.auth_type?.startsWith("api_key")) {
       // Open dialog for manual configuration
       setActiveSourceForDialog(source);
@@ -94,6 +101,7 @@ export function UnifiedDataSourceGrid({
             title: "Failed to initiate OAuth2",
             description: err.message ?? String(err),
           });
+          setIsLoading(false);
         }
       }
     } else {
