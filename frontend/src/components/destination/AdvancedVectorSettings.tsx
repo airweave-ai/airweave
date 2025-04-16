@@ -36,7 +36,7 @@ export function AdvancedVectorSettings() {
               </SelectContent>
             </Select>
           </div>
-          
+
           <div className="space-y-2">
             <Label>Similarity Metric</Label>
             <RadioGroup defaultValue="cosine" className="flex gap-4">
@@ -109,10 +109,10 @@ export function AdvancedVectorSettings() {
         <CardContent className="space-y-6">
           <div className="space-y-4">
             <Label>Entity Size (tokens)</Label>
-            <Slider 
-              defaultValue={[512]} 
-              max={2048} 
-              min={128} 
+            <Slider
+              defaultValue={[512]}
+              max={2048}
+              min={128}
               step={128}
               className="w-full"
             />
@@ -123,9 +123,9 @@ export function AdvancedVectorSettings() {
 
           <div className="space-y-2">
             <Label>Entity Overlap (%)</Label>
-            <Slider 
-              defaultValue={[50]} 
-              max={100} 
+            <Slider
+              defaultValue={[50]}
+              max={100}
               min={0}
               className="w-full"
             />

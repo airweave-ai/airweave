@@ -107,10 +107,10 @@ export function DashboardStats() {
                   <XAxis dataKey="name" />
                   <YAxis />
                   <Tooltip />
-                  <Line 
-                    type="monotone" 
-                    dataKey="time" 
-                    stroke="#00B7C3" 
+                  <Line
+                    type="monotone"
+                    dataKey="time"
+                    stroke="#00B7C3"
                     strokeWidth={2}
                   />
                 </LineChart>

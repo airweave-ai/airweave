@@ -245,7 +245,7 @@ class WeaviateDestination(VectorDBDestination):
             # Delete all matching entities
             await collection.data.delete_many(where=where_filter)
 
-    async def search_for_sync_id(self, query_text: str, sync_id: UUID) -> list[dict]:
+    async def search(self, query_text: str, sync_id: UUID) -> list[dict]:
         """Search for a sync_id in the destination.
 
         Args:

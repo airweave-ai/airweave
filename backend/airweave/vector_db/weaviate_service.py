@@ -9,7 +9,6 @@ from weaviate.client import WeaviateAsyncClient
 from weaviate.collections import Collection
 from weaviate.collections.classes.config import GenerativeConfig, Property, VectorizerConfig
 
-from airweave.core.config import settings
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import logger
 from airweave.platform.embedding_models._base import BaseEmbeddingModel
@@ -157,21 +156,17 @@ class WeaviateService:
                 if self.embedding_model and self.embedding_model.model_name == "openai-text2vec":
                     headers["X-OpenAI-Api-Key"] = self.embedding_model.api_key
 
-                if self.weaviate_api_key:
-                    # Cloud deployment with authentication
-                    self.client = weaviate.use_async_with_weaviate_cloud(
-                        cluster_url=self.weaviate_cluster_url,
-                        auth_credentials=Auth.api_key(self.weaviate_api_key),
-                        additional_headers=headers,
+                if not self.weaviate_api_key:
+                    raise Exception(
+                        "Weaviate API key not set. Weaviate used to be Airweave's standard "
+                        "local vector database. That is now deprecated. Please use Qdrant."
                     )
-                else:
-                    # Local deployment without authentication
-                    self.client = weaviate.use_async_with_local(
-                        host=settings.NATIVE_WEAVIATE_HOST,
-                        port=settings.NATIVE_WEAVIATE_PORT,
-                        grpc_port=settings.NATIVE_WEAVIATE_GRPC_PORT,
-                        headers=headers,
-                    )
+                # Cloud deployment with authentication
+                self.client = weaviate.use_async_with_weaviate_cloud(
+                    cluster_url=self.weaviate_cluster_url,
+                    auth_credentials=Auth.api_key(self.weaviate_api_key),
+                    additional_headers=headers,
+                )
 
                 # Connect the client
                 await self.client.connect()

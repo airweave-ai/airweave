@@ -29,11 +29,11 @@ interface CreateChatDialogProps {
   onChatCreated: (newChatId: string) => void;
 }
 
-export function CreateChatDialog({ 
-  open, 
+export function CreateChatDialog({
+  open,
   preselectedSyncId,
-  onOpenChange, 
-  onChatCreated 
+  onOpenChange,
+  onChatCreated
 }: CreateChatDialogProps) {
   const [syncs, setSyncs] = useState<SyncInfo[]>([]);
   const [syncId, setSyncId] = useState<string>("");
@@ -64,9 +64,9 @@ export function CreateChatDialog({
         skip: 0,
         limit: 100
       });
-      
+
       const syncData = await resp.json();
-      
+
       // Filter active syncs and sort by modified_at desc
       const processedSyncs = syncData
         .filter((sync: any) => sync.status === 'active')
@@ -78,7 +78,7 @@ export function CreateChatDialog({
           modified_at: sync.modified_at,
           source_connection: sync.source_connection
         }))
-        .sort((a: SyncInfo, b: SyncInfo) => 
+        .sort((a: SyncInfo, b: SyncInfo) =>
           new Date(b.modified_at).getTime() - new Date(a.modified_at).getTime()
         );
 
@@ -92,7 +92,7 @@ export function CreateChatDialog({
 
   async function handleCreateChat() {
     if (!syncId) return;
-    
+
     try {
       setIsLoading(true);
       const resp = await apiClient.post("/chat", {
@@ -156,7 +156,7 @@ export function CreateChatDialog({
                           <span className="font-mono">{syncId}</span>
                           <span>
                             Modified: {format(
-                              new Date(syncs.find(s => s.id === syncId)?.modified_at || ''), 
+                              new Date(syncs.find(s => s.id === syncId)?.modified_at || ''),
                               'MMM d, yyyy HH:mm'
                             )}
                           </span>
@@ -208,8 +208,8 @@ export function CreateChatDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button 
-            onClick={handleCreateChat} 
+          <Button
+            onClick={handleCreateChat}
             disabled={!syncId || isLoading}
           >
             {isLoading ? "Creating..." : "Create"}
@@ -218,4 +218,4 @@ export function CreateChatDialog({
       </DialogContent>
     </Dialog>
   );
-} 
+}

@@ -31,11 +31,11 @@ read -p "Would you like to add your OPENAI_API_KEY now? You can also do this lat
 
 if [ "$ADD_OPENAI_KEY" = "y" ] || [ "$ADD_OPENAI_KEY" = "Y" ]; then
     read -p "Enter your OpenAI API key: " OPENAI_KEY
-    
+
     # Remove any existing OPENAI_API_KEY line
     grep -v "^OPENAI_API_KEY=" .env > .env.tmp
     mv .env.tmp .env
-    
+
     # Add the new OpenAI API key
     echo "OPENAI_API_KEY=\"$OPENAI_KEY\"" >> .env
     echo "OpenAI API key added to .env file."

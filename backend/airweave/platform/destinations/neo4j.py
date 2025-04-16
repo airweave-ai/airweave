@@ -293,7 +293,7 @@ class Neo4jDestination(GraphDBDestination):
             async with await service.get_session() as session:
                 await session.run(query, **params)
 
-    async def search_for_sync_id(self, query_text: str, sync_id: UUID) -> list[dict]:
+    async def search(self, query_text: str, sync_id: UUID) -> list[dict]:
         """Search for entities with the specified sync_id.
 
         Args:

@@ -1,17 +1,67 @@
-.DS_Store
-__pycache__
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 backend/venv/
 
-.env
-
+# Node
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
 frontend/node_modules/
+
+# VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# OS specific
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Local development
+.idea/
+.pytest_cache/
+.coverage
+htmlcov/
+.env.local
+
+.DS_Store
+__pycache__
 
 openapi.json
 
 test_sync_stream.py
-
-backend/.coverage
-backend/local.py
 
 .vs/
 backend/coverage.xml

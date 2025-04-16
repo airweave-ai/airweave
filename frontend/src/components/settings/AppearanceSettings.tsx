@@ -23,7 +23,7 @@ export function AppearanceSettings() {
               Select the theme for the dashboard.
             </p>
           </div>
-          
+
           <RadioGroup
             defaultValue={theme}
             value={theme}
@@ -44,7 +44,7 @@ export function AppearanceSettings() {
                 <span className="text-sm font-medium">Light</span>
               </Label>
             </div>
-            
+
             <div>
               <RadioGroupItem
                 value="dark"
@@ -59,7 +59,7 @@ export function AppearanceSettings() {
                 <span className="text-sm font-medium">Dark</span>
               </Label>
             </div>
-            
+
             <div>
               <RadioGroupItem
                 value="system"
@@ -79,4 +79,4 @@ export function AppearanceSettings() {
       </CardContent>
     </Card>
   );
-} 
+}

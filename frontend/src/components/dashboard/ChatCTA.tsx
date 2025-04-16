@@ -18,19 +18,19 @@ export function ChatCTA() {
     if (input.trim()) {
       // Get the first available data source
       const defaultSource = dataSources[0]?.short_name;
-      navigate("/chat", { 
-        state: { 
+      navigate("/chat", {
+        state: {
           initialMessage: input.trim(),
-          selectedSources: defaultSource ? [defaultSource] : [] 
-        } 
+          selectedSources: defaultSource ? [defaultSource] : []
+        }
       });
     }
   };
 
   return (
     <Card className={`${
-      isDarkMode 
-        ? "bg-gradient-to-r from-primary-950/30 via-primary-900/20 to-background/80" 
+      isDarkMode
+        ? "bg-gradient-to-r from-primary-950/30 via-primary-900/20 to-background/80"
         : "bg-gradient-to-r from-primary/5 via-primary/10 to-background"
     } backdrop-blur-sm`}>
       <CardContent className="p-6">
@@ -47,8 +47,8 @@ export function ChatCTA() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               className={`w-full pl-10 ${
-                isDarkMode 
-                  ? "bg-background/80 border-primary-700/30 text-foreground placeholder:text-gray-200" 
+                isDarkMode
+                  ? "bg-background/80 border-primary-700/30 text-foreground placeholder:text-gray-200"
                   : "bg-white/50 border-primary/20 placeholder:text-muted-foreground/70"
               } focus-visible:ring-primary/30`}
             />

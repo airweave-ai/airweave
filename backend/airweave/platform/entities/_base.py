@@ -39,7 +39,7 @@ class BaseEntity(BaseModel):
         default_factory=list, description="List of breadcrumbs for this entity."
     )
 
-    # Set in sync service
+    # Set in sync orchestrator
     db_entity_id: UUID = Field(
         default_factory=uuid4, description="Unique ID of the entity in the DB."
     )
@@ -63,6 +63,8 @@ class BaseEntity(BaseModel):
     parent_entity_id: Optional[str] = Field(
         None, description="ID of the parent entity in the source."
     )
+
+    vector: Optional[List[float]] = Field(None, description="Vector representation of the entity.")
 
     class Config:
         """Pydantic config."""
@@ -123,6 +125,38 @@ class BaseEntity(BaseModel):
 
 class ChunkEntity(BaseEntity):
     """Base class for entities that are storable and embeddable chunks of data."""
+
+    # Default fields to exclude when creating storage dict
+    default_exclude_fields: List[str] = [
+        "vector",  # Exclude the vector itself from the payload
+        "sync_job_id",
+        "white_label_user_identifier",
+        "white_label_id",
+        "white_label_name",
+        "sync_metadata",
+        "parent_entity_id",
+    ]
+
+    def to_storage_dict(self, exclude_fields: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Convert entity to a dictionary suitable for storage in vector databases.
+
+        This implementation uses default exclusions to keep only the essential fields.
+
+        Args:
+            exclude_fields: Optional list of field names to exclude from serialization
+                            (adds to default exclusions)
+
+        Returns:
+            Dict with minimal fields properly serialized for storage
+        """
+        # Combine default and provided exclusions
+        all_exclusions = list(self.default_exclude_fields)
+        if exclude_fields:
+            all_exclusions.extend(exclude_fields)
+        exclusions = list(set(all_exclusions))  # Remove duplicates
+
+        # Use parent implementation with our combined exclusions
+        return super().to_storage_dict(exclude_fields=exclusions)
 
 
 class ParentEntity(BaseEntity):

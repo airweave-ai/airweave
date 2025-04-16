@@ -50,4 +50,4 @@ export const NonPlussableEdge = memo(({
   );
 });
 
-NonPlussableEdge.displayName = "NonPlussableEdge"; 
+NonPlussableEdge.displayName = "NonPlussableEdge";

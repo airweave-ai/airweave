@@ -33,4 +33,4 @@ COPY . .
 # Make sure the script is executable after the final copy
 RUN chmod 755 /app/entrypoint.sh
 
-ENTRYPOINT ["/bin/bash", "/app/entrypoint.sh"] 
+ENTRYPOINT ["/bin/bash", "/app/entrypoint.sh"]

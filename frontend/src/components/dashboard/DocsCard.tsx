@@ -5,19 +5,19 @@ import { useTheme } from "@/lib/theme-provider";
 export function DocsCard() {
   const { resolvedTheme } = useTheme();
   const isDarkMode = resolvedTheme === "dark";
-  
+
   const handleDocsClick = () => {
     window.open("https://docs.airweave.ai", "_blank");
   };
 
   return (
     <div className={`relative overflow-hidden rounded-lg border ${
-      isDarkMode 
-        ? "bg-gradient-to-br from-primary-950/50 to-secondary-950/50 border-primary-800/30" 
+      isDarkMode
+        ? "bg-gradient-to-br from-primary-950/50 to-secondary-950/50 border-primary-800/30"
         : "bg-gradient-to-br from-primary-100 to-secondary-100"
     } p-8`}>
       {/* Book illustration background */}
-      <div 
+      <div
         className={`absolute inset-0 ${isDarkMode ? "opacity-5" : "opacity-10"}`}
         style={{
           background: `
@@ -26,7 +26,7 @@ export function DocsCard() {
           `
         }}
       />
-      <div 
+      <div
         className={`absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/4 w-64 h-64 ${isDarkMode ? "opacity-5" : "opacity-20"}`}
         style={{
           background: 'radial-gradient(circle at center, rgba(255,255,255,0.8) 0%, transparent 70%)',
@@ -34,7 +34,7 @@ export function DocsCard() {
           transform: 'rotate(-15deg) translateX(20%)'
         }}
       />
-      
+
       {/* Content */}
       <div className="relative z-10 space-y-4">
         <div className="flex items-center space-x-2">
@@ -49,8 +49,8 @@ export function DocsCard() {
         <Button
           onClick={handleDocsClick}
           className={`${
-            isDarkMode 
-              ? "bg-primary-800 text-white hover:bg-primary-700" 
+            isDarkMode
+              ? "bg-primary-800 text-white hover:bg-primary-700"
               : "bg-white text-primary-400 hover:bg-primary-100 hover:text-primary-500"
           } transition-all duration-300 shadow-sm hover:shadow-md`}
         >
@@ -63,14 +63,14 @@ export function DocsCard() {
       <div
         className={`absolute right-0 top-0 h-full w-1/3 animate-float ${isDarkMode ? "opacity-10" : ""}`}
         style={{
-          background: isDarkMode 
+          background: isDarkMode
             ? "linear-gradient(109.6deg, rgba(13,24,37,0.3) 11.2%, rgba(14,28,42,0.3) 91.1%)"
             : "linear-gradient(109.6deg, rgba(223,234,247,0.3) 11.2%, rgba(244,248,252,0.3) 91.1%)",
           borderRadius: "50%",
           transform: "translate(25%, -25%)",
         }}
       />
-      <div 
+      <div
         className="absolute -bottom-8 -left-8 w-32 h-32 opacity-20"
         style={{
           background: 'radial-gradient(circle at center, rgba(0,103,255,0.4) 0%, transparent 70%)',

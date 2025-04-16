@@ -33,35 +33,46 @@ class DagService:
         dest_data = await self._get_destinations_and_destination_connections(db, sync, current_user)
         destinations, destination_connections = dest_data
 
-        nodes, edges = await self._initialize_dag_components(
-            source, source_connection, destinations, destination_connections
-        )
-        await self._process_entity_definitions(
-            db, entity_definitions, file_chunker, nodes, edges
-        )
-        return await self._create_and_return_dag(db, sync, nodes, edges, current_user, uow)
+        # Initialize DAG components
+        nodes: List[DagNodeCreate] = []
+        edges: List[DagEdgeCreate] = []
+        processed_entity_ids: Set[UUID] = set()
 
-    async def _initialize_dag_components(
-        self,
-        source: Any,
-        source_connection: Any,
-        destinations: List[Any],
-        destination_connections: List[Any],
-    ) -> Tuple[List[DagNodeCreate], List[DagEdgeCreate]]:
-        nodes = [
-    DagNodeCreate(
-        id=uuid4(),
-        type=NodeType.source,
-        name=source.name,
-        connection_id=source_connection.id
-            )
-        ]
-        edges = []
+        # Create source and destination nodes
+        source_node_id, destination_node_ids = await self._create_source_and_destination_nodes(
+            source, source_connection, destinations, destination_connections, nodes
+        )
+
+        # Process entity definitions
+        await self._process_all_entity_definitions(
+            db,
+            entity_definitions,
+            processed_entity_ids,
+            file_chunker,
+            source_node_id,
+            destination_node_ids,
+            nodes,
+            edges,
+        )
+
+        # Create and return the DAG
+        return await self._create_and_save_dag(db, sync, sync_id, nodes, edges, current_user, uow)
+
+    async def _create_source_and_destination_nodes(
+        self, source, source_connection, destinations, destination_connections, nodes
+    ) -> Tuple[UUID, List[UUID]]:
+        """Create source and destination nodes for the DAG."""
+        source_node_id = uuid4()
         destination_node_ids = []
-
-        for destination, destination_connection in zip(
-            destinations, destination_connections, strict=True
-        ):
+        nodes.append(
+            DagNodeCreate(
+                id=source_node_id,
+                type=NodeType.source,
+                name=source.name,
+                connection_id=source_connection.id,
+            )
+        )
+        for destination, destination_connection in zip(destinations, destination_connections, strict=True):
             dest_node_id = uuid4()
             destination_node_ids.append(dest_node_id)
             nodes.append(
@@ -69,23 +80,23 @@ class DagService:
                     id=dest_node_id,
                     type=NodeType.destination,
                     name=destination.name,
-                    connection_id=destination_connection.id
+                    connection_id=destination_connection.id,
                 )
             )
-        return nodes, edges
+        return source_node_id, destination_node_ids
 
-    async def _process_entity_definitions(
+    async def _process_all_entity_definitions(
         self,
-        db: AsyncSession,
-        entity_definitions: Dict[UUID, Dict[str, Any]],
-        file_chunker: Any,
-        nodes: List[DagNodeCreate],
-        edges: List[DagEdgeCreate],
-    ) -> Set[UUID]:
-        processed_entity_ids = set()
-        source_node_id = next(node.id for node in nodes if node.type == NodeType.source)
-        destination_node_ids = [node.id for node in nodes if node.type == NodeType.destination]
-
+        db,
+        entity_definitions,
+        processed_entity_ids,
+        file_chunker,
+        source_node_id,
+        destination_node_ids,
+        nodes,
+        edges,
+    ):
+        """Process all entity definitions and create corresponding nodes and edges."""
         for entity_definition_id, entity_data in entity_definitions.items():
             if entity_definition_id in processed_entity_ids:
                 continue
@@ -109,45 +120,61 @@ class DagService:
                     processed_entity_ids=processed_entity_ids,
                 )
             else:
-                entity_node_id = uuid4()
-                nodes.append(
-                    DagNodeCreate(
-                        id=entity_node_id,
-                        type=NodeType.entity,
-                        name=entity_definition.name,
-                        entity_definition_id=entity_definition_id
-                    )
+                await self._process_regular_entity(
+                    entity_definition_id,
+                    entity_definition,
+                    source_node_id,
+                    destination_node_ids,
+                    nodes,
+                    edges,
                 )
-                edges.append(
-                        DagEdgeCreate(
-                            from_node_id=source_node_id,
-                            to_node_id=entity_node_id
-                        )
-                    )
-                for dest_node_id in destination_node_ids:
-                    edges.append(
-                        DagEdgeCreate(
-                            from_node_id=entity_node_id,
-                            to_node_id=dest_node_id
-                        )
-                    )
 
-        return processed_entity_ids
-
-    async def _create_and_return_dag(
+    async def _process_regular_entity(
         self,
-        db: AsyncSession,
-        sync: Any,
-        nodes: List[DagNodeCreate],
-        edges: List[DagEdgeCreate],
-        current_user: schemas.User,
-        uow: UnitOfWork,
+        entity_definition_id,
+        entity_definition,
+        source_node_id,
+        destination_node_ids,
+        nodes,
+        edges,
+    ):
+        """Process a regular entity and create necessary nodes and edges."""
+        entity_node_id = uuid4()
+        nodes.append(
+            DagNodeCreate(
+                id=entity_node_id,
+                type=NodeType.entity,
+                name=entity_definition.name,
+                entity_definition_id=entity_definition_id,
+            )
+        )
+
+        # Connect source to entity
+        edges.append(
+            DagEdgeCreate(
+                from_node_id=source_node_id,
+                to_node_id=entity_node_id,
+            )
+        )
+
+        # Connect entity to all destination nodes
+        for dest_node_id in destination_node_ids:
+            edges.append(
+                DagEdgeCreate(
+                    from_node_id=entity_node_id,
+                    to_node_id=dest_node_id,
+                )
+            )
+
+    async def _create_and_save_dag(
+        self, db, sync, sync_id, nodes, edges, current_user, uow
     ) -> schemas.SyncDag:
+        """Create and save the DAG with nodes and edges."""
         sync_dag_create = SyncDagCreate(
             name=f"DAG for {sync.name}",
             sync_id=sync.id,
             nodes=nodes,
-            edges=edges
+            edges=edges,
         )
         try:
             from airweave.core.logging import logger
@@ -156,32 +183,46 @@ class DagService:
                 f"and {len(edges)} edges"
             )
             sync_dag = await crud.sync_dag.create_with_nodes_and_edges(
-            db,
-            obj_in=sync_dag_create,
-            current_user=current_user,
-            uow=uow
-        )
+                db,
+                obj_in=sync_dag_create,
+                current_user=current_user,
+                uow=uow,
+            )
             logger.info(f"Successfully created DAG with ID {sync_dag.id}")
             return schemas.SyncDag.model_validate(sync_dag, from_attributes=True)
         except Exception as e:
             from airweave.core.logging import logger
             logger.error(f"Error creating DAG: {e}")
-            logger.error(f"Total nodes: {len(nodes)}, Total edges: {len(edges)}")
-            node_ids = [node.id for node in nodes]
-            duplicate_ids = {id: count for id, count in Counter(node_ids).items() if count > 1}
-            if duplicate_ids:
-                logger.error(f"Found duplicate node IDs: {duplicate_ids}")
-            edge_relationships = [(edge.from_node_id, edge.to_node_id) for edge in edges]
-            node_id_set = set(node_ids)
-            invalid_edges = [
-                f"Edge from_node_id {from_id} not in nodes" if from_id not in node_id_set else
-                f"Edge to_node_id {to_id} not in nodes" if to_id not in node_id_set else None
-                for from_id, to_id in edge_relationships
-            ]
-            invalid_edges = [msg for msg in invalid_edges if msg]
-            if invalid_edges:
-                logger.error(f"Found invalid edges: {invalid_edges}")
+
+            self._log_dag_errors(nodes, edges)
             raise
+
+    def _log_dag_errors(self, nodes, edges):
+        """Log diagnostic information for DAG creation errors."""
+        from airweave.core.logging import logger
+
+        logger.error(f"Total nodes: {len(nodes)}, Total edges: {len(edges)}")
+
+        # Check for any duplicate node IDs which could cause issues
+        node_ids = [node.id for node in nodes]
+        duplicate_ids = {id: count for id, count in Counter(node_ids).items() if count > 1}
+        if duplicate_ids:
+            logger.error(f"Found duplicate node IDs: {duplicate_ids}")
+
+        # Log edge relationships to verify they point to valid nodes
+        edge_relationships = [(edge.from_node_id, edge.to_node_id) for edge in edges]
+
+        # Check for edges referencing non-existent nodes
+        node_id_set = set(node_ids)
+        invalid_edges = []
+        for from_id, to_id in edge_relationships:
+            if from_id not in node_id_set:
+                invalid_edges.append(f"Edge from_node_id {from_id} not in nodes")
+            if to_id not in node_id_set:
+                invalid_edges.append(f"Edge to_node_id {to_id} not in nodes")
+
+        if invalid_edges:
+            logger.error(f"Found invalid edges: {invalid_edges}")
 
     async def _get_and_validate_sync(
         self, db: AsyncSession, sync_id: UUID, current_user: schemas.User
@@ -189,17 +230,14 @@ class DagService:
         """Get and validate that the sync exists.
 
         Args:
-        ----
             db (AsyncSession): The database session.
             sync_id (UUID): The ID of the sync to get.
             current_user (schemas.User): The current user.
 
         Returns:
-        -------
             schemas.Sync: The sync.
 
         Raises:
-        ------
             Exception: If the sync is not found.
         """
         sync = await crud.sync.get(db, id=sync_id, current_user=current_user, with_connections=True)
@@ -250,18 +288,15 @@ class DagService:
         """Get or create destinations and destination connections.
 
         Args:
-        ----
             db (AsyncSession): The database session.
             sync (schemas.Sync): The sync to get the destinations and destination connections for.
             current_user (schemas.User): The current user.
 
         Returns:
-        -------
             Tuple[List[schemas.Destination], List[schemas.Connection]]: The destinations and
                 destination connections.
 
         Raises:
-        ------
             HTTPException: If a destination or destination connection is not found.
         """
         # Initialize lists
@@ -394,12 +429,10 @@ class DagService:
         """Get the parent and chunk entity classes for a given entity definition.
 
         Args:
-        ----
             entity_definition (schemas.EntityDefinition): The entity definition to get the parent
                 and chunk entity classes for.
 
         Returns:
-        -------
             tuple[Type[ParentEntity], Type[ChunkEntity]]: The parent and chunk entity classes.
         """
         entity_class = resource_locator.get_entity_definition(entity_definition)
@@ -411,12 +444,10 @@ class DagService:
         """Get the entity definition for a given entity class.
 
         Args:
-        ----
             db (AsyncSession): The database session.
             entity_class (Type[BaseEntity]): The entity class to get the entity definition for.
 
         Returns:
-        -------
             schemas.EntityDefinition: The entity definition.
         """
         entity_definition = await crud.entity_definition.get_by_entity_class_name(

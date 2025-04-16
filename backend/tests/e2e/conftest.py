@@ -42,4 +42,4 @@ def e2e_environment() -> Generator[E2ETestRunner, None, None]:
 @pytest.fixture(scope="session")
 def e2e_api_url() -> str:
     """Return the base URL for API requests in E2E tests."""
-    return "http://localhost:8003/"
+    return "http://localhost:9001/"

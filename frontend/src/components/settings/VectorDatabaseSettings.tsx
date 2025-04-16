@@ -30,7 +30,7 @@ export function VectorDatabaseSettings() {
             </SelectContent>
           </Select>
         </div>
-        
+
         <div className="space-y-2">
           <Label>Similarity Metric</Label>
           <RadioGroup defaultValue="cosine" className="flex gap-4">

@@ -9,7 +9,7 @@ interface SyncJob {
   status: 'completed' | 'failed' | 'running' | 'pending';
   created_at: string;
   completed_at: string | null;
-  error_message: string | null;
+  error: string | null;
 }
 
 interface SyncJobsTableProps {
@@ -87,15 +87,14 @@ export const SyncJobsTable: React.FC<SyncJobsTableProps> = ({
       header: "Status",
       cell: (job) => (
         <span
-          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-            job.status === "completed"
-              ? "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300"
-              : job.status === "failed"
+          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${job.status === "completed"
+            ? "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300"
+            : job.status === "failed"
               ? "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"
               : job.status === "running"
-              ? "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300"
-              : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300"
-          }`}
+                ? "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300"
+                : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300"
+            }`}
         >
           {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
         </span>
@@ -105,7 +104,7 @@ export const SyncJobsTable: React.FC<SyncJobsTableProps> = ({
       header: "Error",
       cell: (job) => (
         <div className="max-w-md truncate">
-          {job.error_message || '-'}
+          {job.error || '-'}
         </div>
       ),
     },

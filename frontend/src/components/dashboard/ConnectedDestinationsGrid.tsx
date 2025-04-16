@@ -16,8 +16,8 @@ export function ConnectedDestinationsGrid() {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Connected Destinations</CardTitle>
-        <Button 
-          variant="outline" 
+        <Button
+          variant="outline"
           size="sm"
           onClick={() => navigate("/destinations")}
         >

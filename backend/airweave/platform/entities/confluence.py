@@ -27,7 +27,7 @@ from typing import Any, Dict, Optional
 
 from pydantic import Field
 
-from airweave.platform.entities._base import ChunkEntity
+from airweave.platform.entities._base import ChunkEntity, FileEntity
 
 
 class ConfluenceSpaceEntity(ChunkEntity):
@@ -50,7 +50,7 @@ class ConfluenceSpaceEntity(ChunkEntity):
     )
 
 
-class ConfluencePageEntity(ChunkEntity):
+class ConfluencePageEntity(FileEntity):
     """Schema for a Confluence Page.
 
     See:

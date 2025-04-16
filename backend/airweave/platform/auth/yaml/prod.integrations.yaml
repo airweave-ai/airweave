@@ -201,8 +201,5 @@ integrations:
       access_type: "offline"
       prompt: "consent"
 
-  weaviate:
-    auth_type: "config_class"
-
-  neo4j:
+  qdrant:
     auth_type: "config_class"

@@ -44,4 +44,4 @@ export const TransformerNode = memo(({ data, selected, ...props }: NodeProps) =>
   );
 });
 
-TransformerNode.displayName = "TransformerNode"; 
+TransformerNode.displayName = "TransformerNode";

@@ -232,12 +232,7 @@ class ChatService:
             if not search_results:
                 return ""
 
-            # Format search results into context
-            context_parts = []
-            for result in search_results.objects:
-                context_parts.append(str(result.properties))
-
-            return "\n\n".join(context_parts)
+            return "\n\n".join(str(result) for result in search_results)
 
         except Exception as e:
             logger.error(f"Error getting search context: {str(e)}")

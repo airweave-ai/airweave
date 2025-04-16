@@ -13,14 +13,14 @@
 
 Turn any app data into accessible searchable knowledge for AI agents. **Airweave** connects any app, database, URL, or API for agentic retrieval.
 
-### 🎥 Demo 
+### 🎥 Demo
 https://github.com/user-attachments/assets/e6f80420-ad16-4844-b9be-30b1fbc2281c
 
-## Overview 
+## Overview
 
-Airweave simplifies the process of making information retrievable for your agent. 
+Airweave simplifies the process of making information retrievable for your agent.
 
-Whether you have structured or unstructured data, Airweave helps you break it into processable entities, store the data and make it retrievable through [REST and MCP endpoints](https://docs.airweave.ai). 
+Whether you have structured or unstructured data, Airweave helps you break it into processable entities, store the data and make it retrievable through [REST and MCP endpoints](https://docs.airweave.ai).
 
 ---
 
@@ -111,7 +111,7 @@ You can configure your own vector database in the app UI or via the API.
 ## Key Features
 - **Over 25 integrations and counting**: Airweave is your one-stop shop for building agents that need to find information in a single queryable layer.
 - **Simplicity**: Minimal configuration needed to find information in diverse sources: APIs, databases, apps and more.
-- **Extensibility**: Easily add new source and embedder integrations with our 
+- **Extensibility**: Easily add new source and embedder integrations with our
 - **White-Labeled Multi-Tenant Support**: Ideal for SaaS builders, Airweave provides a streamlined OAuth2-based platform for syncing data across multiple tenants while maintaining privacy and security.
 - **Entity Generators**: Each source (like a database, API, or file system) defines a `async def generate_entities()` that yields data in a consistent format. You can also define your own.
 - **Automated Sync**: Schedule data synchronization or run on-demand sync jobs.

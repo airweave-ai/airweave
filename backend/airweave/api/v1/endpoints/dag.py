@@ -48,12 +48,12 @@ async def update_sync_dag(
     current_user: User = Depends(deps.get_user),
 ):
     """Update a DAG definition for a sync."""
-    db_dag = await sync_dag.get_by_sync_id(db, sync_id=sync_id, user=current_user)
+    db_dag = await sync_dag.get_by_sync_id(db, sync_id=sync_id, current_user=current_user)
     if not db_dag:
         raise HTTPException(status_code=404, detail="DAG not found")
 
     return await sync_dag.update_with_nodes_and_edges(
-        db, db_obj=db_dag, obj_in=dag, user=current_user
+        db, db_obj=db_dag, obj_in=dag, current_user=current_user
     )
 
 

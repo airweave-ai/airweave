@@ -18,16 +18,19 @@ from typing import AsyncGenerator, Dict, Optional
 
 import httpx
 
+from airweave.core.logging import logger
 from airweave.platform.auth.schemas import AuthType
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import ChunkEntity
 from airweave.platform.entities.google_drive import GoogleDriveDriveEntity, GoogleDriveFileEntity
+from airweave.platform.file_handling.file_manager import file_manager
 from airweave.platform.sources._base import BaseSource
 
 
 @source(
     "Google Drive",
     "google_drive",
+    # i dont think it is with refresh (the config says something else)
     AuthType.oauth2_with_refresh,
     labels=["File Storage"],
 )
@@ -53,6 +56,7 @@ class GoogleDriveSource(BaseSource):
         """Make an authenticated GET request to the Google Drive API."""
         headers = {"Authorization": f"Bearer {self.access_token}"}
         resp = await client.get(url, headers=headers, params=params)
+        logger.error(f"Request URL: {url}")
         resp.raise_for_status()
         return resp.json()
 
@@ -67,6 +71,7 @@ class GoogleDriveSource(BaseSource):
             data = await self._get_with_auth(client, url, params=params)
             drives = data.get("drives", [])
             for drive_obj in drives:
+                logger.info(f"\nDrives: {drive_obj}\n")
                 yield drive_obj
 
             # Handle pagination
@@ -109,11 +114,14 @@ class GoogleDriveSource(BaseSource):
             "corpora": "drive",
             "includeItemsFromAllDrives": "true",
             "supportsAllDrives": "true",
-            "fields": "nextPageToken, files",
+            "fields": "nextPageToken, files(id, name, mimeType, description, starred, trashed, "
+            "explicitlyTrashed, parents, shared, webViewLink, iconLink, createdTime, "
+            "modifiedTime, size, md5Checksum, webContentLink)",
         }
         while url:
             data = await self._get_with_auth(client, url, params=params)
             for file_obj in data.get("files", []):
+                logger.info(f"\nfiles in drive_id {drive_id}: {file_obj}\n")
                 yield file_obj
 
             # Handle pagination
@@ -137,11 +145,14 @@ class GoogleDriveSource(BaseSource):
             "corpora": "user",
             "includeItemsFromAllDrives": "false",
             "supportsAllDrives": "true",
-            "fields": "nextPageToken, files",
+            "fields": "nextPageToken, files(id, name, mimeType, description, starred, trashed, "
+            "explicitlyTrashed, parents, shared, webViewLink, iconLink, createdTime, "
+            "modifiedTime, size, md5Checksum, webContentLink)",
         }
         while url:
             data = await self._get_with_auth(client, url, params=params)
             for file_obj in data.get("files", []):
+                logger.info(f"\nfiles in MY DRIVE: {file_obj}\n")
                 yield file_obj
 
             # Handle pagination
@@ -153,11 +164,23 @@ class GoogleDriveSource(BaseSource):
 
     def _build_file_entity(self, file_obj: Dict) -> GoogleDriveFileEntity:
         """Helper to build a GoogleDriveFileEntity from a file API response object."""
+        # Create download URL based on file type
+        download_url = None
+        logger.info(f"\n{file_obj.get('mimeType', 'nothing')}\n")
+        if file_obj.get("mimeType", "").startswith("application/vnd.google-apps."):
+            # For Google native files, need export URL
+            download_url = f"https://www.googleapis.com/drive/v3/files/{file_obj['id']}/export?mimeType=application/pdf"
+        elif not file_obj.get("trashed", False):
+            # For regular files, use direct download or webContentLink
+            download_url = f"https://www.googleapis.com/drive/v3/files/{file_obj['id']}?alt=media"
+
+        logger.info(f"\n{download_url}\n")
         return GoogleDriveFileEntity(
             entity_id=file_obj["id"],
             breadcrumbs=[],
             file_id=file_obj["id"],
-            name=file_obj.get("name"),
+            download_url=download_url,
+            name=file_obj.get("name", "Untitled"),
             mime_type=file_obj.get("mimeType"),
             description=file_obj.get("description"),
             starred=file_obj.get("starred", False),
@@ -179,14 +202,50 @@ class GoogleDriveSource(BaseSource):
     ) -> AsyncGenerator[ChunkEntity, None]:
         """Generate GoogleDriveFileEntity objects for each file in a shared drive."""
         async for file_obj in self._list_files_in_drive(client, drive_id):
-            yield self._build_file_entity(file_obj)
+            try:
+                file_entity = self._build_file_entity(file_obj)
+                if file_entity.download_url:
+                    # Stream the file and process it
+                    file_stream = file_manager.stream_file_from_url(
+                        file_entity.download_url, access_token=self.access_token
+                    )
+                    processed_entity = await file_manager.handle_file_entity(
+                        stream=file_stream, entity=file_entity
+                    )
+                    yield processed_entity
+                else:
+                    # Skip files without download URL
+                    logger.warning(f"No download URL available for {file_entity.name}")
+            except Exception as e:
+                logger.error(
+                    f"\nFailed to process file {file_obj.get('name', 'unknown')} "
+                    f"in drive {drive_id}: {str(e)}\n"
+                )
+                raise
 
     async def _generate_file_entities_in_my_drive(
         self, client: httpx.AsyncClient
     ) -> AsyncGenerator[ChunkEntity, None]:
         """Generate GoogleDriveFileEntity objects for each file in the user's My Drive."""
         async for file_obj in self._list_files_in_my_drive(client):
-            yield self._build_file_entity(file_obj)
+            try:
+                file_entity = self._build_file_entity(file_obj)
+                if file_entity.download_url:
+                    file_stream = file_manager.stream_file_from_url(
+                        file_entity.download_url, access_token=self.access_token
+                    )
+                    processed_entity = await file_manager.handle_file_entity(
+                        stream=file_stream, entity=file_entity
+                    )
+                    yield processed_entity
+                else:
+                    logger.warning(f"No download URL available for {file_entity.name}")
+            except Exception as e:
+                logger.error(
+                    f"\nFailed to process file {file_obj.get('name', 'unknown')} "
+                    f"in MY DRIVE: {str(e)}\n"
+                )
+                raise
 
     async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
         """Generate all Google Drive entities.
@@ -197,6 +256,11 @@ class GoogleDriveSource(BaseSource):
           - Files in My Drive (corpora=user)
         """
         async with httpx.AsyncClient() as client:
+            # For testing: count file entities yielded
+            file_entity_count = 0
+            # Testing flag - set to True to stop after first file entity
+            stop_after_first_file = False
+
             # 1) Generate entities for shared drives
             async for drive_entity in self._generate_drive_entities(client):
                 yield drive_entity
@@ -210,7 +274,17 @@ class GoogleDriveSource(BaseSource):
             for drive_id in drive_ids:
                 async for file_entity in self._generate_file_entities_in_drive(client, drive_id):
                     yield file_entity
+                    file_entity_count += 1
+                    if stop_after_first_file and file_entity_count >= 4:
+                        logger.info("Stopping after first file entity for testing purposes")
+                        return
 
             # 3) Finally, yield file entities for My Drive (corpora=user)
-            async for mydrive_file_entity in self._generate_file_entities_in_my_drive(client):
-                yield mydrive_file_entity
+            # Only reach here if we didn't find any files in shared drives
+            if not (stop_after_first_file and file_entity_count >= 4):
+                async for mydrive_file_entity in self._generate_file_entities_in_my_drive(client):
+                    yield mydrive_file_entity
+                    file_entity_count += 1
+                    if stop_after_first_file and file_entity_count >= 4:
+                        logger.info("Stopping after first file entity for testing purposes")
+                        return

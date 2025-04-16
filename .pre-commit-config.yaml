@@ -33,3 +33,13 @@ repos:
     rev: v2.4.1
     hooks:
     - id: codespell
+      exclude: >
+        (?x)^(
+          .*\.venv/.*|
+          .*venv/.*|
+          .*node_modules/.*|
+          .*package-lock\.json|
+          .*package\.json|
+          .*yarn\.lock|
+          .*\.git/.*
+        )$

@@ -73,6 +73,7 @@ class SyncService:
             return await sync_orchestrator.run(sync_context)
         except Exception as e:
             logger.error(f"Error during sync: {e}")
+            # silent failure - doesn't propagate the error to the client, as it's in the background
             raise e
 
 

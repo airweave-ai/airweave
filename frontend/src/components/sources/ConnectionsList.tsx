@@ -26,7 +26,7 @@ export function ConnectionsList({
 
   const getStatusIcon = (status: Connection['status']) => {
     console.log('Connection status:', status);
-    
+
     switch (status.toUpperCase()) {
       case 'ACTIVE':
         return <CheckCircle2 className="h-4 w-4 text-green-500" />;
@@ -84,9 +84,9 @@ export function ConnectionsList({
                     {connection.id}
                   </code>
                 </div>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
+                <Button
+                  variant="ghost"
+                  size="icon"
                   className="h-8 w-8 text-destructive"
                   onClick={() => setConnectionToDelete(connection)}
                 >
@@ -95,10 +95,10 @@ export function ConnectionsList({
               </div>
 
               <div className="flex items-center gap-2 mt-3 pt-3 border-t">
-                <Badge 
+                <Badge
                   variant={
-                    connection.status.toUpperCase() === "ACTIVE" ? "default" : 
-                    connection.status.toUpperCase() === "ERROR" ? "destructive" : 
+                    connection.status.toUpperCase() === "ACTIVE" ? "default" :
+                    connection.status.toUpperCase() === "ERROR" ? "destructive" :
                     "secondary"
                   }
                 >
@@ -113,8 +113,8 @@ export function ConnectionsList({
         </div>
       </ScrollArea>
 
-      <Dialog 
-        open={!!connectionToDelete} 
+      <Dialog
+        open={!!connectionToDelete}
         onOpenChange={(open) => !open && setConnectionToDelete(null)}
       >
         <DialogContent className="sm:max-w-[425px]">
@@ -124,7 +124,7 @@ export function ConnectionsList({
               Disconnect Connection
             </DialogTitle>
             <DialogDescription className="pt-2">
-              Are you sure you want to disconnect <span className="font-medium">{connectionToDelete?.name}</span>? 
+              Are you sure you want to disconnect <span className="font-medium">{connectionToDelete?.name}</span>?
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-0">

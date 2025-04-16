@@ -3,8 +3,7 @@
 from typing import AsyncGenerator, Dict, List, Optional
 
 import httpx
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
-from tenacity.asyncio import AsyncRetrying
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from airweave.core.logging import logger
 from airweave.platform.auth.schemas import AuthType
@@ -18,7 +17,7 @@ from airweave.platform.entities.asana import (
     AsanaTaskEntity,
     AsanaWorkspaceEntity,
 )
-from airweave.platform.file_handling.file_manager import handle_file_entity
+from airweave.platform.file_handling.file_manager import file_manager
 from airweave.platform.sources._base import BaseSource
 
 
@@ -42,46 +41,6 @@ class AsanaSource(BaseSource):
         )
         response.raise_for_status()
         return response.json()
-
-    async def _stream_file(
-        self, client: httpx.AsyncClient, url: str
-    ) -> AsyncGenerator[bytes, None]:
-        """Stream a file from Asana with authentication.
-
-        Args:
-            client: The HTTPX client
-            url: The file download URL
-
-        Yields:
-            Chunks of the file content
-        """
-        retryer = AsyncRetrying(
-            retry=retry_if_exception_type(httpx.HTTPError),
-            wait=wait_exponential(multiplier=1, min=2, max=10),
-            stop=stop_after_attempt(3),
-        )
-
-        # For Asana API URLs we need the Asana auth header
-        # For S3 pre-signed URLs we use the URL as-is since auth is in the URL
-        headers = {}
-        if url.startswith("https://app.asana.com/"):
-            headers["Authorization"] = f"Bearer {self.access_token}"
-
-        async for attempt in retryer:
-            with attempt:
-                try:
-                    async with client.stream(
-                        "GET",
-                        url,
-                        headers=headers,
-                        follow_redirects=True,  # Follow any redirects
-                    ) as response:
-                        response.raise_for_status()
-                        async for chunk in response.aiter_bytes():
-                            yield chunk
-                except Exception as e:
-                    logger.error(f"Error streaming file from URL {url}: {str(e)}")
-                    raise
 
     async def _generate_workspace_entities(
         self, client: httpx.AsyncClient
@@ -300,8 +259,16 @@ class AsanaSource(BaseSource):
                 permanent=attachment_detail.get("permanent", False),
             )
 
-            file_stream = self._stream_file(client, file_entity.download_url)
-            yield await handle_file_entity(file_entity, file_stream)
+            # Different headers based on URL type
+            headers = None
+            if file_entity.download_url.startswith("https://app.asana.com/"):
+                headers = {"Authorization": f"Bearer {self.access_token}"}
+
+            # Use the new method with retry for robustness
+            file_stream = file_manager.stream_file_from_url(
+                file_entity.download_url, headers=headers
+            )
+            yield await file_manager.handle_file_entity(stream=file_stream, entity=file_entity)
 
     async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
         """Generate all entities from Asana."""

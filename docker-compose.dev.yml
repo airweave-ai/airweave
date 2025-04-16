@@ -1,7 +1,11 @@
 version: "3.8"
 
+# docker-compose.dev.yml
+# Used for local development and debugging
+# Started by VS Code tasks.json for local debugging
+
 services:
-  db:
+  postgres:
     container_name: airweave-db
     image: postgres:16
     environment:
@@ -13,7 +17,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U airweave"]
+      test: [ "CMD-SHELL", "pg_isready -U airweave" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -26,7 +30,7 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -35,70 +39,33 @@ services:
     container_name: airweave-embeddings
     image: semitechnologies/transformers-inference:sentence-transformers-all-MiniLM-L6-v2
     ports:
-      - "8000:8080"
+      - "9878:8080"
     environment:
       ENABLE_CUDA: 0
       WORKERS_PER_NODE: 1
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:8080/health" ]
       interval: 5s
       timeout: 10s
       retries: 3
     restart: on-failure
 
-  weaviate:
-    container_name: airweave-weaviate
-    image: semitechnologies/weaviate:1.24.1
+  qdrant:
+    container_name: airweave-qdrant
+    image: qdrant/qdrant:latest
+    command: bash -c "apt-get update && apt-get install -y curl && ./entrypoint.sh" # we need to install curl to check health
     ports:
-      - "8087:8080"
-      - "50052:50051"
-    environment:
-      QUERY_DEFAULTS_LIMIT: 25
-      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
-      PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
-      DEFAULT_VECTORIZER_MODULE: 'text2vec-transformers'
-      ENABLE_MODULES: 'text2vec-transformers,text2vec-openai,text2vec-cohere,text2vec-huggingface'
-      TRANSFORMERS_INFERENCE_API: 'http://text2vec-transformers:8080'
-      CLUSTER_HOSTNAME: 'node1'
-      LOG_LEVEL: 'trace'
-      CONSOLE_LOGGER: 'true'
-      LOG_FORMAT: 'text'
-      GRPC_PORT: "50051"
-    depends_on:
-      - text2vec-transformers
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "200m"
-        max-file: "10"
+      - "6333:6333"
     volumes:
-      - weaviate_data:/var/lib/weaviate
+      - qdrant_data:/qdrant/storage
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/v1/.well-known/ready"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:6333/healthz"]
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 30s
     restart: on-failure
-
-  neo4j:
-    container_name: airweave-neo4j
-    image: neo4j:latest
-    ports:
-      - "7474:7474"
-      - "7687:7687"
-    environment:
-      - NEO4J_AUTH=neo4j/password
-    volumes:
-      - neo4j_data:/data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7474"]
-      interval: 10s
-      timeout: 10s
-      retries: 5
 
 volumes:
   postgres_data:
   redis_data:
-  weaviate_data:
-  neo4j_data:
+  qdrant_data:

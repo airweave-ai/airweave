@@ -25,7 +25,7 @@ def e2e_environment():
 def test_health_endpoint(e2e_environment):
     """Test that the health endpoint returns a 200 status code."""
     # Arrange
-    health_url = "http://localhost:8003/health"
+    health_url = "http://localhost:9001/health"
 
     # Act
     response = requests.get(health_url)
@@ -41,7 +41,7 @@ def test_health_endpoint(e2e_environment):
 def test_api_docs_accessible(e2e_environment):
     """Test that the API documentation is accessible."""
     # Arrange
-    docs_url = "http://localhost:8003/docs"
+    docs_url = "http://localhost:9001/docs"
 
     # Act
     response = requests.get(docs_url)

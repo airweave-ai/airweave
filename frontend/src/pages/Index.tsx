@@ -5,7 +5,7 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      
+
       {/* ECL Section */}
       <section className="py-24 bg-gradient-to-b from-background to-primary-100">
         <div className="container px-4 mx-auto">
@@ -20,7 +20,7 @@ const Index = () => {
                 Connect to your data sources and extract information seamlessly from any workspace or application.
               </p>
             </div>
-            
+
             <div className="flex flex-col items-center p-8 rounded-lg bg-white shadow-lg hover:shadow-xl transition-shadow">
               <div className="p-4 rounded-full bg-primary-100 mb-6">
                 <Server className="h-8 w-8 text-primary-400" />
@@ -30,7 +30,7 @@ const Index = () => {
                 Process and split your data into optimized entities for efficient vector embedding generation.
               </p>
             </div>
-            
+
             <div className="flex flex-col items-center p-8 rounded-lg bg-white shadow-lg hover:shadow-xl transition-shadow">
               <div className="p-4 rounded-full bg-primary-100 mb-6">
                 <Download className="h-8 w-8 text-primary-400" />
@@ -56,21 +56,21 @@ const Index = () => {
                 Making any app searchable through vector embeddings. Built by agent developers, for agent developers.
               </p>
             </div>
-            
+
             <div className="space-y-4">
               <h3 className="text-lg font-semibold">Legal</h3>
               <ul className="space-y-3">
                 <li>
-                  <a 
-                    href="/privacy" 
+                  <a
+                    href="/privacy"
                     className="text-sm text-muted-foreground hover:text-primary-400 transition-colors flex items-center space-x-2"
                   >
                     Privacy Policy
                   </a>
                 </li>
                 <li>
-                  <a 
-                    href="/terms" 
+                  <a
+                    href="/terms"
                     className="text-sm text-muted-foreground hover:text-primary-400 transition-colors flex items-center space-x-2"
                   >
                     Terms of Use
@@ -78,25 +78,25 @@ const Index = () => {
                 </li>
               </ul>
             </div>
-            
+
             <div className="space-y-4">
               <h3 className="text-lg font-semibold">Connect</h3>
               <p className="text-sm text-muted-foreground">
                 Follow us for updates and announcements
               </p>
               <div className="flex flex-col space-y-3">
-                <a 
-                  href="https://twitter.com/airweave_dev" 
-                  target="_blank" 
+                <a
+                  href="https://twitter.com/airweave_dev"
+                  target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center space-x-3 text-muted-foreground hover:text-primary-400 transition-all group"
                 >
                   <Twitter className="h-5 w-5 group-hover:scale-110 transition-transform" />
                   <span className="text-sm">@airweave_dev</span>
                 </a>
-                <a 
-                  href="https://github.com/airweave-ai/airweave" 
-                  target="_blank" 
+                <a
+                  href="https://github.com/airweave-ai/airweave"
+                  target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center space-x-3 text-muted-foreground hover:text-primary-400 transition-all group"
                 >
@@ -110,7 +110,7 @@ const Index = () => {
               </div>
             </div>
           </div>
-          
+
           <div className="mt-12 pt-8 border-t text-center">
             <p className="text-sm text-muted-foreground">
               © {new Date().getFullYear()} Airweave. All rights reserved.

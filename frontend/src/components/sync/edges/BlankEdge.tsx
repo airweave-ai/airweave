@@ -50,4 +50,4 @@ export const BlankEdge = memo(({
   );
 });
 
-BlankEdge.displayName = "BlankEdge"; 
+BlankEdge.displayName = "BlankEdge";

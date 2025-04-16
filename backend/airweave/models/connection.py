@@ -68,15 +68,16 @@ class Connection(Base):
         lazy="noload",
     )
 
-    __table_args__ = (
+__table_args__ = (
         # Enforce that organization_id, created_by_email, and modified_by_email are not null
         # except for the specific native connections
         CheckConstraint(
             """
             (short_name IN ('weaviate_native', 'neo4j_native', 'local_text2vec'))
             OR
-            (organization_id IS NOT NULL AND created_by_email IS NOT NULL AND
-            modified_by_email IS NOT NULL)
+            (organization_id IS NOT NULL
+             AND created_by_email IS NOT NULL
+             AND modified_by_email IS NOT NULL)
             """,
             name="ck_connection_native_or_complete",
         ),

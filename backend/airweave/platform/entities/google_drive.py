@@ -17,7 +17,7 @@ from typing import Any, List, Optional
 
 from pydantic import Field
 
-from airweave.platform.entities._base import ChunkEntity
+from airweave.platform.entities._base import ChunkEntity, FileEntity
 
 
 class GoogleDriveDriveEntity(ChunkEntity):
@@ -44,7 +44,7 @@ class GoogleDriveDriveEntity(ChunkEntity):
     )
 
 
-class GoogleDriveFileEntity(ChunkEntity):
+class GoogleDriveFileEntity(FileEntity):
     """Schema for a File resource (in a user's or shared drive).
 
     Reference:

@@ -16,7 +16,7 @@ export const Header = () => {
   const [open, setOpen] = React.useState(false);
   const navigate = useNavigate();
   const { resolvedTheme } = useTheme();
-  
+
   // Determine which logo to use based on theme
   const logoSrc = resolvedTheme === "dark" ? "/logo-and-lettermark-light.svg" : "/logo-and-lettermark.svg";
 
@@ -30,9 +30,9 @@ export const Header = () => {
         {/* Logo */}
         <div className="flex items-center space-x-2">
           <Link to="/" className="flex items-center space-x-2">
-            <img 
-              src={logoSrc} 
-              alt="Airweave" 
+            <img
+              src={logoSrc}
+              alt="Airweave"
               className="h-8"
             />
           </Link>

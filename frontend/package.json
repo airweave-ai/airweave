@@ -43,6 +43,7 @@
     "@tanstack/react-query": "^5.56.2",
     "@types/dagre": "^0.7.52",
     "@types/react-syntax-highlighter": "^15.5.13",
+    "@types/uuid": "^10.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.0.0",
@@ -68,6 +69,7 @@
     "sonner": "^1.5.0",
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
+    "uuid": "^11.1.0",
     "vaul": "^0.9.3",
     "zod": "^3.23.8"
   },

@@ -19,8 +19,8 @@ export function ConnectedSourcesGrid() {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Connected Sources</CardTitle>
-        <Button 
-          variant="outline" 
+        <Button
+          variant="outline"
           size="sm"
           onClick={() => navigate("/sources")}
         >

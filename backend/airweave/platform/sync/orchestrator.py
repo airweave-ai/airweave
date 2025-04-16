@@ -1,383 +1,499 @@
-"""Module for data synchronization."""
+"""Module for data synchronization with improved architecture."""
 
 import asyncio
+from datetime import datetime
+from typing import Any, Callable, List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
 from airweave.core.logging import logger
+from airweave.core.shared_models import SyncJobStatus
 from airweave.db.session import get_db_context
 from airweave.platform.entities._base import BaseEntity, DestinationAction
 from airweave.platform.sync.context import SyncContext
 from airweave.platform.sync.stream import AsyncSourceStream
 
-MAX_WORKERS: int = 20
 
+# Worker Pool Pattern
+class AsyncWorkerPool:
+    """Manages a pool of workers with controlled concurrency.
 
-class SyncOrchestrator:
-    """Main service for data synchronization."""
+    This class limits how many async tasks can run at once using a semaphore,
+    preventing system overload when processing many items in parallel.
+    """
 
-    async def run(self, sync_context: SyncContext) -> schemas.Sync:
-        """Run a sync with full async processing.
-
-        Args:
-            sync_context: The sync context
-        """
-        try:
-            async with get_db_context() as db:
-                # Get source node from DAG
-                source_node = sync_context.dag.get_source_node()
-
-                # Process entities through the stream
-                await self._process_entity_stream(source_node, sync_context, db)
-
-                # Finalize and return sync
-                await sync_context.progress.finalize()
-                return sync_context.sync
-
-        except Exception as e:
-            logger.error(f"Error during sync: {e}")
-            raise
-
-    async def _process_entity_stream(
-        self, source_node: schemas.DagNode, sync_context: SyncContext, db: AsyncSession
-    ) -> None:
-        """Process the stream of entities coming from the source.
+    def __init__(self, max_workers: int = 20):
+        """Initialize worker pool with concurrency control.
 
         Args:
-            source_node: The source node from the DAG
-            sync_context: The sync context
-            db: Database session
+            max_workers: Maximum number of tasks allowed to run concurrently
         """
-        # Create a semaphore to limit concurrent tasks
-        semaphore = asyncio.Semaphore(MAX_WORKERS)
+        self.semaphore = asyncio.Semaphore(max_workers)
+        self.pending_tasks = set()
+        self.max_workers = max_workers
 
-        # Create async stream and use it as a context manager
-        async with AsyncSourceStream(sync_context.source.generate_entities()) as stream:
-            try:
-                # Process entities with controlled concurrency
-                await self._process_stream_with_concurrency(
-                    stream, semaphore, source_node, sync_context, db
-                )
-            except Exception as e:
-                logger.error(f"Error during sync: {e}")
-                raise
-            finally:
-                # Ensure we finalize progress
-                await sync_context.progress.finalize()
+    async def submit(self, coro: Callable, *args, **kwargs) -> asyncio.Task:
+        """Submit a coroutine to be executed by the worker pool.
 
-    async def _process_stream_with_concurrency(
-        self,
-        stream: AsyncSourceStream,
-        semaphore: asyncio.Semaphore,
-        source_node: schemas.DagNode,
-        sync_context: SyncContext,
-        db: AsyncSession,
-    ) -> None:
-        """Process the entity stream with controlled concurrency.
+        Creates a task, adds it to our tracking set, and returns it.
+        Tasks run with controlled concurrency through the semaphore.
 
         Args:
-            stream: The async source stream
-            semaphore: Semaphore to control concurrency
-            source_node: The source node from the DAG
-            sync_context: The sync context
-            db: Database session
+            coro: The coroutine function to execute
+            *args: Arguments to pass to the coroutine
+            **kwargs: Keyword arguments to pass to the coroutine
+
+        Returns:
+            The created task object
         """
-        # Process entities as they come in, with controlled concurrency
-        pending_tasks = set()
+        # Create a task that will run the coroutine with semaphore control
+        task = asyncio.create_task(self._run_with_semaphore(coro, *args, **kwargs))
+        # Track the task so we can wait for it later
+        self.pending_tasks.add(task)
+        # Set up automatic cleanup when task finishes
+        task.add_done_callback(self._handle_task_completion)
+        return task
 
-        # Process entities as they come in from the stream
-        async for entity in stream.get_entities():
-            # Create task for this entity
-            task = asyncio.create_task(
-                self._process_entity_with_semaphore(
-                    semaphore,
-                    entity,
-                    source_node,
-                    sync_context,
-                )
-            )
-            # Store the original entity with the task for error reporting
-            task.entity = entity
-            pending_tasks.add(task)
+    async def _run_with_semaphore(self, coro: Callable, *args, **kwargs) -> Any:
+        """Run a coroutine with semaphore control.
 
-            task.add_done_callback(lambda t: self._handle_task_completion(t, pending_tasks))
-
-            # If we have too many pending tasks, wait for some to complete
-            if len(pending_tasks) >= MAX_WORKERS * 2:
-                await self._wait_for_tasks(pending_tasks, asyncio.FIRST_COMPLETED, 0.5)
-
-        # Wait for any remaining tasks with proper error handling
-        if pending_tasks:
-            logger.info(f"Waiting for {len(pending_tasks)} remaining tasks")
-            await self._wait_for_all_pending_tasks(pending_tasks)
-
-    def _handle_task_completion(self, completed_task: asyncio.Task, pending_tasks: set) -> None:
-        """Handle task completion and remove it from pending tasks.
+        Acquires a semaphore before running the coroutine, limiting concurrency.
+        Semaphore is automatically released when coroutine completes.
 
         Args:
-            completed_task: The completed task
-            pending_tasks: Set of pending tasks
-        """
-        pending_tasks.discard(completed_task)
-        # Handle any exceptions
-        if not completed_task.cancelled() and completed_task.exception():
-            entity_id = getattr(completed_task.entity, "entity_id", "unknown")
-            logger.error(f"Task for entity {entity_id} failed: {completed_task.exception()}")
+            coro: The coroutine function to execute
+            *args: Arguments to pass to the coroutine
+            **kwargs: Keyword arguments to pass to the coroutine
 
-    async def _wait_for_tasks(
-        self, pending_tasks: set, return_when: asyncio.Future, timeout: float
-    ) -> None:
-        """Wait for tasks to complete with error handling.
+        Returns:
+            The result of the coroutine - can be anything
+        """
+        # The 'async with' ensures semaphore (or "slot") is released even if an exception occurs
+        async with self.semaphore:
+            # Only N coroutines can be in this block at once (N = max_workers)
+            return await coro(*args, **kwargs)
+
+    def _handle_task_completion(self, task: asyncio.Task) -> None:
+        """Handle task completion and clean up.
+
+        Removes completed task from our tracking set and logs any errors.
+        Called automatically when a task completes.
 
         Args:
-            pending_tasks: Set of pending tasks
-            return_when: Wait policy (e.g., FIRST_COMPLETED)
-            timeout: Maximum time to wait
+            task: The completed task
         """
+        # Remove the task from our tracking set
+        self.pending_tasks.discard(task)
+        # Log if the task failed with an exception
+        if not task.cancelled() and task._exception:
+            logger.error(f"Task failed: {task._exception}")
+
+    async def wait_for_batch(self, timeout: float = 0.5) -> None:
+        """Wait for some tasks to complete.
+
+        Useful when you want to throttle submission rate or process
+        results in batches without waiting for all tasks to finish.
+
+        Args:
+            timeout: Maximum time to wait in seconds
+        """
+        if not self.pending_tasks:
+            return
+
+        # Wait for at least one task to complete or until timeout
+        # FIRST_COMPLETED means we'll return as soon as any task finishes
         done, _ = await asyncio.wait(
-            pending_tasks,
-            return_when=return_when,
-            timeout=timeout,
+            self.pending_tasks, return_when=asyncio.FIRST_COMPLETED, timeout=timeout
         )
 
-        # Process completed tasks and handle errors
-        for completed_task in done:
+        # Process completed tasks, extracting results or catching exceptions
+        for task in done:
             try:
-                await completed_task
+                # Await the task to get its result or propagate any exceptions
+                await task
             except Exception as e:
-                entity_id = getattr(
-                    getattr(completed_task, "entity", None),
-                    "entity_id",
-                    "unknown",
-                )
-                logger.error(f"Entity {entity_id} processing error: {e}")
-                # Re-raise critical exceptions
-                if isinstance(e, (KeyboardInterrupt, SystemExit)):
-                    raise
+                logger.error(f"Error in worker task: {e}")
 
-    async def _wait_for_all_pending_tasks(self, pending_tasks: set) -> None:
-        """Wait for all pending tasks to complete.
+    async def wait_for_completion(self) -> None:
+        """Wait for all tasks to complete.
 
-        Args:
-            pending_tasks: Set of pending tasks
+        Processes tasks in batches to avoid memory issues with large sets.
+        Should be called before ending a program to ensure all work is done.
         """
-        while pending_tasks:
-            wait_tasks = list(pending_tasks)[: MAX_WORKERS * 2]
-            done, pending_tasks_remaining = await asyncio.wait(
-                wait_tasks,
-                return_when=asyncio.ALL_COMPLETED,
-                timeout=10,
+        while self.pending_tasks:
+            # Process in batches to avoid memory issues with large task sets
+            # Take a slice of the pending tasks equal to double the max worker count
+            current_batch = list(self.pending_tasks)[: self.max_workers * 2]
+            if not current_batch:
+                break
+
+            # Wait for all tasks in this batch to complete (with a timeout for safety)
+            # ALL_COMPLETED means we'll wait until every task in the batch is done
+            done, _ = await asyncio.wait(
+                current_batch, return_when=asyncio.ALL_COMPLETED, timeout=10
             )
 
-            # Update pending tasks
-            for task in wait_tasks:
-                pending_tasks.discard(task)
-
-            # Add back any tasks that didn't complete
-            pending_tasks.update(pending_tasks_remaining)
-
-            # Check for exceptions
-            for completed_task in done:
+            # Check for exceptions in completed tasks
+            for task in done:
                 try:
-                    await completed_task
+                    # Await the task to get its result or propagate any exceptions
+                    await task
                 except Exception as e:
-                    entity_id = getattr(
-                        getattr(completed_task, "entity", None),
-                        "entity_id",
-                        "unknown",
-                    )
-                    logger.error(f"Entity {entity_id} processing error: {e}")
-                    # Re-raise critical exceptions
-                    if isinstance(e, (KeyboardInterrupt, SystemExit)):
-                        raise
+                    logger.error(f"Task error during completion: {e}")
 
-    async def _process_entity_with_semaphore(
-        self,
-        semaphore: asyncio.Semaphore,
-        entity: BaseEntity,
-        source_node: schemas.DagNode,
-        sync_context: SyncContext,
-    ) -> tuple[list[BaseEntity], DestinationAction]:
-        """Process a single entity with semaphore control.
 
-        Args:
-            semaphore: Semaphore to control concurrency
-            entity: Entity to process
-            source_node: The source node from the DAG
-            sync_context: The sync context
+# Pipeline Pattern
+class EntityProcessor:
+    """Processes entities through a pipeline of stages."""
 
-        Returns:
-            Tuple of (processed entities, action)
-        """
-        async with semaphore:
-            # Create a new session for this task
-            async with get_db_context() as db:
-                # First, enrich the entity with sync metadata
-                entity = await self._enrich_entity(entity, sync_context)
-
-                # Then determine the entity action (without processing through DAG)
-                db_entity, action = await self._determine_entity_action(entity, sync_context, db)
-
-                # If the action is KEEP, we can skip further processing
-                if action == DestinationAction.KEEP:
-                    # Update progress counter for KEEP action
-                    await sync_context.progress.increment("already_sync", 1)
-                    return [], action
-
-                # Process the entity through the DAG
-                processed_entities = await sync_context.router.process_entity(
-                    db=db,
-                    producer_id=source_node.id,
-                    entity=entity,
-                )
-
-                # Persist the parent entity and its processed children
-                await self._persist_entities(
-                    entity, processed_entities, db_entity, action, sync_context, db
-                )
-
-                return processed_entities, action
-
-    async def _enrich_entity(
+    async def process(
         self,
         entity: BaseEntity,
+        source_node: schemas.DagNode,  # not sure about hard-coupling to dag node
         sync_context: SyncContext,
-    ) -> BaseEntity:
-        """Enrich an entity with information from the sync context.
+        db: AsyncSession,
+    ) -> List[BaseEntity]:
+        """Process an entity through the complete pipeline."""
+        # Stage 1: Enrich entity with metadata
+        enriched_entity = await self._enrich(entity, sync_context)
 
-        Adds metadata from the sync context to the entity, including source name,
-        sync IDs, and white label information when applicable.
+        # Stage 2: Determine action for entity
+        db_entity, action = await self._determine_action(enriched_entity, sync_context, db)
 
-        Args:
-            entity: The entity to be enriched
-            sync_context: The sync context containing metadata to add to the entity
+        # Stage 2.5: Skip further processing if KEEP
+        if action == DestinationAction.KEEP:
+            await sync_context.progress.increment("kept", 1)
+            return []
 
-        Returns:
-            The enriched entity with added metadata
-        """
+        # Stage 3: Process entity through DAG
+        processed_entities = await self._transform(enriched_entity, source_node, sync_context, db)
+
+        # Stage 4: Compute vector
+        processed_entities_with_vector = await self._compute_vector(
+            processed_entities, sync_context
+        )
+
+        # Stage 5: Persist entities based on action
+        await self._persist(
+            enriched_entity, processed_entities_with_vector, db_entity, action, sync_context, db
+        )
+
+        return processed_entities
+
+    async def _enrich(self, entity: BaseEntity, sync_context: SyncContext) -> BaseEntity:
+        """Enrich entity with sync metadata."""
         entity.source_name = sync_context.source._name
         entity.sync_id = sync_context.sync.id
         entity.sync_job_id = sync_context.sync_job.id
         entity.sync_metadata = sync_context.sync.sync_metadata
+
         if sync_context.sync.white_label_id:
             entity.white_label_user_identifier = sync_context.sync.white_label_user_identifier
             entity.white_label_id = sync_context.sync.white_label_id
-            entity.white_label_name = sync_context.white_label.name
+
         return entity
 
-    async def _determine_entity_action(
+    async def _determine_action(
         self, entity: BaseEntity, sync_context: SyncContext, db: AsyncSession
     ) -> tuple[schemas.Entity, DestinationAction]:
-        """Determine what action should be taken for an entity.
-
-        Args:
-            entity: Entity to check
-            sync_context: The sync context
-            db: Database session
-
-        Returns:
-            Tuple of (database entity if exists, action to take)
-        """
-        # Check if the entity already exists in the database
+        """Determine what action to take for an entity."""
         db_entity = await crud.entity.get_by_entity_and_sync_id(
             db=db, entity_id=entity.entity_id, sync_id=sync_context.sync.id
         )
 
         if db_entity:
-            # Check if the entity has been updated
             if db_entity.hash != entity.hash():
-                # Entity has been updated, so we need to update it
                 action = DestinationAction.UPDATE
             else:
-                # Entity is the same, so we keep it
                 action = DestinationAction.KEEP
         else:
-            # Entity does not exist in the database, so we need to insert it
             action = DestinationAction.INSERT
 
         return db_entity, action
 
-    async def _persist_entities(
+    async def _transform(
+        self,
+        entity: BaseEntity,
+        source_node: schemas.DagNode,
+        sync_context: SyncContext,
+        db: AsyncSession,
+    ) -> List[BaseEntity]:
+        """Transform entity through DAG routing."""
+        return await sync_context.router.process_entity(
+            db=db,
+            producer_id=source_node.id,
+            entity=entity,
+        )
+
+    async def _persist(
         self,
         parent_entity: BaseEntity,
-        processed_entities: list[BaseEntity],
+        processed_entities: List[BaseEntity],
         db_entity: schemas.Entity,
         action: DestinationAction,
         sync_context: SyncContext,
         db: AsyncSession,
     ) -> None:
-        """Persist the parent entity and its processed children.
+        """Persist entities to destinations based on action.
 
         Args:
-            parent_entity: The parent entity
-            processed_entities: List of processed entities
-            db_entity: Existing database entity if any
-            action: The action to take (INSERT, UPDATE, KEEP)
+            parent_entity: The parent entity of the processed entities
+            processed_entities: The entities to persist
+            db_entity: The database entity to update
+            action: The action to take
             sync_context: The sync context
-            db: Database session
+            db: The database session
         """
-        # No processing needed for KEEP action
         if action == DestinationAction.KEEP:
-            # Update the progress for kept entities
-            await sync_context.progress.increment(already_sync=1)
-            return
+            await self._handle_keep(sync_context)
+        elif action == DestinationAction.INSERT:
+            await self._handle_insert(
+                parent_entity, processed_entities, db_entity, sync_context, db
+            )
+        elif action == DestinationAction.UPDATE:
+            await self._handle_update(
+                parent_entity, processed_entities, db_entity, sync_context, db
+            )
 
+    async def _compute_vector(
+        self,
+        processed_entities: List[BaseEntity],
+        sync_context: SyncContext,
+    ) -> List[BaseEntity]:
+        """Compute vector for entities.
+
+        Args:
+            processed_entities: The entities to compute vector for
+            sync_context: The sync context
+
+        Returns:
+            The entities with vector computed
+        """
+        embedding_model = sync_context.embedding_model
+        embeddings = await embedding_model.embed_many(
+            [str(entity.to_storage_dict()) for entity in processed_entities]
+        )
+        for processed_entity, vector in zip(processed_entities, embeddings, strict=False):
+            processed_entity.vector = vector
+
+        return processed_entities
+
+    async def _handle_keep(self, sync_context: SyncContext) -> None:
+        """Handle KEEP action."""
+        await sync_context.progress.increment(kept=1)
+
+    async def _handle_insert(
+        self,
+        parent_entity: BaseEntity,
+        processed_entities: List[BaseEntity],
+        db_entity: Optional[schemas.Entity],
+        sync_context: SyncContext,
+        db: AsyncSession,
+    ) -> None:
+        """Handle INSERT action."""
         if len(processed_entities) == 0:
             raise ValueError("No processed entities to persist")
 
-        # Prepare the processed entities
+        # Prepare entities with parent reference
         for processed_entity in processed_entities:
-            # Set parent entity ID if not already set
             if (
                 not hasattr(processed_entity, "parent_entity_id")
                 or not processed_entity.parent_entity_id
             ):
                 processed_entity.parent_entity_id = parent_entity.entity_id
 
-        # Handle database operations for the parent entity
-        if action == DestinationAction.INSERT:
-            # Insert into database
-            new_db_entity = await crud.entity.create(
-                db=db,
-                obj_in=schemas.EntityCreate(
-                    sync_id=sync_context.sync.id,
-                    entity_id=parent_entity.entity_id,
-                    hash=parent_entity.hash(),  # compute hash on the entity
-                    sync_job_id=sync_context.sync_job.id,
-                ),
-                organization_id=sync_context.sync.organization_id,
+        # Insert into database
+        new_db_entity = await crud.entity.create(
+            db=db,
+            obj_in=schemas.EntityCreate(
+                sync_job_id=sync_context.sync_job.id,
+                sync_id=sync_context.sync.id,
+                entity_id=parent_entity.entity_id,
+                hash=parent_entity.hash(),
+            ),
+            organization_id=sync_context.sync.organization_id,
+        )
+        parent_entity.db_entity_id = new_db_entity.id
+
+        # Insert to destinations
+        for destination in sync_context.destinations:
+            await destination.bulk_insert(processed_entities)
+
+        await sync_context.progress.increment("inserted", 1)
+
+    async def _handle_update(
+        self,
+        parent_entity: BaseEntity,
+        processed_entities: List[BaseEntity],
+        db_entity: schemas.Entity,
+        sync_context: SyncContext,
+        db: AsyncSession,
+    ) -> None:
+        """Handle UPDATE action."""
+        if len(processed_entities) == 0:
+            raise ValueError("No processed entities to persist")
+
+        # Prepare entities with parent reference
+        for processed_entity in processed_entities:
+            if (
+                not hasattr(processed_entity, "parent_entity_id")
+                or not processed_entity.parent_entity_id
+            ):
+                processed_entity.parent_entity_id = parent_entity.entity_id
+
+        # Update hash in database
+        await crud.entity.update(
+            db=db,
+            db_obj=db_entity,
+            obj_in=schemas.EntityUpdate(hash=parent_entity.hash()),
+        )
+        parent_entity.db_entity_id = db_entity.id
+
+        # Update in destinations (delete then insert)
+        for destination in sync_context.destinations:
+            await destination.bulk_delete_by_parent_id(
+                parent_entity.entity_id, sync_context.sync.id
             )
-            parent_entity.db_entity_id = new_db_entity.id
-            await sync_context.progress.increment("inserted", 1)
+            await destination.bulk_insert(processed_entities)
 
-            # Insert all child entities into all destinations
-            for destination in sync_context.destinations:
-                await destination.bulk_insert(processed_entities)
+        await sync_context.progress.increment("updated", 1)
 
-        elif action == DestinationAction.UPDATE:
-            # Update in database
-            await crud.entity.update(
-                db=db,
-                db_obj=db_entity,
-                obj_in=schemas.EntityUpdate(
-                    hash=parent_entity.hash(),  # compute hash on the entity
-                ),
+
+# Refactored Orchestrator
+class SyncOrchestrator:
+    """Main service for data synchronization with improved architecture."""
+
+    def __init__(self):
+        """Initialize the sync orchestrator."""
+        self.worker_pool = AsyncWorkerPool(max_workers=20)
+        self.entity_processor = EntityProcessor()
+
+    async def run(self, sync_context: SyncContext) -> schemas.Sync:
+        """Run a sync with full async processing."""
+        try:
+            # Get source node from DAG
+            source_node = sync_context.dag.get_source_node()
+
+            # Process entity stream
+            await self._process_entity_stream(source_node, sync_context)
+
+            # Update job status
+            await self._update_sync_job_status(
+                sync_context=sync_context,
+                status=SyncJobStatus.COMPLETED,
+                completed_at=datetime.now(),
             )
-            parent_entity.db_entity_id = db_entity.id
 
-            # For each destination, we need to handle the update scenario:
-            # 1. Delete existing parent and children
-            # 2. Insert the new processed entities
-            for destination in sync_context.destinations:
-                await destination.bulk_delete_by_parent_id(
-                    parent_entity.entity_id, sync_context.sync.id
+            return sync_context.sync
+
+        except Exception as e:
+            logger.error(f"Error during sync: {e}")
+
+            # Update job status
+            await self._update_sync_job_status(
+                sync_context=sync_context,
+                status=SyncJobStatus.FAILED,
+                error=str(e),
+                failed_at=datetime.now(),
+            )
+            raise
+
+    async def _process_entity_stream(
+        self, source_node: schemas.DagNode, sync_context: SyncContext
+    ) -> None:
+        """Process stream of entities from source."""
+        error_occurred = False
+
+        # Use the stream as a context manager
+        async with AsyncSourceStream(sync_context.source.generate_entities()) as stream:
+            try:
+                # Process entities as they come
+                async for entity in stream.get_entities():
+                    # Submit each entity for processing in the worker pool
+                    task = await self.worker_pool.submit(
+                        self._process_single_entity,
+                        entity=entity,
+                        source_node=source_node,
+                        sync_context=sync_context,
+                    )
+
+                    # Pythonic way to save entity for error reporting
+                    task.entity = entity
+
+                    # If we have too many pending tasks, wait for some to complete
+                    if len(self.worker_pool.pending_tasks) >= self.worker_pool.max_workers * 2:
+                        await self.worker_pool.wait_for_batch(timeout=0.5)
+
+                # Wait for all remaining tasks
+                await self.worker_pool.wait_for_completion()
+
+            except Exception as e:
+                logger.error(f"Error during entity stream processing: {e}")
+                error_occurred = True
+                raise
+            finally:
+                # Finalize progress
+                await sync_context.progress.finalize(is_complete=not error_occurred)
+
+    async def _process_single_entity(
+        self, entity: BaseEntity, source_node: schemas.DagNode, sync_context: SyncContext
+    ) -> None:
+        """Process a single entity through the pipeline."""
+        # Create a new database session scope for this task
+        async with get_db_context() as db:
+            # Process the entity through the pipeline
+            await self.entity_processor.process(
+                entity=entity, source_node=source_node, sync_context=sync_context, db=db
+            )
+
+    async def _update_sync_job_status(
+        self,
+        sync_context: SyncContext,
+        status: SyncJobStatus,
+        error: Optional[str] = None,
+        completed_at: Optional[datetime] = None,
+        failed_at: Optional[datetime] = None,
+    ) -> None:
+        """Update sync job status with progress statistics."""
+        try:
+            async with get_db_context() as db:
+                # Get DB model for sync job
+                db_sync_job = await crud.sync_job.get(db=db, id=sync_context.sync_job.id)
+
+                if not db_sync_job:
+                    logger.error(f"Sync job {sync_context.sync_job.id} not found")
+                    return
+
+                # Base update data
+                update_data = {
+                    "status": status,
+                    "stats": sync_context.progress.stats.model_dump(),
+                    "records_processed": sync_context.progress.stats.inserted,
+                    "records_updated": sync_context.progress.stats.updated,
+                    "records_deleted": sync_context.progress.stats.deleted,
+                }
+
+                # Add status-specific fields
+                if status == SyncJobStatus.COMPLETED and completed_at:
+                    update_data["completed_at"] = completed_at
+                elif status == SyncJobStatus.FAILED:
+                    if failed_at:
+                        update_data["failed_at"] = failed_at
+                    if error:
+                        update_data["error"] = error
+
+                # Update sync job
+                await crud.sync_job.update(
+                    db=db,
+                    db_obj=db_sync_job,
+                    obj_in=schemas.SyncJobUpdate(**update_data),
+                    current_user=sync_context.current_user,
                 )
-
-                # Insert new processed entities
-                await destination.bulk_insert(processed_entities)
-
-            await sync_context.progress.increment("updated", 1)
+        except Exception as e:
+            # Log but don't raise
+            logger.error(f"Failed to update sync job status: {e}")
 
 
+# Singleton instance
 sync_orchestrator = SyncOrchestrator()

@@ -6,5 +6,5 @@ environments:
   Local:
     docs: The local environment that points to your local API.
     url: http://localhost:8001
-  
+
 default-environment: Production

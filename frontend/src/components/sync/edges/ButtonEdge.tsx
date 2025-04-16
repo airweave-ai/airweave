@@ -10,15 +10,15 @@ import {
 
 // Mock transformers - replace with actual transformers later
 const TRANSFORMERS = [
-  { 
-    id: "text-splitter", 
-    name: "Text Splitter", 
+  {
+    id: "text-splitter",
+    name: "Text Splitter",
     description: "Split text into entities",
     icon: "split"
   },
-  { 
-    id: "summarizer", 
-    name: "Summarizer", 
+  {
+    id: "summarizer",
+    name: "Summarizer",
     description: "Generate text summaries",
     icon: "wand"
   },
@@ -133,4 +133,4 @@ export const ButtonEdge = memo(({
   );
 });
 
-ButtonEdge.displayName = "ButtonEdge"; 
+ButtonEdge.displayName = "ButtonEdge";

@@ -115,7 +115,7 @@ export function ConnectSource({ sourceId, organizationId }: ConnectSourceProps) 
         whiteLabelId: integration.id,
         state: organizationId,
       });
-      
+
       router.push(authUrl);
     } catch (error) {
       console.error("Failed to get auth URL:", error);
@@ -123,7 +123,7 @@ export function ConnectSource({ sourceId, organizationId }: ConnectSourceProps) 
   };
 
   return (
-    <Button 
+    <Button
       onClick={handleConnect}
       variant="outline"
     >

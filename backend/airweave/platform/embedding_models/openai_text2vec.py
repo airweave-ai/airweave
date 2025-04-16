@@ -1,10 +1,10 @@
 """OpenAI text2vec model for embedding."""
 
-from typing import Any, Dict, Optional
+from typing import List, Optional
 
+import httpx
 from pydantic import Field
 
-from airweave.core.logging import logger
 from airweave.platform.auth.schemas import AuthType
 from airweave.platform.decorators import embedding_model
 
@@ -25,40 +25,117 @@ class OpenAIText2Vec(BaseEmbeddingModel):
     api_key: str = Field(..., description="OpenAI API key")
     vector_dimensions: int = 1536
     enabled: bool = True
+    embedding_model: str = Field(
+        default="text-embedding-ada-002", description="OpenAI embedding model name"
+    )
 
-    def get_model_config(self) -> Dict[str, Any]:
-        """Get the model configuration."""
-        return {
-            "type": "text2vec-openai",
-            "api_key": self.api_key,
-            "dimensions": self.vector_dimensions,
-        }
+    async def embed(
+        self,
+        text: str,
+        model: Optional[str] = None,
+        encoding_format: str = "float",
+        dimensions: Optional[int] = None,
+    ) -> List[float]:
+        """Embed a single text string using OpenAI.
 
-    def get_additional_config(self) -> Optional[Dict[str, Any]]:
-        """Get additional configuration for generative features."""
-        return {"type": "generative-openai", "api_key": self.api_key}
+        Args:
+            text: The text to embed
+            model: The OpenAI model to use (defaults to self.embedding_model)
+            encoding_format: Format of the embedding (default: float)
+            dimensions: Vector dimensions (defaults to self.vector_dimensions)
 
-    def get_headers(self) -> dict:
-        """Get necessary headers for the model."""
-        return {"X-OpenAI-Api-Key": self.api_key} if self.api_key else {}
+        Returns:
+            List of embedding values
+        """
+        if dimensions:
+            # OpenAI doesn't support custom dimensions - would need post-processing
+            raise ValueError("Dimensions override not supported for OpenAI embedding")
 
-    @property
-    def requires_api_key(self) -> bool:
-        """Check if this model requires an API key."""
-        return True
+        if not text.strip():
+            # Return zero vector for empty text
+            return [0.0] * self.vector_dimensions
 
-    def validate_configuration(self) -> bool:
-        """Validate that the model is properly configured."""
-        try:
-            if not self.enabled:
-                logger.warning("OpenAI text2vec model is disabled")
-                return False
+        used_model = model or self.embedding_model
 
-            if not self.api_key:
-                logger.error("OpenAI API key is required")
-                return False
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.openai.com/v1/embeddings",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={"input": text, "model": used_model, "encoding_format": encoding_format},
+            )
+            response.raise_for_status()
+            return response.json()["data"][0]["embedding"]
 
-            return True
-        except Exception as e:
-            logger.error(f"Error validating OpenAI text2vec configuration: {e}")
-            return False
+    async def embed_many(
+        self,
+        texts: List[str],
+        model: Optional[str] = None,
+        encoding_format: str = "float",
+        dimensions: Optional[int] = None,
+    ) -> List[List[float]]:
+        """Embed multiple text strings using OpenAI.
+
+        Args:
+            texts: List of texts to embed
+            model: The OpenAI model to use (defaults to self.embedding_model)
+            encoding_format: Format of the embedding (default: float)
+            dimensions: Vector dimensions (defaults to self.vector_dimensions)
+
+        Returns:
+            List of embedding vectors
+        """
+        if dimensions:
+            # OpenAI doesn't support custom dimensions - would need post-processing
+            raise ValueError("Dimensions override not supported for OpenAI embedding")
+
+        if not texts:
+            return []
+
+        # Filter out empty texts and track their positions
+        filtered_texts = []
+        empty_indices = []
+
+        for i, text in enumerate(texts):
+            if text.strip():
+                filtered_texts.append(text)
+            else:
+                empty_indices.append(i)
+
+        if not filtered_texts:
+            return [[0.0] * self.vector_dimensions] * len(texts)
+
+        used_model = model or self.embedding_model
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.openai.com/v1/embeddings",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "input": filtered_texts,
+                    "model": used_model,
+                    "encoding_format": encoding_format,
+                },
+            )
+            response.raise_for_status()
+
+            # Get the embeddings in the same order as input
+            embeddings = [e["embedding"] for e in response.json()["data"]]
+
+            # Reinsert empty vectors at the correct positions
+            result = []
+            embedding_idx = 0
+
+            for i in range(len(texts)):
+                if i in empty_indices:
+                    result.append([0.0] * self.vector_dimensions)
+                else:
+                    result.append(embeddings[embedding_idx])
+                    embedding_idx += 1
+
+            return result

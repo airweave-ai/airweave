@@ -371,7 +371,7 @@ class DockerComposeManager:
         health_checks = [
             {
                 "name": "backend",
-                "url": "http://localhost:8003/health",
+                "url": "http://localhost:9001/health",
                 "expected_status": 200,
             }
         ]

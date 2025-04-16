@@ -230,7 +230,7 @@ export function DestinationManagementDialog({
                     <Label>{field.title}</Label>
                     <p className="text-sm text-muted-foreground">{field.description}</p>
                     <div className="relative">
-                      <Input 
+                      <Input
                         type={showCredentials[field.name] ? "text" : "password"}
                         value={credentials[field.name] || "••••••••"}
                         disabled
@@ -303,13 +303,13 @@ export function DestinationManagementDialog({
               Disconnect Connection
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to disconnect <span className="font-medium">{connection.name}</span>? 
+              Are you sure you want to disconnect <span className="font-medium">{connection.name}</span>?
               This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
+            <AlertDialogAction
               onClick={handleDisconnect}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >

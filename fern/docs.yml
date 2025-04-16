@@ -40,7 +40,7 @@ navigation:
       python: airweave-sdk
       typescript: "@airweave/sdk"
 
-    playground: 
+    playground:
       environments:
         - Production
         - Local
@@ -65,4 +65,3 @@ logo:
   href: https://docs.airweave.ai/
 
 favicon: docs/assets/favicon.ico
-

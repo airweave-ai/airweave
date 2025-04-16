@@ -88,7 +88,7 @@ export function WhiteLabelForm({ onSuccess }: WhiteLabelFormProps) {
     async function fetchSources() {
       try {
         const response = await apiClient.get("/sources/list");
-        
+
         if (!response.ok) {
           throw new Error(`Failed to load data sources. Status: ${response.status}`);
         }
@@ -154,7 +154,7 @@ export function WhiteLabelForm({ onSuccess }: WhiteLabelFormProps) {
             const formField = field.replace('body.', '');
             formErrors[formField] = message;
           });
-          
+
           // Set form errors
           Object.entries(formErrors).forEach(([field, message]) => {
             form.setError(field as keyof WhiteLabelFormData, {
@@ -163,7 +163,7 @@ export function WhiteLabelForm({ onSuccess }: WhiteLabelFormProps) {
           });
           return;
         }
-        
+
         throw new Error(
           `Failed to ${whiteLabelId ? "update" : "create"} white label. Status: ${
             response.status
@@ -172,7 +172,7 @@ export function WhiteLabelForm({ onSuccess }: WhiteLabelFormProps) {
       }
 
       const data: WhiteLabelResponse = await response.json();
-      
+
       if (whiteLabelId) {
         navigate("/white-label");
       } else {
@@ -227,7 +227,7 @@ export function WhiteLabelForm({ onSuccess }: WhiteLabelFormProps) {
               </FormItem>
             )}
           />
- 
+
           <FormField
             control={form.control}
             name="source_short_name"
@@ -257,7 +257,7 @@ export function WhiteLabelForm({ onSuccess }: WhiteLabelFormProps) {
                     </SelectTrigger>
                     <SelectContent>
                       {sources.map((src) => (
-                        <SelectItem 
+                        <SelectItem
                           key={src.short_name}
                           value={src.short_name}
                           className="flex items-center gap-2"

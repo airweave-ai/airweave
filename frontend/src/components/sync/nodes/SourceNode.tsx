@@ -14,7 +14,7 @@ export const SourceNode = memo(({ data, selected, ...props }: NodeProps) => {
   useEffect(() => {
     const fetchConnection = async () => {
       if (!data.connection_id) return;
-      
+
       try {
         const resp = await apiClient.get(`/connections/detail/${data.connection_id}`);
         if (!resp.ok) throw new Error("Failed to fetch connection details");
@@ -49,8 +49,8 @@ export const SourceNode = memo(({ data, selected, ...props }: NodeProps) => {
           className="w-3 h-3 -mr-[3px] border border-background bg-muted-foreground"
         />
         <div className="w-16 h-16 flex items-center justify-center">
-          <img 
-            src={getAppIconUrl(connection?.short_name || data.shortName, resolvedTheme)} 
+          <img
+            src={getAppIconUrl(connection?.short_name || data.shortName, resolvedTheme)}
             alt={connection?.name || data.name}
             className="w-12 h-12 object-contain"
           />
@@ -65,4 +65,4 @@ export const SourceNode = memo(({ data, selected, ...props }: NodeProps) => {
   );
 });
 
-SourceNode.displayName = "SourceNode"; 
+SourceNode.displayName = "SourceNode";

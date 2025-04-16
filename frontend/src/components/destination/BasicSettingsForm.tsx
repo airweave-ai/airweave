@@ -9,12 +9,12 @@ interface BasicSettingsFormProps {
   onConfigChange: (config: { name: string; url?: string; apiKey?: string }) => void;
 }
 
-export function BasicSettingsForm({ 
-  name, 
-  url, 
-  apiKey, 
-  requiresUrl, 
-  onConfigChange 
+export function BasicSettingsForm({
+  name,
+  url,
+  apiKey,
+  requiresUrl,
+  onConfigChange
 }: BasicSettingsFormProps) {
   return (
     <div className="space-y-4">

@@ -27,7 +27,7 @@ export const HowItWorksAccordion = () => {
             <p>
               Setting up a white-labeled integration lets you securely sync data for your multi-tenant users.
             </p>
-            
+
             <div>
               <h4 className="font-medium text-foreground mb-2">1. Fill out the integration form</h4>
               <ul className="list-disc pl-5 space-y-1">

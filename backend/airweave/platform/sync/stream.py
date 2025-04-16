@@ -65,7 +65,7 @@ class AsyncSourceStream(Generic[T]):
         except Exception as e:
             logger.error(f"Error in producer: {e}")
             self.producer_exception = e
-            # Re-raise to ensure proper error handling
+            # Re-raise to ensure proper error handling -> THIS DOES NOT WORK
             raise
         finally:
             # Signal we're done by putting None in the queue and setting the done event
@@ -108,8 +108,12 @@ class AsyncSourceStream(Generic[T]):
             item = await self.queue.get()
             self.queue.task_done()
 
+            # None is our sentinel value for end of stream
             if item is None:
-                # None is our sentinel value for end of stream
+                # Check if the producer failed before yielding any items
+                if self.producer_exception:
+                    logger.error("Producer failed with error before yielding any items")
+                    raise self.producer_exception
                 break
 
             yield item

@@ -70,8 +70,8 @@ integrations:
     url: "https://accounts.google.com/o/oauth2/auth"
     backend_url: "https://oauth2.googleapis.com/token"
     grant_type: "authorization_code"
-    client_id: "308188756994-6pluda2abpu45q91ccg82qve5j69mpk5.apps.googleusercontent.com"
-    client_secret: "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"
+    client_id: "601744717220-9vm930uaaves5imp29dfvst7c4qd626s.apps.googleusercontent.com"
+    client_secret: "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"
     content_type: "application/x-www-form-urlencoded"
     client_credential_location: "body"
     scope: "https://www.googleapis.com/auth/docs https://www.googleapis.com/auth/drive.photos.readonly https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.metadata https://www.googleapis.com/auth/drive.metadata.readonly https://www.googleapis.com/auth/gmail.readonly"
@@ -214,8 +214,5 @@ integrations:
       access_type: "offline"
       prompt: "consent"
 
-  weaviate:
-    auth_type: "config_class"
-
-  neo4j:
+  qdrant:
     auth_type: "config_class"

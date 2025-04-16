@@ -47,6 +47,7 @@ class SyncContext:
     progress: SyncProgress
     router: SyncDAGRouter
     entity_map: dict[type[BaseEntity], UUID]
+    current_user: schemas.User
 
     white_label: Optional[schemas.WhiteLabel] = None
 
@@ -62,6 +63,7 @@ class SyncContext:
         progress: SyncProgress,
         router: SyncDAGRouter,
         entity_map: dict[type[BaseEntity], UUID],
+        current_user: schemas.User,
         white_label: Optional[schemas.WhiteLabel] = None,
     ):
         """Initialize the sync context."""
@@ -75,6 +77,7 @@ class SyncContext:
         self.progress = progress
         self.router = router
         self.entity_map = entity_map
+        self.current_user = current_user
         self.white_label = white_label
 
 
@@ -95,7 +98,7 @@ class SyncContextFactory:
         source = await cls._create_source_instance(db=db, sync=sync, current_user=current_user)
         embedding_model = cls._get_embedding_model(sync=sync)
         destinations = await cls._create_destination_instances(
-            db=db, sync=sync, embedding_model=embedding_model, current_user=current_user
+            db=db, sync=sync, current_user=current_user
         )
         transformers = await cls._get_transformer_callables(db=db, sync=sync)
         entity_map = await cls._get_entity_definition_map(db=db)
@@ -114,6 +117,7 @@ class SyncContextFactory:
             progress=progress,
             router=router,
             entity_map=entity_map,
+            current_user=current_user,
             white_label=white_label,
         )
 
@@ -236,7 +240,6 @@ class SyncContextFactory:
         cls,
         db: AsyncSession,
         sync: schemas.Sync,
-        embedding_model: BaseEmbeddingModel,
         current_user: schemas.User,
     ) -> list[BaseDestination]:
         """Create destination instances.
@@ -245,7 +248,6 @@ class SyncContextFactory:
         -----
             db (AsyncSession): The database session
             sync (schemas.Sync): The sync object
-            embedding_model (BaseEmbeddingModel): The embedding model instance
             current_user (schemas.User): The current user
 
         Returns:
@@ -273,9 +275,7 @@ class SyncContextFactory:
                     f"Destination not found for connection {destination_connection.short_name}"
                 )
             destinations.append(
-                await resource_locator.get_destination(destination_schema).create(
-                    sync.id, embedding_model
-                )
+                await resource_locator.get_destination(destination_schema).create(sync.id)
             )
         return destinations
 

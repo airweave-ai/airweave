@@ -67,13 +67,13 @@ async function updateReadme() {
     return;
   }
 
-  const updatedReadme = 
-    readme.substring(0, startIndex + GRID_START_MARKER.length) + 
-    '\n\n' + newGrid + '\n\n' + 
+  const updatedReadme =
+    readme.substring(0, startIndex + GRID_START_MARKER.length) +
+    '\n\n' + newGrid + '\n\n' +
     readme.substring(endIndex);
 
   fs.writeFileSync(README_PATH, updatedReadme);
   console.log('README updated successfully');
 }
 
-updateReadme().catch(console.error); 
+updateReadme().catch(console.error);

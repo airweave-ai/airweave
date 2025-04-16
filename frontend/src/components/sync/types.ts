@@ -85,4 +85,4 @@ export interface SyncDetailsData extends Sync {
   status: 'active' | 'inactive' | 'error';
   totalRuns?: number;
   uiMetadata: SyncUIMetadata;
-} 
+}

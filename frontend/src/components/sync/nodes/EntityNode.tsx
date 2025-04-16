@@ -46,4 +46,4 @@ export const EntityNode = memo(({ data, selected, ...props }: NodeProps) => {
   );
 });
 
-EntityNode.displayName = "EntityNode"; 
+EntityNode.displayName = "EntityNode";

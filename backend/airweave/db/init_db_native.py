@@ -5,8 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.core.constants.native_connections import (
     NATIVE_NEO4J_UUID,
+    NATIVE_QDRANT_UUID,
     NATIVE_TEXT2VEC_UUID,
-    NATIVE_WEAVIATE_UUID,
 )
 from airweave.core.shared_models import ConnectionStatus, IntegrationType
 from airweave.models.connection import Connection
@@ -16,7 +16,7 @@ async def init_db_with_native_connections(db: AsyncSession) -> None:
     """Initialize the database with native connections.
 
     Creates the three built-in connections for:
-    - weaviate_native (vector database destination)
+    - qdrant_native (vector database destination)
     - neo4j_native (graph database destination)
     - local_text2vec (embedding model)
 
@@ -24,11 +24,11 @@ async def init_db_with_native_connections(db: AsyncSession) -> None:
     """
     # Check if connections already exist to avoid duplication on restarts
     native_connections = {
-        "weaviate_native": {
-            "id": NATIVE_WEAVIATE_UUID,
-            "name": "Native Weaviate",
+        "qdrant_native": {
+            "id": NATIVE_QDRANT_UUID,
+            "name": "Native Qdrant",
             "integration_type": IntegrationType.DESTINATION,
-            "short_name": "weaviate_native",
+            "short_name": "qdrant_native",
             "status": ConnectionStatus.ACTIVE,
         },
         "neo4j_native": {

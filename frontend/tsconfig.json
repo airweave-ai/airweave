@@ -1,13 +1,19 @@
 {
   "files": [],
   "references": [
-    { "path": "./tsconfig.app.json" },
-    { "path": "./tsconfig.node.json" }
+    {
+      "path": "./tsconfig.app.json"
+    },
+    {
+      "path": "./tsconfig.node.json"
+    }
   ],
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": [
+        "./src/*"
+      ]
     },
     "noImplicitAny": false,
     "noUnusedParameters": false,
@@ -16,9 +22,14 @@
     "noUnusedLocals": false,
     "strictNullChecks": false,
     "jsx": "preserve",
+    "module": "ESNext",
     "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
-    "lib": ["DOM", "DOM.Iterable", "ESNext"]
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ESNext"
+    ]
   }
 }

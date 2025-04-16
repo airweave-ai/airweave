@@ -83,7 +83,7 @@ export const dataSources: DataSource[] = [
     short_name: "facebook",
     description: "Sync your Facebook content",
     class_name: "FacebookSource",
-    auth_type: AuthType.OAUTH2_WITH_REFRESH,  
+    auth_type: AuthType.OAUTH2_WITH_REFRESH,
   },
   {
     id: "gmail",

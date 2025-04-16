@@ -85,16 +85,13 @@ class SearchService:
             # Initialize destination class
             destination_class = resource_locator.get_destination(destination_model)
             # TODO: Add a step to get the embedding model from the sync
-            destination = await destination_class.create(
-                sync_id=sync_id,
-                embedding_model=LocalText2Vec(),  # Default model
-            )
+            embedding_model = LocalText2Vec()
+
+            vector = await embedding_model.embed(query)
+            destination = await destination_class.create(sync_id=sync_id)
 
             # Perform search
-            results = await destination.search_for_sync_id(
-                query_text=query,
-                sync_id=sync_id,
-            )
+            results = await destination.search(vector)
 
             return results
 

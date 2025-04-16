@@ -68,7 +68,7 @@ const Destinations = () => {
       if (!resp.ok) throw new Error("Failed to fetch destinations");
       const data = await resp.json();
       setConnections(data);
-      
+
       // Fetch details for each connection
       data.forEach((conn: Connection) => {
         fetchDestinationDetails(conn.short_name);

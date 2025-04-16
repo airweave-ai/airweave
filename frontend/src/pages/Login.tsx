@@ -20,7 +20,7 @@ const Login = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     try {
       // Store email in localStorage
       localStorage.setItem("user", email);
@@ -81,18 +81,18 @@ const Login = () => {
           </form>
         </CardContent>
       </Card>
-      
+
       <div className="mt-8 text-sm text-muted-foreground">
         <div className="flex gap-4 justify-center">
-          <a 
-            href="/privacy" 
+          <a
+            href="/privacy"
             className="hover:text-primary transition-colors"
           >
             Privacy Policy
           </a>
           <span>•</span>
-          <a 
-            href="/terms" 
+          <a
+            href="/terms"
             className="hover:text-primary transition-colors"
           >
             Terms of Use

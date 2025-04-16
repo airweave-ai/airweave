@@ -16,7 +16,7 @@ class BaseDestination(ABC):
     _labels: ClassVar[List[str]] = []
 
     @abstractmethod
-    async def create(self, user: schemas.User) -> None:
+    async def create(self, sync_id: UUID) -> "BaseDestination":
         """Create a new destination."""
         pass
 
@@ -51,7 +51,7 @@ class BaseDestination(ABC):
         pass
 
     @abstractmethod
-    async def search_for_sync_id(self, sync_id: UUID) -> None:
+    async def search(self, query_vector: list[float]) -> None:
         """Search for a sync_id in the destination."""
         pass
 

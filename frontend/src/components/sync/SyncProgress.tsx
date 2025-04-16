@@ -11,7 +11,7 @@ import { format } from "date-fns";
  * Four key metrics as per pubsub:
  * - inserted
  * - updated
- * - already_sync (we'll call it "kept")
+ * - kept
  * - deleted
  */
 
@@ -32,7 +32,7 @@ export const SyncProgress = ({ syncId, syncJobId, onClose, isLive = false, start
   // Compute our four values
   const inserted = latestUpdate?.inserted || 0;
   const updated = latestUpdate?.updated || 0;
-  const kept = latestUpdate?.already_sync || 0;
+  const kept = latestUpdate?.kept || 0;
   const deleted = latestUpdate?.deleted || 0;
 
   // Calculate total for normalized bar
