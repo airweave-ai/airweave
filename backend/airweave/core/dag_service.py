@@ -1,7 +1,7 @@
 """DAG service."""
 
 from collections import Counter
-from typing import Dict, List, Set, Tuple, Type
+from typing import Any, Dict, List, Set, Tuple, Type
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException
@@ -25,37 +25,13 @@ class DagService:
         current_user: schemas.User,
         uow: UnitOfWork,
     ) -> schemas.SyncDag:
-        """Create an initial DAG with source, entities, and destination.
-
-        Args:
-        ----
-            db (AsyncSession): The database session.
-            sync_id (UUID): The ID of the sync to create the DAG for.
-            current_user (schemas.User): The current user.
-            uow (UnitOfWork): The unit of work.
-
-        Returns:
-        -------
-            schemas.SyncDag: The created DAG.
-        """
-        # Get sync and validate
+        """Create an initial DAG with source, entities, and destination."""
         sync = await self._get_and_validate_sync(db, sync_id, current_user)
-
-        # Get file chunker transformer
         file_chunker = await self._get_file_chunker(db)
-
-        # Get source connection and entity definitions
-        (
-            source,
-            source_connection,
-            entity_definitions,
-        ) = await self._get_source_and_entity_definitions(db, sync, current_user)
-
-        # Get or create destinations
-        (
-            destinations,
-            destination_connections,
-        ) = await self._get_destinations_and_destination_connections(db, sync, current_user)
+        source_data = await self._get_source_and_entity_definitions(db, sync, current_user)
+        source, source_connection, entity_definitions = source_data
+        dest_data = await self._get_destinations_and_destination_connections(db, sync, current_user)
+        destinations, destination_connections = dest_data
 
         # Initialize DAG components
         nodes: List[DagNodeCreate] = []
@@ -88,8 +64,6 @@ class DagService:
         """Create source and destination nodes for the DAG."""
         source_node_id = uuid4()
         destination_node_ids = []
-
-        # Add source node
         nodes.append(
             DagNodeCreate(
                 id=source_node_id,
@@ -98,14 +72,9 @@ class DagService:
                 connection_id=source_connection.id,
             )
         )
-
-        # Add destination nodes - create a unique ID for each destination
-        for destination, destination_connection in zip(
-            destinations, destination_connections, strict=True
-        ):
+        for destination, destination_connection in zip(destinations, destination_connections, strict=True):
             dest_node_id = uuid4()
             destination_node_ids.append(dest_node_id)
-
             nodes.append(
                 DagNodeCreate(
                     id=dest_node_id,
@@ -114,7 +83,6 @@ class DagService:
                     connection_id=destination_connection.id,
                 )
             )
-
         return source_node_id, destination_node_ids
 
     async def _process_all_entity_definitions(
@@ -132,17 +100,14 @@ class DagService:
         for entity_definition_id, entity_data in entity_definitions.items():
             if entity_definition_id in processed_entity_ids:
                 continue
-
             processed_entity_ids.add(entity_definition_id)
             entity_class = entity_data["entity_class"]
             entity_definition = entity_data["entity_definition"]
 
-            # Handle file entities
             if issubclass(entity_class, FileEntity):
                 destination_node_id = destination_node_ids[0] if destination_node_ids else None
                 if not destination_node_id:
                     raise ValueError("No destination node ID available for file entity processing")
-
                 await self._process_file_entity(
                     db=db,
                     entity_class=entity_class,
@@ -154,7 +119,6 @@ class DagService:
                     edges=edges,
                     processed_entity_ids=processed_entity_ids,
                 )
-            # Handle regular entities
             else:
                 await self._process_regular_entity(
                     entity_definition_id,
@@ -208,26 +172,26 @@ class DagService:
         """Create and save the DAG with nodes and edges."""
         sync_dag_create = SyncDagCreate(
             name=f"DAG for {sync.name}",
-            sync_id=sync_id,
+            sync_id=sync.id,
             nodes=nodes,
             edges=edges,
         )
-
         try:
             from airweave.core.logging import logger
-
             logger.info(
-                f"Creating DAG for sync {sync.name} with {len(nodes)} nodes and {len(edges)} edges"
+                f"Creating DAG for sync {sync.name} with {len(nodes)} nodes "
+                f"and {len(edges)} edges"
             )
-
             sync_dag = await crud.sync_dag.create_with_nodes_and_edges(
-                db, obj_in=sync_dag_create, current_user=current_user, uow=uow
+                db,
+                obj_in=sync_dag_create,
+                current_user=current_user,
+                uow=uow,
             )
             logger.info(f"Successfully created DAG with ID {sync_dag.id}")
             return schemas.SyncDag.model_validate(sync_dag, from_attributes=True)
         except Exception as e:
             from airweave.core.logging import logger
-
             logger.error(f"Error creating DAG: {e}")
 
             self._log_dag_errors(nodes, edges)
@@ -266,17 +230,14 @@ class DagService:
         """Get and validate that the sync exists.
 
         Args:
-        ----
             db (AsyncSession): The database session.
             sync_id (UUID): The ID of the sync to get.
             current_user (schemas.User): The current user.
 
         Returns:
-        -------
             schemas.Sync: The sync.
 
         Raises:
-        ------
             Exception: If the sync is not found.
         """
         sync = await crud.sync.get(db, id=sync_id, current_user=current_user, with_connections=True)
@@ -327,18 +288,15 @@ class DagService:
         """Get or create destinations and destination connections.
 
         Args:
-        ----
             db (AsyncSession): The database session.
             sync (schemas.Sync): The sync to get the destinations and destination connections for.
             current_user (schemas.User): The current user.
 
         Returns:
-        -------
             Tuple[List[schemas.Destination], List[schemas.Connection]]: The destinations and
                 destination connections.
 
         Raises:
-        ------
             HTTPException: If a destination or destination connection is not found.
         """
         # Initialize lists
@@ -471,12 +429,10 @@ class DagService:
         """Get the parent and chunk entity classes for a given entity definition.
 
         Args:
-        ----
             entity_definition (schemas.EntityDefinition): The entity definition to get the parent
                 and chunk entity classes for.
 
         Returns:
-        -------
             tuple[Type[ParentEntity], Type[ChunkEntity]]: The parent and chunk entity classes.
         """
         entity_class = resource_locator.get_entity_definition(entity_definition)
@@ -488,12 +444,10 @@ class DagService:
         """Get the entity definition for a given entity class.
 
         Args:
-        ----
             db (AsyncSession): The database session.
             entity_class (Type[BaseEntity]): The entity class to get the entity definition for.
 
         Returns:
-        -------
             schemas.EntityDefinition: The entity definition.
         """
         entity_definition = await crud.entity_definition.get_by_entity_class_name(

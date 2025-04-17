@@ -68,7 +68,7 @@ class Connection(Base):
         lazy="noload",
     )
 
-    __table_args__ = (
+__table_args__ = (
         # Enforce that organization_id, created_by_email, and modified_by_email are not null
         # except for the specific native connections
         CheckConstraint(

@@ -2,6 +2,7 @@
 
 from fastapi.openapi.utils import get_openapi
 import json
+from airweave.main import app
 import os
 import sys
 from pathlib import Path
@@ -13,9 +14,6 @@ backend_dir = project_root / "backend"
 # Add backend to Python path
 sys.path.append(str(backend_dir))
 os.chdir(backend_dir)  # Change working directory to backend
-
-from airweave.main import app
-
 
 def generate_openapi():
     """Generate OpenAPI schema for Airweave API."""

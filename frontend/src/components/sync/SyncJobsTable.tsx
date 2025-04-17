@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { format } from "date-fns";
 import { apiClient } from "@/lib/api";
 import { DataTable, Column } from "@/components/ui/data-table";
@@ -27,6 +27,10 @@ export const SyncJobsTable: React.FC<SyncJobsTableProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
 
+  const handleRowClick = useCallback((jobId: string) => {
+    onJobSelect(jobId);
+  }, [onJobSelect]);
+
   useEffect(() => {
     const fetchJobs = async () => {
       setIsLoading(true);
@@ -34,7 +38,23 @@ export const SyncJobsTable: React.FC<SyncJobsTableProps> = ({
         const response = await apiClient.get(`/sync/${syncId}/jobs`);
         const data: SyncJob[] = await response.json();
         setJobs(data);
+<<<<<<< HEAD
+
+        // Estimate pagination info
+        const isLastPage = data.length < pagination.pageSize;
+        const estimatedTotalItems = isLastPage
+          ? pagination.pageIndex * pagination.pageSize + data.length
+          : (pagination.pageIndex + 1) * pagination.pageSize + 1;
+
+        setPaginationInfo({
+          pageCount: isLastPage ? pagination.pageIndex + 1 : pagination.pageIndex + 2,
+          totalItems: estimatedTotalItems
+        });
+
+        onTotalRunsChange?.(estimatedTotalItems);
+=======
         onTotalRunsChange?.(data.length);
+>>>>>>> upstream/main
       } catch (error) {
         console.error("Error fetching sync jobs:", error);
       } finally {
@@ -100,7 +120,6 @@ export const SyncJobsTable: React.FC<SyncJobsTableProps> = ({
           </p>
         </div>
       </div>
-
       <DataTable
         data={filteredJobs}
         columns={columns}
@@ -108,7 +127,12 @@ export const SyncJobsTable: React.FC<SyncJobsTableProps> = ({
         searchPlaceholder="Search by status..."
         searchValue={search}
         onSearchChange={setSearch}
+<<<<<<< HEAD
+        onRowClick={(job) => handleRowClick(job.id)}
+        onPaginationChange={setPagination}
+=======
         onRowClick={(job) => onJobSelect(job.id)}
+>>>>>>> upstream/main
         emptyMessage="No sync jobs found"
       />
     </div>

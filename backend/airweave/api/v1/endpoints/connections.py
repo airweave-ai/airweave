@@ -533,8 +533,10 @@ async def send_oauth2_white_label_code(
                 # Create sync for the connection
                 sync_in = schemas.SyncBase(
                     name=(
+
                         f"Sync for {connection_schema.name} from white label"
                         f" {white_label_schema.name}"
+
                     ),
                     source_connection_id=connection_schema.id,
                     destination_connection_ids=[NATIVE_QDRANT_UUID],
