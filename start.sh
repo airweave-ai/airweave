@@ -1,60 +1,57 @@
 #!/bin/bash
 
-set -x  # Enable debug mode to see what's happening
+set -euo pipefail
+trap 'echo -e "\n🛑 Interrupted. Exiting..."; exit 1' INT
 
-# Check if .env exists, if not create it from example
-if [ ! -f .env ]; then
-    echo "Creating .env file from example..."
-    cp .env.example .env
-    echo ".env file created"
-fi
+# Enable debug mode to see what's happening, run DEBUG=true ./start.sh
+[ "${DEBUG:-}" = "true" ] && set -x
 
-# Generate new encryption key regardless of existing value
-echo "Generating new encryption key..."
+echo -e "Starting the Airweave Engine..."
+
+# Create .env if it doesn't exist
+# Create .env if it doesn't exist
+[ -f .env ] || {
+  echo -e "Creating .env from .env.example..."
+  cp .env.example .env
+  echo -e "✅ .env created"
+}
+
+# Update ENCRYPTION_KEY
 NEW_KEY=$(openssl rand -base64 32)
-echo "Generated key: $NEW_KEY"
-
-# Remove any existing ENCRYPTION_KEY line and create clean .env
-grep -v "^ENCRYPTION_KEY=" .env > .env.tmp
+grep -v "^ENCRYPTION_KEY=" .env > .env.tmp || true
+echo -e "ENCRYPTION_KEY=\"$NEW_KEY\"" >> .env.tmp
 mv .env.tmp .env
+echo -e "🔐 ENCRYPTION_KEY set."
 
-# Add the new encryption key at the end of the file
-echo "ENCRYPTION_KEY=\"$NEW_KEY\"" >> .env
+# Ask for OpenAI API key if not already present or empty
+OPENAI_KEY_LINE=$(grep "^OPENAI_API_KEY=" .env || true)
+OPENAI_KEY_VALUE="${OPENAI_KEY_LINE#*=}"
 
-echo "Updated .env file. Current ENCRYPTION_KEY value:"
-grep "^ENCRYPTION_KEY=" .env
+if [[ -z "$OPENAI_KEY_VALUE" ]]; then
+  echo -e "\nOpenAI API key is required for files and natural language search."
+  echo -e "📝 You can add it later in your .env file manually."
+  read -p "Would you like to add your OPENAI_API_KEY now? (y/n): " ADD_KEY
 
-# Ask for OpenAI API key
-echo ""
-echo "OpenAI API key is required for files and natural language search functionality."
-read -p "Would you like to add your OPENAI_API_KEY now? You can also do this later by editing the .env file manually. (y/n): " ADD_OPENAI_KEY
-
-if [ "$ADD_OPENAI_KEY" = "y" ] || [ "$ADD_OPENAI_KEY" = "Y" ]; then
+  if [[ "$ADD_KEY" =~ ^[Yy]$ ]]; then
     read -p "Enter your OpenAI API key: " OPENAI_KEY
-
-    # Remove any existing OPENAI_API_KEY line
-    grep -v "^OPENAI_API_KEY=" .env > .env.tmp
+    grep -v "^OPENAI_API_KEY=" .env > .env.tmp || true
+    echo -e "OPENAI_API_KEY=\"$OPENAI_KEY\"" >> .env.tmp
     mv .env.tmp .env
-
-    # Add the new OpenAI API key
-    echo "OPENAI_API_KEY=\"$OPENAI_KEY\"" >> .env
-    echo "OpenAI API key added to .env file."
+    echo -e "✅ OPENAI_API_KEY added."
+  fi
 else
-    echo "You can add your OPENAI_API_KEY later by editing the .env file manually."
-    echo "Add the following line to your .env file:"
-    echo "OPENAI_API_KEY=\"your-api-key-here\""
+  echo -e "🔑 OPENAI_API_KEY is already set."
 fi
 
-# Check if "docker compose" is available (Docker Compose v2)
-if docker compose version >/dev/null 2>&1; then
-  COMPOSE_CMD="docker compose"
-# Else, fall back to "docker-compose" (Docker Compose v1)
-elif docker-compose --version >/dev/null 2>&1; then
+# Determine docker compose command
+COMPOSE_CMD="docker compose"
+docker compose version >/dev/null 2>&1 || {
   COMPOSE_CMD="docker-compose"
-else
-  echo "Neither 'docker compose' nor 'docker-compose' found. Please install Docker Compose."
-  exit 1
-fi
+  docker-compose --version >/dev/null 2>&1 || {
+    echo -e "❌ Docker Compose not found."
+    exit 1
+  }
+}
 
 # Add this block: Check if Docker daemon is running
 if ! docker info > /dev/null 2>&1; then
@@ -62,30 +59,30 @@ if ! docker info > /dev/null 2>&1; then
   exit 1
 fi
 
-echo "Using command: $COMPOSE_CMD"
-
 # Check for existing airweave containers
 EXISTING_CONTAINERS=$(docker ps -a --filter "name=airweave" --format "{{.Names}}" | tr '\n' ' ')
 
 if [ -n "$EXISTING_CONTAINERS" ]; then
-  echo "Found existing airweave containers: $EXISTING_CONTAINERS"
+  echo -e "Found existing airweave containers: $EXISTING_CONTAINERS"
   read -p "Would you like to remove them before starting? (y/n): " REMOVE_CONTAINERS
 
   if [ "$REMOVE_CONTAINERS" = "y" ] || [ "$REMOVE_CONTAINERS" = "Y" ]; then
-    echo "Removing existing containers..."
+    echo -e "Removing existing containers..."
     docker rm -f $EXISTING_CONTAINERS
 
     # Also remove the database volume
-    echo "Removing database volume..."
-    docker volume rm airweave_postgres_data
+    echo -e "Removing database volume..."
+    docker volume rm airweave_postgres_data 2>/dev/null || true
 
-    echo "Containers and volumes removed."
+    echo -e "🧹 Containers and volumes removed."
   else
-    echo "Warning: Starting with existing containers may cause conflicts."
+    echo -e "Warning: Starting with existing containers may cause conflicts."
   fi
 fi
 
 # Now run the appropriate Docker Compose command
+echo -e "\n🚀 Starting services with: $COMPOSE_CMD"
 $COMPOSE_CMD up -d
 
-echo "Services started! Frontend is available at http://localhost:8080"
+echo -e "\nServices started!"
+echo -e "Frontend is running at: http://localhost:8080"
