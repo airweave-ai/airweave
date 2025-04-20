@@ -214,5 +214,19 @@ integrations:
       access_type: "offline"
       prompt: "consent"
 
+  shopify:
+    auth_type: "oauth2_with_refresh_rotating"
+    url: "https://{shop}.myshopify.com/admin/oauth/authorize"
+    backend_url: "https://{shop}.myshopify.com/admin/oauth/access_token"
+    grant_type: "authorization_code"
+    client_id: "2be3f85d5a580468b9dddbf1fb71d545"
+    client_secret: "a7be30e50156f2d3e3ea6821396d5d15"
+    content_type: "application/x-www-form-urlencoded"
+    client_credential_location: "body"
+    scope: "read_products,write_products,read_orders,write_orders" # Adjust scopes as needed
+    additional_frontend_params:
+      response_mode: "query"
+      state: "YOUR_USER_BOUND_VALUE"
+
   qdrant:
     auth_type: "config_class"
