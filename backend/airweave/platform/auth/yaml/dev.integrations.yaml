@@ -214,5 +214,20 @@ integrations:
       access_type: "offline"
       prompt: "consent"
 
+  discord:
+    auth_type: "oauth2_with_refresh_rotating"
+    url: "https://discord.com/api/oauth2/authorize"
+    backend_url: "https://discord.com/api/oauth2/token"
+    grant_type: "authorization_code"
+    client_id: "1363378222296994022"
+    client_secret: "JMl65LwqXV6JOoXccOHLIYXUPjd1ORKT"
+    content_type: "application/x-www-form-urlencoded"
+    client_credential_location: "body"
+    scope: "identify email guilds connections"
+    additional_frontend_params:
+      response_mode: "query"
+      state: "YOUR_USER_BOUND_VALUE"
+      prompt: "consent"
+
   qdrant:
     auth_type: "config_class"
