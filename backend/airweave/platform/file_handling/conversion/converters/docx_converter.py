@@ -127,7 +127,7 @@ class DocxConverter(DocumentConverter):
             return result.value
 
     async def _convert_with_pandoc(self, local_path: str) -> str:
-        """Convert DOCX using pandoc.
+        """Convert DOCX file to markdown using pandoc.
 
         Args:
             local_path: Path to the DOCX file
