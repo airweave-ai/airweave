@@ -214,5 +214,20 @@ integrations:
       access_type: "offline"
       prompt: "consent"
 
+  pipedrive:
+    auth_type: "oauth2_with_refresh_rotating"
+    url: "https://oauth.pipedrive.com/oauth/authorize"
+    backend_url: "https://oauth.pipedrive.com/oauth/token"
+    grant_type: "authorization_code"
+    client_id: "c6617173aa817498"
+    client_secret: "ee2989cf86a8a8e7191724addf85c962d8885bfe"
+    content_type: "application/x-www-form-urlencoded"
+    client_credential_location: "body"
+    scope: "deals:full activities:full contacts:full"
+    additional_frontend_params:
+      redirect_uri: "https://myapp.com/pipedrive/oauth/callback"
+      response_type: "code"
+      state: "user123_secure_random_state_456"
+
   qdrant:
     auth_type: "config_class"
