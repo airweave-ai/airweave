@@ -15,6 +15,7 @@ from airweave.platform.auth.schemas import (
     OAuth2Settings,
     OAuth2WithRefreshRotatingSettings,
     OAuth2WithRefreshSettings,
+    SigV4Settings,
     TrelloAuthSettings,
 )
 
@@ -62,6 +63,7 @@ class IntegrationSettings:
             AuthType.oauth2_with_refresh_rotating: OAuth2WithRefreshRotatingSettings,
             AuthType.native_functionality: NativeFunctionalityAuthSettings,
             AuthType.config_class: ConfigClassAuthSettings,
+            AuthType.sigv4: SigV4Settings,
             AuthType.none: None,
         }
         model = mapping.get(auth_type)

@@ -39,6 +39,7 @@ openai = "^1.10.0"
 mistralai = "^1.7.0"
 chonkie = {extras = ["semantic"], version = "^1.0.3"}
 tiktoken = "^0.5.1"
+aioboto3 = "^14.1.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"

@@ -215,12 +215,12 @@ integrations:
       prompt: "consent"
 
   aws_s3:
-    auth_type: "SigV4"
+    auth_type: "sigv4"
     region: "us-east-1"
     bucket: "airweave-integration"
-    aws_access_key_id: "AKIA5X3Q4Z2J6F7G3K2A"
-    aws_secret_access_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
-    aws_session_token: "AQoEXAMPLEH4aoAH0gNCAPy..."
+    access_key_id: "AKIA5X3Q4Z2J6F7G3K2A"
+    secret_access_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+    session_token: "AQoEXAMPLEH4aoAH0gNCAPy..."
 
   qdrant:
     auth_type: "config_class"
