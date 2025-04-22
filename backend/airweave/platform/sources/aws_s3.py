@@ -23,7 +23,7 @@ from airweave.platform.sources._base import BaseSource
     "AWS S3",
     "aws_s3",
     AuthType.sigv4,
-    "airweave.platform.configs.sigv4.AWSAuthConfig",
+    "SigV4AuthConfig",
     labels=["File Storage"],
 )
 class S3Source(BaseSource):
