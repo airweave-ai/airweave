@@ -17,7 +17,11 @@ depends_on = None
 
 
 def upgrade():
-    pass
+    """
+    Add new enum value: auth_type='sigv4
+    @author: Ton Hoang Nguyen (Bill), GitHub: @hahabill
+    """
+    op.execute("ALTER TYPE authtype ADD VALUE IF NOT EXISTS 'sigv4';")
 
 
 def downgrade():
