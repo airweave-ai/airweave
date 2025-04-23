@@ -11,6 +11,9 @@ RUN npm install && npm ci
 # Copy application code
 COPY . .
 
+# Fix for module resolution during build
+ENV NODE_PATH=/app/src
+
 # Build the application
 RUN npm run build
 
