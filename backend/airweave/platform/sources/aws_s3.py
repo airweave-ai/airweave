@@ -50,7 +50,6 @@ class S3Source(BaseSource):
             aws_session_token=session_token,
             region_name=region,
         )
-        print(f"Creating a client...: {access_key_id} {secret_access_key} {session_token}")
         client = session.client("s3")
         instance = cls()
         instance.client = client
