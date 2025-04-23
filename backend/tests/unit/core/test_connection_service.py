@@ -205,7 +205,7 @@ class TestConnectionService:
         connection_service._get_integration_by_type.assert_called_once_with(
             mock_uow.session, integration_type, short_name
         )
-        mock_locator.get_auth_config.assert_called_once_with("TestAuthConfig")
+        mock_locator.get_auth_config.assert_called_once_with("TestAuthConfig", "config_class")
         mock_auth_config_class.assert_called_once_with(**config_fields)
         mock_credentials.encrypt.assert_called_once_with(mock_auth_config.model_dump())
 
