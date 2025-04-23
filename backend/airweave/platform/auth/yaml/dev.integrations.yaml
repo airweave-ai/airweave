@@ -214,5 +214,22 @@ integrations:
       access_type: "offline"
       prompt: "consent"
 
+  salesforce:
+    auth_type: "oauth2_with_refresh"
+    url: "https://login.salesforce.com/services/oauth2/authorize"
+    backend_url: "https://login.salesforce.com/services/oauth2/token"
+    grant_type: "authorization_code"
+    client_id: "3MVG9bZIBBVRES4GinDHnDhdw_Hr236iX280B7TZAkI8svDB9672YbB.O9FQr.rzYIFVLqYxqHbPzjedU7ve."
+    client_secret: "6D1DAF3E0675471E146CE3BFA44E8B2E41C1A782C5AA49A1ACD17A6DBF676A51"
+    content_type: "application/x-www-form-urlencoded"
+    client_credential_location: "body"
+    scope: "api refresh_token offline_access"
+    additional_frontend_params:
+      redirect_uri: "https://myapp.com/salesforce/oauth/callback"
+      access_type: "offline"
+      prompt: "consent"
+      response_type: "code"
+      state: "user456_secure_random_state_789"
+
   qdrant:
     auth_type: "config_class"
