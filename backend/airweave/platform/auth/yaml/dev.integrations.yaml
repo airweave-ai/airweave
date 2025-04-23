@@ -214,5 +214,22 @@ integrations:
       access_type: "offline"
       prompt: "consent"
 
+  zohocrm:
+    auth_type: "oauth2_with_refresh"
+    url: "https://accounts.zoho.com/oauth/v2/auth"
+    backend_url: "https://accounts.zoho.com/oauth/v2/token"
+    grant_type: "authorization_code"
+    client_id: "1000.VWSWAGCMXPXFJZ2Q4UUVIF6PJ2I34C"
+    client_secret: "e98c2f8605d0f11971bc452c15779f2cd73c8de3bd"
+    content_type: "application/x-www-form-urlencoded"
+    client_credential_location: "body"
+    scope: "ZohoCRM.modules.ALL ZohoCRM.notes.ALL"
+    additional_frontend_params:
+      redirect_uri: "https://myapp.com/zohocrm/oauth/callback"
+      access_type: "offline"
+      prompt: "consent"
+      response_type: "code"
+      state: "user789_secure_random_state_123"
+
   qdrant:
     auth_type: "config_class"
