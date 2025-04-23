@@ -35,7 +35,9 @@ async def read_source(
     if not source:
         raise HTTPException(status_code=404, detail="Source not found")
     if source.auth_config_class:
-        auth_config_class = resource_locator.get_auth_config(source.auth_config_class)
+        auth_config_class = resource_locator.get_auth_config(
+            source.auth_config_class, source.auth_type
+        )
         fields = Fields.from_config_class(auth_config_class)
         source_with_config_fields = schemas.SourceWithConfigFields.model_validate(
             source, from_attributes=True

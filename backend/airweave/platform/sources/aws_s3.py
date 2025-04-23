@@ -37,19 +37,20 @@ class S3Source(BaseSource):
     @classmethod
     async def create(
         cls,
-        aws_access_key_id: str,
-        aws_secret_access_key: str,
-        aws_session_token: Optional[str],
+        access_key_id: str,
+        secret_access_key: str,
+        session_token: Optional[str],
         region: str,
         bucket: str,
     ) -> "S3Source":
         """Initialize the boto3 client with provided credentials and settings."""
         session = aioboto3.Session(
-            aws_access_key_id=aws_access_key_id,
-            aws_secret_access_key=aws_secret_access_key,
-            aws_session_token=aws_session_token,
+            aws_access_key_id=access_key_id,
+            aws_secret_access_key=secret_access_key,
+            aws_session_token=session_token,
             region_name=region,
         )
+        print(f"Creating a client...: {access_key_id} {secret_access_key} {session_token}")
         client = session.client("s3")
         instance = cls()
         instance.client = client

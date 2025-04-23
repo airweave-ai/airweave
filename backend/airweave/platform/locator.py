@@ -1,9 +1,10 @@
 """Resource locator for platform resources."""
 
 import importlib
-from typing import Callable, Type
+from typing import Callable, Optional, Type
 
 from airweave import schemas
+from airweave.platform.auth.schemas import AuthType
 from airweave.platform.configs._base import BaseConfig
 from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.embedding_models._base import BaseEmbeddingModel
@@ -64,18 +65,31 @@ class ResourceLocator:
         return getattr(module, destination.class_name)
 
     @staticmethod
-    def get_auth_config(auth_config_class: str) -> Type[BaseConfig]:
+    def get_auth_config(
+        auth_config_class: str, auth_type: Optional[str] = None
+    ) -> Type[BaseConfig]:
         """Get the auth config class.
 
         Args:
             auth_config_class (str): Auth config class name
+            auth_type (Optional[str]): Auth config class type
 
         Returns:
             Type[BaseConfig]: Auth config class
         """
-        module = importlib.import_module(f"{PLATFORM_PATH}.configs.auth")
-        auth_config_class = getattr(module, auth_config_class)
-        return auth_config_class
+        match auth_type:
+            case AuthType.sigv4:
+                module = importlib.import_module(f"{PLATFORM_PATH}.configs.sigv4")
+                auth_config_class = getattr(module, auth_config_class)
+                return auth_config_class
+            case AuthType.config_class:
+                module = importlib.import_module(f"{PLATFORM_PATH}.configs.auth")
+                auth_config_class = getattr(module, auth_config_class)
+                return auth_config_class
+            case _:
+                module = importlib.import_module(f"{PLATFORM_PATH}.configs.auth")
+                auth_config_class = getattr(module, auth_config_class)
+                return auth_config_class
 
     @staticmethod
     def get_transformer(transformer: schemas.Transformer) -> Callable:
