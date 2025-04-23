@@ -214,5 +214,22 @@ integrations:
       access_type: "offline"
       prompt: "consent"
 
+  freshdesk:
+    auth_type: "oauth2_with_refresh"
+    url: "https://subdomain.freshdesk.com/oauth/authorize"
+    backend_url: "https://subdomain.freshdesk.com/oauth/token"
+    grant_type: "authorization_code"
+    client_id: "fw_ext_835069351254428440"
+    client_secret: "PQH4QB5Ab3XOjKcP0MEqNumsk1pCCrJG"
+    content_type: "application/x-www-form-urlencoded"
+    client_credential_location: "body"
+    scope: "read:tickets read:contacts read:conversations"
+    additional_frontend_params:
+      redirect_uri: "https://myapp.com/freshdesk/oauth/callback"
+      access_type: "offline"
+      prompt: "consent"
+      response_type: "code"
+      state: "user123_secure_random_state_456"
+
   qdrant:
     auth_type: "config_class"
