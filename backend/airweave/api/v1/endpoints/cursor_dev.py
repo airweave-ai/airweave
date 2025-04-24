@@ -11,9 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud, schemas
 from airweave.api import deps
 from airweave.core.shared_models import ConnectionStatus, IntegrationType
-from airweave.core.sync_service import sync_service
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.platform.auth.settings import integration_settings
+from airweave.platform.sync.service import sync_service
 
 router = APIRouter()
 

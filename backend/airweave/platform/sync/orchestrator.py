@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud, schemas
 from airweave.core.logging import logger
 from airweave.core.shared_models import SyncJobStatus
-from airweave.core.sync_job_service import sync_job_service
 from airweave.db.session import get_db_context
 from airweave.platform.entities._base import BaseEntity, DestinationAction
 from airweave.platform.sync.context import SyncContext
@@ -382,15 +381,11 @@ class SyncOrchestrator:
             # Process entity stream
             await self._process_entity_stream(source_node, sync_context)
 
-            # Use sync_job_service to update job status
-            await sync_job_service.update_status(
-                sync_job_id=sync_context.sync_job.id,
+            # Update job status
+            await self._update_sync_job_status(
+                sync_context=sync_context,
                 status=SyncJobStatus.COMPLETED,
-                current_user=sync_context.current_user,
                 completed_at=datetime.now(),
-                stats=sync_context.progress.stats.model_dump()
-                if hasattr(sync_context.progress, "stats")
-                else None,
             )
 
             return sync_context.sync
@@ -398,16 +393,12 @@ class SyncOrchestrator:
         except Exception as e:
             logger.error(f"Error during sync: {e}")
 
-            # Use sync_job_service to update job status
-            await sync_job_service.update_status(
-                sync_job_id=sync_context.sync_job.id,
+            # Update job status
+            await self._update_sync_job_status(
+                sync_context=sync_context,
                 status=SyncJobStatus.FAILED,
-                current_user=sync_context.current_user,
                 error=str(e),
                 failed_at=datetime.now(),
-                stats=sync_context.progress.stats.model_dump()
-                if hasattr(sync_context.progress, "stats")
-                else None,
             )
             raise
 
@@ -458,6 +449,53 @@ class SyncOrchestrator:
             await self.entity_processor.process(
                 entity=entity, source_node=source_node, sync_context=sync_context, db=db
             )
+
+    async def _update_sync_job_status(
+        self,
+        sync_context: SyncContext,
+        status: SyncJobStatus,
+        error: Optional[str] = None,
+        completed_at: Optional[datetime] = None,
+        failed_at: Optional[datetime] = None,
+    ) -> None:
+        """Update sync job status with progress statistics."""
+        try:
+            async with get_db_context() as db:
+                # Get DB model for sync job
+                db_sync_job = await crud.sync_job.get(db=db, id=sync_context.sync_job.id)
+
+                if not db_sync_job:
+                    logger.error(f"Sync job {sync_context.sync_job.id} not found")
+                    return
+
+                # Base update data
+                update_data = {
+                    "status": status,
+                    "stats": sync_context.progress.stats.model_dump(),
+                    "records_processed": sync_context.progress.stats.inserted,
+                    "records_updated": sync_context.progress.stats.updated,
+                    "records_deleted": sync_context.progress.stats.deleted,
+                }
+
+                # Add status-specific fields
+                if status == SyncJobStatus.COMPLETED and completed_at:
+                    update_data["completed_at"] = completed_at
+                elif status == SyncJobStatus.FAILED:
+                    if failed_at:
+                        update_data["failed_at"] = failed_at
+                    if error:
+                        update_data["error"] = error
+
+                # Update sync job
+                await crud.sync_job.update(
+                    db=db,
+                    db_obj=db_sync_job,
+                    obj_in=schemas.SyncJobUpdate(**update_data),
+                    current_user=sync_context.current_user,
+                )
+        except Exception as e:
+            # Log but don't raise
+            logger.error(f"Failed to update sync job status: {e}")
 
 
 # Singleton instance

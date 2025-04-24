@@ -106,11 +106,6 @@ const DashboardLayout = () => {
       href: "/settings",
       icon: Settings,
     },
-    {
-      name: "Profile",
-      href: "/profile",
-      icon: User,
-    },
   ];
 
   const NavLink = ({ item, isActive }: { item: typeof navigation[0], isActive: boolean }) => (

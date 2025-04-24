@@ -11,10 +11,10 @@ from airweave.api import deps
 from airweave.core.connection_service import connection_service
 from airweave.core.constants.native_connections import NATIVE_QDRANT_UUID
 from airweave.core.shared_models import SyncStatus
-from airweave.core.sync_service import sync_service
 from airweave.db.session import get_db_context
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models.integration_credential import IntegrationType
+from airweave.platform.sync.service import sync_service
 
 router = APIRouter()
 

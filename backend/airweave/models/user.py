@@ -3,12 +3,12 @@
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from airweave.models._base import OrganizationBase
 
 if TYPE_CHECKING:
-    pass
+    from airweave.models.organization import Organization
 
 
 class User(OrganizationBase):
@@ -21,3 +21,7 @@ class User(OrganizationBase):
     auth0_id: Mapped[str] = mapped_column(String, unique=True, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Define the relationship to Organization
+    # Note: In async context, we'll handle eager loading in the CRUD class
+    organization: Mapped["Organization"] = relationship("Organization", back_populates="users")

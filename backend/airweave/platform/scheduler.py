@@ -15,9 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud, schemas
 from airweave.core.logging import logger
 from airweave.core.shared_models import SyncJobStatus, SyncStatus
-from airweave.core.sync_service import sync_service
 from airweave.db.session import get_db_context
 from airweave.models.sync import Sync
+from airweave.platform.sync.service import sync_service
 
 
 def ensure_utc(dt: Optional[datetime]) -> Optional[datetime]:

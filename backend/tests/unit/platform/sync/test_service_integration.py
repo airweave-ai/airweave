@@ -10,7 +10,7 @@ from airweave import schemas
 from airweave.core.shared_models import SyncJobStatus
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.platform.sync.context import SyncContext
-from airweave.core.sync_service import SyncService
+from airweave.platform.sync.service import SyncService
 
 
 @pytest.fixture

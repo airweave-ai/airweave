@@ -1,7 +1,7 @@
 import { env } from '../config/env';
 
 // Define a token provider interface
-export interface TokenProvider {
+interface TokenProvider {
   getToken: () => Promise<string | null>;
   clearToken?: () => void;
   isReady?: () => boolean;

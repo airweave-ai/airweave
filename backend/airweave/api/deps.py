@@ -39,13 +39,19 @@ async def get_user(
 
     """
     # For test environments or when auth is disabled, use the first superuser
-    if not settings.AUTH_ENABLED or auth0_user is None:
+    if not settings.AUTH_ENABLED:
         user = await crud.user.get_by_email(db, email=settings.FIRST_SUPERUSER)
         return schemas.User.model_validate(user)
 
     if auth0_user:
         user = await crud.user.get_by_email(db, email=auth0_user.email)
         return schemas.User.model_validate(user)
+
+    if x_api_key:
+        user = await crud.user.get_by_api_key(db, api_key=x_api_key)
+        return schemas.User.model_validate(user)
+
+    raise HTTPException(status_code=401, detail="Unauthorized, no user was found")
 
 
 async def get_user_from_api_key(db: AsyncSession, api_key: str) -> schemas.User:

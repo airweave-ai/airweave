@@ -12,9 +12,9 @@ from airweave import crud, schemas
 from airweave.api import deps
 from airweave.core.config import settings
 from airweave.core.logging import logger
-from airweave.core.sync_service import sync_service
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.platform.sync.pubsub import sync_pubsub
+from airweave.platform.sync.service import sync_service
 
 router = APIRouter()
 

@@ -45,9 +45,6 @@ jobs:
           PROJECT_NAME: airweave
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }} # Used for e2e sync tests
-          DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
-          GDRIVE_REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
-          ASANA_REFRESH_TOKEN: ${{ secrets.ASANA_REFRESH_TOKEN }}
 
         run: |
           cd backend

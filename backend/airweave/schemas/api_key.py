@@ -1,6 +1,6 @@
 """APIKey schema."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
@@ -19,8 +19,9 @@ class APIKeyBase(BaseModel):
 class APIKeyCreate(BaseModel):
     """Schema for creating an APIKey object."""
 
-    expiration_date: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc) + timedelta(days=180)
+    expiration_date: Optional[datetime] = Field(
+        default=None,  # Let the backend handle the default
+        description="Expiration date for the API key, defaults to 180 days from now",
     )
 
     @model_validator(mode="before")
@@ -53,7 +54,7 @@ class APIKeyCreate(BaseModel):
         return values
 
     @field_validator("expiration_date")
-    def check_expiration_date(cls, v: datetime) -> datetime:
+    def check_expiration_date(cls, v: Optional[datetime]) -> Optional[datetime]:
         """Validate the expiration date.
 
         Args:
@@ -69,6 +70,9 @@ class APIKeyCreate(BaseModel):
             datetime: The expiration date.
 
         """
+        if v is None:
+            return None
+
         now = datetime.now(timezone.utc)
         if v < now:
             raise ValueError("Expiration date cannot be in the past.")
@@ -98,10 +102,10 @@ class APIKeyInDBBase(APIKeyBase):
 
     id: UUID
     key_prefix: str
-    organization: Optional[UUID]
+    organization: UUID  # Changed from Optional[UUID] to UUID
     created_at: datetime
     modified_at: datetime
-    last_used_date: Optional[datetime]
+    last_used_date: Optional[datetime] = None
     expiration_date: datetime
     created_by_email: EmailStr
     modified_by_email: EmailStr

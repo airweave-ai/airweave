@@ -69,7 +69,7 @@ export function ChatMessage({ role, content, attachments }: ChatMessageProps) {
             {renderedContent}
           </ReactMarkdown>
         ) : (
-          <p className="text-gray-500 dark:text-gray-400">Empty message</p>
+          <p className="text-gray-500 dark:text-gray-400"></p>
         )}
       </div>
       {attachments?.length > 0 && (

@@ -26,7 +26,7 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -39,7 +39,7 @@ services:
       ENABLE_CUDA: 0
       WORKERS_PER_NODE: 1
     healthcheck:
-      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:8080/health" ]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -52,7 +52,7 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:6333/healthz" ]
+      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -84,14 +84,13 @@ services:
       - FIRST_SUPERUSER=admin@example.com
       - FIRST_SUPERUSER_PASSWORD=admin
       - ENCRYPTION_KEY="SpgLrrEEgJ/7QdhSMSvagL1juEY5eoyCG0tZN7OSQV0="
-      - TEXT2VEC_INFERENCE_URL=http://text2vec-transformers:8080
 
     ports:
       - "9001:8001"
     volumes:
       - ../../../backend:/app
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8001/health" ]
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 5s
       timeout: 10s
       retries: 3

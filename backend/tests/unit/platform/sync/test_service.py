@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
 from airweave.db.unit_of_work import UnitOfWork
-from airweave.core.sync_service import SyncService, sync_service
+from airweave.platform.sync.service import SyncService, sync_service
 
 
 @pytest.fixture

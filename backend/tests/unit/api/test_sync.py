@@ -13,7 +13,7 @@ from airweave.api.v1.endpoints import sync
 from airweave.core.shared_models import ConnectionStatus, IntegrationType, SyncJobStatus
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.platform.sync.pubsub import sync_pubsub
-from airweave.core.sync_service import sync_service
+from airweave.platform.sync.service import sync_service
 
 # Fixtures are imported from tests/fixtures/common.py via conftest.py
 

@@ -12,6 +12,11 @@ export const CallbackPage = () => {
   const navigate = useNavigate();
   const [userSynced, setUserSynced] = useState<boolean>(false);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncAttempted, setSyncAttempted] = useState<boolean>(false);
+  const [retryCount, setRetryCount] = useState<number>(0);
+
+  // Max number of retries to prevent infinite loops
+  const MAX_RETRIES = 2;
 
   // Combine both loading states
   const isLoading = auth0Loading || authContextLoading;
@@ -19,7 +24,10 @@ export const CallbackPage = () => {
   // Create or update user in backend when authenticated
   useEffect(() => {
     const syncUser = async () => {
-      if (isAuthenticated && user && !userSynced && !isLoading) {
+      // Only attempt if authenticated, have user data, haven't synced, not loading,
+      // haven't reached max retries, and haven't already attempted
+      if (isAuthenticated && user && !userSynced && !isLoading && retryCount < MAX_RETRIES && !syncAttempted) {
+        setSyncAttempted(true);
         try {
           // Token is now managed by auth context
           const token = await getToken();
@@ -50,20 +58,43 @@ export const CallbackPage = () => {
             const errorText = await response.text();
             console.error("❌ Failed to create/update user:", errorText);
             setSyncError(`Failed to sync user data: ${response.status}`);
+
+            // Increment retry counter
+            setRetryCount(prevCount => prevCount + 1);
+
+            // Reset sync attempted flag after a delay to potentially retry
+            if (retryCount < MAX_RETRIES - 1) {
+              setTimeout(() => setSyncAttempted(false), 2000);
+            }
           }
         } catch (err) {
           console.error("❌ Error syncing user with backend:", err);
           setSyncError(err instanceof Error ? err.message : "Unknown error syncing user");
+
+          // Increment retry counter
+          setRetryCount(prevCount => prevCount + 1);
+
+          // Reset sync attempted flag after a delay to potentially retry
+          if (retryCount < MAX_RETRIES - 1) {
+            setTimeout(() => setSyncAttempted(false), 2000);
+          }
         }
       }
     };
 
     syncUser();
-  }, [isAuthenticated, user, userSynced, isLoading, getToken]);
+  }, [isAuthenticated, user, userSynced, isLoading, getToken, retryCount, syncAttempted]);
 
   // Handle navigation
   const goHome = () => navigate('/');
   const goLogin = () => navigate('/login');
+
+  // Attempt manual retry
+  const retrySync = () => {
+    if (retryCount < MAX_RETRIES) {
+      setSyncAttempted(false);
+    }
+  };
 
   // Show appropriate UI based on state
   if (isLoading) {
@@ -96,9 +127,17 @@ export const CallbackPage = () => {
             Your authentication has been completed successfully.
           </p>
           {syncError && (
-            <p className="text-red-500 mb-4">
+            <div className="text-red-500 mb-4">
               {syncError}
-            </p>
+              {retryCount >= MAX_RETRIES && (
+                <p className="mt-2">Max retries reached. You can continue, but some features may be limited.</p>
+              )}
+              {retryCount < MAX_RETRIES && !syncAttempted && (
+                <Button variant="outline" size="sm" className="mt-2" onClick={retrySync}>
+                  Retry Sync
+                </Button>
+              )}
+            </div>
           )}
           {userSynced && (
             <p className="text-green-500 mb-4">
@@ -111,7 +150,12 @@ export const CallbackPage = () => {
         {/* Small debug indicator */}
         <div className="fixed bottom-4 left-4 text-xs bg-gray-100 dark:bg-gray-800 p-2 rounded">
           Auth: {isAuthenticated ? "✅" : "❌"}
-          {isAuthenticated && <span className="ml-2">User: {userSynced ? "✅" : "❌"}</span>}
+          {isAuthenticated && (
+            <>
+              <span className="ml-2">User: {userSynced ? "✅" : "❌"}</span>
+              {retryCount > 0 && <span className="ml-2">Retries: {retryCount}/{MAX_RETRIES}</span>}
+            </>
+          )}
         </div>
       </div>
     );
