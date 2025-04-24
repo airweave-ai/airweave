@@ -89,7 +89,7 @@ class TestSyncServiceRun:
         mock_sync_result = MagicMock(spec=schemas.Sync)
 
         # Mock get_db_context
-        with patch("airweave.platform.sync.service.get_db_context") as mock_get_db_context:
+        with patch("airweave.core.sync_service.get_db_context") as mock_get_db_context:
             mock_get_db_context.return_value = mock_db_context
 
             # Mock SyncContextFactory.create
@@ -99,7 +99,7 @@ class TestSyncServiceRun:
                 mock_create_context.return_value = mock_sync_context
 
                 # Mock sync_orchestrator.run
-                with patch("airweave.platform.sync.service.sync_orchestrator.run") as mock_run:
+                with patch("airweave.core.sync_service.sync_orchestrator.run") as mock_run:
                     mock_run.return_value = mock_sync_result
 
                     # Act
@@ -129,17 +129,17 @@ class TestSyncServiceRun:
         test_error = Exception("Test error")
 
         # Mock get_db_context
-        with patch("airweave.platform.sync.service.get_db_context") as mock_get_db_context:
+        with patch("airweave.core.sync_service.get_db_context") as mock_get_db_context:
             mock_get_db_context.return_value = mock_db_context
 
             # Mock SyncContextFactory.create to raise an exception
             with patch(
-                "airweave.platform.sync.service.SyncContextFactory.create"
+                "airweave.core.sync_service.SyncContextFactory.create"
             ) as mock_create_context:
                 mock_create_context.side_effect = test_error
 
                 # Mock logger.error
-                with patch("airweave.platform.sync.service.logger.error") as mock_logger_error:
+                with patch("airweave.core.sync_service.logger.error") as mock_logger_error:
                     # Act & Assert
                     service = SyncService()
                     with pytest.raises(Exception) as excinfo:

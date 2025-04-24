@@ -22,6 +22,9 @@ import uuid
 import pytest
 import requests
 import asyncio
+import subprocess
+import time
+import atexit
 
 from airweave.core.constants.native_connections import NATIVE_QDRANT_UUID, NATIVE_TEXT2VEC_UUID
 from tests.e2e.smoke.test_user_onboarding import wait_for_sync_completion
@@ -79,8 +82,60 @@ def oauth_refresh_tokens():
         "asana": os.getenv("ASANA_REFRESH_TOKEN"),
     }
 
+@pytest.fixture(scope="session")
+def docker_services():
+    """Start and stop Docker services for testing."""
+    # Path to docker-compose file
+    compose_file = os.path.join(os.path.dirname(__file__), "../../docker/docker-compose.test.yml")
+
+    # Print current directory and file path for debugging
+    print(f"Current directory: {os.getcwd()}")
+    print(f"Docker compose file path: {compose_file}")
+
+    # Stop any running containers - fixed command format
+    print("Stopping any existing Docker containers...")
+    subprocess.run(["docker", "compose", "down", "-v"], check=False)
+
+    # Check if ports are already in use
+    test_ports = [9432, 9379, 9080, 9333, 9001]
+    for port in test_ports:
+        # macOS specific check
+        result = subprocess.run(["lsof", "-i", f":{port}"], capture_output=True, text=True)
+        if result.stdout:
+            print(f"Warning: Port {port} already in use by:\n{result.stdout}")
+
+    # Start test containers - fixed command format
+    print("Starting Docker containers...")
+    try:
+        subprocess.run(["docker", "compose", "-f", compose_file, "up", "-d"], check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to start containers: {e}")
+        # Show what's running
+        subprocess.run(["docker", "ps"], check=False)
+        raise
+
+    # Register cleanup function
+    def cleanup():
+        print("Cleaning up test containers...")
+        subprocess.run(["docker", "compose", "-f", compose_file, "down", "-v"], check=False)
+
+    atexit.register(cleanup)
+
+    # Wait for services to be healthy
+    print("Waiting for services to become healthy...")
+    time.sleep(20)
+
+    # Show running containers
+    subprocess.run(["docker", "ps"], check=False)
+
+    yield
+
+    # Cleanup after tests
+    cleanup()
+    atexit.unregister(cleanup)
+
 @pytest.mark.parametrize("service_name", ["dropbox"]) # , "google_drive", "asana"
-def test_oauth_refresh_sync(e2e_environment, e2e_api_url, oauth_refresh_tokens, service_name):
+def test_oauth_refresh_sync(docker_services, e2e_api_url, oauth_refresh_tokens, service_name):
     """Test end-to-end flow with OAuth services using refresh tokens.
 
     This test:
@@ -117,7 +172,6 @@ def test_oauth_refresh_sync(e2e_environment, e2e_api_url, oauth_refresh_tokens, 
     print(f"Created sync: {sync_id}")
 
     # 3. Run the sync job
-    print(f"\n\n{e2e_api_url}\n\n")
     run_sync_response = requests.post(f"{e2e_api_url}/sync/{sync_id}/run")
     assert run_sync_response.status_code == 200, f"Failed to run sync: {run_sync_response.text}"
     job_id = run_sync_response.json()["id"]
