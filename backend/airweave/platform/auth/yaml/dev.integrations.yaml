@@ -213,6 +213,18 @@ integrations:
     additional_frontend_params:
       access_type: "offline"
       prompt: "consent"
+  
+  
+  woocommerce:
+    auth_type: "api_key"
+    url: "https://example.com/wp-json/wc/v3/"
+    backend_url: "https://example.com/wp-json/wc/v3/"
+    content_type: "application/json"
+    client_credential_location: "query"
+    additional_frontend_params:
+      access_type: "offline"
+      prompt: "consent"
+
 
   qdrant:
     auth_type: "config_class"
