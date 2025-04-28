@@ -24,14 +24,11 @@ The Jira connector allows you to sync data from Jira into Airweave, making it av
 
 ### JiraSource
 
-Jira source implementation (read-only).
+Simplified Jira source implementation (read-only).
 
 This connector retrieves hierarchical data from Jira's REST API:
   - Projects
   - Issues (within each project)
-  - Comments (within each issue)
-
-The Jira entity schemas are defined in entities/jira.py.
 
 
 <Card
@@ -57,27 +54,16 @@ The following data models are available for this connector:
 
 Schema for a Jira Project.
 
-See:
-  https://developer.atlassian.com/cloud/jira/platform/rest/v3/#api-rest-api-3-project-get
-  (Project APIs in Jira Cloud)
-
 | Field | Type | Description |
 |-------|------|-------------|
 | project_key | str | Unique key of the project (e.g., 'PROJ'). |
 | name | Optional[str] | Name of the project. |
-| project_type | Optional[str] | Type of the project (e.g., 'software', 'service_desk'). |
-| lead | Optional[Dict[str, Any]] | Information about the project lead or owner. |
 | description | Optional[str] | Description of the project. |
-| archived | bool | Indicates if this project is archived. |
 
 </Accordion>
 <Accordion title="JiraIssueEntity">
 
 Schema for a Jira Issue.
-
-See:
-  https://developer.atlassian.com/cloud/jira/platform/rest/v3/#api-rest-api-3-issue-issueidorkey-get
-  (Issue APIs in Jira Cloud)
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -85,35 +71,9 @@ See:
 | summary | Optional[str] | Short summary field of the issue. |
 | description | Optional[str] | Detailed description of the issue. |
 | status | Optional[str] | Current workflow status of the issue. |
-| priority | Optional[str] | Priority level of the issue (e.g., 'High'). |
 | issue_type | Optional[str] | Type of the issue (bug, task, story, etc.). |
-| assignee | Optional[Dict[str, Any]] | Information about the user/group assigned to this issue. |
-| reporter | Optional[Dict[str, Any]] | Information about the user/group who created this issue. |
-| resolution | Optional[str] | Resolution text or code if the issue is resolved. |
 | created_at | Optional[datetime] | Timestamp when the issue was created. |
 | updated_at | Optional[datetime] | Timestamp when the issue was last updated. |
-| resolved_at | Optional[datetime] | Timestamp when the issue was resolved, if applicable. |
-| labels | List[str] | List of labels associated with this issue. |
-| watchers | List[Dict[str, Any]] | List of watchers subscribed to this issue. |
-| votes | Optional[int] | Number of votes on the issue. |
-| archived | bool | Indicates if this issue has been archived. |
-
-</Accordion>
-<Accordion title="JiraCommentEntity">
-
-Schema for a Jira Comment.
-
-See:
-  https://developer.atlassian.com/cloud/jira/platform/rest/v3/#api-rest-api-3-issue-issueidorkey-comment-get
-  (Comment APIs in Jira Cloud)
-
-| Field | Type | Description |
-|-------|------|-------------|
-| issue_key | str | Key of the issue this comment belongs to. |
-| body | Optional[str] | Text/HTML body of the comment. |
-| author | Optional[Dict[str, Any]] | Information about the user who wrote this comment. |
-| created_at | Optional[datetime] | Timestamp when this comment was created. |
-| updated_at | Optional[datetime] | Timestamp when this comment was last updated. |
 
 </Accordion>
 

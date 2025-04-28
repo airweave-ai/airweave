@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { apiClient } from "@/lib/api";
+import { apiClient, useApiClient } from "@/lib/api";
 import { UnifiedDataSourceCard } from "./UnifiedDataSourceCard";
 import { Connection } from "@/types";
 import { AddSourceWizard } from "@/components/sync/AddSourceWizard";

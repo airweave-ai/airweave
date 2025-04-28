@@ -26,7 +26,7 @@ class OpenAIText2Vec(BaseEmbeddingModel):
     vector_dimensions: int = 1536
     enabled: bool = True
     embedding_model: str = Field(
-        default="text-embedding-ada-002", description="OpenAI embedding model name"
+        default="text-embedding-3-small", description="OpenAI embedding model name"
     )
 
     async def embed(

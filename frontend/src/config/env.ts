@@ -2,6 +2,7 @@ interface Env {
   VITE_API_URL: string;
   VITE_ACCESS_TOKEN?: string;
   VITE_LOCAL_DEVELOPMENT: boolean;
+  VITE_ENABLE_AUTH?: string;
 }
 
 // Define the window.ENV type
@@ -10,6 +11,7 @@ declare global {
     ENV?: {
       API_URL: string;
       LOCAL_DEVELOPMENT?: boolean;
+      ENABLE_AUTH?: string;
     };
   }
 }
@@ -21,4 +23,5 @@ export const env: Env = {
   VITE_LOCAL_DEVELOPMENT: window.ENV?.LOCAL_DEVELOPMENT ||
     import.meta.env.VITE_LOCAL_DEVELOPMENT === 'true' ||
     (import.meta.env.MODE === 'development'),
+  VITE_ENABLE_AUTH: window.ENV?.ENABLE_AUTH || import.meta.env.VITE_ENABLE_AUTH || 'true',
 };

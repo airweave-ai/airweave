@@ -23,7 +23,7 @@ from airweave.core.config import settings
 
 api_router = APIRouter()
 api_router.include_router(health.router, prefix="/health", tags=["health"])
-api_router.include_router(api_keys.router, prefix="/api_keys", tags=["api_keys"])
+api_router.include_router(api_keys.router, prefix="/api-keys", tags=["api_keys"])
 api_router.include_router(users.router, prefix="/users", tags=["users"])
 api_router.include_router(sources.router, prefix="/sources", tags=["sources"])
 api_router.include_router(destinations.router, prefix="/destinations", tags=["destinations"])

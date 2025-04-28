@@ -73,7 +73,8 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://airweave:airweave1234!@postgres:5432/airweave
       - REDIS_HOST=redis
-      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
       - TESTING=true
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432

@@ -57,6 +57,10 @@ def _get_decorated_classes(directory: str) -> Dict[str, list[Type | Callable]]:
 
     Returns:
         Dict[str, list[Type | Callable]]: Dictionary of decorated classes and functions by type.
+
+    Raises:
+        ImportError: If any module cannot be imported. This ensures the sync process fails if there
+        are any issues.
     """
     components = {
         "sources": [],
@@ -85,7 +89,16 @@ def _get_decorated_classes(directory: str) -> Dict[str, list[Type | Callable]]:
                 _process_module_classes(module, components)
                 _process_module_functions(module, components)
             except ImportError as e:
-                sync_logger.warning(f"Failed to import {full_module_name}: {e}")
+                # Convert the warning into a fatal error to prevent silent failures
+                error_msg = (
+                    f"Failed to import {full_module_name}: {e}\n"
+                    f"This is likely due to missing dependencies required by this module.\n"
+                    f"If this module contains transformers, sources, or destinations, they will not"
+                    f" be registered."
+                )
+                sync_logger.error(error_msg)
+                # Re-raise the exception to fail the sync process
+                raise ImportError(f"Module import failed: {full_module_name}") from e
 
     return components
 
@@ -485,17 +498,39 @@ async def sync_platform_components(platform_dir: str, db: AsyncSession) -> None:
     Args:
         platform_dir (str): Directory containing platform components
         db (AsyncSession): Database session
+
+    Raises:
+        Exception: If any part of the sync process fails, with detailed error messages to help
+        diagnose the issue
     """
     sync_logger.info("Starting platform components sync...")
 
-    components = _get_decorated_classes(platform_dir)
+    try:
+        components = _get_decorated_classes(platform_dir)
+        c = components
 
-    # First sync entities to get their IDs
-    module_entity_map = await _sync_entity_definitions(db)
+        # Log component counts to help diagnose issues
+        sync_logger.info(
+            f"Found {len(c['sources'])} sources, {len(c['destinations'])} destinations, "
+            f"{len(c['embedding_models'])} embedding models, {len(c['transformers'])} transformers."
+        )
 
-    await _sync_embedding_models(db, components["embedding_models"])
-    await _sync_sources(db, components["sources"], module_entity_map)
-    await _sync_destinations(db, components["destinations"])
-    await _sync_transformers(db, components["transformers"], module_entity_map)
+        # First sync entities to get their IDs
+        module_entity_map = await _sync_entity_definitions(db)
 
-    sync_logger.info("Platform components sync completed.")
+        await _sync_embedding_models(db, components["embedding_models"])
+        await _sync_sources(db, components["sources"], module_entity_map)
+        await _sync_destinations(db, components["destinations"])
+        await _sync_transformers(db, components["transformers"], module_entity_map)
+
+        sync_logger.info("Platform components sync completed successfully.")
+    except ImportError as e:
+        sync_logger.error(f"Platform sync failed due to import error: {e}")
+        sync_logger.error(
+            "Check that all required dependencies are installed and all modules can be imported."
+        )
+        raise
+    except Exception as e:
+        sync_logger.error(f"Platform sync failed with error: {e}")
+        sync_logger.error("Check for detailed error messages above to identify the specific issue.")
+        raise

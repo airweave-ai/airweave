@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "eventsource-polyfill": "^0.9.6"
+  }
+}

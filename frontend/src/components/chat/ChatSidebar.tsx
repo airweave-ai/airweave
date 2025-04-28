@@ -49,7 +49,7 @@ export const ChatSidebar = ({ onCreateChat }: ChatSidebarProps) => {
   async function loadChats() {
     try {
       setIsLoading(true);
-      const response = await apiClient.get("/chat");
+      const response = await apiClient.get("/chat/list");
       const data = await response.json();
 
       // Enhance chats with source connection info

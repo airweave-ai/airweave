@@ -15,12 +15,21 @@ import Chat from "@/pages/Chat";
 import Sources from "@/pages/Sources";
 import { AuthCallback } from "./pages/AuthCallback";
 import ViewEditWhiteLabel from "./pages/ViewEditWhiteLabel";
+import { LoginPage } from "./pages/LoginPage";
+import { CallbackPage } from "./pages/CallbackPage";
+import { AuthGuard } from "./components/AuthGuard";
 
 function App() {
   return (
     <>
       <Routes>
-        <Route element={<DashboardLayout />}>
+        <Route
+          element={
+            <AuthGuard>
+              <DashboardLayout />
+            </AuthGuard>
+          }
+        >
           <Route path="/" element={<Dashboard />} />
           <Route path="/dashboard" element={<Dashboard />} />
 
@@ -42,12 +51,17 @@ function App() {
 
           <Route path="/settings" element={<Settings />} />
           <Route path="/profile" element={<Profile />} />
-          <Route path="/chat/:chatId?" element={<Chat />} />
-
-          <Route path="*" element={<NotFound />} />
+          <Route path="/chat" element={<Chat />} />
+          <Route path="/chat/:id" element={<Chat />} />
         </Route>
 
+        {/* Public routes */}
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/callback" element={<CallbackPage />} />
         <Route path="/auth/callback/:short_name" element={<AuthCallback />} />
+
+        {/* 404 route */}
+        <Route path="*" element={<NotFound />} />
       </Routes>
       <Toaster />
     </>

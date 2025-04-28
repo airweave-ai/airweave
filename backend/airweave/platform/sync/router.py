@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud
-from airweave.platform.entities._base import BaseEntity
+from airweave.platform.entities._base import BaseEntity, PolymorphicEntity
 from airweave.platform.locator import resource_locator
 from airweave.schemas.dag import DagNode, NodeType, SyncDag
 
@@ -92,6 +92,11 @@ class SyncDAGRouter:
         # First try direct lookup
         if entity_type in self.entity_map:
             return self.entity_map[entity_type]
+
+        # If entity is a subclass of PolymorphicEntity return placeholder
+        if hasattr(entity_type, "__mro__") and issubclass(entity_type, PolymorphicEntity):
+            RESERVED_TABLE_ENTITY_ID = UUID("11111111-1111-1111-1111-111111111111")
+            return RESERVED_TABLE_ENTITY_ID
 
         # For dynamically created classes, try to find by name pattern and module
         entity_name = entity_type.__name__

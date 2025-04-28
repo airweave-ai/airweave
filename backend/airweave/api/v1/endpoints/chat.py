@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +13,47 @@ from airweave.core.config import settings
 from airweave.core.logging import logger
 
 router = APIRouter()
+
+
+# Add this function to support token in query params for SSE
+async def get_user_from_token_param(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> schemas.User:
+    """Get user from token query parameter for SSE endpoints.
+
+    Args:
+        request: The request object.
+        db: The database session.
+
+    Returns:
+        The authenticated user.
+
+    Raises:
+        HTTPException: If authentication fails.
+    """
+    if settings.AUTH_ENABLED:
+        token = request.query_params.get("token")
+        if not token:
+            logger.warning("SSE connection attempt without token")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing authentication token"
+            )
+
+        # Use the same auth logic from get_user but with the token from query param
+        from airweave.api.deps import get_user_from_token
+
+        user = await get_user_from_token(token, db)
+        if not user:
+            logger.warning(f"SSE connection with invalid token: {token[:10]}...")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication token"
+            )
+
+        logger.info(f"SSE connection authenticated for user: {user.id}")
+        return user
+    else:
+        return await get_user(db=db)
 
 
 @router.get("/openai_key_set", response_model=bool)
@@ -186,14 +227,16 @@ async def send_message(
 @router.get("/{chat_id}/stream", response_class=StreamingResponse)
 async def stream_chat_response(
     *,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     chat_id: UUID,
-    user: schemas.User = Depends(get_user),
+    user: schemas.User = Depends(get_user_from_token_param),
 ) -> StreamingResponse:
     """Stream an AI response for a chat message.
 
     Args:
     -----
+        request: The request object.
         db: The database session.
         chat_id: The ID of the chat to stream the response for.
         user: The current user.

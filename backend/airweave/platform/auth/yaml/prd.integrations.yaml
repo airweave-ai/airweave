@@ -133,8 +133,8 @@ integrations:
     url: "https://api.notion.com/v1/oauth/authorize"
     backend_url: "https://api.notion.com/v1/oauth/token"
     grant_type: "authorization_code"
-    client_id: "191d872b-594c-8045-ac77-0037fb8711db"
-    client_secret: "secret_tnynzAawv4DwbT5VYlScD6Lzx8R6RZLGDvj40DXaWMA"
+    client_id: "1ddd872b-594c-8059-9d0c-00377f440ca1"
+    client_secret: "secret_RqYwQbzlWbYR2HxVTbxQss0WnjYKyeOEl1vbFRB5gqo"
     content_type: "application/x-www-form-urlencoded"
     client_credential_location: "header"
     additional_frontend_params:
