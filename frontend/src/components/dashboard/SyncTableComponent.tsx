@@ -19,15 +19,14 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Search, Plus, Calendar, Trash2 } from "lucide-react";
+import { Search, Plus, Calendar, Trash2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { apiClient } from "@/lib/api";
 import { format, formatRelative, parseISO } from "date-fns";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { DataTable, Column, PaginationState, PaginationInfo } from "@/components/ui/data-table";
+import { DataTable, Column } from "@/components/ui/data-table";
 
 // Define types based on backend schemas
 interface Sync {
@@ -55,11 +54,22 @@ interface SyncJob {
 
 type ActiveTab = "syncs" | "jobs";
 
-const SyncTableView = () => {
+interface SyncTableComponentProps {
+  showBorder?: boolean;
+  className?: string;
+  maxHeight?: string;
+  showTitle?: boolean;
+}
+
+export function SyncTableComponent({
+  showBorder = false,
+  className,
+  maxHeight = "auto",
+  showTitle = false
+}: SyncTableComponentProps) {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState<ActiveTab>("syncs");
-  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [syncs, setSyncs] = useState<Sync[]>([]);
   const [syncJobs, setSyncJobs] = useState<SyncJob[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -67,108 +77,41 @@ const SyncTableView = () => {
   const [syncToDelete, setSyncToDelete] = useState<Sync | null>(null);
   const [deleteData, setDeleteData] = useState(false);
 
-  // Add pagination state
-  const [syncsPagination, setSyncsPagination] = useState<PaginationState>({
-    pageIndex: 0,
-    pageSize: 10,
-  });
-  const [syncJobsPagination, setSyncJobsPagination] = useState<PaginationState>({
-    pageIndex: 0,
-    pageSize: 10,
-  });
-  const [syncsPaginationInfo, setSyncsPaginationInfo] = useState<PaginationInfo>({
-    pageCount: 1,
-    totalItems: 0,
-  });
-  const [syncJobsPaginationInfo, setSyncJobsPaginationInfo] = useState<PaginationInfo>({
-    pageCount: 1,
-    totalItems: 0,
-  });
-
-  // Fetch syncs with pagination parameters
+  // Fetch syncs
   useEffect(() => {
     const fetchSyncs = async () => {
       setIsLoading(true);
       try {
-        const skip = syncsPagination.pageIndex * syncsPagination.pageSize;
-        const limit = syncsPagination.pageSize;
-
-        // Make sure skip and limit are integers
-        const response = await apiClient.get(`/sync/?skip=${parseInt(skip)}&limit=${parseInt(limit)}`);
-
-        // Check if response is ok before parsing
-        if (!response.ok) {
-          throw new Error(`Error fetching syncs: ${response.status}`);
-        }
-
-        const data = await response.json();
-
-        // Make sure data is an array
-        setSyncs(Array.isArray(data) ? data : []);
-
-        // We don't have total count from the backend, so we'll estimate
-        // If we received fewer items than the page size, we're likely on the last page
-        const isLastPage = data.length < syncsPagination.pageSize;
-        const estimatedTotalItems = isLastPage
-          ? syncsPagination.pageIndex * syncsPagination.pageSize + data.length
-          : (syncsPagination.pageIndex + 1) * syncsPagination.pageSize + 1;
-
-        setSyncsPaginationInfo({
-          // Assume there's at least one more page if we got a full page of results
-          pageCount: isLastPage ? syncsPagination.pageIndex + 1 : syncsPagination.pageIndex + 2,
-          totalItems: estimatedTotalItems
-        });
+        const response = await apiClient.get(`/sync/?limit=10`);
+        const data: Sync[] = await response.json();
+        setSyncs(data);
       } catch (error) {
-        console.error("Failed to fetch syncs:", error);
         toast.error("Failed to fetch syncs");
-        setSyncs([]); // Set as empty array on error
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchSyncs();
-  }, [syncsPagination]);
+  }, []);
 
-  // Fetch sync jobs with pagination
+  // Fetch sync jobs
   useEffect(() => {
     const fetchSyncJobs = async () => {
       setIsJobsLoading(true);
       try {
-        const skip = syncJobsPagination.pageIndex * syncJobsPagination.pageSize;
-        const limit = syncJobsPagination.pageSize;
-
-        const response = await apiClient.get(`/sync/jobs?skip=${parseInt(skip)}&limit=${parseInt(limit)}`);
-
-        if (!response.ok) {
-          throw new Error(`Error fetching sync jobs: ${response.status}`);
-        }
-
-        const data = await response.json();
-
-        setSyncJobs(Array.isArray(data) ? data : []);
-
-        // Similar approach for estimating total items
-        const isLastPage = data.length < syncJobsPagination.pageSize;
-        const estimatedTotalItems = isLastPage
-          ? syncJobsPagination.pageIndex * syncJobsPagination.pageSize + data.length
-          : (syncJobsPagination.pageIndex + 1) * syncJobsPagination.pageSize + 1;
-
-        setSyncJobsPaginationInfo({
-          pageCount: isLastPage ? syncJobsPagination.pageIndex + 1 : syncJobsPagination.pageIndex + 2,
-          totalItems: estimatedTotalItems
-        });
+        const response = await apiClient.get(`/sync/jobs?limit=10`);
+        const data: SyncJob[] = await response.json();
+        setSyncJobs(data);
       } catch (error) {
-        console.error("Failed to fetch sync jobs:", error);
         toast.error("Failed to fetch sync jobs");
-        setSyncJobs([]); // Set as empty array on error
       } finally {
         setIsJobsLoading(false);
       }
     };
 
     fetchSyncJobs();
-  }, [syncJobsPagination]);
+  }, []);
 
   // Update delete handler
   const handleDeleteSync = async (sync: Sync) => {
@@ -203,7 +146,6 @@ const SyncTableView = () => {
   // Helper function to format cron schedule
   const formatCronSchedule = (cronSchedule: string | null) => {
     if (!cronSchedule) return "No schedule";
-    // This is a simplified example - you might want to use a cron parser library
     return cronSchedule;
   };
 
@@ -229,7 +171,7 @@ const SyncTableView = () => {
     let textColor = "";
 
     switch (status) {
-      case "in_progress":
+      case "running":
         bgColor = "bg-blue-100 dark:bg-blue-900/40";
         textColor = "text-blue-800 dark:text-blue-300";
         break;
@@ -361,15 +303,24 @@ const SyncTableView = () => {
   ];
 
   return (
-    <div className="container mx-auto pb-8">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-3xl font-bold">Synchronizations</h1>
-          <p className="text-muted-foreground mt-2">
-            View and manage your synchronization history
-          </p>
+    <div
+      className={cn(
+        "pb-4",
+        showBorder && "border rounded-lg p-4",
+        className
+      )}
+      style={{ maxHeight }}
+    >
+      {showTitle && (
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h3 className="text-xl font-semibold">Synchronizations</h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              View and manage your synchronization history
+            </p>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="flex space-x-1 p-1 rounded-md mb-4 w-fit">
         <Button
@@ -400,35 +351,31 @@ const SyncTableView = () => {
         </Button>
       </div>
 
-      {activeTab === "syncs" ? (
-        <DataTable
-          data={filteredSyncs}
-          columns={syncColumns}
-          pagination={syncsPagination}
-          paginationInfo={syncsPaginationInfo}
-          isLoading={isLoading}
-          searchPlaceholder="Search synchronizations..."
-          searchValue={search}
-          onSearchChange={setSearch}
-          onRowClick={(sync) => navigate(`/sync/${sync.id}`)}
-          onPaginationChange={setSyncsPagination}
-          emptyMessage="No synchronizations found"
-        />
-      ) : (
-        <DataTable
-          data={filteredSyncJobs}
-          columns={syncJobColumns}
-          pagination={syncJobsPagination}
-          paginationInfo={syncJobsPaginationInfo}
-          isLoading={isJobsLoading}
-          searchPlaceholder="Search sync jobs..."
-          searchValue={search}
-          onSearchChange={setSearch}
-          onRowClick={(job) => navigate(`/sync/${job.sync_id}/job/${job.id}`)}
-          onPaginationChange={setSyncJobsPagination}
-          emptyMessage="No sync jobs found"
-        />
-      )}
+      <div className={maxHeight !== "auto" ? "overflow-auto" : undefined} style={{ maxHeight }}>
+        {activeTab === "syncs" ? (
+          <DataTable
+            data={filteredSyncs}
+            columns={syncColumns}
+            isLoading={isLoading}
+            searchPlaceholder="Search synchronizations..."
+            searchValue={search}
+            onSearchChange={setSearch}
+            onRowClick={(sync) => navigate(`/sync/${sync.id}`)}
+            emptyMessage="No synchronizations found"
+          />
+        ) : (
+          <DataTable
+            data={filteredSyncJobs}
+            columns={syncJobColumns}
+            isLoading={isJobsLoading}
+            searchPlaceholder="Search sync jobs..."
+            searchValue={search}
+            onSearchChange={setSearch}
+            onRowClick={(job) => navigate(`/sync/${job.sync_id}/job/${job.id}`)}
+            emptyMessage="No sync jobs found"
+          />
+        )}
+      </div>
 
       <Dialog
         open={!!syncToDelete}
@@ -501,6 +448,4 @@ const SyncTableView = () => {
       </Dialog>
     </div>
   );
-};
-
-export default SyncTableView;
+}

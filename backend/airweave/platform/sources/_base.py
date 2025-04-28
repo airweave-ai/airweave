@@ -79,7 +79,6 @@ class BaseSource:
                     f"Skipping file {processed_entity.name}: "
                     f"{processed_entity.metadata.get('error', 'Unknown reason')}"
                 )
-                return None
 
             return processed_entity
         except Exception as e:

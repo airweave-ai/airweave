@@ -4,7 +4,7 @@
 <div align="center">
 
 [![Ruff](https://github.com/airweave-ai/airweave/actions/workflows/ruff.yml/badge.svg)](https://github.com/airweave-ai/airweave/actions/workflows/ruff.yml)
-[![ESLint](https://github.com/airweave-ai/airweave/actions/workflows/eslint-knip.yml/badge.svg)](https://github.com/airweave-ai/airweave/actions/workflows/eslint-knip.yml)
+[![ESLint](https://github.com/airweave-ai/airweave/actions/workflows/eslint.yml/badge.svg)](https://github.com/airweave-ai/airweave/actions/workflows/eslint.yml)
 [![Backend Tests](https://github.com/airweave-ai/airweave/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/airweave-ai/airweave/actions/workflows/tests.yml)
 [![Codecov](https://codecov.io/gh/airweave-ai/airweave/branch/main/graph/badge.svg)](https://codecov.io/gh/airweave-ai/airweave)
 [![Discord](https://img.shields.io/discord/1323415085011701870?label=Discord&logo=discord&logoColor=white&style=flat-square)](https://discord.com/invite/484HY9Ehxt)
@@ -155,7 +155,7 @@ Please follow the existing code style and conventions. See [CONTRIBUTING.md](htt
 
 ## License
 
-Airweave is released under an open-core model. The community edition is licensed under the [Apache 2.0 License](LICENSE). Additional modules (for enterprise or advanced features) may be licensed separately.
+Airweave is released under an open-core model. The community edition is licensed under the [MIT](LICENSE). Additional modules (for enterprise or advanced features) may be licensed separately.
 
 
 ## Contact & Community

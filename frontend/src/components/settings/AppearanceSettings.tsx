@@ -3,9 +3,10 @@ import { Moon, Sun, Monitor } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { useTheme } from "@/lib/theme-provider";
 
 export function AppearanceSettings() {
-  const [theme, setTheme] = useState("system");
+  const { theme, setTheme } = useTheme();
 
   return (
     <div className="space-y-6">
@@ -25,7 +26,7 @@ export function AppearanceSettings() {
               </p>
             </div>
             <RadioGroup
-              defaultValue={theme}
+              value={theme}
               onValueChange={setTheme}
               className="grid grid-cols-3 gap-4"
             >

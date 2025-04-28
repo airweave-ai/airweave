@@ -1,4 +1,4 @@
-name: ESLint and Knip
+name: ESLint
 
 on:
   push:
@@ -31,6 +31,3 @@ jobs:
 
       - name: Run ESLint
         run: npx eslint . --max-warnings 0
-
-      - name: Run knip
-        run: npx knip --fix

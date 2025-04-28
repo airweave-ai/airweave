@@ -54,9 +54,9 @@ export const LoginPage = () => {
           ) : (
             <Button
               onClick={handleLogin}
-              className="w-full"
+              className="px-6"
             >
-              Sign in with Auth0
+              Sign in
             </Button>
           )}
           {error && (
@@ -65,9 +65,6 @@ export const LoginPage = () => {
             </p>
           )}
         </CardContent>
-        <CardFooter className="flex justify-center text-sm text-gray-500">
-          Secure authentication powered by Auth0
-        </CardFooter>
       </Card>
     </div>
   );

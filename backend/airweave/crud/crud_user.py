@@ -90,14 +90,23 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             from airweave.schemas.organization import OrganizationCreate
 
             org_name = f"Organization for {obj_in.email}"
-            org_in = OrganizationCreate(
-                name=org_name, description=f"Auto-created organization for {obj_in.email}"
-            )
-            org = await crud_organization.create(db, obj_in=org_in)
 
-            # Update the user create object with the new organization
+            # Check if an organization with this name already exists
+            existing_org = await crud_organization.get_by_name(db, name=org_name)
+            if existing_org:
+                # Use the existing organization
+                org_id = existing_org.id
+            else:
+                # Create a new organization
+                org_in = OrganizationCreate(
+                    name=org_name, description=f"Auto-created organization for {obj_in.email}"
+                )
+                org = await crud_organization.create(db, obj_in=org_in)
+                org_id = org.id
+
+            # Update the user create object with the organization
             user_data = obj_in.model_dump()
-            user_data["organization_id"] = org.id
+            user_data["organization_id"] = org_id
             obj_in = UserCreate(**user_data)
 
         user = await super().create(db, obj_in=obj_in)

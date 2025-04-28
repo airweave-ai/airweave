@@ -218,9 +218,7 @@ class GoogleDriveSource(BaseSource):
                         file_entity=file_entity, access_token=self.access_token
                     )
 
-                    # Only yield if the file wasn't skipped due to size limits
-                    if processed_entity:
-                        yield processed_entity
+                    yield processed_entity
                 else:
                     # This should never happen now that we return None for files without URLs
                     logger.warning(f"No download URL available for {file_entity.name}")

@@ -3,21 +3,13 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY package.json ./
 
-# Install dependencies
-RUN npm ci
+# First install dependencies without using the lockfile
+RUN npm install --no-package-lock
 
 # Copy application code
 COPY . .
-
-# Ensure auth0-provider.tsx exists (won't overwrite if it exists)
-RUN mkdir -p /app/src/lib && \
-    if [ ! -f /app/src/lib/auth0-provider.tsx ]; then \
-    echo "Creating fallback auth0-provider.tsx"; \
-    echo "import { ReactNode } from 'react';" > /app/src/lib/auth0-provider.tsx; \
-    echo "export const Auth0ProviderWithNavigation = ({ children }: { children: ReactNode }) => <>{children}</>;" >> /app/src/lib/auth0-provider.tsx; \
-    fi
 
 # Build the application in production mode
 RUN npm run build

@@ -27,6 +27,7 @@ import { GradientBackground, GradientCard } from "@/components/ui/gradient-backg
 import { DiscordIcon } from "@/components/ui/discord-icon";
 import { cn } from "@/lib/utils";
 import { LogoutButton } from "@/components/LogoutButton";
+import { UserProfileDropdown } from "@/components/UserProfileDropdown";
 
 const DashboardLayout = () => {
   const location = useLocation();
@@ -97,16 +98,15 @@ const DashboardLayout = () => {
       name: "White Label",
       href: "/white-label",
       icon: Tag,
-    }
-  ];
-
-  const bottomNavigation = [
+    },
     {
       name: "Settings",
       href: "/settings",
       icon: Settings,
-    },
+    }
   ];
+
+  const bottomNavigation = [];
 
   const NavLink = ({ item, isActive }: { item: typeof navigation[0], isActive: boolean }) => (
     <Link
@@ -180,7 +180,7 @@ const DashboardLayout = () => {
                         isActive={isRouteActive(item.href)}
                       />
                     ))}
-                    <LogoutButton />
+                    <UserProfileDropdown />
                   </div>
                 </nav>
               </SheetContent>
@@ -233,7 +233,7 @@ const DashboardLayout = () => {
                     isActive={isRouteActive(item.href)}
                   />
                 ))}
-                <LogoutButton />
+                <UserProfileDropdown />
               </div>
             </nav>
           </div>
