@@ -28,6 +28,7 @@ class AuthType(str, Enum):
     api_key = "api_key"
     native_functionality = "native_functionality"
     config_class = "config_class"
+    sigv4 = "sigv4"
     none = "none"
 
 
@@ -143,6 +144,19 @@ class OAuth2Settings(BaseAuthSettings):
     client_credential_location: str
     additional_frontend_params: Optional[dict[str, str]] = None
     scope: Optional[str] = None
+
+
+class SigV4Settings(BaseAuthSettings):
+    """SigV4 authentication settings."""
+
+    access_key_id: Optional[str] = None
+    secret_access_key: Optional[str] = None
+    session_token: Optional[str] = None
+
+    endpoint_url: Optional[str] = None
+    name: Optional[str] = None
+    region: Optional[str]
+    bucket: Optional[str]
 
 
 class OAuth2WithRefreshSettings(OAuth2Settings):

@@ -8,7 +8,8 @@ enum AuthType {
   TRELLO_AUTH = "trello_auth",
   API_KEY = "api_key",
   NATIVE_FUNCTIONALITY = "native_functionality",
-  CONFIG_CLASS = "config_class"
+  CONFIG_CLASS = "config_class",
+  SIGV4 = "sigv4",
 }
 interface DataSource {
   id: string;

@@ -139,14 +139,19 @@ class ConnectionService:
                 return connection
 
             # For config_class auth type, validate config fields
-            if integration.auth_type == AuthType.config_class:
+            if (
+                integration.auth_type == AuthType.config_class
+                or integration.auth_type == AuthType.sigv4
+            ):
                 if not integration.auth_config_class:
                     raise HTTPException(
                         status_code=400,
                         detail=f"Integration {integration.name} does not have an auth config class",
                     )
                 # Create and validate auth config
-                auth_config_class = resource_locator.get_auth_config(integration.auth_config_class)
+                auth_config_class = resource_locator.get_auth_config(
+                    integration.auth_config_class, integration.auth_type
+                )
                 auth_config = auth_config_class(**config_fields)
                 encrypted_creds = credentials.encrypt(auth_config.model_dump())
 

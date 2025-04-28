@@ -83,8 +83,8 @@ export function UnifiedDataSourceGrid({
     console.log("🔄 handleInitiateConnection called with auth_type:", source.auth_type);
 
     // Handle config_class and api_key directly with AddSourceWizard
-    if (source.auth_type === "config_class" || source.auth_type === "api_key") {
-      console.log("⭐ Using direct AddSourceWizard for config_class/api_key");
+    if (source.auth_type === "config_class" || source.auth_type === "api_key" || source.auth_type === "sigv4") {
+      console.log("⭐ Using direct AddSourceWizard for config_class/api_key/sigv4");
       setSelectedSource({
         name: source.name,
         short_name: source.short_name

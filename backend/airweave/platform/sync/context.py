@@ -10,6 +10,7 @@ from airweave import crud, schemas
 from airweave.core import credentials
 from airweave.core.config import settings
 from airweave.core.exceptions import NotFoundException
+from airweave.core.logging import logger
 from airweave.platform.auth.schemas import AuthType
 from airweave.platform.auth.services import oauth2_service
 from airweave.platform.destinations._base import BaseDestination, VectorDBDestination
@@ -211,8 +212,19 @@ class SyncContextFactory:
         if not source_model.auth_config_class:
             raise ValueError(f"Auth config class required for auth type {source_model.auth_type}")
 
-        auth_config = resource_locator.get_auth_config(source_model.auth_config_class)
+        logger.info(f"Source model: {source_model}")
+        logger.info(f"Source model auth type: {source_model.auth_type}")
+        logger.info(f"Source model: {source_model.auth_config_class}")
+        logger.info(f"Decrypted Credential: {decrypted_credential}")
+
+        auth_config = resource_locator.get_auth_config(
+            source_model.auth_config_class, source_model.auth_type
+        )
         source_credentials = auth_config.model_validate(decrypted_credential)
+
+        logger.info(f"Auth Config: {decrypted_credential}")
+        logger.info(f"Source Credentials: {source_credentials}")
+
         return await source_class.create(source_credentials)
 
     @classmethod

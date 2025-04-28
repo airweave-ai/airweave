@@ -54,7 +54,10 @@ async def read_destination(
     if not destination:
         raise HTTPException(status_code=404, detail="Destination not found")
     if destination.auth_config_class:
-        auth_config_class = resource_locator.get_auth_config(destination.auth_config_class)
+        auth_config_class = resource_locator.get_auth_config(
+            destination.auth_config_class,
+            destination.auth_type if "auth_type" in destination else None,
+        )
         fields = Fields.from_config_class(auth_config_class)
         destination_with_config_fields = schemas.DestinationWithConfigFields.model_validate(
             destination, from_attributes=True

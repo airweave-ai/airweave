@@ -24,7 +24,7 @@ repos:
       - id: eslint
         name: eslint
         entry: bash -c 'cd frontend && npx eslint'
-        language: system
+        language: node
         files: \.(js|jsx|ts|tsx)$
         types: [file]
         exclude: ^(?!frontend/).*$
@@ -33,14 +33,14 @@ repos:
     # Configuration for codespell is in .codespellrc
     rev: v2.4.1
     hooks:
-    - id: codespell
-      exclude: >
-        (?x)^(
-          .*\.venv/.*|
-          .*venv/.*|
-          .*node_modules/.*|
-          .*package-lock\.json|
-          .*package\.json|
-          .*yarn\.lock|
-          .*\.git/.*
-        )$
+      - id: codespell
+        exclude: >
+          (?x)^(
+            .*\.venv/.*|
+            .*venv/.*|
+            .*node_modules/.*|
+            .*package-lock\.json|
+            .*package\.json|
+            .*yarn\.lock|
+            .*\.git/.*
+          )$
