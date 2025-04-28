@@ -33,7 +33,7 @@ from .embedding_model import (
     EmbeddingModelUpdate,
     EmbeddingModelWithConfigFields,
 )
-from .entity import Entity, EntityCreate, EntityInDBBase, EntityUpdate
+from .entity import Entity, EntityCount, EntityCreate, EntityInDBBase, EntityUpdate
 from .entity_definition import (
     EntityDefinition,
     EntityDefinitionCreate,

@@ -91,7 +91,7 @@ navbar-links:
   url: https://github.com/airweave-ai/airweave/fork
 - type: primary
   text: Get a demo
-  url: https://cal.com/lennert-airweave/30min
+  url: https://cal.com/lennert-airweave/airweave-q-a-demo
 colors:
   accentPrimary:
     dark: '#0047B3'

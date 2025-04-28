@@ -23,14 +23,12 @@ from airweave.platform.auth.schemas import AuthType
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import ChunkEntity
 from airweave.platform.entities.google_drive import GoogleDriveDriveEntity, GoogleDriveFileEntity
-from airweave.platform.file_handling.file_manager import file_manager
 from airweave.platform.sources._base import BaseSource
 
 
 @source(
     "Google Drive",
     "google_drive",
-    # i dont think it is with refresh (the config says something else)
     AuthType.oauth2_with_refresh,
     labels=["File Storage"],
 )
@@ -99,29 +97,43 @@ class GoogleDriveSource(BaseSource):
                 org_unit_id=drive_obj.get("orgUnitId"),
             )
 
-    async def _list_files_in_drive(
-        self, client: httpx.AsyncClient, drive_id: str
+    async def _list_files(
+        self,
+        client: httpx.AsyncClient,
+        corpora: str,
+        include_all_drives: bool,
+        drive_id: Optional[str] = None,
+        context: str = "",
     ) -> AsyncGenerator[Dict, None]:
-        """List files within a shared drive using pagination.
+        """Generic method to list files with configurable parameters.
 
-        GET https://www.googleapis.com/drive/v3/files
-        ?driveId=<drive_id>&includeItemsFromAllDrives=true&supportsAllDrives=true&corpora=drive
+        Args:
+            client: HTTP client to use for requests
+            corpora: Google Drive API corpora parameter ("drive" or "user")
+            include_all_drives: Whether to include items from all drives
+            drive_id: ID of the shared drive to list files from (only for corpora="drive")
+            context: Context string for logging
         """
         url = "https://www.googleapis.com/drive/v3/files"
         params = {
             "pageSize": 100,
-            "driveId": drive_id,
-            "corpora": "drive",
-            "includeItemsFromAllDrives": "true",
+            "corpora": corpora,
+            "includeItemsFromAllDrives": str(include_all_drives).lower(),
             "supportsAllDrives": "true",
+            "q": "mimeType != 'application/vnd.google-apps.folder'",
             "fields": "nextPageToken, files(id, name, mimeType, description, starred, trashed, "
             "explicitlyTrashed, parents, shared, webViewLink, iconLink, createdTime, "
             "modifiedTime, size, md5Checksum, webContentLink)",
         }
+
+        if drive_id:
+            params["driveId"] = drive_id
+
         while url:
             data = await self._get_with_auth(client, url, params=params)
             for file_obj in data.get("files", []):
-                logger.info(f"\nfiles in drive_id {drive_id}: {file_obj}\n")
+                log_context = f"drive_id {drive_id}" if drive_id else "MY DRIVE"
+                logger.info(f"\nfiles in {log_context}: {file_obj}\n")
                 yield file_obj
 
             # Handle pagination
@@ -131,39 +143,11 @@ class GoogleDriveSource(BaseSource):
             params["pageToken"] = next_page_token
             url = "https://www.googleapis.com/drive/v3/files"
 
-    async def _list_files_in_my_drive(
-        self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[Dict, None]:
-        """List files in the user's My Drive (corpora=user) using pagination.
+    def _build_file_entity(self, file_obj: Dict) -> Optional[GoogleDriveFileEntity]:
+        """Helper to build a GoogleDriveFileEntity from a file API response object.
 
-        GET https://www.googleapis.com/drive/v3/files
-        ?corpora=user&includeItemsFromAllDrives=false&supportsAllDrives=true
+        Returns None for files that should be skipped (e.g., trashed files).
         """
-        url = "https://www.googleapis.com/drive/v3/files"
-        params = {
-            "pageSize": 100,
-            "corpora": "user",
-            "includeItemsFromAllDrives": "false",
-            "supportsAllDrives": "true",
-            "fields": "nextPageToken, files(id, name, mimeType, description, starred, trashed, "
-            "explicitlyTrashed, parents, shared, webViewLink, iconLink, createdTime, "
-            "modifiedTime, size, md5Checksum, webContentLink)",
-        }
-        while url:
-            data = await self._get_with_auth(client, url, params=params)
-            for file_obj in data.get("files", []):
-                logger.info(f"\nfiles in MY DRIVE: {file_obj}\n")
-                yield file_obj
-
-            # Handle pagination
-            next_page_token = data.get("nextPageToken")
-            if not next_page_token:
-                break
-            params["pageToken"] = next_page_token
-            url = "https://www.googleapis.com/drive/v3/files"
-
-    def _build_file_entity(self, file_obj: Dict) -> GoogleDriveFileEntity:
-        """Helper to build a GoogleDriveFileEntity from a file API response object."""
         # Create download URL based on file type
         download_url = None
         logger.info(f"\n{file_obj.get('mimeType', 'nothing')}\n")
@@ -173,6 +157,17 @@ class GoogleDriveSource(BaseSource):
         elif not file_obj.get("trashed", False):
             # For regular files, use direct download or webContentLink
             download_url = f"https://www.googleapis.com/drive/v3/files/{file_obj['id']}?alt=media"
+
+        # Return None if download_url is None (typically for trashed files)
+        if not download_url:
+            file_name = file_obj.get("name", "Untitled")
+            trashed = file_obj.get("trashed", False)
+            logger.info(
+                f"Skipping file '{file_name}' (ID: {file_obj['id']}). "
+                f"File is {'trashed' if trashed else 'not trashed'}. "
+                f"Mime type: {file_obj.get('mimeType', 'unknown')}"
+            )
+            return None
 
         logger.info(f"\n{download_url}\n")
         return GoogleDriveFileEntity(
@@ -197,53 +192,43 @@ class GoogleDriveSource(BaseSource):
             md5_checksum=file_obj.get("md5Checksum"),
         )
 
-    async def _generate_file_entities_in_drive(
-        self, client: httpx.AsyncClient, drive_id: str
+    async def _generate_file_entities(
+        self,
+        client: httpx.AsyncClient,
+        corpora: str,
+        include_all_drives: bool,
+        drive_id: Optional[str] = None,
+        context: str = "",
     ) -> AsyncGenerator[ChunkEntity, None]:
-        """Generate GoogleDriveFileEntity objects for each file in a shared drive."""
-        async for file_obj in self._list_files_in_drive(client, drive_id):
+        """Generate file entities from a file listing."""
+        async for file_obj in self._list_files(
+            client, corpora, include_all_drives, drive_id, context
+        ):
             try:
+                # Get file entity (might be None for trashed files)
                 file_entity = self._build_file_entity(file_obj)
-                if file_entity.download_url:
-                    # Stream the file and process it
-                    file_stream = file_manager.stream_file_from_url(
-                        file_entity.download_url, access_token=self.access_token
-                    )
-                    processed_entity = await file_manager.handle_file_entity(
-                        stream=file_stream, entity=file_entity
-                    )
-                    yield processed_entity
-                else:
-                    # Skip files without download URL
-                    logger.warning(f"No download URL available for {file_entity.name}")
-            except Exception as e:
-                logger.error(
-                    f"\nFailed to process file {file_obj.get('name', 'unknown')} "
-                    f"in drive {drive_id}: {str(e)}\n"
-                )
-                raise
 
-    async def _generate_file_entities_in_my_drive(
-        self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[ChunkEntity, None]:
-        """Generate GoogleDriveFileEntity objects for each file in the user's My Drive."""
-        async for file_obj in self._list_files_in_my_drive(client):
-            try:
-                file_entity = self._build_file_entity(file_obj)
+                # Skip if the entity was None (likely a trashed file)
+                if not file_entity:
+                    continue
+
+                # Process the entity if it has a download URL
                 if file_entity.download_url:
-                    file_stream = file_manager.stream_file_from_url(
-                        file_entity.download_url, access_token=self.access_token
+                    processed_entity = await self.process_file_entity(
+                        file_entity=file_entity, access_token=self.access_token
                     )
-                    processed_entity = await file_manager.handle_file_entity(
-                        stream=file_stream, entity=file_entity
-                    )
-                    yield processed_entity
+
+                    # Only yield if the file wasn't skipped due to size limits
+                    if processed_entity:
+                        yield processed_entity
                 else:
+                    # This should never happen now that we return None for files without URLs
                     logger.warning(f"No download URL available for {file_entity.name}")
             except Exception as e:
+                error_context = f"in drive {drive_id}" if drive_id else "in MY DRIVE"
                 logger.error(
                     f"\nFailed to process file {file_obj.get('name', 'unknown')} "
-                    f"in MY DRIVE: {str(e)}\n"
+                    f"{error_context}: {str(e)}\n"
                 )
                 raise
 
@@ -272,7 +257,13 @@ class GoogleDriveSource(BaseSource):
                 drive_ids.append(drive_obj["id"])
 
             for drive_id in drive_ids:
-                async for file_entity in self._generate_file_entities_in_drive(client, drive_id):
+                async for file_entity in self._generate_file_entities(
+                    client,
+                    corpora="drive",
+                    include_all_drives=True,
+                    drive_id=drive_id,
+                    context=f"drive {drive_id}",
+                ):
                     yield file_entity
                     file_entity_count += 1
                     if stop_after_first_file and file_entity_count >= 4:
@@ -282,7 +273,9 @@ class GoogleDriveSource(BaseSource):
             # 3) Finally, yield file entities for My Drive (corpora=user)
             # Only reach here if we didn't find any files in shared drives
             if not (stop_after_first_file and file_entity_count >= 4):
-                async for mydrive_file_entity in self._generate_file_entities_in_my_drive(client):
+                async for mydrive_file_entity in self._generate_file_entities(
+                    client, corpora="user", include_all_drives=False, context="MY DRIVE"
+                ):
                     yield mydrive_file_entity
                     file_entity_count += 1
                     if stop_after_first_file and file_entity_count >= 4:

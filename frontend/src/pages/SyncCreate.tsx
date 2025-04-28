@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { toast, useToast } from "@/components/ui/use-toast";
-import { DestinationSelector } from "@/components/DestinationSelector";
 import { SyncProgress } from "@/components/sync/SyncProgress";
 import { Button } from "@/components/ui/button";
 import { ChevronRight } from "lucide-react";
@@ -20,7 +19,7 @@ import { AddSourceWizard } from "@/components/sync/AddSourceWizard";
 
 /**
  * This component coordinates all user actions (source selection,
- * vector DB selection, sync creation, and sync job triggering).
+ * sync creation, and sync job triggering).
  * It uses local React state, but you can integrate any data-fetching
  * or global state libraries (e.g., React Query, Redux, Zustand).
  */
@@ -36,9 +35,6 @@ const Sync = () => {
 
   // Chosen data source (step 1 -> 2)
   const [selectedSource, setSelectedSource] = useState<ConnectionSelection | null>(null);
-
-  // Chosen vector DB or native indexing (step 2 -> 3)
-  const [selectedDB, setSelectedDB] = useState<ConnectionSelection | null>(null);
 
   // Created sync ID and job ID once we make calls
   const [syncId, setSyncId] = useState<string | null>(null);
@@ -99,61 +95,32 @@ const Sync = () => {
 
   /**
    * handleSourceSelect is triggered by SyncDataSourceGrid when the user
-   * chooses a data source. We move from step 1 -> 2 to pick vector DB.
+   * chooses a data source. We create the sync and go directly to configuration.
    */
   const handleSourceSelect = async (connectionId: string, metadata: { name: string; shortName: string }) => {
-    setSelectedSource({ connectionId });
-    if (userInfo) {
-      setPipelineMetadata({
-        source: {
-          ...metadata,
-          type: "source",
-        },
-        destination: {
-          name: "Native Weaviate",
-          shortName: "weaviate_native",
-          type: "destination",
-        },
-        ...userInfo,
-      });
-    }
-    setStep(2);
-  };
-
-  /**
-   * handleVectorDBSelected is triggered after the user chooses a vector DB.
-   * We move from step 2 -> 3 to confirm the pipeline.
-   */
-  const handleVectorDBSelected = async (dbDetails: ConnectionSelection, metadata: { name: string; shortName: string }) => {
     try {
-      setSelectedDB(dbDetails);
+      setSelectedSource({ connectionId });
+
       if (userInfo) {
-        setPipelineMetadata(prev => prev ? {
-          ...prev,
-          destination: dbDetails.isNative
-            ? {
-                name: "Native Weaviate",
-                shortName: "weaviate_native",
-                type: "destination",
-              }
-            : {
-                ...metadata,
-                type: "destination",
-              }
-        } : null);
+        setPipelineMetadata({
+          source: {
+            ...metadata,
+            type: "source",
+          },
+          destination: {
+            name: "Native Weaviate",
+            shortName: "weaviate_native",
+            type: "destination",
+          },
+          ...userInfo,
+        });
       }
 
-      if (!selectedSource) {
-        throw new Error("No source selected");
-      }
-
-      // Create sync
+      // Create sync with default native destination
       const syncResp = await apiClient.post("/sync/", {
         name: "Sync from UI",
-        source_connection_id: selectedSource.connectionId,
-        destination_connection_ids: dbDetails.isNative
-          ? [NATIVE_QDRANT_UUID] // Use constant for Native Weaviate UUID
-          : [dbDetails.connectionId],
+        source_connection_id: connectionId,
+        destination_connection_ids: [NATIVE_QDRANT_UUID], // Use constant for Native Qdrant UUID
         embedding_model_connection_id: NATIVE_TEXT2VEC_UUID, // Use constant for Text2Vec UUID
         run_immediately: false
       });
@@ -174,7 +141,9 @@ const Sync = () => {
 
       const dagData: Dag = await dagResp.json();
       setDag(dagData);
-      setStep(3);
+
+      // Go directly to configuration step
+      setStep(2);
     } catch (err: any) {
       toast({
         variant: "destructive",
@@ -228,7 +197,7 @@ const Sync = () => {
       const data = await resp.json();
       setSyncJobId(data.id);
 
-      // Navigate to the sync view instead of showing step 4
+      // Navigate to the sync view instead of showing step 3
       navigate(`/sync/${syncId}`);
     } catch (err: any) {
       toast({
@@ -260,22 +229,22 @@ const Sync = () => {
         <div className="mb-8">
           <div className="flex items-center justify-between">
             <h1 className="text-3xl font-bold">
-              Set up your pipeline
+              Set up your sync
             </h1>
             <div className="text-sm text-muted-foreground">
-              Step {step} of 4
+              Step {step} of 3
             </div>
           </div>
           <div className="mt-2 h-2 w-full rounded-full bg-secondary/20">
             <div
               className="h-2 rounded-full bg-primary transition-all duration-300"
-              style={{ width: `${(step / 4) * 100}%` }}
+              style={{ width: `${(step / 3) * 100}%` }}
             />
           </div>
         </div>
 
-        {/* Add pipeline visual for steps 3 and 4 */}
-        {pipelineMetadata?.source.name && (step === 3 || step === 4) && (
+        {/* Add pipeline visual for steps 2 and 3 */}
+        {pipelineMetadata?.source.name && (step === 2 || step === 3) && (
           <div className="mb-8">
             <SyncPipelineVisual
               sync={{
@@ -308,19 +277,8 @@ const Sync = () => {
           </div>
         )}
 
-        {/* Step 2: Pick vector DB */}
+        {/* Step 2: Configure and start sync (previously step 3) */}
         {step === 2 && (
-          <div className="space-y-6">
-            <div className="flex items-center space-x-2">
-              <h2 className="text-2xl font-semibold">Choose your destination</h2>
-              <ChevronRight className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <DestinationSelector onComplete={handleVectorDBSelected} />
-          </div>
-        )}
-
-        {/* Step 3: Configure and start sync */}
-        {step === 3 && (
           <div className="space-y-8">
             <div>
               <h2 className="text-2xl font-semibold">
@@ -361,8 +319,8 @@ const Sync = () => {
           </div>
         )}
 
-        {/* Step 4: Show progress updates with pipeline visual */}
-        {step === 4 && (
+        {/* Step 3: Show progress updates with pipeline visual (previously step 4) */}
+        {step === 3 && (
           <div className="space-y-6">
             <SyncProgress syncId={syncId} syncJobId={syncJobId} />
           </div>

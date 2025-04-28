@@ -45,6 +45,27 @@ else
     echo "OPENAI_API_KEY=\"your-api-key-here\""
 fi
 
+# Ask for Mistral API key
+echo ""
+echo "Mistral API key is required for certain AI functionality."
+read -p "Would you like to add your MISTRAL_API_KEY now? You can also do this later by editing the .env file manually. (y/n): " ADD_MISTRAL_KEY
+
+if [ "$ADD_MISTRAL_KEY" = "y" ] || [ "$ADD_MISTRAL_KEY" = "Y" ]; then
+    read -p "Enter your Mistral API key: " MISTRAL_KEY
+
+    # Remove any existing MISTRAL_API_KEY line
+    grep -v "^MISTRAL_API_KEY=" .env > .env.tmp
+    mv .env.tmp .env
+
+    # Add the new Mistral API key
+    echo "MISTRAL_API_KEY=\"$MISTRAL_KEY\"" >> .env
+    echo "Mistral API key added to .env file."
+else
+    echo "You can add your MISTRAL_API_KEY later by editing the .env file manually."
+    echo "Add the following line to your .env file:"
+    echo "MISTRAL_API_KEY=\"your-api-key-here\""
+fi
+
 # Check if "docker compose" is available (Docker Compose v2)
 if docker compose version >/dev/null 2>&1; then
   COMPOSE_CMD="docker compose"

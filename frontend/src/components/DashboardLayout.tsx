@@ -26,6 +26,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { GradientBackground, GradientCard } from "@/components/ui/gradient-background";
 import { DiscordIcon } from "@/components/ui/discord-icon";
 import { cn } from "@/lib/utils";
+import { LogoutButton } from "@/components/LogoutButton";
+import { UserProfileDropdown } from "@/components/UserProfileDropdown";
 
 const DashboardLayout = () => {
   const location = useLocation();
@@ -96,21 +98,15 @@ const DashboardLayout = () => {
       name: "White Label",
       href: "/white-label",
       icon: Tag,
-    }
-  ];
-
-  const bottomNavigation = [
+    },
     {
       name: "Settings",
       href: "/settings",
       icon: Settings,
-    },
-    {
-      name: "Profile",
-      href: "/profile",
-      icon: User,
-    },
+    }
   ];
+
+  const bottomNavigation = [];
 
   const NavLink = ({ item, isActive }: { item: typeof navigation[0], isActive: boolean }) => (
     <Link
@@ -184,6 +180,7 @@ const DashboardLayout = () => {
                         isActive={isRouteActive(item.href)}
                       />
                     ))}
+                    <UserProfileDropdown />
                   </div>
                 </nav>
               </SheetContent>
@@ -236,6 +233,7 @@ const DashboardLayout = () => {
                     isActive={isRouteActive(item.href)}
                   />
                 ))}
+                <UserProfileDropdown />
               </div>
             </nav>
           </div>
@@ -263,7 +261,7 @@ const DashboardLayout = () => {
 
                     {/* Get a demo button */}
                     <a
-                      href="https://cal.com/lennert-airweave/quick-chat"
+                      href="https://cal.com/lennert-airweave/airweave-q-a-demo"
                       target="_blank"
                       rel="noopener noreferrer"
                     >

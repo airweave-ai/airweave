@@ -93,10 +93,18 @@ const SyncTableView = () => {
         const skip = syncsPagination.pageIndex * syncsPagination.pageSize;
         const limit = syncsPagination.pageSize;
 
-        const response = await apiClient.get(`/sync/?skip=${skip}&limit=${limit}`);
-        const data: Sync[] = await response.json();
+        // Make sure skip and limit are integers
+        const response = await apiClient.get(`/sync/?skip=${parseInt(skip)}&limit=${parseInt(limit)}`);
 
-        setSyncs(data);
+        // Check if response is ok before parsing
+        if (!response.ok) {
+          throw new Error(`Error fetching syncs: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        // Make sure data is an array
+        setSyncs(Array.isArray(data) ? data : []);
 
         // We don't have total count from the backend, so we'll estimate
         // If we received fewer items than the page size, we're likely on the last page
@@ -111,7 +119,9 @@ const SyncTableView = () => {
           totalItems: estimatedTotalItems
         });
       } catch (error) {
+        console.error("Failed to fetch syncs:", error);
         toast.error("Failed to fetch syncs");
+        setSyncs([]); // Set as empty array on error
       } finally {
         setIsLoading(false);
       }
@@ -128,10 +138,15 @@ const SyncTableView = () => {
         const skip = syncJobsPagination.pageIndex * syncJobsPagination.pageSize;
         const limit = syncJobsPagination.pageSize;
 
-        const response = await apiClient.get(`/sync/jobs?skip=${skip}&limit=${limit}`);
-        const data: SyncJob[] = await response.json();
+        const response = await apiClient.get(`/sync/jobs?skip=${parseInt(skip)}&limit=${parseInt(limit)}`);
 
-        setSyncJobs(data);
+        if (!response.ok) {
+          throw new Error(`Error fetching sync jobs: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        setSyncJobs(Array.isArray(data) ? data : []);
 
         // Similar approach for estimating total items
         const isLastPage = data.length < syncJobsPagination.pageSize;
@@ -144,7 +159,9 @@ const SyncTableView = () => {
           totalItems: estimatedTotalItems
         });
       } catch (error) {
+        console.error("Failed to fetch sync jobs:", error);
         toast.error("Failed to fetch sync jobs");
+        setSyncJobs([]); // Set as empty array on error
       } finally {
         setIsJobsLoading(false);
       }

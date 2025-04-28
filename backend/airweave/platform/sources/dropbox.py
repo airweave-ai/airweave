@@ -14,7 +14,6 @@ from airweave.platform.entities.dropbox import (
     DropboxFileEntity,
     DropboxFolderEntity,
 )
-from airweave.platform.file_handling.file_manager import file_manager
 from airweave.platform.sources._base import BaseSource
 
 
@@ -368,19 +367,16 @@ class DropboxSource(BaseSource):
                     file_entity = self._create_file_entity(entry, folder_breadcrumbs)
 
                     try:
-                        # Create a custom streaming function for this file
-                        file_stream = file_manager.stream_file_from_url(
-                            file_entity.download_url,
+                        # Use the BaseSource helper method instead of direct file_manager calls
+                        processed_entity = await self.process_file_entity(
+                            file_entity=file_entity,
                             access_token=self.access_token,
                             headers=file_entity.sync_metadata.get("headers"),
                         )
 
-                        # Process the file entity (download, checksum, etc.)
-                        processed_entity = await file_manager.handle_file_entity(
-                            stream=file_stream, entity=file_entity
-                        )
-
-                        yield processed_entity
+                        # Only yield if the file wasn't skipped due to size limits
+                        if processed_entity:
+                            yield processed_entity
 
                     except Exception as e:
                         logger.error(f"Failed to process file {file_entity.name}: {str(e)}")
@@ -391,14 +387,78 @@ class DropboxSource(BaseSource):
             logger.error(f"Error listing files in Dropbox folder {folder_path}: {str(e)}")
             raise
 
+    async def _process_folder_and_contents(
+        self, client: httpx.AsyncClient, folder_path: str, folder_breadcrumbs: List[Breadcrumb]
+    ) -> AsyncGenerator[ChunkEntity, None]:
+        """Process a folder recursively, yielding files and subfolders.
+
+        Args:
+            client: The HTTPX client for making requests
+            folder_path: The path of the folder to process
+            folder_breadcrumbs: List of breadcrumbs for navigating to this folder
+
+        Yields:
+            File entities for the current folder
+            Folder entities for subfolders, followed by their contents
+        """
+        # First, yield all file entities in this folder
+        async for file_entity in self._generate_file_entities(
+            client, folder_breadcrumbs, folder_path
+        ):
+            yield file_entity
+
+        # Then find and process all subfolders
+        url = "https://api.dropboxapi.com/2/files/list_folder"
+        continue_url = "https://api.dropboxapi.com/2/files/list_folder/continue"
+
+        data = {
+            "path": folder_path,
+            "recursive": False,
+            "include_deleted": False,
+            "include_has_explicit_shared_members": True,
+            "include_mounted_folders": True,
+            "include_non_downloadable_files": True,
+        }
+
+        try:
+            # Find all subfolders in the current folder
+            async for entry in self._get_paginated_entries(client, url, data, continue_url):
+                if entry.get(".tag") == "folder":
+                    # Get account breadcrumb (always first in the list)
+                    account_breadcrumb = folder_breadcrumbs[0] if folder_breadcrumbs else None
+
+                    # Create folder entity
+                    folder_entity, subfolder_path = self._create_folder_entity(
+                        entry, account_breadcrumb
+                    )
+                    yield folder_entity
+
+                    # Create new breadcrumb for this folder
+                    folder_breadcrumb = Breadcrumb(
+                        entity_id=folder_entity.folder_id,
+                        name=folder_entity.name,
+                        type="folder",
+                    )
+                    # Build complete breadcrumb path to this folder
+                    new_breadcrumbs = folder_breadcrumbs + [folder_breadcrumb]
+
+                    # Recursively process this subfolder
+                    async for entity in self._process_folder_and_contents(
+                        client, subfolder_path, new_breadcrumbs
+                    ):
+                        yield entity
+
+        except Exception as e:
+            logger.error(f"Error processing folder {folder_path}: {str(e)}")
+            raise
+
     async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
-        """Generate all entities from Dropbox.
+        """Recursively generate all entities from Dropbox.
 
         Yields:
             A sequence of entities in the following order:
             1. Account-level entities
-            2. Folder entities for each account
-            3. File entities for each folder
+            2. For each folder (including root), folder entity and its contents recursively
         """
         async with httpx.AsyncClient() as client:
             # 1. Account(s)
@@ -411,7 +471,16 @@ class DropboxSource(BaseSource):
                     type="account",
                 )
 
-                # 2. Folders
+                # Create breadcrumbs list with just the account
+                account_breadcrumbs = [account_breadcrumb]
+
+                # 2. Process root directory first (for files in root)
+                async for file_entity in self._generate_file_entities(
+                    client, account_breadcrumbs, ""
+                ):
+                    yield file_entity
+
+                # 3. Process all folders recursively starting from root
                 async for folder_entity in self._generate_folder_entities(
                     client, account_breadcrumb
                 ):
@@ -424,8 +493,8 @@ class DropboxSource(BaseSource):
                     )
                     folder_breadcrumbs = [account_breadcrumb, folder_breadcrumb]
 
-                    # 3. Files
-                    async for file_entity in self._generate_file_entities(
-                        client, folder_breadcrumbs, folder_entity.path_lower
+                    # Process all subfolders and their files recursively
+                    async for entity in self._process_folder_and_contents(
+                        client, folder_entity.path_lower, folder_breadcrumbs
                     ):
-                        yield file_entity
+                        yield entity

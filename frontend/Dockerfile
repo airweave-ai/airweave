@@ -1,4 +1,4 @@
-FROM node:20-alpine
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
@@ -6,16 +6,36 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm install
+RUN npm ci
 
 # Copy application code
 COPY . .
 
-# Build the application
+# Ensure auth0-provider.tsx exists (won't overwrite if it exists)
+RUN mkdir -p /app/src/lib && \
+    if [ ! -f /app/src/lib/auth0-provider.tsx ]; then \
+    echo "Creating fallback auth0-provider.tsx"; \
+    echo "import { ReactNode } from 'react';" > /app/src/lib/auth0-provider.tsx; \
+    echo "export const Auth0ProviderWithNavigation = ({ children }: { children: ReactNode }) => <>{children}</>;" >> /app/src/lib/auth0-provider.tsx; \
+    fi
+
+# Build the application in production mode
 RUN npm run build
 
-# Use serve to serve the static content
+# Runtime stage
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install serve for hosting the built app
 RUN npm install -g serve
 
-# Simple runtime configuration with direct shell command
-CMD sh -c 'echo "window.ENV = { API_URL: \"${API_URL:-/api}\" };" > ./dist/config.js && serve -s dist -l 8080'
+# Copy built app from builder stage
+COPY --from=builder /app/dist /app/dist
+COPY docker-entrypoint.sh /usr/local/bin/
+
+# Make entrypoint executable
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Use entrypoint script for runtime configuration
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

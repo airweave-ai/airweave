@@ -111,3 +111,24 @@ OPTIONAL fields from ChunkEntity (automatically populated if available):
 
 
 {/* AUTO-GENERATED CONTENT END */}
+
+## Integrate Airweave with Dropbox APIs on localhost
+
+Airweave will access Dropbox on behalf of your users. You'll need to have each
+
+Dropbox provides [documentation](https://developers.dropbox.com/oauth-guide) on how to implement OAuth 2.0.
+This guide will walk you through connecting Dropbox APIs to Airweave when running locally.
+1. Go [here](https://www.dropbox.com/developers/apps/create) to create the "Airweave integration" application
+2. Under `Settings`, add the following Redirect URI:
+  ```
+  http://localhost:8080/auth/callback/dropbox
+  ```
+3.Under `Permissions`, select the following scopes:
+  ```
+  account_info.read
+  files.metadata.read
+  files.content.read
+  profile
+  email
+  ```
+4. Locate the `App key` and `App secret` under `Settings`. Add these credentials to the `dev.integrations.yml` file to enable Dropbox API integration.

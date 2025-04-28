@@ -3,7 +3,7 @@
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, validator
 
 
 class UserBase(BaseModel):
@@ -11,7 +11,14 @@ class UserBase(BaseModel):
 
     email: EmailStr
     full_name: Optional[str] = "Superuser"
-    organization_id: UUID
+    organization_id: Optional[UUID] = None
+
+    @validator("organization_id", pre=True, always=True)
+    def organization_must_exist_for_operations(cls, v, values):
+        """Validate that the organization_id field is present for all operations except create."""
+        # During validation of incoming data, we allow None because create will handle it
+        # For database objects, this should never be None
+        return v
 
     class Config:
         """Pydantic config for UserBase."""
@@ -23,7 +30,7 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     """Schema for creating a User object."""
 
-    password: str
+    # Allow organization_id to be None during creation, as it will be created if not provided
 
 
 class UserUpdate(UserBase):
@@ -31,12 +38,26 @@ class UserUpdate(UserBase):
 
     permissions: Optional[list[str]] = None
 
+    @validator("organization_id")
+    def organization_required_for_update(cls, v):
+        """Validate that the organization_id is not None for updates."""
+        if v is None:
+            raise ValueError("organization_id cannot be None when updating a user")
+        return v
+
 
 class UserInDBBase(UserBase):
     """Base schema for User stored in DB."""
 
     id: UUID
     permissions: Optional[list[str]] = None
+
+    @validator("organization_id")
+    def organization_required_in_db(cls, v):
+        """Validate that the organization_id is never None in the database."""
+        if v is None:
+            raise ValueError("User must have an organization_id in the database")
+        return v
 
     class Config:
         """Pydantic config for UserInDBBase."""

@@ -1,17 +1,10 @@
 import { Settings2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { toast } from "sonner";
-import { SecuritySettings } from "@/components/settings/SecuritySettings";
-import { NotificationSettings } from "@/components/settings/NotificationSettings";
 import { OrganizationSettings } from "@/components/settings/OrganizationSettings";
 import { AppearanceSettings } from "@/components/settings/AppearanceSettings";
+import { APIKeysSettings } from "@/components/settings/APIKeysSettings";
 
 const Settings = () => {
-  const handleSave = () => {
-    toast.success("Settings saved successfully");
-  };
-
   return (
     <div className="container pb-8">
       <div className="flex items-center gap-2 mb-8">
@@ -20,11 +13,10 @@ const Settings = () => {
       </div>
 
       <Tabs defaultValue="organization" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4 lg:w-[500px]">
+        <TabsList className="grid w-full grid-cols-3 lg:w-[400px]">
           <TabsTrigger value="organization">Organization</TabsTrigger>
           <TabsTrigger value="appearance">Appearance</TabsTrigger>
-          <TabsTrigger value="security">Security</TabsTrigger>
-          <TabsTrigger value="notifications">Notifications</TabsTrigger>
+          <TabsTrigger value="apikeys">API Keys</TabsTrigger>
         </TabsList>
 
         <div className="max-w-4xl">
@@ -36,18 +28,9 @@ const Settings = () => {
             <AppearanceSettings />
           </TabsContent>
 
-          <TabsContent value="security" className="mt-6">
-            <SecuritySettings />
+          <TabsContent value="apikeys" className="mt-6">
+            <APIKeysSettings />
           </TabsContent>
-
-          <TabsContent value="notifications" className="mt-6">
-            <NotificationSettings />
-          </TabsContent>
-        </div>
-
-        <div className="flex justify-end gap-4">
-          <Button variant="outline">Reset to Defaults</Button>
-          <Button onClick={handleSave}>Save Changes</Button>
         </div>
       </Tabs>
     </div>

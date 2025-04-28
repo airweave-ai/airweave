@@ -232,6 +232,7 @@ class FileEntity(BaseEntity):
     mime_type: Optional[str] = Field(None, description="MIME type of the file")
     size: Optional[int] = Field(None, description="Size of the file in bytes")
     download_url: str = Field(..., description="URL to download the file")
+    should_skip: bool = Field(False, description="Flag indicating if this file should be skipped")
 
     # File handling fields - set by file handler
     file_uuid: Optional[UUID] = Field(None, description="UUID assigned by the file manager")

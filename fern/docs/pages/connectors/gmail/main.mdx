@@ -128,3 +128,43 @@ Reference: https://developers.google.com/gmail/api/reference/rest/v1/users.draft
 
 
 {/* AUTO-GENERATED CONTENT END */}
+
+## Integrate Airweave with Google APIs on localhost
+
+This guide will walk you through connecting Google Workspace APIs to Airweave when running locally.
+Google provides extensive [documentation](https://developers.google.com/workspace/guides/get-started) on setting up your workspace.
+Below is a streamlined process for connecting Google APIs to Airweave.
+
+1. [Create a Google Cloud project](https://developers.google.com/workspace/guides/create-project) for your Google Workspace (if you don't already have one)
+2. [Enable the Google Workspace APIs](https://developers.google.com/workspace/guides/enable-apis) for Gmail, Google Calendar, and Google Drive
+3. [Configure Google OAuth 2.0 consent screen](https://developers.google.com/workspace/guides/configure-oauth-consent)
+4. Under `Audience`, select `Make external` and add test users
+5. Under `Data Access`, add the following scopes:
+
+```
+https://www.googleapis.com/auth/docs
+https://www.googleapis.com/auth/drive.photos.readonly
+https://www.googleapis.com/auth/drive
+https://www.googleapis.com/auth/drive.readonly
+https://www.googleapis.com/auth/drive.metadata
+https://www.googleapis.com/auth/drive.metadata.readonly
+https://www.googleapis.com/auth/gmail.readonly
+https://www.googleapis.com/auth/calendar.events.public.readonly
+https://www.googleapis.com/auth/calendar.freebusy
+https://www.googleapis.com/auth/calendar.readonly
+https://www.googleapis.com/auth/calendar.calendars.readonly
+https://www.googleapis.com/auth/calendar.events.owned.readonly
+https://www.googleapis.com/auth/calendar.events.readonly
+```
+6. [Create OAuth client ID credentials](https://developers.google.com/workspace/guides/create-credentials#oauth-client-id)
+7. Under "Authorized redirect URIs," click "+ Add URI" and add the following URIs:
+   ```
+   http://localhost:8080/auth/callback/gmail
+   ```
+   ```
+   http://localhost:8080/auth/callback/google_calendar
+   ```
+   ```
+   http://localhost:8080/auth/callback/google_drive
+   ```
+8. Locate the client ID and client secret from your newly created OAuth client. Add these credentials to the `dev.integrations.yml` file to enable Google API integration.

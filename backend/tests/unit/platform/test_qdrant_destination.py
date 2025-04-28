@@ -109,7 +109,8 @@ class TestQdrantDestinationConnection:
             patch("airweave.platform.destinations.qdrant.settings") as mock_settings,
         ):
             # Configure mocks
-            mock_settings.QDRANT_URL = "http://test-qdrant-settings.com"
+            mock_settings.QDRANT_HOST = "test-qdrant-settings.com"
+            mock_settings.QDRANT_PORT = 6333
             mock_client = mock_client_class.return_value
 
             # Create and connect
@@ -118,7 +119,7 @@ class TestQdrantDestinationConnection:
 
             # Verify client initialization
             mock_client_class.assert_called_once_with(
-                location="http://test-qdrant-settings.com", prefer_grpc=False
+                location="http://test-qdrant-settings.com:6333", prefer_grpc=False
             )
             mock_client.get_collections.assert_called_once()
 

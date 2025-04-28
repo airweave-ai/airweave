@@ -1,146 +1,19 @@
 """Module for data synchronization with improved architecture."""
 
-import asyncio
 from datetime import datetime
-from typing import Any, Callable, List, Optional
+from typing import List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
 from airweave.core.logging import logger
 from airweave.core.shared_models import SyncJobStatus
+from airweave.core.sync_job_service import sync_job_service
 from airweave.db.session import get_db_context
 from airweave.platform.entities._base import BaseEntity, DestinationAction
 from airweave.platform.sync.context import SyncContext
 from airweave.platform.sync.stream import AsyncSourceStream
-
-
-# Worker Pool Pattern
-class AsyncWorkerPool:
-    """Manages a pool of workers with controlled concurrency.
-
-    This class limits how many async tasks can run at once using a semaphore,
-    preventing system overload when processing many items in parallel.
-    """
-
-    def __init__(self, max_workers: int = 20):
-        """Initialize worker pool with concurrency control.
-
-        Args:
-            max_workers: Maximum number of tasks allowed to run concurrently
-        """
-        self.semaphore = asyncio.Semaphore(max_workers)
-        self.pending_tasks = set()
-        self.max_workers = max_workers
-
-    async def submit(self, coro: Callable, *args, **kwargs) -> asyncio.Task:
-        """Submit a coroutine to be executed by the worker pool.
-
-        Creates a task, adds it to our tracking set, and returns it.
-        Tasks run with controlled concurrency through the semaphore.
-
-        Args:
-            coro: The coroutine function to execute
-            *args: Arguments to pass to the coroutine
-            **kwargs: Keyword arguments to pass to the coroutine
-
-        Returns:
-            The created task object
-        """
-        # Create a task that will run the coroutine with semaphore control
-        task = asyncio.create_task(self._run_with_semaphore(coro, *args, **kwargs))
-        # Track the task so we can wait for it later
-        self.pending_tasks.add(task)
-        # Set up automatic cleanup when task finishes
-        task.add_done_callback(self._handle_task_completion)
-        return task
-
-    async def _run_with_semaphore(self, coro: Callable, *args, **kwargs) -> Any:
-        """Run a coroutine with semaphore control.
-
-        Acquires a semaphore before running the coroutine, limiting concurrency.
-        Semaphore is automatically released when coroutine completes.
-
-        Args:
-            coro: The coroutine function to execute
-            *args: Arguments to pass to the coroutine
-            **kwargs: Keyword arguments to pass to the coroutine
-
-        Returns:
-            The result of the coroutine - can be anything
-        """
-        # The 'async with' ensures semaphore (or "slot") is released even if an exception occurs
-        async with self.semaphore:
-            # Only N coroutines can be in this block at once (N = max_workers)
-            return await coro(*args, **kwargs)
-
-    def _handle_task_completion(self, task: asyncio.Task) -> None:
-        """Handle task completion and clean up.
-
-        Removes completed task from our tracking set and logs any errors.
-        Called automatically when a task completes.
-
-        Args:
-            task: The completed task
-        """
-        # Remove the task from our tracking set
-        self.pending_tasks.discard(task)
-        # Log if the task failed with an exception
-        if not task.cancelled() and task._exception:
-            logger.error(f"Task failed: {task._exception}")
-
-    async def wait_for_batch(self, timeout: float = 0.5) -> None:
-        """Wait for some tasks to complete.
-
-        Useful when you want to throttle submission rate or process
-        results in batches without waiting for all tasks to finish.
-
-        Args:
-            timeout: Maximum time to wait in seconds
-        """
-        if not self.pending_tasks:
-            return
-
-        # Wait for at least one task to complete or until timeout
-        # FIRST_COMPLETED means we'll return as soon as any task finishes
-        done, _ = await asyncio.wait(
-            self.pending_tasks, return_when=asyncio.FIRST_COMPLETED, timeout=timeout
-        )
-
-        # Process completed tasks, extracting results or catching exceptions
-        for task in done:
-            try:
-                # Await the task to get its result or propagate any exceptions
-                await task
-            except Exception as e:
-                logger.error(f"Error in worker task: {e}")
-
-    async def wait_for_completion(self) -> None:
-        """Wait for all tasks to complete.
-
-        Processes tasks in batches to avoid memory issues with large sets.
-        Should be called before ending a program to ensure all work is done.
-        """
-        while self.pending_tasks:
-            # Process in batches to avoid memory issues with large task sets
-            # Take a slice of the pending tasks equal to double the max worker count
-            current_batch = list(self.pending_tasks)[: self.max_workers * 2]
-            if not current_batch:
-                break
-
-            # Wait for all tasks in this batch to complete (with a timeout for safety)
-            # ALL_COMPLETED means we'll wait until every task in the batch is done
-            done, _ = await asyncio.wait(
-                current_batch, return_when=asyncio.ALL_COMPLETED, timeout=10
-            )
-
-            # Check for exceptions in completed tasks
-            for task in done:
-                try:
-                    # Await the task to get its result or propagate any exceptions
-                    await task
-                except Exception as e:
-                    logger.error(f"Task error during completion: {e}")
+from airweave.platform.sync.worker_pool import AsyncWorkerPool
 
 
 # Pipeline Pattern
@@ -293,7 +166,8 @@ class EntityProcessor:
     ) -> None:
         """Handle INSERT action."""
         if len(processed_entities) == 0:
-            raise ValueError("No processed entities to persist")
+            logger.info("No processed entities to insert")
+            return
 
         # Prepare entities with parent reference
         for processed_entity in processed_entities:
@@ -332,7 +206,9 @@ class EntityProcessor:
     ) -> None:
         """Handle UPDATE action."""
         if len(processed_entities) == 0:
-            raise ValueError("No processed entities to persist")
+            # TODO: keep track of skipped entities that could not be processed
+            logger.info("No processed entities to update")
+            return
 
         # Prepare entities with parent reference
         for processed_entity in processed_entities:
@@ -378,11 +254,15 @@ class SyncOrchestrator:
             # Process entity stream
             await self._process_entity_stream(source_node, sync_context)
 
-            # Update job status
-            await self._update_sync_job_status(
-                sync_context=sync_context,
+            # Use sync_job_service to update job status
+            await sync_job_service.update_status(
+                sync_job_id=sync_context.sync_job.id,
                 status=SyncJobStatus.COMPLETED,
+                current_user=sync_context.current_user,
                 completed_at=datetime.now(),
+                stats=sync_context.progress.stats.model_dump()
+                if hasattr(sync_context.progress, "stats")
+                else None,
             )
 
             return sync_context.sync
@@ -390,13 +270,18 @@ class SyncOrchestrator:
         except Exception as e:
             logger.error(f"Error during sync: {e}")
 
-            # Update job status
-            await self._update_sync_job_status(
-                sync_context=sync_context,
+            # Use sync_job_service to update job status
+            await sync_job_service.update_status(
+                sync_job_id=sync_context.sync_job.id,
                 status=SyncJobStatus.FAILED,
+                current_user=sync_context.current_user,
                 error=str(e),
                 failed_at=datetime.now(),
+                stats=sync_context.progress.stats.model_dump()
+                if hasattr(sync_context.progress, "stats")
+                else None,
             )
+
             raise
 
     async def _process_entity_stream(
@@ -446,53 +331,6 @@ class SyncOrchestrator:
             await self.entity_processor.process(
                 entity=entity, source_node=source_node, sync_context=sync_context, db=db
             )
-
-    async def _update_sync_job_status(
-        self,
-        sync_context: SyncContext,
-        status: SyncJobStatus,
-        error: Optional[str] = None,
-        completed_at: Optional[datetime] = None,
-        failed_at: Optional[datetime] = None,
-    ) -> None:
-        """Update sync job status with progress statistics."""
-        try:
-            async with get_db_context() as db:
-                # Get DB model for sync job
-                db_sync_job = await crud.sync_job.get(db=db, id=sync_context.sync_job.id)
-
-                if not db_sync_job:
-                    logger.error(f"Sync job {sync_context.sync_job.id} not found")
-                    return
-
-                # Base update data
-                update_data = {
-                    "status": status,
-                    "stats": sync_context.progress.stats.model_dump(),
-                    "records_processed": sync_context.progress.stats.inserted,
-                    "records_updated": sync_context.progress.stats.updated,
-                    "records_deleted": sync_context.progress.stats.deleted,
-                }
-
-                # Add status-specific fields
-                if status == SyncJobStatus.COMPLETED and completed_at:
-                    update_data["completed_at"] = completed_at
-                elif status == SyncJobStatus.FAILED:
-                    if failed_at:
-                        update_data["failed_at"] = failed_at
-                    if error:
-                        update_data["error"] = error
-
-                # Update sync job
-                await crud.sync_job.update(
-                    db=db,
-                    db_obj=db_sync_job,
-                    obj_in=schemas.SyncJobUpdate(**update_data),
-                    current_user=sync_context.current_user,
-                )
-        except Exception as e:
-            # Log but don't raise
-            logger.error(f"Failed to update sync job status: {e}")
 
 
 # Singleton instance

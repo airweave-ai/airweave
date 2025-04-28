@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.crud._base_organization import CRUDBaseOrganization
@@ -71,6 +71,16 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
         stmt = select(Entity).where(Entity.sync_job_id != sync_job_id)
         result = await db.execute(stmt)
         return list(result.unique().scalars().all())
+
+    async def get_count_by_sync_id(
+        self,
+        db: AsyncSession,
+        sync_id: UUID,
+    ) -> int | None:
+        """Get the count of entities for a specific sync."""
+        stmt = select(func.count()).where(Entity.sync_id == sync_id)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
 
 
 entity = CRUDEntity(Entity)

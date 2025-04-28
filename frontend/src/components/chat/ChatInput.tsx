@@ -6,9 +6,10 @@ import { Send, Image, Loader2 } from "lucide-react";
 interface ChatInputProps {
   onSubmit: (message: string, attachments: string[]) => void;
   isLoading: boolean;
+  disabled?: boolean;
 }
 
-export const ChatInput = ({ onSubmit, isLoading }: ChatInputProps) => {
+export const ChatInput = ({ onSubmit, isLoading, disabled = false }: ChatInputProps) => {
   const [input, setInput] = useState("");
   const [pendingImages, setPendingImages] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -68,9 +69,9 @@ export const ChatInput = ({ onSubmit, isLoading }: ChatInputProps) => {
           onChange={(e) => setInput(e.target.value)}
           placeholder="Ask a question about your data..."
           className="flex-1"
-          disabled={isLoading}
+          disabled={isLoading || disabled}
         />
-        <Button type="submit" disabled={isLoading} className="bg-primary/50 text-primary-foreground hover:bg-primary/70">
+        <Button type="submit" disabled={isLoading || disabled} className="bg-primary/50 text-primary-foreground hover:bg-primary/70">
           {isLoading ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://unpkg.com/knip@latest/schema.json",
+  "project": ["react"],
+  "ignoreDependencies": [
+    "tailwind-merge",
+    "clsx",
+    "@radix-ui/*",
+    "sonner",
+    "date-fns",
+    "react-hook-form",
+    "zod",
+    "@hookform/*",
+    "react-markdown",
+    "remark-gfm",
+    "react-syntax-highlighter",
+    "recharts",
+    "reactflow",
+    "dagre",
+    "uuid",
+    "framer-motion",
+    "@auth0/auth0-react"
+  ],
+  "entry": [
+    "src/main.tsx",
+    "src/App.tsx",
+    "src/pages/**/*.tsx",
+    "src/components/**/*.tsx",
+    "src/lib/**/*.{ts,tsx}"
+  ],
+  "includeEntryExports": false
+}

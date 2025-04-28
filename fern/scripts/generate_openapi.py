@@ -43,8 +43,8 @@ def generate_openapi():
         },
     ]
 
-    # Path to fern/openapi directory from project root
-    fern_dir = project_root / "fern" / "openapi"
+    # Path to fern/definition directory from project root
+    fern_dir = project_root / "fern" / "definition"
     fern_dir.mkdir(parents=True, exist_ok=True)
 
     output_path = fern_dir / "openapi.json"

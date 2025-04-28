@@ -31,8 +31,12 @@ class Settings(BaseSettings):
         RUN_ALEMBIC_MIGRATIONS (bool): Whether to run the alembic migrations.
         RUN_DB_SYNC (bool): Whether to run the system sync to process sources,
             destinations, and entity types.
+        QDRANT_HOST (str): The Qdrant host.
+        QDRANT_PORT (int): The Qdrant port.
         QDRANT_URL (str): The Qdrant URL.
         TEXT2VEC_INFERENCE_URL (str): The URL for text2vec-transformers inference service.
+        OPENAI_API_KEY (Optional[str]): The OpenAI API key.
+        MISTRAL_API_KEY (Optional[str]): The Mistral AI API key.
     """
 
     PROJECT_NAME: str = "Airweave"
@@ -43,6 +47,11 @@ class Settings(BaseSettings):
 
     FIRST_SUPERUSER: str
     FIRST_SUPERUSER_PASSWORD: str
+
+    AUTH_ENABLED: Optional[bool] = False
+    AUTH0_DOMAIN: Optional[str] = None
+    AUTH0_AUDIENCE: Optional[str] = None
+    AUTH0_RULE_NAMESPACE: Optional[str] = None
 
     ENCRYPTION_KEY: str
 
@@ -57,11 +66,38 @@ class Settings(BaseSettings):
     RUN_ALEMBIC_MIGRATIONS: bool = False
     RUN_DB_SYNC: bool = True
 
-    QDRANT_URL: str = "http://localhost:6333"
+    QDRANT_HOST: str = "localhost"
+    QDRANT_PORT: int = 6333
+    QDRANT_URL: str = f"http://{QDRANT_HOST}:{QDRANT_PORT}"
 
     TEXT2VEC_INFERENCE_URL: str = "http://localhost:9878"
 
     OPENAI_API_KEY: Optional[str] = None
+    MISTRAL_API_KEY: Optional[str] = None
+
+    @field_validator("AUTH0_DOMAIN", "AUTH0_AUDIENCE", "AUTH0_RULE_NAMESPACE", mode="before")
+    def validate_auth0_settings(cls, v: str, info: ValidationInfo) -> str:
+        """Validate Auth0 settings when AUTH_ENABLED is True.
+
+        Args:
+
+        ----
+            v (str): The value of the Auth0 setting.
+            info (ValidationInfo): The validation context containing all field values.
+
+        Returns:
+        -------
+            str: The validated Auth0 setting.
+
+        Raises:
+        ------
+            ValueError: If AUTH_ENABLED is True and the Auth0 setting is empty.
+        """
+        auth_enabled = info.data.get("AUTH_ENABLED", False)
+        if auth_enabled and not v:
+            field_name = info.field_name
+            raise ValueError(f"{field_name} must be set when AUTH_ENABLED is True")
+        return v
 
     @field_validator("SQLALCHEMY_ASYNC_DATABASE_URI", mode="before")
     def assemble_db_connection(cls, v: Optional[str], info: ValidationInfo) -> PostgresDsn:

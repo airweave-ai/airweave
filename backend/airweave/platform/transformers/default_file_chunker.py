@@ -1,19 +1,72 @@
-"""Default file transformer."""
+"""Default file transformer using Chonkie for improved semantic chunking."""
+
+import tiktoken
+from chonkie import RecursiveChunker, RecursiveLevel, RecursiveRules, SemanticChunker
 
 from airweave.core.logging import logger
 from airweave.platform.decorators import transformer
 from airweave.platform.entities._base import ChunkEntity, FileEntity, ParentEntity
-from airweave.platform.file_handling.async_markitdown import markitdown
+from airweave.platform.file_handling.conversion.factory import document_converter
+
+
+def count_tokens(text: str) -> int:
+    """Count tokens using the cl100k_base tokenizer (used by OpenAI's text-embedding models)."""
+    encoding = tiktoken.get_encoding("cl100k_base")
+    return len(encoding.encode(text))
+
+
+def get_recursive_chunker():
+    """Create a RecursiveChunker for markdown with custom rules."""
+    # Use a very large value to focus on structure rather than size
+    structure_based_size = 1000000  # Effectively unlimited
+
+    # Custom markdown chunking rules
+    custom_rules = RecursiveRules(
+        [
+            RecursiveLevel(
+                delimiters=["\n# "],
+                include_delim="next",  # Include the delimiter in the next chunk
+            ),
+            RecursiveLevel(delimiters=["\n## "], include_delim="next"),
+            RecursiveLevel(delimiters=["\n### "], include_delim="next"),
+            RecursiveLevel(delimiters=["\n\n"], include_delim="next"),
+            RecursiveLevel(delimiters=["\n- ", "\n* ", "\n1. "], include_delim="next"),
+            RecursiveLevel(delimiters=["```"], include_delim="both"),
+            RecursiveLevel(delimiters=[". ", "? ", "! "], include_delim="prev"),
+        ]
+    )
+
+    return RecursiveChunker(
+        tokenizer_or_token_counter=count_tokens,
+        chunk_size=structure_based_size,
+        rules=custom_rules,
+        min_characters_per_chunk=100,
+    )
+
+
+def get_semantic_chunker(max_chunk_size: int = 8191):
+    """Create a semantic chunker for further refining chunks."""
+    # Use SemanticChunker instead of SDPMChunker
+    return SemanticChunker(
+        embedding_model="text-embedding-ada-002",
+        chunk_size=max_chunk_size,
+        threshold=0.5,  # Similarity threshold
+        mode="window",  # Use window mode for comparison
+        min_sentences=1,  # Start with minimum 1 sentence
+        similarity_window=2,  # Consider 2 sentences for similarity
+    )
 
 
 @transformer(name="File Chunker")
 async def file_chunker(file: FileEntity) -> list[ParentEntity | ChunkEntity]:
-    """Default file chunker that converts files to markdown chunks.
+    """Default file chunker that converts files to markdown chunks using Chonkie.
 
     This transformer:
     1. Takes a FileEntity as input
     2. Converts the file to markdown using AsyncMarkItDown
-    3. Splits the markdown into logical chunks
+    3. Uses Chonkie for intelligent chunking with a two-step approach:
+       - First uses RecursiveChunker with markdown rules
+       - Then applies semantic chunking if chunks are too large
     4. Yields each chunk as a ChunkEntity
 
     Args:
@@ -30,31 +83,51 @@ async def file_chunker(file: FileEntity) -> list[ParentEntity | ChunkEntity]:
 
     if not file.local_path:
         logger.error(f"File {file.name} has no local path")
-        return
+        return []
 
     try:
         # Convert file to markdown
-        result = await markitdown.convert(file.local_path)
+        result = await document_converter.convert(file.local_path)
 
         if not result or not result.text_content:
             logger.warning(f"No content extracted from file {file.name}")
-            return
+            return []
 
-        # Split content into chunks and yield as child entities
-        chunks = _split_into_chunks(result.text_content)
+        # Max token size for embedding models (e.g. OpenAI's text-embedding-ada-002)
+        max_chunk_size = 8191
+
+        # Step 1: Initial chunking with RecursiveChunker
+        recursive_chunker = get_recursive_chunker()
+        initial_chunks = recursive_chunker.chunk(result.text_content)
+
+        # Step 2: Apply semantic chunking if any chunks are still too large
+        final_chunk_texts = []
+        semantic_chunker = None
+
+        for chunk in initial_chunks:
+            if chunk.token_count <= max_chunk_size:
+                final_chunk_texts.append(chunk.text)
+            else:
+                # Only initialize the semantic chunker if needed
+                if not semantic_chunker:
+                    semantic_chunker = get_semantic_chunker(max_chunk_size)
+
+                # Apply semantic chunking to the large chunk
+                semantic_chunks = semantic_chunker.chunk(chunk.text)
+                final_chunk_texts.extend([sc.text for sc in semantic_chunks])
 
         # Create parent entity for the file using all fields from original entity
         file_data = file.model_dump()
         file_data.update(
             {
-                "number_of_chunks": len(chunks),
+                "number_of_chunks": len(final_chunk_texts),
             }
         )
         parent = FileParentClass(**file_data)
         produced_entities.append(parent)
 
-        for i, chunk in enumerate(chunks):
-            if not chunk.strip():
+        for i, chunk_text in enumerate(final_chunk_texts):
+            if not chunk_text.strip():
                 continue
 
             chunk = FileChunkClass(
@@ -63,13 +136,13 @@ async def file_chunker(file: FileEntity) -> list[ParentEntity | ChunkEntity]:
                 sync_id=file.sync_id,
                 parent_entity_id=parent.entity_id,
                 parent_db_entity_id=parent.db_entity_id,
-                md_content=chunk,
+                md_content=chunk_text,
                 md_type="text",
                 md_position=i,
                 md_parent_title=file.name,
                 metadata={
                     "chunk_index": i,
-                    "total_chunks": len(chunks),
+                    "total_chunks": len(final_chunk_texts),
                 },
             )
             produced_entities.append(chunk)
@@ -79,123 +152,3 @@ async def file_chunker(file: FileEntity) -> list[ParentEntity | ChunkEntity]:
         raise e
 
     return produced_entities
-
-
-def _split_by_headers(content: str, max_chunk_size: int) -> list[str]:
-    """Split content by headers only when necessary due to size constraints."""
-    if not content.strip():
-        return []
-
-    # If content is already small enough, return it as a single chunk
-    if len(content) <= max_chunk_size:
-        return [content]
-
-    # Otherwise, split at major headers (# or ##) when needed
-    chunks = []
-    lines = content.split("\n")
-    current_chunk = []
-    current_size = 0
-
-    for line in lines:
-        line_size = len(line) + 1  # +1 for newline
-
-        # Only split at major headers (# or ##) when the chunk is getting large
-        is_major_header = line.startswith("# ") or line.startswith("## ")
-        should_split = is_major_header and current_size > max_chunk_size * 0.5 and current_size > 0
-
-        # Always split if we've exceeded the max size
-        if current_size + line_size > max_chunk_size:
-            should_split = True
-
-        if should_split and current_chunk:
-            chunks.append("\n".join(current_chunk))
-            current_chunk = []
-            current_size = 0
-
-        current_chunk.append(line)
-        current_size += line_size
-
-    # Add the final chunk
-    if current_chunk:
-        chunks.append("\n".join(current_chunk))
-
-    return chunks
-
-
-def _split_into_chunks(content: str, max_chunk_size: int = 5000) -> list[str]:  # noqa: C901
-    """Split content into chunks, trying to preserve semantic coherence.
-
-    This function is deliberately conservative about splitting, preferring to keep
-    related content together when possible.
-    """
-    if not content.strip():
-        return []
-
-    # If content is small enough, return it as a single chunk
-    if len(content) <= max_chunk_size:
-        return [content]
-
-    # Try to split by headers first
-    chunks = _split_by_headers(content, max_chunk_size)
-
-    # If we still have chunks that are too large, split them further
-    final_chunks = []
-
-    for chunk in chunks:
-        if len(chunk) <= max_chunk_size:
-            final_chunks.append(chunk)
-            continue
-
-        # For oversized chunks, split by paragraphs as a last resort
-        paragraphs = []
-        current_para = []
-        is_in_code_block = False
-
-        # Identify paragraphs while preserving code blocks
-        for line in chunk.split("\n"):
-            # Track code block state
-            if line.strip().startswith("```"):
-                is_in_code_block = not is_in_code_block
-
-            # Only create paragraph breaks when not in a code block
-            if not line.strip() and not is_in_code_block and current_para:
-                paragraphs.append("\n".join(current_para))
-                current_para = []
-                continue
-
-            current_para.append(line)
-
-        # Add the last paragraph
-        if current_para:
-            paragraphs.append("\n".join(current_para))
-
-        # Create chunks from paragraphs, being conservative about splitting
-        current_chunk = []
-        current_size = 0
-
-        for para in paragraphs:
-            para_size = len(para) + 2  # +2 for paragraph separator
-
-            # If adding this paragraph would exceed the limit, start a new chunk
-            if current_size + para_size > max_chunk_size and current_chunk:
-                final_chunks.append("\n\n".join(current_chunk))
-                current_chunk = []
-                current_size = 0
-
-            # If a single paragraph is too large, we have no choice but to include it as is
-            if para_size > max_chunk_size:
-                if current_chunk:
-                    final_chunks.append("\n\n".join(current_chunk))
-                    current_chunk = []
-                    current_size = 0
-                final_chunks.append(para)
-                continue
-
-            current_chunk.append(para)
-            current_size += para_size
-
-        # Add the final chunk
-        if current_chunk:
-            final_chunks.append("\n\n".join(current_chunk))
-
-    return final_chunks

@@ -12,6 +12,8 @@ jobs:
     environment: dev
     steps:
       - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.sha }} # Run on feature instead of main
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -29,7 +31,7 @@ jobs:
           cd backend
           poetry install
 
-      - name: Run all tests
+      - name: Run all local tests
         env:
           AIRWEAVE_TEST_ENV: test
           ENCRYPTION_KEY: "SpgLrrEEgJ/7QdhSMSvagL1juEY5eoyCG0tZN7OSQV0=" # This is just a dummy key
@@ -43,10 +45,35 @@ jobs:
           PROJECT_NAME: airweave
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }} # Used for e2e sync tests
+          DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
+          GDRIVE_REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
+          ASANA_REFRESH_TOKEN: ${{ secrets.ASANA_REFRESH_TOKEN }}
 
         run: |
           cd backend
-          poetry run pytest tests/ --ignore=tests/e2e/smoke/test_user_onboarding.py --cov=airweave --cov-report=xml
+          poetry run pytest tests/ --ignore=tests/e2e/ --cov=airweave --cov-report=xml
+
+      - name: Run all e2e tests
+        env:
+          AIRWEAVE_TEST_ENV: test
+          ENCRYPTION_KEY: "SpgLrrEEgJ/7QdhSMSvagL1juEY5eoyCG0tZN7OSQV0=" # This is just a dummy key
+          FIRST_SUPERUSER: admin@airweave.ai
+          FIRST_SUPERUSER_PASSWORD: airweave1234!
+          POSTGRES_USER: airweave
+          POSTGRES_DB: airweave
+          POSTGRES_HOST: localhost
+          POSTGRES_PASSWORD: airweave1234!
+          POSTGRES_PORT: 5432
+          PROJECT_NAME: airweave
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }} # Used for e2e sync tests
+          DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
+          GDRIVE_REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
+          ASANA_REFRESH_TOKEN: ${{ secrets.ASANA_REFRESH_TOKEN }}
+
+        run: |
+          cd backend
+          poetry run pytest tests/e2e --ignore=tests/e2e/smoke/test_user_onboarding.py --cov=airweave --cov-report=xml
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3

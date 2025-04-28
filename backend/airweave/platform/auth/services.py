@@ -307,27 +307,58 @@ class OAuth2Service:
             payload["client_id"] = client_id
             payload["client_secret"] = client_secret
 
+        # Fixed logging statement that doesn't use short_name
+        oauth2_service_logger.info(
+            "Preparing token request: "
+            f"URL: {integration_config.backend_url}, "
+            f"Headers: {headers}, "
+            f"Payload keys: {list(payload.keys())}"  # Log keys only for security
+        )
+
         return headers, payload
 
     @staticmethod
     async def _make_token_request(url: str, headers: dict, payload: dict) -> httpx.Response:
-        """Make the token refresh request.
+        """Make the token refresh request."""
+        oauth2_service_logger.info(f"Making token request to: {url}")
 
-        Args:
-        ----
-            url (str): The URL to make the request to.
-            headers (dict): The headers for the request.
-            payload (dict): The payload for the request.
+        try:
+            async with httpx.AsyncClient() as client:
+                oauth2_service_logger.info(f"Sending POST request with data: {payload}")
+                response = await client.post(url, headers=headers, data=payload)
 
-        Returns:
-        -------
-            httpx.Response: The response from the token refresh request.
+                oauth2_service_logger.info(
+                    f"Received response: Status {response.status_code}, "
+                    f"Headers: {dict(response.headers)}"
+                )
 
-        """
-        async with httpx.AsyncClient() as client:
-            response = await client.post(url, headers=headers, data=payload)
-        response.raise_for_status()
-        return response
+                # Log response body for debugging
+                try:
+                    response_json = response.json()
+                    oauth2_service_logger.info(f"Response body: {response_json}")
+                except Exception:
+                    oauth2_service_logger.info(f"Response body (not JSON): {response.text}")
+
+                response.raise_for_status()
+                return response
+
+        except httpx.HTTPStatusError as e:
+            oauth2_service_logger.error(
+                f"HTTP error during token request: {e.response.status_code} "
+                f"{e.response.reason_phrase}"
+            )
+
+            # Try to log the error response
+            try:
+                error_content = e.response.json()
+                oauth2_service_logger.error(f"Error response body: {error_content}")
+            except Exception:
+                oauth2_service_logger.error(f"Error response text: {e.response.text}")
+
+            raise
+        except Exception as e:
+            oauth2_service_logger.error(f"Unexpected error during token request: {str(e)}")
+            raise
 
     @staticmethod
     async def _handle_token_response(

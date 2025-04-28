@@ -82,8 +82,13 @@ class QdrantDestination(VectorDBDestination):
         if self.client is None:
             try:
                 # Configure client
+                if self.url:
+                    location = self.url
+                else:
+                    location = f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}"
+
                 client_config = {
-                    "location": self.url or settings.QDRANT_URL,
+                    "location": location,
                     "prefer_grpc": False,  # Use HTTP by default
                 }
 

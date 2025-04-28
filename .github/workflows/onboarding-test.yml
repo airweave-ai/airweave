@@ -19,25 +19,21 @@ jobs:
           echo "Docker Compose version:"
           docker compose version
 
-      # TODO: change to main branch
-      - name: Clone repository
-        run: |
-          git clone https://github.com/airweave-ai/airweave.git
-          cd airweave
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Run start script
-        working-directory: ./airweave
         run: |
           chmod +x start.sh
-          { echo "y"; echo "${{ secrets.OPENAI_API_KEY }}"; } | ./start.sh
+          { echo "y"; echo "${{ secrets.OPENAI_API_KEY }}"; echo "n"; } | ./start.sh
 
       - name: Run backend-specific health checks
-        working-directory: ./airweave
         run: |
           docker exec -e AIRWEAVE_TEST_ENV=onboarding airweave-backend pytest tests/e2e/smoke/test_basic_health.py -v
 
       - name: Run frontend health checks
-        working-directory: ./airweave
         run: |
           echo "Checking frontend accessibility..."
           FRONTEND_URL="http://localhost:8080"
@@ -52,7 +48,6 @@ jobs:
           fi
 
       - name: Run user onboarding test
-        working-directory: ./airweave
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}

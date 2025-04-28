@@ -15,9 +15,39 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write
 
     steps:
       - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+
+      - name: Install Python dependencies
+        working-directory: ./backend
+        run: |
+          poetry install --no-root
+
+      - name: Generate OpenAPI specification
+        run: |
+          echo "Generating OpenAPI specification..."
+          poetry run python ../fern/scripts/generate_openapi.py
+        working-directory: ./backend
+        env:
+          FIRST_SUPERUSER: "docs@example.com"
+          FIRST_SUPERUSER_PASSWORD: "docs-password"
+          ENCRYPTION_KEY: "docs-encryption-key"
+          POSTGRES_HOST: "localhost"
+          POSTGRES_USER: "postgres"
+          POSTGRES_PASSWORD: "postgres"
+          OPENAI_API_KEY: "sk-docs"
+          LOCAL_DEVELOPMENT: "true"
 
       - name: Setup Node.js
         uses: actions/setup-node@v3

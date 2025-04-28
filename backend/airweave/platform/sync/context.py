@@ -8,12 +8,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
 from airweave.core import credentials
+from airweave.core.config import settings
 from airweave.core.exceptions import NotFoundException
 from airweave.platform.auth.schemas import AuthType
 from airweave.platform.auth.services import oauth2_service
-from airweave.platform.destinations._base import BaseDestination
+from airweave.platform.destinations._base import BaseDestination, VectorDBDestination
 from airweave.platform.embedding_models._base import BaseEmbeddingModel
 from airweave.platform.embedding_models.local_text2vec import LocalText2Vec
+from airweave.platform.embedding_models.openai_text2vec import OpenAIText2Vec
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.locator import resource_locator
 from airweave.platform.sources._base import BaseSource
@@ -98,7 +100,7 @@ class SyncContextFactory:
         source = await cls._create_source_instance(db=db, sync=sync, current_user=current_user)
         embedding_model = cls._get_embedding_model(sync=sync)
         destinations = await cls._create_destination_instances(
-            db=db, sync=sync, current_user=current_user
+            db=db, sync=sync, current_user=current_user, embedding_model=embedding_model
         )
         transformers = await cls._get_transformer_callables(db=db, sync=sync)
         entity_map = await cls._get_entity_definition_map(db=db)
@@ -230,10 +232,26 @@ class SyncContextFactory:
 
     @classmethod
     def _get_embedding_model(cls, sync: schemas.Sync) -> BaseEmbeddingModel:
-        """Get embedding model instance."""
-        if not sync.embedding_model_connection_id:
-            return LocalText2Vec()
-        return LocalText2Vec()  # TODO: Handle other embedding models
+        """Get embedding model instance.
+
+        If OpenAI API key is available, it will use OpenAI embeddings instead of local.
+
+        Args:
+            sync (schemas.Sync): The sync configuration
+
+        Returns:
+            BaseEmbeddingModel: The embedding model to use
+        """
+        # Use OpenAI if API key is available
+        from airweave.core.logging import logger
+
+        if settings.OPENAI_API_KEY:
+            logger.info(f"Using OpenAI embedding model (text-embedding-3-small) for sync {sync.id}")
+            return OpenAIText2Vec(api_key=settings.OPENAI_API_KEY)
+
+        # Otherwise use the local model
+        logger.info(f"Using local embedding model (MiniLM-L6-v2) for sync {sync.id}")
+        return LocalText2Vec()
 
     @classmethod
     async def _create_destination_instances(
@@ -241,6 +259,7 @@ class SyncContextFactory:
         db: AsyncSession,
         sync: schemas.Sync,
         current_user: schemas.User,
+        embedding_model: BaseEmbeddingModel,
     ) -> list[BaseDestination]:
         """Create destination instances.
 
@@ -249,12 +268,14 @@ class SyncContextFactory:
             db (AsyncSession): The database session
             sync (schemas.Sync): The sync object
             current_user (schemas.User): The current user
+            embedding_model (BaseEmbeddingModel): The embedding model to use for vector destinations
 
         Returns:
         --------
             list[BaseDestination]: A list of destination instances
         """
         destinations = []
+
         for destination_connection_id in sync.destination_connection_ids:
             destination_connection = await crud.connection.get(
                 db, destination_connection_id, current_user
@@ -274,9 +295,17 @@ class SyncContextFactory:
                 raise NotFoundException(
                     f"Destination not found for connection {destination_connection.short_name}"
                 )
-            destinations.append(
-                await resource_locator.get_destination(destination_schema).create(sync.id)
-            )
+
+            destination_class = resource_locator.get_destination(destination_schema)
+            if issubclass(destination_class, VectorDBDestination):
+                destination = await destination_class.create(
+                    sync_id=sync.id, vector_size=embedding_model.vector_dimensions
+                )
+            else:
+                destination = await destination_class.create(sync_id=sync.id)
+
+            destinations.append(destination)
+
         return destinations
 
     @classmethod

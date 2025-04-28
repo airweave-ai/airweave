@@ -66,7 +66,7 @@ jobs:
         run: |
           mkdir -p fern/definition
           echo "🌿 Updating Fern OpenAPI definition..."
-          cp fern/openapi/openapi.json fern/definition/openapi.json || echo "OpenAPI spec not found"
+          cp fern/definition/openapi.json fern/definition/openapi.json || echo "OpenAPI spec not found"
 
       - name: Generate Docs
         run: |
@@ -79,6 +79,6 @@ jobs:
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add fern/docs/pages/connectors/ fern/docs.yml fern/openapi/
+          git add fern/docs/pages/connectors/ fern/docs.yml
           git diff --quiet && git diff --staged --quiet || git commit -m "docs: update documentation [skip ci]"
           git push

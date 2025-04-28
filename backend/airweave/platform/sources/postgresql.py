@@ -5,6 +5,7 @@ based on its schema structure. It dynamically creates entity classes at runtime
 using the PolymorphicEntity system.
 """
 
+import json
 from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional, Type
 
@@ -197,27 +198,53 @@ class PostgreSQLSource(BaseSource):
         tables = await self.conn.fetch(query, schema)
         return [table["table_name"] for table in tables]
 
+    async def _get_table_list(self, schema: str) -> List[str]:
+        """Get the list of tables to process based on configuration."""
+        tables_config = self.config.get("tables", "*")
+
+        # Handle both wildcard and CSV list of tables
+        if tables_config == "*":
+            return await self._get_tables(schema)
+
+        # Split by comma and strip whitespace
+        tables = [t.strip() for t in tables_config.split(",")]
+        # Validate that all specified tables exist
+        available_tables = await self._get_tables(schema)
+        invalid_tables = set(tables) - set(available_tables)
+        if invalid_tables:
+            raise ValueError(f"Tables not found in schema '{schema}': {', '.join(invalid_tables)}")
+        return tables
+
+    async def _process_table_batch(
+        self, schema: str, table: str, entity_class: Type[PolymorphicEntity], batch: List
+    ) -> AsyncGenerator[ChunkEntity, None]:
+        """Process a batch of records from a table."""
+        for record in batch:
+            data = dict(record)
+
+            # Simply try to convert all strings to JSON
+            for key, value in data.items():
+                if isinstance(value, str):
+                    try:
+                        parsed_value = json.loads(value)
+                        data[key] = parsed_value
+                    except (json.JSONDecodeError, ValueError):
+                        # Keep as string if not valid JSON
+                        pass
+
+            model_fields = entity_class.model_fields
+            primary_keys = model_fields["primary_key_columns"].default_factory()
+            pk_values = [str(data[pk]) for pk in primary_keys]
+            entity_id = f"{schema}.{table}:" + ":".join(pk_values)
+
+            yield entity_class(entity_id=entity_id, **data)
+
     async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
         """Generate entities for all tables in specified schemas."""
         try:
             await self._connect()
-
             schema = self.config.get("schema", "public")
-            tables_config = self.config.get("tables", "*")
-
-            # Handle both wildcard and CSV list of tables
-            if tables_config == "*":
-                tables = await self._get_tables(schema)
-            else:
-                # Split by comma and strip whitespace
-                tables = [t.strip() for t in tables_config.split(",")]
-                # Validate that all specified tables exist
-                available_tables = await self._get_tables(schema)
-                invalid_tables = set(tables) - set(available_tables)
-                if invalid_tables:
-                    raise ValueError(
-                        f"Tables not found in schema '{schema}': {', '.join(invalid_tables)}"
-                    )
+            tables = await self._get_table_list(schema)
 
             # Start a transaction
             async with self.conn.transaction():
@@ -229,8 +256,6 @@ class PostgreSQLSource(BaseSource):
                         )
 
                     entity_class = self.entity_classes[f"{schema}.{table}"]
-
-                    # Fetch and yield data
                     BATCH_SIZE = 50
                     offset = 0
 
@@ -246,14 +271,9 @@ class PostgreSQLSource(BaseSource):
                             break
 
                         # Process the batch
-                        for record in records:
-                            data = dict(record)
-                            model_fields = entity_class.model_fields
-                            primary_keys = model_fields["primary_key_columns"].default_factory()
-                            pk_values = [str(data[pk]) for pk in primary_keys]
-                            entity_id = f"{schema}.{table}:" + ":".join(pk_values)
-
-                            entity = entity_class(entity_id=entity_id, **data)
+                        async for entity in self._process_table_batch(
+                            schema, table, entity_class, records
+                        ):
                             yield entity
 
                         # Increment offset for next batch

@@ -14,7 +14,8 @@
 Turn any app into a semantic MCP server for AI agents. **Airweave** connects any app, database, URL, or API and makes it semantically searchable for agents.
 
 ### 🎥 Demo
-https://github.com/user-attachments/assets/e6f80420-ad16-4844-b9be-30b1fbc2281c
+https://github.com/user-attachments/assets/abdf85cb-a8f5-4b6c-b5a3-d4b5177e6bda
+
 
 ## Overview
 
@@ -129,8 +130,7 @@ You can configure your own vector database in the app UI or via the API.
   - Production: (upcoming) [Kubernetes](https://kubernetes.io/)
 - **Databases**:
   - [PostgreSQL](https://www.postgresql.org/) for relational data
-  - Vector database (your choice, e.g. Chroma, Milvus, Pinecone, Qdrant, Weaviate, etc.)  + (upcoming batteries-included vector DB)
-  - Graph database (natively supported Neo4j)
+  - Vector database: [Qdrant](https://qdrant.tech/)
 - **Asynchronous Tasks**: [ARQ](https://arq-docs.helpmanual.io/) Redis for background workers
 
 ---
@@ -155,7 +155,7 @@ Please follow the existing code style and conventions. See [CONTRIBUTING.md](htt
 
 ## License
 
-Airweave is released under an open-core model. The community edition is licensed under the [Apache 2.0 License](LICENSE). Additional modules (for enterprise or advanced features) may be licensed separately.
+Airweave is released under an open-core model. The community edition is licensed under the [MIT](LICENSE). Additional modules (for enterprise or advanced features) may be licensed separately.
 
 
 ## Contact & Community
