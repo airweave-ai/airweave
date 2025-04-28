@@ -3,18 +3,13 @@ interface Env {
   VITE_ACCESS_TOKEN?: string;
   VITE_LOCAL_DEVELOPMENT: boolean;
   VITE_ENABLE_AUTH?: string;
+  VITE_POSTHOG_KEY?: string;
+  VITE_POSTHOG_HOST?: string;
+  VITE_ENABLE_ANALYTICS?: string;
 }
 
-// Define the window.ENV type
-declare global {
-  interface Window {
-    ENV?: {
-      API_URL: string;
-      LOCAL_DEVELOPMENT?: boolean;
-      ENABLE_AUTH?: string;
-    };
-  }
-}
+// Using the Window interface declaration from vite-env.d.ts
+// No need to redeclare it here since it's already in vite-env.d.ts
 
 export const env: Env = {
   // Use runtime config if available, otherwise fall back to Vite env vars
@@ -23,5 +18,12 @@ export const env: Env = {
   VITE_LOCAL_DEVELOPMENT: window.ENV?.LOCAL_DEVELOPMENT ||
     import.meta.env.VITE_LOCAL_DEVELOPMENT === 'true' ||
     (import.meta.env.MODE === 'development'),
-  VITE_ENABLE_AUTH: window.ENV?.ENABLE_AUTH || import.meta.env.VITE_ENABLE_AUTH || 'true',
+  VITE_ENABLE_AUTH: window.ENV?.AUTH_ENABLED !== undefined 
+    ? window.ENV.AUTH_ENABLED.toString() 
+    : import.meta.env.VITE_ENABLE_AUTH || 'true',
+  
+  // PostHog variables
+  VITE_POSTHOG_KEY: import.meta.env.VITE_POSTHOG_KEY || '',
+  VITE_POSTHOG_HOST: import.meta.env.VITE_POSTHOG_HOST || '',
+  VITE_ENABLE_ANALYTICS: import.meta.env.VITE_ENABLE_ANALYTICS || 'true',
 };

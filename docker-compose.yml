@@ -81,6 +81,9 @@ services:
     environment:
       - API_URL=http://localhost:8001
       - ENABLE_AUTH=false
+      - VITE_POSTHOG_KEY=phc_Ytp26UB3WwGCdjHTpDBI9HQg2ZA38ITMDKI6fE6EPGS
+      - VITE_POSTHOG_HOST=https://eu.i.posthog.com
+      - VITE_ENABLE_ANALYTICS=true
     depends_on:
       backend:
         condition: service_healthy

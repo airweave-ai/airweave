@@ -7,6 +7,8 @@ import { ThemeProvider } from "@/lib/theme-provider";
 import { Auth0ProviderWithNavigation } from "@/lib/auth0-provider";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { setTokenProvider } from "@/lib/api";
+import { PostHogProvider } from "posthog-js/react";
+import { env } from "@/config/env";
 
 // Component to initialize the API with auth
 function ApiAuthConnector({ children }: { children: React.ReactNode }) {
@@ -43,9 +45,26 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <BrowserRouter>
         <Auth0ProviderWithNavigation>
           <AuthProvider>
-            <ApiAuthConnector>
-              <App />
-            </ApiAuthConnector>
+            <PostHogProvider
+              apiKey={env.VITE_POSTHOG_KEY || ''}
+              options={{
+                api_host: env.VITE_POSTHOG_HOST || '',
+                loaded: (posthog) => {
+                  // Disable capturing in development or if analytics disabled
+                  if (
+                    env.VITE_ENABLE_ANALYTICS !== 'true' || 
+                    (env.VITE_LOCAL_DEVELOPMENT && 
+                     window.location.host.includes('localhost'))
+                  ) {
+                    posthog.opt_out_capturing();
+                  }
+                }
+              }}
+            >
+              <ApiAuthConnector>
+                <App />
+              </ApiAuthConnector>
+            </PostHogProvider>
           </AuthProvider>
         </Auth0ProviderWithNavigation>
       </BrowserRouter>
