@@ -23,20 +23,15 @@ class SigV4AuthConfig(BaseConfig):
     session_token: Optional[str] = Field(
         None,
         title="Session Token",
-        description="Optional session token (e.g. AWS_SESSION_TOKEN).",
+        description="Optional session token. In case you cannot continue, write '' in this field.",
     )
-    region: Optional[str] = Field(
-        None,
+    region: str = Field(
+        ...,
         title="Region",
         description="The AWS region (e.g. us-east-1).",
     )
-    endpoint_url: Optional[str] = Field(
-        None,
-        title="Endpoint URL",
-        description="Custom endpoint for S3-compatible services.",
-    )
-    bucket: Optional[str] = Field(
-        None,
+    bucket: str = Field(
+        ...,
         title="Bucket",
         description="The name of the bucket to access.",
     )

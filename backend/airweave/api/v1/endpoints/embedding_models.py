@@ -35,7 +35,10 @@ async def read_embedding_model(
     if not embedding_model:
         raise HTTPException(status_code=404, detail="Embedding model not found")
     if embedding_model.auth_config_class:
-        auth_config_class = resource_locator.get_auth_config(embedding_model.auth_config_class)
+        auth_config_class = resource_locator.get_auth_config(
+            embedding_model.auth_config_class,
+            embedding_model.auth_type if "auth_type" in embedding_model else None,
+        )
         embedding_model.config_fields = Fields.from_config_class(auth_config_class)
     return embedding_model
 

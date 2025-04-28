@@ -13,6 +13,7 @@ import aioboto3
 
 from airweave.core.logging import logger
 from airweave.platform.auth.schemas import AuthType
+from airweave.platform.configs.sigv4 import SigV4AuthConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import ChunkEntity
 from airweave.platform.entities.aws_s3 import S3BucketEntity, S3ObjectEntity
@@ -37,28 +38,47 @@ class S3Source(BaseSource):
     @classmethod
     async def create(
         cls,
-        access_key_id: str,
-        secret_access_key: str,
-        session_token: Optional[str],
-        region: str,
-        bucket: str,
+        *args,
+        # access_key_id: str,
+        # secret_access_key: str,
+        # session_token: Optional[str],
+        # region: str,
+        # bucket: str,
     ) -> "S3Source":
         """Initialize the boto3 client with provided credentials and settings."""
-        session = aioboto3.Session(
-            aws_access_key_id=access_key_id,
-            aws_secret_access_key=secret_access_key,
-            aws_session_token=session_token,
-            region_name=region,
-        )
+        if len(args) == 1 and isinstance(args[0], SigV4AuthConfig):
+            cfg: SigV4AuthConfig = args[0]
+            access_key_id = cfg.access_key_id
+            secret_access_key = cfg.secret_access_key
+            session_token = cfg.session_token
+            region = cfg.region
+            bucket = cfg.bucket
+        else:
+            access_key_id, secret_access_key, session_token, region, bucket = args
+        logger.info(f"AWS S3: \n {access_key_id} \n {secret_access_key} \n {region} \n {bucket}")
+        bucket_name = bucket.removeprefix("s3://")
+        if session_token and session_token == "":
+            session = aioboto3.Session(
+                aws_access_key_id=access_key_id,
+                aws_secret_access_key=secret_access_key,
+                region_name=region,
+            )
+        else:
+            session = aioboto3.Session(
+                aws_access_key_id=access_key_id,
+                aws_secret_access_key=secret_access_key,
+                region_name=region,
+            )
         client = session.client("s3")
         instance = cls()
         instance.client = client
-        instance.bucket = bucket
+        instance.session = session
+        instance.bucket = bucket_name
         return instance
 
     async def _generate_bucket_entity(self) -> S3BucketEntity:
         """Yield the bucket-level entity."""
-        async with self.client as client:
+        async with self.session.client("s3") as client:
             response = await client.get_bucket_location(Bucket=self.bucket)
         return S3BucketEntity(
             entity_id=self.bucket,
@@ -74,7 +94,7 @@ class S3Source(BaseSource):
             if continuation_token:
                 params["ContinuationToken"] = continuation_token
 
-            async with self.client as client:
+            async with self.session.client("s3") as client:
                 data = await client.list_objects_v2(**params)
 
             for obj in data.get("Contents", []):

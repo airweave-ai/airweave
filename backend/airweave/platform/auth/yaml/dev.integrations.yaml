@@ -216,11 +216,11 @@ integrations:
 
   aws_s3:
     auth_type: "sigv4"
-    region: "us-east-1"
-    bucket: "airweave-integration"
     access_key_id: "AKIA5X3Q4Z2J6F7G3K2A"
     secret_access_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
     session_token: "AQoEXAMPLEH4aoAH0gNCAPy..."
+    region: "us-east-1"
+    bucket: "airweave-integration"
 
   qdrant:
     auth_type: "config_class"
