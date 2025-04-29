@@ -66,7 +66,7 @@ def creds():
 
 
 @pytest.mark.parametrize("service_name", ["asana", "dropbox", "github", "google_drive", "notion"])
-def test_oauth_sync(e2e_environment, e2e_api_url, creds, service_name):
+def test_sync(e2e_environment, e2e_api_url, creds, service_name):
     """
     End-to-end test for integration connectors with various auth types.
     """
