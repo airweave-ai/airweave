@@ -817,21 +817,20 @@ const ViewEditSync = () => {
                     </div>
                   </div>
 
-                  {lastSync.started_at && (
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="flex-shrink-0 h-9 w-9 bg-purple-500/10 rounded-full flex items-center justify-center">
-                        <Clock className="w-4 h-4 text-purple-500" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-medium">Duration</h4>
-                        <p className="text-sm">
-                          {(lastSync.completed_at || lastSync.failed_at) ?
-                            `${Math.round((new Date(lastSync.completed_at || lastSync.failed_at || '').getTime() - new Date(lastSync.started_at).getTime()) / 1000)} seconds` :
-                            "-"}
-                        </p>
-                      </div>
+                  {/* Duration - always show this section */}
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="flex-shrink-0 h-9 w-9 bg-purple-500/10 rounded-full flex items-center justify-center">
+                      <Clock className="w-4 h-4 text-purple-500" />
                     </div>
-                  )}
+                    <div>
+                      <h4 className="text-sm font-medium">Duration</h4>
+                      <p className="text-sm">
+                        {(lastSync.started_at && (lastSync.completed_at || lastSync.failed_at)) ?
+                          `${Math.round((new Date(lastSync.completed_at || lastSync.failed_at || '').getTime() - new Date(lastSync.started_at).getTime()) / 1000)} seconds` :
+                          "-"}
+                      </p>
+                    </div>
+                  </div>
 
                   {lastSync.error && (
                     <div className="mt-4 p-3 bg-red-100 text-red-800 rounded-md text-sm">
