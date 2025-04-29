@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+# Reinstall dependencies to ensure everything is available
+echo "Installing dependencies..."
+poetry install --no-interaction
+
 # Wait for database to be ready
 echo "Waiting for database..."
 poetry run python -c "
