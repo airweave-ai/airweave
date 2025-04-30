@@ -72,36 +72,45 @@ await client.search.search({
 
     // Create the MCP code (Model Context Protocol)
     const mcpSnippet =
-`import { MCPClient } from "@mcp/client";
+`import { createMCPClient, createLocalServer } from "@modelcontextprotocol/typescript-sdk";
 
-// Initialize the MCP client with your Airweave endpoint
-const client = new MCPClient({
-  endpoint: "${apiUrl}",
-  version: "0.1.0-beta"
+// Initialize an MCP client
+const client = await createMCPClient({
+  // Use stdio transport for local servers, or WebSocket for remote servers
+  transport: {
+    type: "stdio",
+    command: "node path/to/airweave-mcp-server.js"
+  },
+  // The current MCP protocol version
+  protocolVersion: "2025-03-26"
 });
 
-// Create a context with your data sources
-const context = client.createContext({
-  syncId: "${syncId}"
-});
+// Connect to the MCP server (which interfaces with Airweave)
+await client.initialize();
 
-// Execute a search query with MCP
-async function searchWithMCP() {
-  const result = await context.search({
-    query: "${lastUserMessage}",
-    // Optional MCP-specific parameters
-    retrieval: {
-      strategy: "hybrid",
-      depth: 3,
-      sources: ["primary", "knowledge_graph"]
+// Check if the server provides a search tool
+const tools = await client.listTools();
+const searchTool = tools.find(tool => tool.name === "search");
+
+if (searchTool) {
+  // Execute the search using the MCP protocol
+  const result = await client.executeTool({
+    toolName: "search",
+    parameters: {
+      syncId: "${syncId}",
+      query: "${lastUserMessage}"
     }
   });
-
-  console.log(result.data);
-  console.log(result.metadata.context_used);
+  
+  console.log("Search results:", result);
+  
+  // You can also access resources exposed by the server
+  const resources = await client.listResources();
+  console.log("Available resources:", resources);
 }
 
-searchWithMCP();`;
+// Close the connection when done
+await client.shutdown();`;
 
     return {
       curlSnippet,
@@ -176,17 +185,18 @@ searchWithMCP();`;
               <span>Node.js</span>
             </Button>
             <Button
-              variant="ghost"
+              variant={apiDialogTab === "mcp" ? "default" : "ghost"}
               size="sm"
-              disabled={true}
+              onClick={() => setApiDialogTab("mcp")}
               className={cn(
-                "rounded-sm text-sm flex items-center gap-2 opacity-60 cursor-not-allowed",
-                "hover:bg-slate-200/60 dark:hover:bg-muted/60 hover:text-foreground"
+                "rounded-sm text-sm flex items-center gap-2",
+                apiDialogTab === "mcp"
+                  ? "shadow-sm bg-slate-200 dark:bg-muted hover:bg-slate-200 dark:hover:bg-muted hover:text-foreground text-foreground"
+                  : "hover:bg-slate-200/60 dark:hover:bg-muted/60 hover:text-foreground"
               )}
             >
               <McpIcon className="h-4 w-4" />
               <span>MCP</span>
-              <Badge className="bg-blue-500 text-xs h-5 ml-1">Coming Soon</Badge>
             </Button>
           </div>
 
@@ -225,6 +235,19 @@ searchWithMCP();`;
                 badgeText="SDK"
                 badgeColor="bg-blue-600 hover:bg-blue-600"
                 title="AirweaveSDKClient"
+                footerContent={docLinkFooter}
+              />
+            </div>
+          )}
+
+          {apiDialogTab === "mcp" && (
+            <div className="space-y-2">
+              <CodeBlock
+                code={getApiEndpoints().mcpSnippet}
+                language="javascript"
+                badgeText="SDK"
+                badgeColor="bg-blue-600 hover:bg-blue-600"
+                title="MCPClient"
                 footerContent={docLinkFooter}
               />
             </div>

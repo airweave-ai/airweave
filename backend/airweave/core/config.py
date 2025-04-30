@@ -36,6 +36,7 @@ class Settings(BaseSettings):
         QDRANT_URL (str): The Qdrant URL.
         TEXT2VEC_INFERENCE_URL (str): The URL for text2vec-transformers inference service.
         OPENAI_API_KEY (Optional[str]): The OpenAI API key.
+        ANTHROPIC_API_KEY (Optional[str]): The Anthropic API key.
         MISTRAL_API_KEY (Optional[str]): The Mistral AI API key.
     """
 
@@ -73,6 +74,7 @@ class Settings(BaseSettings):
     TEXT2VEC_INFERENCE_URL: str = "http://localhost:9878"
 
     OPENAI_API_KEY: Optional[str] = None
+    ANTHROPIC_API_KEY: Optional[str] = None
     MISTRAL_API_KEY: Optional[str] = None
 
     @field_validator("AUTH0_DOMAIN", "AUTH0_AUDIENCE", "AUTH0_RULE_NAMESPACE", mode="before")

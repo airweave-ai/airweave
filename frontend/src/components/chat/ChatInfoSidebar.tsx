@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,7 +37,15 @@ import { apiClient } from "@/lib/api";
 import { useTheme } from "@/lib/theme-provider";
 import { ApiReferenceDialog } from "./ApiReferenceDialog";
 
+// Default model to use if none is selected
+const DEFAULT_MODEL = "claude-3-7-sonnet-20250219";
+
 const AVAILABLE_MODELS = [
+  { id: "claude-3-7-sonnet-20250219", name: "Claude 3.7 Sonnet" },
+  { id: "claude-3-5-sonnet-20241022", name: "Claude 3.5 Sonnet" },
+  { id: "claude-3-opus-20240229", name: "Claude 3 Opus" },
+  { id: "claude-3-sonnet-20240229", name: "Claude 3 Sonnet" },
+  { id: "claude-3-haiku-20240307", name: "Claude 3 Haiku" },
   { id: "gpt-4o", name: "GPT-4o" },
   { id: "gpt-4o-mini", name: "GPT-4o Mini" },
   { id: "o1-preview", name: "O1 Preview" },
@@ -51,55 +59,116 @@ const badgeVariants = {
 
 
 export function ChatInfoSidebar({ chatInfo, onUpdateSettings }: ChatInfoSidebarProps) {
-  const [modelSettings, setModelSettings] = useState<ModelSettings>(chatInfo.model_settings);
-  const [modelName, setModelName] = useState<string>(chatInfo.model_name);
   const { toast } = useToast();
-  const [saveTimeout, setSaveTimeout] = useState<NodeJS.Timeout | null>(null);
   const navigate = useNavigate();
+  const { resolvedTheme } = useTheme();
+  
+  // Stable references for state management
+  const initialSettingsRef = useRef(chatInfo.model_settings);
+  const initialModelRef = useRef(chatInfo.model_name || DEFAULT_MODEL);
+  
+  // State for UI
+  const [modelSettings, setModelSettings] = useState<ModelSettings>(initialSettingsRef.current);
+  const [modelName, setModelName] = useState<string>(initialModelRef.current);
+  const [lastUserMessage, setLastUserMessage] = useState<string>("Your search query here");
+  const [saveTimeout, setSaveTimeout] = useState<NodeJS.Timeout | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showApiDialog, setShowApiDialog] = useState(false);
-  const { resolvedTheme } = useTheme();
-  // Get the last user message from Chat component
-  const [lastUserMessage, setLastUserMessage] = useState<string>("Your search query here");
-
+  const [isModelUpdating, setIsModelUpdating] = useState(false);
+  
+  // Prevent unwanted updates from props during local changes
+  const ignorePropsUpdatesRef = useRef(false);
+  
+  // When the component mounts, log the initial state
   useEffect(() => {
-    // Attempt to get the last user message from the chat
-    const getLastUserMessage = async () => {
-      try {
-        const response = await apiClient.get(`/chat/${chatInfo.id}`);
-        const chatData = await response.json();
-
-        if (chatData.messages && chatData.messages.length > 0) {
-          // Find the last user message
-          const userMessages = chatData.messages.filter((msg: any) => msg.role === "user");
-          if (userMessages.length > 0) {
-            setLastUserMessage(userMessages[userMessages.length - 1].content);
-          }
-        }
-      } catch (error) {
-        console.error("Failed to fetch last user message:", error);
-      }
-    };
-
+    console.log("Initial model:", initialModelRef.current);
+    console.log("ChatInfo model:", chatInfo.model_name);
+    
+    if (!chatInfo.model_name) {
+      // If no model is provided, set the default model in backend
+      void handleModelChange(DEFAULT_MODEL, true);
+    }
+    
+    // Get the last user message from the chat
     void getLastUserMessage();
-  }, [chatInfo.id]);
-
+  }, []);
+  
+  // Update state when chatInfo changes, unless we're in the middle of an update
   useEffect(() => {
+    if (ignorePropsUpdatesRef.current) {
+      return;
+    }
+    
+    const newModelName = chatInfo.model_name || DEFAULT_MODEL;
+    
+    // Only update if the model has actually changed
+    if (modelName !== newModelName) {
+      console.log("Updating model from props:", newModelName);
+      setModelName(newModelName);
+    }
+    
     setModelSettings(chatInfo.model_settings);
-    setModelName(chatInfo.model_name);
-  }, [chatInfo.model_settings, chatInfo.model_name]);
+  }, [chatInfo.model_name, chatInfo.model_settings]);
 
-  const handleModelChange = async (newModelName: string) => {
-    setModelName(newModelName);
+  // Fetch the last user message
+  const getLastUserMessage = async () => {
     try {
-      // Update model_name at root level
-      await onUpdateSettings({ model_name: newModelName } as any);
+      const response = await apiClient.get(`/chat/${chatInfo.id}`);
+      const chatData = await response.json();
+
+      if (chatData.messages && chatData.messages.length > 0) {
+        // Find the last user message
+        const userMessages = chatData.messages.filter((msg: any) => msg.role === "user");
+        if (userMessages.length > 0) {
+          setLastUserMessage(userMessages[userMessages.length - 1].content);
+        }
+      }
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to update model",
-        variant: "destructive",
-      });
+      console.error("Failed to fetch last user message:", error);
+    }
+  };
+
+  const handleModelChange = async (newModelName: string, isInitial = false) => {
+    if (newModelName === modelName && !isInitial) {
+      return; // No change, nothing to do
+    }
+    
+    // Set flag to ignore props updates during API call
+    setIsModelUpdating(true);
+    ignorePropsUpdatesRef.current = true;
+    
+    // Update local state immediately
+    setModelName(newModelName);
+    
+    try {
+      // Update model on the server
+      await onUpdateSettings({ model_name: newModelName } as any);
+      
+      if (!isInitial) {
+        const modelDisplayName = AVAILABLE_MODELS.find(m => m.id === newModelName)?.name || newModelName;
+        toast({
+          title: "Model updated",
+          description: `Changed to ${modelDisplayName}`,
+        });
+      }
+    } catch (error) {
+      // On error, revert to the previous model
+      console.error("Failed to update model:", error);
+      setModelName(chatInfo.model_name || DEFAULT_MODEL);
+      
+      if (!isInitial) {
+        toast({
+          title: "Error",
+          description: "Failed to update model. Please try again.",
+          variant: "destructive",
+        });
+      }
+    } finally {
+      // Reset flags after a short delay to ensure any incoming prop updates don't cause issues
+      setTimeout(() => {
+        setIsModelUpdating(false);
+        ignorePropsUpdatesRef.current = false;
+      }, 300);
     }
   };
 
@@ -146,6 +215,9 @@ export function ChatInfoSidebar({ chatInfo, onUpdateSettings }: ChatInfoSidebarP
       });
     }
   };
+
+  // Get display name for current model
+  const currentModelName = AVAILABLE_MODELS.find(m => m.id === modelName)?.name || "Select a model";
 
   return (
     <>
@@ -355,10 +427,14 @@ export function ChatInfoSidebar({ chatInfo, onUpdateSettings }: ChatInfoSidebarP
                     <Label className="text-xs text-muted-foreground">Model</Label>
                     <Select
                       value={modelName}
-                      onValueChange={handleModelChange}
+                      onValueChange={(value) => void handleModelChange(value)}
+                      defaultValue={DEFAULT_MODEL}
+                      disabled={isModelUpdating}
                     >
                       <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select a model" />
+                        <SelectValue placeholder="Select a model">
+                          {currentModelName}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         {AVAILABLE_MODELS.map((model) => (
@@ -368,6 +444,9 @@ export function ChatInfoSidebar({ chatInfo, onUpdateSettings }: ChatInfoSidebarP
                         ))}
                       </SelectContent>
                     </Select>
+                    {isModelUpdating && (
+                      <p className="text-xs text-muted-foreground">Updating model...</p>
+                    )}
                   </div>
 
                   {/* Temperature */}

@@ -66,6 +66,27 @@ else
     echo "MISTRAL_API_KEY=\"your-api-key-here\""
 fi
 
+# Ask for Anthropic API key
+echo ""
+echo "Anthropic API key is required for Claude models."
+read -p "Would you like to add your ANTHROPIC_API_KEY now? You can also do this later by editing the .env file manually. (y/n): " ADD_ANTHROPIC_KEY
+
+if [ "$ADD_ANTHROPIC_KEY" = "y" ] || [ "$ADD_ANTHROPIC_KEY" = "Y" ]; then
+    read -p "Enter your Anthropic API key: " ANTHROPIC_KEY
+
+    # Remove any existing ANTHROPIC_API_KEY line
+    grep -v "^ANTHROPIC_API_KEY=" .env > .env.tmp
+    mv .env.tmp .env
+
+    # Add the new Anthropic API key
+    echo "ANTHROPIC_API_KEY=\"$ANTHROPIC_KEY\"" >> .env
+    echo "Anthropic API key added to .env file."
+else
+    echo "You can add your ANTHROPIC_API_KEY later by editing the .env file manually."
+    echo "Add the following line to your .env file:"
+    echo "ANTHROPIC_API_KEY=\"your-api-key-here\""
+fi
+
 # Check if "docker compose" is available (Docker Compose v2)
 if docker compose version >/dev/null 2>&1; then
   COMPOSE_CMD="docker compose"
