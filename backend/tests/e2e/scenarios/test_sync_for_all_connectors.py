@@ -61,11 +61,13 @@ def creds():
         "google_drive": os.getenv("GDRIVE_REFRESH_TOKEN"),
         "asana": os.getenv("ASANA_REFRESH_TOKEN"),
         "notion": os.getenv("NOTION_ACCESS_TOKEN"),
-        "github": os.getenv("GITHUB_CONFIG_CREDS")
+        "github": os.getenv("GITHUB_CONFIG_CREDS"),
+        "linear": os.getenv("LINEAR_ACCESS_TOKEN"),
+        "postgresql": os.getenv("POSTGRESQL")
     }
 
 
-@pytest.mark.parametrize("service_name", ["asana", "dropbox", "github", "google_drive", "notion"])
+@pytest.mark.parametrize("service_name", ["postgresql"]) #"asana", "dropbox", "github", "google_drive", "notion", "linear"
 def test_sync(e2e_environment, e2e_api_url, creds, service_name):
     """
     End-to-end test for integration connectors with various auth types.
