@@ -1,7 +1,5 @@
 """Auth config."""
 
-from typing import Optional
-
 from pydantic import Field
 
 from airweave.platform.configs._base import BaseConfig
@@ -150,53 +148,4 @@ class GitHubAuthConfig(AuthConfig):
     repo_name: str = Field(
         title="Repository Name",
         description="Repository to sync in owner/repo format (e.g., 'airweave-ai/airweave')",
-    )
-
-
-class DropboxAuthConfig(AuthConfig):
-    """Dropbox authentication credentials schema."""
-
-    client_id: str = Field(
-        title="Client ID", description="The OAuth client ID for your Dropbox app"
-    )
-    client_secret: str = Field(
-        title="Client Secret", description="The OAuth client secret for your Dropbox app"
-    )
-
-
-class GoogleAuthConfig(AuthConfig):
-    """Google authentication credentials schema."""
-
-    client_id: str = Field(title="Client ID", description="The OAuth client ID for your Google app")
-    client_secret: str = Field(
-        title="Client Secret", description="The OAuth client secret for your Google app"
-    )
-
-
-class OneDriveAuthConfig(AuthConfig):
-    """OneDrive authentication credentials schema."""
-
-    client_id: str = Field(
-        title="Client ID", description="The OAuth client ID for your Microsoft app"
-    )
-    client_secret: str = Field(
-        title="Client Secret", description="The OAuth client secret for your Microsoft app"
-    )
-
-
-class TrelloAuthConfig(AuthConfig):
-    """Trello authentication credentials schema."""
-
-    key: str = Field(title="API Key", description="The Trello API key for authentication")
-    token: Optional[str] = Field(
-        default=None, title="Token", description="The Trello API token for authentication"
-    )
-
-
-class LinearAuthConfig(AuthConfig):
-    """Linear authentication credentials schema."""
-
-    client_id: str = Field(title="Client ID", description="The OAuth client ID for your Linear app")
-    client_secret: str = Field(
-        title="Client Secret", description="The OAuth client secret for your Linear app"
     )
