@@ -369,6 +369,12 @@ class CodeFileEntity(ChunkEntity):
     repo_name: str = Field(..., description="Name of the repository containing this file")
     repo_owner: str = Field(..., description="Owner of the repository")
 
+    metadata: Optional[Dict[str, Any]] = Field(
+        None, description="Additional metadata about the file"
+    )
+
+    summary: Optional[str] = Field(None, description="Summary of the file")
+
     # Content and navigation
     url: str = Field(..., description="URL to view the file")
     content: Optional[str] = Field(None, description="File content if available")

@@ -142,7 +142,8 @@ class GitHubAuthConfig(AuthConfig):
     """GitHub authentication credentials schema."""
 
     personal_access_token: str = Field(
-        title="Personal Access Token", description="GitHub Personal Access Token with repo scope"
+        title="Personal Access Token",
+        description="GitHub PAT with read rights (code, contents, metadata) to the repository",
     )
     repo_name: str = Field(
         title="Repository Name",

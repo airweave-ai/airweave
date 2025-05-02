@@ -1,18 +1,12 @@
 """Default file transformer using Chonkie for improved semantic chunking."""
 
-import tiktoken
 from chonkie import RecursiveChunker, RecursiveLevel, RecursiveRules, SemanticChunker
 
 from airweave.core.logging import logger
 from airweave.platform.decorators import transformer
 from airweave.platform.entities._base import ChunkEntity, FileEntity, ParentEntity
 from airweave.platform.file_handling.conversion.factory import document_converter
-
-
-def count_tokens(text: str) -> int:
-    """Count tokens using the cl100k_base tokenizer (used by OpenAI's text-embedding models)."""
-    encoding = tiktoken.get_encoding("cl100k_base")
-    return len(encoding.encode(text))
+from airweave.platform.transformers.utils import MAX_CHUNK_SIZE, count_tokens
 
 
 def get_recursive_chunker():
@@ -44,7 +38,7 @@ def get_recursive_chunker():
     )
 
 
-def get_semantic_chunker(max_chunk_size: int = 8191):
+def get_semantic_chunker(max_chunk_size: int = MAX_CHUNK_SIZE):
     """Create a semantic chunker for further refining chunks."""
     # Use SemanticChunker instead of SDPMChunker
     return SemanticChunker(
@@ -93,9 +87,6 @@ async def file_chunker(file: FileEntity) -> list[ParentEntity | ChunkEntity]:
             logger.warning(f"No content extracted from file {file.name}")
             return []
 
-        # Max token size for embedding models (e.g. OpenAI's text-embedding-ada-002)
-        max_chunk_size = 8191
-
         # Step 1: Initial chunking with RecursiveChunker
         recursive_chunker = get_recursive_chunker()
         initial_chunks = recursive_chunker.chunk(result.text_content)
@@ -105,12 +96,12 @@ async def file_chunker(file: FileEntity) -> list[ParentEntity | ChunkEntity]:
         semantic_chunker = None
 
         for chunk in initial_chunks:
-            if chunk.token_count <= max_chunk_size:
+            if chunk.token_count <= MAX_CHUNK_SIZE:
                 final_chunk_texts.append(chunk.text)
             else:
                 # Only initialize the semantic chunker if needed
                 if not semantic_chunker:
-                    semantic_chunker = get_semantic_chunker(max_chunk_size)
+                    semantic_chunker = get_semantic_chunker(MAX_CHUNK_SIZE)
 
                 # Apply semantic chunking to the large chunk
                 semantic_chunks = semantic_chunker.chunk(chunk.text)

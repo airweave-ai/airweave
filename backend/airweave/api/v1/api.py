@@ -1,7 +1,6 @@
 """API routes for the FastAPI application."""
 
-from fastapi import APIRouter
-
+from airweave.api.router import TrailingSlashRouter
 from airweave.api.v1.endpoints import (
     api_keys,
     chat,
@@ -21,7 +20,8 @@ from airweave.api.v1.endpoints import (
 )
 from airweave.core.config import settings
 
-api_router = APIRouter()
+# Use our custom router that handles trailing slashes
+api_router = TrailingSlashRouter()
 api_router.include_router(health.router, prefix="/health", tags=["health"])
 api_router.include_router(api_keys.router, prefix="/api-keys", tags=["api_keys"])
 api_router.include_router(users.router, prefix="/users", tags=["users"])

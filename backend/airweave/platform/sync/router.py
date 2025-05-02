@@ -6,8 +6,11 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud
-from airweave.platform.entities._base import BaseEntity, PolymorphicEntity
+from airweave.core.config import settings
+from airweave.platform.entities._base import BaseEntity, CodeFileEntity, PolymorphicEntity
 from airweave.platform.locator import resource_locator
+from airweave.platform.transformers.code_file_chunker import code_file_chunker
+from airweave.platform.transformers.code_file_summarizer import code_file_summarizer
 from airweave.schemas.dag import DagNode, NodeType, SyncDag
 
 
@@ -129,7 +132,20 @@ class SyncDAGRouter:
           destinations
         - If the entity is sent to a transformer, return the transformed entities, so the next
           transformer can be called until the entity is sent to a destination
+        - Temp: if entity is a CodeFileEntity, apply code_file_chunker transformer
         """
+        # If the entity is a CodeFileEntity, apply code_file_chunker transformer
+        # TODO: This is a temporary solution to allow the code summarizer to work.
+        #       We should remove this once we have a more permanent DAG structure.
+        if issubclass(type(entity), CodeFileEntity) or isinstance(entity, CodeFileEntity):
+            # Apply code_file_chunker transformer
+            transformed_entities = await code_file_chunker(entity)
+            if settings.CODE_SUMMARIZER_ENABLED:
+                # Apply code_file_summarizer transformer
+                for transformed_entity in transformed_entities:
+                    transformed_entity = await code_file_summarizer(transformed_entity)
+            return transformed_entities
+
         entity_definition_id = self._get_entity_definition_id(type(entity))
         route_key = (producer_id, entity_definition_id)
         if route_key not in self.route or self.route[route_key] is None:

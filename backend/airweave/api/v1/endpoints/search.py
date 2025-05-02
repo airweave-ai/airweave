@@ -3,15 +3,16 @@
 from enum import Enum
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
 from airweave.api import deps
+from airweave.api.router import TrailingSlashRouter
 from airweave.core.chat_service import chat_service
 from airweave.core.search_service import search_service
 
-router = APIRouter()
+router = TrailingSlashRouter()
 
 
 class ResponseType(str, Enum):

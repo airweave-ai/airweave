@@ -2,15 +2,16 @@
 
 from typing import List
 
-from fastapi import APIRouter, Depends
+from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api import deps
+from airweave.api.router import TrailingSlashRouter
 from airweave.crud.crud_transformer import transformer
 from airweave.models.user import User
 from airweave.schemas.transformer import Transformer, TransformerCreate, TransformerUpdate
 
-router = APIRouter()
+router = TrailingSlashRouter()
 
 
 @router.get("/", response_model=List[Transformer])

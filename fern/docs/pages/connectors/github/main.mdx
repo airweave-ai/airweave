@@ -78,32 +78,6 @@ Schema for GitHub directory entity.
 | repo_owner | str | Owner of the repository |
 
 </Accordion>
-<Accordion title="GitHubCodeFileEntity">
-
-Schema for GitHub code file entity.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| source_name | str | Source name |
-| name | str | File name |
-| file_id | str | Unique ID of the file |
-| sha | str | SHA hash of the file content |
-| mime_type | Optional[str] | MIME type of the file |
-| size | int | Size of the file in bytes |
-| path | str | Path of the file within the repository |
-| url | str | URL to view the file |
-| language | Optional[str] | Programming language of the file |
-| line_count | Optional[int] | Number of lines in the file |
-| is_binary | bool | Flag indicating if file is binary |
-| path_in_repo | str | Path of the file within the repository |
-| last_modified | Optional[datetime] | Last modification timestamp |
-| commit_id | Optional[str] | Last commit ID that modified this file |
-| repo_name | str | Name of the repository containing this file |
-| repo_owner | str | Owner of the repository |
-| content | Optional[str] | File content if available |
-| breadcrumbs | List[Breadcrumb] | Breadcrumb navigation path |
-
-</Accordion>
 <Accordion title="GithubRepoEntity">
 
 Schema for a GitHub repository.

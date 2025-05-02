@@ -14,7 +14,7 @@ from typing import List, Optional
 
 from pydantic import Field
 
-from airweave.platform.entities._base import Breadcrumb, ChunkEntity, ParentEntity
+from airweave.platform.entities._base import ChunkEntity, CodeFileEntity, ParentEntity
 
 
 class GitHubRepositoryEntity(ParentEntity):
@@ -43,36 +43,13 @@ class GitHubDirectoryEntity(ChunkEntity):
     repo_owner: str = Field(..., description="Owner of the repository")
 
 
-class GitHubCodeFileEntity(ChunkEntity):
+class GitHubCodeFileEntity(CodeFileEntity):
     """Schema for GitHub code file entity."""
 
-    # Basic entity fields
-    source_name: str = Field(..., description="Source name")
-    name: str = Field(..., description="File name")
-
-    # GitHub specific fields
-    file_id: str = Field(..., description="Unique ID of the file")
+    # GitHub specific fields only
     sha: str = Field(..., description="SHA hash of the file content")
-    mime_type: Optional[str] = Field(None, description="MIME type of the file")
-    size: int = Field(..., description="Size of the file in bytes")
     path: str = Field(..., description="Path of the file within the repository")
-    url: str = Field(..., description="URL to view the file")
-
-    # Code specific fields
-    language: Optional[str] = Field(None, description="Programming language of the file")
-    line_count: Optional[int] = Field(None, description="Number of lines in the file")
     is_binary: bool = Field(False, description="Flag indicating if file is binary")
-    path_in_repo: str = Field(..., description="Path of the file within the repository")
-    last_modified: Optional[datetime] = Field(None, description="Last modification timestamp")
-    commit_id: Optional[str] = Field(None, description="Last commit ID that modified this file")
-    repo_name: str = Field(..., description="Name of the repository containing this file")
-    repo_owner: str = Field(..., description="Owner of the repository")
-
-    # Content and navigation
-    content: Optional[str] = Field(None, description="File content if available")
-    breadcrumbs: List[Breadcrumb] = Field(
-        default_factory=list, description="Breadcrumb navigation path"
-    )
 
 
 class GithubRepoEntity(ChunkEntity):

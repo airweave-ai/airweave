@@ -3,14 +3,15 @@
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
 from airweave.api import deps
+from airweave.api.router import TrailingSlashRouter
 from airweave.models.user import User
 
-router = APIRouter()
+router = TrailingSlashRouter()
 
 
 @router.get("/definitions/", response_model=List[schemas.EntityDefinition])

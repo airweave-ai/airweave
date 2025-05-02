@@ -85,12 +85,16 @@ class QdrantDestination(VectorDBDestination):
                 if self.url:
                     location = self.url
                 else:
-                    location = f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}"
+                    location = settings.qdrant_url
 
                 client_config = {
                     "location": location,
                     "prefer_grpc": False,  # Use HTTP by default
                 }
+
+                if location[-4:] != ":6333":
+                    # allow railway to work
+                    client_config["port"] = None
 
                 # Add API key if provided
                 api_key = self.api_key

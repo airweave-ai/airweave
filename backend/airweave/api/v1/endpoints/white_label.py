@@ -2,11 +2,12 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import Body, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
 from airweave.api import deps
+from airweave.api.router import TrailingSlashRouter
 from airweave.core import credentials
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import logger
@@ -17,7 +18,7 @@ from airweave.models.user import User
 from airweave.platform.auth.schemas import AuthType
 from airweave.platform.auth.services import oauth2_service
 
-router = APIRouter()
+router = TrailingSlashRouter()
 
 
 @router.get("/list", response_model=list[schemas.WhiteLabel])

@@ -6,7 +6,7 @@ database, as it contains the endpoints for user creation and retrieval.
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import Depends, HTTPException
 from fastapi_auth0 import Auth0User
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,11 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud, schemas
 from airweave.api import deps
 from airweave.api.auth import auth0
+from airweave.api.router import TrailingSlashRouter
 from airweave.core.logging import logger
 from airweave.models.organization import Organization as OrganizationModel
 from airweave.schemas import Organization, User
 
-router = APIRouter()
+router = TrailingSlashRouter()
 
 
 @router.get("/", response_model=User)

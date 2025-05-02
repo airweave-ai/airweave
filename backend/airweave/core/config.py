@@ -22,6 +22,7 @@ class Settings(BaseSettings):
         FIRST_SUPERUSER (str): The email address of the first superuser.
         FIRST_SUPERUSER_PASSWORD (str): The password of the first superuser.
         ENCRYPTION_KEY (str): The encryption key.
+        CODE_SUMMARIZER_ENABLED (bool): Whether the code summarizer is enabled.
         POSTGRES_HOST (str): The PostgreSQL server hostname.
         POSTGRES_DB (str): The PostgreSQL database name.
         POSTGRES_USER (str): The PostgreSQL username.
@@ -33,10 +34,14 @@ class Settings(BaseSettings):
             destinations, and entity types.
         QDRANT_HOST (str): The Qdrant host.
         QDRANT_PORT (int): The Qdrant port.
-        QDRANT_URL (str): The Qdrant URL.
         TEXT2VEC_INFERENCE_URL (str): The URL for text2vec-transformers inference service.
         OPENAI_API_KEY (Optional[str]): The OpenAI API key.
         MISTRAL_API_KEY (Optional[str]): The Mistral AI API key.
+
+        # Custom deployment URLs
+        API_FULL_URL (Optional[str]): The full URL for the API.
+        QDRANT_FULL_URL (Optional[str]): The full URL for the Qdrant.
+        ADDITIONAL_CORS_ORIGINS (Optional[list[str]]): Additional CORS origins separated by commas.
     """
 
     PROJECT_NAME: str = "Airweave"
@@ -55,6 +60,8 @@ class Settings(BaseSettings):
 
     ENCRYPTION_KEY: str
 
+    CODE_SUMMARIZER_ENABLED: bool = False
+
     POSTGRES_HOST: str
     POSTGRES_DB: str = "airweave"
     POSTGRES_USER: str
@@ -66,14 +73,38 @@ class Settings(BaseSettings):
     RUN_ALEMBIC_MIGRATIONS: bool = False
     RUN_DB_SYNC: bool = True
 
-    QDRANT_HOST: str = "localhost"
-    QDRANT_PORT: int = 6333
-    QDRANT_URL: str = f"http://{QDRANT_HOST}:{QDRANT_PORT}"
-
+    QDRANT_HOST: Optional[str] = None
+    QDRANT_PORT: Optional[int] = None
     TEXT2VEC_INFERENCE_URL: str = "http://localhost:9878"
 
     OPENAI_API_KEY: Optional[str] = None
     MISTRAL_API_KEY: Optional[str] = None
+
+    # Custom deployment URLs - these are used to override the default URLs to allow
+    # for custom domains in custom deployments
+    API_FULL_URL: Optional[str] = None
+    APP_FULL_URL: Optional[str] = None
+    QDRANT_FULL_URL: Optional[str] = None
+    ADDITIONAL_CORS_ORIGINS: Optional[str] = None  # Separated by commas or semicolons
+
+    @field_validator("ADDITIONAL_CORS_ORIGINS", mode="before")
+    def parse_cors_origins(cls, v: Optional[str]) -> Optional[list[str]]:
+        """Parse CORS origins from string to list, supporting both comma and semicolon separators.
+
+        Args:
+            v: The CORS origins string or list.
+
+        Returns:
+            Optional[list[str]]: The parsed list of CORS origins or None.
+        """
+        if isinstance(v, list) or v is None:
+            return v
+
+        if ";" in v:
+            return [origin.strip() for origin in v.split(";") if origin.strip()]
+
+        # Default Pydantic behavior will handle comma separation
+        return v
 
     @field_validator("AUTH0_DOMAIN", "AUTH0_AUDIENCE", "AUTH0_RULE_NAMESPACE", mode="before")
     def validate_auth0_settings(cls, v: str, info: ValidationInfo) -> str:
@@ -129,12 +160,30 @@ class Settings(BaseSettings):
         )
 
     @property
+    def qdrant_url(self) -> str:
+        """The Qdrant URL.
+
+        Returns:
+            str: The Qdrant URL.
+        """
+        if self.QDRANT_FULL_URL:
+            return self.QDRANT_FULL_URL
+
+        if not self.QDRANT_HOST or not self.QDRANT_PORT:
+            raise ValueError("QDRANT_HOST with QDRANT_PORT or QDRANT_FULL_URL must be set")
+
+        return f"http://{self.QDRANT_HOST}:{self.QDRANT_PORT}"
+
+    @property
     def api_url(self) -> str:
         """The server URL.
 
         Returns:
             str: The server URL.
         """
+        if self.API_FULL_URL:
+            return self.API_FULL_URL
+
         if self.DTAP_ENVIRONMENT == "local":
             return self.LOCAL_NGROK_SERVER or "http://localhost:8001"
         if self.DTAP_ENVIRONMENT == "prod":
@@ -148,6 +197,9 @@ class Settings(BaseSettings):
         Returns:
             str: The app URL.
         """
+        if self.APP_FULL_URL:
+            return self.APP_FULL_URL
+
         if self.DTAP_ENVIRONMENT == "local":
             return f"http://localhost:{self.FRONTEND_LOCAL_DEVELOPMENT_PORT}"
         if self.DTAP_ENVIRONMENT == "prod":

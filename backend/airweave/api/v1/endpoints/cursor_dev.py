@@ -5,17 +5,18 @@ These endpoints are only enabled when LOCAL_CURSOR_DEVELOPMENT is True.
 
 from typing import List
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
 from airweave.api import deps
+from airweave.api.router import TrailingSlashRouter
 from airweave.core.shared_models import ConnectionStatus, IntegrationType
 from airweave.core.sync_service import sync_service
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.platform.auth.settings import integration_settings
 
-router = APIRouter()
+router = TrailingSlashRouter()
 
 
 @router.get("/connections/status/{short_name}", response_model=List[schemas.Connection])

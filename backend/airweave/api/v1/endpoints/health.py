@@ -1,8 +1,8 @@
 """Health check endpoints."""
 
-from fastapi import APIRouter
+from airweave.api.router import TrailingSlashRouter
 
-router = APIRouter()
+router = TrailingSlashRouter()
 
 
 @router.get("")

@@ -117,6 +117,17 @@ integrations:
       response_mode: "query"
       state: "YOUR_USER_BOUND_VALUE"
 
+  linear:
+    auth_type: "oauth2"
+    url: "https://linear.app/oauth/authorize"
+    backend_url: "https://api.linear.app/oauth/token"
+    grant_type: "authorization_code"
+    client_id: "141aae9a90634753ba696252aecffd90"
+    client_secret: "39198e3053d12ee1ec6e85021c96e9e7"
+    content_type: "application/x-www-form-urlencoded"
+    client_credential_location: "body"
+    scope: "read"
+
   monday:
     auth_type: "oauth2"
     url: "https://auth.monday.com/oauth2/authorize"

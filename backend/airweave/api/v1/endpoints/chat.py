@@ -2,17 +2,18 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
 from airweave.api.deps import get_db, get_user
+from airweave.api.router import TrailingSlashRouter
 from airweave.core.chat_service import chat_service
 from airweave.core.config import settings
 from airweave.core.logging import logger
 
-router = APIRouter()
+router = TrailingSlashRouter()
 
 
 # Add this function to support token in query params for SSE

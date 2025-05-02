@@ -1,14 +1,15 @@
 """The API module that contains the endpoints for embedding models."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
 from airweave.api import deps
+from airweave.api.router import TrailingSlashRouter
 from airweave.platform.configs._base import Fields
 from airweave.platform.locator import resource_locator
 
-router = APIRouter()
+router = TrailingSlashRouter()
 
 
 @router.get("/detail/{short_name}", response_model=schemas.EmbeddingModelWithConfigFields)

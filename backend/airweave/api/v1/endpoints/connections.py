@@ -3,11 +3,12 @@
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException
+from fastapi import BackgroundTasks, Body, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
 from airweave.api import deps
+from airweave.api.router import TrailingSlashRouter
 from airweave.core.connection_service import connection_service
 from airweave.core.constants.native_connections import NATIVE_QDRANT_UUID
 from airweave.core.shared_models import SyncStatus
@@ -16,7 +17,7 @@ from airweave.db.session import get_db_context
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models.integration_credential import IntegrationType
 
-router = APIRouter()
+router = TrailingSlashRouter()
 
 
 @router.get("/detail/{connection_id}", response_model=schemas.Connection)

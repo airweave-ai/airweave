@@ -45,10 +45,16 @@ class TestQdrantDestinationInit:
     @pytest.mark.asyncio
     async def test_create(self):
         """Test creating a new QdrantDestination instance."""
-        with patch("airweave.platform.destinations.qdrant.QdrantClient") as mock_client_class:
+        with (
+            patch("airweave.platform.destinations.qdrant.QdrantClient") as mock_client_class,
+            patch("airweave.platform.destinations.qdrant.settings") as mock_settings,
+        ):
             # Mock the client response
             mock_client = mock_client_class.return_value
             mock_client.get_collections.return_value = MagicMock(collections=[])
+
+            # Set the required environment variables via settings
+            mock_settings.qdrant_url = "http://test-qdrant.com:6333"
 
             sync_id = uuid.uuid4()
             destination = await QdrantDestination.create(sync_id=sync_id, vector_size=384)
@@ -93,8 +99,12 @@ class TestQdrantDestinationInit:
             assert destination.api_key == "test-api-key"
 
             # Verify client was created with credentials
+            # Update the assert to match actual parameter order and structure
             mock_client_class.assert_called_once_with(
-                location="https://test-qdrant.com", api_key="test-api-key", prefer_grpc=False
+                location="https://test-qdrant.com",
+                prefer_grpc=False,
+                port=None,
+                api_key="test-api-key",
             )
 
 
@@ -108,18 +118,17 @@ class TestQdrantDestinationConnection:
             patch("airweave.platform.destinations.qdrant.QdrantClient") as mock_client_class,
             patch("airweave.platform.destinations.qdrant.settings") as mock_settings,
         ):
-            # Configure mocks
-            mock_settings.QDRANT_HOST = "test-qdrant-settings.com"
-            mock_settings.QDRANT_PORT = 6333
+            # Configure mocks with an actual string value instead of a MagicMock
+            mock_settings.qdrant_url = "http://test-qdrant-settings.com:6333"
             mock_client = mock_client_class.return_value
 
             # Create and connect
             destination = QdrantDestination()
             await destination.connect_to_qdrant()
 
-            # Verify client initialization
+            # Verify client initialization with the correct location parameter and port=None
             mock_client_class.assert_called_once_with(
-                location="http://test-qdrant-settings.com:6333", prefer_grpc=False
+                location="http://test-qdrant-settings.com:6333", prefer_grpc=False, port=None
             )
             mock_client.get_collections.assert_called_once()
 
