@@ -13,12 +13,12 @@ from airweave.core.constants.native_connections import NATIVE_TEXT2VEC_UUID
 @pytest.fixture
 def source_connection_data():
     """Fixture to provide test source connection data."""
-    # Include both connection name and credential information in config_fields
+    # Include both connection name and credential information in auth_fields
     stripe_api_key = os.getenv("STRIPE_API_KEY")
     return {
         "name": "Test Source Connection",
-        "config_fields": {
-            # Add required configuration fields for Stripe (StripeAuthConfig)
+        "auth_fields": {
+            # Add required authentication fields for Stripe (StripeAuthConfig)
             "api_key": stripe_api_key,
         },
     }

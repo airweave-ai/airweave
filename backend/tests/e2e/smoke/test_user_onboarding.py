@@ -27,7 +27,7 @@ def source_connection_data() -> Dict[str, Any]:
     stripe_api_key = os.getenv("STRIPE_API_KEY")
     return {
         "name": "Test Source Connection",
-        "config_fields": {
+        "auth_fields": {
             "api_key": stripe_api_key,
         },
     }

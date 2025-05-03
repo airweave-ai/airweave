@@ -14,11 +14,17 @@ export function AuthCallback() {
   const { short_name } = useParams();
   const navigate = useNavigate();
   const exchangeAttempted = useRef(false);
+  const exchangePromise = useRef(null);
   const auth = useAuth();
 
   useEffect(() => {
     const doExchange = async () => {
-      if (exchangeAttempted.current) return;
+      console.log(`Starting OAuth code exchange for ${short_name}. exchangeAttempted: ${exchangeAttempted.current}`);
+
+      if (exchangeAttempted.current) {
+        console.log('Exchange already attempted, skipping duplicate call');
+        return;
+      }
 
       const code = searchParams.get("code");
       if (!code || !short_name) {
@@ -42,10 +48,35 @@ export function AuthCallback() {
 
         // Now we can make the API call
         exchangeAttempted.current = true;
-        const response = await apiClient.post(`/connections/oauth2/source/code`, {
+
+        // Check for stored OAuth2 config data
+        const storedConfigKey = `oauth2_config_${short_name}`;
+        const storedConfigJson = sessionStorage.getItem(storedConfigKey);
+        let storedConfig = null;
+
+        if (storedConfigJson) {
+          try {
+            storedConfig = JSON.parse(storedConfigJson);
+            // Clean up after retrieving
+            sessionStorage.removeItem(storedConfigKey);
+          } catch (err) {
+            console.error('Failed to parse stored OAuth2 config:', err);
+          }
+        }
+
+        // Prepare request payload with config fields if available
+        const payload = {
           short_name,
           code,
-        });
+          ...(storedConfig ? { auth_fields: storedConfig.auth_fields, connection_name: storedConfig.connection_name } : {})
+        };
+
+        // Use a Promise ref to ensure only one request is made
+        if (!exchangePromise.current) {
+          exchangePromise.current = apiClient.post(`/connections/oauth2/source/code`, payload);
+        }
+
+        const response = await exchangePromise.current;
 
         if (!response.ok) {
           throw new Error("OAuth code exchange failed.");

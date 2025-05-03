@@ -21,6 +21,7 @@ from airweave.platform.sources._base import BaseSource
     "Dropbox",
     "dropbox",
     AuthType.oauth2_with_refresh,
+    auth_config_class="DropboxAuthConfig",
     labels=["File Storage"],
 )
 class DropboxSource(BaseSource):

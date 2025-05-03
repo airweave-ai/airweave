@@ -19,7 +19,7 @@ interface DestinationDetails {
   id: string;
   created_at: string;
   modified_at: string;
-  config_fields: {
+  auth_fields: {
     fields: {
       name: string;
       title: string;

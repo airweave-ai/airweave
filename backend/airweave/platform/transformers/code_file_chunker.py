@@ -1,9 +1,10 @@
 """Code file chunker."""
 
+import os
 from copy import deepcopy
 from typing import List
 
-from chonkie import CodeChunker
+from chonkie import CodeChunker, SemanticChunker
 
 from airweave.platform.decorators import transformer
 from airweave.platform.entities._base import CodeFileEntity
@@ -33,14 +34,28 @@ async def code_file_chunker(file: CodeFileEntity) -> List[CodeFileEntity]:
     if count_tokens(file.model_dump_json()) <= MAX_CHUNK_SIZE - 191:
         return [file]
 
-    # Create a CodeChunker with appropriate parameters
-    code_chunker = CodeChunker(
-        tokenizer_or_token_counter=count_tokens,
-        chunk_size=MAX_CHUNK_SIZE - 2000,  # Leave room for metadata
-    )
+    # Check if this is a text file by extension
+    file_extension = os.path.splitext(file.name)[1].lower().lstrip(".")
+    is_text_file = file_extension in ["txt", "text", "csv"]
 
-    # Get chunks from the code content
-    chunks = code_chunker.chunk(file.content)
+    if is_text_file:
+        # Use semantic chunking for text files instead of code chunking
+        semantic_chunker = SemanticChunker(
+            tokenizer_or_token_counter=count_tokens,
+            chunk_size=MAX_CHUNK_SIZE - 2000,  # Leave room for metadata
+            min_sentences=1,  # Start with minimum 1 sentence
+            threshold=0.5,  # Similarity threshold
+            mode="window",  # Use window mode for comparison
+            similarity_window=2,  # Consider 2 sentences for similarity
+        )
+        chunks = semantic_chunker.chunk(file.content)
+    else:
+        # Use CodeChunker for actual code files
+        code_chunker = CodeChunker(
+            tokenizer_or_token_counter=count_tokens,
+            chunk_size=MAX_CHUNK_SIZE - 2000,  # Leave room for metadata
+        )
+        chunks = code_chunker.chunk(file.content)
 
     if not chunks:  # If chunking failed or returned empty, return original
         return [file]

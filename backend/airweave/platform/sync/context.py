@@ -171,8 +171,10 @@ class SyncContextFactory:
         source_connection: schemas.Connection,
     ) -> BaseSource:
         """Create source instance for OAuth2 with refresh token."""
+        credential = await cls._get_integration_credential(db, source_connection, current_user)
+        decrypted_credential = credentials.decrypt(credential.encrypted_credentials)
         oauth2_response = await oauth2_service.refresh_access_token(
-            db, source_model.short_name, current_user, source_connection.id
+            db, source_model.short_name, current_user, source_connection.id, decrypted_credential
         )
         return await source_class.create(oauth2_response.access_token)
 

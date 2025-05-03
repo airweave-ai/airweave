@@ -24,14 +24,14 @@ from .destination import (
     DestinationCreate,
     DestinationInDBBase,
     DestinationUpdate,
-    DestinationWithConfigFields,
+    DestinationWithAuthenticationFields,
 )
 from .embedding_model import (
     EmbeddingModel,
     EmbeddingModelCreate,
     EmbeddingModelInDBBase,
     EmbeddingModelUpdate,
-    EmbeddingModelWithConfigFields,
+    EmbeddingModelWithAuthenticationFields,
 )
 from .entity import Entity, EntityCount, EntityCreate, EntityInDBBase, EntityUpdate
 from .entity_definition import (
@@ -63,7 +63,7 @@ from .source import (
     SourceCreate,
     SourceInDBBase,
     SourceUpdate,
-    SourceWithConfigFields,
+    SourceWithAuthenticationFields,
 )
 from .sync import (
     Sync,

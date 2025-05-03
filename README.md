@@ -11,7 +11,7 @@
 
 </div>
 
-Turn any app into a semantic MCP server for AI agents. **Airweave** connects any app, database, URL, or API and makes it semantically searchable for agents.
+Airweave is a tool that lets agents semantically search any application or database. It's MCP compatible and seamlessly connects any app, database, or API, to transform their contents into agent-ready knowledge.
 
 ### 🎥 Demo
 https://github.com/user-attachments/assets/abdf85cb-a8f5-4b6c-b5a3-d4b5177e6bda

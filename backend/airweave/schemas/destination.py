@@ -61,7 +61,7 @@ class Destination(DestinationInDBBase):
     pass
 
 
-class DestinationWithConfigFields(Destination):
+class DestinationWithAuthenticationFields(Destination):
     """Schema for Destination with auth config."""
 
-    config_fields: Fields | None = None
+    auth_fields: Fields | None = None

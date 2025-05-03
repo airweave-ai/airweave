@@ -32,7 +32,7 @@ async def list_destinations(
     return destinations
 
 
-@router.get("/detail/{short_name}", response_model=schemas.DestinationWithConfigFields)
+@router.get("/detail/{short_name}", response_model=schemas.DestinationWithAuthenticationFields)
 async def read_destination(
     *,
     db: AsyncSession = Depends(deps.get_db),
@@ -57,9 +57,9 @@ async def read_destination(
     if destination.auth_config_class:
         auth_config_class = resource_locator.get_auth_config(destination.auth_config_class)
         fields = Fields.from_config_class(auth_config_class)
-        destination_with_config_fields = schemas.DestinationWithConfigFields.model_validate(
+        destination_with_auth_fields = schemas.DestinationWithAuthenticationFields.model_validate(
             destination, from_attributes=True
         )
-        destination_with_config_fields.config_fields = fields
-        return destination_with_config_fields
+        destination_with_auth_fields.auth_fields = fields
+        return destination_with_auth_fields
     return destination

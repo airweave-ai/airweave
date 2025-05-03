@@ -12,7 +12,7 @@ from airweave.platform.locator import resource_locator
 router = TrailingSlashRouter()
 
 
-@router.get("/detail/{short_name}", response_model=schemas.EmbeddingModelWithConfigFields)
+@router.get("/detail/{short_name}", response_model=schemas.EmbeddingModelWithAuthenticationFields)
 async def read_embedding_model(
     *,
     db: AsyncSession = Depends(deps.get_db),
@@ -37,7 +37,7 @@ async def read_embedding_model(
         raise HTTPException(status_code=404, detail="Embedding model not found")
     if embedding_model.auth_config_class:
         auth_config_class = resource_locator.get_auth_config(embedding_model.auth_config_class)
-        embedding_model.config_fields = Fields.from_config_class(auth_config_class)
+        embedding_model.auth_fields = Fields.from_config_class(auth_config_class)
     return embedding_model
 
 
