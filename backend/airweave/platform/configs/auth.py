@@ -1,6 +1,6 @@
 """Auth config."""
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from airweave.platform.configs._base import BaseConfig
 
@@ -110,6 +110,34 @@ class SQLServerAuthConfig(BaseDatabaseAuthConfig):
 
 class OracleAuthConfig(BaseDatabaseAuthConfig):
     """Oracle authentication configuration."""
+
+
+class ElasticsearchAuthConfig(AuthConfig):
+    """Elasticsearch authentication credentials schema."""
+
+    host: str = Field(
+        title="Host",
+        description="The full URL to the Elasticsearch server, including http or https",
+    )
+    port: int = Field(title="Port", description="The port of the elasticsearch database")
+    indices: str = Field(
+        default="*",
+        title="Indices",
+        description="Comma separated list of indices to sync. Use '*' for all indices.",
+    )
+    fields: str = Field(
+        default="*",
+        title="Fields",
+        description="List of fields to sync from each document. For all fields, use '*'",
+    )
+
+    @field_validator("host")
+    @classmethod
+    def validate_host(cls, v: str) -> str:
+        """Validate that the host URL starts with http:// or https://."""
+        if not v.startswith(("http://", "https://")):
+            raise ValueError("Host must start with http:// or https://")
+        return v
 
 
 # Destination auth configs
