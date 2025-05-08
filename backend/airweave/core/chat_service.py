@@ -13,6 +13,8 @@ from airweave.core.config import settings
 from airweave.core.search_service import search_service
 from airweave.models.chat import ChatMessage, ChatRole
 
+from airweave.core.llm_providers import get_llm_client
+
 logger = logging.getLogger(__name__)
 
 
@@ -49,13 +51,11 @@ class ChatService:
 
     def __init__(self):
         """Initialize the chat service with OpenAI client."""
-        if not settings.OPENAI_API_KEY:
-            logger.warning("OPENAI_API_KEY is not set in environment variables")
-            self.client = None
+        self.client = get_llm_client()
+        if settings.LLM_PROVIDER.lower() == "ollama":
+            self.DEFAULT_MODEL = "llama3:latest"  # or "llama3:latest"
         else:
-            self.client = AsyncOpenAI(
-                api_key=settings.OPENAI_API_KEY,
-            )
+            self.DEFAULT_MODEL = "gpt-4o"
 
     async def generate_streaming_response(
         self,
@@ -96,24 +96,38 @@ class ChatService:
             messages = self._prepare_messages_with_context(chat.messages, context)
 
             # Merge settings
-            model = chat.model_name or self.DEFAULT_MODEL
+            if settings.LLM_PROVIDER.lower() == "ollama":
+                model = self.DEFAULT_MODEL
+            else:
+                model = chat.model_name or self.DEFAULT_MODEL
+            
             model_settings = {
                 **self.DEFAULT_MODEL_SETTINGS,
                 "stream": True,  # Enable streaming
             }
 
-            # Create streaming response
-            stream = await self.client.chat.completions.create(
-                model=model,
-                messages=messages,
-                **model_settings,
-            )
-
             full_content = ""
-            async for chunk in stream:
-                if chunk.choices[0].delta.content:
-                    full_content += chunk.choices[0].delta.content
-                yield chunk
+            
+            if settings.LLM_PROVIDER.lower() == "ollama":
+                async for chunk in self.client.create_completion(
+                    model=model,
+                    messages=messages,
+                    **model_settings,
+                ):
+                    if chunk.choices[0].delta.content:
+                        content = chunk.choices[0].delta.content
+                        full_content += content
+                        yield chunk
+            else:
+                stream = await self.client.create_completion(
+                    model=model,
+                    messages=messages,
+                    **model_settings,
+                )
+                async for chunk in stream:
+                    if chunk.choices[0].delta.content:
+                        full_content += chunk.choices[0].delta.content
+                    yield chunk
 
             # Save the complete message after streaming
             if full_content:
