@@ -1,9 +1,11 @@
-"""Chat service for handling AI interactions."""
+"""Chat service for handling AI interactions with support for multiple providers."""
 
 import logging
+import os
 from typing import AsyncGenerator, Optional
 from uuid import UUID
 
+import httpx
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionChunk
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -48,14 +50,26 @@ class ChatService:
     5. Use code blocks with proper language tags"""
 
     def __init__(self):
-        """Initialize the chat service with OpenAI client."""
-        if not settings.OPENAI_API_KEY:
-            logger.warning("OPENAI_API_KEY is not set in environment variables")
-            self.client = None
+        """Initialize the chat service with appropriate LLM client."""
+        self.provider = os.getenv("LLM_PROVIDER", "openai").lower()
+        self.client = self._initialize_client()
+
+    def _initialize_client(self):
+        if self.provider == "openai":
+            if not settings.OPENAI_API_KEY:
+                logger.warning("OPENAI_API_KEY is not set in environment variables")
+                return None
+            return AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        elif self.provider == "groq":
+            if not settings.GROQ_API_KEY:
+                logger.warning("GROQ_API_KEY is not set in environment variables")
+                return None
+            return settings.GROQ_API_KEY
+        elif self.provider == "ollama":
+            return settings.OLLAMA_BASE_URL or "http://localhost:11434"
         else:
-            self.client = AsyncOpenAI(
-                api_key=settings.OPENAI_API_KEY,
-            )
+            logger.warning(f"Unsupported LLM provider: {self.provider}")
+            return None
 
     async def generate_streaming_response(
         self,
@@ -63,23 +77,13 @@ class ChatService:
         chat_id: UUID,
         user: schemas.User,
     ) -> AsyncGenerator[ChatCompletionChunk, None]:
-        """Generate a streaming AI response.
-
-        Args:
-            db (AsyncSession): Database session
-            chat_id (UUID): Chat ID
-            user (schemas.User): Current user
-
-        Yields:
-            AsyncGenerator[ChatCompletionChunk]: Stream of response entities
-        """
+        """Generate a streaming response from the AI and yield content chunks."""
         try:
             chat = await crud.chat.get_with_messages(db=db, id=chat_id, current_user=user)
             if not chat:
                 logger.error(f"Chat {chat_id} not found")
                 return
 
-            # Get relevant context from last user message
             last_user_message = next(
                 (msg for msg in reversed(chat.messages) if msg.role == ChatRole.USER), None
             )
@@ -92,46 +96,68 @@ class ChatService:
                     user=user,
                 )
 
-            # Prepare messages with context
             messages = self._prepare_messages_with_context(chat.messages, context)
-
-            # Merge settings
             model = chat.model_name or self.DEFAULT_MODEL
-            model_settings = {
-                **self.DEFAULT_MODEL_SETTINGS,
-                "stream": True,  # Enable streaming
-            }
+            model_settings = {**self.DEFAULT_MODEL_SETTINGS, "stream": True}
 
-            # Create streaming response
-            stream = await self.client.chat.completions.create(
-                model=model,
-                messages=messages,
-                **model_settings,
-            )
-
-            full_content = ""
-            async for chunk in stream:
-                if chunk.choices[0].delta.content:
-                    full_content += chunk.choices[0].delta.content
-                yield chunk
-
-            # Save the complete message after streaming
-            if full_content:
-                message_create = schemas.ChatMessageCreate(
-                    content=full_content,
-                    role=ChatRole.ASSISTANT,
+            if self.provider == "openai" and isinstance(self.client, AsyncOpenAI):
+                stream = await self.client.chat.completions.create(
+                    model=model, messages=messages, **model_settings
                 )
-                await crud.chat.add_message(
-                    db=db, chat_id=chat_id, obj_in=message_create, current_user=user
-                )
+                full_content = ""
+                async for chunk in stream:
+                    if chunk.choices[0].delta.content:
+                        full_content += chunk.choices[0].delta.content
+                    yield chunk
+
+                if full_content:
+                    message_create = schemas.ChatMessageCreate(
+                        content=full_content, role=ChatRole.ASSISTANT
+                    )
+                    await crud.chat.add_message(
+                        db=db, chat_id=chat_id, obj_in=message_create, current_user=user
+                    )
+
+            elif self.provider == "groq" and self.client:
+                headers = {
+                    "Authorization": f"Bearer {self.client}",
+                    "Content-Type": "application/json",
+                }
+                async with httpx.AsyncClient(timeout=60) as client:
+                    response = await client.post(
+                        "https://api.groq.com/openai/v1/chat/completions",
+                        headers=headers,
+                        json={"model": model, "messages": messages, **model_settings},
+                    )
+                    data = response.json()
+                    content = data["choices"][0]["message"]["content"]
+                    yield ChatCompletionChunk(
+                        choices=[
+                            type("obj", (), {"delta": type("msg", (), {"content": content})()})
+                        ]
+                    )
+
+            elif self.provider == "ollama" and self.client:
+                async with httpx.AsyncClient(timeout=60) as client:
+                    response = await client.post(
+                        f"{self.client}/api/chat",
+                        json={"model": model, "messages": messages},
+                    )
+                    data = response.json()
+                    content = data.get("message", {}).get("content", "")
+                    yield ChatCompletionChunk(
+                        choices=[
+                            type("obj", (), {"delta": type("msg", (), {"content": content})()})
+                        ]
+                    )
 
         except Exception as e:
             logger.error(f"Error generating streaming response: {str(e)}")
-            # Create error message
             error_message = schemas.ChatMessageCreate(
                 content=(
-                    "Sorry, I encountered an error while generating a response. Please try again."
-                ),
+    "Sorry, I encountered an error while generating a response. "
+    "Please try again."
+),
                 role=ChatRole.ASSISTANT,
             )
             await crud.chat.add_message(
@@ -145,7 +171,16 @@ class ChatService:
         chat_id: UUID,
         user: schemas.User,
     ) -> Optional[ChatMessage]:
-        """Generate a non-streaming AI response and save it."""
+        """Generate a complete AI response and save it to the database.
+
+        Args:
+        db: Async SQLAlchemy session.
+        chat_id: UUID of the chat.
+        user: Authenticated user.
+
+        Returns:
+        The saved ChatMessage instance.
+        """
         try:
             chat = await crud.chat.get_with_messages(db=db, id=chat_id, current_user=user)
             if not chat:
@@ -154,24 +189,42 @@ class ChatService:
 
             messages = self._prepare_messages(chat.messages)
             model = chat.model_name or self.DEFAULT_MODEL
-            model_settings = {
-                **self.DEFAULT_MODEL_SETTINGS,
-                **chat.model_settings,
-            }
+            model_settings = {**self.DEFAULT_MODEL_SETTINGS, **chat.model_settings}
 
-            response = await self.client.chat.completions.create(
-                model=model, messages=messages, **model_settings
-            )
+            if self.provider == "openai" and isinstance(self.client, AsyncOpenAI):
+                response = await self.client.chat.completions.create(
+                    model=model, messages=messages, **model_settings
+                )
+                if not response.choices:
+                    return None
+                content = response.choices[0].message.content
 
-            if not response.choices:
-                logger.error("No response generated from OpenAI")
+            elif self.provider == "groq" and self.client:
+                headers = {
+                    "Authorization": f"Bearer {self.client}",
+                    "Content-Type": "application/json",
+                }
+                async with httpx.AsyncClient(timeout=60) as client:
+                    response = await client.post(
+                        "https://api.groq.com/openai/v1/chat/completions",
+                        headers=headers,
+                        json={"model": model, "messages": messages, **model_settings},
+                    )
+                    content = response.json()["choices"][0]["message"]["content"]
+
+            elif self.provider == "ollama" and self.client:
+                async with httpx.AsyncClient(timeout=60) as client:
+                    response = await client.post(
+                        f"{self.client}/api/chat",
+                        json={"model": model, "messages": messages},
+                    )
+                    content = response.json().get("message", {}).get("content", "")
+
+            else:
+                logger.error("Unsupported provider or missing client")
                 return None
 
-            message_create = schemas.ChatMessageCreate(
-                content=response.choices[0].message.content,
-                role=ChatRole.ASSISTANT,
-            )
-
+            message_create = schemas.ChatMessageCreate(content=content, role=ChatRole.ASSISTANT)
             return await crud.chat.add_message(
                 db=db, chat_id=chat_id, obj_in=message_create, current_user=user
             )
@@ -179,9 +232,8 @@ class ChatService:
         except Exception as e:
             logger.error(f"Error generating AI response: {str(e)}")
             error_message = schemas.ChatMessageCreate(
-                content=(
-                    "Sorry, I encountered an error while generating a response. Please try again."
-                ),
+                content=("Sorry, I encountered an error while generating a response."
+                " Please try again."),
                 role=ChatRole.ASSISTANT,
             )
             return await crud.chat.add_message(
@@ -189,25 +241,19 @@ class ChatService:
             )
 
     def _prepare_messages(self, messages: list[ChatMessage]) -> list[dict]:
-        """Prepare messages for OpenAI API format."""
         formatted_messages = []
         has_system_message = any(msg.role == ChatRole.SYSTEM for msg in messages)
-
         if not has_system_message:
             formatted_messages.append(
                 {
                     "role": "system",
-                    "content": (
-                        "You are a helpful AI assistant. Provide clear, accurate, "
-                        "and concise responses while being friendly and professional."
-                    ),
+                    "content": "You are a helpful AI assistant. Provide clear, accurate, and"
+                    " concise responses while being friendly and professional.",
                 }
             )
-
         formatted_messages.extend(
             [{"role": message.role, "content": message.content} for message in messages]
         )
-
         return formatted_messages
 
     async def _get_relevant_context(
@@ -217,23 +263,13 @@ class ChatService:
         query: str,
         user: schemas.User,
     ) -> str:
-        """Get relevant context from vector store if sync_id is present."""
         if not chat.sync_id:
             return ""
-
         try:
             search_results = await search_service.search(
-                db=db,
-                query=query,
-                sync_id=chat.sync_id,
-                current_user=user,
+                db=db, query=query, sync_id=chat.sync_id, current_user=user
             )
-
-            if not search_results:
-                return ""
-
-            return "\n\n".join(str(result) for result in search_results)
-
+            return "\n\n".join(str(result) for result in search_results) if search_results else ""
         except Exception as e:
             logger.error(f"Error getting search context: {str(e)}")
             raise e
@@ -243,35 +279,23 @@ class ChatService:
         messages: list[ChatMessage],
         context: str = "",
     ) -> list[dict]:
-        """Prepare messages for OpenAI API format with optional context."""
         formatted_messages = []
         has_system_message = any(msg.role == ChatRole.SYSTEM for msg in messages)
-
-        # Add system message with context if available
         if not has_system_message:
             system_content = (
                 self.CONTEXT_PROMPT.format(context=context)
                 if context
                 else (
-                    "You are a helpful AI assistant. "
-                    "Always format your responses in proper markdown, "
-                    "including tables, code blocks with language tags, and proper headers. "
-                    "Provide clear, accurate, and concise responses while being friendly"
-                    " and professional."
+                    "You are a helpful AI assistant. Always format your responses in proper "
+                    "markdown, including tables, code blocks with language tags, and proper headers"
+                    " Provide clear, accurate, and concise responses while being friendly and "
+                    "professional."
                 )
             )
-            formatted_messages.append(
-                {
-                    "role": "system",
-                    "content": system_content,
-                }
-            )
-
-        # Add chat history
+            formatted_messages.append({"role": "system", "content": system_content})
         formatted_messages.extend(
             [{"role": message.role, "content": message.content} for message in messages]
         )
-
         return formatted_messages
 
 

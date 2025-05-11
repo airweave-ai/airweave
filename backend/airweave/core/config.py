@@ -37,6 +37,8 @@ class Settings(BaseSettings):
         TEXT2VEC_INFERENCE_URL (str): The URL for text2vec-transformers inference service.
         OPENAI_API_KEY (Optional[str]): The OpenAI API key.
         MISTRAL_API_KEY (Optional[str]): The Mistral AI API key.
+        GROQ_API_KEY (Optional[str]):= The GROQ API key
+        OLLAMA_BASE_URL (Optional[str]):  The GROQ OLLAMA base url
     """
 
     PROJECT_NAME: str = "Airweave"
@@ -69,6 +71,8 @@ class Settings(BaseSettings):
 
     OPENAI_API_KEY: Optional[str] = None
     MISTRAL_API_KEY: Optional[str] = None
+    GROQ_API_KEY: Optional[str] = None
+    OLLAMA_BASE_URL: Optional[str] = None
 
     @field_validator("SQLALCHEMY_ASYNC_DATABASE_URI", mode="before")
     def assemble_db_connection(cls, v: Optional[str], info: ValidationInfo) -> PostgresDsn:
