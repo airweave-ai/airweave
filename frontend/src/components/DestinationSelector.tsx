@@ -33,7 +33,7 @@ interface ConfigField {
 }
 
 interface DestinationWithConfig extends Destination {
-  config_fields?: {
+  auth_fields?: {
     fields: ConfigField[];
   };
 }
@@ -65,7 +65,7 @@ interface DestinationDetails {
   id: string;
   created_at: string;
   modified_at: string;
-  config_fields: {
+  auth_fields: {
     fields: ConfigField[];
   };
 }
@@ -83,7 +83,7 @@ export const DestinationSelector = ({ onComplete }: DestinationSelectorProps) =>
   const [selectedDestination, setSelectedDestination] = useState<DestinationDetails | null>(null);
   const [showConfig, setShowConfig] = useState(false);
   const [configValues, setConfigValues] = useState<Record<string, string>>({});
-  const [configFields, setConfigFields] = useState<ConfigField[]>([]);
+  const [authenticationFields, setAuthenticationFields] = useState<ConfigField[]>([]);
   const [isConnecting, setIsConnecting] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -129,7 +129,7 @@ export const DestinationSelector = ({ onComplete }: DestinationSelectorProps) =>
       const data: DestinationWithConfig = await response.json();
 
       setSelectedDestination(dest);
-      setConfigFields(data.config_fields?.fields || []);
+      setAuthenticationFields(data.auth_fields?.fields || []);
       setConfigValues({});
       setShowConfig(true);
     } catch (err) {
@@ -165,7 +165,7 @@ export const DestinationSelector = ({ onComplete }: DestinationSelectorProps) =>
   const handleConnect = async () => {
     if (!selectedDestination) return;
 
-    const missingFields = configFields.filter((field) => !configValues[field.name]);
+    const missingFields = authenticationFields.filter((field) => !configValues[field.name]);
     if (missingFields.length > 0) {
       toast({
         variant: "destructive",
@@ -355,7 +355,7 @@ export const DestinationSelector = ({ onComplete }: DestinationSelectorProps) =>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            {configFields.map((field) => (
+            {authenticationFields.map((field) => (
               <div key={field.name} className="space-y-2">
                 <label className="text-sm font-medium">
                   {field.title}

@@ -28,14 +28,14 @@ interface DestinationDetails {
   name: string;
   description: string;
   short_name: string;
-  config_fields?: {
+  auth_fields?: {
     fields: ConfigField[];
   };
 }
 
 interface DestinationConfig {
   name: string;
-  config_fields: Record<string, string>;
+  auth_fields: Record<string, string>;
 }
 
 // We'll fetch this list from the /destinations/list endpoint in practice
@@ -66,7 +66,7 @@ export const AddDestinationWizard = ({ open, onOpenChange, onComplete }: AddDest
   const [destinationDetails, setDestinationDetails] = useState<DestinationDetails | null>(null);
   const [config, setConfig] = useState<DestinationConfig>({
     name: "",
-    config_fields: {}
+    auth_fields: {}
   });
   const [testing, setTesting] = useState(false);
   const [activeTab, setActiveTab] = useState("basic");
@@ -78,7 +78,7 @@ export const AddDestinationWizard = ({ open, onOpenChange, onComplete }: AddDest
       setStep(1);
       setSelectedDB(null);
       setDestinationDetails(null);
-      setConfig({ name: "", config_fields: {} });
+      setConfig({ name: "", auth_fields: {} });
       setTesting(false);
       setIsLoading(false);
     }
@@ -102,14 +102,14 @@ export const AddDestinationWizard = ({ open, onOpenChange, onComplete }: AddDest
       const data = await response.json();
 
       setDestinationDetails(data);
-      if (data.config_fields?.fields) {
+      if (data.auth_fields?.fields) {
         const initialConfig: Record<string, string> = {};
-        data.config_fields.fields.forEach(field => {
+        data.auth_fields.fields.forEach(field => {
           initialConfig[field.name] = "";
         });
         setConfig({
           name: "",
-          config_fields: initialConfig
+          auth_fields: initialConfig
         });
       }
       setStep(2);
@@ -138,9 +138,9 @@ export const AddDestinationWizard = ({ open, onOpenChange, onComplete }: AddDest
       return false;
     }
 
-    // Validate all required fields from config_fields
-    const missingFields = destinationDetails?.config_fields?.fields.filter(
-      field => !config.config_fields[field.name]?.trim()
+    // Validate all required fields from auth_fields
+    const missingFields = destinationDetails?.auth_fields?.fields.filter(
+      field => !config.auth_fields[field.name]?.trim()
     );
 
     if (missingFields && missingFields.length > 0) {
@@ -164,7 +164,7 @@ export const AddDestinationWizard = ({ open, onOpenChange, onComplete }: AddDest
       setTesting(true);
       const payload = {
         name: config.name,
-        config_fields: config.config_fields
+        auth_fields: config.auth_fields
       };
 
       await apiClient.post(
@@ -210,9 +210,8 @@ export const AddDestinationWizard = ({ open, onOpenChange, onComplete }: AddDest
                 {vectorDatabases.map((db) => (
                   <Card
                     key={db.id}
-                    className={`relative overflow-hidden cursor-pointer transition-all hover:shadow-lg ${
-                      selectedDB === db.id ? "ring-2 ring-primary" : ""
-                    }`}
+                    className={`relative overflow-hidden cursor-pointer transition-all hover:shadow-lg ${selectedDB === db.id ? "ring-2 ring-primary" : ""
+                      }`}
                     onClick={() => handleDBSelect(db.id)}
                   >
                     <CardHeader>
@@ -261,7 +260,7 @@ export const AddDestinationWizard = ({ open, onOpenChange, onComplete }: AddDest
                       </p>
                     </div>
 
-                    {destinationDetails.config_fields?.fields.map((field) => (
+                    {destinationDetails.auth_fields?.fields.map((field) => (
                       <div key={field.name} className="space-y-2">
                         <Label htmlFor={field.name}>
                           {field.title}
@@ -274,12 +273,12 @@ export const AddDestinationWizard = ({ open, onOpenChange, onComplete }: AddDest
                         <Input
                           id={field.name}
                           type={field.type === "string" ? "text" : field.type}
-                          value={config.config_fields[field.name] || ""}
+                          value={config.auth_fields[field.name] || ""}
                           onChange={(e) =>
                             setConfig({
                               ...config,
-                              config_fields: {
-                                ...config.config_fields,
+                              auth_fields: {
+                                ...config.auth_fields,
                                 [field.name]: e.target.value
                               }
                             })
@@ -312,11 +311,11 @@ export const AddDestinationWizard = ({ open, onOpenChange, onComplete }: AddDest
                     <p className="text-sm text-muted-foreground">Connection Name</p>
                     <p className="font-medium">{config.name}</p>
                   </div>
-                  {destinationDetails.config_fields?.fields.map((field) => (
+                  {destinationDetails.auth_fields?.fields.map((field) => (
                     <div key={field.name}>
                       <p className="text-sm text-muted-foreground">{field.title}</p>
                       <p className="font-medium">
-                        {field.type === "string" ? "••••••••" : config.config_fields[field.name]}
+                        {field.type === "string" ? "••••••••" : config.auth_fields[field.name]}
                       </p>
                     </div>
                   ))}

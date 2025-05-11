@@ -16,11 +16,22 @@ export default defineConfig(({ mode }) => ({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+    extensions: ['.mjs', '.js', '.ts', '.jsx', '.tsx', '.json']
   },
   build: {
     // Ensure no host checking in the production build
     ssrManifest: false,
     // Generate source maps for debugging
     sourcemap: mode !== 'production',
+    commonjsOptions: {
+      include: [/src\/lib/, /node_modules/],
+    },
+    rollupOptions: {
+      onwarn(warning, warn) {
+        // Ignore certain warnings
+        if (warning.code === 'MODULE_LEVEL_DIRECTIVE') return;
+        warn(warning);
+      }
+    }
   },
 }));

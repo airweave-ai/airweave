@@ -17,195 +17,364 @@ Notes:
     repository contents recursively (default branch only).
 """
 
-from typing import AsyncGenerator, Optional
+import base64
+import mimetypes
+from datetime import datetime
+from pathlib import Path
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
+import tenacity
+from tenacity import retry_if_exception_type, stop_after_attempt, wait_exponential
 
+from airweave.core.logging import logger
 from airweave.platform.auth.schemas import AuthType
+from airweave.platform.configs.auth import GitHubAuthConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import Breadcrumb, ChunkEntity
-from airweave.platform.entities.github import GithubContentEntity, GithubRepoEntity
+from airweave.platform.entities.github import (
+    GitHubCodeFileEntity,
+    GitHubDirectoryEntity,
+    GitHubRepositoryEntity,
+)
 from airweave.platform.sources._base import BaseSource
+from airweave.platform.utils.file_extensions import (
+    get_language_for_extension,
+    is_text_file,
+)
 
 
-@source("GitHub", "github", AuthType.oauth2_with_refresh, labels=["Code"])
-class GithubSource(BaseSource):
-    """GitHub source implementation (read-only)."""
+@source(
+    "GitHub",
+    "github",
+    AuthType.config_class,
+    "GitHubAuthConfig",
+    labels=["Code"],
+)
+class GitHubSource(BaseSource):
+    """GitHub source implementation."""
+
+    BASE_URL = "https://api.github.com"
 
     @classmethod
-    async def create(cls, access_token: str) -> "GithubSource":
-        """Create a new GitHub source instance."""
+    async def create(cls, config: GitHubAuthConfig) -> "GitHubSource":
+        """Create a new source instance with authentication.
+
+        Args:
+            config: GitHubAuthConfig instance
+
+        Returns:
+            Configured GitHub source instance
+        """
         instance = cls()
-        instance.access_token = access_token
+
+        instance.personal_access_token = config.personal_access_token
+        instance.repo_name = config.repo_name
         return instance
 
+    @tenacity.retry(
+        retry=retry_if_exception_type(httpx.HTTPError),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(3),
+    )
     async def _get_with_auth(
-        self, client: httpx.AsyncClient, url: str, params: Optional[dict] = None
-    ) -> httpx.Response:
-        """Make an authenticated GET request to the GitHub API."""
-        headers = {"Authorization": f"Bearer {self.access_token}"}
+        self, client: httpx.AsyncClient, url: str, params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Make authenticated API request using Personal Access Token.
+
+        Args:
+            client: HTTP client
+            url: API endpoint URL
+            params: Optional query parameters
+
+        Returns:
+            JSON response
+        """
+        headers = {
+            "Authorization": f"token {self.personal_access_token}",
+            "Accept": "application/vnd.github.v3+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
         response = await client.get(url, headers=headers, params=params)
         response.raise_for_status()
-        return response
+        return response.json()
 
-    async def _generate_repo_entities(
-        self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[GithubRepoEntity, None]:
-        """Generate entities for all user-accessible repositories.
+    def _detect_language_from_extension(self, file_path: str) -> str:
+        """Detect programming language from file extension.
 
-        GET /user/repos
-        We'll follow pagination by looking for a 'Link' header with 'rel="next"'.
+        Args:
+            file_path: Path to the file
+
+        Returns:
+            The detected language name
         """
-        url = "https://api.github.com/user/repos"
-        params = {"per_page": 100}  # We can page in 100-repo increments
-        while url:
-            resp = await self._get_with_auth(client, url, params=params)
-            repos_data = resp.json()  # This should be a list of repo objects
-            for repo in repos_data:
-                yield GithubRepoEntity(
-                    entity_id=str(repo["id"]),
-                    breadcrumbs=[],
-                    name=repo.get("name"),
-                    full_name=repo.get("full_name"),
-                    owner_login=repo["owner"].get("login") if repo.get("owner") else None,
-                    private=repo.get("private", False),
-                    description=repo.get("description"),
-                    fork=repo.get("fork", False),
-                    created_at=repo.get("created_at"),
-                    updated_at=repo.get("updated_at"),
-                    pushed_at=repo.get("pushed_at"),
-                    homepage=repo.get("homepage"),
-                    size=repo.get("size"),
-                    stargazers_count=repo.get("stargazers_count", 0),
-                    watchers_count=repo.get("watchers_count", 0),
-                    language=repo.get("language"),
-                    forks_count=repo.get("forks_count", 0),
-                    open_issues_count=repo.get("open_issues_count", 0),
-                    topics=repo.get("topics", []),
-                    default_branch=repo.get("default_branch"),
-                    archived=repo.get("archived", False),
-                    disabled=repo.get("disabled", False),
-                )
+        ext = Path(file_path).suffix.lower()
+        return get_language_for_extension(ext)
 
-            # Attempt to parse pagination links
-            link_header = resp.headers.get("Link", "")
-            next_url = None
-            if link_header:
-                # Example: <https://api.github.com/user/repos?page=2>; rel="next", ...
-                parts = link_header.split(",")
-                for part in parts:
-                    segment = part.strip()
-                    if 'rel="next"' in segment:
-                        next_url = segment.split(";")[0].strip("<>")
-                        break
-            url = next_url
-            params = None  # after first request, rely on next_url for all pagination
+    async def _get_repository_info(
+        self, client: httpx.AsyncClient, repo_name: str
+    ) -> GitHubRepositoryEntity:
+        """Get repository information.
 
-    async def _walk_repository_contents(
+        Args:
+            client: HTTP client
+            repo_name: Repository name (format: "owner/repo")
+
+        Returns:
+            Repository entity
+        """
+        url = f"{self.BASE_URL}/repos/{repo_name}"
+        repo_data = await self._get_with_auth(client, url)
+
+        return GitHubRepositoryEntity(
+            entity_id=str(repo_data["id"]),
+            source_name="github",
+            name=repo_data["name"],
+            full_name=repo_data["full_name"],
+            description=repo_data.get("description"),
+            default_branch=repo_data["default_branch"],
+            created_at=datetime.fromisoformat(repo_data["created_at"].replace("Z", "+00:00")),
+            updated_at=datetime.fromisoformat(repo_data["updated_at"].replace("Z", "+00:00")),
+            language=repo_data.get("language"),
+            fork=repo_data["fork"],
+            size=repo_data["size"],
+            stars_count=repo_data.get("stargazers_count"),
+            watchers_count=repo_data.get("watchers_count"),
+            forks_count=repo_data.get("forks_count"),
+            open_issues_count=repo_data.get("open_issues_count"),
+            url=repo_data["html_url"],
+        )
+
+    async def _traverse_repository(
+        self, client: httpx.AsyncClient, repo_name: str, branch: str
+    ) -> AsyncGenerator[ChunkEntity, None]:
+        """Traverse repository contents using DFS.
+
+        Args:
+            client: HTTP client
+            repo_name: Repository name (format: "owner/repo")
+            branch: Branch name
+
+        Yields:
+            Directory and file entities
+        """
+        # Get repository info first
+        repo_entity = await self._get_repository_info(client, repo_name)
+        yield repo_entity
+
+        # Parse owner and repo
+        owner, repo = repo_name.split("/")
+
+        # Create breadcrumb for the repo
+        repo_breadcrumb = Breadcrumb(
+            entity_id=repo_entity.entity_id, name=repo_entity.name, type="repository"
+        )
+
+        # Track processed paths to avoid duplicates
+        processed_paths = set()
+
+        # Start DFS traversal from root
+        async for entity in self._traverse_directory(
+            client, repo_name, "", [repo_breadcrumb], owner, repo, branch, processed_paths
+        ):
+            yield entity
+
+    async def _traverse_directory(
         self,
         client: httpx.AsyncClient,
-        repo_full_name: str,
-        branch: str,
+        repo_name: str,
         path: str,
-        breadcrumbs: Optional[list] = None,
-    ) -> AsyncGenerator[GithubContentEntity, None]:
-        """Recursively walk the contents of a given repository path on the specified branch.
-
-        Yields GithubContentEntity objects.
-
-        GET /repos/{owner}/{repo}/contents/{path}?ref={branch}
-        """
-        if breadcrumbs is None:
-            breadcrumbs = []
-
-        url = f"https://api.github.com/repos/{repo_full_name}/contents/{path}"
-        params = {"ref": branch}
-        resp = await self._get_with_auth(client, url, params)
-        data = resp.json()
-
-        # data can be a list (directory contents) or a dict (single file)
-        if isinstance(data, dict) and data.get("type") == "file":
-            # Single file item
-            yield GithubContentEntity(
-                entity_id=data["sha"],
-                breadcrumbs=breadcrumbs,
-                repo_full_name=repo_full_name,
-                path=data.get("path"),
-                sha=data.get("sha"),
-                item_type=data.get("type"),
-                size=data.get("size"),
-                html_url=data.get("html_url"),
-                download_url=data.get("download_url"),
-                content=data.get("content"),  # base64-encoded if present
-                encoding=data.get("encoding"),
-            )
-        elif isinstance(data, list):
-            # Directory listing
-            for item in data:
-                yield GithubContentEntity(
-                    entity_id=item["sha"],
-                    breadcrumbs=breadcrumbs,
-                    repo_full_name=repo_full_name,
-                    path=item.get("path"),
-                    sha=item.get("sha"),
-                    item_type=item.get("type"),
-                    size=item.get("size"),
-                    html_url=item.get("html_url"),
-                    download_url=item.get("download_url"),
-                    # For directories, GitHub won't include content in this listing
-                    content=None,
-                    encoding=None,
-                )
-                # If it's a directory, recurse
-                if item.get("type") == "dir":
-                    dir_breadcrumbs = breadcrumbs + [
-                        Breadcrumb(
-                            entity_id=item["sha"],
-                            name=item.get("name", item.get("path", "")),
-                            type="directory",
-                        )
-                    ]
-                    async for sub_item in self._walk_repository_contents(
-                        client, repo_full_name, branch, item["path"], dir_breadcrumbs
-                    ):
-                        yield sub_item
-
-    async def _generate_content_entities(
-        self, client: httpx.AsyncClient, repo: GithubRepoEntity
+        breadcrumbs: List[Breadcrumb],
+        owner: str,
+        repo: str,
+        branch: str,
+        processed_paths: set,
     ) -> AsyncGenerator[ChunkEntity, None]:
-        """Generate content entities for a given repository.
+        """Recursively traverse a directory using DFS.
 
-        Walks through the hierarchy of directories/files on the default branch.
+        Args:
+            client: HTTP client
+            repo_name: Repository name
+            path: Current path to traverse
+            breadcrumbs: Current breadcrumb chain
+            owner: Repository owner
+            repo: Repository name
+            branch: Branch name
+            processed_paths: Set of already processed paths
+
+        Yields:
+            Directory and file entities
         """
-        if not repo.default_branch or not repo.full_name:
+        if path in processed_paths:
             return
-        # Create a breadcrumb for the repository root
-        repo_breadcrumb = Breadcrumb(
-            entity_id=repo.entity_id,
-            name=repo.name or repo.full_name,
-            type="repository",
-        )
-        async for content_entity in self._walk_repository_contents(
-            client,
-            repo.full_name,
-            repo.default_branch,
-            path="",  # start at the repo root
-            breadcrumbs=[repo_breadcrumb],
-        ):
-            yield content_entity
+
+        processed_paths.add(path)
+
+        # Get contents of the current directory
+        url = f"{self.BASE_URL}/repos/{repo_name}/contents/{path}"
+        params = {"ref": branch}
+
+        try:
+            contents = await self._get_with_auth(client, url, params)
+
+            # Handle pagination if needed (using GitHub's API)
+            if isinstance(contents, List):
+                items = contents
+            else:
+                items = [contents]
+
+            # Process each item in the directory
+            for item in items:
+                item_path = item["path"]
+                item_type = item["type"]
+
+                if item_type == "dir":
+                    # Create directory entity
+                    dir_entity = GitHubDirectoryEntity(
+                        entity_id=f"{repo_name}/{item_path}",
+                        source_name="github",
+                        path=item_path,
+                        repo_name=repo,
+                        repo_owner=owner,
+                        content=f"Directory: {item_path}",
+                        breadcrumbs=breadcrumbs.copy(),
+                        url=item["html_url"],
+                    )
+
+                    # Create breadcrumb for this directory
+                    dir_breadcrumb = Breadcrumb(
+                        entity_id=dir_entity.entity_id,
+                        name=Path(item_path).name,
+                        type="directory",
+                    )
+
+                    # Yield the directory entity
+                    yield dir_entity
+
+                    # Create updated breadcrumb chain for children
+                    dir_breadcrumbs = breadcrumbs.copy() + [dir_breadcrumb]
+
+                    # Recursively traverse this directory (DFS)
+                    async for child_entity in self._traverse_directory(
+                        client,
+                        repo_name,
+                        item_path,
+                        dir_breadcrumbs,
+                        owner,
+                        repo,
+                        branch,
+                        processed_paths,
+                    ):
+                        yield child_entity
+
+                elif item_type == "file":
+                    # Process the file and yield entities
+                    async for file_entity in self._process_file(
+                        client, repo_name, item_path, item, breadcrumbs, owner, repo, branch
+                    ):
+                        yield file_entity
+
+        except Exception as e:
+            logger.error(f"Error traversing path {path}: {str(e)}")
+
+    async def _process_file(
+        self,
+        client: httpx.AsyncClient,
+        repo_name: str,
+        item_path: str,
+        item: Dict[str, Any],
+        breadcrumbs: List[Breadcrumb],
+        owner: str,
+        repo: str,
+        branch: str,
+    ) -> AsyncGenerator[ChunkEntity, None]:
+        """Process a file item and create file entities.
+
+        Args:
+            client: HTTP client
+            repo_name: Repository name
+            item_path: Path to the file
+            item: File item data
+            breadcrumbs: Current breadcrumb chain
+            owner: Repository owner
+            repo: Repository name
+            branch: Branch name
+
+        Yields:
+            File entities
+        """
+        try:
+            # For files at root level, ensure we use the correct API path
+            file_url = f"{self.BASE_URL}/repos/{repo_name}/contents/{item_path}"
+            file_data = await self._get_with_auth(client, file_url, {"ref": branch})
+            file_size = file_data.get("size", 0)
+
+            # Get content sample for text file detection if the file is not too large
+            content_sample = None
+            content_text = None
+            if file_data.get("encoding") == "base64" and file_data.get("content"):
+                try:
+                    content_sample = base64.b64decode(file_data["content"])
+                    # Try to decode content as text for storage
+                    content_text = content_sample.decode("utf-8", errors="replace")
+                except Exception:
+                    pass
+
+            # Check if this is a text file based on extension, size, and possibly content
+            if is_text_file(item_path, file_size, content_sample):
+                # Detect language
+                language = self._detect_language_from_extension(item_path)
+
+                # Ensure we have a valid path
+                file_name = Path(item_path).name
+
+                # Set line count if we have content
+                line_count = 0
+                if content_text:
+                    try:
+                        line_count = content_text.count("\n") + 1
+                    except Exception as e:
+                        logger.error(f"Error counting lines for {item_path}: {str(e)}")
+
+                # Create file entity with guaranteed valid paths and store content in memory
+                file_entity = GitHubCodeFileEntity(
+                    entity_id=f"{repo_name}/{item_path}",
+                    source_name="github",
+                    file_id=file_data["sha"],
+                    name=file_name,
+                    mime_type=mimetypes.guess_type(item_path)[0] or "text/plain",
+                    size=file_size,
+                    path=item_path or file_name,  # Fallback to file name if path is empty
+                    repo_name=repo,
+                    repo_owner=owner,
+                    sha=file_data["sha"],
+                    breadcrumbs=breadcrumbs.copy(),
+                    url=file_data["html_url"],
+                    language=language,
+                    line_count=line_count,
+                    path_in_repo=item_path,
+                    content=content_text,  # Store the content directly in the entity
+                    last_modified=None,  # GitHub API doesn't provide this directly
+                )
+
+                # Let the file handler manage actual file processing
+                yield file_entity
+        except Exception as e:
+            logger.error(f"Error processing file {item_path}: {str(e)}")
 
     async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
-        """Generate and yield entities for GitHub objects.
+        """Generate entities from GitHub repository.
 
-        Yields entities in the following order:
-          - Repositories
-            - Contents (files/directories) for each repository
+        Yields:
+            Repository, directory, and file entities
         """
-        async with httpx.AsyncClient() as client:
-            # 1) Yield repo entities
-            async for repo_entity in self._generate_repo_entities(client):
-                yield repo_entity
+        if not hasattr(self, "repo_name") or not self.repo_name:
+            raise ValueError("Repository name must be specified")
 
-                # 2) For each repo, yield content entities
-                async for content_entity in self._generate_content_entities(client, repo_entity):
-                    yield content_entity
+        async with httpx.AsyncClient() as client:
+            repo_url = f"{self.BASE_URL}/repos/{self.repo_name}"
+            repo_data = await self._get_with_auth(client, repo_url)
+            default_branch = repo_data["default_branch"]
+
+            async for entity in self._traverse_repository(client, self.repo_name, default_branch):
+                yield entity

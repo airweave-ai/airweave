@@ -59,7 +59,7 @@ class EmbeddingModel(EmbeddingModelInDBBase):
     pass
 
 
-class EmbeddingModelWithConfigFields(EmbeddingModel):
+class EmbeddingModelWithAuthenticationFields(EmbeddingModel):
     """Schema for EmbeddingModel with auth config."""
 
-    config_fields: Fields | None = None
+    auth_fields: Fields | None = None

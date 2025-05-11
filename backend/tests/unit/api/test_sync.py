@@ -13,7 +13,7 @@ from airweave.api.v1.endpoints import sync
 from airweave.core.shared_models import ConnectionStatus, IntegrationType, SyncJobStatus
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.platform.sync.pubsub import sync_pubsub
-from airweave.platform.sync.service import sync_service
+from airweave.core.sync_service import sync_service
 
 # Fixtures are imported from tests/fixtures/common.py via conftest.py
 
@@ -393,16 +393,22 @@ class TestSubscribeSyncJob:
         sync_pubsub.subscribe = AsyncMock(return_value=mock_queue)
         sync_pubsub.unsubscribe = MagicMock()
 
-        # Act
-        response = await sync.subscribe_sync_job(job_id=job_id, user=mock_user)
+        # Create a properly authenticated mock request with token
+        mock_request = MagicMock()
+        mock_request.query_params.get.return_value = "test-token"
 
-        # Assert
-        sync_pubsub.subscribe.assert_called_once_with(job_id)
-        assert isinstance(response, StreamingResponse)
-        assert response.media_type == "text/event-stream"
-        assert response.headers["Cache-Control"] == "no-cache"
-        assert response.headers["Connection"] == "keep-alive"
-        assert response.headers["X-Accel-Buffering"] == "no"
+        # Temporarily disable auth requirement for testing
+        with patch("airweave.api.v1.endpoints.sync.settings.AUTH_ENABLED", False):
+            # Act
+            response = await sync.subscribe_sync_job(job_id=job_id, request=mock_request)
+
+            # Assert
+            sync_pubsub.subscribe.assert_called_once_with(job_id)
+            assert isinstance(response, StreamingResponse)
+            assert response.media_type == "text/event-stream"
+            assert response.headers["Cache-Control"] == "no-cache"
+            assert response.headers["Connection"] == "keep-alive"
+            assert response.headers["X-Accel-Buffering"] == "no"
 
     @pytest.mark.asyncio
     async def test_subscribe_sync_job_not_found(self, mock_user):
@@ -411,13 +417,19 @@ class TestSubscribeSyncJob:
         job_id = uuid.uuid4()
         sync_pubsub.subscribe = AsyncMock(return_value=None)
 
-        # Act & Assert
-        with pytest.raises(HTTPException) as exc_info:
-            await sync.subscribe_sync_job(job_id=job_id, user=mock_user)
+        # Create a properly authenticated mock request with token
+        mock_request = MagicMock()
+        mock_request.query_params.get.return_value = "test-token"
 
-        assert exc_info.value.status_code == 404
-        assert exc_info.value.detail == "Sync job not found or completed"
-        sync_pubsub.subscribe.assert_called_once_with(job_id)
+        # Temporarily disable auth requirement for testing
+        with patch("airweave.api.v1.endpoints.sync.settings.AUTH_ENABLED", False):
+            # Act & Assert
+            with pytest.raises(HTTPException) as exc_info:
+                await sync.subscribe_sync_job(job_id=job_id, request=mock_request)
+
+            assert exc_info.value.status_code == 404
+            assert exc_info.value.detail == "Sync job not found or completed"
+            sync_pubsub.subscribe.assert_called_once_with(job_id)
 
 
 class TestGetSyncDag:

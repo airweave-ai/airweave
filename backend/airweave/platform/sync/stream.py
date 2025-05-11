@@ -1,9 +1,9 @@
 """Module for async data streaming with backpressure."""
 
 import asyncio
+import logging
 from typing import AsyncGenerator, Generic, Optional, TypeVar
 
-from airweave.core.logging import logger
 from airweave.platform.entities._base import BaseEntity
 
 T = TypeVar("T", bound=BaseEntity)
@@ -22,12 +22,14 @@ class AsyncSourceStream(Generic[T]):
         self,
         source_generator: AsyncGenerator[T, None],
         queue_size: int = 100,
+        logger: Optional[logging.Logger] = None,
     ):
         """Initialize the async source stream.
 
         Args:
             source_generator: The source async generator
             queue_size: Size of the queue connecting producer and consumer
+            logger: Optional contextualized logger, falls back to global logger if not provided
         """
         self.source_generator = source_generator
         # Queue is used to buffer entities and implement backpressure
@@ -36,6 +38,10 @@ class AsyncSourceStream(Generic[T]):
         self.is_running = True
         self.producer_done = asyncio.Event()
         self.producer_exception = None
+        if logger is None:
+            self.logger = logging.getLogger(__name__)
+        else:
+            self.logger = logger
 
     async def __aenter__(self):
         """Context manager entry point."""
@@ -53,7 +59,7 @@ class AsyncSourceStream(Generic[T]):
         try:
             async for item in self.source_generator:
                 if not self.is_running:
-                    logger.info("Producer stopping early")
+                    self.logger.info("Producer stopping early")
                     break
 
                 # Put item in queue, waiting if queue is full.
@@ -61,9 +67,9 @@ class AsyncSourceStream(Generic[T]):
                 # Effectively, this is a backpressure mechanism.
                 await self.queue.put(item)
 
-            logger.info("Source generator exhausted")
+            self.logger.info("Source generator exhausted")
         except Exception as e:
-            logger.error(f"Error in producer: {e}")
+            self.logger.error(f"Error in producer: {e}")
             self.producer_exception = e
             # Re-raise to ensure proper error handling -> THIS DOES NOT WORK
             raise
@@ -87,7 +93,7 @@ class AsyncSourceStream(Generic[T]):
             try:
                 await asyncio.wait_for(self.producer_task, timeout=5.0)
             except asyncio.TimeoutError:
-                logger.warning("Producer task did not complete in time, cancelling")
+                self.logger.warning("Producer task did not complete in time, cancelling")
                 self.producer_task.cancel()
                 try:
                     await self.producer_task
@@ -112,7 +118,7 @@ class AsyncSourceStream(Generic[T]):
             if item is None:
                 # Check if the producer failed before yielding any items
                 if self.producer_exception:
-                    logger.error("Producer failed with error before yielding any items")
+                    self.logger.error("Producer failed with error before yielding any items")
                     raise self.producer_exception
                 break
 
@@ -120,5 +126,5 @@ class AsyncSourceStream(Generic[T]):
 
             # Check if producer had an error after yielding the item
             if self.producer_exception:
-                logger.error("Producer encountered an error, stopping consumer")
+                self.logger.error("Producer encountered an error, stopping consumer")
                 raise self.producer_exception

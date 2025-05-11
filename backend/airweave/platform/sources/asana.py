@@ -270,9 +270,7 @@ class AsanaSource(BaseSource):
                 access_token=self.access_token,  # Always pass the access token
             )
 
-            # Only yield if the file wasn't skipped due to size limits
-            if processed_entity:
-                yield processed_entity
+            yield processed_entity
 
     async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
         """Generate all entities from Asana."""

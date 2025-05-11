@@ -42,7 +42,28 @@ as entity schemas defined in entities/gmail.py.
 
 This connector uses **OAuth 2.0 with refresh token**.
 
-You can connect through the Airweave UI, which will guide you through the OAuth flow.
+<Card
+  title="Authentication Configuration"
+  className="auth-config-card"
+  style={{ backgroundColor: 'rgba(0, 0, 0, 0.1)', padding: '16px', marginBottom: '24px' }}
+>
+
+Google authentication credentials schema.
+<ParamField
+  path="client_id"
+  type="str"
+  required={true}
+>
+  The OAuth client ID for your Google app
+</ParamField>
+<ParamField
+  path="client_secret"
+  type="str"
+  required={true}
+>
+  The OAuth client secret for your Google app
+</ParamField>
+</Card>
 
 
 ## Entities

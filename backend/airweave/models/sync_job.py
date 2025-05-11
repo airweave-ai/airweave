@@ -30,9 +30,10 @@ class SyncJob(OrganizationBase, UserMixin):
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     failed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    entities_detected: Mapped[int] = mapped_column(Integer, default=0)
     entities_inserted: Mapped[int] = mapped_column(Integer, default=0)
+    entities_updated: Mapped[int] = mapped_column(Integer, default=0)
     entities_deleted: Mapped[int] = mapped_column(Integer, default=0)
+    entities_kept: Mapped[int] = mapped_column(Integer, default=0)
     entities_skipped: Mapped[int] = mapped_column(Integer, default=0)
     error: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 

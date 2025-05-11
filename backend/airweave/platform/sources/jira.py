@@ -128,8 +128,11 @@ class JiraSource(BaseSource):
         logger.debug(
             f"Creating project entity for: {project_data.get('key')} - {project_data.get('name')}"
         )
+        # Use a composite ID format that includes the entity type for uniqueness
+        entity_id = f"project-{project_data['id']}"
+
         return JiraProjectEntity(
-            entity_id=project_data["id"],
+            entity_id=entity_id,  # Modified to use unique ID
             breadcrumbs=[],  # top-level object, no parent
             project_key=project_data["key"],
             name=project_data.get("name"),
@@ -191,8 +194,11 @@ class JiraSource(BaseSource):
             f"Creating issue entity: {issue_key} - Type: {issue_type_name}, Status: {status_name}"
         )
 
+        # Use a composite ID format that includes the entity type for uniqueness
+        entity_id = f"issue-{issue_data['id']}"
+
         return JiraIssueEntity(
-            entity_id=issue_data["id"],
+            entity_id=entity_id,  # Modified to use unique ID
             breadcrumbs=[
                 Breadcrumb(entity_id=project.entity_id, name=project.name or "", type="project")
             ],

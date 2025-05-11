@@ -27,7 +27,26 @@ jobs:
       - name: Run start script
         run: |
           chmod +x start.sh
-          { echo "y"; echo "${{ secrets.OPENAI_API_KEY }}"; } | ./start.sh
+          { echo "y"; echo "${{ secrets.OPENAI_API_KEY }}"; echo "n"; } | ./start.sh
+
+      - name: Verify containers are running
+        run: |
+          echo "Listing all running containers:"
+          docker ps -a
+
+          # Verify the backend container exists
+          if ! docker ps | grep -q airweave-backend; then
+            echo "ERROR: airweave-backend container is not running!"
+            exit 1
+          fi
+
+          # Check frontend container build logs if it failed
+          if ! docker ps | grep -q airweave-frontend; then
+            echo "ERROR: Frontend container failed to start. Showing build logs:"
+            docker logs $(docker ps -a --filter "name=airweave-frontend" --format "{{.ID}}")
+          fi
+
+          echo "Containers are running properly."
 
       - name: Run backend-specific health checks
         run: |
@@ -44,6 +63,8 @@ jobs:
             echo "Frontend accessibility test passed!"
           else
             echo "Frontend test failed: HTTP status $HTTP_STATUS"
+            # Show logs for debugging
+            docker logs $(docker ps -a --filter "name=airweave-frontend" --format "{{.ID}}")
             exit 1
           fi
 

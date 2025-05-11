@@ -2,15 +2,12 @@ paths:
   /health:
     get:
       x-fern-ignore: true
-  /api_keys/:
+  /api-keys/:
     get:
       x-fern-ignore: true
     post:
       x-fern-ignore: true
     delete:
-      x-fern-ignore: true
-  /api_keys/{id}:
-    get:
       x-fern-ignore: true
   /chat/:
     get:
@@ -56,5 +53,60 @@ paths:
     post:
       x-fern-ignore: true
   /connections/oauth2/source/auth_url:
+    get:
+      x-fern-ignore: true
+  /connections/oauth2/source/code:
+    post:
+      x-fern-ignore: true
+  # Users endpoints
+  /users/:
+    get:
+      x-fern-ignore: true
+  /users/me/organization:
+    get:
+      x-fern-ignore: true
+  /users/create_or_update:
+    post:
+      x-fern-ignore: true
+  # Transformers endpoints
+  /transformers/:
+    get:
+      x-fern-ignore: true
+    post:
+      x-fern-ignore: true
+  /transformers/{transformer_id}:
+    put:
+      x-fern-ignore: true
+  # Entities endpoints
+  /entities/definitions/:
+    get:
+      x-fern-ignore: true
+    post:
+      x-fern-ignore: true
+  /entities/definitions/{definition_id}:
+    put:
+      x-fern-ignore: true
+  /entities/relations/:
+    get:
+      x-fern-ignore: true
+    post:
+      x-fern-ignore: true
+  /entities/relations/{relation_id}:
+    put:
+      x-fern-ignore: true
+  /entities/definitions/by-ids/:
+    post:
+      x-fern-ignore: true
+  /entities/definitions/by-source/:
+    get:
+      x-fern-ignore: true
+  /entities/count-by-sync/{sync_id}:
+    get:
+      x-fern-ignore: true
+  # Destinations endpoints
+  /destinations/list:
+    get:
+      x-fern-ignore: true
+  /destinations/detail/{short_name}:
     get:
       x-fern-ignore: true

@@ -14,7 +14,42 @@ from typing import List, Optional
 
 from pydantic import Field
 
-from airweave.platform.entities._base import ChunkEntity
+from airweave.platform.entities._base import ChunkEntity, CodeFileEntity, ParentEntity
+
+
+class GitHubRepositoryEntity(ParentEntity):
+    """Schema for GitHub repository entity."""
+
+    name: str = Field(..., description="Repository name")
+    full_name: str = Field(..., description="Full repository name including owner")
+    description: Optional[str] = Field(None, description="Repository description")
+    default_branch: str = Field(..., description="Default branch of the repository")
+    created_at: datetime = Field(..., description="Creation timestamp")
+    updated_at: datetime = Field(..., description="Last update timestamp")
+    language: Optional[str] = Field(None, description="Primary language of the repository")
+    fork: bool = Field(..., description="Whether the repository is a fork")
+    size: int = Field(..., description="Size of the repository in KB")
+    stars_count: Optional[int] = Field(None, description="Number of stars")
+    watchers_count: Optional[int] = Field(None, description="Number of watchers")
+    forks_count: Optional[int] = Field(None, description="Number of forks")
+    open_issues_count: Optional[int] = Field(None, description="Number of open issues")
+
+
+class GitHubDirectoryEntity(ChunkEntity):
+    """Schema for GitHub directory entity."""
+
+    path: str = Field(..., description="Path of the directory within the repository")
+    repo_name: str = Field(..., description="Name of the repository containing this directory")
+    repo_owner: str = Field(..., description="Owner of the repository")
+
+
+class GitHubCodeFileEntity(CodeFileEntity):
+    """Schema for GitHub code file entity."""
+
+    # GitHub specific fields only
+    sha: str = Field(..., description="SHA hash of the file content")
+    path: str = Field(..., description="Path of the file within the repository")
+    is_binary: bool = Field(False, description="Flag indicating if file is binary")
 
 
 class GithubRepoEntity(ChunkEntity):

@@ -28,13 +28,6 @@ repos:
         files: \.(js|jsx|ts|tsx)$
         types: [file]
         exclude: ^(?!frontend/).*$
-      - id: knip
-        name: knip
-        entry: bash -c 'cd frontend && npx knip --fix'
-        language: system
-        files: \.(js|jsx|ts|tsx)$
-        types: [file]
-        exclude: ^(?!frontend/).*$
 
   - repo: https://github.com/codespell-project/codespell
     # Configuration for codespell is in .codespellrc

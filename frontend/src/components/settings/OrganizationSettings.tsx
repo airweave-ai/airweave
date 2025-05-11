@@ -1,158 +1,132 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Building2, Key, Copy, Eye, EyeOff } from "lucide-react";
-import { toast } from "sonner";
+import { Building2, InfoIcon, Loader2 } from "lucide-react";
+import { apiClient } from "@/lib/api";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
-interface ApiKey {
+interface Organization {
   id: string;
   name: string;
-  key: string;
-  createdAt: string;
+  description?: string;
 }
 
 export function OrganizationSettings() {
-  const [apiKeys, setApiKeys] = useState<ApiKey[]>([
-    {
-      id: "1",
-      name: "Production API Key",
-      key: "sk_live_123456789abcdef",
-      createdAt: "2024-01-01",
-    },
-  ]);
-  const [showKey, setShowKey] = useState<Record<string, boolean>>({});
-  const [newKeyName, setNewKeyName] = useState("");
+  const [organization, setOrganization] = useState<Organization | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleCreateApiKey = () => {
-    if (!newKeyName.trim()) {
-      toast.error("Please enter a name for the API key");
-      return;
+  useEffect(() => {
+    fetchOrganization();
+  }, []);
+
+  const fetchOrganization = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await apiClient.get<Organization>("/users/me/organization");
+
+      if (!response.ok) {
+        throw new Error(`API request failed with status ${response.status}`);
+      }
+
+      const data = await response.json();
+      setOrganization(data);
+    } catch (err) {
+      console.error("Failed to fetch organization:", err);
+      setError(
+        typeof err === 'object' && err !== null && 'message' in err
+          ? String(err.message)
+          : "Failed to load organization data. Please try again later."
+      );
+    } finally {
+      setLoading(false);
     }
-
-    const newKey: ApiKey = {
-      id: Math.random().toString(36).substring(7),
-      name: newKeyName,
-      key: `sk_live_${Math.random().toString(36).substring(2)}`,
-      createdAt: new Date().toISOString(),
-    };
-
-    setApiKeys([...apiKeys, newKey]);
-    setNewKeyName("");
-    toast.success("API key created successfully");
-  };
-
-  const handleCopyKey = (key: string) => {
-    navigator.clipboard.writeText(key);
-    toast.success("API key copied to clipboard");
-  };
-
-  const handleDeleteKey = (id: string) => {
-    setApiKeys(apiKeys.filter((key) => key.id !== id));
-    toast.success("API key deleted successfully");
-  };
-
-  const toggleKeyVisibility = (id: string) => {
-    setShowKey((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
+      <Card className="border-0 shadow-none bg-transparent">
+        <CardHeader className="px-0 pt-0">
           <div className="flex items-center gap-2">
             <Building2 className="h-5 w-5 text-primary" />
             <CardTitle>Organization Details</CardTitle>
           </div>
           <CardDescription>
-            Manage your organization settings and preferences
+            View your organization settings and information
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-2">
-            <Label>Organization Name</Label>
-            <Input defaultValue="Acme Corp" />
-          </div>
-          <div className="space-y-2">
-            <Label>Organization ID</Label>
-            <Input value="org_1234567890" disabled />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Key className="h-5 w-5 text-primary" />
-            <CardTitle>API Keys</CardTitle>
-          </div>
-          <CardDescription>
-            Manage your API keys for authentication
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-4">
-            <div className="flex gap-2">
-              <Input
-                placeholder="Enter API key name"
-                value={newKeyName}
-                onChange={(e) => setNewKeyName(e.target.value)}
-              />
-              <Button onClick={handleCreateApiKey}>Create New Key</Button>
+        <CardContent className="space-y-6 px-0">
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
+          ) : error ? (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : organization ? (
+            <>
+              <div className="space-y-1">
+                <Label htmlFor="organization-name">Organization Name</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="organization-name"
+                    value={organization.name}
+                    disabled
+                    className="bg-muted"
+                  />
+                </div>
+              </div>
 
-            <div className="space-y-4">
-              {apiKeys.map((apiKey) => (
-                <div
-                  key={apiKey.id}
-                  className="flex flex-col gap-2 p-4 border rounded-lg"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-medium">{apiKey.name}</h3>
-                      <p className="text-sm text-muted-foreground">
-                        Created on {new Date(apiKey.createdAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => handleDeleteKey(apiKey.id)}
-                    >
-                      Delete
-                    </Button>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type={showKey[apiKey.id] ? "text" : "password"}
-                      value={apiKey.key}
-                      readOnly
-                      className="font-mono"
-                    />
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => toggleKeyVisibility(apiKey.id)}
-                    >
-                      {showKey[apiKey.id] ? (
-                        <EyeOff className="h-4 w-4" />
-                      ) : (
-                        <Eye className="h-4 w-4" />
-                      )}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => handleCopyKey(apiKey.key)}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
+              <div className="space-y-1">
+                <Label htmlFor="organization-id">Organization ID</Label>
+                <div className="relative">
+                  <Input
+                    id="organization-id"
+                    value={organization.id}
+                    disabled
+                    className="bg-muted font-mono text-xs pr-8"
+                  />
+                  <div className="absolute right-3 top-2.5 text-muted-foreground">
+                    <InfoIcon className="h-4 w-4" />
                   </div>
                 </div>
-              ))}
+                <p className="text-xs text-muted-foreground mt-1">
+                  Use this ID when referencing your organization in API calls
+                </p>
+              </div>
+
+              {organization.description && (
+                <div className="space-y-1">
+                  <Label htmlFor="organization-description">Description</Label>
+                  <Input
+                    id="organization-description"
+                    value={organization.description}
+                    disabled
+                    className="bg-muted"
+                  />
+                </div>
+              )}
+
+              <div className="rounded-md bg-muted p-4">
+                <div className="flex gap-2">
+                  <InfoIcon className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                  <div>
+                    <h4 className="text-sm font-medium">Organization Settings</h4>
+                    <p className="text-sm text-muted-foreground">
+                      Additional organization settings will be available in a future update.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="text-center py-6 text-muted-foreground">
+              No organization data found
             </div>
-          </div>
+          )}
         </CardContent>
       </Card>
     </div>

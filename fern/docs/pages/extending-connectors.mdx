@@ -17,7 +17,7 @@ The general platform module structure is as follows:
 
 
 ```
-backend/app/platform
+backend/airweave/platform
     ├── sources/
     │   ├── slack.py
     │   └── ghibli.py # See example implementation below
@@ -37,7 +37,7 @@ backend/app/platform
 
 Source connectors define how data is extracted from various sources and converted into entities for processing.
 
-[Here](https://github.com/airweave-ai/airweave/blob/main/backend/app/platform/sources/slack.py) is an example of the Slack connector implementation.
+[Here](https://github.com/airweave-ai/airweave/blob/main/backend/airweave/platform/sources/slack.py) is an example of the Slack connector implementation.
 
 <CodeBlock title="Slack source connector">
 ```python
@@ -61,14 +61,14 @@ class SlackSource(BaseSource):
 
 
 ### Creating a Source Connector
-After you've cloned or forked the Airweave repository, you can create a new source connector by creating a new file in the [app/platform/sources](https://github.com/airweave-ai/airweave/tree/main/backend/app/platform/sources) directory.
+After you've cloned or forked the Airweave repository, you can create a new source connector by creating a new file in the [/airweave/platform/sources](https://github.com/airweave-ai/airweave/tree/main/backend/airweave/platform/sources) directory.
 
 To get a 3rd party connector working, you need to implement the following:
 
 - Source class that extends `BaseSource` and is decorated with `@source`.
 - `generate_entities`: This method should yield Entity objects. These can be anything from a JSON object to a PDF document.
 - `create`: This method should return a SourceConnector instance.
-- Accompanying `Entity` schemas. You can find the Slack example [here](https://github.com/airweave-ai/airweave/tree/main/backend/app/platform/entities/slack.py). This helps Airweave understand how to process the data, and standardize it across your syncs.
+- Accompanying `Entity` schemas. You can find the Slack example [here](https://github.com/airweave-ai/airweave/tree/main/backend/airweave/platform/entities/slack.py). This helps Airweave understand how to process the data, and standardize it across your syncs.
 
 <Note icon="fa-solid fa-lightbulb">
 If you're using OAuth2 and you would like Airweave to handle the OAuth2 flow for you, you need to implement the `create` so that it takes in an access token and add your integration to the `dev.integrations.yaml` file.  We're working on making this easier in the near future, for now we recommend [reaching out to us!](mailto:support@airweave.ai)

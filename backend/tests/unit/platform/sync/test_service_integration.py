@@ -10,7 +10,7 @@ from airweave import schemas
 from airweave.core.shared_models import SyncJobStatus
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.platform.sync.context import SyncContext
-from airweave.platform.sync.service import SyncService
+from airweave.core.sync_service import SyncService
 
 
 @pytest.fixture
@@ -38,11 +38,11 @@ class TestSyncServiceIntegration:
         with (
             patch("airweave.crud.sync.create") as mock_create_sync,
             patch("airweave.core.dag_service.dag_service.create_initial_dag") as mock_create_dag,
-            patch("airweave.platform.sync.service.get_db_context") as mock_get_db_context,
+            patch("airweave.core.sync_service.get_db_context") as mock_get_db_context,
             patch(
-                "airweave.platform.sync.service.SyncContextFactory.create"
+                "airweave.core.sync_service.SyncContextFactory.create"
             ) as mock_create_context,
-            patch("airweave.platform.sync.service.sync_orchestrator.run") as mock_run,
+            patch("airweave.core.sync_service.sync_orchestrator.run") as mock_run,
         ):
             # Setup mocks for create
             mock_sync = MagicMock(spec=schemas.Sync)
@@ -135,15 +135,18 @@ class TestSyncServiceIntegration:
 
         # Mock required components
         with (
-            patch("airweave.platform.sync.service.get_db_context") as mock_get_db_context,
+            patch("airweave.core.sync_service.get_db_context") as mock_get_db_context,
             patch(
-                "airweave.platform.sync.service.SyncContextFactory.create"
+                "airweave.core.sync_service.SyncContextFactory.create"
             ) as mock_create_context,
-            patch("airweave.platform.sync.service.logger.error") as mock_logger_error,
+            patch("airweave.core.sync_service.logger.error") as mock_logger_error,
+            patch("airweave.core.sync_service.sync_job_service.update_status") as mock_update_status,
         ):
             mock_db_context = AsyncMock()
             mock_db_context.__aenter__.return_value = mock_db
             mock_get_db_context.return_value = mock_db_context
+
+            mock_update_status.return_value = None
 
             # Simulate error during context creation
             mock_create_context.side_effect = test_error

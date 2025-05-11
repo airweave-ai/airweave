@@ -1,17 +1,18 @@
 """The API module that contains the endpoints for sources."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
 from airweave.api import deps
+from airweave.api.router import TrailingSlashRouter
 from airweave.platform.configs._base import Fields
 from airweave.platform.locator import resource_locator
 
-router = APIRouter()
+router = TrailingSlashRouter()
 
 
-@router.get("/detail/{short_name}", response_model=schemas.SourceWithConfigFields)
+@router.get("/detail/{short_name}", response_model=schemas.SourceWithAuthenticationFields)
 async def read_source(
     *,
     db: AsyncSession = Depends(deps.get_db),
@@ -37,11 +38,11 @@ async def read_source(
     if source.auth_config_class:
         auth_config_class = resource_locator.get_auth_config(source.auth_config_class)
         fields = Fields.from_config_class(auth_config_class)
-        source_with_config_fields = schemas.SourceWithConfigFields.model_validate(
+        source_with_auth_fields = schemas.SourceWithAuthenticationFields.model_validate(
             source, from_attributes=True
         )
-        source_with_config_fields.config_fields = fields
-        return source_with_config_fields
+        source_with_auth_fields.auth_fields = fields
+        return source_with_auth_fields
     return source
 
 

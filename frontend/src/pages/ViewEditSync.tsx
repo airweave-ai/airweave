@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import {
@@ -17,7 +17,10 @@ import {
   Activity,
   Box,
   Heart,
-  RefreshCw
+  RefreshCw,
+  Check,
+  X,
+  Trash
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -27,12 +30,15 @@ import { DeleteSyncDialog } from "@/components/sync/DeleteSyncDialog";
 import { toast } from "@/hooks/use-toast";
 import { apiClient } from "@/lib/api";
 import { Sync, SyncDetailsData } from "@/components/sync/types";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { SyncProgress } from "@/components/sync/SyncProgress";
 import { Badge } from "@/components/ui/badge";
 import { getAppIconUrl } from "@/lib/utils/icons";
 import { getDestinationIconUrl } from "@/lib/utils/icons";
+import { Input } from "@/components/ui/input";
+import { SyncSchedule, SyncScheduleConfig } from "@/components/sync/SyncSchedule";
 import "./sync-progress.css"; // Import custom CSS for animations
+import { useSyncSubscription } from "@/hooks/useSyncSubscription";
 
 interface SyncDetails {
   id: string;
@@ -64,11 +70,21 @@ interface DestinationResponse {
 interface SyncJob {
   id: string;
   sync_id: string;
-  status: "success" | "failed" | "running" | "pending";
-  created_at: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'failed';  // from SyncJobStatus enum
   started_at: string | null;
-  ended_at: string | null;
-  error_message: string | null;
+  completed_at: string | null;
+  failed_at: string | null;
+  entities_inserted: number;
+  entities_updated: number;
+  entities_deleted: number;
+  entities_kept: number;
+  entities_skipped: number;
+  error: string | null;
+  created_at: string;
+  modified_at: string;
+  organization_id: string;
+  created_by_email: string;
+  modified_by_email: string;
 }
 
 const ViewEditSync = () => {
@@ -84,6 +100,36 @@ const ViewEditSync = () => {
   const [isRunningSync, setIsRunningSync] = useState(false);
   const [totalRuntime, setTotalRuntime] = useState<number | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Name editing state
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [syncName, setSyncName] = useState("");
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  // Schedule editing state
+  const [showScheduleDialog, setShowScheduleDialog] = useState(false);
+  const [scheduleConfig, setScheduleConfig] = useState<SyncScheduleConfig>({
+    type: "one-time",
+    frequency: "custom"
+  });
+
+  const liveUpdates = useSyncSubscription(lastSync?.id);
+  const latestUpdate = liveUpdates.length > 0 ? liveUpdates[liveUpdates.length - 1] : null;
+
+  // Derive status from the update flags
+  let liveStatus = lastSync?.status;
+  if (latestUpdate) {
+    if (latestUpdate.is_complete === true) {
+      liveStatus = "completed";
+    } else if (latestUpdate.is_failed === true) {
+      liveStatus = "failed";
+    } else {
+      // If we have updates but neither complete nor failed, it must be in progress
+      liveStatus = "in_progress";
+    }
+  }
+
+  const status = (liveStatus || lastSync?.status || "").toLowerCase();
 
   const fetchLastSyncJob = async () => {
     try {
@@ -107,8 +153,10 @@ const ViewEditSync = () => {
         // Calculate total runtime across all completed jobs
         let totalTime = 0;
         syncJobs.forEach(job => {
-          if (job.started_at && job.ended_at) {
-            totalTime += new Date(job.ended_at).getTime() - new Date(job.started_at).getTime();
+          // Use completed_at or failed_at as the end time
+          const endTime = job.completed_at || job.failed_at;
+          if (job.started_at && endTime) {
+            totalTime += new Date(endTime).getTime() - new Date(job.started_at).getTime();
           }
         });
         setTotalRuntime(totalTime);
@@ -121,9 +169,94 @@ const ViewEditSync = () => {
   const refreshData = async () => {
     setIsRefreshing(true);
     try {
+      await fetchSyncDetails();
       await fetchLastSyncJob();
     } finally {
       setIsRefreshing(false);
+    }
+  };
+
+  // Add a function to fetch only the sync details
+  const fetchSyncDetails = async () => {
+    try {
+      if (!id) return;
+
+      // Fetch sync details
+      const syncResponse = await apiClient.get(`/sync/${id}`);
+
+      if (!syncResponse.ok) {
+        throw new Error("Failed to fetch sync details");
+      }
+
+      const syncData: SyncDetails = await syncResponse.json();
+
+      // Fetch source connection
+      const sourceConnection = await apiClient.get(`/connections/detail/${syncData.source_connection_id}`);
+      const sourceData: ConnectionResponse = await sourceConnection.json();
+
+      // Fetch destination connection
+      let destinationData: DestinationResponse;
+      if (syncData.destination_connection_id) {
+        const destConnection = await apiClient.get(`/connections/detail/${syncData.destination_connection_id}`);
+        const destConnectionData = await destConnection.json();
+        const destination = await apiClient.get(`/destinations/detail/${destConnectionData.short_name}`);
+        destinationData = await destination.json();
+      } else {
+        // native qdrant
+        const destination = await apiClient.get(`/destinations/detail/qdrant_native`);
+        destinationData = await destination.json();
+      }
+
+      const transformToSyncDetailsData = (
+        syncData: SyncDetails,
+        source: ConnectionResponse,
+        destination: DestinationResponse
+      ): SyncDetailsData => ({
+        ...syncData,
+        createdAt: syncData.created_at,
+        modifiedAt: syncData.modified_at,
+        cronSchedule: syncData.cron_schedule,
+        sourceConnectionId: syncData.source_connection_id,
+        destinationConnectionId: syncData.destination_connection_id,
+        organizationId: syncData.organization_id,
+        createdByEmail: syncData.created_by_email,
+        modifiedByEmail: syncData.modified_by_email,
+        status: "active", // You might want to determine this based on actual sync status
+        totalRuns: totalRuns,
+        uiMetadata: {
+          source: {
+            type: source.integration_type?.toLowerCase() ?? 'Source',
+            name: source.name ?? 'Unknown Source',
+            shortName: source.short_name ?? 'unknown'
+          },
+          destination: {
+            type: destination.integration_type?.toLowerCase() ?? 'Destination',
+            name: destination.name ?? 'Native Airweave',
+            shortName: destination.short_name ?? (destinationData.short_name === 'qdrant_native' ? 'Native' : 'unknown')
+          },
+          userId: syncData.created_by_email,
+          organizationId: syncData.organization_id,
+          userEmail: syncData.created_by_email
+        }
+      });
+
+      const syncDetailsData = transformToSyncDetailsData(syncData, sourceData, destinationData);
+      setSyncDetails(syncDetailsData);
+
+      // Update schedule config based on new data
+      setScheduleConfig({
+        type: syncData.cron_schedule ? "scheduled" : "one-time",
+        frequency: "custom",
+        cronExpression: syncData.cron_schedule || undefined
+      });
+
+    } catch (error) {
+      console.error("Error fetching sync details:", error);
+      toast({
+        title: "Error",
+        description: "Failed to refresh sync details",
+        variant: "destructive"
+      });
     }
   };
 
@@ -131,66 +264,8 @@ const ViewEditSync = () => {
     const fetchData = async () => {
       try {
         setIsLoading(true);
-
-        // Fetch sync details
-        const syncResponse = await apiClient.get(`/sync/${id}`);
-        const syncData: SyncDetails = await syncResponse.json();
-
-        // Fetch source connection
-        const sourceConnection = await apiClient.get(`/connections/detail/${syncData.source_connection_id}`);
-        const sourceData: ConnectionResponse = await sourceConnection.json();
-
-        // Fetch destination connection
-        let destinationData: DestinationResponse;
-        if (syncData.destination_connection_id) {
-          const destConnection = await apiClient.get(`/connections/detail/${syncData.destination_connection_id}`);
-          const destConnectionData = await destConnection.json();
-          const destination = await apiClient.get(`/destinations/detail/${destConnectionData.short_name}`);
-          destinationData = await destination.json();
-        } else {
-          // native qdrant
-          const destination = await apiClient.get(`/destinations/detail/qdrant_native`);
-          destinationData = await destination.json();
-        }
-
-        const transformToSyncDetailsData = (
-          syncData: SyncDetails,
-          source: ConnectionResponse,
-          destination: DestinationResponse
-        ): SyncDetailsData => ({
-          ...syncData,
-          createdAt: syncData.created_at,
-          modifiedAt: syncData.modified_at,
-          cronSchedule: syncData.cron_schedule,
-          sourceConnectionId: syncData.source_connection_id,
-          destinationConnectionId: syncData.destination_connection_id,
-          organizationId: syncData.organization_id,
-          createdByEmail: syncData.created_by_email,
-          modifiedByEmail: syncData.modified_by_email,
-          status: "active", // You might want to determine this based on actual sync status
-          totalRuns: totalRuns,
-          uiMetadata: {
-            source: {
-              type: source.integration_type?.toLowerCase() ?? 'Source',
-              name: source.name ?? 'Unknown Source',
-              shortName: source.short_name ?? 'unknown'
-            },
-            destination: {
-              type: destination.integration_type?.toLowerCase() ?? 'Destination',
-              name: destination.name ?? 'Native Airweave',
-              shortName: destination.short_name ?? ( destinationData.short_name === 'qdrant_native' ? 'Native' : 'unknown')
-            },
-            userId: syncData.created_by_email,
-            organizationId: syncData.organization_id,
-            userEmail: syncData.created_by_email
-          }
-        });
-
-        const syncDetailsData = transformToSyncDetailsData(syncData, sourceData, destinationData);
-        setSyncDetails(syncDetailsData);
-
+        await fetchSyncDetails();
         setIsLoading(false);
-
         // Fetch last sync job after basic data is loaded
         await fetchLastSyncJob();
       } catch (error) {
@@ -208,6 +283,29 @@ const ViewEditSync = () => {
       fetchData();
     }
   }, [id]);
+
+  useEffect(() => {
+    // Set the initial schedule config when syncDetails is loaded
+    if (syncDetails) {
+      setScheduleConfig({
+        type: syncDetails.cronSchedule ? "scheduled" : "one-time",
+        frequency: "custom",
+        cronExpression: syncDetails.cronSchedule || undefined
+      });
+      if (!isEditingName) {
+        setSyncName(syncDetails.name);
+      }
+    }
+  }, [syncDetails, isEditingName]);
+
+  // Add this effect to refresh the lastSync data when a sync completes
+  useEffect(() => {
+    // When a live sync transitions from running to complete/failed, refresh the job data
+    if (latestUpdate && (latestUpdate.is_complete || latestUpdate.is_failed)) {
+      // Fetch the latest job data to get accurate stats
+      fetchLastSyncJob();
+    }
+  }, [latestUpdate?.is_complete, latestUpdate?.is_failed]);
 
   const handleDelete = async () => {
     try {
@@ -294,13 +392,106 @@ const ViewEditSync = () => {
     return <div>Loading...</div>;
   }
 
-  const getStatusColor = (status?: string) => {
-    switch (status) {
-      case 'success': return { bg: 'bg-muted', text: 'text-foreground' };
-      case 'failed': return { bg: 'bg-muted', text: 'text-foreground' };
-      case 'running': return { bg: 'bg-muted', text: 'text-foreground' };
-      case 'pending': return { bg: 'bg-muted', text: 'text-foreground' };
-      default: return { bg: 'bg-muted', text: 'text-foreground' };
+  const getNextRunText = () => {
+    if (!syncDetails?.cronSchedule) {
+      return "Manual trigger";
+    }
+    // For this example, we're not calculating the actual next run time
+    // A proper implementation would parse the cron schedule and calculate the next run
+    return `Scheduled (${syncDetails.cronSchedule})`;
+  };
+
+  const startEditingName = () => {
+    setIsEditingName(true);
+    // Set input's initial value to current name only once when starting to edit
+    if (nameInputRef.current) {
+      nameInputRef.current.value = syncDetails?.name || "";
+    }
+    setTimeout(() => nameInputRef.current?.focus(), 0);
+  };
+
+  const handleSaveNameChange = async () => {
+    // Get value directly from input ref instead of state to avoid re-renders during typing
+    const newName = nameInputRef.current?.value || "";
+
+    if (!newName.trim() || newName === syncDetails?.name) {
+      setIsEditingName(false);
+      return;
+    }
+
+    try {
+      const response = await apiClient.patch(`/sync/${id}`, { name: newName });
+      if (!response.ok) throw new Error("Failed to update sync name");
+
+      // Update local state only after successful API call
+      setSyncDetails(prev => prev ? { ...prev, name: newName } : null);
+      setIsEditingName(false);
+
+      toast({
+        title: "Success",
+        description: "Sync name updated successfully"
+      });
+    } catch (error) {
+      console.error("Error updating sync name:", error);
+      toast({
+        title: "Error",
+        description: "Failed to update sync name",
+        variant: "destructive"
+      });
+      setIsEditingName(false);
+    }
+  };
+
+  // Modify the refreshScheduleData function to remove references to setScheduleText
+  const refreshScheduleData = async () => {
+    if (!id) return;
+
+    try {
+      console.log("Starting schedule refresh");
+      // Show loading indicator
+      setIsRefreshing(true);
+
+      // Make a targeted API call to get just the sync details
+      const response = await apiClient.get(`/sync/${id}`);
+      if (!response.ok) throw new Error("Failed to refresh sync data");
+
+      const syncData = await response.json();
+      console.log("Got sync data:", syncData);
+
+      // Update the state with the new schedule information
+      setSyncDetails(prevDetails => {
+        if (!prevDetails) return null;
+        console.log("Updating sync details", prevDetails, "with cron_schedule:", syncData.cron_schedule);
+        const updated = {
+          ...prevDetails,
+          cronSchedule: syncData.cron_schedule,
+          modifiedAt: syncData.modified_at
+        };
+        console.log("Updated details:", updated);
+        return updated;
+      });
+
+      // Update the config state as well
+      setScheduleConfig({
+        type: syncData.cron_schedule ? "scheduled" : "one-time",
+        frequency: "custom",
+        cronExpression: syncData.cron_schedule || undefined
+      });
+
+      toast({
+        title: "Success",
+        description: "Schedule updated successfully"
+      });
+    } catch (error) {
+      console.error("Error refreshing schedule data:", error);
+      toast({
+        title: "Error",
+        description: "Failed to refresh schedule data",
+        variant: "destructive"
+      });
+    } finally {
+      setIsRefreshing(false);
+      console.log("Schedule refresh complete");
     }
   };
 
@@ -318,10 +509,39 @@ const ViewEditSync = () => {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold tracking-tight">{syncDetails?.name}</h1>
-              <Badge className="rounded-full font-semibold">{syncDetails?.status?.toUpperCase()}</Badge>
-            </div>
+            {isEditingName ? (
+              <div className="flex items-center gap-2">
+                <Input
+                  ref={nameInputRef}
+                  // Use uncontrolled input to prevent re-renders during typing
+                  defaultValue={syncDetails?.name || ""}
+                  className="text-xl font-bold h-9 min-w-[300px]"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleSaveNameChange();
+                    }
+                    if (e.key === 'Escape') {
+                      setIsEditingName(false);
+                    }
+                  }}
+                  onBlur={handleSaveNameChange}
+                />
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold tracking-tight">{syncDetails?.name}</h1>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={startEditingName}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+                <Badge className="rounded-full font-semibold">{syncDetails?.status?.toUpperCase()}</Badge>
+              </div>
+            )}
             <p className="text-muted-foreground text-sm mt-1">
               {syncDetails?.id}
             </p>
@@ -340,38 +560,40 @@ const ViewEditSync = () => {
           <Button
             variant="default"
             onClick={handleRunSync}
-            disabled={isRunningSync || lastSync?.status === 'running' || lastSync?.status === 'pending'}
+            disabled={isRunningSync || lastSync?.status === 'in_progress' || lastSync?.status === 'pending'}
           >
             <Play className="mr-2 h-4 w-4" />
             {isRunningSync ? 'Starting...' : 'Run Sync'}
           </Button>
-          <Button variant="outline" onClick={handleEdit}>
-            <Pencil className="mr-2 h-4 w-4" />
-            Edit
+          <Button
+            variant="outline"
+            onClick={() => setShowDeleteDialog(true)}
+            className="text-destructive hover:bg-destructive/10"
+          >
+            <Trash className="mr-2 h-4 w-4" />
+            Delete
           </Button>
         </div>
       </div>
 
       <div className="space-y-6">
-        {/* First row: Sync Overview and Last Sync cards side by side */}
+        {/* First row: Sync Overview and Sync Status cards side by side */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Sync Overview - 3/4 width */}
           <div className="lg:col-span-3">
             <Card className="p-5 border rounded-lg bg-card h-full">
-              <div className="space-y-4">
+              <div className="space-y-6">
                 <h3 className="text-lg font-medium">Sync Overview</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
-                  {/* Left Column */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Source and Destination */}
                   <div className="space-y-6">
                     {/* Source */}
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="flex-shrink-0 h-5 w-5">
-                          <Box className="h-full w-full" />
-                        </div>
-                        <span className="text-sm font-medium">Source</span>
+                    <div className="flex gap-4">
+                      <div className="flex-shrink-0 h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center">
+                        <Box className="h-5 w-5 text-primary" />
                       </div>
-                      <div className="ml-7">
+                      <div className="space-y-1.5">
+                        <h4 className="font-medium">Source</h4>
                         <div className="flex items-center gap-2">
                           {syncDetails?.uiMetadata.source.shortName && (
                             <img
@@ -380,9 +602,9 @@ const ViewEditSync = () => {
                               className="h-5 w-5 flex-shrink-0"
                             />
                           )}
-                          <p className="font-medium">{syncDetails?.uiMetadata.source.name}</p>
+                          <span>{syncDetails?.uiMetadata.source.name}</span>
                         </div>
-                        <div className="flex items-center gap-1.5 mt-1">
+                        <div className="flex items-center gap-1.5">
                           <button
                             className="text-xs text-muted-foreground hover:text-primary flex items-center"
                             onClick={() => {
@@ -398,14 +620,12 @@ const ViewEditSync = () => {
                     </div>
 
                     {/* Destination */}
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="flex-shrink-0 h-5 w-5">
-                          <Database className="h-full w-full" />
-                        </div>
-                        <span className="text-sm font-medium">Destination</span>
+                    <div className="flex gap-4">
+                      <div className="flex-shrink-0 h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center">
+                        <Database className="h-5 w-5 text-primary" />
                       </div>
-                      <div className="ml-7">
+                      <div className="space-y-1.5">
+                        <h4 className="font-medium">Destination</h4>
                         <div className="flex items-center gap-2">
                           {syncDetails?.uiMetadata.destination.shortName && (
                             syncDetails?.uiMetadata.destination.shortName === "Native" ? (
@@ -418,7 +638,6 @@ const ViewEditSync = () => {
                                 alt={syncDetails?.uiMetadata.destination.name}
                                 className="h-5 w-5 flex-shrink-0"
                                 onError={(e) => {
-                                  // Fallback if image fails to load
                                   e.currentTarget.onerror = null;
                                   e.currentTarget.style.display = 'none';
                                   const parent = e.currentTarget.parentElement;
@@ -432,9 +651,9 @@ const ViewEditSync = () => {
                               />
                             )
                           )}
-                          <p className="font-medium">{syncDetails?.uiMetadata.destination.name}</p>
+                          <span>{syncDetails?.uiMetadata.destination.name}</span>
                         </div>
-                        <div className="flex items-center gap-1.5 mt-1">
+                        <div className="flex items-center gap-1.5">
                           {syncDetails?.destinationConnectionId && (
                             <button
                               className="text-xs text-muted-foreground hover:text-primary flex items-center"
@@ -450,76 +669,41 @@ const ViewEditSync = () => {
                         </div>
                       </div>
                     </div>
-
-                    {/* Schedule */}
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="flex-shrink-0 h-5 w-5">
-                          <Clock className="h-full w-full" />
-                        </div>
-                        <span className="text-sm font-medium">Schedule</span>
-                      </div>
-                      <div className="ml-7">
-                        {syncDetails?.cronSchedule ? (
-                          <p className="font-medium">{syncDetails.cronSchedule}</p>
-                        ) : (
-                          <p className="font-medium">Manual Trigger Only</p>
-                        )}
-                      </div>
-                    </div>
                   </div>
 
-                  {/* Right Column */}
+                  {/* Created Info and Sync Jobs */}
                   <div className="space-y-6">
-                    {/* Status */}
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="flex-shrink-0 h-5 w-5 flex items-center justify-center">
-                          <Activity className="h-4 w-4" />
-                        </div>
-                        <span className="text-sm font-medium">Status</span>
-                      </div>
-                      <div className="ml-7">
-                        <div className="flex items-center gap-2">
-                          <Badge className="rounded-full text-xs px-3 py-0.5">Active</Badge>
-                          {lastSync && (
-                            <span className="text-xs text-muted-foreground">
-                              Last run {format(new Date(lastSync.created_at), 'MMM dd, yyyy')}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
                     {/* Created Info */}
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="flex-shrink-0 h-5 w-5">
-                          <Clock className="h-full w-full" />
-                        </div>
-                        <span className="text-sm font-medium">Created</span>
+                    <div className="flex gap-4">
+                      <div className="flex-shrink-0 h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center">
+                        <Calendar className="h-5 w-5 text-primary" />
                       </div>
-                      <div className="ml-7">
-                        <div className="grid grid-cols-2 gap-y-1 text-sm">
-                          <span className="text-muted-foreground">Date</span>
-                          <span className="text-right">{format(new Date(syncDetails?.createdAt || Date.now()), 'MMM dd, yyyy')}</span>
-                          <span className="text-muted-foreground">Last Updated</span>
-                          <span className="text-right">{format(new Date(syncDetails?.modifiedAt || Date.now()), 'MMM dd, yyyy')}</span>
-                          <span className="text-muted-foreground">By</span>
-                          <span className="text-right">{syncDetails?.createdByEmail}</span>
+                      <div className="space-y-1.5">
+                        <h4 className="font-medium">Created</h4>
+                        <div className="space-y-1">
+                          <div className="text-sm">
+                            <span className="text-muted-foreground mr-2">Date:</span>
+                            <span>{format(new Date(syncDetails?.createdAt || Date.now()), 'MMM dd, yyyy')}</span>
+                          </div>
+                          <div className="text-sm">
+                            <span className="text-muted-foreground mr-2">By:</span>
+                            <span>{syncDetails?.createdByEmail}</span>
+                          </div>
+                          <div className="text-sm">
+                            <span className="text-muted-foreground mr-2">Last Updated:</span>
+                            <span>{format(new Date(syncDetails?.modifiedAt || Date.now()), 'MMM dd, yyyy')}</span>
+                          </div>
                         </div>
                       </div>
                     </div>
 
                     {/* Sync Jobs */}
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="flex-shrink-0 h-5 w-5">
-                          <Database className="h-full w-full" />
-                        </div>
-                        <span className="text-sm font-medium">Sync Jobs</span>
+                    <div className="flex gap-4">
+                      <div className="flex-shrink-0 h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center">
+                        <Activity className="h-5 w-5 text-primary" />
                       </div>
-                      <div className="ml-7">
+                      <div className="space-y-1.5">
+                        <h4 className="font-medium">Sync Jobs</h4>
                         <div className="flex items-center">
                           <span className="text-lg font-medium">{totalRuns}</span>
                           <span className="text-xs text-muted-foreground ml-1.5">total runs</span>
@@ -534,13 +718,16 @@ const ViewEditSync = () => {
                     </div>
                   </div>
                 </div>
+
                 {syncDetails?.description && (
-                  <div className="pt-3 mt-3 border-t">
-                    <div className="flex items-start gap-2">
-                      <Info className="h-3.5 w-3.5 text-muted-foreground mt-0.5" />
+                  <div className="pt-4 mt-2 border-t">
+                    <div className="flex items-start gap-3">
+                      <div className="flex-shrink-0 h-6 w-6 flex items-center justify-center">
+                        <Info className="h-4 w-4 text-muted-foreground" />
+                      </div>
                       <div>
-                        <span className="text-muted-foreground text-xs font-medium">Description</span>
-                        <p className="text-sm mt-1">{syncDetails.description}</p>
+                        <h4 className="text-sm font-medium">Description</h4>
+                        <p className="text-sm mt-1 text-muted-foreground">{syncDetails.description}</p>
                       </div>
                     </div>
                   </div>
@@ -549,11 +736,11 @@ const ViewEditSync = () => {
             </Card>
           </div>
 
-          {/* Last Sync info - 1/4 width */}
+          {/* Sync Status - 1/4 width */}
           <div className="lg:col-span-1">
-            <Card className="p-5 border rounded-lg bg-card overflow-hidden relative group h-full flex flex-col">
+            <Card className="p-5 border rounded-lg bg-card h-full">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-medium">Last Sync</h3>
+                <h3 className="text-lg font-medium">Sync Status</h3>
                 {lastSync && (
                   <Button
                     variant="ghost"
@@ -562,86 +749,104 @@ const ViewEditSync = () => {
                     className="hover:bg-muted"
                   >
                     <Eye className="h-4 w-4 mr-1" />
-                    View
+                    Details
                   </Button>
                 )}
               </div>
 
+              {/* Schedule info */}
+              <div className="mb-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex-shrink-0 h-9 w-9 bg-blue-500/10 rounded-full flex items-center justify-center">
+                      <Clock className="w-4 h-4 text-blue-500" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium">Schedule</h4>
+                      <p className="text-sm text-muted-foreground">{getNextRunText()}</p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0"
+                    onClick={() => {
+                      setScheduleConfig({
+                        type: syncDetails?.cronSchedule ? "scheduled" : "one-time",
+                        frequency: "custom",
+                        cronExpression: syncDetails?.cronSchedule || undefined
+                      });
+                      setShowScheduleDialog(true);
+                    }}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+
               {lastSync ? (
-                <div className="space-y-4 flex-grow">
-                  <div className="flex items-center">
-                    <div className={`w-10 h-10 mr-3 rounded-full flex items-center justify-center`}>
-                      <Clock className={`w-5 h-5 text-blue-500/80`} />
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="flex-shrink-0 h-9 w-9 bg-amber-500/10 rounded-full flex items-center justify-center">
+                      <Calendar className="w-4 h-4 text-amber-500" />
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Time</p>
-                      <p className="font-medium text-base">
-                        {format(new Date(lastSync.created_at), 'h:mm a')}
+                      <h4 className="text-sm font-medium">Last Run</h4>
+                      <p className="text-sm">
+                        {format(new Date(lastSync.created_at), 'MMM dd, yyyy h:mm a')}
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center">
-                    <div className="w-10 h-10 mr-3 bg-blue-500/10 rounded-full flex items-center justify-center">
-                      <Calendar className="w-5 h-5 text-blue-500/80" />
+
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className={`flex-shrink-0 h-9 w-9 rounded-full flex items-center justify-center
+                      ${status === "completed" ? "bg-green-500/10" :
+                        status === "failed" ? "bg-red-500/10" :
+                          "bg-blue-500/10"}`}>
+                      <Activity className={`w-4 h-4
+                        ${status === "completed" ? "text-green-500" :
+                          status === "failed" ? "text-red-500" :
+                            "text-blue-500"}`} />
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Date</p>
-                      <p className="font-medium text-base">
-                        {format(new Date(lastSync.created_at), 'MMM dd, yyyy')}
+                      <h4 className="text-sm font-medium">Status</h4>
+                      <p className="capitalize text-sm">
+                        {status === "in_progress" ? "running" : status}
+                        {(status === "in_progress" || status === "pending") && <span className="ml-1 animate-pulse">...</span>}
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center">
-                    <div className={`w-10 h-10 mr-3 ${getStatusColor(lastSync.status).bg} rounded-full flex items-center justify-center`}>
-                      <Heart className={`w-5 h-5 text-red-500 ${getStatusColor(lastSync.status).text}`} />
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Status</p>
-                      <p className="font-medium text-base capitalize">
-                        {lastSync.status}
-                      </p>
-                    </div>
-                  </div>
-                  {lastSync.started_at && lastSync.ended_at && (
-                    <div className="flex items-center">
-                      <div className="w-10 h-10 mr-3 bg-amber-500/10 rounded-full flex items-center justify-center">
-                        <Clock className="w-5 h-5 text-amber-500/80" />
+
+                  {lastSync.started_at && (
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="flex-shrink-0 h-9 w-9 bg-purple-500/10 rounded-full flex items-center justify-center">
+                        <Clock className="w-4 h-4 text-purple-500" />
                       </div>
                       <div>
-                        <p className="text-sm text-muted-foreground">Duration</p>
-                        <p className="font-medium text-base">
-                          {Math.round((new Date(lastSync.ended_at).getTime() - new Date(lastSync.started_at).getTime()) / 1000)} seconds
+                        <h4 className="text-sm font-medium">Duration</h4>
+                        <p className="text-sm">
+                          {(lastSync.completed_at || lastSync.failed_at) ?
+                            `${Math.round((new Date(lastSync.completed_at || lastSync.failed_at || '').getTime() - new Date(lastSync.started_at).getTime()) / 1000)} seconds` :
+                            "-"}
                         </p>
                       </div>
                     </div>
                   )}
-                  {totalRuntime !== null && (
-                    <div className="flex items-center">
-                      <div className="w-10 h-10 mr-3 bg-purple-500/10 rounded-full flex items-center justify-center">
-                        <Clock className="w-5 h-5 text-purple-500/80" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Total Runtime</p>
-                        <p className="font-medium text-base">
-                          {formatTotalRuntime(totalRuntime)}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                  {lastSync.error_message && (
-                    <div className="mt-3 p-2.5 bg-red-100 text-red-800 rounded-md text-sm">
+
+                  {lastSync.error && (
+                    <div className="mt-4 p-3 bg-red-100 text-red-800 rounded-md text-sm">
                       <p className="font-semibold">Error:</p>
-                      <p>{lastSync.error_message}</p>
+                      <p className="text-xs mt-1">{lastSync.error}</p>
                     </div>
                   )}
                 </div>
               ) : (
-                <div className="text-center py-6 text-muted-foreground flex-grow flex flex-col justify-center">
-                  <p>No sync jobs have been run yet.</p>
+                <div className="flex flex-col items-center justify-center py-8 text-center">
+                  <p className="text-muted-foreground mb-3">No sync jobs have been run yet.</p>
                   <Button
                     onClick={handleRunSync}
                     variant="outline"
-                    className="mt-3"
+                    className="mt-2"
                     disabled={isRunningSync}
                   >
                     Run First Sync
@@ -652,36 +857,85 @@ const ViewEditSync = () => {
           </div>
         </div>
 
-        {/* Live Sync Progress View - Only shown when sync is running */}
-        {lastSync && (lastSync.status === "running" || lastSync.status === "pending") && (
-          <div className="rounded-lg overflow-hidden">
+        {/* Live Sync Progress or Final Card */}
+        {lastSync && (
+          <div className="w-full flex justify-center my-8">
             <SyncProgress
               syncId={id || null}
               syncJobId={lastSync.id}
-              isLive={true}
-              startedAt={lastSync.started_at}
+              lastSync={lastSync}
+              isLive={status === "in_progress" || status === "pending"}
             />
           </div>
         )}
 
-        {/* Second row: Sync DAG (full width) */}
-          <Card className="border rounded-lg overflow-hidden px-3 py-2">
+        {/* Sync DAG (full width) */}
+        <Card className="border rounded-lg bg-card">
+          <div className="p-5">
             <SyncDagEditor syncId={id || ''} />
-          </Card>
+          </div>
+        </Card>
 
         {/* Sync Jobs Table */}
-        <div>
-          <h3 className="text-lg font-medium mb-2">Sync Jobs</h3>
-          <Card>
-            <SyncJobsTable
-              syncId={id || ''}
-              onTotalRunsChange={(total) => setTotalRuns(total)}
-              onJobSelect={handleJobSelect}
-            />
-          </Card>
-        </div>
+        <Card className="border rounded-lg bg-card">
+          <SyncJobsTable
+            syncId={id || ''}
+            onTotalRunsChange={(total) => setTotalRuns(total)}
+            onJobSelect={handleJobSelect}
+          />
+        </Card>
       </div>
 
+      {/* Schedule Edit Dialog */}
+      <Dialog
+        open={showScheduleDialog}
+        onOpenChange={(open) => {
+          const wasOpen = showScheduleDialog;
+          setShowScheduleDialog(open);
+
+          // When dialog closes, force a refresh
+          if (wasOpen && !open) {
+            console.log("Dialog closing, refreshing data");
+            // Give time for the SyncSchedule component to complete any pending operations
+            setTimeout(() => {
+              refreshScheduleData();
+            }, 500);
+          }
+        }}
+      >
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Edit Sync Schedule</DialogTitle>
+          </DialogHeader>
+
+          <div className="py-4">
+            <SyncSchedule
+              value={scheduleConfig}
+              onChange={(newConfig) => {
+                console.log("Schedule config changed:", newConfig);
+                setScheduleConfig(newConfig);
+              }}
+              syncId={id}
+            />
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                console.log("Done button clicked");
+                setShowScheduleDialog(false);
+                // Simple and direct approach - reload the page when the dialog closes
+                setTimeout(() => window.location.reload(), 300);
+              }}
+            >
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Job Details Dialog */}
       <Dialog
         open={!!selectedJobId}
         onOpenChange={(open) => !open && setSelectedJobId(null)}

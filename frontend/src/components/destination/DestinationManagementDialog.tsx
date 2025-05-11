@@ -36,7 +36,7 @@ interface DestinationDetails {
   id: string;
   created_at: string;
   modified_at: string;
-  config_fields: {
+  auth_fields: {
     fields: {
       name: string;
       title: string;
@@ -225,7 +225,7 @@ export function DestinationManagementDialog({
 
             <TabsContent value="credentials" className="space-y-4">
               <div className="space-y-4">
-                {destinationDetails?.config_fields.fields.map((field) => (
+                {destinationDetails?.auth_fields.fields.map((field) => (
                   <div key={field.name} className="space-y-2">
                     <Label>{field.title}</Label>
                     <p className="text-sm text-muted-foreground">{field.description}</p>

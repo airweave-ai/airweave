@@ -6,8 +6,10 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
+from airweave.core.config import settings
 from airweave.core.exceptions import NotFoundException
 from airweave.platform.embedding_models.local_text2vec import LocalText2Vec
+from airweave.platform.embedding_models.openai_text2vec import OpenAIText2Vec
 from airweave.platform.locator import resource_locator
 
 logger = logging.getLogger(__name__)
@@ -84,8 +86,14 @@ class SearchService:
 
             # Initialize destination class
             destination_class = resource_locator.get_destination(destination_model)
-            # TODO: Add a step to get the embedding model from the sync
-            embedding_model = LocalText2Vec()
+
+            # Use OpenAI embeddings if API key is available
+            if settings.OPENAI_API_KEY:
+                logger.info(f"Using OpenAI embedding model for search in sync {sync_id}")
+                embedding_model = OpenAIText2Vec(api_key=settings.OPENAI_API_KEY)
+            else:
+                logger.info(f"Using local embedding model for search in sync {sync_id}")
+                embedding_model = LocalText2Vec()
 
             vector = await embedding_model.embed(query)
             destination = await destination_class.create(sync_id=sync_id)

@@ -1,6 +1,7 @@
 """The logging configuration module."""
 
 import logging
+import sys
 from typing import Optional
 
 
@@ -157,7 +158,7 @@ class LoggerConfigurator:
 
         # Add StreamHandler if not already added
         if not any(isinstance(handler, logging.StreamHandler) for handler in logger.handlers):
-            stream_handler = logging.StreamHandler()
+            stream_handler = logging.StreamHandler(sys.stdout)  # Explicitly use stdout
             logger.addHandler(stream_handler)
 
         return _ContextualLogger(logger, prefix, dimensions)

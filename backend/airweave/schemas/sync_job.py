@@ -14,10 +14,14 @@ class SyncJobBase(BaseModel):
 
     sync_id: UUID
     status: SyncJobStatus = SyncJobStatus.PENDING
-    entities_detected: Optional[int] = 0
     entities_inserted: Optional[int] = 0
+    entities_updated: Optional[int] = 0
     entities_deleted: Optional[int] = 0
+    entities_kept: Optional[int] = 0
     entities_skipped: Optional[int] = 0
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    failed_at: Optional[datetime] = None
     error: Optional[str] = None
 
     class Config:
@@ -36,9 +40,11 @@ class SyncJobUpdate(BaseModel):
     """Schema for updating a SyncJob object."""
 
     status: Optional[SyncJobStatus] = None
-    records_created: Optional[int] = None
-    records_updated: Optional[int] = None
-    records_deleted: Optional[int] = None
+    entities_inserted: Optional[int] = None
+    entities_updated: Optional[int] = None
+    entities_deleted: Optional[int] = None
+    entities_kept: Optional[int] = None
+    entities_skipped: Optional[int] = None
     error: Optional[str] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
@@ -54,9 +60,6 @@ class SyncJobInDBBase(SyncJobBase):
     modified_by_email: EmailStr
     created_at: datetime
     modified_at: datetime
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    failed_at: Optional[datetime] = None
     sync_name: Optional[str] = Field(
         None, description="Name of the sync, populated from join query"
     )

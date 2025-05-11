@@ -1,5 +1,6 @@
 """CRUD operations for sync jobs."""
 
+from typing import Optional
 from uuid import UUID
 
 from sqlalchemy import select
@@ -55,15 +56,17 @@ class CRUDSyncJob(CRUDBase[SyncJob, SyncJobCreate, SyncJobUpdate]):
         skip: int = 0,
         limit: int = 100,
         current_user=None,
+        status: Optional[list[str]] = None,
     ) -> list[SyncJob]:
-        """Get all sync jobs across all syncs."""
-        stmt = (
-            select(SyncJob, Sync.name.label("sync_name"))
-            .join(Sync, SyncJob.sync_id == Sync.id)
-            .order_by(SyncJob.created_at.desc())
-            .offset(skip)
-            .limit(limit)
-        )
+        """Get all sync jobs across all syncs, optionally filtered by status."""
+        stmt = select(SyncJob, Sync.name.label("sync_name")).join(Sync, SyncJob.sync_id == Sync.id)
+
+        # Add status filter if provided
+        if status:
+            stmt = stmt.where(SyncJob.status.in_(status))
+
+        stmt = stmt.order_by(SyncJob.created_at.desc()).offset(skip).limit(limit)
+
         result = await db.execute(stmt)
         jobs = []
         for job, sync_name in result:

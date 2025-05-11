@@ -135,3 +135,37 @@ class Neo4jAuthConfig(AuthConfig):
     uri: str = Field(title="URI", description="The URI of the Neo4j database")
     username: str = Field(title="Username", description="The username for the Neo4j database")
     password: str = Field(title="Password", description="The password for the Neo4j database")
+
+
+# Source auth configs
+class GitHubAuthConfig(AuthConfig):
+    """GitHub authentication credentials schema."""
+
+    personal_access_token: str = Field(
+        title="Personal Access Token",
+        description="GitHub PAT with read rights (code, contents, metadata) to the repository",
+    )
+    repo_name: str = Field(
+        title="Repository Name",
+        description="Repository to sync in owner/repo format (e.g., 'airweave-ai/airweave')",
+    )
+
+
+class DropboxAuthConfig(AuthConfig):
+    """Dropbox authentication credentials schema."""
+
+    client_id: str = Field(
+        title="Client ID", description="The OAuth client ID for your Dropbox app"
+    )
+    client_secret: str = Field(
+        title="Client Secret", description="The OAuth client secret for your Dropbox app"
+    )
+
+
+class GoogleAuthConfig(AuthConfig):
+    """Google authentication credentials schema."""
+
+    client_id: str = Field(title="Client ID", description="The OAuth client ID for your Google app")
+    client_secret: str = Field(
+        title="Client Secret", description="The OAuth client secret for your Google app"
+    )

@@ -37,8 +37,11 @@ croniter = "^6.0.0"
 qdrant-client = "^1.13.3"
 openai = "^1.10.0"
 mistralai = "^1.7.0"
-chonkie = {extras = ["semantic"], version = "^1.0.3"}
+chonkie = {extras = ["code"], version = "^1.0.6"}
 tiktoken = "^0.5.1"
+fastapi-auth0 = "^0.5.0"
+chardet = "^5.2.0"
+anthropic = "^0.50.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"

@@ -2,22 +2,17 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import Body, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
 from airweave.api import deps
-from airweave.core import credentials
-from airweave.core.exceptions import NotFoundException
+from airweave.api.router import TrailingSlashRouter
 from airweave.core.logging import logger
-from airweave.core.shared_models import ConnectionStatus
-from airweave.db.unit_of_work import UnitOfWork
-from airweave.models.integration_credential import IntegrationType
 from airweave.models.user import User
-from airweave.platform.auth.schemas import AuthType
 from airweave.platform.auth.services import oauth2_service
 
-router = APIRouter()
+router = TrailingSlashRouter()
 
 
 @router.get("/list", response_model=list[schemas.WhiteLabel])
@@ -213,55 +208,13 @@ async def exchange_white_label_oauth2_code(
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
     try:
-        token_response = await oauth2_service.exchange_code_for_whitelabel(
-            db, code, white_label, user
+        connection = await oauth2_service.create_oauth2_connection_for_whitelabel(
+            db=db, white_label=white_label, code=code, user=user
         )
+        return connection
     except Exception as e:
         logger.error(f"Failed to exchange OAuth2 code for WhiteLabel {white_label.id}: {e}")
         raise HTTPException(status_code=400, detail="Failed to exchange OAuth2 code.") from e
-
-    decrypted_credentials = {
-        "access_token": token_response.access_token,
-        "refresh_token": token_response.refresh_token,
-    }
-    encrypted_credentials = credentials.encrypt(decrypted_credentials)
-
-    async with UnitOfWork(db) as uow:
-        source = await crud.source.get_by_short_name(uow.session, short_name=white_label.source_id)
-        if not source:
-            raise NotFoundException(
-                f"No Source found matching white_label.source_id='{white_label.source_id}'"
-            )
-
-        integration_cred_in = schemas.IntegrationCredentialCreateEncrypted(
-            name=f"WhiteLabel {white_label.name} - {user.email}",
-            description=f"Credentials for WhiteLabel {white_label.name}",
-            integration_short_name=source.short_name,
-            integration_type=IntegrationType.SOURCE,
-            auth_type=AuthType.oauth2,
-            encrypted_credentials=encrypted_credentials,
-            auth_config_class=None,
-        )
-        integration_cred = await crud.integration_credential.create(
-            uow.session, obj_in=integration_cred_in, current_user=user, uow=uow
-        )
-        await uow.session.flush()
-
-        connection_in = schemas.ConnectionCreate(
-            name=f"WhiteLabel Connection - {white_label.name}",
-            integration_type=IntegrationType.SOURCE,
-            status=ConnectionStatus.ACTIVE,
-            integration_credential_id=integration_cred.id,
-            short_name=source.short_name,
-        )
-        connection = await crud.connection.create(
-            uow.session, obj_in=connection_in, current_user=user, uow=uow
-        )
-
-        await uow.commit()
-        await uow.session.refresh(connection)
-
-    return connection
 
 
 @router.get("/{white_label_id}/syncs", response_model=list[schemas.Sync])

@@ -1,14 +1,15 @@
 """The API module that contains the endpoints for destinations."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
 from airweave.api import deps
+from airweave.api.router import TrailingSlashRouter
 from airweave.platform.configs._base import Fields
 from airweave.platform.locator import resource_locator
 
-router = APIRouter()
+router = TrailingSlashRouter()
 
 
 @router.get("/list", response_model=list[schemas.Destination])
@@ -31,7 +32,7 @@ async def list_destinations(
     return destinations
 
 
-@router.get("/detail/{short_name}", response_model=schemas.DestinationWithConfigFields)
+@router.get("/detail/{short_name}", response_model=schemas.DestinationWithAuthenticationFields)
 async def read_destination(
     *,
     db: AsyncSession = Depends(deps.get_db),
@@ -56,9 +57,9 @@ async def read_destination(
     if destination.auth_config_class:
         auth_config_class = resource_locator.get_auth_config(destination.auth_config_class)
         fields = Fields.from_config_class(auth_config_class)
-        destination_with_config_fields = schemas.DestinationWithConfigFields.model_validate(
+        destination_with_auth_fields = schemas.DestinationWithAuthenticationFields.model_validate(
             destination, from_attributes=True
         )
-        destination_with_config_fields.config_fields = fields
-        return destination_with_config_fields
+        destination_with_auth_fields.auth_fields = fields
+        return destination_with_auth_fields
     return destination

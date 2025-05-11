@@ -125,7 +125,7 @@ class TestConnectionService:
         integration_type = IntegrationType.SOURCE
         short_name = "test_source"
         name = "Test Connection"
-        config_fields = {}
+        auth_fields = {}
 
         mock_integration = MagicMock()
         mock_integration.auth_type = AuthType.none
@@ -140,7 +140,7 @@ class TestConnectionService:
 
         # Act
         result = await connection_service.connect_with_config(
-            mock_db, integration_type, short_name, name, config_fields, mock_user
+            mock_db, integration_type, short_name, name, auth_fields, mock_user
         )
 
         # Assert
@@ -173,7 +173,7 @@ class TestConnectionService:
         integration_type = IntegrationType.SOURCE
         short_name = "test_source"
         name = "Test Connection"
-        config_fields = {"api_key": "test_key"}
+        auth_fields = {"api_key": "test_key"}
 
         mock_integration = MagicMock()
         mock_integration.auth_type = AuthType.config_class
@@ -198,7 +198,7 @@ class TestConnectionService:
 
         # Act
         result = await connection_service.connect_with_config(
-            mock_db, integration_type, short_name, name, config_fields, mock_user
+            mock_db, integration_type, short_name, name, auth_fields, mock_user
         )
 
         # Assert
@@ -206,7 +206,7 @@ class TestConnectionService:
             mock_uow.session, integration_type, short_name
         )
         mock_locator.get_auth_config.assert_called_once_with("TestAuthConfig")
-        mock_auth_config_class.assert_called_once_with(**config_fields)
+        mock_auth_config_class.assert_called_once_with(**auth_fields)
         mock_credentials.encrypt.assert_called_once_with(mock_auth_config.model_dump())
 
         connection_service._create_connection_with_credential.assert_called_once_with(
@@ -236,14 +236,14 @@ class TestConnectionService:
         integration_type = IntegrationType.SOURCE
         short_name = "non_existent"
         name = "Test Connection"
-        config_fields = {}
+        auth_fields = {}
 
         connection_service._get_integration_by_type = AsyncMock(return_value=None)
 
         # Act & Assert
         with pytest.raises(HTTPException) as excinfo:
             await connection_service.connect_with_config(
-                mock_db, integration_type, short_name, name, config_fields, mock_user
+                mock_db, integration_type, short_name, name, auth_fields, mock_user
             )
 
         assert excinfo.value.status_code == 400
@@ -269,7 +269,7 @@ class TestConnectionService:
 
         # Assert
         mock_integration_settings.get_by_short_name.assert_called_once_with(short_name)
-        mock_oauth2_service.generate_auth_url.assert_called_once_with(mock_settings)
+        mock_oauth2_service.generate_auth_url.assert_called_once_with(mock_settings, None)
         assert result == expected_url
 
     @patch("airweave.core.connection_service.integration_settings")
@@ -319,7 +319,7 @@ class TestConnectionService:
 
         # Assert
         mock_oauth2_service.exchange_autorization_code_for_token.assert_called_once_with(
-            short_name, code
+            short_name, code, None
         )
         crud.source.get_by_short_name.assert_called_once_with(mock_db, short_name)
         mock_integration_settings.get_by_short_name.assert_called_once_with(short_name)
@@ -329,6 +329,8 @@ class TestConnectionService:
             settings=mock_settings,
             oauth2_response=oauth2_response,
             user=mock_user,
+            connection_name=None,
+            auth_fields=None
         )
         assert result == mock_connection
 

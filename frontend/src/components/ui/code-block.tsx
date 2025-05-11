@@ -46,7 +46,6 @@ export function CodeBlock({
     'code[class*="language-"]': {
       ...baseStyle['code[class*="language-"]'],
       background: 'transparent',
-
     }
   };
 
@@ -72,32 +71,27 @@ export function CodeBlock({
   }[language] || language;
 
   return (
-    <div className="rounded-md overflow-hidden border bg-card text-card-foreground">
-      <div className="flex items-center bg-muted px-4 py-2 justify-between border-b">
-        <div className="flex items-center gap-3">
+    <div className="rounded-md overflow-hidden border border-border/50 bg-muted/30 text-card-foreground">
+      <div className="flex items-center px-3 py-1.5 justify-between border-b border-border/40">
+        <div className="flex items-center gap-2">
           {badgeText && (
-            <Badge className={`${badgeColor} text-white text-xs font-bold px-2 rounded`}>
+            <Badge className={`${badgeColor} text-white text-xs px-1.5 py-0 rounded h-5`}>
               {badgeText}
             </Badge>
           )}
-          {title && <span className="text-sm font-medium">{title}</span>}
+          {title && <span className="text-xs font-medium">{title}</span>}
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 text-xs border rounded px-2 py-1">
-            <span className="font-medium">{languageDisplay}</span>
-          </div>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
-            onClick={handleCopyCode}
-            disabled={disabled}
-          >
-            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-          </Button>
-        </div>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+          onClick={handleCopyCode}
+          disabled={disabled}
+        >
+          {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+        </Button>
       </div>
-      <div className="p-4 bg-card">
+      <div className="p-2 bg-muted/30">
         <SyntaxHighlighter
           language={language}
           style={customStyle}
@@ -108,7 +102,7 @@ export function CodeBlock({
             padding: 0,
           }}
           wrapLongLines={false}
-          showLineNumbers={true}
+          showLineNumbers={false}
           codeTagProps={{
             style: {
               fontSize: '0.75rem',
@@ -119,7 +113,7 @@ export function CodeBlock({
           {code}
         </SyntaxHighlighter>
       </div>
-      {footerContent && <div className="px-4 py-2 border-t">{footerContent}</div>}
+      {footerContent && <div className="px-3 py-1 border-t border-border/40">{footerContent}</div>}
     </div>
   );
 }

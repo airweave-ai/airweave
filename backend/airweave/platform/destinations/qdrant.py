@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from qdrant_client import QdrantClient
+from qdrant_client import AsyncQdrantClient
 from qdrant_client.http import models as rest
 
 from airweave.core.config import settings
@@ -28,7 +28,7 @@ class QdrantDestination(VectorDBDestination):
         self.sync_id: UUID | None = None
         self.url: str | None = None
         self.api_key: str | None = None
-        self.client: QdrantClient | None = None
+        self.client: AsyncQdrantClient | None = None
         self.vector_size: int = 384  # Default vector size
 
     @classmethod
@@ -85,12 +85,16 @@ class QdrantDestination(VectorDBDestination):
                 if self.url:
                     location = self.url
                 else:
-                    location = f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}"
+                    location = settings.qdrant_url
 
                 client_config = {
                     "location": location,
                     "prefer_grpc": False,  # Use HTTP by default
                 }
+
+                if location[-4:] != ":6333":
+                    # allow railway to work
+                    client_config["port"] = None
 
                 # Add API key if provided
                 api_key = self.api_key
@@ -98,10 +102,10 @@ class QdrantDestination(VectorDBDestination):
                     client_config["api_key"] = api_key
 
                 # Initialize client
-                self.client = QdrantClient(**client_config)
+                self.client = AsyncQdrantClient(**client_config)
 
                 # Test connection
-                self.client.get_collections()
+                await self.client.get_collections()
                 logger.info("Successfully connected to Qdrant service.")
             except Exception as e:
                 logger.error(f"Error connecting to Qdrant service: {e}")
@@ -135,7 +139,8 @@ class QdrantDestination(VectorDBDestination):
         """
         await self.ensure_client_readiness()
         try:
-            collections = self.client.get_collections().collections
+            collections_response = await self.client.get_collections()
+            collections = collections_response.collections
             return any(collection.name == collection_name for collection in collections)
         except Exception as e:
             logger.error(f"Error checking if collection exists: {e}")
@@ -158,7 +163,7 @@ class QdrantDestination(VectorDBDestination):
             logger.info(f"Creating collection {self.collection_name}...")
 
             # Create the collection
-            self.client.create_collection(
+            await self.client.create_collection(
                 collection_name=self.collection_name,
                 vectors_config=rest.VectorParams(
                     size=self.vector_size,
@@ -190,7 +195,7 @@ class QdrantDestination(VectorDBDestination):
             raise ValueError(f"Entity {entity.entity_id} has no vector")
 
         # Insert point with vector from entity
-        self.client.upsert(
+        await self.client.upsert(
             collection_name=self.collection_name,
             points=[
                 rest.PointStruct(
@@ -237,7 +242,7 @@ class QdrantDestination(VectorDBDestination):
             return
 
         # Bulk upsert
-        operation_response = self.client.upsert(
+        operation_response = await self.client.upsert(
             collection_name=self.collection_name,
             points=point_structs,
             wait=True,  # Wait for operation to complete
@@ -254,7 +259,7 @@ class QdrantDestination(VectorDBDestination):
         """
         await self.ensure_client_readiness()
 
-        self.client.delete(
+        await self.client.delete(
             collection_name=self.collection_name,
             points_selector=rest.PointIdsList(
                 points=[str(db_entity_id)],
@@ -273,7 +278,7 @@ class QdrantDestination(VectorDBDestination):
 
         await self.ensure_client_readiness()
 
-        self.client.delete(
+        await self.client.delete(
             collection_name=self.collection_name,
             points_selector=rest.PointIdsList(
                 points=entity_ids,
@@ -312,7 +317,7 @@ class QdrantDestination(VectorDBDestination):
             # Convert dict filter to Qdrant filter format
             qdrant_filter = rest.Filter.model_validate(filter_condition)
 
-            self.client.delete(
+            await self.client.delete(
                 collection_name=self.collection_name,
                 points_selector=rest.FilterSelector(
                     filter=qdrant_filter,
@@ -352,11 +357,11 @@ class QdrantDestination(VectorDBDestination):
             qdrant_filter = rest.Filter.model_validate(filter_condition)
 
             # Perform search
-            search_results = self.client.search(
+            search_results = await self.client.search(
                 collection_name=self.collection_name,
                 query_vector=query_vector,
                 query_filter=qdrant_filter,
-                limit=25,
+                limit=10,
                 with_payload=True,
             )
 

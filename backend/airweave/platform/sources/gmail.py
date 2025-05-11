@@ -28,7 +28,13 @@ from airweave.platform.entities.gmail import (
 from airweave.platform.sources._base import BaseSource
 
 
-@source("Gmail", "gmail", AuthType.oauth2_with_refresh, labels=["Communication", "Email"])
+@source(
+    "Gmail",
+    "gmail",
+    AuthType.oauth2_with_refresh,
+    auth_config_class="GoogleAuthConfig",
+    labels=["Communication", "Email"],
+)
 class GmailSource(BaseSource):
     """Gmail source implementation (read-only).
 

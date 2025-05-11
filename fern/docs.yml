@@ -47,6 +47,8 @@ navigation:
       path: docs/pages/connectors/intercom/main.mdx
     - page: Jira
       path: docs/pages/connectors/jira/main.mdx
+    - page: Linear
+      path: docs/pages/connectors/linear/main.mdx
     - page: Monday
       path: docs/pages/connectors/monday/main.mdx
     - page: Mysql

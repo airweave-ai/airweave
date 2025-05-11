@@ -5,7 +5,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, models, schemas
@@ -537,6 +537,13 @@ class CRUDSync(CRUDBase[Sync, SyncCreate, SyncUpdate]):
         """
         # First, fetch the sync with its connections before deletion
         enriched_sync = await self.get(db, id=id, current_user=current_user)
+
+        # Delete the sync_connection records first to avoid foreign key constraint violations
+        delete_stmt = delete(SyncConnection).where(SyncConnection.sync_id == id)
+        await db.execute(delete_stmt)
+
+        # Flush the changes to make sure they're applied before deleting the sync
+        await db.flush()
 
         # Then remove using the base method
         removed_sync = await super().remove(db, id=id, current_user=current_user, uow=uow)

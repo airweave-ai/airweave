@@ -27,7 +27,7 @@ def source_connection_data() -> Dict[str, Any]:
     stripe_api_key = os.getenv("STRIPE_API_KEY")
     return {
         "name": "Test Source Connection",
-        "config_fields": {
+        "auth_fields": {
             "api_key": stripe_api_key,
         },
     }
@@ -161,7 +161,7 @@ def perform_search(e2e_api_url: str, sync_id: str, query: str) -> List[Dict[str,
     assert search_response.status_code == 200, f"Search failed: {search_response.text}"
 
     # Verify search results
-    search_results = search_response.json()
+    search_results = search_response.json()["results"]
     assert len(search_results) > 0, "No search results were returned"
     assert "payload" in search_results[0], "Result should have text content"
     assert "score" in search_results[0], "Result should have a relevance score"

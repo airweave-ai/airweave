@@ -11,6 +11,7 @@ from .utils.file_utils import (
     update_or_create_mdx,
 )
 from .constants import DOCS_CONNECTORS_DIR
+import os
 
 
 def main():
@@ -46,6 +47,9 @@ def main():
 
         # Create connector docs directory and files
         connector_docs_dir = DOCS_CONNECTORS_DIR / connector_name
+
+        # Create the directory if it doesn't exist
+        os.makedirs(connector_docs_dir, exist_ok=True)
 
         # Copy SVG icon to connector directory
         copy_svg_icon(connector_name, connector_docs_dir)

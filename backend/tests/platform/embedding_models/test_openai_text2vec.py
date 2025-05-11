@@ -82,6 +82,7 @@ class TestOpenAIText2Vec:
                 "model": "text-embedding-3-small",
                 "encoding_format": "float",
             },
+            timeout=60.0,
         )
 
     @pytest.mark.asyncio
@@ -105,6 +106,7 @@ class TestOpenAIText2Vec:
                 "model": "text-embedding-3-large",
                 "encoding_format": "float",
             },
+            timeout=60.0,
         )
 
     @pytest.mark.asyncio
@@ -138,6 +140,7 @@ class TestOpenAIText2Vec:
             "https://api.openai.com/v1/embeddings",
             headers={"Authorization": "Bearer test-api-key", "Content-Type": "application/json"},
             json={"input": texts, "model": "text-embedding-3-small", "encoding_format": "float"},
+            timeout=120.0,
         )
 
     @pytest.mark.asyncio
@@ -168,6 +171,7 @@ class TestOpenAIText2Vec:
                 "model": "text-embedding-3-small",
                 "encoding_format": "float",
             },
+            timeout=120.0,
         )
 
     @pytest.mark.asyncio
@@ -191,6 +195,7 @@ class TestOpenAIText2Vec:
                 "model": "text-embedding-3-large",
                 "encoding_format": "float",
             },
+            timeout=120.0,
         )
 
     @pytest.mark.asyncio

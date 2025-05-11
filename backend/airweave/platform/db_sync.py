@@ -419,8 +419,14 @@ def _create_transformer_definition(
     input_type_name = input_type.__name__
 
     # Base types from _base.py are special cases
-    base_types = ["BaseEntity", "ChunkEntity", "ParentEntity", "FileEntity", "PolymorphicEntity"]
-
+    base_types = [
+        "BaseEntity",
+        "ChunkEntity",
+        "ParentEntity",
+        "FileEntity",
+        "PolymorphicEntity",
+        "CodeFileEntity",
+    ]
     # For input types
     input_entity_ids = []
     if input_type_name in entity_name_to_id_map:

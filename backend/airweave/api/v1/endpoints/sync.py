@@ -1,20 +1,23 @@
 """API endpoints for managing syncs."""
 
 import asyncio
-from typing import AsyncGenerator, Union
+from typing import AsyncGenerator, List, Optional, Union
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException
+from fastapi import BackgroundTasks, Body, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
 from airweave.api import deps
+from airweave.api.router import TrailingSlashRouter
+from airweave.core.config import settings
+from airweave.core.logging import logger
+from airweave.core.sync_service import sync_service
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.platform.sync.pubsub import sync_pubsub
-from airweave.platform.sync.service import sync_service
 
-router = APIRouter()
+router = TrailingSlashRouter()
 
 
 @router.get("/", response_model=Union[list[schemas.Sync], list[schemas.SyncWithSourceConnection]])
@@ -53,6 +56,7 @@ async def list_all_jobs(
     db: AsyncSession = Depends(deps.get_db),
     skip: int = 0,
     limit: int = 100,
+    status: Optional[List[str]] = Query(None, description="Filter by job status"),
     user: schemas.User = Depends(deps.get_user),
 ) -> list[schemas.SyncJob]:
     """List all sync jobs across all syncs.
@@ -62,13 +66,16 @@ async def list_all_jobs(
         db: The database session
         skip: The number of jobs to skip
         limit: The number of jobs to return
+        status: Filter by job status
         user: The current user
 
     Returns:
     --------
         list[schemas.SyncJob]: A list of all sync jobs
     """
-    jobs = await crud.sync_job.get_all_jobs(db=db, skip=skip, limit=limit, current_user=user)
+    jobs = await crud.sync_job.get_all_jobs(
+        db=db, skip=skip, limit=limit, current_user=user, status=status
+    )
     return jobs
 
 
@@ -266,18 +273,41 @@ async def get_sync_job(
 
 
 @router.get("/job/{job_id}/subscribe")
-async def subscribe_sync_job(job_id: UUID, user=Depends(deps.get_user)) -> StreamingResponse:
+async def subscribe_sync_job(
+    job_id: UUID,
+    request: Request,
+    db: AsyncSession = Depends(deps.get_db),
+) -> StreamingResponse:
     """Server-Sent Events (SSE) endpoint to subscribe to a sync job's progress.
 
     Args:
     -----
         job_id: The ID of the job to subscribe to
-        user: The current user
+        request: The request object
+        db: The database session
 
     Returns:
     --------
         StreamingResponse: The streaming response
     """
+    # Get auth token from query parameter
+
+    if settings.AUTH_ENABLED:
+        token = request.query_params.get("token")
+        if not token:
+            logger.warning("SSE connection attempt without token")
+            raise HTTPException(status_code=401, detail="Missing authentication token")
+
+        # Authenticate the user from token parameter
+        from airweave.api.deps import get_user_from_token
+
+        user = await get_user_from_token(token, db)
+        if not user:
+            logger.warning(f"SSE connection with invalid token: {token[:10]}...")
+            raise HTTPException(status_code=401, detail="Invalid authentication token")
+
+        logger.info(f"SSE sync subscription authenticated for user: {user.id}, job: {job_id}")
+
     queue = await sync_pubsub.subscribe(job_id)
 
     if not queue:

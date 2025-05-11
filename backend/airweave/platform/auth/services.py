@@ -1,6 +1,7 @@
 """The services for handling OAuth2 authentication and token exchange for integrations."""
 
 import base64
+from typing import Optional
 from urllib.parse import urlencode
 from uuid import UUID
 
@@ -33,12 +34,15 @@ class OAuth2Service:
     """Service class for handling OAuth2 authentication and token exchange."""
 
     @staticmethod
-    def generate_auth_url(oauth2_settings: OAuth2Settings) -> str:
+    def generate_auth_url(
+        oauth2_settings: OAuth2Settings, auth_fields: Optional[dict] = None
+    ) -> str:
         """Generate the OAuth2 authorization URL with the required query parameters.
 
         Args:
         ----
             oauth2_settings: The OAuth2 settings for the integration.
+            auth_fields: Optional dict containing configuration parameters like client_id
 
         Returns:
         -------
@@ -47,9 +51,11 @@ class OAuth2Service:
         """
         redirect_uri = OAuth2Service._get_redirect_url(oauth2_settings.integration_short_name)
 
+        client_id, _ = OAuth2Service._get_client_credentials(oauth2_settings, auth_fields)
+
         params = {
             "response_type": "code",
-            "client_id": oauth2_settings.client_id,
+            "client_id": client_id,
             "redirect_uri": redirect_uri,
             **(oauth2_settings.additional_frontend_params or {}),
         }
@@ -91,7 +97,7 @@ class OAuth2Service:
 
     @staticmethod
     async def exchange_autorization_code_for_token(
-        integration_short_name: str, code: str
+        integration_short_name: str, code: str, auth_fields: Optional[dict] = None
     ) -> OAuth2TokenResponse:
         """Exchanges an authorization code for an access token.
 
@@ -99,6 +105,7 @@ class OAuth2Service:
         ----
             integration_short_name (str): The short name of the integration.
             code (str): The authorization code received from the OAuth provider.
+            auth_fields: Optional additional authentication fields for the connection
 
         Returns:
         -------
@@ -113,8 +120,10 @@ class OAuth2Service:
             raise NotFoundException(f"Integration {integration_short_name} not found.")
 
         redirect_uri = OAuth2Service._get_redirect_url(integration_short_name)
-        client_id = integration_config.client_id
-        client_secret = integration_config.client_secret
+
+        client_id, client_secret = OAuth2Service._get_client_credentials(
+            integration_config, auth_fields
+        )
 
         return await OAuth2Service._exchange_code(
             code=code,
@@ -126,7 +135,12 @@ class OAuth2Service:
 
     @staticmethod
     async def refresh_access_token(
-        db: AsyncSession, integration_short_name: str, user: schemas.User, connection_id: UUID
+        db: AsyncSession,
+        integration_short_name: str,
+        user: schemas.User,
+        connection_id: UUID,
+        decrypted_credential: dict,
+        white_label: Optional[schemas.WhiteLabel] = None,
     ) -> OAuth2TokenResponse:
         """Refresh an access token using a refresh token.
 
@@ -138,6 +152,9 @@ class OAuth2Service:
             integration_short_name (str): The short name of the integration.
             user (schemas.User): The user for whom to refresh the token.
             connection_id (UUID): The ID of the connection to refresh the token for.
+            decrypted_credential (dict): The token and optional config fields
+            white_label (Optional[schemas.WhiteLabel]): White label configuration to use if
+                available.
 
         Returns:
         -------
@@ -151,15 +168,20 @@ class OAuth2Service:
         """
         try:
             # Get and validate refresh token
-            refresh_token = await OAuth2Service._get_refresh_token(db, user, connection_id)
+            refresh_token = await OAuth2Service._get_refresh_token(decrypted_credential)
 
             # Get and validate integration config
             integration_config = OAuth2Service._get_integration_config(integration_short_name)
 
             # Get client credentials
-            client_id, client_secret = await OAuth2Service._get_client_credentials(
-                integration_config
+            client_id, client_secret = OAuth2Service._get_client_credentials(
+                integration_config, None, decrypted_credential
             )
+
+            # Override with white label credentials if available
+            if white_label and white_label.source_short_name == integration_short_name:
+                client_id = white_label.client_id
+                client_secret = white_label.client_secret
 
             # Prepare request parameters
             headers, payload = OAuth2Service._prepare_token_request(
@@ -186,14 +208,12 @@ class OAuth2Service:
             raise
 
     @staticmethod
-    async def _get_refresh_token(db: AsyncSession, user: schemas.User, connection_id: UUID) -> str:
-        """Get and decrypt refresh token from database.
+    async def _get_refresh_token(decrypted_credential: dict) -> str:
+        """Get refresh token from decrypted credentials.
 
         Args:
         ----
-            db (AsyncSession): The database session.
-            user (schemas.User): The user to get the refresh token for.
-            connection_id (UUID): The ID of the connection to get the refresh token for.
+            decrypted_credential (dict): The decrypted credentials containing the refresh token.
 
         Returns:
         -------
@@ -202,22 +222,10 @@ class OAuth2Service:
         Raises:
         ------
             TokenRefreshError: If no refresh token is found
-
         """
-        # Get connection
-        connection = await crud.connection.get(db=db, id=connection_id, current_user=user)
-
-        # Get integration credential
-        integration_credential = await crud.integration_credential.get(
-            db=db, id=connection.integration_credential_id, current_user=user
-        )
-
-        decrypted_credentials = credentials.decrypt(integration_credential.encrypted_credentials)
-        refresh_token = decrypted_credentials.get("refresh_token", None)
+        refresh_token = decrypted_credential.get("refresh_token", None)
         if not refresh_token:
-            error_message = (
-                f"No refresh token found for user {user.email} and connection {connection_id}"
-            )
+            error_message = "No refresh token found"
             oauth2_service_logger.error(error_message)
             raise TokenRefreshError(error_message)
         return refresh_token
@@ -250,23 +258,41 @@ class OAuth2Service:
         return integration_config
 
     @staticmethod
-    async def _get_client_credentials(
+    def _get_client_credentials(
         integration_config: schemas.Source | schemas.Destination | schemas.EmbeddingModel,
+        auth_fields: Optional[dict] = None,
+        decrypted_credential: Optional[dict] = None,
     ) -> tuple[str, str]:
-        """Get client credentials from configuration.
+        """Get client credentials based on priority ordering.
 
         Args:
         ----
-            integration_config (schemas.Source | schemas.Destination | schemas.EmbeddingModel):
-                The integration configuration.
+            integration_config: The integration configuration.
+            auth_fields: Optional additional authentication fields for the connection.
+            decrypted_credential: Optional decrypted credentials that may contain client ID/secret.
 
         Returns:
         -------
             tuple[str, str]: The client ID and client secret.
 
+        Priority order:
+        1. From decrypted_credential (if available)
+        2. From auth_fields (if available)
+        3. From integration_config (as fallback)
         """
         client_id = integration_config.client_id
         client_secret = integration_config.client_secret
+
+        # First check decrypted_credential
+        if decrypted_credential:
+            client_id = decrypted_credential.get("client_id", client_id)
+            client_secret = decrypted_credential.get("client_secret", client_secret)
+
+        # Then check auth_fields
+        if auth_fields:
+            client_id = auth_fields.get("client_id", client_id)
+            client_secret = auth_fields.get("client_secret", client_secret)
+
         return client_id, client_secret
 
     @staticmethod
@@ -498,6 +524,8 @@ class OAuth2Service:
         if not integration_config:
             raise NotFoundException(f"Integration {white_label.source_short_name} not found.")
 
+        logger.info(f"Exchanging code for white label: {white_label.source_short_name}")
+        logger.info(f"Client ID: {white_label.client_id}")
         return await OAuth2Service._exchange_code(
             code=code,
             redirect_uri=white_label.redirect_url,

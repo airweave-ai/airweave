@@ -17,6 +17,7 @@ class SyncProgressUpdate(BaseModel):
     updated: int = 0
     deleted: int = 0
     kept: int = 0
+    skipped: int = 0
     is_complete: bool = False  # Add completion flag
     is_failed: bool = False  # Add failure flag
 

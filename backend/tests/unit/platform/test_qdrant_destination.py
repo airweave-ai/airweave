@@ -1,9 +1,10 @@
-"""Unit tests for the Qdrant destination implementation."""
+"""Unit tests for the async Qdrant destination implementation."""
 
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from qdrant_client.async_qdrant_client import AsyncQdrantClient
 
 from airweave.platform.configs.auth import QdrantAuthConfig
 from airweave.platform.destinations.qdrant import QdrantDestination
@@ -31,11 +32,11 @@ def mock_entity():
 
 @pytest.fixture
 def mock_qdrant_client():
-    """Create a mock Qdrant client."""
-    mock_client = MagicMock()
-    mock_client.get_collections.return_value = MagicMock(
-        collections=[MagicMock(name="other_collection")]
-    )
+    """Create a mock async Qdrant client."""
+    mock_client = AsyncMock(spec=AsyncQdrantClient)
+    collections_response = MagicMock()
+    collections_response.collections = [MagicMock(name="other_collection")]
+    mock_client.get_collections.return_value = collections_response
     return mock_client
 
 
@@ -45,10 +46,19 @@ class TestQdrantDestinationInit:
     @pytest.mark.asyncio
     async def test_create(self):
         """Test creating a new QdrantDestination instance."""
-        with patch("airweave.platform.destinations.qdrant.QdrantClient") as mock_client_class:
+        with (
+            patch("airweave.platform.destinations.qdrant.AsyncQdrantClient") as mock_client_class,
+            patch("airweave.platform.destinations.qdrant.settings") as mock_settings,
+        ):
             # Mock the client response
-            mock_client = mock_client_class.return_value
-            mock_client.get_collections.return_value = MagicMock(collections=[])
+            mock_client = AsyncMock()
+            collections_response = MagicMock()
+            collections_response.collections = []
+            mock_client.get_collections.return_value = collections_response
+            mock_client_class.return_value = mock_client
+
+            # Set the required environment variables via settings
+            mock_settings.qdrant_url = "http://test-qdrant.com:6333"
 
             sync_id = uuid.uuid4()
             destination = await QdrantDestination.create(sync_id=sync_id, vector_size=384)
@@ -69,14 +79,17 @@ class TestQdrantDestinationInit:
     async def test_create_with_credentials(self):
         """Test creating a QdrantDestination with credentials."""
         with (
-            patch("airweave.platform.destinations.qdrant.QdrantClient") as mock_client_class,
+            patch("airweave.platform.destinations.qdrant.AsyncQdrantClient") as mock_client_class,
             patch(
                 "airweave.platform.destinations.qdrant.QdrantDestination.get_credentials"
             ) as mock_get_credentials,
         ):
             # Setup mocks
-            mock_client = mock_client_class.return_value
-            mock_client.get_collections.return_value = MagicMock(collections=[])
+            mock_client = AsyncMock()
+            collections_response = MagicMock()
+            collections_response.collections = []
+            mock_client.get_collections.return_value = collections_response
+            mock_client_class.return_value = mock_client
 
             # Mock credentials
             mock_credentials = QdrantAuthConfig(
@@ -93,8 +106,12 @@ class TestQdrantDestinationInit:
             assert destination.api_key == "test-api-key"
 
             # Verify client was created with credentials
+            # Update the assert to match actual parameter order and structure
             mock_client_class.assert_called_once_with(
-                location="https://test-qdrant.com", api_key="test-api-key", prefer_grpc=False
+                location="https://test-qdrant.com",
+                prefer_grpc=False,
+                port=None,
+                api_key="test-api-key",
             )
 
 
@@ -105,21 +122,24 @@ class TestQdrantDestinationConnection:
     async def test_connect_to_qdrant_with_settings(self):
         """Test connecting to Qdrant with settings."""
         with (
-            patch("airweave.platform.destinations.qdrant.QdrantClient") as mock_client_class,
+            patch("airweave.platform.destinations.qdrant.AsyncQdrantClient") as mock_client_class,
             patch("airweave.platform.destinations.qdrant.settings") as mock_settings,
         ):
-            # Configure mocks
-            mock_settings.QDRANT_HOST = "test-qdrant-settings.com"
-            mock_settings.QDRANT_PORT = 6333
-            mock_client = mock_client_class.return_value
+            # Configure mocks with an actual string value instead of a MagicMock
+            mock_settings.qdrant_url = "http://test-qdrant-settings.com:6333"
+            mock_client = AsyncMock()
+            collections_response = MagicMock()
+            collections_response.collections = []
+            mock_client.get_collections.return_value = collections_response
+            mock_client_class.return_value = mock_client
 
             # Create and connect
             destination = QdrantDestination()
             await destination.connect_to_qdrant()
 
-            # Verify client initialization
+            # Verify client initialization with the correct location parameter and port=None
             mock_client_class.assert_called_once_with(
-                location="http://test-qdrant-settings.com:6333", prefer_grpc=False
+                location="http://test-qdrant-settings.com:6333", prefer_grpc=False, port=None
             )
             mock_client.get_collections.assert_called_once()
 
@@ -128,7 +148,7 @@ class TestQdrantDestinationConnection:
         """Test closing the connection."""
         # Setup destination with a client
         destination = QdrantDestination()
-        destination.client = MagicMock()
+        destination.client = AsyncMock()
 
         # Close connection
         await destination.close_connection()
@@ -146,7 +166,7 @@ class TestQdrantDestinationCollections:
         # Setup
         with patch.object(QdrantDestination, "ensure_client_readiness", new_callable=AsyncMock):
             destination = QdrantDestination()
-            destination.client = MagicMock()
+            destination.client = AsyncMock()
             collection_name = "test_collection"
 
             # Create a collection response
@@ -175,7 +195,7 @@ class TestQdrantDestinationOperations:
         """Test inserting a single entity."""
         # Create destination with a mock client
         destination = QdrantDestination()
-        destination.client = MagicMock()
+        destination.client = AsyncMock()
         destination.collection_name = "test_collection"
 
         # Insert entity
@@ -195,7 +215,7 @@ class TestQdrantDestinationOperations:
         """Test bulk inserting entities."""
         # Create destination with a mock client
         destination = QdrantDestination()
-        destination.client = MagicMock()
+        destination.client = AsyncMock()
         destination.collection_name = "test_collection"
 
         # Configure the mock to return a success response (no errors)
@@ -228,7 +248,7 @@ class TestQdrantDestinationOperations:
         """Test searching for entities."""
         # Create destination with a mock client
         destination = QdrantDestination()
-        destination.client = MagicMock()
+        destination.client = AsyncMock()
         destination.collection_name = "test_collection"
         destination.sync_id = uuid.uuid4()
 

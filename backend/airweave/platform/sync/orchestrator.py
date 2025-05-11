@@ -1,146 +1,19 @@
 """Module for data synchronization with improved architecture."""
 
-import asyncio
+import time
 from datetime import datetime
-from typing import Any, Callable, List, Optional
+from typing import List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
-from airweave.core.logging import logger
 from airweave.core.shared_models import SyncJobStatus
+from airweave.core.sync_job_service import sync_job_service
 from airweave.db.session import get_db_context
 from airweave.platform.entities._base import BaseEntity, DestinationAction
 from airweave.platform.sync.context import SyncContext
 from airweave.platform.sync.stream import AsyncSourceStream
-
-
-# Worker Pool Pattern
-class AsyncWorkerPool:
-    """Manages a pool of workers with controlled concurrency.
-
-    This class limits how many async tasks can run at once using a semaphore,
-    preventing system overload when processing many items in parallel.
-    """
-
-    def __init__(self, max_workers: int = 20):
-        """Initialize worker pool with concurrency control.
-
-        Args:
-            max_workers: Maximum number of tasks allowed to run concurrently
-        """
-        self.semaphore = asyncio.Semaphore(max_workers)
-        self.pending_tasks = set()
-        self.max_workers = max_workers
-
-    async def submit(self, coro: Callable, *args, **kwargs) -> asyncio.Task:
-        """Submit a coroutine to be executed by the worker pool.
-
-        Creates a task, adds it to our tracking set, and returns it.
-        Tasks run with controlled concurrency through the semaphore.
-
-        Args:
-            coro: The coroutine function to execute
-            *args: Arguments to pass to the coroutine
-            **kwargs: Keyword arguments to pass to the coroutine
-
-        Returns:
-            The created task object
-        """
-        # Create a task that will run the coroutine with semaphore control
-        task = asyncio.create_task(self._run_with_semaphore(coro, *args, **kwargs))
-        # Track the task so we can wait for it later
-        self.pending_tasks.add(task)
-        # Set up automatic cleanup when task finishes
-        task.add_done_callback(self._handle_task_completion)
-        return task
-
-    async def _run_with_semaphore(self, coro: Callable, *args, **kwargs) -> Any:
-        """Run a coroutine with semaphore control.
-
-        Acquires a semaphore before running the coroutine, limiting concurrency.
-        Semaphore is automatically released when coroutine completes.
-
-        Args:
-            coro: The coroutine function to execute
-            *args: Arguments to pass to the coroutine
-            **kwargs: Keyword arguments to pass to the coroutine
-
-        Returns:
-            The result of the coroutine - can be anything
-        """
-        # The 'async with' ensures semaphore (or "slot") is released even if an exception occurs
-        async with self.semaphore:
-            # Only N coroutines can be in this block at once (N = max_workers)
-            return await coro(*args, **kwargs)
-
-    def _handle_task_completion(self, task: asyncio.Task) -> None:
-        """Handle task completion and clean up.
-
-        Removes completed task from our tracking set and logs any errors.
-        Called automatically when a task completes.
-
-        Args:
-            task: The completed task
-        """
-        # Remove the task from our tracking set
-        self.pending_tasks.discard(task)
-        # Log if the task failed with an exception
-        if not task.cancelled() and task._exception:
-            logger.error(f"Task failed: {task._exception}")
-
-    async def wait_for_batch(self, timeout: float = 0.5) -> None:
-        """Wait for some tasks to complete.
-
-        Useful when you want to throttle submission rate or process
-        results in batches without waiting for all tasks to finish.
-
-        Args:
-            timeout: Maximum time to wait in seconds
-        """
-        if not self.pending_tasks:
-            return
-
-        # Wait for at least one task to complete or until timeout
-        # FIRST_COMPLETED means we'll return as soon as any task finishes
-        done, _ = await asyncio.wait(
-            self.pending_tasks, return_when=asyncio.FIRST_COMPLETED, timeout=timeout
-        )
-
-        # Process completed tasks, extracting results or catching exceptions
-        for task in done:
-            try:
-                # Await the task to get its result or propagate any exceptions
-                await task
-            except Exception as e:
-                logger.error(f"Error in worker task: {e}")
-
-    async def wait_for_completion(self) -> None:
-        """Wait for all tasks to complete.
-
-        Processes tasks in batches to avoid memory issues with large sets.
-        Should be called before ending a program to ensure all work is done.
-        """
-        while self.pending_tasks:
-            # Process in batches to avoid memory issues with large task sets
-            # Take a slice of the pending tasks equal to double the max worker count
-            current_batch = list(self.pending_tasks)[: self.max_workers * 2]
-            if not current_batch:
-                break
-
-            # Wait for all tasks in this batch to complete (with a timeout for safety)
-            # ALL_COMPLETED means we'll wait until every task in the batch is done
-            done, _ = await asyncio.wait(
-                current_batch, return_when=asyncio.ALL_COMPLETED, timeout=10
-            )
-
-            # Check for exceptions in completed tasks
-            for task in done:
-                try:
-                    # Await the task to get its result or propagate any exceptions
-                    await task
-                except Exception as e:
-                    logger.error(f"Task error during completion: {e}")
+from airweave.platform.sync.worker_pool import AsyncWorkerPool
 
 
 # Pipeline Pattern
@@ -155,31 +28,43 @@ class EntityProcessor:
         db: AsyncSession,
     ) -> List[BaseEntity]:
         """Process an entity through the complete pipeline."""
-        # Stage 1: Enrich entity with metadata
-        enriched_entity = await self._enrich(entity, sync_context)
+        try:
+            sync_context.logger.debug(f"Processing entity {entity.entity_id} through pipeline")
 
-        # Stage 2: Determine action for entity
-        db_entity, action = await self._determine_action(enriched_entity, sync_context, db)
+            # Stage 1: Enrich entity with metadata
+            enriched_entity = await self._enrich(entity, sync_context)
 
-        # Stage 2.5: Skip further processing if KEEP
-        if action == DestinationAction.KEEP:
-            await sync_context.progress.increment("kept", 1)
-            return []
+            # Stage 2: Determine action for entity
+            db_entity, action = await self._determine_action(enriched_entity, sync_context, db)
+            sync_context.logger.debug(f"Determined action {action} for entity {entity.entity_id}")
 
-        # Stage 3: Process entity through DAG
-        processed_entities = await self._transform(enriched_entity, source_node, sync_context, db)
+            # Stage 2.5: Skip further processing if KEEP
+            if action == DestinationAction.KEEP:
+                await sync_context.progress.increment("kept", 1)
+                return []
 
-        # Stage 4: Compute vector
-        processed_entities_with_vector = await self._compute_vector(
-            processed_entities, sync_context
-        )
+            # Stage 3: Process entity through DAG
+            processed_entities = await self._transform(
+                enriched_entity, source_node, sync_context, db
+            )
+            sync_context.logger.debug(
+                f"Transformed entity {entity.entity_id} into {len(processed_entities)} entities"
+            )
 
-        # Stage 5: Persist entities based on action
-        await self._persist(
-            enriched_entity, processed_entities_with_vector, db_entity, action, sync_context, db
-        )
+            # Stage 4: Compute vector
+            processed_entities_with_vector = await self._compute_vector(
+                processed_entities, sync_context
+            )
 
-        return processed_entities
+            # Stage 5: Persist entities based on action
+            await self._persist(
+                enriched_entity, processed_entities_with_vector, db_entity, action, sync_context, db
+            )
+
+            return processed_entities
+        except Exception as e:
+            sync_context.logger.error(f"Error processing entity {entity.entity_id}: {str(e)}")
+            raise
 
     async def _enrich(self, entity: BaseEntity, sync_context: SyncContext) -> BaseEntity:
         """Enrich entity with sync metadata."""
@@ -198,17 +83,38 @@ class EntityProcessor:
         self, entity: BaseEntity, sync_context: SyncContext, db: AsyncSession
     ) -> tuple[schemas.Entity, DestinationAction]:
         """Determine what action to take for an entity."""
+        sync_context.logger.info(
+            f"Determining action for entity {entity.entity_id} (type: {type(entity).__name__})"
+        )
+
         db_entity = await crud.entity.get_by_entity_and_sync_id(
             db=db, entity_id=entity.entity_id, sync_id=sync_context.sync.id
         )
 
+        current_hash = entity.hash()
+
         if db_entity:
-            if db_entity.hash != entity.hash():
+            sync_context.logger.info(
+                f"Found existing entity in DB with id {db_entity.id}, "
+                f"comparing hashes: stored={db_entity.hash}, current={current_hash}"
+            )
+
+            if db_entity.hash != current_hash:
                 action = DestinationAction.UPDATE
+                sync_context.logger.info(
+                    f"Hashes differ for entity {entity.entity_id}, will UPDATE"
+                )
             else:
                 action = DestinationAction.KEEP
+                sync_context.logger.info(
+                    f"Hashes match for entity {entity.entity_id}, will KEEP (no changes)"
+                )
         else:
             action = DestinationAction.INSERT
+            sync_context.logger.info(
+                f"No existing entity found for {entity.entity_id} in sync "
+                f"{sync_context.sync.id}, will INSERT"
+            )
 
         return db_entity, action
 
@@ -220,11 +126,33 @@ class EntityProcessor:
         db: AsyncSession,
     ) -> List[BaseEntity]:
         """Transform entity through DAG routing."""
-        return await sync_context.router.process_entity(
+        sync_context.logger.debug(
+            f"Starting transformation for entity {entity.entity_id} "
+            f"(type: {type(entity).__name__}) from source node {source_node.id}"
+        )
+
+        transformed_entities = await sync_context.router.process_entity(
             db=db,
             producer_id=source_node.id,
             entity=entity,
         )
+
+        # Log details about the transformed entities
+        entity_types = {}
+        for e in transformed_entities:
+            entity_type = type(e).__name__
+            if entity_type in entity_types:
+                entity_types[entity_type] += 1
+            else:
+                entity_types[entity_type] = 1
+
+        type_summary = ", ".join([f"{count} {t}" for t, count in entity_types.items()])
+        sync_context.logger.debug(
+            f"Transformation complete: entity {entity.entity_id} transformed into "
+            f"{len(transformed_entities)} entities ({type_summary})"
+        )
+
+        return transformed_entities
 
     async def _persist(
         self,
@@ -270,14 +198,82 @@ class EntityProcessor:
         Returns:
             The entities with vector computed
         """
-        embedding_model = sync_context.embedding_model
-        embeddings = await embedding_model.embed_many(
-            [str(entity.to_storage_dict()) for entity in processed_entities]
-        )
-        for processed_entity, vector in zip(processed_entities, embeddings, strict=False):
-            processed_entity.vector = vector
+        if not processed_entities:
+            sync_context.logger.debug("No entities to vectorize, returning empty list")
+            return []
 
-        return processed_entities
+        try:
+            embedding_model = sync_context.embedding_model
+            entity_count = len(processed_entities)
+
+            sync_context.logger.info(
+                f"Computing vectors for {entity_count} entities using {embedding_model.model_name}"
+            )
+
+            # Log entity content lengths for debugging
+            content_lengths = [len(str(entity.to_storage_dict())) for entity in processed_entities]
+            total_length = sum(content_lengths)
+            avg_length = total_length / entity_count if entity_count else 0
+            max_length = max(content_lengths) if content_lengths else 0
+
+            sync_context.logger.debug(
+                f"Entity content stats: total={total_length}, "
+                f"avg={avg_length:.2f}, max={max_length}, count={entity_count}"
+            )
+
+            start_time = time.time()
+
+            # Convert entities to dictionary representations
+            entity_dicts = []
+            for entity in processed_entities:
+                try:
+                    entity_dict = str(entity.to_storage_dict())
+                    entity_dicts.append(entity_dict)
+                except Exception as e:
+                    sync_context.logger.error(f"Error converting entity to dict: {str(e)}")
+                    # Provide a fallback empty string to maintain array alignment
+                    entity_dicts.append("")
+
+            # Get embeddings from the model
+            embeddings = await embedding_model.embed_many(entity_dicts)
+
+            elapsed = time.time() - start_time
+            sync_context.logger.info(
+                f"Vector computation completed in {elapsed:.2f}s for {len(embeddings)} entities"
+            )
+
+            # Validate we got the expected number of embeddings
+            if len(embeddings) != len(processed_entities):
+                sync_context.logger.warning(
+                    f"Embedding count mismatch: got {len(embeddings)} embeddings "
+                    f"for {len(processed_entities)} entities"
+                )
+
+            # Assign vectors to entities
+            for i, (processed_entity, vector) in enumerate(
+                zip(processed_entities, embeddings, strict=False)
+            ):
+                try:
+                    if vector is None:
+                        sync_context.logger.warning(f"Received None vector for entity at index {i}")
+                        continue
+
+                    vector_dim = len(vector) if vector else 0
+                    sync_context.logger.debug(
+                        f"Assigning vector of dimension {vector_dim} to "
+                        f"entity {processed_entity.entity_id}"
+                    )
+                    processed_entity.vector = vector
+                except Exception as e:
+                    sync_context.logger.error(
+                        f"Error assigning vector to entity at index {i}: {str(e)}"
+                    )
+
+            return processed_entities
+
+        except Exception as e:
+            sync_context.logger.error(f"Error computing vectors: {str(e)}")
+            raise
 
     async def _handle_keep(self, sync_context: SyncContext) -> None:
         """Handle KEEP action."""
@@ -293,7 +289,7 @@ class EntityProcessor:
     ) -> None:
         """Handle INSERT action."""
         if len(processed_entities) == 0:
-            logger.info("No processed entities to insert")
+            sync_context.logger.info("No processed entities to insert")
             return
 
         # Prepare entities with parent reference
@@ -334,7 +330,7 @@ class EntityProcessor:
         """Handle UPDATE action."""
         if len(processed_entities) == 0:
             # TODO: keep track of skipped entities that could not be processed
-            logger.info("No processed entities to update")
+            sync_context.logger.info("No processed entities to update")
             return
 
         # Prepare entities with parent reference
@@ -375,31 +371,53 @@ class SyncOrchestrator:
     async def run(self, sync_context: SyncContext) -> schemas.Sync:
         """Run a sync with full async processing."""
         try:
+            sync_context.logger.info(
+                f"Starting sync job {sync_context.sync_job.id} for sync {sync_context.sync.id}"
+            )
+
+            # Mark job as started
+            await sync_job_service.update_status(
+                sync_job_id=sync_context.sync_job.id,
+                status=SyncJobStatus.IN_PROGRESS,
+                current_user=sync_context.current_user,
+                started_at=datetime.now(),
+            )
+
             # Get source node from DAG
             source_node = sync_context.dag.get_source_node()
 
             # Process entity stream
             await self._process_entity_stream(source_node, sync_context)
 
-            # Update job status
-            await self._update_sync_job_status(
-                sync_context=sync_context,
+            # Use sync_job_service to update job status
+            await sync_job_service.update_status(
+                sync_job_id=sync_context.sync_job.id,
                 status=SyncJobStatus.COMPLETED,
+                current_user=sync_context.current_user,
                 completed_at=datetime.now(),
+                stats=(
+                    sync_context.progress.stats if hasattr(sync_context.progress, "stats") else None
+                ),
             )
 
+            sync_context.logger.info(f"Completed sync job {sync_context.sync_job.id} successfully")
             return sync_context.sync
 
         except Exception as e:
-            logger.error(f"Error during sync: {e}")
+            sync_context.logger.error(f"Error during sync: {e}")
 
-            # Update job status
-            await self._update_sync_job_status(
-                sync_context=sync_context,
+            # Use sync_job_service to update job status
+            await sync_job_service.update_status(
+                sync_job_id=sync_context.sync_job.id,
                 status=SyncJobStatus.FAILED,
+                current_user=sync_context.current_user,
                 error=str(e),
                 failed_at=datetime.now(),
+                stats=(
+                    sync_context.progress.stats if hasattr(sync_context.progress, "stats") else None
+                ),
             )
+
             raise
 
     async def _process_entity_stream(
@@ -408,11 +426,21 @@ class SyncOrchestrator:
         """Process stream of entities from source."""
         error_occurred = False
 
+        sync_context.logger.info(
+            f"Starting entity stream processing from source {sync_context.source._name}"
+        )
+
         # Use the stream as a context manager
-        async with AsyncSourceStream(sync_context.source.generate_entities()) as stream:
+        async with AsyncSourceStream(
+            sync_context.source.generate_entities(), logger=sync_context.logger
+        ) as stream:
             try:
                 # Process entities as they come
                 async for entity in stream.get_entities():
+                    if getattr(entity, "should_skip", False):
+                        await sync_context.progress.increment("skipped")
+                        continue  # Do not process further
+
                     # Submit each entity for processing in the worker pool
                     task = await self.worker_pool.submit(
                         self._process_single_entity,
@@ -430,9 +458,10 @@ class SyncOrchestrator:
 
                 # Wait for all remaining tasks
                 await self.worker_pool.wait_for_completion()
+                sync_context.logger.info("All entity processing tasks completed")
 
             except Exception as e:
-                logger.error(f"Error during entity stream processing: {e}")
+                sync_context.logger.error(f"Error during entity stream processing: {e}")
                 error_occurred = True
                 raise
             finally:
@@ -449,53 +478,6 @@ class SyncOrchestrator:
             await self.entity_processor.process(
                 entity=entity, source_node=source_node, sync_context=sync_context, db=db
             )
-
-    async def _update_sync_job_status(
-        self,
-        sync_context: SyncContext,
-        status: SyncJobStatus,
-        error: Optional[str] = None,
-        completed_at: Optional[datetime] = None,
-        failed_at: Optional[datetime] = None,
-    ) -> None:
-        """Update sync job status with progress statistics."""
-        try:
-            async with get_db_context() as db:
-                # Get DB model for sync job
-                db_sync_job = await crud.sync_job.get(db=db, id=sync_context.sync_job.id)
-
-                if not db_sync_job:
-                    logger.error(f"Sync job {sync_context.sync_job.id} not found")
-                    return
-
-                # Base update data
-                update_data = {
-                    "status": status,
-                    "stats": sync_context.progress.stats.model_dump(),
-                    "records_processed": sync_context.progress.stats.inserted,
-                    "records_updated": sync_context.progress.stats.updated,
-                    "records_deleted": sync_context.progress.stats.deleted,
-                }
-
-                # Add status-specific fields
-                if status == SyncJobStatus.COMPLETED and completed_at:
-                    update_data["completed_at"] = completed_at
-                elif status == SyncJobStatus.FAILED:
-                    if failed_at:
-                        update_data["failed_at"] = failed_at
-                    if error:
-                        update_data["error"] = error
-
-                # Update sync job
-                await crud.sync_job.update(
-                    db=db,
-                    db_obj=db_sync_job,
-                    obj_in=schemas.SyncJobUpdate(**update_data),
-                    current_user=sync_context.current_user,
-                )
-        except Exception as e:
-            # Log but don't raise
-            logger.error(f"Failed to update sync job status: {e}")
 
 
 # Singleton instance

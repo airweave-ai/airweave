@@ -21,6 +21,7 @@ from airweave.platform.sources._base import BaseSource
     "Dropbox",
     "dropbox",
     AuthType.oauth2_with_refresh,
+    auth_config_class="DropboxAuthConfig",
     labels=["File Storage"],
 )
 class DropboxSource(BaseSource):
@@ -374,9 +375,7 @@ class DropboxSource(BaseSource):
                             headers=file_entity.sync_metadata.get("headers"),
                         )
 
-                        # Only yield if the file wasn't skipped due to size limits
-                        if processed_entity:
-                            yield processed_entity
+                        yield processed_entity
 
                     except Exception as e:
                         logger.error(f"Failed to process file {file_entity.name}: {str(e)}")

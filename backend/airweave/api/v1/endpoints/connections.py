@@ -1,22 +1,24 @@
 """The API module that contains the endpoints for connections."""
 
+import json
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException
+from fastapi import BackgroundTasks, Body, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
 from airweave.api import deps
+from airweave.api.router import TrailingSlashRouter
 from airweave.core.connection_service import connection_service
 from airweave.core.constants.native_connections import NATIVE_QDRANT_UUID
 from airweave.core.shared_models import SyncStatus
+from airweave.core.sync_service import sync_service
 from airweave.db.session import get_db_context
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models.integration_credential import IntegrationType
-from airweave.platform.sync.service import sync_service
 
-router = APIRouter()
+router = TrailingSlashRouter()
 
 
 @router.get("/detail/{connection_id}", response_model=schemas.Connection)
@@ -96,7 +98,7 @@ async def connect_integration(
     integration_type: IntegrationType,
     short_name: str,
     name: Optional[str] = Body(default=None),
-    config_fields: dict = Body(..., exclude={"name"}),
+    auth_fields: dict = Body(..., exclude={"name"}),
     user: schemas.User = Depends(deps.get_user),
 ) -> schemas.Connection:
     """Connect to a source, destination, or embedding model.
@@ -115,7 +117,7 @@ async def connect_integration(
         integration_type: The type of integration to connect to.
         short_name: The short name of the integration to connect to.
         name: The name of the connection.
-        config_fields: The config fields for the integration.
+        auth_fields: The config fields for the integration.
         user: The current user.
 
     Returns:
@@ -123,7 +125,7 @@ async def connect_integration(
         schemas.Connection: The connection.
     """
     return await connection_service.connect_with_config(
-        db, integration_type, short_name, name, config_fields, user
+        db, integration_type, short_name, name, auth_fields, user
     )
 
 
@@ -200,14 +202,25 @@ async def disconnect_source_connection(
 async def get_oauth2_auth_url(
     *,
     short_name: str,
+    auth_fields: Optional[str] = None,
 ) -> str:
     """Get the OAuth2 authorization URL for a source.
 
     Args:
     -----
         short_name: The short name of the source
+        auth_fields: Optional JSON string containing authentication fields
     """
-    return await connection_service.get_oauth2_auth_url(short_name)
+    parsed_auth_fields = None
+    if auth_fields:
+        try:
+            parsed_auth_fields = json.loads(auth_fields)
+        except json.JSONDecodeError as err:
+            raise HTTPException(
+                status_code=400, detail="Invalid auth_fields format. Must be valid JSON."
+            ) from err
+
+    return await connection_service.get_oauth2_auth_url(short_name, parsed_auth_fields)
 
 
 @router.post("/oauth2/source/code", response_model=schemas.Connection)
@@ -217,6 +230,8 @@ async def send_oauth2_code(
     short_name: str = Body(...),
     code: str = Body(...),
     user: schemas.User = Depends(deps.get_user),
+    connection_name: Optional[str] = Body(default=None),
+    auth_fields: Optional[dict] = Body(default=None),
 ) -> schemas.Connection:
     """Send the OAuth2 authorization code for a source.
 
@@ -231,12 +246,16 @@ async def send_oauth2_code(
         short_name: The short name of the source
         code: The authorization code
         user: The current user
+        connection_name: Optional custom name for the connection
+        auth_fields: Optional additional authentication fields for the connection
 
     Returns:
     --------
         connection (schemas.Connection): The created connection
     """
-    return await connection_service.connect_with_oauth2_code(db, short_name, code, user)
+    return await connection_service.connect_with_oauth2_code(
+        db, short_name, code, user, connection_name, auth_fields
+    )
 
 
 @router.post("/oauth2/white-label/{white_label_id}/code", response_model=schemas.Connection)

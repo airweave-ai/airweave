@@ -42,6 +42,7 @@ class EntityInDBBase(EntityBase):
     id: UUID
     organization_id: UUID
     created_at: datetime
+
     modified_at: datetime
 
     class Config:
@@ -54,3 +55,9 @@ class Entity(EntityInDBBase):
     """Schema for Entity."""
 
     pass
+
+
+class EntityCount(BaseModel):
+    """Schema for entity count."""
+
+    count: int
