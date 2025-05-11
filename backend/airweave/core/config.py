@@ -70,9 +70,15 @@ class Settings(BaseSettings):
     TEXT2VEC_INFERENCE_URL: str = "http://localhost:9878"
 
     OPENAI_API_KEY: Optional[str] = None
+    ANTHROPIC_API_KEY: Optional[str] = None
     MISTRAL_API_KEY: Optional[str] = None
     GROQ_API_KEY: Optional[str] = None
     OLLAMA_BASE_URL: Optional[str] = None
+
+    API_FULL_URL: Optional[str] = None
+    APP_FULL_URL: Optional[str] = None
+    QDRANT_FULL_URL: Optional[str] = None
+    ADDITIONAL_CORS_ORIGINS: Optional[str] = None
 
     @field_validator("SQLALCHEMY_ASYNC_DATABASE_URI", mode="before")
     def assemble_db_connection(cls, v: Optional[str], info: ValidationInfo) -> PostgresDsn:
