@@ -46,7 +46,7 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}/backend",
-            "justMyCode": true
+            "justMyCode": false
         },
         {
             "name": "ARQ Worker",
