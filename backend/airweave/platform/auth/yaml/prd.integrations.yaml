@@ -213,6 +213,17 @@ integrations:
     additional_frontend_params:
       access_type: "offline"
       prompt: "consent"
+  
+
+  woocommerce:
+    auth_type: "api_key"
+    url: "${WOOCOMMERCE_STORE_URL}"
+    backend_url: "${WOOCOMMERCE_STORE_URL}"
+    content_type: "application/json"
+    client_credential_location: "query"
+    additional_frontend_params:
+      access_type: "offline"
+      prompt: "consent"
 
   qdrant:
     auth_type: "config_class"

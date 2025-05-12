@@ -13,7 +13,11 @@ export function getAppIconUrl(shortName: string, theme?: string): string {
     if (shortName === "github" && theme === "dark") {
       return new URL(`/src/components/icons/apps/github-light.svg`, import.meta.url).href;
     }
+    if (shortName === "woocommerce" && theme === "dark") {
+      return new URL(`/src/components/icons/apps/woocommerce-light.svg`, import.meta.url).href;
+    }
     return new URL(`/src/components/icons/apps/${shortName}.svg`, import.meta.url).href;
+
   } catch {
     return new URL(`/src/components/icons/apps/default-icon.svg`, import.meta.url).href;
   }
