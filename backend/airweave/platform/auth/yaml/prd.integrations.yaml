@@ -213,6 +213,20 @@ integrations:
     additional_frontend_params:
       access_type: "offline"
       prompt: "consent"
+  
+  discord:
+    auth_type: "oauth2"
+    url: "https://discord.com/oauth2/authorize"
+    backend_url: "https://discord.com/api/oauth2/token"
+    grant_type: "authorization_code"
+    client_id: "your_client_id"
+    client_secret: "your_client_secret"
+    content_type: "application/x-www-form-urlencoded"
+    client_credential_location: "body"
+    scope: "identify email guilds"
+    additional_frontend_params:
+      access_type: "offline"
+      prompt: "consent"
 
   qdrant:
     auth_type: "config_class"
