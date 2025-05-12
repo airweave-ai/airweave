@@ -1,6 +1,6 @@
 """MCP Server for Airweave Asana Integration
 
-This server provides a tool for Claude Desktop to semantically search
+This server provides a tool for Cursor or Claude Desktop to semantically search
 content stored in Asana and indexed by Airweave.
 """
 
