@@ -28,7 +28,7 @@ DEFAULT_SYNC_ID = "7fe07244-2337-47ac-abd6-1673debbdc38"  # Default Asana sync I
 # Initialize FastMCP server
 mcp = FastMCP(
     name="Airweave Asana Search",
-    instructions="""This server allows Claude to semantically search the contents of your Asana workspace using Airweave.""",
+    instructions="""This server allows Cursor to semantically search the contents of your Asana workspace using Airweave.""",
     port=8002,
 )
 
