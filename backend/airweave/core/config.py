@@ -38,6 +38,7 @@ class Settings(BaseSettings):
         OPENAI_API_KEY (Optional[str]): The OpenAI API key.
         MISTRAL_API_KEY (Optional[str]): The Mistral AI API key.
 
+
         # Custom deployment URLs
         API_FULL_URL (Optional[str]): The full URL for the API.
         QDRANT_FULL_URL (Optional[str]): The full URL for the Qdrant.
@@ -81,6 +82,8 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: Optional[str] = None
     MISTRAL_API_KEY: Optional[str] = None
 
+    LLM_PROVIDER: str = "openai"
+    OLLAMA_BASE_URL: Optional[str] = None
     AZURE_KEYVAULT_NAME: Optional[str] = None
 
     # Custom deployment URLs - these are used to override the default URLs to allow
