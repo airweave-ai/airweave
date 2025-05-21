@@ -56,7 +56,7 @@ class CRUDConnection(CRUDBase[Connection, ConnectionCreate, ConnectionUpdate]):
             Optional[Connection]: The connection with the given ID.
 
         """
-        query = select(self.model).where(self.model.id == id)
+        query = select(self.model).where(self.model.id == id).options(selectinload(self.model.integration_credential))
         result = await db.execute(query)
         db_obj = result.unique().scalar_one_or_none()
 
@@ -95,6 +95,7 @@ class CRUDConnection(CRUDBase[Connection, ConnectionCreate, ConnectionUpdate]):
                 (self.model.created_by_email == current_user.email)
                 | (self.model.modified_by_email == current_user.email)
             )
+            .options(selectinload(self.model.integration_credential))
             .order_by(desc(self.model.created_at))
             .offset(skip)
             .limit(limit)
@@ -103,14 +104,18 @@ class CRUDConnection(CRUDBase[Connection, ConnectionCreate, ConnectionUpdate]):
         user_connections = list(user_result.unique().scalars().all())
 
         # Get native connections
-        native_query = select(self.model).where(
-            self.model.organization_id.is_(None),
-            or_(
-                *[
-                    self.model.short_name == short_name
-                    for short_name in self.NATIVE_CONNECTION_SHORT_NAMES
-                ]
-            ),
+        native_query = (
+            select(self.model)
+            .where(
+                self.model.organization_id.is_(None),
+                or_(
+                    *[
+                        self.model.short_name == short_name
+                        for short_name in self.NATIVE_CONNECTION_SHORT_NAMES
+                    ]
+                ),
+            )
+            .options(selectinload(self.model.integration_credential))
         )
         native_result = await db.execute(native_query)
         native_connections = list(native_result.unique().scalars().all())
