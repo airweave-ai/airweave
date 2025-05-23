@@ -12,6 +12,7 @@ from airweave.api.v1.endpoints import (
     embedding_models,
     entities,
     health,
+    mcp,
     source_connections,
     sources,
     sync,
@@ -42,6 +43,10 @@ api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
 api_router.include_router(dag.router, prefix="/dag", tags=["dag"])
 api_router.include_router(entities.router, prefix="/entities", tags=["entities"])
 api_router.include_router(transformers.router, prefix="/transformers", tags=["transformers"])
+
+# Include MCP router if MCP is enabled
+if settings.MCP_ENABLED:
+    api_router.include_router(mcp.router, prefix="/mcp", tags=["mcp"])
 
 # Only include cursor development endpoints if LOCAL_CURSOR_DEVELOPMENT is enabled
 if settings.LOCAL_CURSOR_DEVELOPMENT:

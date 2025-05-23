@@ -32,6 +32,15 @@ from airweave.platform.db_sync import sync_platform_components
 from airweave.platform.entities._base import ensure_file_entity_models
 from airweave.platform.scheduler import platform_scheduler
 
+# Try to import MCP functionality - it may not be available if fastmcp is not installed
+try:
+    from airweave.platform.mcp import get_mcp_app
+
+    MCP_AVAILABLE = True
+except ImportError:
+    logger.warning("FastMCP not available - MCP functionality will be disabled")
+    MCP_AVAILABLE = False
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -67,6 +76,27 @@ app = FastAPI(
 )
 
 app.include_router(api_router)
+
+# Mount MCP server if enabled
+if settings.MCP_ENABLED:
+    if not MCP_AVAILABLE:
+        logger.warning("MCP is enabled but FastMCP is not available - install fastmcp package")
+    else:
+        logger.info("MCP is enabled - mounting MCP server at /mcp-server")
+        try:
+            mcp_app = get_mcp_app(app)
+            app.mount("/mcp-server", mcp_app)
+            logger.info("MCP server successfully mounted at /mcp-server/mcp")
+        except Exception as e:
+            logger.error(f"Failed to mount MCP server: {e}")
+            if settings.ENVIRONMENT == "local":
+                # In local development, we want to see the error
+                raise
+            else:
+                # In production, log the error but continue without MCP
+                logger.warning("Continuing without MCP functionality")
+else:
+    logger.info("MCP is disabled via MCP_ENABLED setting")
 
 # Register middleware directly
 app.middleware("http")(add_request_id)
