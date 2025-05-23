@@ -130,5 +130,5 @@ def delete_integration_credential(mapper, connection, target):
         else:
             # If we're not in a session, use the connection directly
             connection.execute(
-                f"DELETE FROM integration_credential WHERE id = '{target.integration_credential_id}'"  # noqa: E501
+                "DELETE FROM integration_credential WHERE id = '{target.integration_credential_id}", "  # noqa: E501
             )
