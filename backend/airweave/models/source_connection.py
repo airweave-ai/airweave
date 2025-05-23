@@ -4,7 +4,7 @@ from time import sleep
 from typing import TYPE_CHECKING, Optional
 from uuid import UUID
 
-from sqlalchemy import JSON, ForeignKey, String, Text, event
+from sqlalchemy import text, JSON, ForeignKey, String, Text, event
 from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 
 from airweave.models._base import OrganizationBase, UserMixin
@@ -90,7 +90,7 @@ def delete_parent_sync_and_connection(mapper, connection, target):
                 session.delete(sync)
         else:
             # If we're not in a session, use the connection directly
-            connection.execute(f"DELETE FROM sync WHERE id = '{target.sync_id}'")
+            connection.execute(text("DELETE FROM sync WHERE id = ':target.sync_id"), {target.sync_id: target.sync_id})")
 
     sleep(0.2)
 
@@ -104,4 +104,4 @@ def delete_parent_sync_and_connection(mapper, connection, target):
             if related_connection:
                 session.delete(related_connection)
         else:
-            connection.execute(f"DELETE FROM connection WHERE id = '{target.connection_id}'")
+            connection.execute(text("DELETE FROM connection WHERE id = ':target.connection_id"), {target.connection_id: target.connection_id})")
