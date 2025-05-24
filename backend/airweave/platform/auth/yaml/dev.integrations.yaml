@@ -244,3 +244,6 @@ integrations:
 
   qdrant:
     auth_type: "config_class"
+
+  woocommerce:
+    auth_type: "api_key"
