@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "FastAPI",
+            "name": "FastAPI with MCP",
             "type": "debugpy",
             "request": "launch",
             "module": "uvicorn",
@@ -78,7 +78,7 @@
         {
             "name": "FastAPI + ARQ Worker",
             "configurations": [
-                "FastAPI",
+                "FastAPI with MCP",
                 "ARQ Worker"
             ],
             "stopAll": true,

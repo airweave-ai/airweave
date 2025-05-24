@@ -28,6 +28,7 @@ from airweave.core.exceptions import NotFoundException, PermissionException
 from airweave.core.logging import logger
 from airweave.db.init_db import init_db
 from airweave.db.session import AsyncSessionLocal
+from airweave.mcp import get_mcp_app
 from airweave.platform.db_sync import sync_platform_components
 from airweave.platform.entities._base import ensure_file_entity_models
 from airweave.platform.scheduler import platform_scheduler
@@ -65,6 +66,10 @@ app = FastAPI(
     router=TrailingSlashRouter(),
     redirect_slashes=False,  # Critical: disable FastAPI's built-in slash redirects
 )
+
+# Mount the MCP server
+mcp_app = get_mcp_app()
+app.mount("/mcp-server", mcp_app)
 
 app.include_router(api_router)
 
@@ -123,6 +128,7 @@ async def show_docs_reference() -> HTMLResponse:
     <body>
         <h1>Welcome to the Airweave API</h1>
         <p>Please visit the <a href="https://docs.airweave.ai">docs</a> for more information.</p>
+        <p>MCP server is available at <a href="/mcp-server/sse">/mcp-server/sse</a></p>
     </body>
 </html>
     """

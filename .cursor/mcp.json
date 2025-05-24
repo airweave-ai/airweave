@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "airweave": {
+      "url": "http://localhost:8001/mcp-server/sse"
+    }
+  }
+}
