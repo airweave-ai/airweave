@@ -205,24 +205,42 @@ await client.collections.searchCollection("${collectionReadableId}", {
 
         // MCP Server code examples
         const configSnippet =
-            `  "mcpServers": {
-    "airweave_${collectionReadableId.substring(0, 8)}": {
-      "url": "${API_CONFIG.baseURL.replace(/^https?:\/\//, 'https://')}/airweave/server/${collectionReadableId}?agent=cursor"
+            `{
+  "mcpServers": {
+    "airweave-${collectionReadableId}": {
+      "command": "npx",
+      "args": ["airweave-mcp-search"],
+      "env": {
+        "AIRWEAVE_API_KEY": "${apiKey}",
+        "AIRWEAVE_COLLECTION": "${collectionReadableId}",
+        "AIRWEAVE_BASE_URL": "${API_CONFIG.baseURL}"
+      }
     }
   }
-`;
+}`;
+
+        const installSnippet =
+            `# Install the MCP server globally
+npm install -g airweave-mcp-search@1.0.7
+
+# Or run directly with npx
+npx airweave-mcp-search`;
 
         const cliSnippet =
-            `# MCP Server CLI
-mcp-cli connect --server localhost:8000 --auth-token ${apiKey}
-mcp-cli query search --collection-id ${collectionReadableId} --query "${exampleQuery}"
-`;
+            `# Set environment variables
+export AIRWEAVE_API_KEY="${apiKey}"
+export AIRWEAVE_COLLECTION="${collectionReadableId}"
+export AIRWEAVE_BASE_URL="${API_CONFIG.baseURL}"
+
+# Run the MCP server
+airweave-mcp-search`;
 
         return {
             curlSnippet,
             pythonSnippet,
             nodeSnippet,
             configSnippet,
+            installSnippet,
             cliSnippet
         };
     };
@@ -273,6 +291,27 @@ mcp-cli query search --collection-id ${collectionReadableId} --query "${exampleQ
             >
                 Explore the full API documentation
             </a>
+        </div>
+    );
+
+    const mcpConfigFooter = (
+        <div className="text-xs flex items-center gap-2">
+            <span className={isDark ? "text-gray-400" : "text-gray-500"}>→</span>
+            <span className={isDark ? "text-gray-400" : "text-gray-500"}>
+                Add this to your MCP client configuration file (usually{" "}
+                {apiTab === "claude" && "~/.config/Claude/claude_desktop_config.json for Claude"}
+                {apiTab === "cursor" && "~/.cursor/mcp.json for Cursor"}
+                {apiTab === "windsurf" && "~/.windsurf/mcp.json for Windsurf"}
+            </span>
+        </div>
+    );
+
+    const mcpInstallFooter = (
+        <div className="text-xs flex items-center gap-2">
+            <span className={isDark ? "text-gray-400" : "text-gray-500"}>→</span>
+            <span className={isDark ? "text-gray-400" : "text-gray-500"}>
+                After installation, configure your MCP client with the environment variables shown above
+            </span>
         </div>
     );
 
@@ -656,24 +695,21 @@ mcp-cli query search --collection-id ${collectionReadableId} --query "${exampleQ
                             <span>RestAPI</span>
                         </Button>
 
-                        {/* MCP Server button - disabled and faint */}
+                        {/* MCP Server button - now enabled */}
                         <Button
                             variant="outline"
-                            disabled={true}
+                            onClick={() => handleViewModeChange("mcpserver")}
                             className={cn(
-                                "w-full justify-start p-4 rounded-md text-sm flex items-center gap-3 relative",
-                                "border-input bg-background opacity-50 cursor-not-allowed",
-                                isDark ? "text-gray-500 border-gray-700" : "text-gray-400 border-gray-200"
+                                "w-full justify-start p-4 rounded-md text-sm flex items-center gap-3 transition-all",
+                                "border-input bg-background text-muted-foreground hover:text-foreground hover:bg-accent/10 dark:border-border dark:bg-card dark:hover:bg-muted",
+                                viewMode === "mcpserver" && "border-primary bg-primary/5 dark:bg-primary/10 text-primary dark:text-primary-foreground font-medium"
                             )}
                         >
-                            <McpIcon className="h-5 w-5 text-muted-foreground opacity-50" />
+                            <McpIcon className={cn(
+                                "h-5 w-5",
+                                viewMode === "mcpserver" ? "text-primary" : "text-muted-foreground"
+                            )} />
                             <span>MCP Server</span>
-                            <span className={cn(
-                                "absolute top-2 right-2 px-1.5 py-0- text-[9px] font-medium rounded-sm tracking-tight",
-                                isDark ? "bg-gray-800 text-gray-400" : "bg-gray-100 text-gray-500"
-                            )}>
-                                Coming soon
-                            </span>
                         </Button>
                     </div>
 
@@ -814,7 +850,7 @@ mcp-cli query search --collection-id ${collectionReadableId} --query "${exampleQ
                             </div>
 
                             {/* Tab Content */}
-                            <div className="h-[250px]">
+                            <div className="h-[330px]">
                                 {viewMode === "restapi" && (
                                     <>
                                         {apiTab === "rest" && (
@@ -863,11 +899,11 @@ mcp-cli query search --collection-id ${collectionReadableId} --query "${exampleQ
                                         {apiTab === "claude" && (
                                             <CodeBlock
                                                 code={getApiEndpoints().configSnippet}
-                                                language="yaml"
+                                                language="json"
                                                 badgeText="CONFIG"
                                                 badgeColor="bg-purple-600 hover:bg-purple-600"
-                                                title="MCP Server Configuration"
-                                                footerContent={docLinkFooter}
+                                                title="Claude Desktop MCP Configuration"
+                                                footerContent={mcpConfigFooter}
                                                 height="100%"
                                                 className="h-full rounded-none border-none"
                                             />
@@ -876,11 +912,11 @@ mcp-cli query search --collection-id ${collectionReadableId} --query "${exampleQ
                                         {apiTab === "cursor" && (
                                             <CodeBlock
                                                 code={getApiEndpoints().configSnippet}
-                                                language="yaml"
+                                                language="json"
                                                 badgeText="CONFIG"
-                                                badgeColor="bg-purple-600 hover:bg-purple-600"
-                                                title="MCP Server Configuration"
-                                                footerContent={docLinkFooter}
+                                                badgeColor="bg-blue-600 hover:bg-blue-600"
+                                                title="Cursor MCP Configuration"
+                                                footerContent={mcpConfigFooter}
                                                 height="100%"
                                                 className="h-full rounded-none border-none"
                                             />
@@ -889,11 +925,11 @@ mcp-cli query search --collection-id ${collectionReadableId} --query "${exampleQ
                                         {apiTab === "windsurf" && (
                                             <CodeBlock
                                                 code={getApiEndpoints().configSnippet}
-                                                language="yaml"
+                                                language="json"
                                                 badgeText="CONFIG"
-                                                badgeColor="bg-purple-600 hover:bg-purple-600"
-                                                title="MCP Server Configuration"
-                                                footerContent={docLinkFooter}
+                                                badgeColor="bg-teal-600 hover:bg-teal-600"
+                                                title="Windsurf MCP Configuration"
+                                                footerContent={mcpConfigFooter}
                                                 height="100%"
                                                 className="h-full rounded-none border-none"
                                             />
@@ -901,12 +937,12 @@ mcp-cli query search --collection-id ${collectionReadableId} --query "${exampleQ
 
                                         {apiTab === "server" && (
                                             <CodeBlock
-                                                code={getApiEndpoints().cliSnippet}
+                                                code={getApiEndpoints().installSnippet}
                                                 language="bash"
-                                                badgeText="SERVER"
+                                                badgeText="INSTALL"
                                                 badgeColor="bg-gray-600 hover:bg-gray-600"
-                                                title="MCP Command Line"
-                                                footerContent={docLinkFooter}
+                                                title="Install MCP Server"
+                                                footerContent={mcpInstallFooter}
                                                 height="100%"
                                                 className="h-full rounded-none border-none"
                                             />

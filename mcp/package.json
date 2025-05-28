@@ -1,0 +1,53 @@
+{
+  "name": "airweave-mcp-search",
+  "version": "1.0.7",
+  "description": "MCP server for searching Airweave collections",
+  "type": "module",
+  "main": "build/index.js",
+  "bin": {
+    "airweave-mcp-search": "./build/index.js"
+  },
+  "scripts": {
+    "build": "tsc && chmod 755 build/index.js",
+    "start": "node build/index.js",
+    "dev": "npm run build && npm run start",
+    "test": "node test-build.js",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "airweave",
+    "search",
+    "model-context-protocol",
+    "ai",
+    "vector-search",
+    "claude",
+    "cursor"
+  ],
+  "author": "Airweave",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/airweave-ai/airweave.git",
+    "directory": "mcp"
+  },
+  "homepage": "https://airweave.ai",
+  "bugs": {
+    "url": "https://github.com/airweave-ai/airweave/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "typescript": "^5.7.3"
+  },
+  "files": [
+    "build",
+    "README.md"
+  ]
+}

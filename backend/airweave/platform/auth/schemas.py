@@ -14,7 +14,6 @@ class AuthType(str, Enum):
         oauth2: OAuth2 authentication.
         oauth2_with_refresh: OAuth2 authentication with refresh token.
         oauth2_with_refresh_rotating: OAuth2 authentication with rotating refresh token.
-        trello_auth: Trello authentication.
         api_key: API key authentication.
         native_functionality: Native functionality.
         url_and_api_key: URL and API key authentication.
@@ -24,10 +23,10 @@ class AuthType(str, Enum):
     oauth2 = "oauth2"
     oauth2_with_refresh = "oauth2_with_refresh"
     oauth2_with_refresh_rotating = "oauth2_with_refresh_rotating"
-    trello_auth = "trello_auth"
     api_key = "api_key"
     native_functionality = "native_functionality"
     config_class = "config_class"
+    trello_auth = "trello_auth"
     none = "none"
 
 
@@ -73,28 +72,6 @@ class BaseAuthSettings(BaseModel):
     """
 
     auth_type: AuthType
-
-
-class TrelloAuthSettings(BaseAuthSettings):
-    """Trello authentication settings schema.
-
-    Attributes:
-    ----------
-        key (str): The Trello API key.
-        url (str): The Trello authorization URL.
-        scope (str): The scope of the authorization.
-        callback_method (str): The callback method.
-        expiration (str): The expiration time.
-        name (str): The name of the integration.
-
-    """
-
-    key: str
-    url: str
-    scope: str
-    callback_method: str
-    expiration: str
-    name: str
 
 
 class NativeFunctionalityAuthSettings(BaseAuthSettings):

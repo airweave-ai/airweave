@@ -7,7 +7,7 @@ using the PolymorphicEntity system.
 
 import json
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, List, Optional, Type
+from typing import Any, AsyncGenerator, Dict, List, Optional, Type, Union
 
 import asyncpg
 
@@ -223,6 +223,54 @@ class PostgreSQLSource(BaseSource):
             raise ValueError(f"Tables not found in schema '{schema}': {', '.join(invalid_tables)}")
         return tables
 
+    async def _convert_field_values(
+        self, data: Dict[str, Any], model_fields: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Convert field values to the expected types based on the entity model.
+
+        Args:
+            data: The raw data dictionary from the database record
+            model_fields: The model fields from the entity class
+
+        Returns:
+            Dict with processed field values matching the expected types
+        """
+        processed_data = {}
+        for field_name, field_value in data.items():
+            # Handle the case where the field name is 'id' in the database
+            model_field_name = field_name + "_" if field_name == "id" else field_name
+
+            # Skip if the field doesn't exist in the model
+            if model_field_name not in model_fields:
+                continue
+
+            # If value is None, keep it as None
+            if field_value is None:
+                processed_data[model_field_name] = None
+                continue
+
+            # Get expected type from model field
+            field_info = model_fields[model_field_name]
+            field_type = field_info.annotation
+
+            # Handle Union types (including Optional which is Union[T, None])
+            if hasattr(field_type, "__origin__") and field_type.__origin__ is Union:
+                # For Union types, get the non-None type (if it's Optional pattern)
+                union_args = field_type.__args__
+                # Filter out NoneType to get the actual type
+                non_none_types = [arg for arg in union_args if arg is not type(None)]
+                if non_none_types:
+                    field_type = non_none_types[0]  # Take the first non-None type
+
+            # Simple conversion: if target is string, convert to string
+            if field_type is str and field_value is not None:
+                processed_data[model_field_name] = str(field_value)
+            else:
+                # Let Pydantic handle everything else
+                processed_data[model_field_name] = field_value
+
+        return processed_data
+
     async def _process_table_batch(
         self, schema: str, table: str, entity_class: Type[PolymorphicEntity], batch: List
     ) -> AsyncGenerator[ChunkEntity, None]:
@@ -245,7 +293,10 @@ class PostgreSQLSource(BaseSource):
             pk_values = [str(data[pk]) for pk in primary_keys]
             entity_id = f"{schema}.{table}:" + ":".join(pk_values)
 
-            yield entity_class(entity_id=entity_id, **data)
+            # Convert field values to match expected types in the entity model
+            processed_data = await self._convert_field_values(data, model_fields)
+
+            yield entity_class(entity_id=entity_id, **processed_data)
 
     async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
         """Generate entities for all tables in specified schemas."""

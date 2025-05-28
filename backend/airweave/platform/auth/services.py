@@ -71,34 +71,6 @@ class OAuth2Service:
         return auth_url
 
     @staticmethod
-    async def _url_for_trello() -> str:
-        """Generate the authorization URL for Trello.
-
-        This method could potentially be generalized to work with similar authorization flows.
-
-        Returns:
-        -------
-            str: The authorization URL.
-
-        """
-        integration_short_name = "trello"
-        integration_config = await integration_settings.get_by_short_name(integration_short_name)
-        redirect_uri = await OAuth2Service._get_redirect_url(integration_short_name)
-
-        params = {
-            "response_type": "token",
-            "scope": "read,write",
-            "name": integration_config.name,
-            "expiration": "never",
-            "return_url": redirect_uri,
-            "key": integration_config.key,
-        }
-
-        auth_url = f"{integration_config.url}?{urlencode(params)}"
-
-        return auth_url
-
-    @staticmethod
     async def exchange_authorization_code_for_token(
         source_short_name: str,
         code: str,

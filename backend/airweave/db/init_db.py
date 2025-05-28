@@ -37,7 +37,7 @@ async def init_db(db: AsyncSession) -> None:
             organization_id=organization.id,
         )
         user = await crud.user.create(db, obj_in=user_in)
-        api_key = await crud.api_key.create(
+        _ = await crud.api_key.create_with_user(
             db,
             obj_in=schemas.APIKeyCreate(
                 user_id=user.id,
@@ -45,5 +45,5 @@ async def init_db(db: AsyncSession) -> None:
                 description="Superuser API Key",
                 expires_at=datetime.datetime.now() + datetime.timedelta(days=365),
             ),
+            current_user=user,
         )
-        print(f"Superuser API Key: {api_key.key}")

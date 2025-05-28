@@ -1,37 +1,17 @@
 """Gmail entity schemas.
 
 Defines entity schemas for Gmail resources:
-  - Label
   - Thread
   - Message
-  - Draft
-
-Each entity represents a distinct Gmail object, with relationships maintained through
-references and breadcrumbs rather than nested objects.
+  - Attachment
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import Field
 
-from airweave.platform.entities._base import ChunkEntity
-
-
-class GmailLabelEntity(ChunkEntity):
-    """Schema for Gmail label entities.
-
-    Reference: https://developers.google.com/gmail/api/reference/rest/v1/users.labels
-    """
-
-    name: str = Field(..., description="The display name of the label")
-    label_type: str = Field(..., description="Type of label: 'system' or 'user'")
-    message_list_visibility: Optional[str] = Field(None, description="Show/hide in message list")
-    label_list_visibility: Optional[str] = Field(None, description="Show/hide in label list")
-    total_messages: Optional[int] = Field(0, description="Total number of messages with this label")
-    unread_messages: Optional[int] = Field(
-        0, description="Number of unread messages with this label"
-    )
+from airweave.platform.entities._base import ChunkEntity, FileEntity
 
 
 class GmailThreadEntity(ChunkEntity):
@@ -68,19 +48,18 @@ class GmailMessageEntity(ChunkEntity):
     size_estimate: Optional[int] = Field(None, description="Estimated size in bytes")
 
 
-class GmailDraftEntity(ChunkEntity):
-    """Schema for Gmail draft entities.
+class GmailAttachmentEntity(FileEntity):
+    """Schema for Gmail attachment entities.
 
-    Reference: https://developers.google.com/gmail/api/reference/rest/v1/users.drafts
+    Reference: https://developers.google.com/gmail/api/reference/rest/v1/users.messages.attachments
     """
 
-    message_id: Optional[str] = Field(None, description="ID of the draft message")
-    thread_id: Optional[str] = Field(None, description="ID of the thread if part of one")
-    subject: Optional[str] = Field(None, description="Subject line of the draft")
-    to: List[str] = Field(default_factory=list, description="Intended recipients")
-    cc: List[str] = Field(default_factory=list, description="Intended CC recipients")
-    bcc: List[str] = Field(default_factory=list, description="Intended BCC recipients")
-    body_plain: Optional[str] = Field(None, description="Plain text draft content")
-    body_html: Optional[str] = Field(None, description="HTML draft content")
-    created_date: Optional[datetime] = Field(None, description="Date the draft was created")
-    updated_date: Optional[datetime] = Field(None, description="Date the draft was last updated")
+    message_id: str = Field(..., description="ID of the message this attachment belongs to")
+    attachment_id: str = Field(..., description="Gmail's attachment ID")
+    thread_id: str = Field(..., description="ID of the thread containing the message")
+    metadata: Optional[Dict[str, Any]] = Field(
+        default_factory=dict, description="Additional metadata about the attachment"
+    )
+
+    # Override name and mime_type to remove redundant fields (they're already in FileEntity)
+    # This ensures we don't have duplicate fields

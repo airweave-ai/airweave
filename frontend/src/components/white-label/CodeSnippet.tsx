@@ -23,7 +23,7 @@ export const CodeSnippet = ({ whitelabelGuid, frontendUrl, clientId, source }: C
 // Function to initiate OAuth2 flow
 const initiateOAuth2Flow = async () => {
   // Get the auth URL from Airweave's backend
-  const response = await fetch(\`https://api.airweave.ai/connections/oauth2/white-label/${displayGuid}/auth_url\`);
+  const response = await fetch(\`https://api.airweave.ai/white-labels/${displayGuid}/oauth2/auth_url\`);
   const authUrl = await response.text();
 
   // Redirect the user to the authorization URL
@@ -43,7 +43,7 @@ const airweaveOAuth = {
 
     if (code) {
       try {
-        const response = await fetch('https://api.airweave.ai/connections/oauth2/white-label/${displayGuid}/code', {
+        const response = await fetch('https://api.airweave.ai/white-labels/${displayGuid}/oauth2/code', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

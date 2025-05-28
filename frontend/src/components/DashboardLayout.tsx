@@ -214,38 +214,6 @@ const DashboardLayout = () => {
     location.pathname === '/api-keys',
     [location.pathname]);
 
-  // Move this useEffect to be with the other hooks at the top
-  useEffect(() => {
-    const connected = searchParams.get('connected');
-    if (connected === 'error') {
-      console.log("🔔 [DashboardLayout] Detected 'connected=error' parameter in URL");
-
-      // Retrieve error details from localStorage
-      const errorDetails = getStoredErrorDetails();
-
-      if (errorDetails) {
-        console.log("🔔 [DashboardLayout] Found error details in localStorage:", errorDetails);
-
-        // Set error state and open dialog
-        setErrorData({
-          serviceName: errorDetails.serviceName || "the service",
-          errorMessage: errorDetails.errorMessage || "Connection failed",
-          errorDetails: errorDetails.errorDetails
-        });
-
-        // Open the dialog in error view mode
-        setShowCreateCollectionFlow(true);
-      }
-
-      // Clean localStorage and URL parameters
-      clearStoredErrorDetails();
-
-      // Clean URL parameters
-      const newUrl = location.pathname;
-      window.history.replaceState({}, '', newUrl);
-    }
-  }, [searchParams, location]);
-
   // Fully memoized SidebarContent component
   const SidebarContent = useMemo(() => (
     <div className="flex flex-col h-full">

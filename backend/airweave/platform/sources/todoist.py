@@ -37,29 +37,35 @@ class TodoistSource(BaseSource):
     """
 
     @classmethod
-    async def create(
-        cls, access_token: str, config: Optional[Dict[str, Any]] = None
-    ) -> "TodoistSource":
+    async def create(cls, credentials, config: Optional[Dict[str, Any]] = None) -> "TodoistSource":
         """Create a new Todoist source instance."""
         instance = cls()
-        instance.access_token = access_token
+        instance.access_token = credentials.access_token
         return instance
 
     async def _get_with_auth(self, client: httpx.AsyncClient, url: str) -> Optional[dict]:
         """Make an authenticated GET request to the Todoist REST API using the provided URL.
 
         Returns the JSON response as a dict (or list if not JSON-object).
+        If a 404 error is encountered, returns None instead of raising an exception.
         """
         headers = {"Authorization": f"Bearer {self.access_token}"}
-        response = await client.get(url, headers=headers)
-        response.raise_for_status()
-
-        # Depending on the endpoint, responses may be a list or a dict.
-        # We'll attempt to parse JSON and return whatever type we get:
         try:
-            return response.json()
-        except ValueError:
-            return None
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+
+            # Depending on the endpoint, responses may be a list or a dict.
+            # We'll attempt to parse JSON and return whatever type we get:
+            try:
+                return response.json()
+            except ValueError:
+                return None
+        except httpx.HTTPStatusError as e:
+            # Handle 404 errors gracefully by returning None
+            if e.response.status_code == 404:
+                return None
+            # Re-raise other HTTP errors
+            raise
 
     async def _generate_project_entities(
         self, client: httpx.AsyncClient
@@ -99,9 +105,9 @@ class TodoistSource(BaseSource):
     ) -> AsyncGenerator[TodoistSectionEntity, None]:
         """Retrieve and yield Section entities for a given project.
 
-        GET https://api.todoist.com/rest/v2/projects/{project_id}/sections
+        GET https://api.todoist.com/rest/v2/sections?project_id={project_id}
         """
-        url = f"https://api.todoist.com/rest/v2/projects/{project_id}/sections"
+        url = f"https://api.todoist.com/rest/v2/sections?project_id={project_id}"
         sections = await self._get_with_auth(client, url)
         if not sections:
             return
@@ -155,6 +161,18 @@ class TodoistSource(BaseSource):
                 if task.get("section_id") != section_id:
                     continue
 
+            # Extract duration information if present
+            duration_amount = None
+            duration_unit = None
+            if task.get("duration"):
+                duration_amount = task["duration"].get("amount")
+                duration_unit = task["duration"].get("unit")
+
+            # Extract deadline information if present
+            deadline_date = None
+            if task.get("deadline"):
+                deadline_date = task["deadline"].get("date")
+
             yield TodoistTaskEntity(
                 entity_id=task["id"],
                 breadcrumbs=breadcrumbs,
@@ -170,6 +188,8 @@ class TodoistSource(BaseSource):
                 parent_id=task.get("parent_id"),
                 creator_id=task.get("creator_id"),
                 created_at=task.get("created_at"),
+                assignee_id=task.get("assignee_id"),
+                assigner_id=task.get("assigner_id"),
                 due_date=(task["due"]["date"] if task.get("due") else None),
                 due_datetime=(
                     task["due"]["datetime"]
@@ -178,7 +198,14 @@ class TodoistSource(BaseSource):
                 ),
                 due_string=(task["due"]["string"] if task.get("due") else None),
                 due_is_recurring=(task["due"]["is_recurring"] if task.get("due") else False),
-                due_timezone=(task["due"]["timezone"] if task.get("due") else None),
+                due_timezone=(
+                    task["due"].get("timezone")
+                    if (task.get("due") and "timezone" in task["due"])
+                    else None
+                ),
+                deadline_date=deadline_date,
+                duration_amount=duration_amount,
+                duration_unit=duration_unit,
                 url=task.get("url"),
             )
 
@@ -247,9 +274,7 @@ class TodoistSource(BaseSource):
 
                 # Re-fetch sections in-memory to attach tasks to them,
                 # or reuse the info from above if desired
-                url_sections = (
-                    f"https://api.todoist.com/rest/v2/projects/{project_entity.entity_id}/sections"
-                )
+                url_sections = f"https://api.todoist.com/rest/v2/sections?project_id={project_entity.entity_id}"
                 sections_data = await self._get_with_auth(client, url_sections)
                 sections = sections_data if isinstance(sections_data, list) else []
 

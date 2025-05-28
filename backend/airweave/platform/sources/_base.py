@@ -91,6 +91,37 @@ class BaseSource:
             logger.error(f"Error processing file {file_entity.name}: {e}")
             return None
 
+    async def process_file_entity_with_content(
+        self, file_entity, content_stream, metadata: Optional[Dict[str, Any]] = None
+    ) -> Optional[ChunkEntity]:
+        """Process a file entity with content directly available as a stream."""
+        logger.info(f"Processing file entity with direct content: {file_entity.name}")
+
+        try:
+            # Process entity with the file manager directly
+            processed_entity = await file_manager.handle_file_entity(
+                stream=content_stream, entity=file_entity
+            )
+
+            # Add any additional metadata
+            if metadata and processed_entity:
+                # Initialize metadata if it doesn't exist
+                if not hasattr(processed_entity, "metadata") or processed_entity.metadata is None:
+                    processed_entity.metadata = {}
+                processed_entity.metadata.update(metadata)
+
+            # Skip if file was too large
+            if hasattr(processed_entity, "should_skip") and processed_entity.should_skip:
+                logger.warning(
+                    f"Skipping file {processed_entity.name}: "
+                    f"{processed_entity.metadata.get('error', 'Unknown reason')}"
+                )
+
+            return processed_entity
+        except Exception as e:
+            logger.error(f"Error processing file {file_entity.name} with direct content: {e}")
+            return None
+
 
 class Relation(BaseModel):
     """A relation between two entities."""

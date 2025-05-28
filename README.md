@@ -9,24 +9,16 @@
 [![Codecov](https://codecov.io/gh/airweave-ai/airweave/branch/main/graph/badge.svg)](https://codecov.io/gh/airweave-ai/airweave)
 [![Discord](https://img.shields.io/discord/1323415085011701870?label=Discord&logo=discord&logoColor=white&style=flat-square)](https://discord.com/invite/484HY9Ehxt)
 <br>
-<a href="https://trendshift.io/repositories/13748" target="_blank"><img src="https://trendshift.io/api/badge/repositories/13748" alt="airweave-ai%2Fairweave | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+<div style="padding-top: 16px;">
+<a href="https://trendshift.io/repositories/13748" target="_blank"><img src="https://trendshift.io/api/badge/repositories/13748" alt="airweave-ai%2Fairweave | Trendshift" style="width: 250px; height: 55px; margin-right: 24px;" width="250" height="55"/></a>&nbsp;&nbsp;<a href="https://www.ycombinator.com/launches/NX7-airweave-let-agents-search-any-app" target="_blank"><img src="https://www.ycombinator.com/launches/NX7-airweave-let-agents-search-any-app/upvote_embed.svg" alt="Launch YC: Airweave - Let Agents Search Any App" style="margin-left: 12px;"/></a>
 </div>
-
-# Airweave
-
-**Airweave is a tool that lets agents semantically search any app.** It's MCP compatible and seamlessly connects any app, database, or API, to transform their contents into agent-ready knowledge.
-
-<div align="center">
-  
-### 🎥 Watch Demo
-
-https://github.com/user-attachments/assets/abdf85cb-a8f5-4b6c-b5a3-d4b5177e6bda
-
 </div>
 
 ## Overview
 
-Airweave simplifies the process of making information retrievable for your agent. Whether you have structured or unstructured data, Airweave helps you break it into processable entities, store the data and make it retrievable through REST and MCP endpoints.
+**Airweave is a tool that lets agents search any app.** It connects to apps, productivity tools, databases, or document stores and transforms their contents into searchable knowledge bases, accessible through a standardized interface for agents.
+
+The search interface is exposed via REST API or MCP. When using MCP, Airweave essentially builds a semantically searchable MCP server. The platform handles everything from auth and extraction to embedding and serving.
 
 ## Table of Contents
 
@@ -100,44 +92,33 @@ pip install airweave-sdk
 ```
 
 ```python
-from airweave import AirweaveClient
+from airweave import AirweaveSDK
 
-client = AirweaveClient(api_key="your-api-key")
-
-# List all sources
-sources = client.sources.list()
-
-# Create a sync job
-job = client.sync.create_sync(
-  name="My first sync",
-  source_connection_id=source_id,
-  run_immediately=True
+client = AirweaveSDK(
+    api_key="YOUR_API_KEY",
+    base_url="http://localhost:8001"
+)
+client.collections.create_collection(
+    name="name",
 )
 ```
 
 ### TypeScript/JavaScript
 
-```bash
 npm install @airweave/sdk
 # or
 yarn add @airweave/sdk
 ```
 
 ```typescript
-import { AirweaveClient } from "@airweave/sdk";
+import { AirweaveSDKClient, AirweaveSDKEnvironment } from "@airweave/sdk";
 
-const client = new AirweaveClient({
-  apiKey: "your-api-key",
+const client = new AirweaveSDKClient({
+    apiKey: "YOUR_API_KEY",
+    environment: AirweaveSDKEnvironment.Local
 });
-
-// List sources
-const sources = await client.sources.list();
-
-// Create a sync job
-const job = await client.sync.create_sync({
-  name: "My first sync",
-  source_connection_id: sourceId,
-  run_immediately: true,
+await client.collections.createCollection({
+    name: "name",
 });
 ```
 

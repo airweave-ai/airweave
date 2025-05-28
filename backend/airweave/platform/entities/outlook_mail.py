@@ -1,17 +1,11 @@
 """Outlook Mail entity schemas.
 
-Based on the Microsoft Graph Mail API (read-only scope), we define entity schemas for
-the major Outlook mail objects relevant to our application:
+Simplified entity schemas for Outlook mail objects:
  - MailFolder
  - Message
+ - Attachment
 
-Objects that reference a hierarchical relationship (e.g., nested mail folders)
-will represent that hierarchy through a list of breadcrumbs (see Breadcrumb in
-airweave.platform.entities._base) rather than nested objects.
-
-References:
-    https://learn.microsoft.com/en-us/graph/api/resources/mailfolder?view=graph-rest-1.0
-    https://learn.microsoft.com/en-us/graph/api/resources/message?view=graph-rest-1.0
+Following the same patterns as Gmail entities for consistency.
 """
 
 from datetime import datetime
@@ -19,7 +13,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import Field
 
-from airweave.platform.entities._base import Breadcrumb, ChunkEntity
+from airweave.platform.entities._base import ChunkEntity, FileEntity
 
 
 class OutlookMailFolderEntity(ChunkEntity):
@@ -48,60 +42,38 @@ class OutlookMailFolderEntity(ChunkEntity):
 
 
 class OutlookMessageEntity(ChunkEntity):
-    """Schema for an Outlook message.
+    """Schema for Outlook message entities.
 
-    See:
-      https://learn.microsoft.com/en-us/graph/api/resources/message?view=graph-rest-1.0
+    Reference: https://learn.microsoft.com/en-us/graph/api/resources/message?view=graph-rest-1.0
     """
 
-    breadcrumbs: List[Breadcrumb] = Field(
-        default_factory=list,
-        description="Breadcrumb hierarchy (e.g., parent mail folder).",
-    )
-    subject: Optional[str] = Field(None, description="Subject of the email message.")
-    body_preview: Optional[str] = Field(None, description="Short text preview of the message body.")
-    body_content: Optional[str] = Field(None, description="Full text or HTML body of the message.")
-    is_read: Optional[bool] = Field(
-        False, description="Indicates if the message has been read (True) or is unread (False)."
-    )
-    is_draft: Optional[bool] = Field(
-        False, description="Indicates if the message is still a draft."
-    )
-    importance: Optional[str] = Field(
-        None, description="Indicates the importance of the message (Low, Normal, High)."
-    )
-    has_attachments: Optional[bool] = Field(
-        False, description="Indicates if the message has file attachments."
-    )
-    internet_message_id: Optional[str] = Field(
-        None, description="Internet message ID of the email (RFC 2822 format)."
-    )
-    from_: Optional[Dict[str, Any]] = Field(
-        None,
-        alias="from",
-        description=(
-            "Information about the sender. Typically includes emailAddress { name, address }."
-        ),
-    )
-    to_recipients: List[Dict[str, Any]] = Field(
-        default_factory=list,
-        description="List of primary recipients (each typically contains emailAddress info).",
-    )
-    cc_recipients: List[Dict[str, Any]] = Field(
-        default_factory=list,
-        description="List of CC recipients (each typically contains emailAddress info).",
-    )
-    bcc_recipients: List[Dict[str, Any]] = Field(
-        default_factory=list,
-        description="List of BCC recipients (each typically contains emailAddress info).",
-    )
-    sent_at: Optional[datetime] = Field(None, description="Timestamp when the message was sent.")
-    received_at: Optional[datetime] = Field(
-        None, description="Timestamp when the message was received."
-    )
-    created_at: Optional[datetime] = Field(
-        None, description="Timestamp when the message resource was created (if available)."
-    )
-    updated_at: Optional[datetime] = Field(
-        None, description="Timestamp when the message was last updated (if available)."
+    folder_name: str = Field(..., description="Name of the folder containing this message")
+    subject: Optional[str] = Field(None, description="Subject line of the message")
+    sender: Optional[str] = Field(None, description="Email address of the sender")
+    to_recipients: List[str] = Field(default_factory=list, description="Recipients of the message")
+    cc_recipients: List[str] = Field(default_factory=list, description="CC recipients")
+    sent_date: Optional[datetime] = Field(None, description="Date the message was sent")
+    received_date: Optional[datetime] = Field(None, description="Date the message was received")
+    body_preview: Optional[str] = Field(None, description="Brief snippet of the message content")
+    body_content: Optional[str] = Field(None, description="Full message body content")
+    is_read: bool = Field(False, description="Whether the message has been read")
+    is_draft: bool = Field(False, description="Whether the message is a draft")
+    importance: Optional[str] = Field(None, description="Importance level (Low, Normal, High)")
+    has_attachments: bool = Field(False, description="Whether the message has attachments")
+    internet_message_id: Optional[str] = Field(None, description="Internet message ID")
+
+
+class OutlookAttachmentEntity(FileEntity):
+    """Schema for Outlook attachment entities.
+
+    Reference: https://learn.microsoft.com/en-us/graph/api/resources/fileattachment?view=graph-rest-1.0
+    """
+
+    message_id: str = Field(..., description="ID of the message this attachment belongs to")
+    attachment_id: str = Field(..., description="Outlook's attachment ID")
+    content_type: Optional[str] = Field(None, description="Content type of the attachment")
+    is_inline: bool = Field(False, description="Whether this is an inline attachment")
+    content_id: Optional[str] = Field(None, description="Content ID for inline attachments")
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict, description="Additional metadata about the attachment"
     )

@@ -1,6 +1,6 @@
 ---
 description: Description of repo structure.
-globs:
+globs: 
 alwaysApply: true
 ---
 # Airweave Repository Structure
@@ -32,6 +32,7 @@ airweave/
 │   ├── src/                      # Source code
 │   │   ├── components/           # React components
 │   │   ├── config/               # Configuration
+│   │   ├── constants/            # Constant variables
 │   │   ├── hooks/                # React hooks
 │   │   ├── lib/                  # Utility libraries
 │   │   ├── pages/                # Page components

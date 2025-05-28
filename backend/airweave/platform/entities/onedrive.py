@@ -1,15 +1,16 @@
 """OneDrive entity schemas.
 
-Based on the OneDrive (and SharePoint) API reference (read-only scope for OneDrive),
+Based on the Microsoft Graph API reference for OneDrive,
 we define entity schemas for the following core objects:
   • Drive
   • DriveItem
 
-Each schema inherits from ChunkEntity, which already provides an entity_id field to
+Each schema inherits from ChunkEntity, which provides an entity_id field to
 store the OneDrive object's unique ID (e.g., drive.id or driveItem.id).
 
 References:
-  https://learn.microsoft.com/en-us/onedrive/developer/rest-api/?view=odsp-graph-online
+  https://learn.microsoft.com/en-us/graph/api/resources/drive?view=graph-rest-1.0
+  https://learn.microsoft.com/en-us/graph/api/resources/driveitem?view=graph-rest-1.0
 """
 
 from datetime import datetime
@@ -17,21 +18,21 @@ from typing import Any, Dict, Optional
 
 from pydantic import Field
 
-from airweave.platform.entities._base import ChunkEntity
+from airweave.platform.entities._base import ChunkEntity, FileEntity
 
 
 class OneDriveDriveEntity(ChunkEntity):
     """Schema for a OneDrive Drive object.
 
     The inherited entity_id stores the drive's unique ID. Additional key fields come
-    from the OneDrive/SharePoint drive resource. Owner and quota are typically
-    nested objects; we store them as dictionaries.
+    from the Microsoft Graph drive resource.
     """
 
     drive_type: Optional[str] = Field(
         None,
         description=(
-            "Describes the type of drive represented by this resource (e.g., personal or business)."
+            "Describes the type of drive represented by this resource "
+            "(e.g., personal, business, documentLibrary)."
         ),
     )
     owner: Optional[Dict[str, Any]] = Field(
@@ -50,15 +51,15 @@ class OneDriveDriveEntity(ChunkEntity):
     )
 
 
-class OneDriveDriveItemEntity(ChunkEntity):
+class OneDriveDriveItemEntity(FileEntity):
     """Schema for a OneDrive DriveItem object (file or folder).
 
-    The inherited entity_id stores the DriveItem's unique ID. Many fields are optional
-    because a DriveItem may represent either a file or a folder, and some properties
-    appear only in one context.
+    Inherits from FileEntity to support file processing capabilities.
+    The inherited entity_id stores the DriveItem's unique ID.
     """
 
     name: Optional[str] = Field(None, description="The name of the item (folder or file).")
+    description: Optional[str] = Field(None, description="Description of the item (if available).")
     etag: Optional[str] = Field(
         None, description="An eTag for the content of the item. Used for change tracking."
     )
@@ -78,9 +79,7 @@ class OneDriveDriveItemEntity(ChunkEntity):
         None, description="URL that displays the resource in the browser."
     )
 
-    # The OneDrive API merges 'file' and 'folder' metadata into the same DriveItem structure.
-    # For a file, 'file' may have fields like mimeType, hashes, etc.
-    # For a folder, 'folder' can have a childCount property.
+    # Microsoft Graph API specific fields
     file: Optional[Dict[str, Any]] = Field(
         None, description="File metadata if the item is a file (e.g., mimeType, hashes)."
     )
@@ -95,3 +94,16 @@ class OneDriveDriveItemEntity(ChunkEntity):
             "Information about the parent of this item, such as driveId or parent folder path."
         ),
     )
+
+    # Override FileEntity fields to provide OneDrive-specific defaults
+    def __init__(self, **data):
+        """Initialize OneDriveDriveItemEntity with OneDrive-specific defaults."""
+        # Set default metadata if not provided
+        if "metadata" not in data:
+            data["metadata"] = {}
+
+        # Extract MIME type from file facet if available
+        if "file" in data and data["file"] and "mimeType" in data["file"]:
+            data["metadata"]["mimeType"] = data["file"]["mimeType"]
+
+        super().__init__(**data)

@@ -78,62 +78,6 @@ const Dashboard = () => {
   // Error state for connection errors
   const [connectionError, setConnectionError] = useState<any>(null);
 
-  // Check for error parameters in URL and read details from localStorage
-  useEffect(() => {
-    const connected = searchParams.get('connected');
-    if (connected === 'error') {
-      console.log("🔔 [Dashboard] Detected 'connected=error' parameter in URL");
-
-      // Retrieve error details from localStorage
-      const errorDetails = getStoredErrorDetails();
-
-      if (errorDetails) {
-        console.log("🔔 [Dashboard] Found error details:", errorDetails);
-
-        // Set the selected source if available
-        if (errorDetails.serviceName) {
-          const matchingSource = sources.find(s =>
-            s.name.toLowerCase() === errorDetails.serviceName?.toLowerCase() ||
-            s.short_name.toLowerCase() === errorDetails.serviceName?.toLowerCase()
-          );
-
-          if (matchingSource) {
-            setSelectedSource(matchingSource);
-          }
-        }
-
-        // Open dialog with the error
-        setDialogOpen(true);
-      } else {
-        console.warn("⚠️ [Dashboard] 'connected=error' detected but no error details found");
-
-        // Clean URL parameters
-        const newUrl = location.pathname;
-        window.history.replaceState({}, '', newUrl);
-      }
-    }
-  }, [searchParams, location.pathname, sources]);
-
-  // Fetch source connections for a specific collection
-  const fetchSourceConnectionsForCollection = async (
-    collectionId: string,
-    sourcesMap: Record<string, SourceConnection[]>
-  ) => {
-    try {
-      const response = await apiClient.get(`/source-connections/?collection=${collectionId}`);
-      if (response.ok) {
-        const data = await response.json();
-        sourcesMap[collectionId] = data;
-      } else {
-        console.error(`Failed to load source connections for collection ${collectionId}:`, await response.text());
-        sourcesMap[collectionId] = [];
-      }
-    } catch (err) {
-      console.error(`Error fetching source connections for collection ${collectionId}:`, err);
-      sourcesMap[collectionId] = [];
-    }
-  };
-
   // Initialize Zustand store subscribers
   useEffect(() => {
     // Subscribe to collections events

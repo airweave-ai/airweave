@@ -136,8 +136,8 @@ integrations:
     url: "https://auth.monday.com/oauth2/authorize"
     backend_url: "https://auth.monday.com/oauth2/token"
     grant_type: "authorization_code"
-    client_id: "ba30562df98324c4e7ea0cd131346c03"
-    client_secret: "bd39987f5e2b7dcd689f81b9dbfca31b"
+    client_id: "39ff04377f1c006b81a39ad1e601bf45"
+    client_secret: "48e9db68f81912ed51437eb50e4e2ca3"
     content_type: "application/x-www-form-urlencoded"
     client_credential_location: "body"
     scope: "me:read boards:read docs:read workspaces:read users:read account:read updates:read assets:read tags:read teams:read"
@@ -153,6 +153,19 @@ integrations:
     client_credential_location: "header"
     additional_frontend_params:
       owner: "user"
+
+  onedrive:
+    auth_type: "oauth2_with_refresh"
+    url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
+    backend_url: "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+    grant_type: "authorization_code"
+    client_id: "2fe86a38-7315-4068-ae99-b019f1ad9851"
+    client_secret: "nDl8Q~32VWSqsvN2D0Q..nskc~s2c.5M8eD3qash"
+    content_type: "application/x-www-form-urlencoded"
+    client_credential_location: "body"
+    scope: "offline_access https://graph.microsoft.com/User.Read https://graph.microsoft.com/Files.Read.All"
+    additional_frontend_params:
+      response_type: "code"
 
   outlook_calendar:
     auth_type: "oauth2_with_refresh_rotating"
@@ -185,8 +198,8 @@ integrations:
     url: "https://slack.com/oauth/v2/authorize"
     backend_url: "https://slack.com/api/oauth.v2.access"
     grant_type: "authorization_code"
-    client_id: "6769618979345.8289604264455"
-    client_secret: "e27c2e6b34a46987ee1707bd0d9aba15"
+    client_id: "6769618979345.8909908171303"
+    client_secret: "bb2d468190471933fe358d53a1e4ac2d"
     content_type: "application/x-www-form-urlencoded"
     client_credential_location: "body"
     scope: "app_mentions:read,channels:history,channels:join,channels:read,groups:history,groups:read,im:history,im:read,mpim:history,mpim:read,users:read"
@@ -204,16 +217,6 @@ integrations:
     content_type: "application/x-www-form-urlencoded"
     client_credential_location: "body"
     scope: "data:read"
-
-  trello:
-    auth_type: "trello_auth"
-    url: "https://trello.com/1/authorize"
-    key: "e49e51c7f9127b9b55aeb839de421305"
-    secret: "dd89259aad6124cbb329931c60ce78b2fc74e2d55b7dd08799f745bf843a355c"
-    scope: "read"
-    callback_method: "fragment"
-    expiration: "never"
-    name: "Airweave Integration"
 
   clickup:
     auth_type: "oauth2"

@@ -16,7 +16,6 @@ AUTH_TYPE_DESCRIPTIONS = {
     "oauth2": "OAuth 2.0 authentication flow",
     "oauth2_with_refresh": "OAuth 2.0 with refresh token",
     "oauth2_with_refresh_rotating": "OAuth 2.0 with rotating refresh token",
-    "trello_auth": "Trello authentication",
     "api_key": "API key authentication",
     "config_class": "Configuration-based authentication",
     "none": "No authentication required",

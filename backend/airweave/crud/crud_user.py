@@ -109,19 +109,15 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             user_data["organization_id"] = org_id
             obj_in = UserCreate(**user_data)
 
+        # Create the user using the parent class method
         user = await super().create(db, obj_in=obj_in)
+        user_id = user.id
 
-        # Create a default API key for the user
-        from airweave.crud.crud_api_key import api_key as crud_api_key
-        from airweave.schemas.api_key import APIKeyCreate
-
-        api_key_in = APIKeyCreate()  # Use default expiration
-        await crud_api_key.create_with_user(db=db, obj_in=api_key_in, current_user=user)
-
-        # Explicitly load the organization after creation
-        stmt = select(User).where(User.id == user.id).options(selectinload(User.organization))
+        # Explicitly load the organization in a new query
+        stmt = select(User).where(User.id == user_id).options(selectinload(User.organization))
         result = await db.execute(stmt)
-        return result.scalar_one_or_none() or user
+
+        return result.scalar_one_or_none()
 
     async def remove(self, db: AsyncSession, *, id: UUID, current_user: User) -> Optional[User]:
         """Remove an object by ID.

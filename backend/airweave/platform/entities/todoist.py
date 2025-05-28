@@ -55,6 +55,8 @@ class TodoistTaskEntity(ChunkEntity):
     parent_id: Optional[str] = Field(None, description="ID of the parent task if subtask")
     creator_id: Optional[str] = Field(None, description="ID of the user who created the task")
     created_at: Optional[datetime] = Field(None, description="When the task was created")
+    assignee_id: Optional[str] = Field(None, description="ID of the user assigned to the task")
+    assigner_id: Optional[str] = Field(None, description="ID of the user who assigned the task")
 
     # Flatten out the 'due' object from the Todoist API
     due_date: Optional[str] = Field(None, description="Due date in YYYY-MM-DD format")
@@ -64,6 +66,13 @@ class TodoistTaskEntity(ChunkEntity):
     )
     due_is_recurring: bool = Field(False, description="Whether the task is recurring")
     due_timezone: Optional[str] = Field(None, description="Timezone for the due date")
+
+    # Deadline information
+    deadline_date: Optional[str] = Field(None, description="Deadline date in YYYY-MM-DD format")
+
+    # Duration information
+    duration_amount: Optional[int] = Field(None, description="Duration amount")
+    duration_unit: Optional[str] = Field(None, description="Duration unit ('minute' or 'day')")
 
     url: Optional[str] = Field(None, description="URL to access the task")
 

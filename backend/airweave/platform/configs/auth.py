@@ -378,7 +378,6 @@ class TodoistAuthConfig(AuthConfig):
         title="Access Token", description="The access token for your Todoist app."
     )
 
-
 class TrelloAuthConfig(AuthConfig):
     """Trello authentication credentials schema."""
 

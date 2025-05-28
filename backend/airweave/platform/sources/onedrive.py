@@ -1,30 +1,29 @@
-"""OneDrive source implementation (read-only).
+"""OneDrive source implementation using Microsoft Graph API.
 
-Retrieves data from a user's OneDrive or SharePoint document library, including:
- - Drives (OneDriveDriveEntity objects)
- - DriveItems (OneDriveDriveItemEntity objects) for each drive
+Retrieves data from a user's OneDrive, including:
+ - Drive information (OneDriveDriveEntity objects)
+ - DriveItems (OneDriveDriveItemEntity objects) for files and folders
 
-This follows a hierarchical pattern (similar to Todoist or Asana):
-    Drive
-      └── DriveItem (folder)
-          └── DriveItem (file/folder)
-              └── ...
+This handles different OneDrive scenarios:
+ - Personal OneDrive (with SPO license)
+ - OneDrive without SPO license (app folder only)
+ - Business OneDrive
 
-We fetch and yield these as entity schemas defined in entities/onedrive.py.
-
-Reference (Graph API):
-  https://learn.microsoft.com/en-us/graph/api/drive-list?view=graph-rest-1.0
+Reference (Microsoft Graph API):
+  https://learn.microsoft.com/en-us/graph/api/drive-get?view=graph-rest-1.0
   https://learn.microsoft.com/en-us/graph/api/driveitem-list-children?view=graph-rest-1.0
 """
 
 from collections import deque
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
+from airweave.core.logging import logger
 from airweave.platform.auth.schemas import AuthType
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import Breadcrumb
+from airweave.platform.entities._base import Breadcrumb, ChunkEntity
 from airweave.platform.entities.onedrive import OneDriveDriveEntity, OneDriveDriveItemEntity
 from airweave.platform.sources._base import BaseSource
 
@@ -38,143 +37,339 @@ from airweave.platform.sources._base import BaseSource
     labels=["File Storage"],
 )
 class OneDriveSource(BaseSource):
-    """OneDrive source implementation (read-only)."""
+    """OneDrive source implementation using Microsoft Graph API."""
 
     @classmethod
     async def create(
         cls, access_token: str, config: Optional[Dict[str, Any]] = None
     ) -> "OneDriveSource":
-        """Instantiate a new OneDrive source object with the provided OAuth access token."""
+        """Create a new OneDrive source instance with the provided OAuth access token."""
         instance = cls()
         instance.access_token = access_token
         return instance
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.ConnectTimeout, httpx.ReadTimeout)),
+    )
     async def _get_with_auth(
         self, client: httpx.AsyncClient, url: str, params: Optional[Dict] = None
     ) -> Dict:
-        """Make an authenticated GET request to the Microsoft Graph for OneDrive."""
+        """Make an authenticated GET request to Microsoft Graph API with retry logic."""
         headers = {"Authorization": f"Bearer {self.access_token}"}
-        response = await client.get(url, headers=headers, params=params)
-        response.raise_for_status()
-        return response.json()
+        try:
+            resp = await client.get(url, headers=headers, params=params, timeout=30.0)
+            logger.info(f"Request URL: {url}")
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.ConnectTimeout:
+            logger.error(f"Connection timeout accessing Microsoft Graph API: {url}")
+            raise
+        except httpx.ReadTimeout:
+            logger.error(f"Read timeout accessing Microsoft Graph API: {url}")
+            raise
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                f"HTTP status error {e.response.status_code} from Microsoft Graph API: {url}"
+            )
+            # Log the response body for debugging
+            try:
+                error_body = e.response.json()
+                logger.error(f"Error response body: {error_body}")
+            except Exception:  # Catch specific exception instead of bare except
+                logger.error(f"Error response text: {e.response.text}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error accessing Microsoft Graph API: {url}, {str(e)}")
+            raise
 
-    async def _list_drives(self, client: httpx.AsyncClient) -> AsyncGenerator[Dict, None]:
-        """List all drives associated with the authorized user or organizational context.
+    async def _get_available_drives(self, client: httpx.AsyncClient) -> List[Dict]:
+        """Get all available drives for the user.
 
-        Endpoint: GET https://graph.microsoft.com/v1.0/me/drives
-        (Can also return SharePoint drives under /sites if the account has them.)
-        Uses @odata.nextLink for pagination.
+        This endpoint works better for accounts without SPO license.
         """
-        url = "https://graph.microsoft.com/v1.0/me/drives"
-        while url:
+        try:
+            url = "https://graph.microsoft.com/v1.0/me/drives"
             data = await self._get_with_auth(client, url)
-            for drive in data.get("value", []):
-                yield drive
-            url = data.get("@odata.nextLink")
+            return data.get("value", [])
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 400:
+                logger.warning("Cannot access /me/drives, will try app folder access")
+                return []
+            raise
 
-    async def _generate_drive_entities(
+    async def _get_user_drive(self, client: httpx.AsyncClient) -> Optional[Dict]:
+        """Get the user's default OneDrive with fallback handling.
+
+        Tries multiple approaches based on available permissions.
+        """
+        # First try to get the default drive
+        try:
+            url = "https://graph.microsoft.com/v1.0/me/drive"
+            return await self._get_with_auth(client, url)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 400:
+                error_body = e.response.json() if hasattr(e.response, "json") else {}
+                if "SPO license" in str(error_body):
+                    logger.warning("Tenant does not have SPO license, trying alternative endpoints")
+                    # Try to get drives list instead
+                    drives = await self._get_available_drives(client)
+                    if drives:
+                        logger.info(f"Found {len(drives)} drives via /me/drives")
+                        return drives[0]  # Return first available drive
+                    else:
+                        logger.info("No drives found, will create virtual app folder drive")
+                        return None
+            raise
+
+    async def _create_app_folder_drive(self) -> Dict:
+        """Create a virtual drive object for app folder access.
+
+        When full OneDrive access isn't available, we can still access app-specific folders.
+        """
+        return {
+            "id": "appfolder",
+            "name": "OneDrive App Folder",
+            "driveType": "personal",
+            "owner": {"user": {"displayName": "Current User"}},
+            "quota": None,
+            "createdDateTime": None,
+            "lastModifiedDateTime": None,
+        }
+
+    async def _generate_drive_entity(
         self, client: httpx.AsyncClient
     ) -> AsyncGenerator[OneDriveDriveEntity, None]:
-        """Generate OneDriveDriveEntity objects for each drive."""
-        async for drive_obj in self._list_drives(client):
-            yield OneDriveDriveEntity(
-                entity_id=drive_obj["id"],
-                breadcrumbs=[],  # top-level entity
-                drive_type=drive_obj.get("driveType"),
-                owner=drive_obj.get("owner"),
-                quota=drive_obj.get("quota"),
-                created_at=drive_obj.get("createdDateTime"),
-                updated_at=drive_obj.get("lastModifiedDateTime"),
-            )
+        """Generate OneDriveDriveEntity for the user's drive(s)."""
+        drive_obj = await self._get_user_drive(client)
+
+        if not drive_obj:
+            # Fallback to app folder if no drive is accessible
+            drive_obj = await self._create_app_folder_drive()
+            logger.info("Using app folder access mode")
+
+        logger.info(f"Drive: {drive_obj}")
+
+        yield OneDriveDriveEntity(
+            entity_id=drive_obj["id"],
+            breadcrumbs=[],  # top-level entity
+            drive_type=drive_obj.get("driveType"),
+            owner=drive_obj.get("owner"),
+            quota=drive_obj.get("quota"),
+            created_at=drive_obj.get("createdDateTime"),
+            updated_at=drive_obj.get("lastModifiedDateTime"),
+        )
 
     async def _list_drive_items(
         self,
         client: httpx.AsyncClient,
         drive_id: str,
-        initial_url: Optional[str] = None,
+        folder_id: Optional[str] = None,
     ) -> AsyncGenerator[Dict, None]:
-        """List (recursively) all items within a given drive using a BFS approach.
+        """List items in a drive using pagination.
 
-        If initial_url is None, we start from the root children:
-          GET /drives/{drive_id}/root/children
-
-        For each folder, we enqueue its children URL to explore deeper.
-
-        Yields each DriveItem dict as we discover it.
-        Uses @odata.nextLink for paging within each folder.
+        Args:
+            client: HTTP client
+            drive_id: ID of the drive
+            folder_id: ID of specific folder, or None for root
         """
-        if not initial_url:
-            initial_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/root/children"
+        # Handle app folder access
+        if drive_id == "appfolder":
+            url = "https://graph.microsoft.com/v1.0/me/drive/special/approot/children"
+        elif folder_id:
+            url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{folder_id}/children"
+        else:
+            url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/root/children"
 
-        # Queue of folder-listing URLs to visit (BFS). Start with the root children:
-        queue = deque([initial_url])
+        params = {
+            "$top": 100,
+            "$select": (
+                "id,name,size,createdDateTime,lastModifiedDateTime,"
+                "file,folder,parentReference,webUrl"
+            ),
+        }
 
-        while queue:
-            url = queue.popleft()
+        try:
+            while url:
+                data = await self._get_with_auth(client, url, params=params)
+
+                for item in data.get("value", []):
+                    logger.info(f"DriveItem: {item}")
+                    yield item
+
+                # Handle pagination using @odata.nextLink
+                url = data.get("@odata.nextLink")
+                if url:
+                    params = None  # nextLink already includes parameters
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 403:
+                logger.warning(f"Access denied to folder {folder_id}, skipping")
+                return
+            elif e.response.status_code == 404:
+                logger.warning(f"Folder {folder_id} not found, skipping")
+                return
+            else:
+                raise
+
+    async def _get_download_url(
+        self, client: httpx.AsyncClient, drive_id: str, item_id: str
+    ) -> Optional[str]:
+        """Get the download URL for a specific file item.
+
+        The @microsoft.graph.downloadUrl is only available when fetching individual items.
+        """
+        try:
+            url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{item_id}"
             data = await self._get_with_auth(client, url)
-            for item in data.get("value", []):
-                # Yield the current item
-                yield item
-                # If it's a folder, push its children URL to queue
-                if "folder" in item:
-                    folder_children_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{item['id']}/children"
-                    queue.append(folder_children_url)
+            return data.get("@microsoft.graph.downloadUrl")
+        except Exception as e:
+            logger.error(f"Failed to get download URL for item {item_id}: {e}")
+            return None
 
-            # If there's a nextLink for paginated results in the current folder
-            next_link = data.get("@odata.nextLink")
-            if next_link:
-                queue.append(next_link)
+    async def _list_all_drive_items_recursively(
+        self,
+        client: httpx.AsyncClient,
+        drive_id: str,
+    ) -> AsyncGenerator[Dict, None]:
+        """Recursively list all items in a drive using BFS approach."""
+        # Queue of folder IDs to process (None = root folder)
+        folder_queue = deque([None])
+        processed_folders = set()  # Avoid infinite loops
+
+        while folder_queue:
+            current_folder_id = folder_queue.popleft()
+
+            # Skip if we've already processed this folder
+            if current_folder_id in processed_folders:
+                continue
+            processed_folders.add(current_folder_id)
+
+            try:
+                async for item in self._list_drive_items(client, drive_id, current_folder_id):
+                    yield item
+
+                    # If this item is a folder, add it to the queue for processing
+                    if "folder" in item and len(folder_queue) < 100:  # Limit queue size
+                        folder_queue.append(item["id"])
+            except Exception as e:
+                logger.error(f"Error processing folder {current_folder_id}: {e}")
+                continue
+
+    def _build_file_entity(
+        self, item: Dict, drive_name: str, drive_id: str, download_url: Optional[str] = None
+    ) -> Optional[OneDriveDriveItemEntity]:
+        """Build a OneDriveDriveItemEntity from a Graph API DriveItem response.
+
+        Returns None for items that should be skipped.
+        """
+        # Skip if this is a folder without downloadable content
+        if "folder" in item:
+            logger.info(f"Skipping folder: {item.get('name', 'Untitled')}")
+            return None
+
+        # Skip if no download URL provided
+        if not download_url:
+            logger.warning(f"No download URL for file: {item.get('name', 'Untitled')}")
+            return None
+
+        # Create drive breadcrumb
+        drive_breadcrumb = Breadcrumb(entity_id=drive_id, name=drive_name, type="drive")
+
+        # Extract file information
+        file_info = item.get("file", {})
+        parent_ref = item.get("parentReference", {})
+
+        entity = OneDriveDriveItemEntity(
+            entity_id=item["id"],
+            breadcrumbs=[drive_breadcrumb],
+            name=item.get("name"),
+            description=None,  # Not provided in basic listing
+            file=file_info,
+            folder=item.get("folder"),
+            parent_reference=parent_ref,
+            etag=item.get("eTag"),
+            ctag=item.get("cTag"),
+            created_at=item.get("createdDateTime"),
+            updated_at=item.get("lastModifiedDateTime"),
+            size=item.get("size"),
+            web_url=item.get("webUrl"),
+            # Add required FileEntity fields
+            file_id=item["id"],  # Use the OneDrive item ID
+            download_url=download_url,  # The download URL we fetched
+            mime_type=file_info.get("mimeType"),  # Extract MIME type from file info
+        )
+
+        # Add additional properties for file processing
+        entity.total_size = item.get("size", 0)
+
+        return entity
 
     async def _generate_drive_item_entities(
         self, client: httpx.AsyncClient, drive_id: str, drive_name: str
-    ) -> AsyncGenerator[OneDriveDriveItemEntity, None]:
-        """For the specified drive, yield a OneDriveDriveItemEntity for each item.
+    ) -> AsyncGenerator[ChunkEntity, None]:
+        """Generate OneDriveDriveItemEntity objects for files in the drive."""
+        file_count = 0
+        async for item in self._list_all_drive_items_recursively(client, drive_id):
+            try:
+                # Skip folders early
+                if "folder" in item:
+                    continue
 
-        We recursively enumerate folders and files.
-        """
-        # Create a drive breadcrumb for top-level (similar to Google Drive's approach)
-        drive_breadcrumb = Breadcrumb(entity_id=drive_id, name=drive_name, type="drive")
+                # Fetch the individual item to get download URL
+                download_url = await self._get_download_url(client, drive_id, item["id"])
 
-        async for item in self._list_drive_items(client, drive_id):
-            # Build a entity for each item
-            # (Breadcrumbs can optionally be extended if you want each folder in path,
-            #  though here we only store drive-level breadcrumb for simplicity.)
-            yield OneDriveDriveItemEntity(
-                entity_id=item["id"],
-                breadcrumbs=[drive_breadcrumb],  # Minimal: just the drive-level
-                name=item.get("name"),
-                description=item.get("description"),  # Might be missing in many items
-                file=item.get("file"),
-                folder=item.get("folder"),
-                parent_reference=item.get("parentReference"),
-                etag=item.get("eTag"),
-                ctag=item.get("cTag"),
-                created_at=item.get("createdDateTime"),
-                updated_at=item.get("lastModifiedDateTime"),
-                size=item.get("size"),
-                web_url=item.get("webUrl"),
-            )
+                # Build the entity with the download URL
+                file_entity = self._build_file_entity(item, drive_name, drive_id, download_url)
 
-    async def generate_entities(self) -> AsyncGenerator[object, None]:
+                if not file_entity:
+                    continue
+
+                # Process the file entity (download and process content)
+                if file_entity.download_url:
+                    processed_entity = await self.process_file_entity(
+                        file_entity=file_entity, access_token=self.access_token
+                    )
+                    if processed_entity:
+                        yield processed_entity
+                        file_count += 1
+                        logger.info(f"Processed file {file_count}: {file_entity.name}")
+                else:
+                    logger.warning(f"No download URL available for {file_entity.name}")
+
+            except Exception as e:
+                logger.error(f"Failed to process item {item.get('name', 'unknown')}: {str(e)}")
+                # Continue processing other items
+                continue
+
+        logger.info(f"Total files processed: {file_count}")
+
+    async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
         """Generate all OneDrive entities.
 
         Yields entities in the following order:
-          - OneDriveDriveEntity for each drive
-          - OneDriveDriveItemEntity for each item in each drive (folders/files).
+          - OneDriveDriveEntity for the user's drive
+          - OneDriveDriveItemEntity for each file in the drive
         """
         async with httpx.AsyncClient() as client:
-            # 1) Yield drive entities
-            #    Note: We'll also collect them in memory to enumerate items from each drive
-            drives = []
-            async for drive_entity in self._generate_drive_entities(client):
-                yield drive_entity
-                drives.append(drive_entity)
+            # 1) Generate drive entity
+            drive_entity = None
+            async for drive in self._generate_drive_entity(client):
+                yield drive
+                drive_entity = drive
+                break  # Only one drive for personal OneDrive
 
-            # 2) For each drive, yield item entities
-            for drive_entity in drives:
-                drive_id = drive_entity.entity_id
-                drive_name = drive_entity.drive_type or drive_entity.entity_id  # fallback
-                async for item_entity in self._generate_drive_item_entities(
-                    client, drive_id, drive_name
-                ):
-                    yield item_entity
+            if not drive_entity:
+                logger.error("No drive found for user")
+                return
+
+            # 2) Generate file entities for the drive
+            drive_id = drive_entity.entity_id
+            drive_name = drive_entity.drive_type or "OneDrive"
+
+            logger.info(f"Starting to process files from drive: {drive_id} ({drive_name})")
+
+            async for file_entity in self._generate_drive_item_entities(
+                client, drive_id, drive_name
+            ):
+                yield file_entity

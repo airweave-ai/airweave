@@ -17,6 +17,7 @@ export const CONNECTION_ERROR_STORAGE_KEY = "airweave_connection_error";
  */
 export interface ErrorDetails {
     serviceName?: string;
+    sourceShortName?: string;    // Add source short name for proper image display
     errorMessage: string;
     errorDetails?: string;
     timestamp: number;

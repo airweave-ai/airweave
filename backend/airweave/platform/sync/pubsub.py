@@ -133,7 +133,9 @@ class SyncProgress:
         """Convert progress to a dictionary."""
         return self.stats.model_dump()
 
-    async def update_entities_encountered(self, entities_encountered: dict[str, set[str]]) -> None:
+    async def update_entities_encountered_count(
+        self, entities_encountered: dict[str, set[str]]
+    ) -> None:
         """Update the entities encountered tracking."""
         self.stats.entities_encountered = {
             entity_type: len(entity_ids) for entity_type, entity_ids in entities_encountered.items()

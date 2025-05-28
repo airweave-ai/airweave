@@ -67,6 +67,9 @@ class ConfluencePageEntity(FileEntity):
     updated_at: Optional[datetime] = Field(
         None, description="Timestamp when the page was last updated."
     )
+    metadata: Optional[Dict[str, Any]] = Field(
+        default_factory=dict, description="Additional metadata about the page"
+    )
 
 
 class ConfluenceBlogPostEntity(ChunkEntity):

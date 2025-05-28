@@ -16,7 +16,6 @@ from airweave.platform.auth.schemas import (
     OAuth2Settings,
     OAuth2WithRefreshRotatingSettings,
     OAuth2WithRefreshSettings,
-    TrelloAuthSettings,
 )
 
 
@@ -57,7 +56,6 @@ class IntegrationSettings:
         auth_type = config.get("auth_type", "")
         mapping = {
             AuthType.oauth2: OAuth2Settings,
-            AuthType.trello_auth: TrelloAuthSettings,
             AuthType.api_key: APIKeyAuthSettings,
             AuthType.oauth2_with_refresh: OAuth2WithRefreshSettings,
             AuthType.oauth2_with_refresh_rotating: OAuth2WithRefreshRotatingSettings,

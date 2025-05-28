@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "airweave-search-local": {
+      "command": "node",
+      "args": ["/absolute/path/to/airweave/mcp/build/index.js"],
+      "env": {
+        "AIRWEAVE_API_KEY": "your-local-api-key",
+        "AIRWEAVE_COLLECTION": "your-collection-readable-id",
+        "AIRWEAVE_BASE_URL": "http://localhost:8001"
+      }
+    }
+  }
+}

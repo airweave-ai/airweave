@@ -37,6 +37,40 @@ from airweave.platform.entities.confluence import (
 from airweave.platform.sources._base import BaseSource
 
 
+class AsyncIteratorWrapper:
+    """Wrapper to convert a sync iterator to an async one."""
+
+    def __init__(self, sync_iter):
+        """Initialize with a synchronous iterator.
+
+        Args:
+            sync_iter: A synchronous iterator to wrap
+        """
+        self.sync_iter = sync_iter
+
+    def __aiter__(self):
+        """Return self as an async iterator.
+
+        Returns:
+            The async iterator instance
+        """
+        return self
+
+    async def __anext__(self):
+        """Get the next item asynchronously.
+
+        Returns:
+            The next item from the iterator
+
+        Raises:
+            StopAsyncIteration: When the iterator is exhausted
+        """
+        try:
+            return next(self.sync_iter)
+        except StopIteration as err:
+            raise StopAsyncIteration from err
+
+
 @source(
     name="Confluence",
     short_name="confluence",
@@ -212,50 +246,75 @@ class ConfluenceSource(BaseSource):
     async def _generate_page_entities(
         self, client: httpx.AsyncClient, space_id: str, space_breadcrumb: Breadcrumb
     ) -> AsyncGenerator[ConfluencePageEntity, None]:
-        """Generate ConfluencePageEntity objects for a space (optionally also retrieve children).
-
-        This method generates ConfluencePageEntity objects for a space (optionally also retrieve
-            children).
-
-        Source: https://developer.atlassian.com/cloud/confluence/rest/v2/api-group-page/#api-spaces-id-pages-get
-
-        Args:
-        -----
-            client: The HTTP client to use for the request
-            space_id: The id of the space to retrieve pages from
-            space_breadcrumb: The breadcrumb for the space
-
-        Returns:
-        --------
-            AsyncGenerator[ConfluencePageEntity, None]: An asynchronous generator of
-                ConfluencePageEntity objects
-        """
+        """Generate ConfluencePageEntity objects for a space."""
         limit = 50
         url = f"{self.base_url}/wiki/api/v2/spaces/{space_id}/pages?limit={limit}"
+
         while url:
             data = await self._get_with_auth(client, url)
+
             for page in data.get("results", []):
                 page_breadcrumbs = [space_breadcrumb]
                 page_id = page["id"]
+
+                # Get detailed page content with expanded body
+                page_detail_url = f"{self.base_url}/wiki/api/v2/pages/{page_id}?body-format=storage"
+                page_details = await self._get_with_auth(client, page_detail_url)
+
+                # Extract full body content
+                body_content = page_details.get("body", {}).get("storage", {}).get("value", "")
+
+                # Add ".html" extension to the filename
+                page_title = page_details.get("title", "Untitled Page")
+                filename_with_extension = f"{page_title}.html"
+
+                # Create download URL for content extraction
                 download_url = f"{self.base_url}/wiki/api/v2/pages/{page_id}"
-                yield ConfluencePageEntity(
+
+                file_entity = ConfluencePageEntity(
                     entity_id=page["id"],
                     breadcrumbs=page_breadcrumbs,
                     content_id=page["id"],
-                    title=page.get("title"),
-                    space_id=page.get("spaceId"),
-                    body=page.get("body", {}).get("storage", {}).get("value"),
-                    version=page.get("version", {}).get("number"),
-                    status=page.get("status"),
-                    created_at=page.get("createdAt"),
-                    updated_at=page.get("updatedAt"),
+                    title=page_details.get("title"),
+                    space_id=page_details.get("space", {}).get("id"),
+                    body=body_content,  # Use the detailed body content
+                    version=page_details.get("version", {}).get("number"),
+                    status=page_details.get("status"),
+                    created_at=page_details.get("createdAt"),
+                    updated_at=page_details.get("updatedAt"),
                     file_id=page["id"],
-                    name=page.get("title", "Untitled Page"),
+                    name=filename_with_extension,
+                    mime_type="text/html",
                     download_url=download_url,
                 )
-                # Optionally fetch children or comments for each page
-                # or recursively fetch child pages if you need deeper nesting.
 
+                # Create HTML file content with full body
+                html_content = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>{page_details.get("title", "")}</title>
+                    <meta charset="UTF-8">
+                </head>
+                <body>
+                    {body_content}
+                </body>
+                </html>
+                """
+
+                # Use a memory stream instead of directly downloading
+                file_stream = AsyncIteratorWrapper(iter([html_content.encode("utf-8")]))
+
+                # Process the entity with the custom stream
+                processed_entity = await self.process_file_entity_with_content(
+                    file_entity=file_entity,
+                    content_stream=file_stream,
+                    metadata={"source": "confluence", "page_id": page["id"]},
+                )
+
+                yield processed_entity
+
+            # Handle pagination
             next_link = data.get("_links", {}).get("next")
             url = f"{self.base_url}{next_link}" if next_link else None
 

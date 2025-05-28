@@ -136,11 +136,30 @@ class BaseEntity(BaseModel):
         # Start with the full model dump
         data = self.model_dump()
 
-        # Remove excluded fields
-        if exclude_fields:
-            for field in exclude_fields:
-                if field in data:
-                    del data[field]
+        # Helper function to recursively clean nested structures
+        def clean_nested_data(obj, exclude_set):
+            if isinstance(obj, dict):
+                # Remove excluded fields and recursively clean remaining values
+                cleaned = {}
+                for key, value in obj.items():
+                    if key not in exclude_set:
+                        cleaned[key] = clean_nested_data(value, exclude_set)
+                return cleaned
+            elif isinstance(obj, list):
+                # Recursively clean each item in the list
+                return [clean_nested_data(item, exclude_set) for item in obj]
+            elif isinstance(obj, UUID):
+                # Convert UUID objects to strings
+                return str(obj)
+            else:
+                # Return primitive types as-is
+                return obj
+
+        # Create set of fields to exclude for faster lookup
+        exclude_set = set(exclude_fields) if exclude_fields else set()
+
+        # Recursively clean the data
+        data = clean_nested_data(data, exclude_set)
 
         # Fields that should remain as objects and not be JSON serialized
         object_fields = {"breadcrumbs"}
@@ -150,7 +169,7 @@ class BaseEntity(BaseModel):
             if key not in object_fields and isinstance(value, (dict, list)):
                 data[key] = json.dumps(value)
 
-        return data
+            return data
 
 
 class ChunkEntity(BaseEntity):
@@ -160,6 +179,8 @@ class ChunkEntity(BaseEntity):
     default_exclude_fields: List[str] = [
         "vector",  # Exclude the vector itself from the payload
         "sync_job_id",
+        "sync_id",
+        "db_entity_id",
         "sync_metadata",
         "parent_entity_id",
         "default_exclude_fields",

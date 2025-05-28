@@ -187,15 +187,3 @@ class TodoistConfig(SourceConfig):
     """Todoist configuration schema."""
 
     pass
-
-
-class TrelloConfig(SourceConfig):
-    """Trello configuration schema."""
-
-    pass
-
-
-class ZenDeskConfig(SourceConfig):
-    """ZenDesk configuration schema."""
-
-    pass
