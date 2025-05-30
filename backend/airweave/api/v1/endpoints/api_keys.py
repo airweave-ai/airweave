@@ -111,6 +111,19 @@ async def read_api_keys(
     limit: int = 100,
     user: schemas.User = Depends(deps.get_user),
 ) -> list[schemas.APIKey]:
+    """Retrieve all API keys for the current user.
+
+    Args:
+    ----
+        db (AsyncSession): The database session.
+        skip (int): Number of records to skip for pagination.
+        limit (int): Maximum number of records to return.
+        user (schemas.User): The current user.
+
+    Returns:
+    -------
+        List[schemas.APIKey]: A list of API keys with decrypted keys.
+    """
     try:
         api_keys = await crud.api_key.get_all_for_user(
             db=db, skip=skip, limit=limit, current_user=user
