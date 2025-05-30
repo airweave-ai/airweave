@@ -111,48 +111,45 @@ async def read_api_keys(
     limit: int = 100,
     user: schemas.User = Depends(deps.get_user),
 ) -> list[schemas.APIKey]:
-    """Retrieve all API keys for the current user.
-
-    Args:
-    ----
-        db (AsyncSession): The database session.
-        skip (int): Number of records to skip for pagination.
-        limit (int): Maximum number of records to return.
-        user (schemas.User): The current user.
-
-    Returns:
-    -------
-        List[schemas.APIKey]: A list of API keys with decrypted keys.
-    """
-    api_keys = await crud.api_key.get_all_for_user(db=db, skip=skip, limit=limit, current_user=user)
+    try:
+        api_keys = await crud.api_key.get_all_for_user(
+            db=db, skip=skip, limit=limit, current_user=user
+        )
         
-    result = []
+        result = []
         
-    for i, api_key in enumerate(api_keys):
-        try:
-            # Try to decrypt the key
-            decrypted_data = credentials.decrypt(api_key.encrypted_key)
-            decrypted_key = decrypted_data["key"]
+        for i, api_key in enumerate(api_keys):
+            try:
+                # Try to decrypt the key
+                decrypted_data = credentials.decrypt(api_key.encrypted_key)
+                decrypted_key = decrypted_data["key"]
 
-            api_key_data = {
-                "id": api_key.id,
-                "organization": user.organization_id,
-                "created_at": api_key.created_at,
-                "modified_at": api_key.modified_at,
-                "last_used_date": getattr(api_key, "last_used_date", None),
-                "expiration_date": api_key.expiration_date,
-                "created_by_email": getattr(api_key, "created_by_email", "unknown"),
-                "modified_by_email": getattr(api_key, "modified_by_email", "unknown"),
-                "decrypted_key": decrypted_key,
-            }
-                    
-            result.append(schemas.APIKey(**api_key_data))
+                api_key_data = {
+                    "id": api_key.id,
+                    "organization": user.organization_id,
+                    "created_at": api_key.created_at,
+                    "modified_at": api_key.modified_at,
+                    "last_used_date": getattr(api_key, "last_used_date", None),
+                    "expiration_date": api_key.expiration_date,
+                    "created_by_email": getattr(api_key, "created_by_email", "unknown"),
+                    "modified_by_email": getattr(api_key, "modified_by_email", "unknown"),
+                    "decrypted_key": decrypted_key,
+                }
                 
-        except Exception as decrypt_error:
-            # if is there any decryption error and skip this 
-            continue
-        
+                result.append(schemas.APIKey(**api_key_data))
+                
+            except Exception as decrypt_error:
+                # if is there any decryption error and skip this 
+                continue
         return result
+        
+    except Exception as e:
+        print(f"Error in read_api_keys: {type(e).__name__}: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail="Error retrieving API keys"
+        )
+
 
 
 @router.delete("/", response_model=schemas.APIKey)
