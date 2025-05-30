@@ -125,29 +125,34 @@ async def read_api_keys(
         List[schemas.APIKey]: A list of API keys with decrypted keys.
     """
     api_keys = await crud.api_key.get_all_for_user(db=db, skip=skip, limit=limit, current_user=user)
-
+        
     result = []
-    for api_key in api_keys:
-        # Decrypt each key
-        decrypted_data = credentials.decrypt(api_key.encrypted_key)
-        decrypted_key = decrypted_data["key"]
+        
+    for i, api_key in enumerate(api_keys):
+        try:
+            # Try to decrypt the key
+            decrypted_data = credentials.decrypt(api_key.encrypted_key)
+            decrypted_key = decrypted_data["key"]
 
-        api_key_data = {
-            "id": api_key.id,
-            "organization": user.organization_id,
-            "created_at": api_key.created_at,
-            "modified_at": api_key.modified_at,
-            "last_used_date": api_key.last_used_date
-            if hasattr(api_key, "last_used_date")
-            else None,
-            "expiration_date": api_key.expiration_date,
-            "created_by_email": api_key.created_by_email,
-            "modified_by_email": api_key.modified_by_email,
-            "decrypted_key": decrypted_key,
-        }
-        result.append(schemas.APIKey(**api_key_data))
-
-    return result
+            api_key_data = {
+                "id": api_key.id,
+                "organization": user.organization_id,
+                "created_at": api_key.created_at,
+                "modified_at": api_key.modified_at,
+                "last_used_date": getattr(api_key, "last_used_date", None),
+                "expiration_date": api_key.expiration_date,
+                "created_by_email": getattr(api_key, "created_by_email", "unknown"),
+                "modified_by_email": getattr(api_key, "modified_by_email", "unknown"),
+                "decrypted_key": decrypted_key,
+            }
+                    
+            result.append(schemas.APIKey(**api_key_data))
+                
+        except Exception as decrypt_error:
+            # if is there any decryption error and skip this 
+            continue
+        
+        return result
 
 
 @router.delete("/", response_model=schemas.APIKey)
