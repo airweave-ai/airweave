@@ -3,12 +3,15 @@
 import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.util.concurrency import greenlet_spawn
 
 from airweave import crud, schemas
 from airweave.core.config import settings
 from airweave.db.init_db_native import init_db_with_native_connections
 
-
+async def init_db_with_greenlet(db: AsyncSession):
+    await greenlet_spawn(init_db, db)
+    
 async def init_db(db: AsyncSession) -> None:
     """Initialize the database with the first organization and superuser.
 
