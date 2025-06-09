@@ -1,10 +1,9 @@
 """Module for data synchronization with improved architecture."""
 
-import asyncio
 from datetime import datetime
+from typing import Optional
 
 from airweave import schemas
-from airweave.core.logging import logger
 from airweave.core.shared_models import SyncJobStatus
 from airweave.core.sync_job_service import sync_job_service
 from airweave.platform.entities._base import BaseEntity
@@ -14,9 +13,12 @@ from airweave.platform.sync.stream import AsyncSourceStream
 from airweave.platform.sync.worker_pool import AsyncWorkerPool
 
 
-# Refactored Orchestrator
 class SyncOrchestrator:
-    """Main service for data synchronization with improved architecture."""
+    """Orchestrates data synchronization from sources to destinations.
+
+    Uses a hybrid approach that allows limited pending tasks (2x workers)
+    to handle both fast and slow sources efficiently.
+    """
 
     def __init__(
         self,
@@ -24,216 +26,182 @@ class SyncOrchestrator:
         worker_pool: AsyncWorkerPool,
         sync_context: SyncContext,
     ):
-        """Initialize the sync orchestrator with provided components.
+        """Initialize the sync orchestrator.
 
         Args:
-            entity_processor: The entity processor to use
-            worker_pool: The worker pool to use
-            sync_context: The sync context with all required resources
+            entity_processor: Processes entities through transformation pipeline
+            worker_pool: Manages concurrent task execution with semaphore control
+            sync_context: Contains all resources needed for synchronization
         """
-        self.worker_pool = worker_pool
         self.entity_processor = entity_processor
+        self.worker_pool = worker_pool
         self.sync_context = sync_context
 
+        # Increased queue size for better buffering of fast sources
+        self.stream_buffer_size = 100
+
+        # Allow up to 2x workers as pending tasks
+        # This provides good performance for fast sources while limiting memory usage
+        self.max_pending_factor = 2.0
+
     async def run(self) -> schemas.Sync:
-        """Run a sync with full async processing."""
+        """Execute the synchronization process.
+
+        Returns:
+            The sync object after completion
+
+        Raises:
+            Exception: If sync fails, after updating job status
+        """
         try:
-            self.sync_context.logger.info(
-                f"Starting sync job {self.sync_context.sync_job.id} for sync "
-                f"{self.sync_context.sync.id}"
-            )
+            await self._start_sync()
+            await self._process_entities()
+            await self._complete_sync()
 
-            # Mark job as started
-            await sync_job_service.update_status(
-                sync_job_id=self.sync_context.sync_job.id,
-                status=SyncJobStatus.IN_PROGRESS,
-                current_user=self.sync_context.current_user,
-                started_at=datetime.now(),
-            )
-
-            # Get source node from DAG
-            source_node = self.sync_context.dag.get_source_node()
-
-            # Process entity stream
-            await self._process_entity_stream(source_node)
-
-            # Use sync_job_service to update job status
-            await sync_job_service.update_status(
-                sync_job_id=self.sync_context.sync_job.id,
-                status=SyncJobStatus.COMPLETED,
-                current_user=self.sync_context.current_user,
-                completed_at=datetime.now(),
-                stats=(
-                    self.sync_context.progress.stats
-                    if hasattr(self.sync_context.progress, "stats")
-                    else None
-                ),
-            )
-
-            self.sync_context.logger.info(
-                f"Completed sync job {self.sync_context.sync_job.id} successfully"
-            )
             return self.sync_context.sync
 
         except Exception as e:
-            self.sync_context.logger.error(f"Error during sync: {e}")
-
-            # Use sync_job_service to update job status
-            await sync_job_service.update_status(
-                sync_job_id=self.sync_context.sync_job.id,
-                status=SyncJobStatus.FAILED,
-                current_user=self.sync_context.current_user,
-                error=str(e),
-                failed_at=datetime.now(),
-                stats=(
-                    self.sync_context.progress.stats
-                    if hasattr(self.sync_context.progress, "stats")
-                    else None
-                ),
-            )
-
+            await self._handle_sync_failure(e)
             raise
 
-    async def _process_entity_stream(self, source_node) -> None:
-        """Process stream of entities from source with buffering for true parallelism."""
+    async def _start_sync(self) -> None:
+        """Initialize sync job and update status to in-progress."""
         self.sync_context.logger.info(
-            f"Starting entity stream processing from source {self.sync_context.source._name}"
+            f"Starting sync job {self.sync_context.sync_job.id} for sync "
+            f"{self.sync_context.sync.id}"
         )
 
-        # Create entity buffer for producer/consumer pattern
-        entity_buffer = asyncio.Queue(maxsize=10)
-        producer_error_ref = {"error": None}
-
-        # Create tasks
-        producer_task = asyncio.create_task(self._run_producer(entity_buffer, producer_error_ref))
-
-        # Increased consumers to process faster
-        num_consumers = min(20, self.worker_pool.max_workers // 5)  # Was // 10
-        consumer_tasks = [
-            asyncio.create_task(self._run_consumer(entity_buffer, source_node))
-            for _ in range(num_consumers)
-        ]
-
-        logger.info(f"🚀 ORCHESTRATOR_START Started 1 producer and {num_consumers} consumers")
-
-        # Run and handle errors
-        error_occurred = await self._wait_for_tasks(
-            producer_task, consumer_tasks, producer_error_ref
+        await sync_job_service.update_status(
+            sync_job_id=self.sync_context.sync_job.id,
+            status=SyncJobStatus.IN_PROGRESS,
+            current_user=self.sync_context.current_user,
+            started_at=datetime.now(),
         )
 
-        # Finalize progress
-        await self.sync_context.progress.finalize(is_complete=not error_occurred)
+    async def _process_entities(self) -> None:
+        """Process entities from source with limited pending tasks.
 
-    async def _run_producer(self, entity_buffer: asyncio.Queue, error_ref: dict) -> None:
-        """Producer task that fills the entity buffer."""
+        Uses a hybrid approach:
+        - AsyncSourceStream queue (100) for read-ahead buffering
+        - Limited pending tasks (2x workers) to prevent memory issues
+        - Throttling when approaching the pending task limit
+        """
+        source_node = self.sync_context.dag.get_source_node()
+
+        self.sync_context.logger.info(
+            f"Starting entity stream processing from source {self.sync_context.source._name} "
+            f"(buffer: {self.stream_buffer_size}, max pending: "
+            f"{int(self.worker_pool.max_workers * self.max_pending_factor)})"
+        )
+
+        # Track any errors that occur during streaming
+        stream_error: Optional[Exception] = None
+
         try:
             async with AsyncSourceStream(
                 self.sync_context.source.generate_entities(),
-                queue_size=100,  # Reduced from default 1000 to get entities flowing faster
+                queue_size=self.stream_buffer_size,
                 logger=self.sync_context.logger,
             ) as stream:
                 async for entity in stream.get_entities():
-                    logger.info(
-                        f"📨 PRODUCER_ENTITY_RECEIVED Entity: {entity.entity_id} "
-                        f"(type: {type(entity).__name__})"
-                    )
-                    await entity_buffer.put(entity)
-                    logger.info(
-                        f"📥 PRODUCER_BUFFERED Entity {entity.entity_id} "
-                        f"(buffer size: {entity_buffer.qsize()})"
-                    )
+                    await self._process_entity_with_throttling(entity, source_node)
+
         except Exception as e:
-            error_ref["error"] = e
-            self.sync_context.logger.error(f"Error in producer: {e}")
+            stream_error = e
+            self.sync_context.logger.error(f"Error during entity streaming: {e}")
             raise
+
         finally:
-            await entity_buffer.put(None)
-            logger.info("🏁 PRODUCER_COMPLETE Producer finished")
+            # Wait for all submitted tasks to complete
+            await self.worker_pool.wait_for_completion()
 
-    async def _run_consumer(self, entity_buffer: asyncio.Queue, source_node) -> None:
-        """Consumer task that processes entities from the buffer."""
-        while True:
-            entity = await entity_buffer.get()
+            # Finalize progress tracking
+            await self.sync_context.progress.finalize(is_complete=(stream_error is None))
 
-            if entity is None:
-                await entity_buffer.put(None)  # Put back for other consumers
-                break
+    async def _process_entity_with_throttling(self, entity: BaseEntity, source_node) -> None:
+        """Process entity with throttling based on pending tasks.
 
-            logger.info(
-                f"📤 CONSUMER_PROCESSING Entity: {entity.entity_id} "
-                f"(buffer size: {entity_buffer.qsize()})"
-            )
+        Implements intelligent throttling to prevent too many pending tasks
+        while allowing enough buffering for fast sources.
 
-            if getattr(entity, "should_skip", False):
-                logger.info(f"⏭️  CONSUMER_SKIP Entity: {entity.entity_id}")
-                await self.sync_context.progress.increment("skipped")
-                continue
+        Args:
+            entity: The entity to process
+            source_node: The source node from the DAG
+        """
+        # Handle skipped entities
+        if getattr(entity, "should_skip", False):
+            self.sync_context.logger.debug(f"Skipping entity: {entity.entity_id}")
+            await self.sync_context.progress.increment("skipped")
+            return
 
-            # Submit for processing
-            await self._submit_entity_with_throttling(entity, source_node)
+        # Apply throttling if needed
+        await self._apply_throttling()
 
-    async def _submit_entity_with_throttling(self, entity, source_node) -> None:
-        """Submit entity to worker pool with throttling."""
-        logger.info(
-            f"📤 CONSUMER_SUBMIT Submitting entity {entity.entity_id} "
-            f"to worker pool (pending: {len(self.worker_pool.pending_tasks)})"
-        )
-
+        # Submit entity for processing
         await self.worker_pool.submit(
-            self._process_single_entity,
+            self.entity_processor.process,
             entity=entity,
             source_node=source_node,
+            sync_context=self.sync_context,
         )
 
-        # Check throttling
-        current_pending = len(self.worker_pool.pending_tasks)
+    async def _apply_throttling(self) -> None:
+        """Throttle submission if too many tasks are pending.
 
-        # More aggressive throttling to prevent connection exhaustion
-        # Start throttling at 50% capacity instead of 80%
-        if current_pending >= self.worker_pool.max_workers * 0.5:
-            logger.info(
-                f"🚦 CONSUMER_THROTTLE High pending tasks ({current_pending}), slowing consumption"
+        Allows up to 2x workers as pending tasks to balance between:
+        - Fast sources: Can build up some backlog for efficiency
+        - Slow sources: Won't accumulate many pending tasks anyway
+        - Memory usage: Limited to reasonable bounds
+        """
+        pending_count = len(self.worker_pool.pending_tasks)
+        max_workers = self.worker_pool.max_workers
+        max_pending = int(max_workers * self.max_pending_factor)
+
+        # If we're at or above the limit, wait for some tasks to complete
+        if pending_count >= max_pending:
+            self.sync_context.logger.debug(
+                f"Throttling: {pending_count} pending tasks at limit of {max_pending}. "
+                f"Waiting for tasks to complete."
             )
-            # Wait longer to let tasks complete
-            await self.worker_pool.wait_for_batch(timeout=1.0)  # Was 0.1
 
-        # Hard limit - stop accepting new tasks if we're overwhelmed
-        if current_pending >= self.worker_pool.max_workers * 0.9:
-            logger.warning(
-                f"🛑 CONSUMER_PAUSE Too many pending tasks ({current_pending}), pausing consumption"
+            # Wait until we're below 90% of max to avoid constant throttling
+            target_pending = int(max_pending * 0.9)
+            while len(self.worker_pool.pending_tasks) > target_pending:
+                await self.worker_pool.wait_for_batch(timeout=0.5)
+
+            self.sync_context.logger.debug(
+                f"Throttling released: {len(self.worker_pool.pending_tasks)} pending tasks"
             )
-            await self.worker_pool.wait_for_batch(timeout=5.0)
 
-    async def _wait_for_tasks(self, producer_task, consumer_tasks, producer_error_ref) -> bool:
-        """Wait for tasks and handle errors."""
-        error_occurred = False
+    async def _complete_sync(self) -> None:
+        """Mark sync job as completed with final statistics."""
+        stats = getattr(self.sync_context.progress, "stats", None)
 
-        try:
-            await asyncio.gather(*consumer_tasks)
-            await producer_task
+        await sync_job_service.update_status(
+            sync_job_id=self.sync_context.sync_job.id,
+            status=SyncJobStatus.COMPLETED,
+            current_user=self.sync_context.current_user,
+            completed_at=datetime.now(),
+            stats=stats,
+        )
 
-            if producer_error_ref["error"]:
-                raise producer_error_ref["error"]
+        self.sync_context.logger.info(
+            f"Completed sync job {self.sync_context.sync_job.id} successfully. Stats: {stats}"
+        )
 
-            await self.worker_pool.wait_for_completion()
-            self.sync_context.logger.info("All entity processing tasks completed.")
+    async def _handle_sync_failure(self, error: Exception) -> None:
+        """Handle sync failure by updating job status with error details."""
+        self.sync_context.logger.error(
+            f"Sync job {self.sync_context.sync_job.id} failed: {error}", exc_info=True
+        )
 
-        except Exception as e:
-            self.sync_context.logger.error(f"Error during entity stream processing: {e}")
-            error_occurred = True
-            raise
-        finally:
-            producer_task.cancel()
-            for task in consumer_tasks:
-                task.cancel()
+        stats = getattr(self.sync_context.progress, "stats", None)
 
-        return error_occurred
-
-    async def _process_single_entity(self, entity: BaseEntity, source_node) -> None:
-        """Process a single entity through the pipeline."""
-        # Process the entity through the pipeline
-        # Database sessions are created on-demand inside the processor
-        # No try-catch needed here anymore - entity_processor handles all errors gracefully
-        await self.entity_processor.process(
-            entity=entity, source_node=source_node, sync_context=self.sync_context
+        await sync_job_service.update_status(
+            sync_job_id=self.sync_context.sync_job.id,
+            status=SyncJobStatus.FAILED,
+            current_user=self.sync_context.current_user,
+            error=str(error),
+            failed_at=datetime.now(),
+            stats=stats,
         )
