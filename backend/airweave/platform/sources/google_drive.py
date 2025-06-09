@@ -230,7 +230,7 @@ class GoogleDriveSource(BaseSource):
         drive_id: Optional[str] = None,
         context: str = "",
     ) -> AsyncGenerator[ChunkEntity, None]:
-        """Generate file entities from a file listing."""
+        """Generate file entities with lazy download."""
         async for file_obj in self._list_files(
             client, corpora, include_all_drives, drive_id, context
         ):
@@ -239,19 +239,32 @@ class GoogleDriveSource(BaseSource):
                 if not await self._should_include_file(client, file_obj):
                     continue  # Skip this file
 
-                # Get file entity (might be None for trashed files)
+                # Get file entity (skeleton only - no download yet)
                 file_entity = self._build_file_entity(file_obj)
 
                 # Skip if the entity was None (likely a trashed file)
                 if not file_entity:
                     continue
 
-                # Process the entity if it has a download URL
+                # Add lazy download operation if file has a download URL
                 if file_entity.download_url:
-                    processed_entity = await self.process_file_entity(
-                        file_entity=file_entity, access_token=self.access_token
+                    logger.info(
+                        f"🦴 LAZY_SKELETON Creating skeleton entity for file: {file_entity.name}"
                     )
-                    yield processed_entity
+
+                    # Add lazy operation for file download
+                    file_entity.add_lazy_operation(
+                        "download_file",
+                        self._create_file_downloader(self.access_token),
+                        file_entity,
+                    )
+
+                    logger.info(
+                        f"🔄 LAZY_OPERATION Added download operation for file: {file_entity.name}"
+                    )
+
+                    # Yield skeleton entity immediately (no download blocking)
+                    yield file_entity
                 else:
                     # This should never happen now that we return None for files without URLs
                     logger.warning(f"No download URL available for {file_entity.name}")
@@ -262,6 +275,64 @@ class GoogleDriveSource(BaseSource):
                     f"{error_context}: {str(e)}\n"
                 )
                 raise
+
+    def _create_file_downloader(self, access_token: str):
+        """Create a self-contained file downloader for lazy execution."""
+
+        async def download_file(file_entity) -> Optional[Any]:
+            """Download file content in the worker."""
+            try:
+                # Import required modules in the worker context
+                from airweave.core.logging import logger
+                from airweave.platform.file_handling.file_manager import file_manager
+
+                logger.info(
+                    f"🔽 LAZY_DOWNLOAD Starting download for file: "
+                    f"{file_entity.name} (ID: {file_entity.file_id})"
+                )
+
+                # Check mime type to determine if we need special headers
+                headers = None
+                if file_entity.mime_type and file_entity.mime_type.startswith(
+                    "application/vnd.google-apps."
+                ):
+                    # Google Docs export - already has export URL set
+                    logger.info(f"Exporting Google Doc: {file_entity.name} as PDF")
+
+                # Create stream with authentication
+                file_stream = file_manager.stream_file_from_url(
+                    file_entity.download_url, access_token=access_token, headers=headers
+                )
+
+                # Process entity (this will download and store the file)
+                processed_entity = await file_manager.handle_file_entity(
+                    stream=file_stream, entity=file_entity
+                )
+
+                # Check if file was skipped (too large, etc.)
+                if hasattr(processed_entity, "should_skip") and processed_entity.should_skip:
+                    error_msg = "Unknown reason"
+                    if hasattr(processed_entity, "metadata") and processed_entity.metadata:
+                        error_msg = processed_entity.metadata.get("error", "Unknown reason")
+                    logger.warning(
+                        f"❌ LAZY_DOWNLOAD File skipped - {processed_entity.name}: {error_msg}"
+                    )
+                    return processed_entity  # Return it anyway so the entity knows it was skipped
+
+                logger.info(
+                    f"✅ LAZY_DOWNLOAD Completed download for file: {file_entity.name} "
+                    f"(local_path: {getattr(processed_entity, 'local_path', 'None')})"
+                )
+                return processed_entity
+
+            except Exception as e:
+                logger.error(
+                    f"❌ LAZY_DOWNLOAD Error downloading file {file_entity.name}: {str(e)}"
+                )
+                # Return None on error - the entity will remain without local_path
+                return None
+
+        return download_file
 
     async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
         """Generate all Google Drive entities.

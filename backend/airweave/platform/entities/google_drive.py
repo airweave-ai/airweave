@@ -18,6 +18,7 @@ from typing import Any, List, Optional
 from pydantic import Field
 
 from airweave.platform.entities._base import ChunkEntity, FileEntity
+from airweave.platform.entities._lazy import LazyEntity
 
 
 class GoogleDriveDriveEntity(ChunkEntity):
@@ -44,8 +45,8 @@ class GoogleDriveDriveEntity(ChunkEntity):
     )
 
 
-class GoogleDriveFileEntity(FileEntity):
-    """Schema for a File resource (in a user's or shared drive).
+class GoogleDriveFileEntity(FileEntity, LazyEntity):
+    """Schema for a File resource (in a user's or shared drive) with lazy download support.
 
     Reference:
       https://developers.google.com/drive/api/v3/reference/files
@@ -81,9 +82,32 @@ class GoogleDriveFileEntity(FileEntity):
         None, description="MD5 checksum for the content of the file."
     )
 
+    def __init__(self, **data):
+        """Initialize GoogleDriveFileEntity ensuring LazyEntity setup."""
+        super().__init__(**data)
+        # Ensure LazyEntity initialization
+        if not hasattr(self, "_lazy_operations"):
+            self._lazy_operations = {}
+        if not hasattr(self, "_lazy_results"):
+            self._lazy_results = {}
+        if not hasattr(self, "_is_materialized"):
+            self._is_materialized = False
+
     def model_dump(self, *args, **kwargs) -> dict[str, Any]:
         """Override model_dump to convert size to string."""
         data = super().model_dump(*args, **kwargs)
         if data.get("size") is not None:
             data["size"] = str(data["size"])
         return data
+
+    async def _apply_results(self) -> None:
+        """Apply lazy operation results to entity fields."""
+        if "download_file" in self._lazy_results:
+            result = self._lazy_results["download_file"]
+            # The result should be the processed entity with local_path set
+            if result and hasattr(result, "local_path"):
+                self.local_path = result.local_path
+                if hasattr(result, "metadata"):
+                    self.metadata = result.metadata
+                if hasattr(result, "should_skip"):
+                    self.should_skip = result.should_skip
