@@ -1,6 +1,7 @@
 """API endpoints for managing API keys."""
 
 from uuid import UUID
+import logging
 
 from fastapi import Body, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -125,12 +126,17 @@ async def read_api_keys(
         List[schemas.APIKey]: A list of API keys with decrypted keys.
     """
     api_keys = await crud.api_key.get_all_for_user(db=db, skip=skip, limit=limit, current_user=user)
-
+    
     result = []
+    invalid_keys = []  # New: Track invalid keys
     for api_key in api_keys:
-        # Decrypt each key
-        decrypted_data = credentials.decrypt(api_key.encrypted_key)
-        decrypted_key = decrypted_data["key"]
+        try:
+            decrypted_data = credentials.decrypt(api_key.encrypted_key)
+            decrypted_key = decrypted_data["key"]
+        except Exception as e:
+            invalid_keys.append(api_key.id)  # New: Record invalid key ID
+            logging.warning(f"Failed to decrypt API key {api_key.id}: {e}")
+            continue  # Skip this key but continue processing others
 
         api_key_data = {
             "id": api_key.id,
@@ -147,7 +153,11 @@ async def read_api_keys(
         }
         result.append(schemas.APIKey(**api_key_data))
 
-    return result
+    # New: Log summary of invalid keys
+    if invalid_keys:
+        logging.warning(f"Skipped {len(invalid_keys)} invalid API keys: {', '.join(str(id) for id in invalid_keys)}")
+
+    return result  # Will return empty list if all keys are invalid
 
 
 @router.delete("/", response_model=schemas.APIKey)
