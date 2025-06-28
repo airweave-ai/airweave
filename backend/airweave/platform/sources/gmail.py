@@ -514,8 +514,15 @@ class GmailSource(BaseSource):
                     )
 
                     if processed_entity:
-                        self.logger.info(f"{indent}Yielding processed attachment: {filename}")
-                        yield processed_entity
+                        # Check if processing failed but returned error metadata
+                        if processed_entity.metadata and processed_entity.metadata.get("processing_failed"):
+                            self.logger.warning(
+                                f"{indent}Processing failed for attachment {filename}: "
+                                f"{processed_entity.metadata.get('error', 'Unknown error')}"
+                            )
+                        else:
+                            self.logger.info(f"{indent}Yielding processed attachment: {filename}")
+                            yield processed_entity
                     else:
                         self.logger.warning(f"{indent}Processing failed for attachment: {filename}")
 
