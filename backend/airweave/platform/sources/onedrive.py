@@ -333,14 +333,26 @@ class OneDriveSource(BaseSource):
                         file_entity=file_entity, access_token=self.access_token
                     )
                     if processed_entity:
-                        yield processed_entity
-                        file_count += 1
-                        self.logger.info(f"Processed file {file_count}: {file_entity.name}")
+                        # Check if processing failed but returned error metadata
+                        if processed_entity.metadata and processed_entity.metadata.get("processing_failed"):
+                            self.logger.warning(
+                                f"Processing failed for file {file_entity.name}: "
+                                f"{processed_entity.metadata.get('error', 'Unknown error')}"
+                            )
+                            # Still yield the entity with error metadata so it's tracked
+                            yield processed_entity
+                            file_count += 1
+                        else:
+                            yield processed_entity
+                            file_count += 1
+                            self.logger.info(f"Processed file {file_count}: {file_entity.name}")
                 else:
                     self.logger.warning(f"No download URL available for {file_entity.name}")
 
             except Exception as e:
-                self.logger.error(f"Failed to process item {item.get('name', 'unknown')}: {str(e)}")
+                from airweave.platform.utils.error_utils import get_error_message
+                error_message = get_error_message(e)
+                self.logger.error(f"Failed to process item {item.get('name', 'unknown')}: {error_message}")
                 # Continue processing other items
                 continue
 

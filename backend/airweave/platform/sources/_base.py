@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from airweave.core.logging import logger
 from airweave.platform.entities._base import ChunkEntity
 from airweave.platform.file_handling.file_manager import file_manager
+from airweave.platform.utils.error_utils import get_error_message
 
 
 class BaseSource:
@@ -103,8 +104,19 @@ class BaseSource:
 
             return processed_entity
         except Exception as e:
-            self.logger.error(f"Error processing file {file_entity.name}: {e}")
-            return None
+            error_message = get_error_message(e)
+            self.logger.error(f"Error processing file {file_entity.name}: {error_message}")
+            
+            # Create error entity with detailed error information
+            file_entity.metadata = file_entity.metadata or {}
+            file_entity.metadata.update({
+                "error": error_message,
+                "error_type": type(e).__name__,
+                "processing_failed": True
+            })
+            # Return the entity with error metadata instead of None
+            # This allows upstream code to understand what happened
+            return file_entity
 
     async def process_file_entity_with_content(
         self, file_entity, content_stream, metadata: Optional[Dict[str, Any]] = None
@@ -134,8 +146,19 @@ class BaseSource:
 
             return processed_entity
         except Exception as e:
-            self.logger.error(f"Error processing file {file_entity.name} with direct content: {e}")
-            return None
+            error_message = get_error_message(e)
+            self.logger.error(f"Error processing file {file_entity.name} with direct content: {error_message}")
+            
+            # Create error entity with detailed error information
+            file_entity.metadata = file_entity.metadata or {}
+            file_entity.metadata.update({
+                "error": error_message,
+                "error_type": type(e).__name__,
+                "processing_failed": True
+            })
+            # Return the entity with error metadata instead of None
+            # This allows upstream code to understand what happened
+            return file_entity
 
 
 class Relation(BaseModel):
