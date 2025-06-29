@@ -1,7 +1,7 @@
 """The services for handling OAuth2 authentication and token exchange for integrations."""
 
 import base64
-from typing import Optional
+from typing import Optional, Dict, Any
 from urllib.parse import urlencode
 from uuid import UUID
 
@@ -71,6 +71,36 @@ class OAuth2Service:
 
         return auth_url
 
+    @staticmethod
+    def _validate_token_response(response_data: Dict[str, Any]) -> None:
+        """Validate the token response data for common issues.
+        
+        Args:
+            response_data: The token response data to validate
+            
+        Raises:
+            HTTPException: If the token response is invalid
+        """
+        # Check for error in the response
+        if "error" in response_data:
+            error_msg = response_data.get("error_description", response_data.get("error"))
+            oauth2_service_logger.error(f"OAuth2 token error: {error_msg}")
+            raise HTTPException(status_code=400, detail=f"OAuth2 token error: {error_msg}")
+            
+        # Check for required access_token
+        if "access_token" not in response_data:
+            oauth2_service_logger.error("OAuth2 token response missing access_token")
+            raise HTTPException(
+                status_code=400, 
+                detail="Invalid OAuth2 token response: missing access_token"
+            )
+            
+        # Check token_type if present
+        if "token_type" in response_data:
+            token_type = response_data["token_type"].lower()
+            if token_type not in ["bearer", "mac"]:
+                oauth2_service_logger.warning(f"Unusual OAuth2 token_type: {token_type}")
+    
     @staticmethod
     async def exchange_authorization_code_for_token(
         source_short_name: str,
@@ -591,6 +621,15 @@ class OAuth2Service:
                     integration_config.backend_url, headers=headers, data=payload
                 )
                 response.raise_for_status()
+                
+                # Parse the response
+                response_data = response.json()
+                
+                # Validate the token response
+                OAuth2Service._validate_token_response(response_data)
+                
+                # Return the validated response
+                return OAuth2TokenResponse(**response_data)
         except httpx.HTTPStatusError as e:
             # Log the actual error response from the OAuth provider
             oauth2_service_logger.error(
@@ -603,8 +642,6 @@ class OAuth2Service:
             raise HTTPException(
                 status_code=400, detail="Failed to exchange authorization code"
             ) from e
-
-        return OAuth2TokenResponse(**response.json())
 
     @staticmethod
     async def create_oauth2_connection_for_whitelabel(
