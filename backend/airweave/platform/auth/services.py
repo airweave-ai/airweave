@@ -12,7 +12,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud, schemas
 from airweave.core import credentials
 from airweave.core.config import settings
-from airweave.core.exceptions import NotFoundException, TokenRefreshError
+from airweave.core.exceptions import (
+    ErrorCode,
+    NotFoundException, 
+    TokenRefreshError,
+    ValidationError,
+    IntegrationError,
+    StandardizedError
+)
+from airweave.utils.error_handling import with_error_handling, integration_error_handling
 from airweave.core.logging import logger
 from airweave.core.shared_models import ConnectionStatus
 from airweave.db.unit_of_work import UnitOfWork
@@ -72,6 +80,7 @@ class OAuth2Service:
         return auth_url
 
     @staticmethod
+    @integration_error_handling("oauth")
     async def exchange_authorization_code_for_token(
         source_short_name: str,
         code: str,
@@ -93,13 +102,24 @@ class OAuth2Service:
 
         Raises:
         ------
-            HTTPException: If settings are not found for the source or token exchange fails.
+            NotFoundException: If settings are not found for the source.
+            IntegrationError: If token exchange fails.
+            ValidationError: If the provided code is invalid.
         """
+        # Validate inputs
+        if not code or not code.strip():
+            raise ValidationError(
+                message="Authorization code is required",
+                field_errors={"code": "Authorization code cannot be empty"}
+            )
+            
         # Get the settings for this source to generate the URL
         oauth2_settings = await integration_settings.get_by_short_name(source_short_name)
         if not oauth2_settings:
-            raise HTTPException(
-                status_code=404, detail=f"Settings not found for source: {source_short_name}"
+            raise NotFoundException(
+                message=f"Settings not found for source: {source_short_name}",
+                resource_type="oauth2_settings",
+                resource_id=source_short_name
             )
 
         redirect_uri = OAuth2Service._get_redirect_url(source_short_name)
@@ -107,14 +127,44 @@ class OAuth2Service:
         if not client_id and not client_secret:
             client_id = oauth2_settings.client_id
             client_secret = oauth2_settings.client_secret
+            
+        # Validate client credentials
+        if not client_id:
+            raise ValidationError(
+                message="Client ID is required",
+                field_errors={"client_id": "Client ID is missing and no default is available"},
+                details={"integration": source_short_name}
+            )
+            
+        if not client_secret:
+            raise ValidationError(
+                message="Client secret is required",
+                field_errors={"client_secret": "Client secret is missing and no default is available"},
+                details={"integration": source_short_name}
+            )
 
-        return await OAuth2Service._exchange_code(
-            code=code,
-            redirect_uri=redirect_uri,
-            client_id=client_id,
-            client_secret=client_secret,
-            integration_config=oauth2_settings,
-        )
+        try:
+            return await OAuth2Service._exchange_code(
+                code=code,
+                redirect_uri=redirect_uri,
+                client_id=client_id,
+                client_secret=client_secret,
+                integration_config=oauth2_settings,
+            )
+        except Exception as e:
+            # Convert any exception to IntegrationError
+            if isinstance(e, StandardizedError):
+                # If it's already a StandardizedError, re-raise it
+                raise
+                
+            oauth2_service_logger.error(f"OAuth2 token exchange failed for {source_short_name}: {str(e)}")
+            raise IntegrationError(
+                message=f"OAuth2 token exchange failed: {str(e)}",
+                integration_name=source_short_name,
+                error_code=ErrorCode.INTEGRATION_AUTHENTICATION_ERROR,
+                status_code=status.HTTP_400_BAD_REQUEST,
+                details={"error": str(e)}
+            ) from e
 
     @staticmethod
     async def refresh_access_token(
