@@ -3,8 +3,10 @@
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from airweave.utils.error_handling import service_error_handling, integration_error_handling
 
 from airweave import crud, schemas
 from airweave.core import credentials
@@ -37,6 +39,7 @@ class SourceConnectionService:
     - Running sync jobs for source connections
     """
 
+    @service_error_handling
     async def _validate_auth_fields(
         self, db: AsyncSession, source_short_name: str, auth_fields: Optional[Dict[str, Any]]
     ) -> dict:
@@ -53,12 +56,18 @@ class SourceConnectionService:
             The validated auth fields as a dict
 
         Raises:
-            HTTPException: If auth fields are invalid or not supported
+            NotFoundException: If source is not found
+            ValidationError: If auth fields are invalid
         """
         # Get the source info
         source = await crud.source.get_by_short_name(db, short_name=source_short_name)
         if not source:
-            raise HTTPException(status_code=404, detail=f"Source '{source_short_name}' not found")
+            from airweave.core.exceptions import NotFoundException
+            raise NotFoundException(
+                message=f"Source '{source_short_name}' not found",
+                resource_type="source",
+                resource_id=source_short_name
+            )
 
         BASE_ERROR_MESSAGE = (
             f"See https://docs.airweave.ai/docs/connectors/{source.short_name}#authentication "
@@ -67,16 +76,19 @@ class SourceConnectionService:
 
         # Check if auth_config_class is defined for the source
         if not source.auth_config_class:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Source {source.name} does not have an auth configuration defined. "
-                + BASE_ERROR_MESSAGE,
+            from airweave.core.exceptions import ValidationError
+            raise ValidationError(
+                message=f"Source {source.name} does not have an auth configuration defined",
+                field_errors={"auth_config_class": "No auth configuration defined for this source"},
+                details={"documentation_url": f"https://docs.airweave.ai/docs/connectors/{source.short_name}#authentication"}
             )
 
         if auth_fields is None:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Source {source.name} requires auth fields. " + BASE_ERROR_MESSAGE,
+            from airweave.core.exceptions import ValidationError
+            raise ValidationError(
+                message=f"Source {source.name} requires auth fields",
+                field_errors={"auth_fields": "Auth fields are required for this source"},
+                details={"documentation_url": f"https://docs.airweave.ai/docs/connectors/{source.short_name}#authentication"}
             )
 
         # Create and validate auth config
@@ -88,31 +100,35 @@ class SourceConnectionService:
             source_connection_logger.error(f"Failed to validate auth fields: {e}")
 
             # Check if it's a Pydantic validation error and format it nicely
-            from pydantic import ValidationError
+            from pydantic import ValidationError as PydanticValidationError
 
-            if isinstance(e, ValidationError):
+            if isinstance(e, PydanticValidationError):
                 # Extract the field names and error messages
-                error_messages = []
+                field_errors = {}
                 for error in e.errors():
                     field = ".".join(str(loc) for loc in error.get("loc", []))
                     msg = error.get("msg", "")
-                    error_messages.append(f"Field '{field}': {msg}")
+                    field_errors[field] = msg
 
-                error_detail = (
-                    f"Invalid configuration for {source.auth_config_class}:\n"
-                    + "\n".join(error_messages)
-                )
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"Invalid auth fields: {error_detail}. " + BASE_ERROR_MESSAGE,
+                from airweave.core.exceptions import ValidationError
+                raise ValidationError(
+                    message=f"Invalid configuration for {source.auth_config_class}",
+                    field_errors=field_errors,
+                    details={
+                        "auth_config_class": source.auth_config_class,
+                        "documentation_url": f"https://docs.airweave.ai/docs/connectors/{source.short_name}#authentication"
+                    }
                 ) from e
             else:
                 # For other types of errors
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"Invalid auth fields: {str(e)}. " + BASE_ERROR_MESSAGE,
+                from airweave.core.exceptions import ValidationError
+                raise ValidationError(
+                    message=f"Invalid auth fields: {str(e)}",
+                    field_errors={"auth_fields": str(e)},
+                    details={"documentation_url": f"https://docs.airweave.ai/docs/connectors/{source.short_name}#authentication"}
                 ) from e
 
+    @service_error_handling
     async def _validate_config_fields(
         self, db: AsyncSession, source_short_name: str, config_fields: Optional[Dict[str, Any]]
     ) -> dict:
@@ -127,24 +143,29 @@ class SourceConnectionService:
             The validated config fields as a dict
 
         Raises:
-            HTTPException: If config fields are invalid or required but not provided
+            NotFoundException: If source is not found
+            ValidationError: If config fields are invalid or required but not provided
         """
         # Get the source info
         source = await crud.source.get_by_short_name(db, short_name=source_short_name)
         if not source:
-            raise HTTPException(status_code=404, detail=f"Source '{source_short_name}' not found")
+            from airweave.core.exceptions import NotFoundException
+            raise NotFoundException(
+                message=f"Source '{source_short_name}' not found",
+                resource_type="source",
+                resource_id=source_short_name
+            )
 
-        BASE_ERROR_MESSAGE = (
-            f"See https://docs.airweave.ai/docs/connectors/{source.short_name}#configuration "
-            f"for more information."
-        )
+        # Documentation URL for error messages
+        docs_url = f"https://docs.airweave.ai/docs/connectors/{source.short_name}#configuration"
 
-        # Check if source has a config class defined - it MUST be defined
+        # Check if source has a config class defined
         if not hasattr(source, "config_class") or source.config_class is None:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Source {source.name} does not have a configuration class defined. "
-                + BASE_ERROR_MESSAGE,
+            from airweave.core.exceptions import ValidationError
+            raise ValidationError(
+                message=f"Source {source.name} does not have a configuration class defined",
+                field_errors={"config_class": "No configuration class defined for this source"},
+                details={"documentation_url": docs_url}
             )
 
         # Config class exists but no config fields provided - check if that's allowed
@@ -155,13 +176,17 @@ class SourceConnectionService:
                 # Create an empty instance to see if it accepts no fields
                 config = config_class()
                 return config.model_dump()
-            except Exception:
+            except Exception as e:
                 # If it fails with no fields, config is required
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"Source {source.name} requires config fields but none were provided. "
-                    + BASE_ERROR_MESSAGE,
-                ) from None
+                from airweave.core.exceptions import ValidationError
+                raise ValidationError(
+                    message=f"Source {source.name} requires config fields but none were provided",
+                    field_errors={"config_fields": "Configuration fields are required"},
+                    details={
+                        "reason": str(e), 
+                        "documentation_url": docs_url
+                    }
+                ) from e
 
         # Both config class and config fields exist, validate them
         try:
@@ -172,28 +197,32 @@ class SourceConnectionService:
             source_connection_logger.error(f"Failed to validate config fields: {e}")
 
             # Check if it's a Pydantic validation error and format it nicely
-            from pydantic import ValidationError
+            from pydantic import ValidationError as PydanticValidationError
 
-            if isinstance(e, ValidationError):
+            if isinstance(e, PydanticValidationError):
                 # Extract the field names and error messages
-                error_messages = []
+                field_errors = {}
                 for error in e.errors():
                     field = ".".join(str(loc) for loc in error.get("loc", []))
                     msg = error.get("msg", "")
-                    error_messages.append(f"Field '{field}': {msg}")
+                    field_errors[field] = msg
 
-                error_detail = f"Invalid configuration for {source.config_class}:\n" + "\n".join(
-                    error_messages
-                )
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"Invalid config fields: {error_detail}. " + BASE_ERROR_MESSAGE,
+                from airweave.core.exceptions import ValidationError
+                raise ValidationError(
+                    message=f"Invalid configuration for {source.config_class}",
+                    field_errors=field_errors,
+                    details={
+                        "config_class": source.config_class,
+                        "documentation_url": docs_url
+                    }
                 ) from e
             else:
                 # For other types of errors
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"Invalid config fields: {str(e)}. " + BASE_ERROR_MESSAGE,
+                from airweave.core.exceptions import ValidationError
+                raise ValidationError(
+                    message=f"Invalid config fields: {str(e)}",
+                    field_errors={"config_fields": str(e)},
+                    details={"documentation_url": docs_url}
                 ) from e
 
     async def create_source_connection(
