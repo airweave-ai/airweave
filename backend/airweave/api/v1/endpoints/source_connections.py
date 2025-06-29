@@ -6,6 +6,12 @@ from uuid import UUID
 from fastapi import BackgroundTasks, Body, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from airweave.utils.input_validation import (
+    validate_request_data,
+    AUTH_CODE_VALIDATION,
+    SOURCE_CONNECTION_CREATE_VALIDATION,
+)
+
 from airweave import crud, schemas
 from airweave.api import deps
 from airweave.api.router import TrailingSlashRouter
@@ -92,6 +98,16 @@ async def create_source_connection(
     auth_context: AuthContext = Depends(deps.get_auth_context),
     background_tasks: BackgroundTasks,
 ) -> schemas.SourceConnection:
+    # Validate and sanitize input data
+    validated_data = validate_request_data(
+        source_connection_in.model_dump(),
+        "source_connection_create"
+    )
+    
+    # Update the source_connection_in object with validated data
+    for key, value in validated_data.items():
+        if hasattr(source_connection_in, key):
+            setattr(source_connection_in, key, value)
     """Create a new source connection.
 
     This endpoint creates:
@@ -459,6 +475,15 @@ async def create_credentials_from_authorization_code(
     client_secret: Optional[str] = Body(None),
     auth_context: AuthContext = Depends(deps.get_auth_context),
 ) -> schemas.IntegrationCredentialInDB:
+    # Validate incoming parameters
+    request_data = {
+        "code": code,
+        "client_id": client_id,
+        "client_secret": client_secret,
+    }
+    
+    # Validate auth code and other parameters
+    validated_data = validate_request_data(request_data, "auth_code")
     """Exchange OAuth2 code for a token and create integration credentials.
 
     This endpoint:
