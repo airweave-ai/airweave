@@ -49,17 +49,13 @@ class HubspotSource(BaseSource):
         return instance
 
     async def _get_with_auth(self, client: httpx.AsyncClient, url: str) -> Dict:
-        """Make authenticated GET request to HubSpot API.
-
-        For example, to retrieve contacts:
-          GET https://api.hubapi.com/crm/v3/objects/contacts
-        """
-        response = await client.get(
-            url,
-            headers={"Authorization": f"Bearer {self.access_token}"},
+        """Make authenticated GET request to HubSpot API."""
+        return await self._make_authenticated_request(
+            lambda token: client.get(
+                url,
+                headers={"Authorization": f"Bearer {token}"},
+            )
         )
-        response.raise_for_status()
-        return response.json()
 
     def _safe_float_conversion(self, value: Any) -> Optional[float]:
         """Safely convert a value to float, handling empty strings and None."""

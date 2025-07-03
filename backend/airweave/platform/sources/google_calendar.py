@@ -61,20 +61,24 @@ class GoogleCalendarSource(BaseSource):
         self, client: httpx.AsyncClient, url: str, params: Optional[Dict] = None
     ) -> Dict:
         """Make an authenticated GET request to the Google Calendar API."""
-        headers = {"Authorization": f"Bearer {self.access_token}"}
-        response = await client.get(url, headers=headers, params=params)
-        response.raise_for_status()
-        return response.json()
+        return await self._make_authenticated_request(
+            lambda token: client.get(
+                url, headers={"Authorization": f"Bearer {token}"}, params=params
+            )
+        )
 
     async def _post_with_auth(self, client: httpx.AsyncClient, url: str, json_data: Dict) -> Dict:
         """Make an authenticated POST request to the Google Calendar API."""
-        headers = {
-            "Authorization": f"Bearer {self.access_token}",
-            "Content-Type": "application/json",
-        }
-        response = await client.post(url, headers=headers, json=json_data)
-        response.raise_for_status()
-        return response.json()
+        return await self._make_authenticated_request(
+            lambda token: client.post(
+                url,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+                json=json_data,
+            )
+        )
 
     async def _generate_calendar_list_entities(
         self, client: httpx.AsyncClient

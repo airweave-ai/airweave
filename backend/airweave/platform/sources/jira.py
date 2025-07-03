@@ -106,25 +106,21 @@ class JiraSource(BaseSource):
     async def _get_with_auth(self, client: httpx.AsyncClient, url: str) -> Any:
         """Make an authenticated GET request to the Jira REST API."""
         self.logger.debug(f"Making authenticated request to {url}")
-        headers = {
-            "Authorization": f"Bearer {self.access_token}",
-            "Accept": "application/json",
-            "X-Atlassian-Token": "no-check",  # Required for CSRF protection
-        }
 
-        # Add cloud instance ID if available
-        if self.cloud_id:
-            headers["X-Cloud-ID"] = self.cloud_id
-
-        self.logger.debug(f"Request headers: {headers}")
         try:
-            response = await client.get(url, headers=headers)
-            response.raise_for_status()
-            data = response.json()
-            self.logger.debug(f"Response status: {response.status_code}")
-            self.logger.debug(f"Response size: {len(response.content)} bytes")
-            return data
-        except Exception as e:
+            return await self._make_authenticated_request(
+                lambda token: client.get(
+                    url,
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Accept": "application/json",
+                        "X-Atlassian-Token": "no-check",
+                        "X-Cloud-ID": self.cloud_id,
+                    },
+                )
+            )
+        except httpx.HTTPError as e:
+            # The tenacity decorator will retry on these errors.
             self.logger.error(f"Request failed: {str(e)}")
             if isinstance(e, httpx.HTTPStatusError):
                 self.logger.error(f"Response status: {e.response.status_code}")

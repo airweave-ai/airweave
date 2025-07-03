@@ -60,14 +60,11 @@ class GmailSource(BaseSource):
     ) -> dict:
         """Make an authenticated GET request to the Gmail API."""
         self.logger.info(f"Making authenticated GET request to: {url} with params: {params}")
-        headers = {"Authorization": f"Bearer {self.access_token}"}
-
-        response = await client.get(url, headers=headers, params=params)
-        response.raise_for_status()
-        data = response.json()
-        self.logger.info(f"Received response from {url} - Status: {response.status_code}")
-        self.logger.debug(f"Response data keys: {list(data.keys())}")
-        return data
+        return await self._make_authenticated_request(
+            lambda token: client.get(
+                url, headers={"Authorization": f"Bearer {token}"}, params=params
+            )
+        )
 
     async def _generate_thread_entities(
         self, client: httpx.AsyncClient, processed_message_ids: set

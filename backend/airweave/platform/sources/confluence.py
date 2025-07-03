@@ -164,37 +164,32 @@ class ConfluenceSource(BaseSource):
         return instance
 
     async def _get_with_auth(self, client: httpx.AsyncClient, url: str) -> Any:
-        """Make an authenticated GET request to the Confluence REST API using the provided URL.
+        """Make an authenticated GET request to the Confluence REST API.
 
-        By default, we're using OAuth 2.0 with refresh tokens for authentication.
+        This now uses the base class helper to handle token refresh automatically.
         """
-        headers = {
-            "Authorization": f"Bearer {self.access_token}",
-            "Accept": "application/json",
-            "X-Atlassian-Token": "no-check",  # Required for CSRF protection
-        }
-
-        # Add cloud instance ID if available
-        if self.cloud_id:
-            headers["X-Cloud-ID"] = self.cloud_id
-
-        self.logger.debug(f"Making request to {url} with headers: {headers}")
-        response = await client.get(url, headers=headers)
-
-        if not response.is_success:
-            self.logger.error(f"Request failed with status {response.status_code}")
-            self.logger.error(f"Response headers: {dict(response.headers)}")
-            self.logger.error(f"Response body: {response.text}")
-
-            # Special handling for scope-related errors
-            if response.status_code == 401:
-                error_body = response.json() if response.text else {}
+        try:
+            return await self._make_authenticated_request(
+                lambda token: client.get(
+                    url,
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Accept": "application/json",
+                        "X-Atlassian-Token": "no-check",
+                        "X-Cloud-ID": self.cloud_id,
+                    },
+                )
+            )
+        except httpx.HTTPStatusError as e:
+            # Preserve special handling for scope-related errors after the helper has run.
+            if e.response.status_code == 401:
+                error_body = e.response.json() if e.response.text else {}
                 error_message = error_body.get("message", "")
 
                 if (
                     "scope" in error_message.lower()
-                    or "x-failure-category" in response.headers
-                    and "SCOPE" in response.headers.get("x-failure-category", "")
+                    or "x-failure-category" in e.response.headers
+                    and "SCOPE" in e.response.headers.get("x-failure-category", "")
                 ):
                     self.logger.error(
                         "OAuth scope error. The token doesn't have the required permissions."
@@ -202,10 +197,9 @@ class ConfluenceSource(BaseSource):
                     self.logger.error(
                         "Please verify that your OAuth app has the correct scopes configured."
                     )
-                    raise ValueError(f"OAuth scope error: {error_message}.")
-
-        response.raise_for_status()
-        return response.json()
+                    raise ValueError(f"OAuth scope error: {error_message}.") from e
+            # Re-raise the original error if it's not a handled scope issue.
+            raise e
 
     async def _generate_space_entities(
         self, client: httpx.AsyncClient

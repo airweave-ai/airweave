@@ -12,7 +12,8 @@ from airweave.core import credentials
 from airweave.core.config import settings
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import LoggerConfigurator, logger
-from airweave.platform.auth.services import oauth2_service
+from airweave.platform.auth.schemas import AuthType
+from airweave.platform.auth.token_provider import TokenProvider
 from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.embedding_models._base import BaseEmbeddingModel
 from airweave.platform.embedding_models.local_text2vec import LocalText2Vec
@@ -207,7 +208,36 @@ class SyncFactory:
         access_token: Optional[str] = None,
         logger=None,
     ) -> BaseSource:
-        """Create and configure the source instance based on authentication type."""
+        """Create and configure the source instance with token provider for OAuth sources."""
+        # Get source connection and config
+        source_connection, config_fields, source_model = await cls._get_source_config(
+            db, sync, auth_context
+        )
+        source_class = resource_locator.get_source(source_model)
+
+        # Handle direct access token case
+        if access_token:
+            return await cls._create_source_with_token(
+                source_class, access_token, config_fields, logger
+            )
+
+        # Handle stored credentials case
+        return await cls._create_source_with_credentials(
+            db,
+            source_connection,
+            source_model,
+            source_class,
+            config_fields,
+            auth_context,
+            white_label,
+            logger,
+        )
+
+    @classmethod
+    async def _get_source_config(
+        cls, db: AsyncSession, sync: schemas.Sync, auth_context: AuthContext
+    ) -> tuple[schemas.Connection, dict, schemas.Source]:
+        """Get source connection configuration and model."""
         # Retrieve source connection and model
         source_connection = await crud.connection.get(db, sync.source_connection_id, auth_context)
         if not source_connection:
@@ -220,58 +250,110 @@ class SyncFactory:
         if not source_connection_obj:
             raise NotFoundException("Source connection record not found")
 
-        # Get config fields (will be empty dict if none)
         config_fields = source_connection_obj.config_fields or {}
-
         source_model = await crud.source.get_by_short_name(db, source_connection.short_name)
         if not source_model:
             raise NotFoundException(f"Source not found: {source_connection.short_name}")
 
-        source_class = resource_locator.get_source(source_model)
+        return source_connection, config_fields, source_model
 
-        # If access token is provided, use it directly
-        if access_token:
-            source = await source_class.create(access_token, config=config_fields)
-            # Set logger if provided
-            if logger and hasattr(source, "set_logger"):
-                source.set_logger(logger)
-            return source
+    @classmethod
+    async def _create_source_with_token(
+        cls, source_class, access_token: str, config_fields: dict, logger
+    ) -> BaseSource:
+        """Create source instance with direct access token."""
+        logger.info("Creating source instance with a direct access token.")
+        source = await source_class.create(access_token, config=config_fields)
+        if logger and hasattr(source, "set_logger"):
+            source.set_logger(logger)
+        return source
 
-        # Otherwise get credentials from database as before
+    @classmethod
+    async def _create_source_with_credentials(
+        cls,
+        db: AsyncSession,
+        source_connection: schemas.Connection,
+        source_model: schemas.Source,
+        source_class,
+        config_fields: dict,
+        auth_context: AuthContext,
+        white_label: Optional[schemas.WhiteLabel],
+        logger,
+    ) -> BaseSource:
+        """Create source instance with stored credentials and optional token provider."""
         if not source_connection.integration_credential_id:
             raise NotFoundException("Source connection has no integration credential")
 
         credential = await cls._get_integration_credential(db, source_connection, auth_context)
         decrypted_credential = credentials.decrypt(credential.encrypted_credentials)
 
-        # If the source model requires auth configuration, validate it
-        if source_model.auth_config_class:
-            auth_config = resource_locator.get_auth_config(source_model.auth_config_class)
-            source_credentials = auth_config.model_validate(decrypted_credential)
+        # Create token provider if needed
+        token_provider = await cls._create_token_provider_if_needed(
+            source_model, auth_context, source_connection, decrypted_credential, white_label, logger
+        )
 
-            # if the source_credential has a refresh token, exchange it for an access token
-            if hasattr(source_credentials, "refresh_token") and source_credentials.refresh_token:
-                oauth2_response = await oauth2_service.refresh_access_token(
-                    db,
-                    source_model.short_name,
-                    auth_context,
-                    source_connection.id,
-                    decrypted_credential,
-                    white_label,
-                )
-                # Just use the access token
-                source_credentials = oauth2_response.access_token
-        else:
-            source_credentials = decrypted_credential
+        # Get source credentials
+        source_credentials = await cls._get_source_credentials(
+            token_provider, source_model, decrypted_credential
+        )
 
-        # Pass both credentials and config to source creation
+        # Create and configure source instance
         source = await source_class.create(source_credentials, config=config_fields)
+        logger.info(f"Created {source_model.short_name} source instance.")
 
-        # Set logger if provided
+        # Inject token provider and logger
+        if token_provider and hasattr(source, "set_token_provider"):
+            source.set_token_provider(token_provider)
+            logger.info(f"Injected TokenProvider into {source_model.short_name} source.")
+
         if logger and hasattr(source, "set_logger"):
             source.set_logger(logger)
 
         return source
+
+    @classmethod
+    async def _create_token_provider_if_needed(
+        cls,
+        source_model: schemas.Source,
+        auth_context: AuthContext,
+        source_connection: schemas.Connection,
+        decrypted_credential: dict,
+        white_label: Optional[schemas.WhiteLabel],
+        logger,
+    ) -> Optional[TokenProvider]:
+        """Create token provider if the source requires OAuth refresh."""
+        if source_model.auth_type not in (
+            AuthType.oauth2_with_refresh,
+            AuthType.oauth2_with_refresh_rotating,
+        ):
+            return None
+
+        logger.info(f"Creating TokenProvider for {source_model.short_name}.")
+        return TokenProvider(
+            integration_short_name=source_model.short_name,
+            auth_context=auth_context,
+            connection_id=source_connection.id,
+            decrypted_credential=decrypted_credential,
+            white_label=white_label,
+        )
+
+    @classmethod
+    async def _get_source_credentials(
+        cls,
+        token_provider: Optional[TokenProvider],
+        source_model: schemas.Source,
+        decrypted_credential: dict,
+    ):
+        """Get appropriate credentials for source creation."""
+        if token_provider:
+            # Let the provider get the initial valid token
+            return await token_provider.get_valid_token()
+        elif source_model.auth_config_class:
+            # For non-provider auth, use existing logic
+            auth_config = resource_locator.get_auth_config(source_model.auth_config_class)
+            return auth_config.model_validate(decrypted_credential)
+        else:
+            return decrypted_credential
 
     @classmethod
     async def _get_integration_credential(

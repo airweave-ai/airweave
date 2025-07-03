@@ -57,12 +57,13 @@ class OneDriveSource(BaseSource):
         self, client: httpx.AsyncClient, url: str, params: Optional[Dict] = None
     ) -> Dict:
         """Make an authenticated GET request to Microsoft Graph API with retry logic."""
-        headers = {"Authorization": f"Bearer {self.access_token}"}
+        self.logger.info(f"Request URL: {url}")
         try:
-            resp = await client.get(url, headers=headers, params=params, timeout=30.0)
-            self.logger.info(f"Request URL: {url}")
-            resp.raise_for_status()
-            return resp.json()
+            return await self._make_authenticated_request(
+                lambda token: client.get(
+                    url, headers={"Authorization": f"Bearer {token}"}, params=params, timeout=30.0
+                )
+            )
         except httpx.ConnectTimeout:
             self.logger.error(f"Connection timeout accessing Microsoft Graph API: {url}")
             raise
@@ -70,6 +71,7 @@ class OneDriveSource(BaseSource):
             self.logger.error(f"Read timeout accessing Microsoft Graph API: {url}")
             raise
         except httpx.HTTPStatusError as e:
+            # The base helper will retry on 401, so we only log other status errors here.
             self.logger.error(
                 f"HTTP status error {e.response.status_code} from Microsoft Graph API: {url}"
             )
@@ -77,7 +79,7 @@ class OneDriveSource(BaseSource):
             try:
                 error_body = e.response.json()
                 self.logger.error(f"Error response body: {error_body}")
-            except Exception:  # Catch specific exception instead of bare except
+            except Exception:
                 self.logger.error(f"Error response text: {e.response.text}")
             raise
         except Exception as e:
@@ -329,9 +331,7 @@ class OneDriveSource(BaseSource):
 
                 # Process the file entity (download and process content)
                 if file_entity.download_url:
-                    processed_entity = await self.process_file_entity(
-                        file_entity=file_entity, access_token=self.access_token
-                    )
+                    processed_entity = await self.process_file_entity(file_entity=file_entity)
                     if processed_entity:
                         yield processed_entity
                         file_count += 1

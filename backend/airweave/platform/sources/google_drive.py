@@ -43,6 +43,12 @@ class GoogleDriveSource(BaseSource):
       - GoogleDriveFileEntity objects, representing files in the user's My Drive
     """
 
+    def __init__(self):
+        """Initialize the source and add a counter for testing."""
+        super().__init__()
+        # FOR TESTING: This counter will be used to simulate a token expiry.
+        self._test_entity_counter = 0
+
     @classmethod
     async def create(
         cls, access_token: str, config: Optional[Dict[str, Any]] = None
@@ -64,30 +70,51 @@ class GoogleDriveSource(BaseSource):
     async def _get_with_auth(
         self, client: httpx.AsyncClient, url: str, params: Optional[Dict] = None
     ) -> Dict:
-        """Make an authenticated GET request to the Google Drive API with retry logic."""
-        headers = {"Authorization": f"Bearer {self.access_token}"}
+        """Make an authenticated GET request to the Google Drive API.
+
+        This method now delegates to the base class's helper, which handles
+        token refresh and retry logic automatically.
+        """
+        # FOR TESTING: Simulate a 401 unauthorized error after 20 entities have been processed.
+        if self._test_entity_counter >= 20:
+            self.logger.warning(
+                f"TESTING: Simulating 401 Unauthorized. Counter is {self._test_entity_counter}."
+            )
+            # Set counter to a negative number to ensure this only triggers once per sync.
+            self._test_entity_counter = -1
+
+            # Build a fake response and raise an HTTPStatusError to trigger the refresh logic.
+            request = client.build_request("GET", url, params=params)
+            fake_response = httpx.Response(
+                status_code=401,
+                request=request,
+                text='{"error": "Simulated token expiry for testing."}',
+                headers={"Content-Type": "application/json"},
+            )
+            raise httpx.HTTPStatusError(
+                "Simulated 401 Unauthorized for testing token refresh.",
+                request=request,
+                response=fake_response,
+            )
+
         try:
-            # Add a longer timeout (30 seconds)
-            resp = await client.get(url, headers=headers, params=params, timeout=30.0)
-            self.logger.info(f"Request URL: {url}")  # Changed from error to info level
-            resp.raise_for_status()
-            return resp.json()
+            return await self._make_authenticated_request(
+                lambda token: client.get(
+                    url, headers={"Authorization": f"Bearer {token}"}, params=params, timeout=30.0
+                )
+            )
         except httpx.ConnectTimeout:
             self.logger.error(f"Connection timeout accessing Google Drive API: {url}")
             raise
         except httpx.ReadTimeout:
             self.logger.error(f"Read timeout accessing Google Drive API: {url}")
             raise
-        except httpx.HTTPStatusError as e:
-            self.logger.error(
-                f"HTTP status error {e.response.status_code} from Google Drive API: {url}"
-            )
-            raise
         except httpx.HTTPError as e:
+            # The base helper handles HTTPStatusError, so this catches other network issues.
             self.logger.error(f"HTTP error when accessing Google Drive API: {url}, {str(e)}")
             raise
         except Exception as e:
-            self.logger.error(f"Unexpected error accessing Google Drive API: {url}, {str(e)}")
+            self.logger.error(f"Unexpected error in _get_with_auth for {url}: {str(e)}")
             raise
 
     async def _list_drives(self, client: httpx.AsyncClient) -> AsyncGenerator[Dict, None]:
@@ -250,9 +277,9 @@ class GoogleDriveSource(BaseSource):
 
                 # Process the entity if it has a download URL
                 if file_entity.download_url:
-                    processed_entity = await self.process_file_entity(
-                        file_entity=file_entity, access_token=self.access_token
-                    )
+                    # The access_token parameter is removed. The base class's
+                    # process_file_entity method now handles getting a valid token.
+                    processed_entity = await self.process_file_entity(file_entity=file_entity)
                     yield processed_entity
                 else:
                     # This should never happen now that we return None for files without URLs
@@ -266,7 +293,17 @@ class GoogleDriveSource(BaseSource):
                 raise
 
     async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
-        """Generate all Google Drive entities.
+        """Wraps the original entity generator to inject test logic."""
+        # This wrapper increments a counter for each entity yielded, allowing us to
+        # simulate a token expiry after a specific number of entities.
+        async for entity in self._original_generate_entities():
+            # The counter is checked in _get_with_auth before the API call.
+            yield entity
+            if self._test_entity_counter >= 0:
+                self._test_entity_counter += 1
+
+    async def _original_generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
+        """Generate all Google Drive entities. (This was the original generate_entities).
 
         Yields entities in the following order:
           - Shared drives (Drive objects)

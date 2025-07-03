@@ -58,27 +58,13 @@ class DropboxSource(BaseSource):
         self, client: httpx.AsyncClient, url: str, json_data: Dict = None
     ) -> Dict:
         """Make an authenticated POST request to the Dropbox API."""
-        headers = {"Authorization": f"Bearer {self.access_token}"}
-
-        try:
-            # Only include JSON data if it's provided
-            if json_data is not None:
-                response = await client.post(url, headers=headers, json=json_data)
-            else:
-                # Send a request with no body
-                response = await client.post(url, headers=headers)
-            response.raise_for_status()
-            json_response = response.json()
-            return json_response
-
-        except httpx.HTTPStatusError as e:
-            self.logger.error(f"HTTP Error in Dropbox API call: {e}")
-            self.logger.error(f"Response body: {e.response.text}")
-            raise
-
-        except Exception as e:
-            self.logger.error(f"Unexpected error in Dropbox API call: {e}")
-            raise
+        return await self._make_authenticated_request(
+            lambda token: client.post(
+                url,
+                headers={"Authorization": f"Bearer {token}"},
+                json=json_data,
+            )
+        )
 
     async def _generate_account_entities(
         self, client: httpx.AsyncClient
@@ -383,7 +369,6 @@ class DropboxSource(BaseSource):
                         # Use the BaseSource helper method instead of direct file_manager calls
                         processed_entity = await self.process_file_entity(
                             file_entity=file_entity,
-                            access_token=self.access_token,
                             headers=file_entity.sync_metadata.get("headers"),
                         )
 

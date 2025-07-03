@@ -58,13 +58,12 @@ class OutlookMailSource(BaseSource):
     ) -> dict:
         """Make an authenticated GET request to Microsoft Graph API."""
         self.logger.debug(f"Making authenticated GET request to: {url} with params: {params}")
-        headers = {"Authorization": f"Bearer {self.access_token}"}
         try:
-            response = await client.get(url, headers=headers, params=params)
-            response.raise_for_status()
-            data = response.json()
-            self.logger.debug(f"Received response from {url} - Status: {response.status_code}")
-            return data
+            return await self._make_authenticated_request(
+                lambda token: client.get(
+                    url, headers={"Authorization": f"Bearer {token}"}, params=params
+                )
+            )
         except Exception as e:
             self.logger.error(f"Error in API request to {url}: {str(e)}")
             raise

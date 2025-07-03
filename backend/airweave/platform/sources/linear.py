@@ -220,10 +220,7 @@ class LinearSource(BaseSource):
                 )
 
                 try:
-                    processed_entity = await self.process_file_entity(
-                        file_entity=attachment_entity,
-                        headers={"Authorization": f"Bearer {self.access_token}"},
-                    )
+                    processed_entity = await self.process_file_entity(file_entity=attachment_entity)
                     yield processed_entity
                 except Exception as e:
                     self.logger.error(

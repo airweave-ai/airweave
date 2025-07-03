@@ -59,12 +59,12 @@ class AsanaSource(BaseSource):
     )
     async def _get_with_auth(self, client: httpx.AsyncClient, url: str) -> Dict:
         """Make authenticated GET request to Asana API."""
-        response = await client.get(
-            url,
-            headers={"Authorization": f"Bearer {self.access_token}"},
+        return await self._make_authenticated_request(
+            lambda token: client.get(
+                url,
+                headers={"Authorization": f"Bearer {token}"},
+            )
         )
-        response.raise_for_status()
-        return response.json()
 
     async def _generate_workspace_entities(
         self, client: httpx.AsyncClient
@@ -299,7 +299,6 @@ class AsanaSource(BaseSource):
             processed_entity = await self.process_file_entity(
                 file_entity=file_entity,
                 headers=headers,
-                access_token=self.access_token,  # Always pass the access token
             )
 
             yield processed_entity

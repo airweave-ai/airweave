@@ -207,6 +207,31 @@ class NotionSource(BaseSource):
             self.logger.error(f"Error during POST request to {url}: {str(e)}")
             raise
 
+    # Phase 1: Top-Level Discovery
+    async def _discover_all_objects(self, client: httpx.AsyncClient) -> Dict[str, List[dict]]:
+        """Discover all databases and pages using the search endpoint."""
+        self.logger.info("Phase 1: Discovering all objects via search")
+
+        discovered = {"databases": [], "pages": []}
+
+        # Search for databases
+        self.logger.info("Searching for databases...")
+        async for database in self._search_objects(client, "database"):
+            discovered["databases"].append(database)
+            self._stats["databases_found"] += 1
+
+        # Search for pages
+        self.logger.info("Searching for pages...")
+        async for page in self._search_objects(client, "page"):
+            discovered["pages"].append(page)
+            self._stats["pages_found"] += 1
+
+        self.logger.info(
+            f"Discovery complete: {len(discovered['databases'])} databases, "
+            f"{len(discovered['pages'])} pages"
+        )
+        return discovered
+
     async def _search_objects(
         self, client: httpx.AsyncClient, object_type: str
     ) -> AsyncGenerator[dict, None]:
@@ -335,6 +360,45 @@ class NotionSource(BaseSource):
             except Exception as e:
                 self.logger.error(f"Error querying database {database_id}: {str(e)}")
                 raise
+
+    # Phase 4: Standalone Page Processing with Aggregation
+    async def _process_standalone_pages(
+        self, client: httpx.AsyncClient, all_pages: List[dict]
+    ) -> AsyncGenerator[ChunkEntity, None]:
+        """Process pages that are not in databases with full content aggregation."""
+        self.logger.info("Phase 4: Processing standalone pages with aggregation")
+
+        for page in all_pages:
+            page_id = page["id"]
+            if page_id in self._processed_pages:
+                continue
+
+            parent = page.get("parent", {})
+            parent_type = parent.get("type", "")
+
+            # Skip database pages (already processed)
+            if parent_type == "database_id":
+                continue
+
+            try:
+                # Get full page details
+                full_page = await self._get_with_auth(
+                    client, f"https://api.notion.com/v1/pages/{page_id}"
+                )
+
+                # Build breadcrumbs for standalone pages
+                breadcrumbs = await self._build_page_breadcrumbs(client, full_page)
+
+                # Always use lazy loading for better performance
+                page_entity = await self._create_lazy_page_entity(full_page, breadcrumbs)
+                yield page_entity
+
+                # Don't yield files separately - they'll be handled during materialization
+                self._processed_pages.add(page_id)
+
+            except Exception as e:
+                self.logger.error(f"Error processing standalone page {page_id}: {str(e)}")
+                continue
 
     # Phase 5: Child Database Processing
     async def _process_child_databases(
@@ -1115,42 +1179,21 @@ class NotionSource(BaseSource):
             async with httpx.AsyncClient() as client:
                 self._client_ref = client  # Store for lazy operations
 
-                # Phase 1: Discover all databases, which is generally fast.
-                self.logger.info("Discovering all databases...")
-                all_databases = []
-                async for db in self._search_objects(client, "database"):
-                    all_databases.append(db)
-                self._stats["databases_found"] = len(all_databases)
-                self.logger.info(f"Found {len(all_databases)} databases.")
+                # Phase 1: Top-Level Discovery
+                discovered = await self._discover_all_objects(client)
 
-                # Phase 2 & 3: Process these databases and their pages.
-                database_schemas = await self._analyze_database_schemas(client, all_databases)
+                # Phase 2: Database Schema Analysis
+                database_schemas = await self._analyze_database_schemas(
+                    client, discovered["databases"]
+                )
+
+                # Phase 3: Database Content Extraction with Aggregation
                 async for entity in self._extract_database_content(client, database_schemas):
                     yield entity
 
-                # Phase 4: Stream and process standalone pages to avoid long delays.
-                self.logger.info("Streaming and processing standalone pages...")
-                async for page in self._search_objects(client, "page"):
-                    self._stats["pages_found"] += 1
-                    page_id = page["id"]
-                    if page_id in self._processed_pages:
-                        continue
-
-                    parent = page.get("parent", {})
-                    if parent.get("type") == "database_id":
-                        continue  # Already processed with its database
-
-                    try:
-                        full_page = await self._get_with_auth(
-                            client, f"https://api.notion.com/v1/pages/{page_id}"
-                        )
-                        breadcrumbs = await self._build_page_breadcrumbs(client, full_page)
-                        page_entity = await self._create_lazy_page_entity(full_page, breadcrumbs)
-                        yield page_entity
-                        self._processed_pages.add(page_id)
-                    except Exception as e:
-                        self.logger.error(f"Error processing standalone page {page_id}: {str(e)}")
-                        continue
+                # Phase 4: Standalone Page Processing with Aggregation
+                async for entity in self._process_standalone_pages(client, discovered["pages"]):
+                    yield entity
 
                 # Phase 5: Child Database Processing
                 async for entity in self._process_child_databases(client):
@@ -1284,6 +1327,7 @@ class NotionSource(BaseSource):
         entity.add_lazy_operation(
             "aggregate_content",
             self._create_content_fetcher(
+                access_token=self.access_token,
                 rate_limit_config={
                     "requests_per_second": self.RATE_LIMIT_REQUESTS,
                     "period": self.RATE_LIMIT_PERIOD,
@@ -1303,7 +1347,7 @@ class NotionSource(BaseSource):
         if database_id and database_schema:
             entity.add_lazy_operation(
                 "extract_properties",
-                self._create_property_extractor(),
+                self._create_property_extractor(self.access_token),
                 page,
                 database_id,
                 database_schema,
@@ -1314,16 +1358,21 @@ class NotionSource(BaseSource):
 
         return entity
 
-    def _create_content_fetcher(self, rate_limit_config: dict):
+    def _create_content_fetcher(self, access_token: str, rate_limit_config: dict):
         """Create a content fetcher that uses the shared rate limiter."""
 
         async def fetch_content(page_id: str, breadcrumbs: List[Breadcrumb]) -> dict:
             """Fetch page content with shared rate limiting."""
             async with httpx.AsyncClient() as client:
+                headers = {
+                    "Authorization": f"Bearer {access_token}",
+                    "Notion-Version": "2022-06-28",
+                }
+
                 # Create request helper with shared rate limiting
                 async def make_request(method: str, url: str, **kwargs):
                     await NotionSource._shared_wait_for_rate_limit()  # Use shared rate limiter
-                    response = await getattr(client, method.lower())(url, **kwargs)
+                    response = await getattr(client, method.lower())(url, headers=headers, **kwargs)
                     response.raise_for_status()
                     return response.json()
 
@@ -1389,7 +1438,7 @@ class NotionSource(BaseSource):
             "files": files,
         }
 
-    def _create_property_extractor(self):
+    def _create_property_extractor(self, access_token: str):
         """Create a self-contained property extractor."""
 
         async def extract_properties(
