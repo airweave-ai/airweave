@@ -21,6 +21,7 @@ from airweave.api.middleware import (
     permission_exception_handler,
     validation_exception_handler,
 )
+from airweave.api.middleware.error_handler import add_error_handlers, ExceptionMiddleware
 from airweave.api.router import TrailingSlashRouter
 from airweave.api.v1.api import api_router
 from airweave.core.config import settings
@@ -73,7 +74,10 @@ app.middleware("http")(add_request_id)
 app.middleware("http")(log_requests)
 app.middleware("http")(exception_logging_middleware)
 
-# Register exception handlers
+# Register comprehensive error handlers
+add_error_handlers(app)
+
+# Keep legacy exception handlers for backward compatibility
 app.exception_handler(RequestValidationError)(validation_exception_handler)
 app.exception_handler(ValidationError)(validation_exception_handler)
 app.exception_handler(PermissionException)(permission_exception_handler)
@@ -99,6 +103,10 @@ if settings.ADDITIONAL_CORS_ORIGINS:
         CORS_ORIGINS.extend(additional_origins)
 
 # Add the dynamic CORS middleware that handles both default origins and white label specific origins
+# Add the exception middleware first so it can catch errors from other middleware
+app.add_middleware(ExceptionMiddleware)
+
+# Add the dynamic CORS middleware
 app.add_middleware(
     DynamicCORSMiddleware,
     default_origins=CORS_ORIGINS,
