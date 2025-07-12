@@ -8,6 +8,7 @@ import yaml
 from airweave.core.config import settings as core_settings
 from airweave.core.logging import logger
 from airweave.core.secrets import secret_client
+from airweave.core.secure_keys import secure_key_manager
 from airweave.platform.auth.schemas import (
     APIKeyAuthSettings,
     AuthType,
@@ -92,10 +93,21 @@ class IntegrationSettings:
             settings (BaseAuthSettings): The settings for the integration.
         """
         if core_settings.ENVIRONMENT == "prd":
-            secret = await secret_client.get_secret(settings.client_secret)
-            return secret.value
-        else:
-            return settings.client_secret
+            # First try secure_key_manager for newer keys
+            secret_key = await secure_key_manager.get_api_key(f"integration_{settings.integration_short_name}")
+            if secret_key:
+                return secret_key
+                
+            # Fall back to legacy secret_client for older keys
+            if secret_client:
+                try:
+                    secret = await secret_client.get_secret(settings.client_secret)
+                    return secret.value
+                except Exception as e:
+                    logger.error(f"Error retrieving client secret from Azure: {e}")
+                
+        # Return the value from settings if we're not in prod or couldn't get from secure storage
+        return settings.client_secret
 
     async def get_by_short_name(self, short_name: str) -> BaseAuthSettings:
         """Retrieves settings for a specific integration by its short name.
