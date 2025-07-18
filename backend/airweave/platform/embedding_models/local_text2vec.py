@@ -30,11 +30,7 @@ class LocalText2Vec(BaseEmbeddingModel):
 
     def __init__(
         self,
-        logger: Optional[ContextualLogger] = None,
-        **data  # Pass through to BaseEmbeddingModel/Pydantic, if relevant
-    ):
-        # Always call parent __init__ (esp. with Pydantic models!)
-        super().__init__(**data)
+        logger: Optional[ContextualLogger] = None):
         self.logger = logger
 
     def model_post_init(self, __context) -> None:
