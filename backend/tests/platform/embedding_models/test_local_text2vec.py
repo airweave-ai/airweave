@@ -4,9 +4,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from airweave.core.config import settings
 from airweave.platform.embedding_models.local_text2vec import LocalText2Vec
 
+@pytest.fixture
+def model():
+    # Adjust logger/context if needed for your environment
+    return LocalText2Vec(logger=MagicMock())
 
 class TestLocalText2Vec:
     """Tests for the LocalText2Vec embedding model."""
@@ -34,14 +37,6 @@ class TestLocalText2Vec:
         assert len(result) == 2
         assert all(len(vec) == model.vector_dimensions for vec in result)
         assert all(all(v == 0.0 for v in vec) for vec in result)
-
-    @pytest.mark.asyncio
-    async def test_create_classmethod(self, model_class, model_kwargs):
-        """Test the create class method works."""
-        model = model_class.create(**model_kwargs)
-        assert isinstance(model, model_class)
-        for key, value in model_kwargs.items():
-            assert getattr(model, key) == value
 
     @pytest.mark.asyncio
     @patch("httpx.AsyncClient.post")

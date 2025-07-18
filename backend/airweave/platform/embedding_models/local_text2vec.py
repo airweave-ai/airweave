@@ -26,15 +26,11 @@ class LocalText2Vec(BaseEmbeddingModel):
     vector_dimensions: int = 384  # MiniLM-L6-v2 default dimensions
     model_name: str = "local-text2vec-transformers"
     enabled: bool = True
-    inference_url: str = Field(default="", description="URL of the inference API") # Updated during initialization
+    inference_url: str = Field(
+        default="", description="URL of the inference API"
+    )  # Updated during initialization
 
-    def __init__(
-        self,
-        logger: Optional[ContextualLogger] = None,
-        **data  # Pass through to BaseEmbeddingModel/Pydantic, if relevant
-    ):
-        # Always call parent __init__ (esp. with Pydantic models!)
-        super().__init__(**data)
+    def __init__(self, logger: Optional[ContextualLogger] = None):
         self.logger = logger
 
     def model_post_init(self, __context) -> None:
