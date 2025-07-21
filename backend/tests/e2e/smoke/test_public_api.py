@@ -194,7 +194,7 @@ def start_local_services(openai_api_key: Optional[str] = None) -> bool:
         services_started = False
         for line in process.stdout:
             print(f"  {line.strip()}")
-            if "Services started!" in line:
+            if "All services started successfully" in line:
                 services_started = True
                 break
             if "Error:" in line or "error:" in line:
