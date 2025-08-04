@@ -9,6 +9,10 @@ from airweave.platform.auth.schemas import AuthType
 from airweave.platform.auth_providers._base import BaseAuthProvider
 from airweave.platform.decorators import auth_provider
 
+# Sources that are blocked from using the Composio auth provider
+# This list defines which sources cannot use Composio for credential management
+COMPOSIO_BLOCKED_SOURCES = ["confluence", "jira", "bitbucket", "github", "ctti", "postgresql"]
+
 
 @auth_provider(
     name="Composio",

@@ -22,6 +22,7 @@ from airweave.core.sync_job_service import sync_job_service
 from airweave.core.sync_service import sync_service
 from airweave.core.temporal_service import temporal_service
 from airweave.db.session import get_db_context
+from airweave.platform.auth_providers.composio import COMPOSIO_BLOCKED_SOURCES
 from airweave.schemas.auth import AuthContext
 
 router = TrailingSlashRouter()
@@ -114,20 +115,9 @@ async def create_source_connection(
     [Github](https://docs.airweave.ai/docs/connectors/github)) to see what kind
     of authentication is used.
     """
-    # Temporary: Block certain sources from being created with auth providers
-    SOURCES_BLOCKED_FROM_AUTH_PROVIDERS = [
-        "confluence",
-        "jira",
-        "bitbucket",
-        "github",
-        "ctti",
-        "monday",
-        "postgresql",
-    ]
-
     if (
         source_connection_in.auth_provider
-        and source_connection_in.short_name in SOURCES_BLOCKED_FROM_AUTH_PROVIDERS
+        and source_connection_in.short_name in COMPOSIO_BLOCKED_SOURCES
     ):
         raise HTTPException(
             status_code=422,

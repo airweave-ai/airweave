@@ -57,15 +57,14 @@ export const ConfigureSourceView: React.FC<ConfigureSourceViewProps> = ({
         viewData.credentialId || null
     );
 
-    // Sources that are temporarily blocked from using auth providers
-    // This should match the backend list in source_connections.py
+    // Sources that are blocked from using auth providers
+    // This list should match COMPOSIO_BLOCKED_SOURCES in backend/airweave/platform/auth_providers/composio.py
     const SOURCES_BLOCKED_FROM_AUTH_PROVIDERS = [
         "confluence",
         "jira",
         "bitbucket",
         "github",
         "ctti",
-        "monday",
         "postgresql"
     ];
 
