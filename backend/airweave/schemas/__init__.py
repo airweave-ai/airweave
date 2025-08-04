@@ -96,6 +96,8 @@ from .source_connection import (
     SourceConnectionUpdate,
 )
 from .sync import (
+    MinuteLevelScheduleConfig,
+    ScheduleResponse,
     Sync,
     SyncBase,
     SyncCreate,
@@ -103,6 +105,12 @@ from .sync import (
     SyncUpdate,
     SyncWithoutConnections,
     SyncWithSourceConnection,
+)
+from .sync_cursor import (
+    SyncCursor,
+    SyncCursorBase,
+    SyncCursorCreate,
+    SyncCursorUpdate,
 )
 from .sync_job import (
     SourceConnectionJob,

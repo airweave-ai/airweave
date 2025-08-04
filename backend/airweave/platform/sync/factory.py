@@ -12,6 +12,7 @@ from airweave.core import credentials
 from airweave.core.config import settings
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger, LoggerConfigurator, logger
+from airweave.core.sync_cursor_service import sync_cursor_service
 from airweave.platform.auth.services import oauth2_service
 from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.embedding_models._base import BaseEmbeddingModel
@@ -21,6 +22,7 @@ from airweave.platform.entities._base import BaseEntity
 from airweave.platform.locator import resource_locator
 from airweave.platform.sources._base import BaseSource
 from airweave.platform.sync.context import SyncContext
+from airweave.platform.sync.cursor import SyncCursor
 from airweave.platform.sync.entity_processor import EntityProcessor
 from airweave.platform.sync.orchestrator import SyncOrchestrator
 from airweave.platform.sync.pubsub import SyncProgress
@@ -184,7 +186,14 @@ class SyncFactory:
         progress = SyncProgress(sync_job.id)
         router = SyncDAGRouter(dag, entity_map)
 
-        return SyncContext(
+        # Load existing cursor data from database
+        cursor_data = await sync_cursor_service.get_cursor_data(
+            db=db, sync_id=sync.id, auth_context=auth_context
+        )
+        cursor = SyncCursor(sync_id=sync.id, cursor_data=cursor_data)
+
+        # Create sync context
+        sync_context = SyncContext(
             source=source,
             destinations=destinations,
             embedding_model=embedding_model,
@@ -195,12 +204,18 @@ class SyncFactory:
             collection=collection,
             source_connection=source_connection,
             progress=progress,
+            cursor=cursor,
             router=router,
             entity_map=entity_map,
             auth_context=auth_context,
             logger=logger,
             white_label=white_label,
         )
+
+        # Set cursor on source so it can access cursor data
+        source.set_cursor(cursor)
+
+        return sync_context
 
     @classmethod
     async def _create_source_instance(

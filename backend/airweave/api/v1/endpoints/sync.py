@@ -5,7 +5,7 @@ import json
 from typing import AsyncGenerator, List, Optional, Union
 from uuid import UUID
 
-from fastapi import BackgroundTasks, Body, Depends, Query
+from fastapi import BackgroundTasks, Body, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -364,3 +364,165 @@ async def update_sync(
     return await sync_service.update_sync(
         db=db, sync_id=sync_id, sync_update=sync_update, auth_context=auth_context
     )
+
+
+# Minute-level schedule endpoints
+@router.post("/{sync_id}/minute-level-schedule", response_model=schemas.ScheduleResponse)
+async def create_minute_level_schedule(
+    *,
+    db: AsyncSession = Depends(deps.get_db),
+    sync_id: UUID,
+    cron_expression: str = Body(
+        ..., embed=True, description="Cron expression for minute-level sync (e.g., '*/1 * * * *')"
+    ),
+    auth_context: AuthContext = Depends(deps.get_auth_context),
+) -> schemas.ScheduleResponse:
+    """Create a minute-level schedule for incremental sync.
+
+    Args:
+    -----
+        db: The database session
+        sync_id: The ID of the sync to schedule
+        cron_expression: Cron expression for the schedule (e.g., "*/1 * * * *")
+        auth_context: The current authentication context
+
+    Returns:
+    --------
+        schemas.ScheduleResponse: The schedule response with status and message
+    """
+    return await sync_service.create_minute_level_schedule(
+        db=db, sync_id=sync_id, cron_expression=cron_expression, auth_context=auth_context
+    )
+
+
+@router.put("/{sync_id}/minute-level-schedule", response_model=schemas.ScheduleResponse)
+async def update_minute_level_schedule(
+    *,
+    db: AsyncSession = Depends(deps.get_db),
+    sync_id: UUID,
+    cron_expression: str = Body(
+        ..., embed=True, description="New cron expression for minute-level sync"
+    ),
+    auth_context: AuthContext = Depends(deps.get_auth_context),
+) -> schemas.ScheduleResponse:
+    """Update an existing minute-level schedule.
+
+    Args:
+    -----
+        db: The database session
+        sync_id: The ID of the sync
+        cron_expression: New cron expression for the schedule
+        auth_context: The current authentication context
+
+    Returns:
+    --------
+        schemas.ScheduleResponse: The schedule response with status and message
+    """
+    return await sync_service.update_minute_level_schedule(
+        db=db, sync_id=sync_id, cron_expression=cron_expression, auth_context=auth_context
+    )
+
+
+@router.post("/{sync_id}/minute-level-schedule/pause", response_model=schemas.ScheduleResponse)
+async def pause_minute_level_schedule(
+    *,
+    db: AsyncSession = Depends(deps.get_db),
+    sync_id: UUID,
+    auth_context: AuthContext = Depends(deps.get_auth_context),
+) -> schemas.ScheduleResponse:
+    """Pause a minute-level schedule.
+
+    Args:
+    -----
+        db: The database session
+        sync_id: The ID of the sync
+        auth_context: The current authentication context
+
+    Returns:
+    --------
+        schemas.ScheduleResponse: The schedule response with status and message
+    """
+    return await sync_service.pause_minute_level_schedule(
+        db=db, sync_id=sync_id, auth_context=auth_context
+    )
+
+
+@router.post("/{sync_id}/minute-level-schedule/resume", response_model=schemas.ScheduleResponse)
+async def resume_minute_level_schedule(
+    *,
+    db: AsyncSession = Depends(deps.get_db),
+    sync_id: UUID,
+    auth_context: AuthContext = Depends(deps.get_auth_context),
+) -> schemas.ScheduleResponse:
+    """Resume a paused minute-level schedule.
+
+    Args:
+    -----
+        db: The database session
+        sync_id: The ID of the sync
+        auth_context: The current authentication context
+
+    Returns:
+    --------
+        schemas.ScheduleResponse: The schedule response with status and message
+    """
+    return await sync_service.resume_minute_level_schedule(
+        db=db, sync_id=sync_id, auth_context=auth_context
+    )
+
+
+@router.delete("/{sync_id}/minute-level-schedule", response_model=schemas.ScheduleResponse)
+async def delete_minute_level_schedule(
+    *,
+    db: AsyncSession = Depends(deps.get_db),
+    sync_id: UUID,
+    auth_context: AuthContext = Depends(deps.get_auth_context),
+) -> schemas.ScheduleResponse:
+    """Delete a minute-level schedule.
+
+    Args:
+    -----
+        db: The database session
+        sync_id: The ID of the sync
+        auth_context: The current authentication context
+
+    Returns:
+    --------
+        schemas.ScheduleResponse: The schedule response with status and message
+    """
+    return await sync_service.delete_minute_level_schedule(
+        db=db, sync_id=sync_id, auth_context=auth_context
+    )
+
+
+@router.get("/{sync_id}/minute-level-schedule")
+async def get_minute_level_schedule_info(
+    *,
+    db: AsyncSession = Depends(deps.get_db),
+    sync_id: UUID,
+    auth_context: AuthContext = Depends(deps.get_auth_context),
+) -> dict:
+    """Get information about a minute-level schedule.
+
+    Args:
+    -----
+        db: The database session
+        sync_id: The ID of the sync
+        auth_context: The current authentication context
+
+    Returns:
+    --------
+        dict: Schedule information if exists
+
+    Raises:
+    --------
+        404: If no minute-level schedule exists for the sync
+    """
+    schedule_info = await sync_service.get_minute_level_schedule_info(
+        db=db, sync_id=sync_id, auth_context=auth_context
+    )
+
+    if schedule_info is None:
+        raise HTTPException(status_code=404, detail="No minute-level schedule found for this sync")
+
+    return schedule_info

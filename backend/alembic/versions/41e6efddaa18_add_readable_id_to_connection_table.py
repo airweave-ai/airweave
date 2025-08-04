@@ -51,25 +51,29 @@ def upgrade():
     # Fetch all existing connections
     result = connection.execute(sa.text("SELECT id, name FROM connection"))
 
-    # Generate readable_ids for existing connections
-    for row in result:
-        readable_id = generate_readable_id(row.name)
-        # Ensure uniqueness by checking for conflicts
-        while True:
-            existing = connection.execute(
-                sa.text("SELECT COUNT(*) FROM connection WHERE readable_id = :readable_id"),
-                {"readable_id": readable_id}
-            ).scalar()
-            if existing == 0:
-                break
-            # Generate a new one if conflict exists
-            readable_id = generate_readable_id(row.name)
+    # Check if result exists and has rows
+    if result is not None:
+        rows = result.fetchall()
+        if rows:
+            # Generate readable_ids for existing connections
+            for row in rows:
+                readable_id = generate_readable_id(row.name)
+                # Ensure uniqueness by checking for conflicts
+                while True:
+                    existing = connection.execute(
+                        sa.text("SELECT COUNT(*) FROM connection WHERE readable_id = :readable_id"),
+                        {"readable_id": readable_id}
+                    ).scalar()
+                    if existing == 0:
+                        break
+                    # Generate a new one if conflict exists
+                    readable_id = generate_readable_id(row.name)
 
-        # Update the row with the generated readable_id
-        connection.execute(
-            sa.text("UPDATE connection SET readable_id = :readable_id WHERE id = :id"),
-            {"readable_id": readable_id, "id": row.id}
-        )
+                # Update the row with the generated readable_id
+                connection.execute(
+                    sa.text("UPDATE connection SET readable_id = :readable_id WHERE id = :id"),
+                    {"readable_id": readable_id, "id": row.id}
+                )
 
     # Make the column non-nullable after population
     op.alter_column('connection', 'readable_id', nullable=False)

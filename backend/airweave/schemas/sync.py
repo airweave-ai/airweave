@@ -20,14 +20,17 @@ class SyncBase(BaseModel):
     embedding_model_connection_id: UUID = Field(default=NATIVE_TEXT2VEC_UUID)
     destination_connection_ids: list[UUID]
     description: Optional[str] = None
-    cron_schedule: Optional[str] = None  # Actual cron expression
+    cron_schedule: Optional[str] = None  # Full sync schedule (hourly/daily/weekly)
     next_scheduled_run: Optional[datetime] = None
+    temporal_schedule_id: Optional[str] = None
+    sync_type: str = "full"
+    minute_level_cron_schedule: Optional[str] = None
     sync_metadata: Optional[dict] = None
     status: Optional[SyncStatus] = SyncStatus.ACTIVE
 
     @field_validator("cron_schedule")
     def validate_cron_schedule(cls, v: str) -> str:
-        """Validate cron schedule format.
+        """Validate cron schedule format for full syncs.
 
         Format: * * * * *
         minute (0-59)
@@ -49,6 +52,26 @@ class SyncBase(BaseModel):
         cron_pattern = r"^(\*|[0-9]{1,2}|[0-9]{1,2}-[0-9]{1,2}|[0-9]{1,2}/[0-9]{1,2}|[0-9]{1,2},[0-9]{1,2}|\*\/[0-9]{1,2}) (\*|[0-9]{1,2}|[0-9]{1,2}-[0-9]{1,2}|[0-9]{1,2}/[0-9]{1,2}|[0-9]{1,2},[0-9]{1,2}|\*\/[0-9]{1,2}) (\*|[0-9]{1,2}|[0-9]{1,2}-[0-9]{1,2}|[0-9]{1,2}/[0-9]{1,2}|[0-9]{1,2},[0-9]{1,2}|\*\/[0-9]{1,2}) (\*|[0-9]{1,2}|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC|[0-9]{1,2}-[0-9]{1,2}|[0-9]{1,2}/[0-9]{1,2}|[0-9]{1,2},[0-9]{1,2}|\*\/[0-9]{1,2}) (\*|[0-6]|SUN|MON|TUE|WED|THU|FRI|SAT|[0-6]-[0-6]|[0-6]/[0-6]|[0-6],[0-6]|\*\/[0-6])$"  # noqa: E501
         if not re.match(cron_pattern, v):
             raise ValueError("Invalid cron schedule format")
+        return v
+
+    @field_validator("minute_level_cron_schedule")
+    def validate_minute_level_cron_schedule(cls, v: str) -> str:
+        """Validate minute-level cron schedule format for incremental syncs."""
+        if v is None:
+            return None
+        # Allow minute-level patterns like */1, */5, */15, */30
+        minute_level_pattern = r"^(\*\/[0-9]{1,2}|[0-9]{1,2}) \* \* \* \*$"
+        if not re.match(minute_level_pattern, v):
+            raise ValueError(
+                "Minute-level cron must be minute-level only (e.g., */1 * * * * for every minute)"
+            )
+        return v
+
+    @field_validator("sync_type")
+    def validate_sync_type(cls, v: str) -> str:
+        """Validate sync type."""
+        if v not in ["full", "incremental"]:
+            raise ValueError("sync_type must be 'full' or 'incremental'")
         return v
 
     class Config:
@@ -75,6 +98,37 @@ class SyncUpdate(BaseModel):
     next_scheduled_run: Optional[datetime] = None
     sync_metadata: Optional[dict] = None
     status: Optional[SyncStatus] = None
+    temporal_schedule_id: Optional[str] = None
+    sync_type: Optional[str] = None
+    minute_level_cron_schedule: Optional[str] = None
+
+
+class MinuteLevelScheduleConfig(BaseModel):
+    """Configuration for minute-level incremental sync schedules."""
+
+    cron_expression: str = Field(
+        default="*/1 * * * *",
+        description="Minute-level cron expression for incremental sync (default: every minute)",
+    )
+
+    @field_validator("cron_expression")
+    def validate_minute_level_cron(cls, v: str) -> str:
+        """Validate cron expression for minute-level incremental sync."""
+        # Allow minute-level patterns like */1, */5, */15, */30
+        minute_level_pattern = r"^(\*\/[0-9]{1,2}|[0-9]{1,2}) \* \* \* \*$"
+        if not re.match(minute_level_pattern, v):
+            raise ValueError(
+                "Minute-level cron must be minute-level only (e.g., */1 * * * * for every minute)"
+            )
+        return v
+
+
+class ScheduleResponse(BaseModel):
+    """Response for schedule operations."""
+
+    schedule_id: str
+    status: str
+    message: str
 
 
 class SyncInDBBase(SyncBase):
@@ -108,8 +162,12 @@ class SyncWithoutConnections(BaseModel):
     cron_schedule: Optional[str] = None
     next_scheduled_run: Optional[datetime] = None
     status: SyncStatus
-
     sync_metadata: Optional[dict] = None
+
+    # New fields for Temporal schedules
+    temporal_schedule_id: Optional[str] = None
+    sync_type: str = "full"
+    minute_level_cron_schedule: Optional[str] = None
 
     id: UUID
     organization_id: UUID

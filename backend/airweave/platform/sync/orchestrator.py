@@ -6,7 +6,9 @@ from typing import Optional
 from airweave import schemas
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.shared_models import SyncJobStatus
+from airweave.core.sync_cursor_service import sync_cursor_service
 from airweave.core.sync_job_service import sync_job_service
+from airweave.db.session import get_db_context
 from airweave.platform.sync.context import SyncContext
 from airweave.platform.sync.entity_processor import EntityProcessor
 from airweave.platform.sync.stream import AsyncSourceStream
@@ -172,6 +174,9 @@ class SyncOrchestrator:
         """Mark sync job as completed with final statistics."""
         stats = getattr(self.sync_context.progress, "stats", None)
 
+        # Save cursor data if it exists (for incremental syncs)
+        await self._save_cursor_data()
+
         await sync_job_service.update_status(
             sync_job_id=self.sync_context.sync_job.id,
             status=SyncJobStatus.COMPLETED,
@@ -183,6 +188,27 @@ class SyncOrchestrator:
         self.sync_context.logger.info(
             f"Completed sync job {self.sync_context.sync_job.id} successfully. Stats: {stats}"
         )
+
+    async def _save_cursor_data(self) -> None:
+        """Save cursor data to database if it exists (for incremental syncs)."""
+        if not hasattr(self.sync_context, "cursor") or not self.sync_context.cursor.cursor_data:
+            return
+
+        try:
+            async with get_db_context() as db:
+                await sync_cursor_service.create_or_update_cursor(
+                    db=db,
+                    sync_id=self.sync_context.sync.id,
+                    cursor_data=self.sync_context.cursor.cursor_data,
+                    auth_context=self.sync_context.auth_context,
+                )
+                self.sync_context.logger.info(
+                    f"Saved cursor data for sync {self.sync_context.sync.id}"
+                )
+        except Exception as e:
+            self.sync_context.logger.warning(
+                f"Failed to save cursor data for sync {self.sync_context.sync.id}: {e}"
+            )
 
     async def _handle_sync_failure(self, error: Exception) -> None:
         """Handle sync failure by updating job status with error details."""

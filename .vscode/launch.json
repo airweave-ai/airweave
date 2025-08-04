@@ -1,91 +1,86 @@
 {
-    "version": "0.2.0",
-    "configurations": [
-        {
-            "name": "FastAPI",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "uvicorn",
-            "args": [
-                "--reload",
-                "--host",
-                "127.0.0.1",
-                "--port",
-                "8001",
-                "--workers",
-                "4",
-                "airweave.main:app"
-            ],
-            "cwd": "${workspaceFolder}/backend",
-            "console": "integratedTerminal",
-            "jinja": true,
-            "justMyCode": true,
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "FastAPI",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "--reload",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8001",
+        "--workers",
+        "4",
+        "airweave.main:app"
+      ],
+      "cwd": "${workspaceFolder}/backend",
+      "console": "integratedTerminal",
+      "jinja": true,
+      "justMyCode": true,
 
-            "envFile": "${workspaceFolder}/.env",
-            "env": {
-                "LOCAL_DEVELOPMENT": "true"
-            }
-        },
-        {
-            "name": "Python: Debug Test Method",
-            "type": "debugpy",
-            "request": "launch",
-            "purpose": [
-                "debug-test"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "cwd": "${workspaceFolder}/backend",
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}/backend"
-            },
-            "python": "${command:python.interpreterPath}"
-        },
-        {
-            "name": "Python: Current Script with CWD",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${file}",
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}/backend",
-            "justMyCode": true
-        },
-        {
-            "name": "Temporal Worker",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "airweave.platform.temporal.worker",
-            "python": "${command:python.interpreterPath}",
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}/backend",
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}/backend"
-            },
-            "justMyCode": false,
-            "envFile": "${workspaceFolder}/.env"
-        },
-        {
-            "name": "Debug React",
-            "type": "chrome",
-            "request": "launch",
-            "url": "http://localhost:8080", // Update this to match your actual Vite port
-            "webRoot": "${workspaceFolder}/frontend",
-            "runtimeExecutable": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-            "sourceMapPathOverrides": {
-                "webpack:///./src/*": "${webRoot}/src/*",
-                "webpack:///src/*": "${webRoot}/src/*"
-            },
-        }
-    ],
-    "compounds": [
-        {
-            "name": "FastAPI + Temporal Worker",
-            "configurations": [
-                "FastAPI",
-                "Temporal Worker"
-            ],
-            "stopAll": true,
-            "preLaunchTask": "start-docker-services",
-        }
-    ]
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "LOCAL_DEVELOPMENT": "true"
+      }
+    },
+    {
+      "name": "Python: Debug Test Method",
+      "type": "debugpy",
+      "request": "launch",
+      "purpose": ["debug-test"],
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "cwd": "${workspaceFolder}/backend",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/backend"
+      },
+      "python": "${command:python.interpreterPath}"
+    },
+    {
+      "name": "Python: Current Script with CWD",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}/backend",
+      "justMyCode": true
+    },
+    {
+      "name": "Temporal Worker",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "airweave.platform.temporal.worker",
+      "python": "${command:python.interpreterPath}",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}/backend",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/backend"
+      },
+      "justMyCode": false,
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "name": "Debug React",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:8080", // Update this to match your actual Vite port
+      "webRoot": "${workspaceFolder}/frontend",
+      "runtimeExecutable": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      "sourceMapPathOverrides": {
+        "webpack:///./src/*": "${webRoot}/src/*",
+        "webpack:///src/*": "${webRoot}/src/*"
+      }
+    }
+  ],
+  "compounds": [
+    {
+      "name": "FastAPI + Temporal Worker",
+      "configurations": ["FastAPI", "Temporal Worker"],
+      "stopAll": true,
+      "preLaunchTask": "start-docker-services"
+    }
+  ]
 }

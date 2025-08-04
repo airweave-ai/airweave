@@ -16,6 +16,7 @@ from .source import Source
 from .source_connection import SourceConnection
 from .sync import Sync
 from .sync_connection import SyncConnection
+from .sync_cursor import SyncCursor
 from .sync_job import SyncJob
 from .transformer import Transformer
 from .user import User
@@ -40,6 +41,7 @@ __all__ = [
     "SourceConnection",
     "Sync",
     "SyncConnection",
+    "SyncCursor",
     "SyncDag",
     "SyncJob",
     "Transformer",

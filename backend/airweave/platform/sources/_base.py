@@ -46,6 +46,19 @@ class BaseSource:
         """
         self._token_manager = token_manager
 
+    def set_cursor(self, cursor) -> None:
+        """Set the cursor for this source.
+
+        Args:
+            cursor: SyncCursor instance for tracking sync progress
+        """
+        self._cursor = cursor
+
+    @property
+    def cursor(self):
+        """Get the cursor for this source."""
+        return getattr(self, "_cursor", None)
+
     async def get_access_token(self) -> Optional[str]:
         """Get a valid access token using the token manager.
 
