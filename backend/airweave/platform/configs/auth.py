@@ -398,3 +398,27 @@ class PipedreamAuthConfig(AuthConfig):
         title="Client Secret",
         description="Your Pipedream OAuth client secret.",
     )
+
+class TrelloAuthConfig(AuthConfig):
+    """Trello authentication credentials schema."""
+
+    pass
+
+
+class ZenDeskAuthConfig(AuthConfig):
+    """ZenDesk authentication credentials schema."""
+
+    refresh_token: str = Field(
+        title="Refresh Token", description="The refresh token for your ZenDesk app."
+    )
+    access_token: str = Field(
+        title="Access Token", description="The access token for your ZenDesk app."
+    )
+
+
+class WooCommerceAuthConfig(AuthConfig):
+    """WooCommerce authentication configuration."""
+
+    consumer_key: str = Field(..., description="WooCommerce API consumer key")
+    consumer_secret: str = Field(..., description="WooCommerce API consumer secret")
+    store_url: str = Field(..., description="WooCommerce store URL (e.g., https://example.com)")
