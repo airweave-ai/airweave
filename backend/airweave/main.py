@@ -15,6 +15,7 @@ from pydantic import ValidationError
 from airweave.api.middleware import (
     DynamicCORSMiddleware,
     add_request_id,
+    airweave_exception_handler,
     exception_logging_middleware,
     invalid_state_exception_handler,
     log_requests,
@@ -28,6 +29,7 @@ from airweave.api.router import TrailingSlashRouter
 from airweave.api.v1.api import api_router
 from airweave.core.config import settings
 from airweave.core.exceptions import (
+    AirweaveException,
     InvalidStateError,
     NotFoundException,
     PaymentRequiredException,
@@ -90,6 +92,9 @@ app.exception_handler(NotFoundException)(not_found_exception_handler)
 app.exception_handler(PaymentRequiredException)(payment_required_exception_handler)
 app.exception_handler(UsageLimitExceededException)(usage_limit_exceeded_exception_handler)
 app.exception_handler(InvalidStateError)(invalid_state_exception_handler)
+
+# Register custom Airweave exception handlers
+app.exception_handler(AirweaveException)(airweave_exception_handler)
 
 # Default CORS origins - white labels and environment variables can extend this
 CORS_ORIGINS = [

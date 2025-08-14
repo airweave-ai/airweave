@@ -11,6 +11,7 @@ from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.embedding_models._base import BaseEmbeddingModel
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.sources._base import BaseSource
+from airweave.platform.sync.cursor import SyncCursor
 from airweave.platform.sync.pubsub import SyncProgress
 from airweave.platform.sync.router import SyncDAGRouter
 
@@ -28,6 +29,7 @@ class SyncContext:
     - dag - the DAG that is created for the sync
     - progress - the progress tracker, interfaces with PubSub
     - router - the DAG router
+    - cursor - the cursor for the sync
     - collection - the collection that the sync is for
     - source connection - the source connection that the sync is for
     - guard rail - the guard rail service
@@ -44,6 +46,7 @@ class SyncContext:
     dag: schemas.SyncDag
     progress: SyncProgress
     router: SyncDAGRouter
+    cursor: SyncCursor
     collection: schemas.Collection
     source_connection: schemas.Connection
     entity_map: dict[type[BaseEntity], UUID]
@@ -64,6 +67,7 @@ class SyncContext:
         dag: schemas.SyncDag,
         progress: SyncProgress,
         router: SyncDAGRouter,
+        cursor: SyncCursor,
         collection: schemas.Collection,
         source_connection: schemas.Connection,
         entity_map: dict[type[BaseEntity], UUID],
@@ -82,6 +86,7 @@ class SyncContext:
         self.dag = dag
         self.progress = progress
         self.router = router
+        self.cursor = cursor
         self.collection = collection
         self.source_connection = source_connection
         self.entity_map = entity_map

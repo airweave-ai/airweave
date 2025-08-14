@@ -16,11 +16,19 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from airweave.core.config import settings
 from airweave.core.exceptions import (
-    InvalidStateError,
+    AirweaveException,
+    CollectionNotFoundException,
+    ImmutableFieldError,
+    InvalidScheduleOperationException,
+    MinuteLevelScheduleException,
     NotFoundException,
-    PaymentRequiredException,
     PermissionException,
-    UsageLimitExceededException,
+    ScheduleNotExistsException,
+    ScheduleOperationException,
+    SyncDagNotFoundException,
+    SyncJobNotFoundException,
+    SyncNotFoundException,
+    TokenRefreshError,
     unpack_validation_error,
 )
 from airweave.core.logging import logger
@@ -300,53 +308,41 @@ async def not_found_exception_handler(request: Request, exc: NotFoundException) 
     return JSONResponse(status_code=404, content={"detail": str(exc)})
 
 
-async def payment_required_exception_handler(
-    request: Request, exc: PaymentRequiredException
-) -> JSONResponse:
-    """Exception handler for PaymentRequiredException.
+async def airweave_exception_handler(request: Request, exc: AirweaveException) -> JSONResponse:
+    """Generic exception handler for all AirweaveException types.
+
+    Maps different exception types to appropriate HTTP status codes based on their semantic meaning.
 
     Args:
     ----
         request (Request): The incoming request that triggered the exception.
-        exc (PaymentRequiredException): The exception object that was raised.
+        exc (AirweaveException): The exception object that was raised.
 
     Returns:
     -------
-        JSONResponse: A 400 Bad Request status response that details the error message.
-
+        JSONResponse: HTTP response with appropriate status code and error details.
     """
-    return JSONResponse(status_code=400, content={"detail": str(exc)})
+    # Map exception types to HTTP status codes
+    status_code_map = {
+        # 404 Not Found - Resource doesn't exist
+        SyncNotFoundException: 404,
+        SyncJobNotFoundException: 404,
+        SyncDagNotFoundException: 404,
+        CollectionNotFoundException: 404,
+        # 400 Bad Request - Client error
+        InvalidScheduleOperationException: 400,
+        ScheduleNotExistsException: 400,
+        ImmutableFieldError: 400,
+        # 401 Unauthorized - Authentication issues
+        TokenRefreshError: 401,
+        # 403 Forbidden - Permission issues (already handled by permission_exception_handler)
+        PermissionException: 403,
+        # 500 Internal Server Error - Server/operation failures
+        MinuteLevelScheduleException: 500,
+        ScheduleOperationException: 500,
+    }
 
+    # Get status code from map, default to 500 for unknown exceptions
+    status_code = status_code_map.get(type(exc), 500)
 
-async def usage_limit_exceeded_exception_handler(
-    request: Request, exc: UsageLimitExceededException
-) -> JSONResponse:
-    """Exception handler for UsageLimitExceededException.
-
-    Args:
-    ----
-        request (Request): The incoming request that triggered the exception.
-        exc (UsageLimitExceededException): The exception object that was raised.
-
-    Returns:
-    -------
-        JSONResponse: A 400 Bad Request status response that details the error message.
-
-    """
-    return JSONResponse(status_code=400, content={"detail": str(exc)})
-
-
-async def invalid_state_exception_handler(request: Request, exc: InvalidStateError) -> JSONResponse:
-    """Exception handler for InvalidStateError.
-
-    Args:
-    ----
-        request (Request): The incoming request that triggered the exception.
-        exc (InvalidStateError): The exception object that was raised.
-
-    Returns:
-    -------
-        JSONResponse: A 400 Bad Request status response that details the error message.
-
-    """
-    return JSONResponse(status_code=400, content={"detail": str(exc)})
+    return JSONResponse(status_code=status_code, content={"detail": str(exc)})

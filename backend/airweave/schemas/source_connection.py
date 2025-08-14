@@ -571,6 +571,27 @@ class SourceConnectionInDBBase(SourceConnectionBase):
         description="Email address of the user who last modified this source connection.",
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def map_collection_field(cls, data: Any) -> Any:
+        """Map readable_collection_id to collection before validation."""
+        if isinstance(data, dict):
+            # If readable_collection_id exists and collection doesn't, map it
+            if "readable_collection_id" in data and "collection" not in data:
+                data["collection"] = data["readable_collection_id"]
+        elif hasattr(data, "readable_collection_id"):
+            # If it's an ORM object, we need to convert to dict first
+            # Extract all attributes we need
+            data_dict = {}
+            for field in cls.model_fields:
+                if hasattr(data, field):
+                    data_dict[field] = getattr(data, field)
+
+            data_dict["collection"] = data.readable_collection_id
+
+            return data_dict
+        return data
+
     class Config:
         """Pydantic configuration."""
 

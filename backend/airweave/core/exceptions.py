@@ -5,7 +5,13 @@ from typing import Optional
 from pydantic import ValidationError
 
 
-class PermissionException(Exception):
+class AirweaveException(Exception):
+    """Base exception for Airweave services."""
+
+    pass
+
+
+class PermissionException(AirweaveException):
     """Exception raised when a user does not have the necessary permissions to perform an action."""
 
     def __init__(
@@ -23,7 +29,7 @@ class PermissionException(Exception):
         super().__init__(self.message)
 
 
-class NotFoundException(Exception):
+class NotFoundException(AirweaveException):
     """Exception raised when an object is not found."""
 
     def __init__(self, message: Optional[str] = "Object not found"):
@@ -38,7 +44,7 @@ class NotFoundException(Exception):
         super().__init__(self.message)
 
 
-class ImmutableFieldError(Exception):
+class ImmutableFieldError(AirweaveException):
     """Exception raised for attempts to modify immutable fields in a database model."""
 
     def __init__(self, field_name: str, message: str = "Cannot modify immutable field"):
@@ -55,7 +61,7 @@ class ImmutableFieldError(Exception):
         super().__init__(f"{message}: {field_name}")
 
 
-class TokenRefreshError(Exception):
+class TokenRefreshError(AirweaveException):
     """Exception raised when a token refresh fails."""
 
     def __init__(self, message: Optional[str] = "Token refresh failed"):
@@ -68,6 +74,67 @@ class TokenRefreshError(Exception):
         """
         self.message = message
         super().__init__(self.message)
+
+
+# New exceptions for minute-level scheduling
+class SyncNotFoundException(NotFoundException):
+    """Raised when a sync is not found."""
+
+    pass
+
+
+class SyncDagNotFoundException(NotFoundException):
+    """Raised when a sync DAG is not found."""
+
+    pass
+
+
+class CollectionNotFoundException(NotFoundException):
+    """Raised when a collection is not found."""
+
+    pass
+
+
+class MinuteLevelScheduleException(AirweaveException):
+    """Raised when minute-level schedule operations fail."""
+
+    pass
+
+
+class ScheduleNotFoundException(NotFoundException):
+    """Raised when a schedule is not found."""
+
+    pass
+
+
+class ScheduleAlreadyExistsException(AirweaveException):
+    """Raised when trying to create a schedule that already exists."""
+
+    pass
+
+
+class InvalidScheduleOperationException(AirweaveException):
+    """Raised when an invalid schedule operation is attempted."""
+
+    pass
+
+
+class SyncJobNotFoundException(NotFoundException):
+    """Raised when a sync job is not found."""
+
+    pass
+
+
+class ScheduleOperationException(AirweaveException):
+    """Raised when schedule operations (pause, resume, delete) fail."""
+
+    pass
+
+
+class ScheduleNotExistsException(AirweaveException):
+    """Raised when trying to perform operations on a schedule that doesn't exist."""
+
+    pass
 
 
 class UsageLimitExceededException(Exception):

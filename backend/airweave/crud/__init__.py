@@ -16,6 +16,7 @@ from .crud_organization_billing import organization_billing
 from .crud_source import source
 from .crud_source_connection import source_connection
 from .crud_sync import sync
+from .crud_sync_cursor import sync_cursor
 from .crud_sync_job import sync_job
 from .crud_transformer import transformer
 from .crud_usage import usage
@@ -39,6 +40,7 @@ __all__ = [
     "source",
     "source_connection",
     "sync",
+    "sync_cursor",
     "sync_dag",
     "sync_job",
     "transformer",

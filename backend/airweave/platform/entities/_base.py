@@ -19,6 +19,7 @@ class DestinationAction(str, Enum):
     INSERT = "insert"
     UPDATE = "update"
     KEEP = "keep"
+    DELETE = "delete"
 
 
 class Breadcrumb(BaseModel):

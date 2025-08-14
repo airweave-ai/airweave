@@ -3,7 +3,7 @@
 import asyncio
 from typing import Dict, List, Optional, Set
 
-from airweave import crud, schemas
+from airweave import crud, models, schemas
 from airweave.core.exceptions import NotFoundException
 from airweave.core.shared_models import ActionType
 from airweave.db.session import get_db_context
@@ -119,6 +119,21 @@ class EntityProcessor:
                 )
                 return []
 
+            # Stage 2.6: Skip transformation and vectorization for DELETE
+            if action == DestinationAction.DELETE:
+                sync_context.logger.info(
+                    f"🗑️ PROCESSOR_DELETE [{entity_context}] "
+                    "Processing deletion, skipping transform/vector"
+                )
+                # Process deletion directly
+                await self._persist(enriched_entity, [], None, action, sync_context)
+                total_elapsed = asyncio.get_event_loop().time() - pipeline_start
+                sync_context.logger.info(
+                    f"✅ PROCESSOR_DELETE_COMPLETE [{entity_context}] Deletion complete "
+                    f"in {total_elapsed:.3f}s"
+                )
+                return []
+
             # Stage 3: Process entity through DAG
             sync_context.logger.debug(
                 f"🔀 PROCESSOR_TRANSFORM_START [{entity_context}] Starting DAG transformation"
@@ -226,14 +241,19 @@ class EntityProcessor:
 
     async def _determine_action(
         self, entity: BaseEntity, sync_context: SyncContext
-    ) -> tuple[schemas.Entity, DestinationAction]:
+    ) -> tuple[Optional[models.Entity], DestinationAction]:
         """Determine what action to take for an entity.
 
         Creates a temporary database session for the lookup.
         """
         entity_context = f"Entity({entity.entity_id})"
 
-        sync_context.logger.debug(
+        # Check if this is a deletion entity
+        if hasattr(entity, "deletion_status") and entity.deletion_status == "removed":
+            sync_context.logger.info(f"🗑️ ACTION_DELETE [{entity_context}] Detected deletion entity")
+            return None, DestinationAction.DELETE
+
+        sync_context.logger.info(
             f"🔍 ACTION_DB_LOOKUP [{entity_context}] Looking up existing entity in database"
         )
         db_start = asyncio.get_event_loop().time()
@@ -333,7 +353,7 @@ class EntityProcessor:
         self,
         parent_entity: BaseEntity,
         processed_entities: List[BaseEntity],
-        db_entity: schemas.Entity,
+        db_entity: Optional[models.Entity],
         action: DestinationAction,
         sync_context: SyncContext,
     ) -> None:
@@ -352,6 +372,8 @@ class EntityProcessor:
             await self._handle_insert(parent_entity, processed_entities, db_entity, sync_context)
         elif action == DestinationAction.UPDATE:
             await self._handle_update(parent_entity, processed_entities, db_entity, sync_context)
+        elif action == DestinationAction.DELETE:
+            await self._handle_delete(parent_entity, sync_context)
 
     async def _compute_vector(
         self,
@@ -608,7 +630,7 @@ class EntityProcessor:
         self,
         parent_entity: BaseEntity,
         processed_entities: List[BaseEntity],
-        db_entity: Optional[schemas.Entity],
+        db_entity: Optional[models.Entity],
         sync_context: SyncContext,
     ) -> None:
         """Handle INSERT action."""
@@ -680,7 +702,7 @@ class EntityProcessor:
         self,
         parent_entity: BaseEntity,
         processed_entities: List[BaseEntity],
-        db_entity: schemas.Entity,
+        db_entity: models.Entity,
         sync_context: SyncContext,
     ) -> None:
         """Handle UPDATE action."""
@@ -704,17 +726,24 @@ class EntityProcessor:
         # Create a new database session just for this update
         # Re-fetch entity in this session (original was from a different session)
         async with get_db_context() as db:
-            # Re-fetch the entity in this session
-            fresh_db_entity = await crud.entity.get(db=db, id=db_entity.id, ctx=sync_context.ctx)
-            if fresh_db_entity:
+            # Re-query the entity in the new session to avoid session issues
+            try:
+                fresh_db_entity = await crud.entity.get_by_entity_and_sync_id(
+                    db=db, entity_id=parent_entity.entity_id, sync_id=sync_context.sync.id
+                )
                 await crud.entity.update(
                     db=db,
                     db_obj=fresh_db_entity,
                     obj_in=schemas.EntityUpdate(hash=parent_hash),
-                    ctx=sync_context.ctx,
+                    auth_context=sync_context.auth_context,
                 )
-            else:
-                sync_context.logger.error(f"Failed to find entity {db_entity.id} for update")
+            except NotFoundException:
+                sync_context.logger.warning(
+                    f"📭 UPDATE_ENTITY_NOT_FOUND [{entity_context}] "
+                    f"Entity no longer exists in database"
+                )
+                await sync_context.progress.increment("skipped", 1)
+                return
 
         db_elapsed = asyncio.get_event_loop().time() - db_start
         parent_entity.db_entity_id = db_entity.id
@@ -767,4 +796,63 @@ class EntityProcessor:
         total_elapsed = db_elapsed + delete_elapsed + insert_elapsed
         sync_context.logger.debug(
             f"✅ UPDATE_COMPLETE [{entity_context}] Update complete in {total_elapsed:.3f}s"
+        )
+
+    async def _handle_delete(
+        self,
+        parent_entity: BaseEntity,
+        sync_context: SyncContext,
+    ) -> None:
+        """Handle DELETE action."""
+        entity_context = f"Entity({parent_entity.entity_id})"
+
+        sync_context.logger.info(
+            f"🗑️ DELETE_START [{entity_context}] Deleting entity from destinations"
+        )
+
+        # Delete from destinations
+        delete_start = asyncio.get_event_loop().time()
+
+        for i, destination in enumerate(sync_context.destinations):
+            sync_context.logger.info(
+                f"🗑️ DELETE_DEST_{i} [{entity_context}] Deleting from destination {i + 1}"
+            )
+            await destination.bulk_delete_by_parent_id(
+                parent_entity.entity_id, sync_context.sync.id
+            )
+
+        delete_elapsed = asyncio.get_event_loop().time() - delete_start
+        sync_context.logger.info(
+            f"🗑️ DELETE_DEST_DONE [{entity_context}] All deletions complete in {delete_elapsed:.3f}s"
+        )
+
+        # Delete from database if it exists
+        db_start = asyncio.get_event_loop().time()
+        async with get_db_context() as db:
+            try:
+                db_entity = await crud.entity.get_by_entity_and_sync_id(
+                    db=db, entity_id=parent_entity.entity_id, sync_id=sync_context.sync.id
+                )
+                if db_entity:
+                    await crud.entity.remove(
+                        db=db, id=db_entity.id, auth_context=sync_context.auth_context
+                    )
+                    sync_context.logger.info(
+                        f"💾 DELETE_DB_DONE [{entity_context}] Database entity deleted"
+                    )
+                else:
+                    sync_context.logger.info(
+                        f"💾 DELETE_DB_SKIP [{entity_context}] No database entity to delete"
+                    )
+            except NotFoundException:
+                sync_context.logger.info(
+                    f"💾 DELETE_DB_SKIP [{entity_context}] Database entity not found"
+                )
+
+        db_elapsed = asyncio.get_event_loop().time() - db_start
+
+        await sync_context.progress.increment("deleted", 1)
+        total_elapsed = delete_elapsed + db_elapsed
+        sync_context.logger.info(
+            f"✅ DELETE_COMPLETE [{entity_context}] Delete complete in {total_elapsed:.3f}s"
         )

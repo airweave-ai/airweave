@@ -17,6 +17,7 @@ from airweave.platform.entities._base import Breadcrumb, ChunkEntity
 from airweave.platform.entities.github import (
     GitHubCodeFileEntity,
     GitHubDirectoryEntity,
+    GitHubFileDeletionEntity,
     GitHubRepositoryEntity,
 )
 from airweave.platform.sources._base import BaseSource
@@ -64,6 +65,8 @@ class GitHubSource(BaseSource):
         instance.repo_name = credentials.repo_name
 
         instance.branch = config.get("branch", None)
+
+        instance.max_file_size = config.get("max_file_size", 10 * 1024 * 1024)
 
         return instance
 
@@ -155,10 +158,63 @@ class GitHubSource(BaseSource):
         ext = Path(file_path).suffix.lower()
         return get_language_for_extension(ext)
 
+    def _get_cursor_data(self) -> Dict[str, Any]:
+        """Get cursor data from cursor.
+
+        Returns:
+            Cursor data dictionary, empty dict if no cursor exists
+        """
+        if hasattr(self, "cursor") and self.cursor:
+            return getattr(self.cursor, "cursor_data", {})
+        return {}
+
+    def _update_cursor_data(self, pushed_at: str, repo_name: str):
+        """Update cursor data with repository pushed_at timestamp.
+
+        Args:
+            pushed_at: Repository pushed_at timestamp
+            repo_name: Repository name
+        """
+        self.cursor.cursor_data.update(
+            {
+                "last_repository_pushed_at": pushed_at,
+                "repo_name": repo_name,
+                "branch": getattr(self, "branch", None),
+            }
+        )
+        self.logger.debug(f"Updated cursor data: {self.cursor.cursor_data}")
+
+    def _check_repository_updates(
+        self, repo_name: str, last_pushed_at: str, current_pushed_at: str
+    ) -> bool:
+        """Check if repository has been updated since last sync.
+
+        Args:
+            repo_name: Repository name
+            last_pushed_at: Last sync timestamp
+            current_pushed_at: Current repository pushed_at
+
+        Returns:
+            True if repository has updates, False otherwise
+        """
+        if last_pushed_at:
+            self.logger.info(
+                f"Repository {repo_name} pushed_at: {last_pushed_at} -> {current_pushed_at}"
+            )
+            has_updates = current_pushed_at > last_pushed_at
+            if has_updates:
+                self.logger.info(f"Repository {repo_name} has new commits since last sync")
+            else:
+                self.logger.info(f"Repository {repo_name} has no new commits since last sync")
+            return has_updates
+        else:
+            self.logger.info(f"First sync for repository {repo_name}")
+            return True
+
     async def _get_repository_info(
         self, client: httpx.AsyncClient, repo_name: str
     ) -> GitHubRepositoryEntity:
-        """Get repository information.
+        """Get repository information with cursor support.
 
         Args:
             client: HTTP client
@@ -169,6 +225,17 @@ class GitHubSource(BaseSource):
         """
         url = f"{self.BASE_URL}/repos/{repo_name}"
         repo_data = await self._get_with_auth(client, url)
+
+        # Check for cursor data and repository updates
+        cursor_data = self._get_cursor_data()
+        last_pushed_at = cursor_data.get("last_repository_pushed_at")
+        current_pushed_at = repo_data["pushed_at"]
+
+        # Check for updates and log status
+        self._check_repository_updates(repo_name, last_pushed_at, current_pushed_at)
+
+        # Update cursor with current repository pushed_at
+        self._update_cursor_data(current_pushed_at, repo_name)
 
         return GitHubRepositoryEntity(
             entity_id=str(repo_data["id"]),
@@ -222,6 +289,244 @@ class GitHubSource(BaseSource):
             client, repo_name, "", [repo_breadcrumb], owner, repo, branch, processed_paths
         ):
             yield entity
+
+    async def _traverse_repository_incremental(
+        self, client: httpx.AsyncClient, repo_name: str, branch: str, since_timestamp: str
+    ) -> AsyncGenerator[ChunkEntity, None]:
+        """Traverse repository contents incrementally using commits since last sync.
+
+        Args:
+            client: HTTP client
+            repo_name: Repository name (format: "owner/repo")
+            branch: Branch name
+            since_timestamp: ISO 8601 timestamp to get commits since
+
+        Yields:
+            Repository and changed file entities
+        """
+        # Get repository info first
+        repo_entity = await self._get_repository_info(client, repo_name)
+        yield repo_entity
+
+        # Parse owner and repo
+        owner, repo = repo_name.split("/")
+
+        # Get commits since the last sync timestamp
+        commits = await self._get_commits_since(client, repo_name, since_timestamp, branch)
+
+        if not commits:
+            self.logger.info(f"No new commits found since {since_timestamp}")
+            return
+
+        self.logger.info(f"Found {len(commits)} new commits since {since_timestamp}")
+
+        # Track processed files to avoid duplicates
+        processed_files = set()
+
+        # Process each commit and extract changed files
+        for commit in commits:
+            commit_sha = commit["sha"]
+            commit_message = commit["commit"]["message"]
+
+            self.logger.debug(f"Processing commit {commit_sha[:8]}: {commit_message}")
+
+            # Get files changed in this commit
+            changed_files = await self._get_commit_files(client, repo_name, commit_sha)
+
+            for file_info in changed_files:
+                file_path = file_info["filename"]
+
+                # Skip if we've already processed this file
+                if file_path in processed_files:
+                    continue
+
+                processed_files.add(file_path)
+
+                # Handle deleted files
+                if file_info["status"] == "removed":
+                    self.logger.info(f"Processing deleted file: {file_path}")
+                    # Create a special deletion entity
+                    deletion_entity = GitHubFileDeletionEntity(
+                        entity_id=f"{repo_name}/{file_path}",
+                        source_name="github",
+                        file_path=file_path,
+                        repo_name=repo,
+                        repo_owner=owner,
+                        deletion_status="removed",
+                        sync_metadata={"github_status": "removed"},
+                    )
+                    yield deletion_entity
+                    continue
+
+                # Process the changed file
+                try:
+                    async for entity in self._process_changed_file(
+                        client, repo_name, file_path, owner, repo, branch
+                    ):
+                        yield entity
+                except Exception as e:
+                    self.logger.error(f"Error processing changed file {file_path}: {e}")
+
+    async def _get_commits_since(
+        self, client: httpx.AsyncClient, repo_name: str, since_timestamp: str, branch: str
+    ) -> List[Dict[str, Any]]:
+        """Get commits since a specific timestamp.
+
+        Args:
+            client: HTTP client
+            repo_name: Repository name
+            since_timestamp: ISO 8601 timestamp
+            branch: Branch name
+
+        Returns:
+            List of commit objects
+        """
+        url = f"{self.BASE_URL}/repos/{repo_name}/commits"
+        params = {
+            "since": since_timestamp,
+            "sha": branch,
+            "per_page": 100,  # Max allowed
+        }
+
+        commits = await self._get_paginated_results(client, url, params)
+        self.logger.info(f"Retrieved {len(commits)} commits since {since_timestamp}")
+        return commits
+
+    async def _get_commit_files(
+        self, client: httpx.AsyncClient, repo_name: str, commit_sha: str
+    ) -> List[Dict[str, Any]]:
+        """Get files changed in a specific commit.
+
+        Args:
+            client: HTTP client
+            repo_name: Repository name
+            commit_sha: Commit SHA
+
+        Returns:
+            List of file change objects
+        """
+        url = f"{self.BASE_URL}/repos/{repo_name}/commits/{commit_sha}"
+
+        try:
+            commit_data = await self._get_with_auth(client, url)
+            files = commit_data.get("files", [])
+            self.logger.debug(f"Commit {commit_sha[:8]} changed {len(files)} files")
+            return files
+        except Exception as e:
+            self.logger.error(f"Error getting files for commit {commit_sha}: {e}")
+            return []
+
+    async def _process_changed_file(
+        self,
+        client: httpx.AsyncClient,
+        repo_name: str,
+        file_path: str,
+        owner: str,
+        repo: str,
+        branch: str,
+    ) -> AsyncGenerator[ChunkEntity, None]:
+        """Process a single changed file.
+
+        Args:
+            client: HTTP client
+            repo_name: Repository name
+            file_path: Path to the file
+            owner: Repository owner
+            repo: Repository name
+            branch: Branch name
+
+        Yields:
+            File entity if it's a text file
+        """
+        # Create breadcrumbs for the file
+        path_parts = file_path.split("/")
+        breadcrumbs = []
+
+        # Add repository breadcrumb
+        repo_breadcrumb = Breadcrumb(entity_id=f"{owner}/{repo}", name=repo, type="repository")
+        breadcrumbs.append(repo_breadcrumb)
+
+        # Add directory breadcrumbs
+        current_path = ""
+        for _i, part in enumerate(path_parts[:-1]):  # Exclude the filename
+            current_path = f"{current_path}/{part}" if current_path else part
+            dir_breadcrumb = Breadcrumb(
+                entity_id=f"{repo_name}/{current_path}", name=part, type="directory"
+            )
+            breadcrumbs.append(dir_breadcrumb)
+
+        # Get file content
+        try:
+            file_url = f"{self.BASE_URL}/repos/{repo_name}/contents/{file_path}?ref={branch}"
+            file_data = await self._get_with_auth(client, file_url)
+
+            # Check if this is a text file
+            file_size = file_data.get("size", 0)
+            if file_size > self.max_file_size:
+                self.logger.debug(f"Skipping large file: {file_path} ({file_size} bytes)")
+                return
+
+            # Get file content
+            content_url = file_data["download_url"]
+            content_response = await client.get(content_url)
+            content_response.raise_for_status()
+            content_text = content_response.text
+
+            # Check if this is a text file based on content
+            if not self._is_text_content(content_text):
+                self.logger.debug(f"Skipping binary file: {file_path}")
+                return
+
+            # Detect language
+            language = self._detect_language_from_extension(file_path)
+
+            # Count lines
+            line_count = content_text.count("\n") + 1
+
+            # Create file entity
+            file_entity = GitHubCodeFileEntity(
+                entity_id=f"{repo_name}/{file_path}",
+                source_name="github",
+                file_id=file_data["sha"],
+                name=path_parts[-1],  # Filename
+                mime_type=mimetypes.guess_type(file_path)[0] or "text/plain",
+                size=file_size,
+                path=file_path,
+                repo_name=repo,
+                repo_owner=owner,
+                sha=file_data["sha"],
+                breadcrumbs=breadcrumbs,
+                url=file_data["html_url"],
+                language=language,
+                line_count=line_count,
+                path_in_repo=file_path,
+                content=content_text,
+                last_modified=None,
+            )
+
+            yield file_entity
+
+        except Exception as e:
+            self.logger.error(f"Error processing changed file {file_path}: {e}")
+
+    def _is_text_content(self, content: str) -> bool:
+        """Check if content appears to be text.
+
+        Args:
+            content: File content
+
+        Returns:
+            True if content appears to be text
+        """
+        # Check for null bytes (common in binary files)
+        if "\x00" in content:
+            return False
+
+        # Check if content is mostly printable characters
+        printable_ratio = sum(1 for c in content[:1000] if c.isprintable() or c.isspace()) / min(
+            len(content), 1000
+        )
+        return printable_ratio > 0.7
 
     async def _traverse_directory(
         self,
@@ -407,7 +712,7 @@ class GitHubSource(BaseSource):
             self.logger.error(f"Error processing file {item_path}: {str(e)}")
 
     async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
-        """Generate entities from GitHub repository.
+        """Generate entities from GitHub repository with incremental support.
 
         Yields:
             Repository, directory, and file entities
@@ -415,9 +720,14 @@ class GitHubSource(BaseSource):
         if not hasattr(self, "repo_name") or not self.repo_name:
             raise ValueError("Repository name must be specified")
 
+        # Get cursor data for incremental sync
+        cursor_data = self._get_cursor_data()
+        last_pushed_at = cursor_data.get("last_repository_pushed_at")
+
         async with httpx.AsyncClient() as client:
             repo_url = f"{self.BASE_URL}/repos/{self.repo_name}"
             repo_data = await self._get_with_auth(client, repo_url)
+            current_pushed_at = repo_data["pushed_at"]
 
             # Use specified branch if available, otherwise use default branch
             branch = (
@@ -440,7 +750,30 @@ class GitHubSource(BaseSource):
                         f"Available branches: {available_branches}"
                     )
 
-            self.logger.info(f"Using branch: {branch} for repo {self.repo_name}")
+            # Check if we should perform incremental sync
+            should_sync = True
+            if last_pushed_at and current_pushed_at <= last_pushed_at:
+                self.logger.info(
+                    f"Repository {self.repo_name} has no new commits since last sync, "
+                    "skipping file traversal"
+                )
+                should_sync = False
 
-            async for entity in self._traverse_repository(client, self.repo_name, branch):
-                yield entity
+            if should_sync:
+                self.logger.info(f"Using branch: {branch} for repo {self.repo_name}")
+
+                # Check if this is an incremental sync (we have a last_pushed_at timestamp)
+                if last_pushed_at:
+                    self.logger.info(f"Performing incremental sync since {last_pushed_at}")
+                    async for entity in self._traverse_repository_incremental(
+                        client, self.repo_name, branch, last_pushed_at
+                    ):
+                        yield entity
+                else:
+                    self.logger.info("Performing full sync (no previous sync timestamp)")
+                    async for entity in self._traverse_repository(client, self.repo_name, branch):
+                        yield entity
+            else:
+                # Still yield repository entity for cursor update, but skip file traversal
+                repo_entity = await self._get_repository_info(client, self.repo_name)
+                yield repo_entity

@@ -10,7 +10,7 @@ References:
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import Field
 
@@ -110,3 +110,23 @@ class GithubContentEntity(ChunkEntity):
     encoding: Optional[str] = Field(
         None, description="Indicates the encoding of the content (e.g., 'base64')."
     )
+
+
+class GitHubFileDeletionEntity(ChunkEntity):
+    """Schema for GitHub file deletion entity.
+
+    This entity is used to signal that a file has been removed from the repository
+    and should be deleted from the destination.
+    """
+
+    file_path: str = Field(..., description="Path of the deleted file within the repository")
+    repo_name: str = Field(..., description="Name of the repository containing the deleted file")
+    repo_owner: str = Field(..., description="Owner of the repository")
+    deletion_status: str = Field(..., description="Status indicating the file was removed")
+
+    def to_storage_dict(self, exclude_fields: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Override to include deletion metadata for proper handling."""
+        data = super().to_storage_dict(exclude_fields)
+        data["_deletion_entity"] = True
+        data["_deletion_target"] = self.entity_id
+        return data

@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from airweave.models.entity import Entity
     from airweave.models.source_connection import SourceConnection
     from airweave.models.sync_connection import SyncConnection
+    from airweave.models.sync_cursor import SyncCursor
     from airweave.models.sync_job import SyncJob
 
 
@@ -29,6 +30,9 @@ class Sync(OrganizationBase, UserMixin):
     next_scheduled_run: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=False), nullable=True
     )
+    temporal_schedule_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    sync_type: Mapped[str] = mapped_column(String(50), default="full")
+    minute_level_cron_schedule: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     sync_metadata: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     jobs: Mapped[list["SyncJob"]] = relationship(
@@ -69,4 +73,14 @@ class Sync(OrganizationBase, UserMixin):
         lazy="noload",
         cascade="all, delete-orphan",
         passive_deletes=True,
+    )
+
+    # Add relationship to SyncCursor (one-to-one)
+    sync_cursor: Mapped[Optional["SyncCursor"]] = relationship(
+        "SyncCursor",
+        back_populates="sync",
+        lazy="noload",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        uselist=False,  # Ensures one-to-one relationship
     )
