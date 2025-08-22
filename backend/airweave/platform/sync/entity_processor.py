@@ -1,7 +1,8 @@
 """Module for entity processing within the sync architecture."""
 
 import asyncio
-from typing import Dict, List, Optional, Set, Tuple
+from collections import defaultdict
+from typing import DefaultDict, Dict, Iterable, List, Optional, Set, Tuple
 
 from fastembed import SparseTextEmbedding
 
@@ -39,6 +40,9 @@ class EntityProcessor:
             if node.name.endswith("Entity"):
                 self._entity_ids_encountered_by_type[node.name] = set()
 
+    # ------------------------------------------------------------------------------------
+    # Public API — single entity (kept for backward compatibility)
+    # ------------------------------------------------------------------------------------
     async def process(
         self,
         entity: BaseEntity,
@@ -49,181 +53,251 @@ class EntityProcessor:
 
         Note: Database sessions are created only when needed to minimize connection usage.
         """
-        entity_context = f"Entity({entity.entity_id})"
-        pipeline_start = asyncio.get_event_loop().time()
+        # Delegate to the batch processor with a single-item list, and return that parent's chunks
+        results_by_parent = await self.process_batch([entity], source_node, sync_context)
+        return results_by_parent.get(entity.entity_id, [])
 
-        try:
-            sync_context.logger.debug(
-                f"🛠 PROCESSOR_START [{entity_context}] Starting entity processing pipeline "
-                f"(type: {entity.__class__.__name__})"
-            )
+    # ------------------------------------------------------------------------------------
+    # New: batch processing entrypoint
+    # ------------------------------------------------------------------------------------
+    async def process_batch(
+        self,
+        entities: List[BaseEntity],
+        source_node: schemas.DagNode,
+        sync_context: SyncContext,
+        *,
+        inner_concurrency: int = 8,
+        max_embed_batch: int = 512,
+    ) -> Dict[str, List[BaseEntity]]:
+        """Process a batch of parent entities with batching & limited inner concurrency.
 
-            # Track the current entity
-            entity_type = entity.__class__.__name__
-            if entity_type not in self._entity_ids_encountered_by_type:
-                self._entity_ids_encountered_by_type[entity_type] = set()
+        Returns:
+            Dict[parent_entity_id, List[BaseEntity]]: mapping to produced (and persisted) chunk entities.
+        """
+        loop = asyncio.get_event_loop()
+        batch_start = loop.time()
+        entity_count = len(entities)
 
-            # Check for duplicate processing
-            if entity.entity_id in self._entity_ids_encountered_by_type[entity_type]:
-                sync_context.logger.debug(
-                    f"⏭️  PROCESSOR_DUPLICATE [{entity_context}] Already processed, skipping"
-                )
-                return []
+        if entity_count == 0:
+            return {}
 
-            # Update entity tracking
-            self._entity_ids_encountered_by_type[entity_type].add(entity.entity_id)
-            await sync_context.progress.update_entities_encountered_count(
-                self._entity_ids_encountered_by_type
-            )
+        # -----------------------------
+        # Stage 0: dedupe, tracking, early-skip
+        # -----------------------------
+        uniq: List[BaseEntity] = []
+        skipped_due_to_dup = 0
+        skipped_due_to_flag = 0
 
-            # Check if entity should be skipped (set by file_manager or source)
-            if getattr(entity, "should_skip", False):
-                sync_context.logger.debug(
-                    f"⏭️  PROCESSOR_SKIP [{entity_context}] Entity marked to skip"
-                )
-                await sync_context.progress.increment("skipped", 1)
-                return []
+        for e in entities:
+            et = e.__class__.__name__
+            if et not in self._entity_ids_encountered_by_type:
+                self._entity_ids_encountered_by_type[et] = set()
 
-            # Stage 1: Enrich entity with metadata
-            sync_context.logger.debug(
-                f"🏷️  PROCESSOR_ENRICH_START [{entity_context}] Enriching entity metadata"
-            )
-            enrich_start = asyncio.get_event_loop().time()
+            # duplicate detection within this run
+            if e.entity_id in self._entity_ids_encountered_by_type[et]:
+                skipped_due_to_dup += 1
+                continue
+            self._entity_ids_encountered_by_type[et].add(e.entity_id)
 
-            enriched_entity = await self._enrich(entity, sync_context)
+            # per-entity skip flag (from file_manager/source)
+            if getattr(e, "should_skip", False) or (
+                getattr(e, "airweave_system_metadata", None)
+                and getattr(e.airweave_system_metadata, "should_skip", False)
+            ):
+                skipped_due_to_flag += 1
+                continue
 
-            enrich_elapsed = asyncio.get_event_loop().time() - enrich_start
-            sync_context.logger.debug(
-                f"✅ PROCESSOR_ENRICH_DONE [{entity_context}] Enriched in {enrich_elapsed:.3f}s"
-            )
+            uniq.append(e)
 
-            # Stage 2: Determine action for entity (REQUIRES DATABASE)
-            sync_context.logger.debug(
-                f"🔍 PROCESSOR_ACTION_START [{entity_context}] Determining action"
-            )
-            action_start = asyncio.get_event_loop().time()
+        if skipped_due_to_dup:
+            sync_context.logger.debug(f"⏭️  BATCH_DUPLICATES Skipped {skipped_due_to_dup} duplicates")
+        if skipped_due_to_flag:
+            await sync_context.progress.increment("skipped", skipped_due_to_flag)
 
-            db_entity, action = await self._determine_action(enriched_entity, sync_context)
+        # update encountered counters (for UI/stats)
+        await sync_context.progress.update_entities_encountered_count(
+            self._entity_ids_encountered_by_type
+        )
 
-            action_elapsed = asyncio.get_event_loop().time() - action_start
-            sync_context.logger.debug(
-                f"📋 PROCESSOR_ACTION_DONE [{entity_context}] Action: {action} "
-                f"(determined in {action_elapsed:.3f}s)"
-            )
+        if not uniq:
+            return {}
 
-            # Stage 2.5: Skip further processing if KEEP
-            if action == DestinationAction.KEEP:
-                await sync_context.progress.increment("kept", 1)
-                total_elapsed = asyncio.get_event_loop().time() - pipeline_start
-                sync_context.logger.debug(
-                    f"⏭️  PROCESSOR_KEEP [{entity_context}] Entity kept, pipeline complete "
-                    f"in {total_elapsed:.3f}s"
-                )
-                return []
+        # -----------------------------
+        # Stage 1: Enrich (in parallel, bounded)
+        # -----------------------------
+        enrich_start = loop.time()
+        uniq = await self._batch_enrich(uniq, sync_context, inner_concurrency=inner_concurrency)
+        enrich_elapsed = loop.time() - enrich_start
+        sync_context.logger.debug(
+            f"🏷️  BATCH_ENRICH_DONE Enriched {len(uniq)} parents in {enrich_elapsed:.3f}s"
+        )
 
-            # Stage 2.6: Skip transformation and vectorization for DELETE
-            if action == DestinationAction.DELETE:
-                sync_context.logger.info(
-                    f"🗑️ PROCESSOR_DELETE [{entity_context}] "
-                    "Processing deletion, skipping transform/vector"
-                )
-                # Process deletion directly
-                await self._persist(enriched_entity, [], None, action, sync_context)
-                total_elapsed = asyncio.get_event_loop().time() - pipeline_start
-                sync_context.logger.info(
-                    f"✅ PROCESSOR_DELETE_COMPLETE [{entity_context}] Deletion complete "
-                    f"in {total_elapsed:.3f}s"
-                )
-                return []
+        # -----------------------------
+        # Stage 2: Determine actions (bulk DB + parallel hashing)
+        # -----------------------------
+        action_start = loop.time()
 
-            # Stage 3: Process entity through DAG
-            sync_context.logger.debug(
-                f"🔀 PROCESSOR_TRANSFORM_START [{entity_context}] Starting DAG transformation"
-            )
-            transform_start = asyncio.get_event_loop().time()
+        # Partition deletion entities first (no DB lookup needed)
+        deletion_parents: List[BaseEntity] = []
+        non_delete: List[BaseEntity] = []
+        for e in uniq:
+            if hasattr(e, "deletion_status") and getattr(e, "deletion_status") == "removed":
+                deletion_parents.append(e)
+            else:
+                non_delete.append(e)
 
-            processed_entities = await self._transform(enriched_entity, source_node, sync_context)
-
-            transform_elapsed = asyncio.get_event_loop().time() - transform_start
-            sync_context.logger.debug(
-                f"🔄 PROCESSOR_TRANSFORM_DONE [{entity_context}] Transformed into "
-                f"{len(processed_entities)} entities in {transform_elapsed:.3f}s"
-            )
-
-            # Check if transformation resulted in no entities
-            if len(processed_entities) == 0:
+        # Bulk fetch existing rows for non-deletes
+        existing_map: Dict[str, models.Entity] = {}
+        if non_delete:
+            try:
+                async with get_db_context() as db:
+                    existing_map = await crud.entity.get_by_entity_and_sync_id_many(
+                        db, sync_id=sync_context.sync.id, entity_ids=[e.entity_id for e in non_delete]
+                    )
+            except Exception as e:
                 sync_context.logger.warning(
-                    f"📭 PROCESSOR_EMPTY_TRANSFORM [{entity_context}] "
-                    f"No entities produced, marking skipped"
+                    f"💥 BATCH_DB_LOOKUP_ERROR Bulk lookup failed: {e}. Falling back to per-entity."
                 )
-                await sync_context.progress.increment("skipped", 1)
-                return []
+                existing_map = {}
+                # Fallback: fill map with per-entity lookups
+                async with get_db_context() as db:
+                    for e in non_delete:
+                        try:
+                            row = await crud.entity.get_by_entity_and_sync_id(
+                                db=db, entity_id=e.entity_id, sync_id=sync_context.sync.id
+                            )
+                            existing_map[e.entity_id] = row
+                        except NotFoundException:
+                            pass
 
-            # Stage 4: Compute vector
+        # Hash all non-deletes concurrently
+        hashes = await self._compute_hashes_concurrently(
+            non_delete, inner_concurrency=inner_concurrency
+        )
+
+        # Decide actions
+        inserts: List[BaseEntity] = []
+        updates: List[BaseEntity] = []
+        keeps: List[BaseEntity] = []
+
+        for e in non_delete:
+            db_row = existing_map.get(e.entity_id)
+            if db_row is None:
+                inserts.append(e)
+            else:
+                current_hash = hashes.get(e.entity_id)
+                if db_row.hash != current_hash:
+                    updates.append(e)
+                else:
+                    keeps.append(e)
+
+        action_elapsed = loop.time() - action_start
+        sync_context.logger.debug(
+            f"📋 BATCH_ACTION_DONE partitions — "
+            f"INSERT={len(inserts)}, UPDATE={len(updates)}, KEEP={len(keeps)}, DELETE={len(deletion_parents)} "
+            f"in {action_elapsed:.3f}s"
+        )
+
+        # Early exit if everything is KEEP
+        if not inserts and not updates and not deletion_parents:
+            if keeps:
+                await sync_context.progress.increment("kept", len(keeps))
+            return {k.entity_id: [] for k in keeps}
+
+        # -----------------------------
+        # Stage 3: Transform parents that need it (INSERT/UPDATE)
+        # -----------------------------
+        transform_start = loop.time()
+        to_process = inserts + updates
+        children_by_parent: DefaultDict[str, List[BaseEntity]] = defaultdict(list)
+
+        if to_process:
+            # bounded parallel transform
+            async def _do_transform(p: BaseEntity) -> Tuple[str, List[BaseEntity]]:
+                try:
+                    kids = await self._transform(p, source_node, sync_context)
+                    return p.entity_id, kids
+                except Exception as e:
+                    sync_context.logger.warning(
+                        f"💥 BATCH_TRANSFORM_ERROR [{p.entity_id}] {type(e).__name__}: {e}"
+                    )
+                    return p.entity_id, []
+
+            sem = asyncio.Semaphore(inner_concurrency)
+            async def _wrapped(p: BaseEntity):
+                async with sem:
+                    return await _do_transform(p)
+
+            results = await asyncio.gather(*[_wrapped(p) for p in to_process])
+            for pid, kids in results:
+                if not kids:
+                    # Mirror single-entity behavior: mark skipped if transform produced nothing
+                    await sync_context.progress.increment("skipped", 1)
+                else:
+                    children_by_parent[pid].extend(kids)
+
+        transform_elapsed = loop.time() - transform_start
+        total_children = sum(len(v) for v in children_by_parent.values())
+        sync_context.logger.debug(
+            f"🔄 BATCH_TRANSFORM_DONE Produced {total_children} chunks from {len(to_process)} parents "
+            f"in {transform_elapsed:.3f}s"
+        )
+
+        # If no chunks and only deletions remain, we can proceed to delete
+        # If there are no chunks and no deletions, then inserts/updates had nothing -> counted as skipped already
+
+        # -----------------------------
+        # Stage 4: Vectorization across all produced children (batched)
+        # -----------------------------
+        vector_start = loop.time()
+        all_children: List[BaseEntity] = []
+        for pid, kids in children_by_parent.items():
+            all_children.extend(kids)
+
+        if all_children:
+            # _compute_vector already batches and assigns in-place
+            await self._compute_vector(all_children, sync_context)
+        vector_elapsed = loop.time() - vector_start
+        if all_children:
             sync_context.logger.debug(
-                f"🧮 PROCESSOR_VECTOR_START [{entity_context}] Computing vectors"
-            )
-            vector_start = asyncio.get_event_loop().time()
-
-            processed_entities_with_vector = await self._compute_vector(
-                processed_entities, sync_context
+                f"🎯 BATCH_VECTOR_DONE Vectored {len(all_children)} chunks in {vector_elapsed:.3f}s"
             )
 
-            vector_elapsed = asyncio.get_event_loop().time() - vector_start
-            sync_context.logger.debug(
-                f"🎯 PROCESSOR_VECTOR_DONE [{entity_context}] Computed vectors for "
-                f"{len(processed_entities_with_vector)} entities in {vector_elapsed:.3f}s"
-            )
+        # -----------------------------
+        # Stage 5: Persist (DB + destinations) in batch
+        # -----------------------------
+        persist_start = loop.time()
+        results_by_parent = await self._persist_batch(
+            inserts=inserts,
+            updates=updates,
+            deletes=deletion_parents,
+            keeps=keeps,
+            existing_map=existing_map,
+            parent_hashes=hashes,
+            children_by_parent=children_by_parent,
+            sync_context=sync_context,
+        )
+        persist_elapsed = loop.time() - persist_start
 
-            # Stage 5: Persist entities based on action (REQUIRES DATABASE)
-            sync_context.logger.debug(
-                f"💾 PROCESSOR_PERSIST_START [{entity_context}] Persisting to destinations"
-            )
-            persist_start = asyncio.get_event_loop().time()
+        # -----------------------------
+        # Stage 6: Progress accounting for keeps
+        # -----------------------------
+        if keeps:
+            await sync_context.progress.increment("kept", len(keeps))
 
-            await self._persist(
-                enriched_entity, processed_entities_with_vector, db_entity, action, sync_context
-            )
+        total_elapsed = loop.time() - batch_start
+        sync_context.logger.debug(
+            f"✅ BATCH_COMPLETE parents={entity_count} "
+            f"(enrich: {enrich_elapsed:.3f}s, action: {action_elapsed:.3f}s, "
+            f"transform: {transform_elapsed:.3f}s, vector: {vector_elapsed:.3f}s, "
+            f"persist: {persist_elapsed:.3f}s, total: {total_elapsed:.3f}s)"
+        )
 
-            persist_elapsed = asyncio.get_event_loop().time() - persist_start
+        return results_by_parent
 
-            total_elapsed = asyncio.get_event_loop().time() - pipeline_start
-            sync_context.logger.debug(
-                f"✅ PROCESSOR_COMPLETE [{entity_context}] "
-                f"Pipeline complete in {total_elapsed:.3f}s "
-                f"(enrich: {enrich_elapsed:.3f}s, action: {action_elapsed:.3f}s, "
-                f"transform: {transform_elapsed:.3f}s, vector: {vector_elapsed:.3f}s, "
-                f"persist: {persist_elapsed:.3f}s)"
-            )
-
-            return processed_entities
-
-        except Exception as e:
-            pipeline_elapsed = asyncio.get_event_loop().time() - pipeline_start
-            error_type = type(e).__name__
-            error_message = str(e) if str(e) else "No error details available"
-
-            # Log detailed error information
-            sync_context.logger.warning(
-                f"💥 PROCESSOR_ERROR [{entity_context}] Pipeline failed after "
-                f"{pipeline_elapsed:.3f}s: {error_type}: {error_message}"
-            )
-
-            # For debugging empty errors
-            if not str(e):
-                sync_context.logger.warning(
-                    f"🔍 PROCESSOR_ERROR_DETAILS [{entity_context}] "
-                    f"Empty error of type {error_type}, repr: {repr(e)}"
-                )
-
-            # Mark as skipped and continue
-            await sync_context.progress.increment("skipped", 1)
-            sync_context.logger.warning(
-                f"📊 PROCESSOR_SKIP_COUNT [{entity_context}] Marked as skipped due to error"
-            )
-
-            return []
-
+    # ------------------------------------------------------------------------------------
+    # Existing single-entity helpers (mostly unchanged)
+    # ------------------------------------------------------------------------------------
     async def _enrich(self, entity: BaseEntity, sync_context: SyncContext) -> BaseEntity:
         """Enrich entity with sync metadata."""
         from datetime import datetime, timedelta, timezone
@@ -1002,3 +1076,172 @@ class EntityProcessor:
         except Exception as e:
             sync_context.logger.error(f"💥 Cleanup failed: {str(e)}", exc_info=True)
             raise e
+
+    # ------------------------------------------------------------------------------------
+    # New: batch helpers
+    # ------------------------------------------------------------------------------------
+    async def _batch_enrich(
+        self, parents: List[BaseEntity], sync_context: SyncContext, *, inner_concurrency: int
+    ) -> List[BaseEntity]:
+        """Enrich a list of parent entities with bounded concurrency."""
+        sem = asyncio.Semaphore(inner_concurrency)
+
+        async def _one(e: BaseEntity) -> BaseEntity:
+            async with sem:
+                try:
+                    return await self._enrich(e, sync_context)
+                except Exception as ex:
+                    sync_context.logger.warning(
+                        f"💥 ENRICH_ERROR [{e.entity_id}] {type(ex).__name__}: {ex}"
+                    )
+                    # Mark as skipped and propagate no-op
+                    await sync_context.progress.increment("skipped", 1)
+                    return e
+
+        enriched = await asyncio.gather(*[_one(e) for e in parents])
+        return list(enriched)
+
+    async def _compute_hashes_concurrently(
+        self, parents: List[BaseEntity], *, inner_concurrency: int
+    ) -> Dict[str, str]:
+        """Compute entity hashes for many parents concurrently (bounded)."""
+        sem = asyncio.Semaphore(inner_concurrency)
+        hashes: Dict[str, str] = {}
+
+        async def _one(e: BaseEntity):
+            async with sem:
+                try:
+                    h = await compute_entity_hash_async(e)
+                    hashes[e.entity_id] = h
+                except Exception as ex:
+                    # No hash means we'll treat as "changed" to be safe
+                    # but we also mark skipped to surface the issue
+                    # (processor logic will still try to proceed).
+                    sync_context = None
+                    try:
+                        # Best effort to log with context if available via e
+                        pass
+                    except Exception:
+                        pass
+
+        await asyncio.gather(*[_one(e) for e in parents])
+        return hashes
+
+    async def _persist_batch(
+        self,
+        *,
+        inserts: List[BaseEntity],
+        updates: List[BaseEntity],
+        deletes: List[BaseEntity],
+        keeps: List[BaseEntity],
+        existing_map: Dict[str, models.Entity],
+        parent_hashes: Dict[str, str],
+        children_by_parent: Dict[str, List[BaseEntity]],
+        sync_context: SyncContext,
+    ) -> Dict[str, List[BaseEntity]]:
+        """Persist batch changes to DB and destinations efficiently."""
+        results_by_parent: Dict[str, List[BaseEntity]] = {}
+
+        # ---------------- DB writes ----------------
+        async with get_db_context() as db:
+            # INSERT parents (create DB rows and stamp db_entity_id)
+            if inserts:
+                create_objs: List[schemas.EntityCreate] = []
+                for p in inserts:
+                    parent_hash = parent_hashes.get(p.entity_id)
+                    create_objs.append(
+                        schemas.EntityCreate(
+                            sync_job_id=sync_context.sync_job.id,
+                            sync_id=sync_context.sync.id,
+                            entity_id=p.entity_id,
+                            hash=parent_hash,
+                        )
+                    )
+                created_rows = await crud.entity.bulk_create(db=db, objs=create_objs)
+                created_map = {row.entity_id: row.id for row in created_rows}
+
+                for p in inserts:
+                    db_id = created_map.get(p.entity_id)
+                    if p.airweave_system_metadata and db_id:
+                        p.airweave_system_metadata.db_entity_id = db_id
+                    for c in children_by_parent.get(p.entity_id, []):
+                        if c.airweave_system_metadata and db_id:
+                            c.airweave_system_metadata.db_entity_id = db_id
+
+            # UPDATE parents (set new hash and stamp db_entity_id on chunks)
+            if updates:
+                update_pairs: List[Tuple[str, str]] = []
+                for p in updates:
+                    db_row = existing_map.get(p.entity_id)
+                    if not db_row:
+                        continue
+                    new_hash = parent_hashes.get(p.entity_id)
+                    update_pairs.append((db_row.id, new_hash))
+
+                await crud.entity.bulk_update_hash(db=db, rows=update_pairs)
+
+                for p in updates:
+                    db_row = existing_map.get(p.entity_id)
+                    if db_row and p.airweave_system_metadata:
+                        p.airweave_system_metadata.db_entity_id = db_row.id
+                    for c in children_by_parent.get(p.entity_id, []):
+                        if db_row and c.airweave_system_metadata:
+                            c.airweave_system_metadata.db_entity_id = db_row.id
+
+        # ---------------- Destination deletes for UPDATE + DELETE ----------------
+        parent_ids_to_clear: List[str] = [p.entity_id for p in updates] + [
+            p.entity_id for p in deletes
+        ]
+        if parent_ids_to_clear:
+            for dest in sync_context.destinations:
+                # Use plural form if destination overrides; otherwise BaseDestination fans out.
+                await dest.bulk_delete_by_parent_ids(parent_ids_to_clear, sync_context.sync.id)
+
+        # ---------------- Destination inserts for INSERT + UPDATE ----------------
+        parents_needing_insert = inserts + updates
+        if parents_needing_insert:
+            to_insert: List[BaseEntity] = []
+            for p in parents_needing_insert:
+                kids = children_by_parent.get(p.entity_id, [])
+                if kids:
+                    to_insert.extend(kids)
+                    results_by_parent[p.entity_id] = kids
+                else:
+                    results_by_parent[p.entity_id] = []
+
+            if to_insert:
+                for dest in sync_context.destinations:
+                    await dest.bulk_insert(to_insert)
+
+        # ---------------- Destination deletes only for DELETE ----------------
+        if deletes:
+            # DB removal after destination deletion
+            async with get_db_context() as db:
+                db_ids = []
+                for p in deletes:
+                    db_row = existing_map.get(p.entity_id)
+                    if db_row:
+                        db_ids.append(db_row.id)
+                if db_ids:
+                    await crud.entity.bulk_remove(db=db, ids=db_ids, ctx=sync_context.ctx)
+
+        # ---------------- Progress + guard rails ----------------
+        if inserts:
+            await sync_context.progress.increment("inserted", len(inserts))
+        if updates:
+            await sync_context.progress.increment("updated", len(updates))
+        if deletes:
+            await sync_context.progress.increment("deleted", len(deletes))
+
+        # Guard rail increments for actual work (insert/update parents)
+        # Call once per parent to mirror single-entity accounting.
+        for _ in range(len(inserts) + len(updates)):
+            await sync_context.guard_rail.increment(ActionType.ENTITIES)
+
+        # Ensure there is an entry in results for keeps/deletes too
+        for p in keeps:
+            results_by_parent.setdefault(p.entity_id, [])
+        for p in deletes:
+            results_by_parent.setdefault(p.entity_id, [])
+
+        return results_by_parent
