@@ -5,26 +5,41 @@ edit-this-page-url: https://github.com/airweave-ai/airweave/blob/main/fern/docs/
 slug: search
 ---
 
-Airweave’s search subsystem provides a unified query interface across heterogeneous data sources inside a collection. The pipeline transforms natural‑language queries into ranked results via a deterministic sequence of specialized operators that can be individually configured or disabled for fine‑grained control. This page summarizes each operator, its defaults, and minimal examples.
+Airweave lets you search across all your connected data sources in one place. When you search a collection, Airweave finds the most relevant results using a combination of AI and keyword matching. You can customize how search works to fit your needs.
 
-## Operators
+<Note>
+Want to try it out right now? Head to our [interactive API documentation](https://docs.airweave.ai/api-reference/collections/search-collection-advanced-collections-readable-id-search-post) where you can test search queries directly in your browser!
+</Note>
+
+## How search works
+
+Airweave processes your search through several steps that you can configure. Each step has sensible defaults, so you can start simple and add customization as needed.
 
 ### Query Expansion
 
-Query expansion mitigates vocabulary mismatch by generating semantically equivalent reformulations of the original query, improving recall across documents that express similar concepts with different terminology. Practically, the system expands the query into semantically adjacent variants, sampling a broader neighborhood in vector and keyword space.
+Sometimes your exact words don't match what's in your documents, even though they mean the same thing. Query expansion helps by automatically creating variations of your search query to catch more relevant results.
 
-**Configuration Parameter**: `expansion_strategy`
-- `auto` (default): Dynamically selects expansion based on OpenAI API availability
-- `llm`: Generates up to 4 query variations using GPT-4o-mini
-- `no_expansion`: Disables expansion for exact query matching
+**Options**: `expansion_strategy`
+- `auto` (default): Uses AI to expand queries when available
+- `llm`: Always uses AI to create up to 4 query variations
+- `no_expansion`: Search for exactly what you typed
 
 <CodeBlocks>
+```bash title="cURL"
+curl -X POST 'https://api.airweave.ai/collections/your-collection-id/search' \
+  -H 'x-api-key: YOUR_API_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "query": "customer churn analysis",
+    "expansion_strategy": "llm"
+  }'
+```
+
 ```python title="Python"
 from airweave import AirweaveSDK
 
-client = AirweaveSDK(api_key="your-api-key")
+client = AirweaveSDK(api_key="YOUR_API_KEY")
 
-# Automatic expansion generates variations for improved recall
 results = await client.collections.search_collection_advanced(
     readable_id="your-collection-id",
     search_request={
@@ -43,7 +58,7 @@ const response = await client.collections.searchCollectionAdvanced({
   readableId: "your-collection-id",
   searchRequest: {
     query: "payment failures",
-    expansionStrategy: "llm", // up to 4 alternatives
+    expansionStrategy: "llm",
   },
 });
 ```
@@ -51,37 +66,87 @@ const response = await client.collections.searchCollectionAdvanced({
 
 
 
-### Embedding Generation
+### Search Method
 
-Maps queries to dense and/or sparse representations depending on the search method. Dense embeddings permit semantic similarity; sparse embeddings approximate lexical BM25. In `hybrid` mode both representations are produced and fused downstream.
+Choose how Airweave searches your data. You can use AI to understand meaning, traditional keyword matching, or both.
 
-**Configuration Parameter**: `search_method`
-- `hybrid` (default): Combines dense semantic vectors with sparse BM25 representations via Reciprocal Rank Fusion
-- `neural`: Utilizes transformer-based embeddings for pure semantic similarity
-- `keyword`: Employs BM25 term frequency statistics for lexical matching
+**Options**: `search_method`
+- `hybrid` (default): Best of both worlds - finds results by meaning AND exact keywords
+- `neural`: AI-powered search that understands what you mean, not just what you type
+- `keyword`: Traditional search that looks for exact word matches
 
-```python
-# Hybrid search leverages both semantic understanding and keyword precision
+<CodeBlocks>
+```bash title="cURL"
+curl -X POST 'https://api.airweave.ai/collections/your-collection-id/search' \
+  -H 'x-api-key: YOUR_API_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "query": "authentication flow security vulnerabilities",
+    "search_method": "hybrid"
+  }'
+```
+
+```python title="Python"
 results = await client.collections.search_collection_advanced(
     readable_id="your-collection-id",
     search_request={
         "query": "authentication flow security vulnerabilities",
-        "search_method": "hybrid"  # Combines neural + BM25 for best results
+        "search_method": "hybrid"
     }
 )
 ```
 
-### Metadata Filtering
+```javascript title="Node.js"
+const response = await client.collections.searchCollectionAdvanced({
+  readableId: "your-collection-id",
+  searchRequest: {
+    query: "authentication flow security vulnerabilities",
+    searchMethod: "hybrid",
+  },
+});
+```
+</CodeBlocks>
 
-Qdrant's native filtering system enables precise subsetting of the search space based on structured metadata fields. This operation applies boolean predicates to document attributes before similarity computation, ensuring efficient retrieval within constrained domains.
+## Quick reference
 
-**Configuration Parameter**: `filter` (Qdrant Filter object)
+Here are the default settings Airweave uses (you can override any of these):
 
-```python
-from qdrant_client.http.models import Filter, FieldCondition, MatchValue, DatetimeRange, MatchAny
-from datetime import datetime, timezone, timedelta
+| Feature | Default | What it does |
+|---------|---------|--------------|
+| Query Expansion | `auto` | Automatically creates query variations when AI is available |
+| Search Method | `hybrid` | Uses both AI and keyword matching |
+| Query Interpretation | Off | You control filters manually |
+| AI Reranking | On | Improves result quality (adds ~10 seconds) |
+| Recency Boost | `0.3` | Slightly prefers newer content |
+| Score Filter | None | Returns all matches |
+| Response Format | `raw` | Returns actual documents, not AI summaries |
 
-# 1. Filter by specific source (case-sensitive!)
+
+### Filtering Results
+
+Narrow down your search by filtering on metadata like source, date, or status. This happens before the search, so it's fast even on large datasets.
+
+**Parameter**: `filter`
+
+#### Example 1: Filter by source
+
+<CodeBlocks>
+```bash title="cURL"
+curl -X POST 'https://api.airweave.ai/collections/your-collection-id/search' \
+  -H 'x-api-key: YOUR_API_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "query": "deployment issues",
+    "filter": {
+      "must": [{
+        "key": "source_name",
+        "match": {"value": "GitHub"}
+      }]
+    }
+  }'
+```
+
+```python title="Python"
 results = await client.collections.search_collection_advanced(
     readable_id="your-collection-id",
     search_request={
@@ -89,13 +154,58 @@ results = await client.collections.search_collection_advanced(
         "filter": {
             "must": [{
                 "key": "source_name",
-                "match": {"value": "GitHub"}  # Must match exactly
+                "match": {"value": "GitHub"}  # Case-sensitive!
             }]
         }
     }
 )
+```
 
-# 2. Multiple sources with date range
+```javascript title="Node.js"
+const response = await client.collections.searchCollectionAdvanced({
+  readableId: "your-collection-id",
+  searchRequest: {
+    query: "deployment issues",
+    filter: {
+      must: [{
+        key: "source_name",
+        match: { value: "GitHub" }  // Case-sensitive!
+      }]
+    }
+  },
+});
+```
+</CodeBlocks>
+
+#### Example 2: Multiple filters
+
+<CodeBlocks>
+```bash title="cURL"
+curl -X POST 'https://api.airweave.ai/collections/your-collection-id/search' \
+  -H 'x-api-key: YOUR_API_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "query": "customer feedback",
+    "filter": {
+      "must": [
+        {
+          "key": "source_name",
+          "match": {"any": ["Zendesk", "Intercom", "Slack"]}
+        },
+        {
+          "key": "created_at",
+          "range": {
+            "gte": "2024-01-01T00:00:00Z"
+          }
+        }
+      ]
+    }
+  }'
+```
+
+```python title="Python"
+from datetime import datetime, timezone, timedelta
+
 results = await client.collections.search_collection_advanced(
     readable_id="your-collection-id",
     search_request={
@@ -116,8 +226,54 @@ results = await client.collections.search_collection_advanced(
         }
     }
 )
+```
 
-# 3. Exclude resolved/closed items
+```javascript title="Node.js"
+const oneWeekAgo = new Date();
+oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+const response = await client.collections.searchCollectionAdvanced({
+  readableId: "your-collection-id",
+  searchRequest: {
+    query: "customer feedback",
+    filter: {
+      must: [
+        {
+          key: "source_name",
+          match: { any: ["Zendesk", "Intercom", "Slack"] }
+        },
+        {
+          key: "created_at",
+          range: {
+            gte: oneWeekAgo.toISOString()
+          }
+        }
+      ]
+    }
+  },
+});
+```
+</CodeBlocks>
+
+#### Example 3: Exclude results
+
+<CodeBlocks>
+```bash title="cURL"
+curl -X POST 'https://api.airweave.ai/collections/your-collection-id/search' \
+  -H 'x-api-key: YOUR_API_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "query": "bug reports",
+    "filter": {
+      "must_not": [{
+        "key": "status",
+        "match": {"any": ["resolved", "closed", "done"]}
+      }]
+    }
+  }'
+```
+
+```python title="Python"
 results = await client.collections.search_collection_advanced(
     readable_id="your-collection-id",
     search_request={
@@ -132,17 +288,42 @@ results = await client.collections.search_collection_advanced(
 )
 ```
 
+```javascript title="Node.js"
+const response = await client.collections.searchCollectionAdvanced({
+  readableId: "your-collection-id",
+  searchRequest: {
+    query: "bug reports",
+    filter: {
+      mustNot: [{
+        key: "status",
+        match: { any: ["resolved", "closed", "done"] }
+      }]
+    }
+  },
+});
+```
+</CodeBlocks>
+
 ### Query Interpretation (Beta)
 
-This advanced natural language understanding component automatically extracts structured constraints from unstructured queries. The system employs large language models to identify temporal expressions, entity references, and status indicators, dynamically generating appropriate filter predicates.
+Let Airweave automatically understand what you're looking for. When you write natural language like "open tickets from last week", it figures out the filters for you.
 
-**Configuration Parameter**: `enable_query_interpretation`
-- `false` (default): Disabled to prevent unintended filtering
-- `true`: Enables automatic filter extraction from natural language
+**Options**: `enable_query_interpretation`
+- `false` (default): You control all filters manually
+- `true`: AI extracts filters from your natural language query
 
-**Implementation Example**:
-```python
-# Query interpretation extracts structured filters from natural language
+<CodeBlocks>
+```bash title="cURL"
+curl -X POST 'https://api.airweave.ai/collections/your-collection-id/search' \
+  -H 'x-api-key: YOUR_API_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "query": "open asana tickets from last week",
+    "enable_query_interpretation": true
+  }'
+```
+
+```python title="Python"
 results = await client.collections.search_collection_advanced(
     readable_id="your-collection-id",
     search_request={
@@ -150,12 +331,8 @@ results = await client.collections.search_collection_advanced(
         "enable_query_interpretation": True
     }
 )
-# Automatically generates filters:
-# - source_name = "Asana"
-# - status != "completed" / "done" / "closed"
-# - created_at >= 7 days ago
+# AI understands: Asana source, open status, last 7 days
 
-# Another example
 results = await client.collections.search_collection_advanced(
     readable_id="your-collection-id",
     search_request={
@@ -163,109 +340,221 @@ results = await client.collections.search_collection_advanced(
         "enable_query_interpretation": True
     }
 )
-# Generates: source="GitHub", priority="critical", created_at>=30d
 ```
 
+```javascript title="Node.js"
+const response = await client.collections.searchCollectionAdvanced({
+  readableId: "your-collection-id",
+  searchRequest: {
+    query: "open asana tickets from last week",
+    enableQueryInterpretation: true
+  },
+});
+
+const response2 = await client.collections.searchCollectionAdvanced({
+  readableId: "your-collection-id",
+  searchRequest: {
+    query: "critical bugs from GitHub this month",
+    enableQueryInterpretation: true
+  },
+});
+```
+</CodeBlocks>
+
 <Warning>
-Query interpretation is in beta. Extracted filters may occasionally be overly restrictive, potentially excluding relevant results. Monitor result counts when using this feature.
+This feature is in beta. Sometimes it might filter too strictly and miss relevant results. Check your result counts to make sure you're getting what you expect.
 </Warning>
 
 ### Recency Bias
-Temporal relevance scoring adjusts document rankings based on creation or modification timestamps. Internally, a decay configuration is derived from the collection’s observed time span (subject to any active filter) and composed into Qdrant formula scoring. This preserves relevance while enforcing temporal preference. The penalty is defined as:
 
+Boost newer content in your search results. Perfect for emails, messages, or any data where freshness matters.
+
+The scoring formula adjusts results based on age:
+
+![Recency Bias Formula](https://latex.codecogs.com/svg.image?%5Clarge%20S_%7B%5Ctext%7Bfinal%7D%7D%20%3D%20S_%7B%5Ctext%7Bsimilarity%7D%7D%20%5Ctimes%20%5Cleft(1%20-%20%5Cbeta%20%2B%20%5Cbeta%20%5Ccdot%20d(t)%5Cright))
+
+Where:
+- **S<sub>final</sub>** = final relevance score
+- **S<sub>similarity</sub>** = semantic similarity score
+- **β** = recency bias parameter (0 to 1)
+- **d(t)** = time decay factor (0 = oldest, 1 = newest)
+
+
+**Options**: `recency_bias` (0.0 to 1.0)
+- `0.3` (default): Slightly prefer newer content
+- `0.0`: Don't care about dates, just find the best matches
+- `1.0`: Heavily prioritize the newest content
+
+<CodeBlocks>
+```bash title="cURL"
+curl -X POST 'https://api.airweave.ai/collections/your-collection-id/search' \
+  -H 'x-api-key: YOUR_API_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "query": "project updates",
+    "recency_bias": 0.7
+  }'
 ```
-final_score = similarity × (1 - recency_bias + recency_bias × decay)
-```
-where `recency_bias ∈ [0,1]` maps oldest→0 and newest→1 within the observed span.
 
-**Configuration Parameter**: `recency_bias` (float: 0.0-1.0)
-- `0.3` (default): Moderate recency preference
-- `0.0`: Pure semantic similarity without temporal influence
-- `1.0`: Maximum recency weight within semantic matches
-
-
-```python
-# Email search with strong recency preference
+```python title="Python"
 results = await client.collections.search_collection_advanced(
     readable_id="your-collection-id",
     search_request={
         "query": "project updates",
-        "recency_bias": 0.7  # Recent emails heavily prioritized
+        "recency_bias": 0.7
     }
 )
 ```
 
-### Vector search
+```javascript title="Node.js"
+const response = await client.collections.searchCollectionAdvanced({
+  readableId: "your-collection-id",
+  searchRequest: {
+    query: "project updates",
+    recencyBias: 0.7,
+  },
+});
+```
+</CodeBlocks>
 
-The core retrieval mechanism performs approximate nearest neighbor search in high-dimensional embedding spaces. This operation orchestrates the actual database query, handling multi-vector fusion, result deduplication, and score normalization.
+### Pagination
 
-**Pagination parameters** control result set size and navigation through large result collections:
+Control how many results you get and navigate through large result sets.
 
-- `limit` (int: 1-1000, default: 20): Maximum documents per response
-- `offset` (int: ≥0, default: 0): Skip count for pagination
+**Parameters**:
+- `limit`: How many results to return (1-1000, default: 20)
+- `offset`: How many results to skip (for pagination, default: 0)
 
+<CodeBlocks>
+```bash title="cURL"
+# Simple search with pagination
+curl -X GET 'https://api.airweave.ai/collections/your-collection-id/search?query=data%20retention%20policies&limit=50&offset=50' \
+  -H 'x-api-key: YOUR_API_KEY'
+```
 
-```python
+```python title="Python"
 response = await client.collections.search_collection(
     readable_id="your-collection-id",
     query="data retention policies",
     limit=50,
-    offset=50, # Results 51-100
+    offset=50,  # Skip first 50
 )
 ```
 
-### Score Threshold Filtering
+```javascript title="Node.js"
+const response = await client.collections.searchCollection({
+  readableId: "your-collection-id",
+  query: "data retention policies",
+  limit: 50,
+  offset: 50,
+});
+```
+</CodeBlocks>
 
-Post-retrieval filtering eliminates results below a specified similarity threshold, ensuring minimum quality standards for returned documents. This parameter acts as a quality gate rather than a separate operation.
+### Filter by Relevance Score
 
-**Configuration Parameter**: `score_threshold` (float: 0.0-1.0)
-- `None` (default): No score filtering
-- `0.7`: Returns only high-confidence matches
+Set a minimum relevance score to filter out weak matches. Useful when you only want high-quality results.
 
-```python
-# High-precision retrieval for critical queries
+**Options**: `score_threshold` (0.0 to 1.0)
+- `None` (default): Return all matches
+- `0.7-0.8`: Return only high-confidence matches
+
+<CodeBlocks>
+```bash title="cURL"
+curl -X POST 'https://api.airweave.ai/collections/your-collection-id/search' \
+  -H 'x-api-key: YOUR_API_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "query": "security vulnerability CVE-2024",
+    "score_threshold": 0.8
+  }'
+```
+
+```python title="Python"
 results = await client.collections.search_collection_advanced(
     readable_id="your-collection-id",
     search_request={
         "query": "security vulnerability CVE-2024",
-        "score_threshold": 0.8  # Only highly relevant matches
+        "score_threshold": 0.8
     }
 )
 ```
 
-### Result Reranking
+```javascript title="Node.js"
+const response = await client.collections.searchCollectionAdvanced({
+  readableId: "your-collection-id",
+  searchRequest: {
+    query: "security vulnerability CVE-2024",
+    scoreThreshold: 0.8,
+  },
+});
+```
+</CodeBlocks>
 
-Reranking employs large language models to perform pairwise relevance assessment between query and retrieved documents. This computationally intensive operation refines the initial ranking by considering deeper semantic relationships and contextual nuances.
+### AI Reranking
 
-**Configuration Parameter**: `enable_reranking`
-- `true` (default): Applies LLM-based relevance scoring
-- `false`: Retains original vector similarity ranking
+Use AI to double-check and reorder your results for better relevance. This makes results more accurate but takes longer.
+
+**Options**: `enable_reranking`
+- `true` (default): AI reviews and reorders results for best relevance
+- `false`: Skip reranking for faster results
 
 <Warning>
-Reranking adds approximately 10 seconds to query latency due to LLM processing. Disable for time-sensitive applications.
+Reranking adds about 10 seconds to your search. Turn it off if you need fast results.
 </Warning>
 
-```python
-# Disable reranking for latency-sensitive applications
+<CodeBlocks>
+```bash title="cURL"
+curl -X POST 'https://api.airweave.ai/collections/your-collection-id/search' \
+  -H 'x-api-key: YOUR_API_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "query": "user authentication methods",
+    "enable_reranking": false
+  }'
+```
+
+```python title="Python"
 results = await client.collections.search_collection_advanced(
     readable_id="your-collection-id",
     search_request={
         "query": "user authentication methods",
-        "enable_reranking": False  # Skip 10-second reranking delay
+        "enable_reranking": False
     }
 )
 ```
 
-### Response Generation
+```javascript title="Node.js"
+const response = await client.collections.searchCollectionAdvanced({
+  readableId: "your-collection-id",
+  searchRequest: {
+    query: "user authentication methods",
+    enableReranking: false,
+  },
+});
+```
+</CodeBlocks>
 
-Synthesizes a natural language answer from the retrieved context. The completion model is invoked only when explicitly requested and requires an OpenAI API key in the environment. Source attribution is encouraged via structured prompts.
+### Generate AI Answers
 
-**Configuration Parameter**: `response_type`
-- `raw` (default): Returns structured JSON with document payloads
-- `completion`: Generates coherent natural language summary via LLM
+Instead of just getting search results, you can ask Airweave to generate a complete answer using AI.
 
-```python
-# Get AI-synthesized answer
+**Options**: `response_type`
+- `raw` (default): Get the actual documents/data
+- `completion`: Get an AI-generated answer based on the results
+
+<CodeBlocks>
+```bash title="cURL"
+curl -X POST 'https://api.airweave.ai/collections/your-collection-id/search' \
+  -H 'x-api-key: YOUR_API_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "query": "What are our customer refund policies?",
+    "response_type": "completion"
+  }'
+```
+
+```python title="Python"
 results = await client.collections.search_collection_advanced(
     readable_id="your-collection-id",
     search_request={
@@ -273,25 +562,124 @@ results = await client.collections.search_collection_advanced(
         "response_type": "completion"
     }
 )
-# Access results.completion for natural language answer
+# Access: results.completion
 ```
 
-## API Endpoints
+```javascript title="Node.js"
+const response = await client.collections.searchCollectionAdvanced({
+  readableId: "your-collection-id",
+  searchRequest: {
+    query: "What are our customer refund policies?",
+    responseType: "completion",
+  },
+});
+// Access: response.completion
+```
+</CodeBlocks>
 
-**GET `/collections/{id}/search`**: Simple search using all operator defaults ([link](/api-reference/collections/search-collection-collections-readable-id-search-get)).
+## Which endpoint to use
+Choose the **GET** endpoint for simple searches, and the **POST** endpoint when you need advanced config.
 
-**POST `/collections/{id}/search`**: Advanced search exposing all operators for full configurability. Use this when you need precise control over search behavior ([link](/api-reference/collections/search-collection-advanced-collections-readable-id-search-post)).
 
-## Default Configuration
+<CardGroup cols={2}>
+  <Card title="Simple Search" icon="magnifying-glass" href="/api-reference/collections/search-collection-collections-readable-id-search-get">
+    **GET** `/collections/{id}/search`
 
-The system employs empirically optimized defaults for common use cases:
+    Best for quick searches with default settings. Just pass your query and go.
+  </Card>
 
-| Operation | Default State | Rationale |
-|-----------|--------------|-----------|
-| Query Expansion | `auto` | Maximizes recall when LLM available |
-| Search Method | `hybrid` | Balances semantic and lexical signals |
-| Query Interpretation | **Disabled** | Prevents unintended filtering |
-| Reranking | **Enabled** | Optimizes relevance (adds ~10s) |
-| Recency Bias | `0.3` | Moderate recency preference |
-| Score Threshold | `None` | Returns all matches above zero similarity |
-| Response Type | `raw` | Provides maximum programmatic flexibility |
+  <Card title="Advanced Search" icon="sliders" href="/api-reference/collections/search-collection-advanced-collections-readable-id-search-post">
+    **POST** `/collections/{id}/search`
+
+    Use this when you need to customize any of the options above.
+  </Card>
+</CardGroup>
+
+
+## Complete example
+
+Here's everything together in one search:
+
+<CodeBlocks>
+```bash title="cURL"
+curl -X POST 'https://api.airweave.ai/collections/your-collection-id/search' \
+  -H 'x-api-key: YOUR_API_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "query": "customer feedback about pricing",
+    "expansion_strategy": "llm",
+    "search_method": "hybrid",
+    "filter": {
+      "must": [{
+        "key": "source_name",
+        "match": {"any": ["Zendesk", "Slack"]}
+      }]
+    },
+    "recency_bias": 0.5,
+    "score_threshold": 0.7,
+    "enable_reranking": true,
+    "response_type": "raw",
+    "limit": 50,
+    "offset": 0
+  }'
+```
+
+```python title="Python"
+from airweave import AirweaveSDK
+from datetime import datetime, timezone, timedelta
+
+client = AirweaveSDK(api_key="YOUR_API_KEY")
+
+results = await client.collections.search_collection_advanced(
+    readable_id="your-collection-id",
+    search_request={
+        "query": "customer feedback about pricing",
+        "expansion_strategy": "llm",
+        "search_method": "hybrid",
+        "filter": {
+            "must": [{
+                "key": "source_name",
+                "match": {"any": ["Zendesk", "Slack"]}
+            }]
+        },
+        "recency_bias": 0.5,
+        "score_threshold": 0.7,
+        "enable_reranking": True,
+        "response_type": "raw",
+        "limit": 50,
+        "offset": 0
+    }
+)
+```
+
+```javascript title="Node.js"
+import { AirweaveSDKClient } from "@airweave/sdk";
+
+const client = new AirweaveSDKClient({ apiKey: "YOUR_API_KEY" });
+
+const response = await client.collections.searchCollectionAdvanced({
+  readableId: "your-collection-id",
+  searchRequest: {
+    query: "customer feedback about pricing",
+    expansionStrategy: "llm",
+    searchMethod: "hybrid",
+    filter: {
+      must: [{
+        key: "source_name",
+        match: { any: ["Zendesk", "Slack"] }
+      }]
+    },
+    recencyBias: 0.5,
+    scoreThreshold: 0.7,
+    enableReranking: true,
+    responseType: "raw",
+    limit: 50,
+    offset: 0
+  },
+});
+```
+</CodeBlocks>
+
+<Card title="Ready to search?" icon="rocket">
+  Try these examples live in our [interactive API documentation](https://docs.airweave.ai/api-reference/collections/search-collection-advanced-collections-readable-id-search-post). You can execute real searches and see responses instantly!
+</Card>

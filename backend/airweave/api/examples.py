@@ -332,6 +332,63 @@ SEARCH_RESPONSE_EXAMPLES = {
         "response_type": "raw",
         "status": "success",
     },
+    "no_relevant_results": {
+        "results": [],
+        "response_type": "raw",
+        "status": "no_relevant_results",
+        "completion": None,
+    },
+}
+
+# Search request examples for different scenarios
+SEARCH_REQUEST_EXAMPLES = {
+    "basic_search": {
+        "query": "customer payment issues",
+        "limit": 20,
+        "offset": 0,
+        "response_type": "raw",
+    },
+    "advanced_search_with_filters": {
+        "query": "open support tickets from last week",
+        "filter": {
+            "must": [
+                {"key": "source_name", "match": {"value": "Zendesk"}},
+                {"key": "status", "match": {"value": "open"}},
+                {
+                    "key": "created_at",
+                    "range": {"gte": "2024-01-08T00:00:00Z"},
+                },
+            ]
+        },
+        "limit": 50,
+        "offset": 0,
+        "score_threshold": 0.7,
+        "response_type": "raw",
+        "search_method": "hybrid",
+        "recency_bias": 0.5,
+        "expansion_strategy": "llm",
+        "enable_reranking": True,
+        "enable_query_interpretation": False,
+    },
+    "search_with_query_interpretation": {
+        "query": "critical bugs from GitHub this month",
+        "enable_query_interpretation": True,
+        "expansion_strategy": "auto",
+        "response_type": "raw",
+    },
+    "search_with_completion": {
+        "query": "What are our customer refund policies?",
+        "response_type": "completion",
+        "enable_reranking": True,
+        "limit": 10,
+    },
+    "search_no_expansion": {
+        "query": "CVE-2024-1234",
+        "expansion_strategy": "no_expansion",
+        "search_method": "keyword",
+        "enable_query_interpretation": False,
+        "enable_reranking": False,
+    },
 }
 
 

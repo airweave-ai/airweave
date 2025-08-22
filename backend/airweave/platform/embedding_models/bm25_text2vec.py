@@ -42,7 +42,7 @@ class BM25Text2Vec(BaseEmbeddingModel):
         model: Optional[str] = None,
         encoding_format: str = "float",
         dimensions: Optional[int] = None,
-    ) -> List[float] | SparseEmbedding:
+    ) -> SparseEmbedding | None:
         """Embed a single text string using the BM25 text2vec model.
 
         Args:
@@ -52,9 +52,11 @@ class BM25Text2Vec(BaseEmbeddingModel):
             dimensions: Vector dimensions (defaults to self.vector_dimensions)
 
         Returns:
-            List of embedding values
+            SparseEmbedding object
         """
-        return self._model.embed(text)
+        # The embed method returns a generator, we need to get the first (and only) result
+        embeddings = list(self._model.embed([text]))
+        return embeddings[0] if embeddings else None
 
     async def embed_many(
         self,
@@ -62,7 +64,7 @@ class BM25Text2Vec(BaseEmbeddingModel):
         model: Optional[str] = None,
         encoding_format: str = "float",
         dimensions: Optional[int] = None,
-    ) -> List[List[float]]:
+    ) -> List[SparseEmbedding]:
         """Embed multiple text strings using the BM25 text2vec model.
 
         Args:
@@ -72,10 +74,10 @@ class BM25Text2Vec(BaseEmbeddingModel):
             dimensions: Vector dimensions (defaults to self.vector_dimensions)
 
         Returns:
-            List of embedding vectors
+            List of SparseEmbedding objects
         """
         if not texts:
             return []
 
-        # Convert generator to list
+        # Convert generator to list of SparseEmbedding objects
         return list(self._model.embed(texts))

@@ -40,7 +40,7 @@ jobs:
           STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
         run: |
           cd backend
-          python tests/e2e/smoke/test_public_api.py --env local --stripe-api-key "$STRIPE_API_KEY" --openai-api-key "$OPENAI_API_KEY"
+          python tests/e2e/smoke/test_public_api.py --env local
 
       - name: Cleanup Docker containers
         if: always()

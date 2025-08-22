@@ -7270,6 +7270,12 @@
             "description": "Current execution status of the data refresh:<br/>\u2022 **created**: Operation has been created but not yet queued<br/>\u2022 **pending**: Operation is queued and waiting to start<br/>\u2022 **in_progress**: Currently running and processing data<br/>\u2022 **completed**: Finished successfully with all data processed<br/>\u2022 **failed**: Encountered errors and could not complete<br/>\u2022 **cancelled**: Manually cancelled before completion",
             "default": "pending"
           },
+          "scheduled": {
+            "type": "boolean",
+            "title": "Scheduled",
+            "description": "Whether this data refresh was triggered by a schedule (true) or manually (false).",
+            "default": false
+          },
           "entities_inserted": {
             "anyOf": [
               {
@@ -8348,6 +8354,11 @@
           "status": {
             "$ref": "#/components/schemas/SyncJobStatus",
             "default": "pending"
+          },
+          "scheduled": {
+            "type": "boolean",
+            "title": "Scheduled",
+            "default": false
           },
           "entities_inserted": {
             "anyOf": [
