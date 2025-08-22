@@ -36,6 +36,8 @@ class SyncContext:
     - guard rail - the guard rail service
     - white label (optional)
     - logger - contextual logger with sync job metadata
+    - batch_size - max number of parents to process per micro-batch (default 64)
+    - max_batch_latency_ms - max time to wait before flushing a non-full batch (default 200ms)
     """
 
     source: BaseSource
@@ -59,6 +61,10 @@ class SyncContext:
     white_label: Optional[schemas.WhiteLabel] = None
     force_full_sync: bool = False
 
+    # New: batching knobs (read by SyncOrchestrator at init)
+    batch_size: int = 64
+    max_batch_latency_ms: int = 200
+
     def __init__(
         self,
         source: BaseSource,
@@ -80,6 +86,9 @@ class SyncContext:
         logger: ContextualLogger,
         white_label: Optional[schemas.WhiteLabel] = None,
         force_full_sync: bool = False,
+        # New optional args for micro-batching
+        batch_size: int = 64,
+        max_batch_latency_ms: int = 500,
     ):
         """Initialize the sync context."""
         self.source = source
@@ -101,3 +110,7 @@ class SyncContext:
         self.white_label = white_label
         self.logger = logger
         self.force_full_sync = force_full_sync
+
+        # New: micro-batching knobs
+        self.batch_size = batch_size
+        self.max_batch_latency_ms = max_batch_latency_ms
