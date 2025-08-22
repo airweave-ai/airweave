@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.core.exceptions import NotFoundException
@@ -38,6 +38,70 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
                 f"Entity with entity ID {entity_id} and sync ID {sync_id} not found"
             )
         return db_obj
+
+    async def get_by_entity_and_sync_id_many(
+        self,
+        db: AsyncSession,
+        *,
+        sync_id: UUID,
+        entity_ids: list[str],
+    ) -> dict[str, Entity]:
+        """Get many entities by (entity_id, sync_id) in a single query.
+
+        Returns a mapping of entity_id -> Entity. Missing ids are simply absent.
+        """
+        if not entity_ids:
+            return {}
+        stmt = select(Entity).where(
+            Entity.sync_id == sync_id,
+            Entity.entity_id.in_(entity_ids),
+        )
+        result = await db.execute(stmt)
+        rows = list(result.unique().scalars().all())
+        return {row.entity_id: row for row in rows}
+
+    async def bulk_create(
+        self,
+        db: AsyncSession,
+        *,
+        objs: list[EntityCreate],
+    ) -> list[Entity]:
+        """Create many Entity rows in a single transaction.
+
+        Uses ORM add_all + flush so primary keys are populated on return.
+        Caller controls commit via the session context.
+        """
+        if not objs:
+            return []
+        models_to_add = [self.model(**o.model_dump()) for o in objs]
+        db.add_all(models_to_add)
+        # Ensure PKs and defaults are assigned by the DB before returning
+        await db.flush()
+        return models_to_add
+
+    async def bulk_update_hash(
+        self,
+        db: AsyncSession,
+        *,
+        rows: list[tuple[UUID, str]],
+    ) -> None:
+        """Bulk update the 'hash' field for many entities.
+
+        Args:
+            rows: list of tuples (entity_db_id, new_hash)
+        """
+        if not rows:
+            return
+        # Execute per-row UPDATEs within the same transaction context.
+        # (Can be optimized to a single CASE WHEN statement if needed.)
+        for entity_db_id, new_hash in rows:
+            stmt = (
+                update(Entity)
+                .where(Entity.id == entity_db_id)
+                .values(hash=new_hash, modified_at=datetime.now(datetime.UTC))
+            )
+            await db.execute(stmt)
+        # Caller is responsible for committing via session context
 
     async def update_job_id(
         self,
