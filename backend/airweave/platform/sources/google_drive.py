@@ -52,6 +52,9 @@ class GoogleDriveSource(BaseSource):
         instance = cls()
         instance.access_token = access_token
 
+        # Minimal addition to tolerate None and support batch size configuration
+        config = config or {}
+
         instance.exclude_patterns = config.get("exclude_patterns", [])
 
         # Performance option to skip expensive path lookups
@@ -59,6 +62,9 @@ class GoogleDriveSource(BaseSource):
 
         # Initialize cache for parent folder lookups
         instance._parent_folder_cache = {}
+
+        # Configurable concurrency for file processing (used by BaseSource.process_entities)
+        instance.batch_size = int(config.get("batch_size", 30))
 
         return instance
 
@@ -331,9 +337,8 @@ class GoogleDriveSource(BaseSource):
     ) -> AsyncGenerator[ChunkEntity, None]:
         """Generate file entities from a file listing."""
         try:
-            async for file_obj in self._list_files(
-                client, corpora, include_all_drives, drive_id, context
-            ):
+            # Minimal change: use BaseSource.process_entities for bounded concurrency
+            async def _worker(file_obj: Dict):
                 try:
                     # Check if file should be included based on exclusion patterns
                     try:
@@ -341,17 +346,17 @@ class GoogleDriveSource(BaseSource):
                     except Exception as e:
                         self.logger.error(f"Error checking if file should be included: {str(e)}")
                         # Skip this file if we can't check inclusion
-                        continue
+                        return
 
                     if not should_include:
-                        continue  # Skip this file
+                        return  # Skip this file
 
                     # Get file entity (might be None for trashed files)
                     file_entity = self._build_file_entity(file_obj)
 
                     # Skip if the entity was None (likely a trashed file)
                     if not file_entity:
-                        continue
+                        return
 
                     # Process the entity if it has a download URL
                     if file_entity.download_url:
@@ -369,7 +374,15 @@ class GoogleDriveSource(BaseSource):
                         f"{error_context}: {str(e)}"
                     )
                     # Continue processing other files instead of raising
-                    continue
+                    return
+
+            async for processed in self.process_entities(
+                items=self._list_files(client, corpora, include_all_drives, drive_id, context),
+                worker=_worker,
+                batch_size=getattr(self, "batch_size", 8),
+                preserve_order=False,
+            ):
+                yield processed
 
         except Exception as e:
             self.logger.error(f"Critical exception in _generate_file_entities: {str(e)}")

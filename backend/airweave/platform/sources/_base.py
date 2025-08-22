@@ -1,7 +1,18 @@
 """Base source class."""
 
+import asyncio
 from abc import abstractmethod
-from typing import Any, AsyncGenerator, ClassVar, Dict, Optional
+from typing import (
+    Any,
+    AsyncGenerator,
+    AsyncIterable,
+    Callable,
+    ClassVar,
+    Dict,
+    Iterable,
+    Optional,
+    Union,
+)
 
 import httpx
 from pydantic import BaseModel
@@ -254,6 +265,145 @@ class BaseSource:
         except Exception as e:
             self.logger.error(f"Error processing file {file_entity.name} with direct content: {e}")
             return None
+
+    async def process_entities(
+        self,
+        items: Union[Iterable[Any], AsyncIterable[Any]],
+        worker: Callable[[Any], AsyncIterable[ChunkEntity]],
+        *,
+        batch_size: int = 10,
+        preserve_order: bool = False,
+        stop_on_error: bool = False,
+        max_queue_size: int = 100,
+    ) -> AsyncGenerator[ChunkEntity, None]:
+        """Generic bounded-concurrency driver.
+
+        - `items`: async iterator (or iterable) of units of work.
+        - `worker(item)`: async generator yielding 0..N ChunkEntity objects for that item.
+        - `batch_size`: max concurrent workers.
+        - `preserve_order`: if True, buffers per-item results and yields in input order.
+        - `stop_on_error`: if True, cancels remaining work on first error.
+        """
+        results, tasks, total_workers, sentinel = await self._start_entity_workers(
+            items=items,
+            worker=worker,
+            batch_size=batch_size,
+            max_queue_size=max_queue_size,
+        )
+
+        try:
+            if preserve_order:
+                async for ent in self._drain_results_preserve_order(
+                    results, tasks, total_workers, stop_on_error, sentinel
+                ):
+                    yield ent
+            else:
+                async for ent in self._drain_results_unordered(
+                    results, tasks, total_workers, stop_on_error, sentinel
+                ):
+                    yield ent
+        finally:
+            # Ensure all tasks are cleaned up even if consumer stops early
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _start_entity_workers(
+        self,
+        items: Union[Iterable[Any], AsyncIterable[Any]],
+        worker: Callable[[Any], AsyncIterable[ChunkEntity]],
+        *,
+        batch_size: int,
+        max_queue_size: int,
+    ):
+        """Spin up worker tasks and return (results_queue, tasks, total_workers, sentinel)."""
+        semaphore = asyncio.Semaphore(batch_size)
+        results: asyncio.Queue = asyncio.Queue(maxsize=max_queue_size)
+        sentinel = object()
+
+        async def run_worker(idx: int, item: Any) -> None:
+            await semaphore.acquire()
+            try:
+                agen = worker(item)
+                if not hasattr(agen, "__aiter__"):
+                    raise TypeError("worker(item) must return an async iterator (async generator).")
+                async for entity in agen:
+                    await results.put((idx, entity, None))
+            except BaseException as e:  # propagate cancellation & capture other errors
+                await results.put((idx, None, e))
+            finally:
+                await results.put((idx, sentinel, None))  # signal completion for idx
+                semaphore.release()
+
+        tasks: list[asyncio.Task] = []
+        idx = 0
+
+        if hasattr(items, "__aiter__"):
+            async for item in items:  # type: ignore[truthy-bool]
+                tasks.append(asyncio.create_task(run_worker(idx, item)))
+                idx += 1
+        else:
+            for item in items:  # type: ignore[arg-type]
+                tasks.append(asyncio.create_task(run_worker(idx, item)))
+                idx += 1
+
+        return results, tasks, idx, sentinel
+
+    async def _drain_results_unordered(
+        self,
+        results: asyncio.Queue,
+        tasks: list[asyncio.Task],
+        total_workers: int,
+        stop_on_error: bool,
+        sentinel: object,
+    ) -> AsyncGenerator[ChunkEntity, None]:
+        """Yield results as they arrive; stop early on error if requested."""
+        done_workers = 0
+        while done_workers < total_workers:
+            i, payload, err = await results.get()
+            if payload is sentinel:
+                done_workers += 1
+                continue
+            if err:
+                self.logger.error(f"Worker {i} error: {err}", exc_info=True)
+                if stop_on_error:
+                    for t in tasks:
+                        t.cancel()
+                    raise err
+                continue
+            yield payload  # type: ignore[misc]
+
+    async def _drain_results_preserve_order(
+        self,
+        results: asyncio.Queue,
+        tasks: list[asyncio.Task],
+        total_workers: int,
+        stop_on_error: bool,
+        sentinel: object,
+    ) -> AsyncGenerator[ChunkEntity, None]:
+        """Buffer per-item results and yield in input order."""
+        buffers: Dict[int, list[ChunkEntity]] = {}
+        finished: set[int] = set()
+        next_idx = 0
+        done_workers = 0
+
+        while done_workers < total_workers:
+            i, payload, err = await results.get()
+            if payload is sentinel:
+                finished.add(i)
+                done_workers += 1
+            elif err:
+                self.logger.error(f"Worker {i} error: {err}", exc_info=True)
+                if stop_on_error:
+                    for t in tasks:
+                        t.cancel()
+                    raise err
+                # We'll still wait for this worker's sentinel to preserve ordering.
+            else:
+                buffers.setdefault(i, []).append(payload)  # type: ignore[arg-type]
+
+            while next_idx in finished:
+                for ent in buffers.pop(next_idx, []):
+                    yield ent
+                next_idx += 1
 
 
 class Relation(BaseModel):
