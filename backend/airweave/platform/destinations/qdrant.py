@@ -171,13 +171,23 @@ class QdrantDestination(VectorDBDestination):
             self.logger.error(f"Error checking if collection exists: {e}")
             raise  # Re-raise the exception instead of returning False
 
-    async def setup_collection(self, vector_size: int) -> None:  # noqa: C901
+    async def setup_collection(self, collection_id: UUID, vector_size: int) -> None:  # noqa: C901
         """Set up the Qdrant collection for storing entities.
 
         Args:
+            collection_id (UUID): The ID of the collection.
             vector_size (int): The size of the vectors to use.
         """
         await self.ensure_client_readiness()
+
+        # Ensure internal collection identifiers are consistent with the provided one
+        try:
+            if self.collection_id is None or self.collection_id != collection_id:
+                self.collection_id = collection_id
+                self.collection_name = str(collection_id)
+        except Exception:
+            # Best effort — proceed with whatever is already configured
+            pass
 
         try:
             # Check if collection exists
@@ -403,14 +413,14 @@ class QdrantDestination(VectorDBDestination):
             wait=True,  # Wait for operation to complete
         )
 
-    async def bulk_delete_by_parent_id(self, parent_id: str, sync_id: str) -> None:
-        """Bulk delete entities from Qdrant by entity ID, parent entity IDand sync ID.
+    async def bulk_delete_by_parent_id(self, parent_id: UUID, sync_id: UUID) -> None:
+        """Bulk delete entities from Qdrant by parent entity ID and sync ID.
 
         This deletes all entities that have the specified parent_entity_id and sync_id.
 
         Args:
-            parent_id (str): The parent ID to delete children for.
-            sync_id (str): The sync ID.
+            parent_id (UUID): The parent ID to delete children for.
+            sync_id (UUID): The sync ID.
         """
         if not parent_id:
             return
@@ -433,6 +443,40 @@ class QdrantDestination(VectorDBDestination):
                         rest.FieldCondition(
                             key="airweave_system_metadata.sync_id",
                             match=rest.MatchValue(value=sync_id_str),
+                        ),
+                    ]
+                )
+            ),
+            wait=True,  # Wait for operation to complete
+        )
+
+    async def bulk_delete_by_parent_ids(self, parent_ids: list[UUID], sync_id: UUID) -> None:
+        """Bulk delete entities from Qdrant by multiple parent IDs and sync ID in a single call.
+
+        Args:
+            parent_ids (list[UUID]): The parent IDs to delete children for.
+            sync_id (UUID): The sync ID.
+        """
+        if not parent_ids:
+            return
+
+        await self.ensure_client_readiness()
+
+        sync_id_str = str(sync_id)
+        parent_values = [str(pid) for pid in parent_ids]
+
+        await self.client.delete(
+            collection_name=self.collection_name,
+            points_selector=rest.FilterSelector(
+                filter=rest.Filter(
+                    must=[
+                        rest.FieldCondition(
+                            key="airweave_system_metadata.sync_id",
+                            match=rest.MatchValue(value=sync_id_str),
+                        ),
+                        rest.FieldCondition(
+                            key="parent_entity_id",
+                            match=rest.MatchAny(any=parent_values),
                         ),
                     ]
                 )
