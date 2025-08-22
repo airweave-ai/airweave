@@ -1,7 +1,7 @@
 """Base destination classes."""
 
 from abc import ABC, abstractmethod
-from typing import ClassVar, List, Optional
+from typing import ClassVar, Iterable, List, Optional
 from uuid import UUID
 
 from airweave import schemas
@@ -61,8 +61,8 @@ class BaseDestination(ABC):
         pass
 
     @abstractmethod
-    async def bulk_delete(self, entity_ids: list[str]) -> None:
-        """Bulk delete entities from the destination."""
+    async def bulk_delete(self, entity_ids: list[str], sync_id: UUID) -> None:
+        """Bulk delete entities from the destination within a given sync."""
         pass
 
     @abstractmethod
@@ -71,9 +71,18 @@ class BaseDestination(ABC):
         pass
 
     @abstractmethod
-    async def bulk_delete_by_parent_id(self, parent_id: UUID) -> None:
-        """Bulk delete entities from the destination by parent ID and entity ID."""
+    async def bulk_delete_by_parent_id(self, parent_id: UUID, sync_id: UUID) -> None:
+        """Bulk delete entities from the destination by parent ID within a given sync."""
         pass
+
+    async def bulk_delete_by_parent_ids(self, parent_ids: Iterable[UUID], sync_id: UUID) -> None:
+        """Bulk delete entities for multiple parent IDs within a given sync.
+
+        Default fan-out implementation that calls `bulk_delete_by_parent_id` for each ID.
+        Destinations can override this to issue a single optimized call.
+        """
+        for pid in parent_ids:
+            await self.bulk_delete_by_parent_id(pid, sync_id)
 
     @abstractmethod
     async def search(self, query_vector: list[float]) -> None:
