@@ -46,6 +46,12 @@ class SyncOrchestrator:
         # Workers pull from this queue when ready
         self.stream_buffer_size = 1000
 
+        # ---- New: micro-batching knobs (can be overridden via SyncContext if present) ----
+        # Default to conservative values; callers may set these on the sync_context
+        self.batch_size: int = getattr(sync_context, "batch_size", 64)
+        # Max time to wait before flushing a non-full batch (milliseconds)
+        self.max_batch_latency_ms: int = getattr(sync_context, "max_batch_latency_ms", 200)
+
     async def run(self) -> schemas.Sync:
         """Execute the synchronization process.
 
@@ -92,12 +98,17 @@ class SyncOrchestrator:
 
         self.sync_context.logger.info(
             f"Starting pull-based processing from source {self.sync_context.source._name} "
-            f"(buffer: {self.stream_buffer_size}, max workers: {self.worker_pool.max_workers})"
+            f"(buffer: {self.stream_buffer_size}, max workers: {self.worker_pool.max_workers}, "
+            f"batch_size: {self.batch_size}, max_batch_latency_ms: {self.max_batch_latency_ms})"
         )
 
         stream = None
         stream_error: Optional[Exception] = None
         pending_tasks: set[asyncio.Task] = set()
+
+        # New: micro-batch aggregation state
+        batch_buffer: list = []
+        flush_deadline: Optional[float] = None  # event-loop time when we must flush
 
         try:
             # Create stream outside the async with to have explicit control
@@ -110,13 +121,20 @@ class SyncOrchestrator:
 
             async for entity in stream.get_entities():
                 try:
-                    # Check guard rail
+                    # Check guard rail per entity admission into the batch
                     await self.sync_context.guard_rail.is_allowed(ActionType.ENTITIES)
                 except (UsageLimitExceededException, PaymentRequiredException) as guard_error:
                     self.sync_context.logger.error(
                         f"Guard rail check failed: {type(guard_error).__name__}: {str(guard_error)}"
                     )
                     stream_error = guard_error
+                    # Before breaking, flush any buffered work so we don't drop it
+                    if batch_buffer:
+                        pending_tasks = await self._submit_batch_and_trim(
+                            batch_buffer, pending_tasks, source_node
+                        )
+                        batch_buffer = []
+                        flush_deadline = None
                     break  # Exit the loop cleanly instead of raising
 
                 # Handle skipped entities without using a worker
@@ -125,18 +143,39 @@ class SyncOrchestrator:
                     await self.sync_context.progress.increment("skipped")
                     continue
 
-                # Submit entity processing to worker pool
-                task = await self.worker_pool.submit(
-                    self.entity_processor.process,
-                    entity=entity,
-                    source_node=source_node,
-                    sync_context=self.sync_context,
-                )
-                pending_tasks.add(task)
+                # Accumulate into batch
+                batch_buffer.append(entity)
 
-                # Clean up completed tasks periodically
-                if len(pending_tasks) >= self.worker_pool.max_workers:
-                    pending_tasks = await self._handle_completed_tasks(pending_tasks)
+                # Set a latency-based flush deadline on first element
+                if flush_deadline is None and self.max_batch_latency_ms > 0:
+                    flush_deadline = (
+                        asyncio.get_event_loop().time() + self.max_batch_latency_ms / 1000.0
+                    )
+
+                # Size-based flush
+                if len(batch_buffer) >= self.batch_size:
+                    pending_tasks = await self._submit_batch_and_trim(
+                        batch_buffer, pending_tasks, source_node
+                    )
+                    batch_buffer = []
+                    flush_deadline = None
+                    continue
+
+                # Time-based flush (only checked when new items arrive)
+                if flush_deadline is not None and asyncio.get_event_loop().time() >= flush_deadline:
+                    pending_tasks = await self._submit_batch_and_trim(
+                        batch_buffer, pending_tasks, source_node
+                    )
+                    batch_buffer = []
+                    flush_deadline = None
+
+            # End-of-stream: flush any remaining buffered entities
+            if batch_buffer:
+                pending_tasks = await self._submit_batch_and_trim(
+                    batch_buffer, pending_tasks, source_node
+                )
+                batch_buffer = []
+                flush_deadline = None
 
         except Exception as e:
             stream_error = e
@@ -219,6 +258,31 @@ class SyncOrchestrator:
             # Re-raise the error after cleanup
             if stream_error:
                 raise stream_error
+
+    async def _submit_batch_and_trim(
+        self,
+        batch: list,
+        pending_tasks: set[asyncio.Task],
+        source_node: schemas.DagNode,
+    ) -> set[asyncio.Task]:
+        """Submit a micro-batch to the worker pool and trim to max parallelism if needed."""
+        if not batch:
+            return pending_tasks
+
+        # Submit batch task (process_batch handles dedupe/skip/enrich/etc.)
+        task = await self.worker_pool.submit(
+            self.entity_processor.process_batch,
+            entities=list(batch),
+            source_node=source_node,
+            sync_context=self.sync_context,
+        )
+        pending_tasks.add(task)
+
+        # If we've reached parallelism cap, wait for at least one batch to finish
+        if len(pending_tasks) >= self.worker_pool.max_workers:
+            pending_tasks = await self._handle_completed_tasks(pending_tasks)
+
+        return pending_tasks
 
     async def _handle_completed_tasks(self, pending_tasks: set[asyncio.Task]) -> set[asyncio.Task]:
         """Handle completed tasks and check for exceptions.
