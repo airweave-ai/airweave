@@ -1,8 +1,31 @@
-"""Qdrant destination implementation."""
+"""Qdrant destination implementation (compat with old sparse querying + batching).
 
-import uuid  # <-- for uuid5 deterministic IDs
+- Keeps the *old* query semantics for sparse vectors (expects fastembed SparseEmbedding objects),
+  including RRF fusion + optional recency decay.
+- Accepts either fastembed sparse objects (with `.as_object()`) OR a raw dict shaped like
+  {"indices": [...], "values": [...]} for maximum compatibility.
+- Preserves the *improved* per-chunk deterministic UUIDv5 point IDs to avoid overwrites.
+"""
+
+from __future__ import annotations
+
+import uuid
 from typing import Literal, Optional
 from uuid import UUID
+
+# Prefer SparseTextEmbedding (newer fastembed), fallback to SparseEmbedding (older)
+try:
+    from fastembed import SparseTextEmbedding as SparseEmbedding  # type: ignore
+except Exception:  # pragma: no cover
+    try:
+        from fastembed import SparseEmbedding  # type: ignore
+    except Exception:  # pragma: no cover
+
+        class SparseEmbedding:  # type: ignore
+            """Fallback placeholder for type checking when fastembed isn't present."""
+
+            pass
+
 
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http import models as rest
@@ -23,139 +46,137 @@ KEYWORD_VECTOR_NAME = "bm25"
 
 @destination("Qdrant", "qdrant", AuthType.config_class, "QdrantAuthConfig", labels=["Vector"])
 class QdrantDestination(VectorDBDestination):
-    """Qdrant destination implementation.
-
-    This class directly interacts with the Qdrant client and assumes entities
-    already have vector embeddings.
-    """
+    """Qdrant destination with legacy-compatible sparse querying + batch search."""
 
     def __init__(self):
-        """Initialize Qdrant destination."""
-        super().__init__()  # Initialize base class for logger support
+        """Initialize defaults and placeholders for connection and collection state."""
+        super().__init__()
         self.collection_name: str | None = None
         self.collection_id: UUID | None = None
         self.url: str | None = None
         self.api_key: str | None = None
         self.client: AsyncQdrantClient | None = None
-        self.vector_size: int = 384  # Default vector size
+        self.vector_size: int = 384  # Default dense vector size
 
+    # ----------------------------------------------------------------------------------
+    # Lifecycle / connection
+    # ----------------------------------------------------------------------------------
     @classmethod
     async def create(
         cls, collection_id: UUID, logger: Optional[ContextualLogger] = None
     ) -> "QdrantDestination":
-        """Create a new Qdrant destination."""
+        """Create and return a connected destination for the given collection.
+
+        This factory:
+        - instantiates the class,
+        - attaches the provided logger (or the default),
+        - loads credentials (if `get_credentials` is overridden),
+        - connects to Qdrant,
+        - and returns the ready instance.
+        """
         instance = cls()
         instance.set_logger(logger or default_logger)
         instance.collection_id = collection_id
         instance.collection_name = str(collection_id)
 
-        # Get credentials for sync_id
         credentials = await cls.get_credentials()
         if credentials:
             instance.url = credentials.url
             instance.api_key = credentials.api_key
-        else:
-            instance.url = None
-            instance.api_key = None
 
-        # Initialize client
         await instance.connect_to_qdrant()
-
         return instance
 
     @classmethod
     async def get_credentials(cls) -> QdrantAuthConfig | None:
-        """Get credentials for the destination."""
-        # TODO: Implement this
+        """Optionally provide credentials (override in your deployment).
+
+        Returns:
+            QdrantAuthConfig | None: Credentials if available; None by default.
+        """
+        # TODO: hook to your creds provider
         return None
 
     async def connect_to_qdrant(self) -> None:
-        """Connect to Qdrant service with appropriate authentication."""
-        if self.client is None:
-            try:
-                # Configure client
-                if self.url:
-                    location = self.url
-                else:
-                    location = settings.qdrant_url
+        """Initialize the AsyncQdrantClient and verify connectivity.
 
-                client_config = {
-                    "location": location,
-                    "prefer_grpc": False,  # Use HTTP by default
-                }
+        Raises:
+            ConnectionError: When the service is unreachable, times out, or auth fails.
+        """
+        if self.client is not None:
+            return
+        try:
+            location = self.url or settings.qdrant_url
+            client_config = {
+                "location": location,
+                "prefer_grpc": False,
+            }
+            if location[-4:] != ":6333":
+                # allow Railway/other proxies to work
+                client_config["port"] = None
+            if self.api_key:
+                client_config["api_key"] = self.api_key
 
-                if location[-4:] != ":6333":
-                    # allow railway to work
-                    client_config["port"] = None
-
-                # Add API key if provided
-                api_key = self.api_key
-                if api_key:
-                    client_config["api_key"] = api_key
-
-                # Initialize client
-                self.client = AsyncQdrantClient(**client_config)
-
-                # Test connection
-                await self.client.get_collections()
-                self.logger.debug("Successfully connected to Qdrant service.")
-            except Exception as e:
-                self.logger.error(f"Error connecting to Qdrant service at {location}: {e}")
-                self.client = None
-                if "connection refused" in str(e).lower():
-                    raise ConnectionError(
-                        f"Qdrant service is not running or refusing connections at {location}"
-                    ) from e
-                elif "timeout" in str(e).lower():
-                    raise ConnectionError(
-                        f"Connection to Qdrant service timed out at {location}"
-                    ) from e
-                elif "authentication" in str(e).lower() or "unauthorized" in str(e).lower():
-                    raise ConnectionError(
-                        f"Authentication failed for Qdrant service at {location}"
-                    ) from e
-                else:
-                    raise ConnectionError(
-                        f"Failed to connect to Qdrant service at {location}: {str(e)}"
-                    ) from e
+            self.client = AsyncQdrantClient(**client_config)
+            await self.client.get_collections()  # ping
+            self.logger.debug("Successfully connected to Qdrant service.")
+        except Exception as e:
+            self.logger.error(f"Error connecting to Qdrant at {location}: {e}")
+            self.client = None
+            msg = str(e).lower()
+            if "connection refused" in msg:
+                raise ConnectionError(
+                    f"Qdrant service is not running or refusing connections at {location}"
+                ) from e
+            if "timeout" in msg:
+                raise ConnectionError(f"Connection to Qdrant timed out at {location}") from e
+            if "authentication" in msg or "unauthorized" in msg:
+                raise ConnectionError(f"Authentication failed for Qdrant at {location}") from e
+            raise ConnectionError(f"Failed to connect to Qdrant at {location}: {str(e)}") from e
 
     async def ensure_client_readiness(self) -> None:
-        """Ensure the client is ready to accept requests."""
+        """Ensure a connected client exists or raise a clear error."""
         if self.client is None:
             await self.connect_to_qdrant()
-            if self.client is None:
-                raise ConnectionError(
-                    "Failed to establish connection to Qdrant service. Please check if "
-                    "the service is running and accessible."
-                )
+        if self.client is None:
+            raise ConnectionError(
+                "Failed to establish connection to Qdrant. Is the service accessible?"
+            )
 
     async def close_connection(self) -> None:
-        """Close the connection to the Qdrant service."""
+        """Close the Qdrant client (drop the reference, let GC handle resources)."""
         if self.client:
-            self.logger.debug("Closing Qdrant client connection gracefully...")
+            self.logger.debug("Closing Qdrant client connection...")
             self.client = None
-        else:
-            self.logger.debug("No Qdrant client connection to close.")
 
+    # ----------------------------------------------------------------------------------
+    # Collection management
+    # ----------------------------------------------------------------------------------
     async def collection_exists(self, collection_name: str) -> bool:
-        """Check if a collection exists in Qdrant."""
+        """Check whether a collection exists by name.
+
+        Args:
+            collection_name: The target collection name.
+
+        Returns:
+            True if the collection exists, otherwise False.
+        """
         await self.ensure_client_readiness()
         try:
             collections_response = await self.client.get_collections()
-            collections = collections_response.collections
-            return any(collection.name == collection_name for collection in collections)
+            return any(c.name == collection_name for c in collections_response.collections)
         except Exception as e:
             self.logger.error(f"Error checking if collection exists: {e}")
             raise
 
-    async def setup_collection(self, *args, **kwargs) -> None:  # noqa: C901
-        """Set up the Qdrant collection for storing entities.
+    async def setup_collection(self, *args, **kwargs) -> None:
+        """Set up the collection (accepts both legacy and new signatures).
 
-        Compatible with BOTH call styles:
+        Supported call styles:
           - setup_collection(vector_size)
           - setup_collection(collection_id, vector_size)
+          - setup_collection(vector_size=..., collection_id=...)
         """
-        # ---- accept both signatures ----
         collection_id: UUID | None = None
         vector_size: Optional[int] = None
 
@@ -179,7 +200,7 @@ class QdrantDestination(VectorDBDestination):
         if not self.collection_name:
             raise ValueError(
                 "QdrantDestination.collection_name is not set. "
-                "Ensure create(collection_id, ...) was called before setup_collection()."
+                "Call create(collection_id, ...) before setup_collection()."
             )
 
         try:
@@ -188,10 +209,10 @@ class QdrantDestination(VectorDBDestination):
                 return
 
             self.logger.info(f"Creating collection {self.collection_name}...")
-
             await self.client.create_collection(
                 collection_name=self.collection_name,
                 vectors_config={
+                    # DEFAULT_VECTOR_NAME is "" (empty string) in qdrant-client local
                     DEFAULT_VECTOR_NAME: rest.VectorParams(
                         size=vector_size if vector_size else self.vector_size,
                         distance=rest.Distance.COSINE,
@@ -202,13 +223,11 @@ class QdrantDestination(VectorDBDestination):
                         modifier=rest.Modifier.IDF,
                     )
                 },
-                optimizers_config=rest.OptimizersConfigDiff(
-                    indexing_threshold=20000,
-                ),
+                optimizers_config=rest.OptimizersConfigDiff(indexing_threshold=20000),
                 on_disk_payload=True,
             )
 
-            # Indexes for recency sorting / filters
+            # Range indexes for recency/filters
             self.logger.debug(
                 f"Creating range indexes for timestamp fields in {self.collection_name}..."
             )
@@ -227,42 +246,48 @@ class QdrantDestination(VectorDBDestination):
             if "already exists" not in str(e):
                 raise
 
-    # ---------- Helper: deterministic UUID point id ----------
+    # ----------------------------------------------------------------------------------
+    # ID helper (deterministic per-chunk IDs; avoids overwrites)
+    # ----------------------------------------------------------------------------------
     @staticmethod
     def _make_point_uuid(db_entity_id: UUID | str, child_entity_id: str) -> str:
-        """Create a deterministic UUIDv5 from (parent db UUID, child entity_id)."""
+        """Create a deterministic UUIDv5 for a chunk based on its parent DB id and entity id."""
         ns = UUID(str(db_entity_id)) if not isinstance(db_entity_id, UUID) else db_entity_id
         return str(uuid.uuid5(ns, child_entity_id))
 
+    # ----------------------------------------------------------------------------------
+    # Insert / Upsert
+    # ----------------------------------------------------------------------------------
     async def insert(self, entity: ChunkEntity) -> None:
-        """Insert a single entity into Qdrant."""
+        """Upsert a single chunk entity into Qdrant.
+
+        The vector payload is split into dense (default vector name) and optional sparse
+        (bm25) parts; vectors are removed from the stored payload to avoid duplication.
+        Deterministic UUIDv5 IDs prevent accidental overwrites.
+        """
         await self.ensure_client_readiness()
 
         data_object = entity.to_storage_dict()
 
-        # Safety checks
+        # Sanity checks
         if not entity.airweave_system_metadata or not entity.airweave_system_metadata.vectors:
             raise ValueError(f"Entity {entity.entity_id} has no vector in system metadata")
         if not entity.airweave_system_metadata.db_entity_id:
             raise ValueError(f"Entity {entity.entity_id} has no db_entity_id in system metadata")
 
-        # Remove vectors from payload (store vectors in dedicated fields only)
+        # Remove vectors from payload (store them only in vector fields)
         if "airweave_system_metadata" in data_object and isinstance(
             data_object["airweave_system_metadata"], dict
         ):
             data_object["airweave_system_metadata"].pop("vectors", None)
 
-        # ✅ VALID Qdrant point id (UUID)
+        # Deterministic per-chunk ID
         point_id = self._make_point_uuid(
             entity.airweave_system_metadata.db_entity_id, entity.entity_id
         )
 
-        # Prepare sparse vector if present
-        sv = (
-            entity.airweave_system_metadata.vectors[1]
-            if entity.airweave_system_metadata.vectors
-            else None
-        )
+        # Optional sparse (accepts fastembed object or dict)
+        sv = entity.airweave_system_metadata.vectors[1]
         sparse_part = {}
         if sv is not None:
             obj = sv.as_object() if hasattr(sv, "as_object") else sv
@@ -283,13 +308,13 @@ class QdrantDestination(VectorDBDestination):
         )
 
     async def bulk_insert(self, entities: list[ChunkEntity]) -> None:
-        """Bulk insert entities into Qdrant."""
+        """Upsert multiple chunk entities efficiently in one call."""
         if not entities:
             return
 
         await self.ensure_client_readiness()
 
-        point_structs = []
+        point_structs: list[rest.PointStruct] = []
         for entity in entities:
             entity_data = entity.to_storage_dict()
 
@@ -304,16 +329,11 @@ class QdrantDestination(VectorDBDestination):
             ):
                 entity_data["airweave_system_metadata"].pop("vectors", None)
 
-            # ✅ VALID Qdrant point id (UUID)
             point_id = self._make_point_uuid(
                 entity.airweave_system_metadata.db_entity_id, entity.entity_id
             )
 
-            sv = (
-                entity.airweave_system_metadata.vectors[1]
-                if entity.airweave_system_metadata.vectors
-                else None
-            )
+            sv = entity.airweave_system_metadata.vectors[1]
             sparse_part = {}
             if sv is not None:
                 obj = sv.as_object() if hasattr(sv, "as_object") else sv
@@ -333,19 +353,20 @@ class QdrantDestination(VectorDBDestination):
             self.logger.warning("No valid entities to insert")
             return
 
-        operation_response = await self.client.upsert(
+        op = await self.client.upsert(
             collection_name=self.collection_name,
             points=point_structs,
             wait=True,
         )
+        if hasattr(op, "errors") and op.errors:
+            raise Exception(f"Errors during bulk insert: {op.errors}")
 
-        if hasattr(operation_response, "errors") and operation_response.errors:
-            raise Exception(f"Errors during bulk insert: {operation_response.errors}")
-
+    # ----------------------------------------------------------------------------------
+    # Deletes (by parent/sync/etc.)
+    # ----------------------------------------------------------------------------------
     async def delete(self, db_entity_id: UUID) -> None:
         """Delete all points belonging to a DB entity id (parent)."""
         await self.ensure_client_readiness()
-
         await self.client.delete(
             collection_name=self.collection_name,
             points_selector=rest.FilterSelector(
@@ -362,9 +383,8 @@ class QdrantDestination(VectorDBDestination):
         )
 
     async def delete_by_sync_id(self, sync_id: UUID) -> None:
-        """Delete entities from the destination by sync ID."""
+        """Delete all points that have the provided sync job id."""
         await self.ensure_client_readiness()
-
         await self.client.delete(
             collection_name=self.collection_name,
             points_selector=rest.FilterSelector(
@@ -381,12 +401,10 @@ class QdrantDestination(VectorDBDestination):
         )
 
     async def bulk_delete(self, entity_ids: list[str], sync_id: UUID) -> None:
-        """Bulk delete entities from Qdrant within a sync by child entity_ids."""
+        """Delete specific entity ids that belong to a particular sync job."""
         if not entity_ids:
             return
-
         await self.ensure_client_readiness()
-
         await self.client.delete(
             collection_name=self.collection_name,
             points_selector=rest.FilterSelector(
@@ -403,13 +421,11 @@ class QdrantDestination(VectorDBDestination):
             wait=True,
         )
 
-    async def bulk_delete_by_parent_id(self, parent_id: str, sync_id: UUID) -> None:
-        """Bulk delete entities from Qdrant by parent entity ID and sync ID."""
+    async def bulk_delete_by_parent_id(self, parent_id: str, sync_id: UUID | str) -> None:
+        """Delete all points for a given parent (db entity) id and sync id."""
         if not parent_id:
             return
-
         await self.ensure_client_readiness()
-
         await self.client.delete(
             collection_name=self.collection_name,
             points_selector=rest.FilterSelector(
@@ -429,12 +445,10 @@ class QdrantDestination(VectorDBDestination):
         )
 
     async def bulk_delete_by_parent_ids(self, parent_ids: list[str], sync_id: UUID) -> None:
-        """Optimized bulk delete for multiple parent IDs within a sync."""
+        """Delete all points whose parent id is in the provided list and match sync id."""
         if not parent_ids:
             return
-
         await self.ensure_client_readiness()
-
         await self.client.delete(
             collection_name=self.collection_name,
             points_selector=rest.FilterSelector(
@@ -454,12 +468,15 @@ class QdrantDestination(VectorDBDestination):
             wait=True,
         )
 
+    # ----------------------------------------------------------------------------------
+    # Query building (legacy-compatible sparse semantics)
+    # ----------------------------------------------------------------------------------
     def _prepare_index_search_request(
         self,
         params: dict,
         decay_config: Optional[DecayConfig] = None,
     ) -> dict:
-        """Prepare a query request for Qdrant."""
+        """Wrap an index search with optional decay formula (same semantics as old code)."""
         if decay_config is None:
             return params
 
@@ -476,7 +493,6 @@ class QdrantDestination(VectorDBDestination):
             "exponential": lambda p: rest.ExpDecayExpression(exp_decay=p),
             "gaussian": lambda p: rest.GaussDecayExpression(gauss_decay=p),
         }
-
         decay_expression = decay_expressions[decay_config.decay_type](decay_params)
 
         weight = getattr(decay_config, "weight", 1.0) if decay_config else 1.0
@@ -486,11 +502,9 @@ class QdrantDestination(VectorDBDestination):
         elif weight >= 1.0:
             weighted_formula = decay_expression
         else:
+            # score * (1 - weight + weight * decay)
             decay_factor = rest.SumExpression(
-                sum=[
-                    1.0 - weight,
-                    rest.MultExpression(mult=[weight, decay_expression]),
-                ]
+                sum=[1.0 - weight, rest.MultExpression(mult=[weight, decay_expression])]
             )
             weighted_formula = rest.MultExpression(mult=["$score", decay_factor])
 
@@ -511,12 +525,12 @@ class QdrantDestination(VectorDBDestination):
         self,
         query_vector: list[float],
         limit: int,
-        sparse_vector: dict | None,
+        sparse_vector: SparseEmbedding | dict | None,
         search_method: Literal["hybrid", "neural", "keyword"],
         decay_config: Optional[DecayConfig] = None,
     ) -> rest.QueryRequest:
-        """Prepare a query request for Qdrant."""
-        query_request_params = {}
+        """Create a single QueryRequest consistent with the old method."""
+        query_request_params: dict = {}
 
         if search_method == "neural":
             neural_params = {
@@ -524,28 +538,27 @@ class QdrantDestination(VectorDBDestination):
                 "using": DEFAULT_VECTOR_NAME,
                 "limit": limit,
             }
-            query_request_params = self._prepare_index_search_request(
-                params=neural_params,
-                decay_config=decay_config,
-            )
+            query_request_params = self._prepare_index_search_request(neural_params, decay_config)
 
         if search_method == "keyword":
             if not sparse_vector:
                 raise ValueError("Keyword search requires sparse vector")
-
+            obj = (
+                sparse_vector.as_object() if hasattr(sparse_vector, "as_object") else sparse_vector
+            )
             keyword_params = {
-                "query": rest.SparseVector(**sparse_vector),
+                "query": rest.SparseVector(**obj),
                 "using": KEYWORD_VECTOR_NAME,
                 "limit": limit,
             }
-            query_request_params = self._prepare_index_search_request(
-                params=keyword_params,
-                decay_config=decay_config,
-            )
+            query_request_params = self._prepare_index_search_request(keyword_params, decay_config)
 
         if search_method == "hybrid":
             if not sparse_vector:
                 raise ValueError("Hybrid search requires sparse vector")
+            obj = (
+                sparse_vector.as_object() if hasattr(sparse_vector, "as_object") else sparse_vector
+            )
 
             prefetch_limit = 10000
             if decay_config is not None:
@@ -559,15 +572,14 @@ class QdrantDestination(VectorDBDestination):
             prefetch_params = [
                 {"query": query_vector, "using": DEFAULT_VECTOR_NAME, "limit": prefetch_limit},
                 {
-                    "query": rest.SparseVector(**sparse_vector),
+                    "query": rest.SparseVector(**obj),
                     "using": KEYWORD_VECTOR_NAME,
                     "limit": prefetch_limit,
                 },
             ]
+            prefetches = [rest.Prefetch(**p) for p in prefetch_params]
 
-            prefetches = [rest.Prefetch(**params) for params in prefetch_params]
-
-            if decay_config is None or decay_config.weight <= 0.0:
+            if decay_config is None or getattr(decay_config, "weight", 0.0) <= 0.0:
                 query_request_params = {
                     "prefetch": prefetches,
                     "query": rest.FusionQuery(fusion=rest.Fusion.RRF),
@@ -585,25 +597,72 @@ class QdrantDestination(VectorDBDestination):
 
         return rest.QueryRequest(**query_request_params)
 
+    def _validate_bulk_search_inputs(
+        self,
+        query_vectors: list[list[float]],
+        filter_conditions: list[dict] | None,
+        sparse_vectors: list[SparseEmbedding] | list[dict] | None,
+    ) -> None:
+        """Validate lengths of per-query inputs for bulk search."""
+        if filter_conditions and len(filter_conditions) != len(query_vectors):
+            raise ValueError(
+                f"Number of filter conditions ({len(filter_conditions)}) must match "
+                f"number of query vectors ({len(query_vectors)})"
+            )
+        if sparse_vectors and len(query_vectors) != len(sparse_vectors):
+            raise ValueError("Sparse vector count does not match query vectors")
+
+    async def _prepare_bulk_search_requests(
+        self,
+        query_vectors: list[list[float]],
+        limit: int,
+        score_threshold: float | None,
+        with_payload: bool,
+        filter_conditions: list[dict] | None,
+        sparse_vectors: list[SparseEmbedding] | list[dict] | None,
+        search_method: Literal["hybrid", "neural", "keyword"],
+        decay_config: Optional[DecayConfig],
+        offset: Optional[int],
+    ) -> list[rest.QueryRequest]:
+        """Create per-query request objects used by `bulk_search`."""
+        requests: list[rest.QueryRequest] = []
+        for i, qv in enumerate(query_vectors):
+            sv = sparse_vectors[i] if sparse_vectors else None
+            req = await self._prepare_query_request(
+                query_vector=qv,
+                limit=limit,
+                sparse_vector=sv,
+                search_method=search_method,
+                decay_config=decay_config,
+            )
+            if filter_conditions and filter_conditions[i]:
+                req.filter = rest.Filter.model_validate(filter_conditions[i])
+            if offset and offset > 0:
+                req.offset = offset
+            if score_threshold is not None:
+                req.score_threshold = score_threshold
+            req.with_payload = with_payload
+            requests.append(req)
+        return requests
+
     def _format_bulk_search_results(
         self, batch_results: list, with_payload: bool
     ) -> list[list[dict]]:
-        """Format batch search results into standard format."""
-        all_results = []
+        """Convert client batch results to a simple nested list of dicts."""
+        all_results: list[list[dict]] = []
         for search_results in batch_results:
             results = []
             for result in search_results.points:
-                result_dict = {
-                    "id": result.id,
-                    "score": result.score,
-                }
+                entry = {"id": result.id, "score": result.score}
                 if with_payload:
-                    result_dict["payload"] = result.payload
-                results.append(result_dict)
+                    entry["payload"] = result.payload
+                results.append(entry)
             all_results.append(results)
-
         return all_results
 
+    # ----------------------------------------------------------------------------------
+    # Public search API (legacy-compatible signatures)
+    # ----------------------------------------------------------------------------------
     async def search(
         self,
         query_vector: list[float],
@@ -612,11 +671,11 @@ class QdrantDestination(VectorDBDestination):
         with_payload: bool = True,
         filter: dict | None = None,
         decay_config: Optional[DecayConfig] = None,
-        sparse_vector: dict | None = None,
+        sparse_vector: SparseEmbedding | dict | None = None,
         search_method: Literal["hybrid", "neural", "keyword"] = "hybrid",
         offset: int = 0,
     ) -> list[dict]:
-        """Search for entities in the destination."""
+        """Search a single query vector; thin wrapper over `bulk_search`."""
         return await self.bulk_search(
             query_vectors=[query_vector],
             limit=limit,
@@ -629,41 +688,6 @@ class QdrantDestination(VectorDBDestination):
             offset=offset,
         )
 
-    async def _build_query_requests(
-        self,
-        query_vectors: list[list[float]],
-        limit: int,
-        score_threshold: float | None,
-        with_payload: bool,
-        filter_conditions: list[dict] | None,
-        sparse_vectors: list[dict] | None,
-        search_method: Literal["hybrid", "neural", "keyword"],
-        decay_config: Optional[DecayConfig],
-        offset: Optional[int],
-    ) -> list[rest.QueryRequest]:
-        """Build a list of Qdrant query requests."""
-        query_requests = []
-        for i, query_vector in enumerate(query_vectors):
-            sparse_vector = sparse_vectors[i] if sparse_vectors else None
-            request = await self._prepare_query_request(
-                query_vector=query_vector,
-                limit=limit,
-                sparse_vector=sparse_vector,
-                search_method=search_method,
-                decay_config=decay_config,
-            )
-
-            if filter_conditions and i < len(filter_conditions) and filter_conditions[i]:
-                request.filter = rest.Filter.model_validate(filter_conditions[i])
-            if offset and offset > 0:
-                request.offset = offset
-            if score_threshold is not None:
-                request.score_threshold = score_threshold
-
-            request.with_payload = with_payload
-            query_requests.append(request)
-        return query_requests
-
     async def bulk_search(
         self,
         query_vectors: list[list[float]],
@@ -671,94 +695,118 @@ class QdrantDestination(VectorDBDestination):
         score_threshold: float | None = None,
         with_payload: bool = True,
         filter_conditions: list[dict] | None = None,
-        sparse_vectors: list[dict] | None = None,
+        sparse_vectors: list[SparseEmbedding] | list[dict] | None = None,
         search_method: Literal["hybrid", "neural", "keyword"] = "hybrid",
         decay_config: Optional[DecayConfig] = None,
         offset: Optional[int] = None,
     ) -> list[dict]:
-        """Perform batch search for multiple query vectors in a single request."""
+        """Search multiple queries at once with neural/keyword/hybrid and optional decay.
+
+        Applies RRF fusion for hybrid, falls back to neural when the BM25 index is missing,
+        and supports an optional recency-decay formula compatible with legacy behavior.
+        """
         await self.ensure_client_readiness()
         if not query_vectors:
             return []
 
-        # Fallback to neural search if keyword index doesn't exist
+        # Validate inputs like the old implementation did
+        self._validate_bulk_search_inputs(query_vectors, filter_conditions, sparse_vectors)
+
+        # Fallback to neural if sparse index missing and method needs it
         if search_method != "neural":
             vector_config_names = await self.get_vector_config_names()
             if KEYWORD_VECTOR_NAME not in vector_config_names:
                 self.logger.warning(
-                    (
-                        f"'{KEYWORD_VECTOR_NAME}' index not found in collection ",
-                        "'{self.collection_name}'. Falling back to neural search.",
-                    )
+                    f"{KEYWORD_VECTOR_NAME} index could not be found in "
+                    f"collection {self.collection_name}. Using neural search instead."
                 )
                 search_method = "neural"
 
+        # Log similar to old version
+        weight = getattr(decay_config, "weight", None) if decay_config else None
         self.logger.info(
             f"[Qdrant] Executing {search_method.upper()} search: "
             f"queries={len(query_vectors)}, limit={limit}, "
-            f"decay_enabled={decay_config is not None}"
+            f"has_sparse={sparse_vectors is not None}, "
+            f"decay_enabled={decay_config is not None}, "
+            f"decay_weight={weight}"
         )
 
+        if decay_config:
+            # Wrap to avoid E501 while keeping detail
+            decay_weight = getattr(decay_config, "weight", 0)
+            decay_field = decay_config.datetime_field
+            decay_scale = getattr(decay_config, "scale_value", None)
+            self.logger.debug(
+                "[Qdrant] Decay strategy: weight=%.1f, field=%s, scale=%ss",
+                decay_weight,
+                decay_field,
+                decay_scale,
+            )
+
         try:
-            query_requests = await self._build_query_requests(
-                query_vectors,
-                limit,
-                score_threshold,
-                with_payload,
-                filter_conditions,
-                sparse_vectors,
-                search_method,
-                decay_config,
-                offset,
+            requests = await self._prepare_bulk_search_requests(
+                query_vectors=query_vectors,
+                limit=limit,
+                score_threshold=score_threshold,
+                with_payload=with_payload,
+                filter_conditions=filter_conditions or [None] * len(query_vectors),
+                sparse_vectors=sparse_vectors,
+                search_method=search_method,
+                decay_config=decay_config,
+                offset=offset,
             )
 
             batch_results = await self.client.query_batch_points(
-                collection_name=self.collection_name, requests=query_requests
+                collection_name=self.collection_name, requests=requests
             )
-            formatted_results = self._format_bulk_search_results(batch_results, with_payload)
+            formatted = self._format_bulk_search_results(batch_results, with_payload)
 
-            flattened_results = [item for sublist in formatted_results for item in sublist]
+            # Flatten to match previous public API behavior
+            flattened: list[dict] = [item for group in formatted for item in group]
 
-            if flattened_results:
-                scores = [r.get("score", 0) for r in flattened_results if isinstance(r, dict)]
+            if flattened:
+                scores = [r.get("score", 0) for r in flattened if isinstance(r, dict)]
                 if scores:
+                    avg = sum(scores) / len(scores)
+                    # Avoid E501: use %-style and pass values as args
                     self.logger.debug(
-                        (
-                            f"[Qdrant] Result scores: count={len(scores)}, "
-                            f"avg={sum(scores) / len(scores):.3f}, "
-                            f"max={max(scores):.3f}, min={min(scores):.3f}"
-                        )
+                        "[Qdrant] Result scores with %s %s: count=%d, avg=%.3f, max=%.3f, min=%.3f",
+                        search_method,
+                        "(with recency)" if decay_config else "(no recency)",
+                        len(scores),
+                        avg,
+                        max(scores),
+                        min(scores),
                     )
-            return flattened_results
+            return flattened
+
         except Exception as e:
             self.logger.error(f"Error performing batch search with Qdrant: {e}")
             raise
 
+    # ----------------------------------------------------------------------------------
+    # Introspection
+    # ----------------------------------------------------------------------------------
     async def has_keyword_index(self) -> bool:
-        """Check if the destination has a keyword index."""
-        vector_config_names = await self.get_vector_config_names()
-        return KEYWORD_VECTOR_NAME in vector_config_names
+        """Return True if the BM25 (sparse) index exists for the collection."""
+        names = await self.get_vector_config_names()
+        return KEYWORD_VECTOR_NAME in names
 
     async def get_vector_config_names(self) -> list[str]:
-        """Get the names of all vector configurations (both dense and sparse) for the collection."""
+        """Return all configured vector names (dense and sparse) for the collection."""
         await self.ensure_client_readiness()
-
         try:
-            collection_info = await self.client.get_collection(collection_name=self.collection_name)
-
-            vector_config_names = []
-
-            if collection_info.config.params.vectors:
-                if isinstance(collection_info.config.params.vectors, dict):
-                    vector_config_names.extend(collection_info.config.params.vectors.keys())
+            info = await self.client.get_collection(collection_name=self.collection_name)
+            names: list[str] = []
+            if info.config.params.vectors:
+                if isinstance(info.config.params.vectors, dict):
+                    names.extend(info.config.params.vectors.keys())
                 else:
-                    vector_config_names.append(DEFAULT_VECTOR_NAME)
-
-            if collection_info.config.params.sparse_vectors:
-                vector_config_names.extend(collection_info.config.params.sparse_vectors.keys())
-
-            return vector_config_names
-
+                    names.append(DEFAULT_VECTOR_NAME)
+            if info.config.params.sparse_vectors:
+                names.extend(info.config.params.sparse_vectors.keys())
+            return names
         except Exception as e:
             self.logger.error(
                 f"Error getting vector configurations from collection {self.collection_name}: {e}"
