@@ -1071,12 +1071,17 @@ class EntityProcessor:
         await self._persist_db_deletes(deletes, sync_context)
         await self._update_progress_and_guard_rails(partitions, sync_context)
 
-        results_by_parent: Dict[str, List[BaseEntity]] = {
-            p.entity_id: children for p, children in children_by_parent.items()
-        }
-        for p_list in partitions.values():
+        results_by_parent: dict[str, List[BaseEntity]] = dict(children_by_parent)
+
+        for p_list in (
+            partitions["inserts"],
+            partitions["updates"],
+            partitions["keeps"],
+            partitions["deletes"],
+        ):
             for p in p_list:
                 results_by_parent.setdefault(p.entity_id, [])
+
         return results_by_parent
 
     async def _persist_db_inserts(
