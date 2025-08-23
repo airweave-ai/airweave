@@ -47,7 +47,6 @@ class SyncOrchestrator:
         self.stream_buffer_size = 1000
 
         # ---- New: micro-batching knobs (can be overridden via SyncContext if present) ----
-        # Default to conservative values; callers may set these on the sync_context
         self.batch_size: int = getattr(sync_context, "batch_size", 64)
         # Max time to wait before flushing a non-full batch (milliseconds)
         self.max_batch_latency_ms: int = getattr(sync_context, "max_batch_latency_ms", 200)
@@ -138,7 +137,7 @@ class SyncOrchestrator:
                     break  # Exit the loop cleanly instead of raising
 
                 # Handle skipped entities without using a worker
-                if entity.airweave_system_metadata.should_skip:
+                if entity.airweave_system_metadata and entity.airweave_system_metadata.should_skip:
                     self.sync_context.logger.debug(f"Skipping entity: {entity.entity_id}")
                     await self.sync_context.progress.increment("skipped")
                     continue
@@ -201,26 +200,6 @@ class SyncOrchestrator:
             #
             # ⚠️ IMPORTANT: ORPHANED ENTITY CLEANUP IS DISABLED FOR INCREMENTAL SYNCS ⚠️
             #
-            # The orphaned entity cleanup was designed for full syncs where ALL entities
-            # from the source are processed. In incremental syncs, only CHANGED entities
-            # are yielded, so unchanged entities would incorrectly appear as "orphaned"
-            # and get deleted.
-            #
-            # For incremental syncs, deletions should only happen through:
-            # 1. Explicit deletion entities (e.g., GitHubFileDeletionEntity)
-            # 2. NOT through orphaned cleanup
-            #
-            # TODO: Future improvement could track which entities are expected to be
-            # unchanged vs. truly orphaned, allowing cleanup even in incremental syncs.
-            #
-            # Detection logic:
-            # - If cursor data exists, this is an incremental sync (we've synced before)
-            # - If no cursor data, this is the first/full sync
-
-            # Check if we should do cleanup
-            # Cleanup happens if:
-            # 1. force_full_sync is True (daily cleanup run), OR
-            # 2. No cursor data exists (first sync or reset)
             has_cursor_data = bool(
                 hasattr(self.sync_context, "cursor")
                 and self.sync_context.cursor

@@ -1,9 +1,9 @@
 """Qdrant destination implementation."""
 
+import uuid  # <-- for uuid5 deterministic IDs
 from typing import Literal, Optional
 from uuid import UUID
 
-from fastembed import SparseEmbedding
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http import models as rest
 from qdrant_client.local.local_collection import DEFAULT_VECTOR_NAME
@@ -43,16 +43,7 @@ class QdrantDestination(VectorDBDestination):
     async def create(
         cls, collection_id: UUID, logger: Optional[ContextualLogger] = None
     ) -> "QdrantDestination":
-        """Create a new Qdrant destination.
-
-        Args:
-            collection_id (UUID): The ID of the collection.
-            vector_size (int): The size of the vectors to use.
-            logger (Optional[ContextualLogger]): The logger to use.
-
-        Returns:
-            QdrantDestination: The created destination.
-        """
+        """Create a new Qdrant destination."""
         instance = cls()
         instance.set_logger(logger or default_logger)
         instance.collection_id = collection_id
@@ -74,11 +65,7 @@ class QdrantDestination(VectorDBDestination):
 
     @classmethod
     async def get_credentials(cls) -> QdrantAuthConfig | None:
-        """Get credentials for the destination.
-
-        Returns:
-            QdrantAuthConfig | None: The credentials for the destination.
-        """
+        """Get credentials for the destination."""
         # TODO: Implement this
         return None
 
@@ -115,7 +102,6 @@ class QdrantDestination(VectorDBDestination):
             except Exception as e:
                 self.logger.error(f"Error connecting to Qdrant service at {location}: {e}")
                 self.client = None
-                # Provide more specific error messages
                 if "connection refused" in str(e).lower():
                     raise ConnectionError(
                         f"Qdrant service is not running or refusing connections at {location}"
@@ -124,7 +110,6 @@ class QdrantDestination(VectorDBDestination):
                     raise ConnectionError(
                         f"Connection to Qdrant service timed out at {location}"
                     ) from e
-
                 elif "authentication" in str(e).lower() or "unauthorized" in str(e).lower():
                     raise ConnectionError(
                         f"Authentication failed for Qdrant service at {location}"
@@ -148,20 +133,12 @@ class QdrantDestination(VectorDBDestination):
         """Close the connection to the Qdrant service."""
         if self.client:
             self.logger.debug("Closing Qdrant client connection gracefully...")
-            # Qdrant client doesn't have an explicit close method, but we can set it to None
             self.client = None
         else:
             self.logger.debug("No Qdrant client connection to close.")
 
     async def collection_exists(self, collection_name: str) -> bool:
-        """Check if a collection exists in Qdrant.
-
-        Args:
-            collection_name (str): The name of the collection.
-
-        Returns:
-            bool: True if the collection exists, False otherwise.
-        """
+        """Check if a collection exists in Qdrant."""
         await self.ensure_client_readiness()
         try:
             collections_response = await self.client.get_collections()
@@ -169,32 +146,52 @@ class QdrantDestination(VectorDBDestination):
             return any(collection.name == collection_name for collection in collections)
         except Exception as e:
             self.logger.error(f"Error checking if collection exists: {e}")
-            raise  # Re-raise the exception instead of returning False
+            raise
 
-    async def setup_collection(self, vector_size: int) -> None:  # noqa: C901
+    async def setup_collection(self, *args, **kwargs) -> None:  # noqa: C901
         """Set up the Qdrant collection for storing entities.
 
-        Args:
-            vector_size (int): The size of the vectors to use.
+        Compatible with BOTH call styles:
+          - setup_collection(vector_size)
+          - setup_collection(collection_id, vector_size)
         """
+        # ---- accept both signatures ----
+        collection_id: UUID | None = None
+        vector_size: Optional[int] = None
+
+        if len(args) == 1:
+            vector_size = args[0]
+        elif len(args) >= 2:
+            collection_id, vector_size = args[0], args[1]
+        else:
+            vector_size = kwargs.get("vector_size")
+            collection_id = kwargs.get("collection_id")
+
+        if vector_size is None:
+            raise TypeError("setup_collection() missing required argument: 'vector_size'")
+
+        if collection_id is not None:
+            self.collection_id = collection_id
+            self.collection_name = str(collection_id)
+
         await self.ensure_client_readiness()
 
+        if not self.collection_name:
+            raise ValueError(
+                "QdrantDestination.collection_name is not set. "
+                "Ensure create(collection_id, ...) was called before setup_collection()."
+            )
+
         try:
-            # Check if collection exists
             if await self.collection_exists(self.collection_name):
                 self.logger.debug(f"Collection {self.collection_name} already exists.")
                 return
 
             self.logger.info(f"Creating collection {self.collection_name}...")
 
-            # Create the collection
             await self.client.create_collection(
                 collection_name=self.collection_name,
                 vectors_config={
-                    # Existing collections will have the default vector config,
-                    # so we should tick to it even for new collections.
-                    # Annoyingly, the DEFAULT_VECTOR_NAME is an empty string.
-                    # Source: https://python-client.qdrant.tech/_modules/qdrant_client/local/local_collection
                     DEFAULT_VECTOR_NAME: rest.VectorParams(
                         size=vector_size if vector_size else self.vector_size,
                         distance=rest.Distance.COSINE,
@@ -206,25 +203,20 @@ class QdrantDestination(VectorDBDestination):
                     )
                 },
                 optimizers_config=rest.OptimizersConfigDiff(
-                    indexing_threshold=20000,  # Default indexing threshold
+                    indexing_threshold=20000,
                 ),
-                on_disk_payload=True,  # Store payload on disk to save memory
+                on_disk_payload=True,
             )
 
-            # Create range indexes for timestamp fields to enable order_by operations
-            # These are required for the RecencyBias operator to fetch min/max timestamps
+            # Indexes for recency sorting / filters
             self.logger.debug(
                 f"Creating range indexes for timestamp fields in {self.collection_name}..."
             )
-
-            # Index for harmonized updated_at timestamp (primary field for recency)
             await self.client.create_payload_index(
                 collection_name=self.collection_name,
                 field_name="airweave_system_metadata.airweave_updated_at",
                 field_schema=rest.PayloadSchemaType.DATETIME,
             )
-
-            # Index for harmonized created_at timestamp (fallback field)
             await self.client.create_payload_index(
                 collection_name=self.collection_name,
                 field_name="airweave_system_metadata.airweave_created_at",
@@ -235,93 +227,104 @@ class QdrantDestination(VectorDBDestination):
             if "already exists" not in str(e):
                 raise
 
-    async def insert(self, entity: ChunkEntity) -> None:
-        """Insert a single entity into Qdrant.
+    # ---------- Helper: deterministic UUID point id ----------
+    @staticmethod
+    def _make_point_uuid(db_entity_id: UUID | str, child_entity_id: str) -> str:
+        """Create a deterministic UUIDv5 from (parent db UUID, child entity_id)."""
+        ns = UUID(str(db_entity_id)) if not isinstance(db_entity_id, UUID) else db_entity_id
+        return str(uuid.uuid5(ns, child_entity_id))
 
-        Args:
-            entity (ChunkEntity): The entity to insert.
-        """
+    async def insert(self, entity: ChunkEntity) -> None:
+        """Insert a single entity into Qdrant."""
         await self.ensure_client_readiness()
 
-        # Use the entity's to_storage_dict method to get properly serialized data
         data_object = entity.to_storage_dict()
 
-        # Get vector from system metadata
+        # Safety checks
         if not entity.airweave_system_metadata or not entity.airweave_system_metadata.vectors:
             raise ValueError(f"Entity {entity.entity_id} has no vector in system metadata")
-
-        # Get db_entity_id from system metadata
         if not entity.airweave_system_metadata.db_entity_id:
             raise ValueError(f"Entity {entity.entity_id} has no db_entity_id in system metadata")
 
-        # Insert point with vector from entity
+        # Remove vectors from payload (store vectors in dedicated fields only)
+        if "airweave_system_metadata" in data_object and isinstance(
+            data_object["airweave_system_metadata"], dict
+        ):
+            data_object["airweave_system_metadata"].pop("vectors", None)
+
+        # ✅ VALID Qdrant point id (UUID)
+        point_id = self._make_point_uuid(
+            entity.airweave_system_metadata.db_entity_id, entity.entity_id
+        )
+
+        # Prepare sparse vector if present
+        sv = (
+            entity.airweave_system_metadata.vectors[1]
+            if entity.airweave_system_metadata.vectors
+            else None
+        )
+        sparse_part = {}
+        if sv is not None:
+            obj = sv.as_object() if hasattr(sv, "as_object") else sv
+            if isinstance(obj, dict):
+                sparse_part = {KEYWORD_VECTOR_NAME: obj}
+
         await self.client.upsert(
             collection_name=self.collection_name,
             points=[
                 rest.PointStruct(
-                    id=str(entity.airweave_system_metadata.db_entity_id),
-                    vector={
-                        DEFAULT_VECTOR_NAME: entity.airweave_system_metadata.vectors[0],
-                    }
-                    | (
-                        {
-                            KEYWORD_VECTOR_NAME: entity.airweave_system_metadata.vectors[
-                                1
-                            ].as_object(),
-                        }
-                        if entity.airweave_system_metadata.vectors[1] is not None
-                        else {}
-                    ),
+                    id=point_id,
+                    vector={DEFAULT_VECTOR_NAME: entity.airweave_system_metadata.vectors[0]}
+                    | sparse_part,
                     payload=data_object,
                 )
             ],
-            wait=True,  # Wait for operation to complete
+            wait=True,
         )
 
     async def bulk_insert(self, entities: list[ChunkEntity]) -> None:
-        """Bulk insert entities into Qdrant.
-
-        Args:
-            entities (list[ChunkEntity]): The entities to insert.
-        """
+        """Bulk insert entities into Qdrant."""
         if not entities:
             return
 
         await self.ensure_client_readiness()
 
-        # Convert entities to Qdrant points
         point_structs = []
         for entity in entities:
-            # Use the entity's to_storage_dict method to get properly serialized data
             entity_data = entity.to_storage_dict()
 
-            # Check system metadata exists
             if not entity.airweave_system_metadata:
                 raise ValueError(f"Entity {entity.entity_id} has no system metadata")
-
-            # Get vector from system metadata
             if not entity.airweave_system_metadata.vectors:
                 raise ValueError(f"Entity {entity.entity_id} has no vector in system metadata")
 
-            if "vectors" in entity_data["airweave_system_metadata"]:
-                entity_data["airweave_system_metadata"].pop("vectors")
+            # Remove vectors from payload
+            if "airweave_system_metadata" in entity_data and isinstance(
+                entity_data["airweave_system_metadata"], dict
+            ):
+                entity_data["airweave_system_metadata"].pop("vectors", None)
 
-            # Create point for Qdrant
+            # ✅ VALID Qdrant point id (UUID)
+            point_id = self._make_point_uuid(
+                entity.airweave_system_metadata.db_entity_id, entity.entity_id
+            )
+
+            sv = (
+                entity.airweave_system_metadata.vectors[1]
+                if entity.airweave_system_metadata.vectors
+                else None
+            )
+            sparse_part = {}
+            if sv is not None:
+                obj = sv.as_object() if hasattr(sv, "as_object") else sv
+                if isinstance(obj, dict):
+                    sparse_part = {KEYWORD_VECTOR_NAME: obj}
+
             point_structs.append(
                 rest.PointStruct(
-                    id=str(entity.airweave_system_metadata.db_entity_id),
-                    vector={
-                        DEFAULT_VECTOR_NAME: entity.airweave_system_metadata.vectors[0],
-                    }
-                    | (
-                        {
-                            KEYWORD_VECTOR_NAME: entity.airweave_system_metadata.vectors[
-                                1
-                            ].as_object(),
-                        }
-                        if entity.airweave_system_metadata.vectors[1] is not None
-                        else {}
-                    ),
+                    id=point_id,
+                    vector={DEFAULT_VECTOR_NAME: entity.airweave_system_metadata.vectors[0]}
+                    | sparse_part,
                     payload=entity_data,
                 )
             )
@@ -330,30 +333,32 @@ class QdrantDestination(VectorDBDestination):
             self.logger.warning("No valid entities to insert")
             return
 
-        # Bulk upsert
         operation_response = await self.client.upsert(
             collection_name=self.collection_name,
             points=point_structs,
-            wait=True,  # Wait for operation to complete
+            wait=True,
         )
 
         if hasattr(operation_response, "errors") and operation_response.errors:
             raise Exception(f"Errors during bulk insert: {operation_response.errors}")
 
     async def delete(self, db_entity_id: UUID) -> None:
-        """Delete a single entity from Qdrant.
-
-        Args:
-            db_entity_id (UUID): The ID of the entity to delete.
-        """
+        """Delete all points belonging to a DB entity id (parent)."""
         await self.ensure_client_readiness()
 
         await self.client.delete(
             collection_name=self.collection_name,
-            points_selector=rest.PointIdsList(
-                points=[str(db_entity_id)],
+            points_selector=rest.FilterSelector(
+                filter=rest.Filter(
+                    must=[
+                        rest.FieldCondition(
+                            key="airweave_system_metadata.db_entity_id",
+                            match=rest.MatchValue(value=str(db_entity_id)),
+                        )
+                    ]
+                )
             ),
-            wait=True,  # Wait for operation to complete
+            wait=True,
         )
 
     async def delete_by_sync_id(self, sync_id: UUID) -> None:
@@ -372,16 +377,11 @@ class QdrantDestination(VectorDBDestination):
                     ]
                 )
             ),
-            wait=True,  # Wait for operation to complete
+            wait=True,
         )
 
     async def bulk_delete(self, entity_ids: list[str], sync_id: UUID) -> None:
-        """Bulk delete entities from Qdrant.
-
-        Args:
-            entity_ids (list[str]): The IDs of the entities to delete.
-            sync_id (UUID): The sync ID.
-        """
+        """Bulk delete entities from Qdrant within a sync by child entity_ids."""
         if not entity_ids:
             return
 
@@ -400,61 +400,41 @@ class QdrantDestination(VectorDBDestination):
                     ]
                 )
             ),
-            wait=True,  # Wait for operation to complete
+            wait=True,
         )
 
-    async def bulk_delete_by_parent_id(self, parent_id: str, sync_id: str) -> None:
-        """Bulk delete entities from Qdrant by entity ID, parent entity IDand sync ID.
-
-        This deletes all entities that have the specified parent_entity_id and sync_id.
-
-        Args:
-            parent_id (str): The parent ID to delete children for.
-            sync_id (str): The sync ID.
-        """
+    async def bulk_delete_by_parent_id(self, parent_id: str, sync_id: UUID) -> None:
+        """Bulk delete entities from Qdrant by parent entity ID and sync ID."""
         if not parent_id:
             return
 
         await self.ensure_client_readiness()
 
-        # Ensure sync_id is a string
-        sync_id_str = str(sync_id)
-        parent_id_str = str(parent_id)
-
-        # Create filter using Qdrant SDK objects directly
         await self.client.delete(
             collection_name=self.collection_name,
             points_selector=rest.FilterSelector(
                 filter=rest.Filter(
                     must=[
                         rest.FieldCondition(
-                            key="parent_entity_id", match=rest.MatchValue(value=parent_id_str)
+                            key="parent_entity_id", match=rest.MatchValue(value=str(parent_id))
                         ),
                         rest.FieldCondition(
                             key="airweave_system_metadata.sync_id",
-                            match=rest.MatchValue(value=sync_id_str),
+                            match=rest.MatchValue(value=str(sync_id)),
                         ),
                     ]
                 )
             ),
-            wait=True,  # Wait for operation to complete
+            wait=True,
         )
 
-    async def bulk_delete_by_parent_ids(self, parent_ids: list[str], sync_id: str) -> None:
-        """Bulk delete entities from Qdrant by **multiple** parent IDs and sync ID in a single call.
-
-        Args:
-            parent_ids (list[str]): The parent IDs to delete children for.
-            sync_id (str): The sync ID.
-        """
+    async def bulk_delete_by_parent_ids(self, parent_ids: list[str], sync_id: UUID) -> None:
+        """Optimized bulk delete for multiple parent IDs within a sync."""
         if not parent_ids:
             return
 
         await self.ensure_client_readiness()
 
-        sync_id_str = str(sync_id)
-        parent_values = [str(pid) for pid in parent_ids]
-
         await self.client.delete(
             collection_name=self.collection_name,
             points_selector=rest.FilterSelector(
@@ -462,16 +442,16 @@ class QdrantDestination(VectorDBDestination):
                     must=[
                         rest.FieldCondition(
                             key="airweave_system_metadata.sync_id",
-                            match=rest.MatchValue(value=sync_id_str),
+                            match=rest.MatchValue(value=str(sync_id)),
                         ),
                         rest.FieldCondition(
                             key="parent_entity_id",
-                            match=rest.MatchAny(any=parent_values),
+                            match=rest.MatchAny(any=[str(pid) for pid in parent_ids]),
                         ),
                     ]
                 )
             ),
-            wait=True,  # Wait for operation to complete
+            wait=True,
         )
 
     def _prepare_index_search_request(
@@ -479,21 +459,7 @@ class QdrantDestination(VectorDBDestination):
         params: dict,
         decay_config: Optional[DecayConfig] = None,
     ) -> dict:
-        """Prepare a query request for Qdrant.
-
-        If decay is enabled, we need to use prefetch + formula query pattern in order to
-        bias the result wrt to the decay score, otherwise we just return the params as is
-        (since the query does not need to be prefetched or have a custom formula applied
-        to it in that case).
-
-        Args:
-            params (dict): The parameters for the query request.
-            decay_config (Optional[DecayConfig]): Configuration for time-based decay.
-                If None, no decay is applied.
-
-        Returns:
-            dict: The prepared query request.
-        """
+        """Prepare a query request for Qdrant."""
         if decay_config is None:
             return params
 
@@ -513,44 +479,25 @@ class QdrantDestination(VectorDBDestination):
 
         decay_expression = decay_expressions[decay_config.decay_type](decay_params)
 
-        # Decay returns 0-1 (1=newest, 0=oldest)
-        # We want to multiply scores by a factor that boosts newer items
-        # With weight=1.0, newest items get full score, oldest get 0
-        # With weight=0.5, newest get full score, oldest get 0.5*score
         weight = getattr(decay_config, "weight", 1.0) if decay_config else 1.0
 
         if weight <= 0.0:
-            # No recency bias
             weighted_formula = "$score"
         elif weight >= 1.0:
-            # Full recency: rank by recency only within candidate set
-            # This ignores similarity entirely
             weighted_formula = decay_expression
         else:
-            # Partial recency: blend similarity and decay proportionally
-            # Since we can't predict RRF score range (could be 0.03 to 20+),
-            # we use a multiplicative approach that works regardless of scale:
-            # score * (1 - weight + weight * decay)
-            # This ensures:
-            # - Newest items (decay=1): score * 1.0 (full score)
-            # - Oldest items (decay=0): score * (1-weight) (reduced score)
-            # - Mid-age items scale linearly between these
-
             decay_factor = rest.SumExpression(
                 sum=[
-                    1.0 - weight,  # Base multiplier for all items
-                    rest.MultExpression(
-                        mult=[weight, decay_expression]
-                    ),  # Additional boost for newer items
+                    1.0 - weight,
+                    rest.MultExpression(mult=[weight, decay_expression]),
                 ]
             )
             weighted_formula = rest.MultExpression(mult=["$score", decay_factor])
 
-        # Log the formula composition for transparency
         try:
             self.logger.debug(
                 f"[Qdrant] Decay formula applied: using={params.get('using')}, "
-                f"weight={weight}, field={decay_config.datetime_field}"
+                f"weight={weight}, field={getattr(decay_config, 'datetime_field', None)}"
             )
         except Exception:
             pass
@@ -564,23 +511,11 @@ class QdrantDestination(VectorDBDestination):
         self,
         query_vector: list[float],
         limit: int,
-        sparse_vector: SparseEmbedding | None,
+        sparse_vector: dict | None,
         search_method: Literal["hybrid", "neural", "keyword"],
         decay_config: Optional[DecayConfig] = None,
     ) -> rest.QueryRequest:
-        """Prepare a query request for Qdrant.
-
-        Args:
-            query_vector (list[float]): The query vector to search with.
-            limit (int): Maximum number of results to return.
-            sparse_vector (SparseEmbedding | None): Optional sparse vector to search with.
-            search_method (Literal["hybrid", "neural", "keyword"]): The search method to use.
-            decay_config (Optional[DecayConfig]): Configuration for time-based decay.
-                If None, no decay is applied.
-
-        Returns:
-            rest.QueryRequest: The prepared query request.
-        """
+        """Prepare a query request for Qdrant."""
         query_request_params = {}
 
         if search_method == "neural":
@@ -599,7 +534,7 @@ class QdrantDestination(VectorDBDestination):
                 raise ValueError("Keyword search requires sparse vector")
 
             keyword_params = {
-                "query": rest.SparseVector(**sparse_vector.as_object()),
+                "query": rest.SparseVector(**sparse_vector),
                 "using": KEYWORD_VECTOR_NAME,
                 "limit": limit,
             }
@@ -612,165 +547,48 @@ class QdrantDestination(VectorDBDestination):
             if not sparse_vector:
                 raise ValueError("Hybrid search requires sparse vector")
 
-            # Use a large prefetch limit to ensure recency can work across a broad candidate set
-            # Optional: scale based on recency bias strength
-            prefetch_limit = 10000  # Large fixed limit for good recency coverage
+            prefetch_limit = 10000
             if decay_config is not None:
                 try:
                     weight = max(0.0, min(1.0, float(getattr(decay_config, "weight", 0.0) or 0.0)))
-                    # Optional heuristic: increase prefetch with higher recency bias
-                    # At weight=0.3: 10k, at weight=0.7: 15k, at weight=1.0: 20k
                     if weight > 0.3:
                         prefetch_limit = int(10000 * (1 + weight))
                 except Exception:
                     pass
 
             prefetch_params = [
-                # Neural embedding
+                {"query": query_vector, "using": DEFAULT_VECTOR_NAME, "limit": prefetch_limit},
                 {
-                    "query": query_vector,
-                    "using": DEFAULT_VECTOR_NAME,
-                    "limit": prefetch_limit,
-                },
-                # BM25 embedding
-                {
-                    "query": rest.SparseVector(**sparse_vector.as_object()),
+                    "query": rest.SparseVector(**sparse_vector),
                     "using": KEYWORD_VECTOR_NAME,
                     "limit": prefetch_limit,
                 },
             ]
 
-            # Always do prefetch without decay first to get similarity-based candidates
             prefetches = [rest.Prefetch(**params) for params in prefetch_params]
 
             if decay_config is None or decay_config.weight <= 0.0:
-                # No decay, just use RRF fusion
                 query_request_params = {
                     "prefetch": prefetches,
                     "query": rest.FusionQuery(fusion=rest.Fusion.RRF),
                 }
             else:
-                # Apply decay AFTER fusion using nested prefetch pattern
-                # Step 1: Create the RRF fusion prefetch (this will be normalized)
                 rrf_prefetch = rest.Prefetch(
-                    prefetch=prefetches,  # List of prefetches to fuse
+                    prefetch=prefetches,
                     query=rest.FusionQuery(fusion=rest.Fusion.RRF),
-                    limit=prefetch_limit,  # Large limit for good candidate pool
+                    limit=prefetch_limit,
                 )
-
-                # Step 2: Apply decay formula to the normalized RRF results
                 decay_params = self._prepare_index_search_request(
-                    params={},  # Empty params since we're applying to fused results
-                    decay_config=decay_config,
+                    params={}, decay_config=decay_config
                 )
+                query_request_params = {"prefetch": [rrf_prefetch], "query": decay_params["query"]}
 
-                # Use nested prefetch to ensure normalization happens before decay
-                query_request_params = {
-                    "prefetch": [rrf_prefetch],  # Single prefetch with RRF fusion
-                    "query": decay_params["query"],  # Apply decay formula to normalized results
-                }
-
-        return rest.QueryRequest(
-            **query_request_params,
-        )
-
-    def _validate_bulk_search_inputs(
-        self,
-        query_vectors: list[list[float]],
-        filter_conditions: list[dict] | None,
-        sparse_vectors: list[SparseEmbedding] | None,
-    ) -> None:
-        """Validate inputs for bulk search operation.
-
-        Args:
-            query_vectors (list[list[float]]): List of query vectors to search with.
-            filter_conditions (list[dict] | None): Optional list of filter conditions.
-            sparse_vectors (list[SparseEmbedding] | None): Optional list of sparse vectors.
-
-        Raises:
-            ValueError: If inputs are invalid.
-        """
-        if filter_conditions and len(filter_conditions) != len(query_vectors):
-            raise ValueError(
-                f"Number of filter conditions ({len(filter_conditions)}) must match "
-                f"number of query vectors ({len(query_vectors)})"
-            )
-
-        if sparse_vectors and len(query_vectors) != len(sparse_vectors):
-            raise ValueError("Sparse vector count does not match query vectors")
-
-    async def _prepare_bulk_search_requests(
-        self,
-        query_vectors: list[list[float]],
-        limit: int,
-        score_threshold: float | None,
-        with_payload: bool,
-        filter_conditions: list[dict] | None,
-        sparse_vectors: list[SparseEmbedding] | None,
-        search_method: Literal["hybrid", "neural", "keyword"],
-        decay_config: Optional[DecayConfig],
-        offset: Optional[int],
-    ) -> list[rest.QueryRequest]:
-        """Prepare query requests for bulk search.
-
-        Args:
-            query_vectors (list[list[float]]): List of query vectors to search with.
-            limit (int): Maximum number of results per query.
-            score_threshold (float | None): Optional minimum score threshold.
-            with_payload (bool): Whether to include payload in results.
-            filter_conditions (list[dict] | None): Optional list of filter conditions.
-            sparse_vectors (list[SparseEmbedding] | None): Optional list of sparse vectors.
-            search_method (Literal["hybrid", "neural", "keyword"]): The search method to use.
-            decay_config (Optional[DecayConfig]): Configuration for time-based decay.
-            If None, no decay is applied.
-            offset (Optional[int]): Number of results to skip.
-
-        Returns:
-            list[rest.QueryRequest]: List of prepared query requests.
-        """
-        query_requests = []
-        for i, query_vector in enumerate(query_vectors):
-            sparse_vector = sparse_vectors[i] if sparse_vectors else None
-
-            request = await self._prepare_query_request(
-                query_vector=query_vector,
-                limit=limit,
-                sparse_vector=sparse_vector,
-                search_method=search_method,
-                decay_config=decay_config,
-            )
-
-            # Add filter if provided
-            if filter_conditions and filter_conditions[i]:
-                request.filter = rest.Filter.model_validate(filter_conditions[i])
-
-            # Add optional parameters
-            if offset and offset > 0:
-                request.offset = offset
-
-            # Add score threshold if provided
-            if score_threshold is not None:
-                request.score_threshold = score_threshold
-
-            # Include payload
-            request.with_payload = with_payload
-
-            query_requests.append(request)
-
-        return query_requests
+        return rest.QueryRequest(**query_request_params)
 
     def _format_bulk_search_results(
         self, batch_results: list, with_payload: bool
     ) -> list[list[dict]]:
-        """Format batch search results into standard format.
-
-        Args:
-            batch_results (list): Raw batch search results from Qdrant.
-            with_payload (bool): Whether to include payload in results.
-
-        Returns:
-            list[list[dict]]: Formatted search results.
-        """
+        """Format batch search results into standard format."""
         all_results = []
         for search_results in batch_results:
             results = []
@@ -794,27 +612,11 @@ class QdrantDestination(VectorDBDestination):
         with_payload: bool = True,
         filter: dict | None = None,
         decay_config: Optional[DecayConfig] = None,
-        sparse_vector: SparseEmbedding | None = None,
+        sparse_vector: dict | None = None,
         search_method: Literal["hybrid", "neural", "keyword"] = "hybrid",
         offset: int = 0,
     ) -> list[dict]:
-        """Search for entities in the destination.
-
-        Args:
-            query_vector (list[float]): The query vector to search with.
-            limit (int): Maximum number of results to return.
-            score_threshold (float | None): Optional minimum score threshold.
-            with_payload (bool): Whether to include payload in results.
-            filter (dict | None): Optional filter conditions as a dictionary.
-            decay_config (Optional[DecayConfig]): Configuration for time-based decay.
-                If None, no decay is applied.
-            sparse_vector (SparseEmbedding | None): Optional sparse vector to search with.
-            search_method (Literal["hybrid", "neural", "keyword"]): The search method to use.
-            offset (int): Number of results to skip.
-
-        Returns:
-            list[dict]: The search results.
-        """
+        """Search for entities in the destination."""
         return await self.bulk_search(
             query_vectors=[query_vector],
             limit=limit,
@@ -827,6 +629,41 @@ class QdrantDestination(VectorDBDestination):
             offset=offset,
         )
 
+    async def _build_query_requests(
+        self,
+        query_vectors: list[list[float]],
+        limit: int,
+        score_threshold: float | None,
+        with_payload: bool,
+        filter_conditions: list[dict] | None,
+        sparse_vectors: list[dict] | None,
+        search_method: Literal["hybrid", "neural", "keyword"],
+        decay_config: Optional[DecayConfig],
+        offset: Optional[int],
+    ) -> list[rest.QueryRequest]:
+        """Build a list of Qdrant query requests."""
+        query_requests = []
+        for i, query_vector in enumerate(query_vectors):
+            sparse_vector = sparse_vectors[i] if sparse_vectors else None
+            request = await self._prepare_query_request(
+                query_vector=query_vector,
+                limit=limit,
+                sparse_vector=sparse_vector,
+                search_method=search_method,
+                decay_config=decay_config,
+            )
+
+            if filter_conditions and i < len(filter_conditions) and filter_conditions[i]:
+                request.filter = rest.Filter.model_validate(filter_conditions[i])
+            if offset and offset > 0:
+                request.offset = offset
+            if score_threshold is not None:
+                request.score_threshold = score_threshold
+
+            request.with_payload = with_payload
+            query_requests.append(request)
+        return query_requests
+
     async def bulk_search(
         self,
         query_vectors: list[list[float]],
@@ -834,133 +671,65 @@ class QdrantDestination(VectorDBDestination):
         score_threshold: float | None = None,
         with_payload: bool = True,
         filter_conditions: list[dict] | None = None,
-        sparse_vectors: list[SparseEmbedding] | None = None,
+        sparse_vectors: list[dict] | None = None,
         search_method: Literal["hybrid", "neural", "keyword"] = "hybrid",
         decay_config: Optional[DecayConfig] = None,
         offset: Optional[int] = None,
     ) -> list[dict]:
-        """Perform batch search for multiple query vectors in a single request.
-
-        Args:
-            query_vectors (list[list[float]]): List of query vectors to search with.
-            limit (int): Maximum number of results per query. Defaults to 10.
-            score_threshold (float | None): Optional minimum score threshold for results.
-            with_payload (bool): Whether to include payload in results. Defaults to True.
-            filter_conditions (list[dict] | None): Optional list of filter conditions,
-                one per query vector. If provided, must have same length as query_vectors.
-            sparse_vectors (List[SparseEmbedding] | None): Optional list of sparse vectors.
-                If provided, must have same length as query_vectors.
-            search_method (Literal["hybrid", "neural", "keyword"]): The search method to use.
-                Defaults to "hybrid".
-            decay_config (Optional[DecayConfig]): Configuration for time-based decay.
-                If None, no decay is applied.
-            offset (Optional[int]): Number of results to skip.
-
-        Returns:
-            list[list[dict]]: List of search results for each query vector.
-                Each inner list contains results for the corresponding query vector.
-        """
+        """Perform batch search for multiple query vectors in a single request."""
         await self.ensure_client_readiness()
-
         if not query_vectors:
             return []
 
-        # Validate inputs
-        self._validate_bulk_search_inputs(query_vectors, filter_conditions, sparse_vectors)
+        # Fallback to neural search if keyword index doesn't exist
+        if search_method != "neural":
+            vector_config_names = await self.get_vector_config_names()
+            if KEYWORD_VECTOR_NAME not in vector_config_names:
+                self.logger.warning(
+                    (
+                        f"'{KEYWORD_VECTOR_NAME}' index not found in collection ",
+                        "'{self.collection_name}'. Falling back to neural search.",
+                    )
+                )
+                search_method = "neural"
 
-        # Fallback to neural search if BM25 index does not exist
-        vector_config_names = await self.get_vector_config_names()
-        if KEYWORD_VECTOR_NAME not in vector_config_names:
-            self.logger.warning(
-                f"{KEYWORD_VECTOR_NAME} index could not be found in "
-                f"collection {self.collection_name}. "
-                f"Using neural search instead."
-            )
-            search_method = "neural"
-
-        # Log search configuration at Qdrant level
-        weight = getattr(decay_config, "weight", None) if decay_config else None
         self.logger.info(
             f"[Qdrant] Executing {search_method.upper()} search: "
             f"queries={len(query_vectors)}, limit={limit}, "
-            f"has_sparse={sparse_vectors is not None}, "
-            f"decay_enabled={decay_config is not None}, "
-            f"decay_weight={weight}"
+            f"decay_enabled={decay_config is not None}"
         )
 
-        if decay_config:
-            weight_val = getattr(decay_config, "weight", 0)
-            strategy = (
-                "Pure recency (RRF then decay)"
-                if weight_val >= 1.0
-                else "RRF fusion THEN decay applied"
-            )
-            self.logger.debug(
-                f"[Qdrant] Decay strategy: weight={weight_val:.1f} - {strategy}, "
-                f"field={decay_config.datetime_field}, scale={decay_config.scale_value}s"
-            )
-
         try:
-            # Prepare query requests
-            query_requests = await self._prepare_bulk_search_requests(
-                query_vectors=query_vectors,
-                limit=limit,
-                score_threshold=score_threshold,
-                with_payload=with_payload,
-                filter_conditions=filter_conditions,
-                sparse_vectors=sparse_vectors,
-                search_method=search_method,
-                decay_config=decay_config,
-                offset=offset,
+            query_requests = await self._build_query_requests(
+                query_vectors,
+                limit,
+                score_threshold,
+                with_payload,
+                filter_conditions,
+                sparse_vectors,
+                search_method,
+                decay_config,
+                offset,
             )
 
-            # Perform batch search
             batch_results = await self.client.query_batch_points(
                 collection_name=self.collection_name, requests=query_requests
             )
-
-            # Format and return results
             formatted_results = self._format_bulk_search_results(batch_results, with_payload)
 
-            # Flatten results from all queries
-            flattened_results = []
-            for query_results in formatted_results:
-                flattened_results.extend(query_results)
+            flattened_results = [item for sublist in formatted_results for item in sublist]
 
-            # Log score statistics to show hybrid search impact
             if flattened_results:
                 scores = [r.get("score", 0) for r in flattened_results if isinstance(r, dict)]
                 if scores:
-                    avg_score = sum(scores) / len(scores)
-                    max_score = max(scores)
-                    min_score = min(scores)
-
-                    if decay_config:
-                        # Calculate score distribution in quartiles
-                        sorted_scores = sorted(scores, reverse=True)
-                        q1_idx = len(sorted_scores) // 4
-                        q2_idx = len(sorted_scores) // 2
-                        q3_idx = 3 * len(sorted_scores) // 4
-
-                        q1_score = sorted_scores[q1_idx] if q1_idx < len(sorted_scores) else 0
-                        q2_score = sorted_scores[q2_idx] if q2_idx < len(sorted_scores) else 0
-                        q3_score = sorted_scores[q3_idx] if q3_idx < len(sorted_scores) else 0
-
-                        self.logger.debug(
-                            f"[Qdrant] Result scores with {search_method} search + RECENCY "
-                            f"(weight={decay_config.weight}): count={len(scores)}, "
-                            f"avg={avg_score:.3f}, max={max_score:.3f}, Q1={q1_score:.3f}, "
-                            f"median={q2_score:.3f}, Q3={q3_score:.3f}, min={min_score:.3f}"
+                    self.logger.debug(
+                        (
+                            f"[Qdrant] Result scores: count={len(scores)}, "
+                            f"avg={sum(scores) / len(scores):.3f}, "
+                            f"max={max(scores):.3f}, min={min(scores):.3f}"
                         )
-                    else:
-                        self.logger.debug(
-                            f"[Qdrant] Result scores with {search_method} search (NO recency): "
-                            f"count={len(scores)}, avg={avg_score:.3f}, "
-                            f"max={max_score:.3f}, min={min_score:.3f}"
-                        )
-
+                    )
             return flattened_results
-
         except Exception as e:
             self.logger.error(f"Error performing batch search with Qdrant: {e}")
             raise
@@ -971,30 +740,20 @@ class QdrantDestination(VectorDBDestination):
         return KEYWORD_VECTOR_NAME in vector_config_names
 
     async def get_vector_config_names(self) -> list[str]:
-        """Get the names of all vector configurations (both dense and sparse) for the collection.
-
-        Returns:
-            list[str]: A list of vector configuration names from the collection.
-                Includes both dense vector configs and sparse vector configs.
-        """
+        """Get the names of all vector configurations (both dense and sparse) for the collection."""
         await self.ensure_client_readiness()
 
         try:
-            # Get collection info
             collection_info = await self.client.get_collection(collection_name=self.collection_name)
 
             vector_config_names = []
 
-            # Get dense vector config names
             if collection_info.config.params.vectors:
                 if isinstance(collection_info.config.params.vectors, dict):
-                    # Named vectors configuration
                     vector_config_names.extend(collection_info.config.params.vectors.keys())
                 else:
-                    # Single vector configuration (uses default name)
                     vector_config_names.append(DEFAULT_VECTOR_NAME)
 
-            # Get sparse vector config names
             if collection_info.config.params.sparse_vectors:
                 vector_config_names.extend(collection_info.config.params.sparse_vectors.keys())
 

@@ -88,7 +88,7 @@ class SyncContext:
         force_full_sync: bool = False,
         # New optional args for micro-batching
         batch_size: int = 64,
-        max_batch_latency_ms: int = 500,
+        max_batch_latency_ms: int = 200,
     ):
         """Initialize the sync context."""
         self.source = source
