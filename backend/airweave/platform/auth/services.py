@@ -34,12 +34,14 @@ class OAuth2Service:
     async def generate_auth_url(
         oauth2_settings: OAuth2Settings,
         client_id: Optional[str] = None,
+        state: Optional[str] = None,
     ) -> str:
         """Generate the OAuth2 authorization URL for an integration.
 
         Args:
             oauth2_settings: The OAuth2 settings for the integration
             client_id: Optional client ID to override the default one
+            state: Optional state token to round-trip through the OAuth flow
 
         Returns:
             The authorization URL for the OAuth2 flow
@@ -62,6 +64,9 @@ class OAuth2Service:
 
         if oauth2_settings.scope:
             params["scope"] = oauth2_settings.scope
+
+        if state is not None:
+            params["state"] = state
 
         auth_url = f"{oauth2_settings.url}?{urlencode(params)}"
 
@@ -460,7 +465,7 @@ class OAuth2Service:
         # paste: https://redirectmeto.com/ before the redirect uri
         # and set change the redirect uri in the oauth app as well
 
-        return f"{app_url}/auth/callback/{integration_short_name}"
+        return f"{app_url}/auth/callback"
 
     @staticmethod
     async def generate_auth_url_for_whitelabel(

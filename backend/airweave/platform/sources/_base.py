@@ -1,5 +1,8 @@
 """Base source class."""
 
+import base64  # for JWT payload peek
+import json  # for JWT payload peek
+import time  # for exp checks
 from abc import abstractmethod
 from typing import Any, AsyncGenerator, ClassVar, Dict, Optional
 
@@ -80,7 +83,7 @@ class BaseSource:
             The cursor field to use, or None if no cursor field is defined
         """
         # Use cursor field from cursor if specified
-        if self.cursor and hasattr(self.cursor, "cursor_field") and self.cursor.cursor_field:
+        if self.cursor and hasattr(self, "cursor_field") and self.cursor.cursor_field:
             return self.cursor.cursor_field
 
         # Fall back to source default
@@ -254,6 +257,169 @@ class BaseSource:
         except Exception as e:
             self.logger.error(f"Error processing file {file_entity.name} with direct content: {e}")
             return None
+
+    @abstractmethod
+    async def validate(self) -> bool:
+        """Validate that this source is reachable and credentials are usable.
+
+        Returns:
+            True if the source is healthy/authorized; False otherwise.
+
+        Notes:
+            OAuth2-based sources should generally implement this by calling
+            `await self._validate_oauth2(...)` with the appropriate endpoints/
+            credentials from their config.
+        """
+        raise NotImplementedError
+
+    # ------------- NEW: reusable OAuth2 validator ----------
+    async def _validate_oauth2(  # noqa: C901
+        self,
+        *,
+        # Option A: RFC 7662 token introspection
+        introspection_url: Optional[str] = None,
+        client_id: Optional[str] = None,
+        client_secret: Optional[str] = None,
+        # Option B: Minimal authenticated ping
+        ping_url: Optional[str] = None,
+        # Overrides
+        access_token: Optional[str] = None,
+        headers: Optional[Dict[str, str]] = None,
+        timeout: float = 10.0,
+    ) -> bool:
+        """Generic OAuth2 validation: introspection and/or a bearer ping.
+
+        You can supply either:
+          - `introspection_url` (+ `client_id` and `client_secret`) for RFC 7662,
+          - or `ping_url` for a simple authorized GET using the access token,
+          - or both (introspection first, then ping).
+
+        Token refresh is attempted automatically on 401 via `token_manager`.
+
+        Returns:
+            True if the token is active and the endpoint(s) respond as expected; otherwise False.
+        """
+        token = access_token or await self.get_access_token()
+        if not token:
+            self.logger.error("OAuth2 validation failed: no access token available.")
+            return False
+
+        # Helper: safe JWT 'exp' peek (no signature verification).
+        def _is_jwt_unexpired(tok: str) -> Optional[bool]:
+            try:
+                parts = tok.split(".")
+                if len(parts) != 3:
+                    return None
+                # base64url decode payload
+                pad = "=" * (-len(parts[1]) % 4)
+                payload_bytes = base64.urlsafe_b64decode(parts[1] + pad)
+                payload = json.loads(payload_bytes.decode("utf-8"))
+                exp = payload.get("exp")
+                if exp is None:
+                    return None
+                return time.time() < float(exp)
+            except Exception:
+                return None
+
+        async def _do_ping(bearer: str) -> bool:
+            try:
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    hdrs = {"Authorization": f"Bearer {bearer}"}
+                    if headers:
+                        hdrs.update(headers)
+                    resp = await client.get(ping_url, headers=hdrs)
+                    if 200 <= resp.status_code < 300:
+                        return True
+                    if resp.status_code == 401:
+                        self.logger.info("Ping unauthorized (401); attempting token refresh.")
+                        new_token = await self.refresh_on_unauthorized()
+                        if new_token:
+                            hdrs["Authorization"] = f"Bearer {new_token}"
+                            resp = await client.get(ping_url, headers=hdrs)
+                            return 200 <= resp.status_code < 300
+                    self.logger.warning(f"Ping failed: HTTP {resp.status_code} - {resp.text[:200]}")
+                    return False
+            except httpx.RequestError as e:
+                self.logger.error(f"Ping request error: {e}")
+                return False
+
+        # 1) Try RFC 7662 introspection if configured
+        if introspection_url:
+            try:
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    auth = (client_id, client_secret) if client_id and client_secret else None
+                    data = {"token": token, "token_type_hint": "access_token"}
+                    resp = await client.post(
+                        introspection_url,
+                        data=data,
+                        auth=auth,
+                        headers={"Accept": "application/json", **(headers or {})},
+                    )
+                    # Handle unauthorized by refreshing once
+                    if resp.status_code == 401:
+                        self.logger.info(
+                            "Introspection unauthorized (401); attempting token refresh."
+                        )
+                        new_token = await self.refresh_on_unauthorized()
+                        if new_token:
+                            data["token"] = new_token
+                            resp = await client.post(
+                                introspection_url,
+                                data=data,
+                                auth=auth,
+                                headers={"Accept": "application/json", **(headers or {})},
+                            )
+
+                    resp.raise_for_status()
+                    body = resp.json()
+                    active = bool(body.get("active", False))
+
+                    # If the server returns exp, double-check it
+                    exp = body.get("exp")
+                    if exp is not None:
+                        try:
+                            if time.time() >= float(exp):
+                                active = False
+                        except Exception:
+                            pass
+
+                    if active:
+                        return True
+
+                    # If introspection says inactive, do one last lightweight check:
+                    # peek exp from JWT (if it is a JWT) to avoid false negatives
+                    # on non-standard servers.
+                    peek = _is_jwt_unexpired(token)
+                    if peek is True:
+                        self.logger.debug(
+                            "Token appears unexpired by JWT payload, "
+                            "but introspection returned inactive."
+                        )
+                    else:
+                        self.logger.warning("Token reported inactive by introspection.")
+                    # Fall through to optional ping if provided
+            except httpx.HTTPStatusError as e:
+                status = e.response.status_code if getattr(e, "response", None) else "N/A"
+                self.logger.error(f"Introspection HTTP error {status}: {e}")
+            except httpx.RequestError as e:
+                self.logger.error(f"Introspection request error: {e}")
+            except Exception as e:
+                self.logger.error(f"Unexpected introspection error: {e}")
+
+        # 2) Try an authenticated ping if configured
+        if ping_url:
+            return await _do_ping(token)
+
+        # 3) Last resort: if neither endpoint provided, do a best-effort JWT exp peek
+        peek = _is_jwt_unexpired(token)
+        if peek is not None:
+            self.logger.debug("Validated via JWT 'exp' claim peek.")
+            return peek
+
+        self.logger.warning(
+            "OAuth2 validation inconclusive: no endpoints provided and token format is opaque."
+        )
+        return False
 
 
 class Relation(BaseModel):

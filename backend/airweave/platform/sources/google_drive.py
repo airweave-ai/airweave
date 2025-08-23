@@ -50,12 +50,15 @@ class GoogleDriveSource(BaseSource):
     ) -> "GoogleDriveSource":
         """Create a new Google Drive source instance with the provided OAuth access token."""
         instance = cls()
+
+        cfg = config or {}  # <- guard against None
+
         instance.access_token = access_token
 
-        instance.exclude_patterns = config.get("exclude_patterns", [])
+        instance.exclude_patterns = cfg.get("exclude_patterns", [])
 
         # Performance option to skip expensive path lookups
-        instance.skip_file_paths = config.get("skip_file_paths", True)
+        instance.skip_file_paths = cfg.get("skip_file_paths", True)
 
         # Initialize cache for parent folder lookups
         instance._parent_folder_cache = {}
@@ -532,3 +535,10 @@ class GoogleDriveSource(BaseSource):
         import fnmatch
 
         return fnmatch.fnmatch(path, pattern)
+
+    async def validate(self) -> bool:
+        """Ping the Drive API to verify the OAuth2 token works (simple authorized GET)."""
+        # Uses the generic OAuth2 validator’s ping path
+        return await self._validate_oauth2(
+            ping_url="https://www.googleapis.com/drive/v3/about?fields=user"
+        )
