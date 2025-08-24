@@ -65,15 +65,7 @@ class QdrantDestination(VectorDBDestination):
     async def create(
         cls, collection_id: UUID, logger: Optional[ContextualLogger] = None
     ) -> "QdrantDestination":
-        """Create and return a connected destination for the given collection.
-
-        This factory:
-        - instantiates the class,
-        - attaches the provided logger (or the default),
-        - loads credentials (if `get_credentials` is overridden),
-        - connects to Qdrant,
-        - and returns the ready instance.
-        """
+        """Create and return a connected destination for the given collection."""
         instance = cls()
         instance.set_logger(logger or default_logger)
         instance.collection_id = collection_id
@@ -89,36 +81,27 @@ class QdrantDestination(VectorDBDestination):
 
     @classmethod
     async def get_credentials(cls) -> QdrantAuthConfig | None:
-        """Optionally provide credentials (override in your deployment).
-
-        Returns:
-            QdrantAuthConfig | None: Credentials if available; None by default.
-        """
+        """Optionally provide credentials (override in your deployment)."""
         # TODO: hook to your creds provider
         return None
 
     async def connect_to_qdrant(self) -> None:
-        """Initialize the AsyncQdrantClient and verify connectivity.
-
-        Raises:
-            ConnectionError: When the service is unreachable, times out, or auth fails.
-        """
+        """Initialize the AsyncQdrantClient and verify connectivity."""
         if self.client is not None:
             return
         try:
             location = self.url or settings.qdrant_url
-            client_config = {
-                "location": location,
-                "prefer_grpc": False,
-            }
-            if location[-4:] != ":6333":
-                # allow Railway/other proxies to work
-                client_config["port"] = None
-            if self.api_key:
-                client_config["api_key"] = self.api_key
 
-            self.client = AsyncQdrantClient(**client_config)
-            await self.client.get_collections()  # ping
+            # Reverted to HTTP-only; broadest compatibility with qdrant-client versions.
+            self.client = AsyncQdrantClient(
+                url=location,
+                api_key=self.api_key,
+                timeout=120.0,  # float timeout (seconds) for connect/read/write
+                prefer_grpc=False,  # revert: some setups don't expose gRPC
+            )
+
+            # Ping
+            await self.client.get_collections()
             self.logger.debug("Successfully connected to Qdrant service.")
         except Exception as e:
             self.logger.error(f"Error connecting to Qdrant at {location}: {e}")
@@ -153,14 +136,7 @@ class QdrantDestination(VectorDBDestination):
     # Collection management
     # ----------------------------------------------------------------------------------
     async def collection_exists(self, collection_name: str) -> bool:
-        """Check whether a collection exists by name.
-
-        Args:
-            collection_name: The target collection name.
-
-        Returns:
-            True if the collection exists, otherwise False.
-        """
+        """Check whether a collection exists by name."""
         await self.ensure_client_readiness()
         try:
             collections_response = await self.client.get_collections()
@@ -259,12 +235,7 @@ class QdrantDestination(VectorDBDestination):
     # Insert / Upsert
     # ----------------------------------------------------------------------------------
     async def insert(self, entity: ChunkEntity) -> None:
-        """Upsert a single chunk entity into Qdrant.
-
-        The vector payload is split into dense (default vector name) and optional sparse
-        (bm25) parts; vectors are removed from the stored payload to avoid duplication.
-        Deterministic UUIDv5 IDs prevent accidental overwrites.
-        """
+        """Upsert a single chunk entity into Qdrant."""
         await self.ensure_client_readiness()
 
         data_object = entity.to_storage_dict()
@@ -307,59 +278,101 @@ class QdrantDestination(VectorDBDestination):
             wait=True,
         )
 
+    # --------- NEW: helpers to keep bulk_insert simple (fixes C901) -------------------
+    def _build_point_struct(self, entity: ChunkEntity) -> rest.PointStruct:
+        """Convert a ChunkEntity to a Qdrant PointStruct."""
+        entity_data = entity.to_storage_dict()
+
+        if not entity.airweave_system_metadata:
+            raise ValueError(f"Entity {entity.entity_id} has no system metadata")
+        if not entity.airweave_system_metadata.vectors:
+            raise ValueError(f"Entity {entity.entity_id} has no vector in system metadata")
+
+        # Remove vectors from payload
+        if "airweave_system_metadata" in entity_data and isinstance(
+            entity_data["airweave_system_metadata"], dict
+        ):
+            entity_data["airweave_system_metadata"].pop("vectors", None)
+
+        point_id = self._make_point_uuid(
+            entity.airweave_system_metadata.db_entity_id, entity.entity_id
+        )
+
+        sv = entity.airweave_system_metadata.vectors[1]
+        sparse_part: dict = {}
+        if sv is not None:
+            obj = sv.as_object() if hasattr(sv, "as_object") else sv
+            if isinstance(obj, dict):
+                sparse_part = {KEYWORD_VECTOR_NAME: obj}
+
+        return rest.PointStruct(
+            id=point_id,
+            vector={DEFAULT_VECTOR_NAME: entity.airweave_system_metadata.vectors[0]} | sparse_part,
+            payload=entity_data,
+        )
+
+    async def _upsert_points_with_fallback(
+        self, points: list[rest.PointStruct], *, min_batch: int = 50
+    ) -> None:
+        """Try full batch; on write-timeout/transport error, split in half and retry."""
+        # Build exception tuples safely without C408 (use literals)
+        rhex: tuple[type[BaseException], ...] = ()
+        try:
+            from qdrant_client.http.exceptions import ResponseHandlingException  # type: ignore
+
+            rhex = (ResponseHandlingException,)  # type: ignore[assignment]
+        except Exception:  # pragma: no cover
+            rhex = ()
+
+        write_timeout_errors: tuple[type[BaseException], ...] = ()
+        try:
+            import httpcore  # type: ignore
+            import httpx
+
+            write_timeout_errors = (httpx.WriteTimeout, httpcore.WriteTimeout)
+        except Exception:  # pragma: no cover
+            write_timeout_errors = ()
+
+        try:
+            op = await self.client.upsert(
+                collection_name=self.collection_name,
+                points=points,
+                wait=True,
+            )
+            if hasattr(op, "errors") and op.errors:
+                raise Exception(f"Errors during bulk insert: {op.errors}")
+        except (*write_timeout_errors, *rhex) as e:  # type: ignore[misc]
+            n = len(points)
+            if n <= 1 or n <= min_batch:
+                self.logger.error(
+                    f"[Qdrant] Upsert failed on batch of {n} (min_batch={min_batch}): {e}"
+                )
+                raise
+            mid = n // 2
+            left, right = points[:mid], points[mid:]
+            self.logger.warning(
+                f"[Qdrant] Write timed out for {n} points; splitting into "
+                f"{len(left)} + {len(right)} and retrying..."
+            )
+            await self._upsert_points_with_fallback(left, min_batch=min_batch)
+            await self._upsert_points_with_fallback(right, min_batch=min_batch)
+
+    # ----------------------------------------------------------------------------------
     async def bulk_insert(self, entities: list[ChunkEntity]) -> None:
-        """Upsert multiple chunk entities efficiently in one call."""
+        """Upsert multiple chunk entities with fallback halving on write timeouts."""
         if not entities:
             return
 
         await self.ensure_client_readiness()
 
-        point_structs: list[rest.PointStruct] = []
-        for entity in entities:
-            entity_data = entity.to_storage_dict()
-
-            if not entity.airweave_system_metadata:
-                raise ValueError(f"Entity {entity.entity_id} has no system metadata")
-            if not entity.airweave_system_metadata.vectors:
-                raise ValueError(f"Entity {entity.entity_id} has no vector in system metadata")
-
-            # Remove vectors from payload
-            if "airweave_system_metadata" in entity_data and isinstance(
-                entity_data["airweave_system_metadata"], dict
-            ):
-                entity_data["airweave_system_metadata"].pop("vectors", None)
-
-            point_id = self._make_point_uuid(
-                entity.airweave_system_metadata.db_entity_id, entity.entity_id
-            )
-
-            sv = entity.airweave_system_metadata.vectors[1]
-            sparse_part = {}
-            if sv is not None:
-                obj = sv.as_object() if hasattr(sv, "as_object") else sv
-                if isinstance(obj, dict):
-                    sparse_part = {KEYWORD_VECTOR_NAME: obj}
-
-            point_structs.append(
-                rest.PointStruct(
-                    id=point_id,
-                    vector={DEFAULT_VECTOR_NAME: entity.airweave_system_metadata.vectors[0]}
-                    | sparse_part,
-                    payload=entity_data,
-                )
-            )
+        point_structs = [self._build_point_struct(e) for e in entities]
 
         if not point_structs:
             self.logger.warning("No valid entities to insert")
             return
 
-        op = await self.client.upsert(
-            collection_name=self.collection_name,
-            points=point_structs,
-            wait=True,
-        )
-        if hasattr(op, "errors") and op.errors:
-            raise Exception(f"Errors during bulk insert: {op.errors}")
+        # Try once with the whole payload; fall back to halving on failure
+        await self._upsert_points_with_fallback(point_structs, min_batch=50)
 
     # ----------------------------------------------------------------------------------
     # Deletes (by parent/sync/etc.)
@@ -700,19 +713,13 @@ class QdrantDestination(VectorDBDestination):
         decay_config: Optional[DecayConfig] = None,
         offset: Optional[int] = None,
     ) -> list[dict]:
-        """Search multiple queries at once with neural/keyword/hybrid and optional decay.
-
-        Applies RRF fusion for hybrid, falls back to neural when the BM25 index is missing,
-        and supports an optional recency-decay formula compatible with legacy behavior.
-        """
+        """Search multiple queries at once with neural/keyword/hybrid and optional decay."""
         await self.ensure_client_readiness()
         if not query_vectors:
             return []
 
-        # Validate inputs like the old implementation did
         self._validate_bulk_search_inputs(query_vectors, filter_conditions, sparse_vectors)
 
-        # Fallback to neural if sparse index missing and method needs it
         if search_method != "neural":
             vector_config_names = await self.get_vector_config_names()
             if KEYWORD_VECTOR_NAME not in vector_config_names:
@@ -722,7 +729,6 @@ class QdrantDestination(VectorDBDestination):
                 )
                 search_method = "neural"
 
-        # Log similar to old version
         weight = getattr(decay_config, "weight", None) if decay_config else None
         self.logger.info(
             f"[Qdrant] Executing {search_method.upper()} search: "
@@ -733,7 +739,6 @@ class QdrantDestination(VectorDBDestination):
         )
 
         if decay_config:
-            # Wrap to avoid E501 while keeping detail
             decay_weight = getattr(decay_config, "weight", 0)
             decay_field = decay_config.datetime_field
             decay_scale = getattr(decay_config, "scale_value", None)
@@ -769,7 +774,6 @@ class QdrantDestination(VectorDBDestination):
                 scores = [r.get("score", 0) for r in flattened if isinstance(r, dict)]
                 if scores:
                     avg = sum(scores) / len(scores)
-                    # Avoid E501: use %-style and pass values as args
                     self.logger.debug(
                         "[Qdrant] Result scores with %s %s: count=%d, avg=%.3f, max=%.3f, min=%.3f",
                         search_method,
