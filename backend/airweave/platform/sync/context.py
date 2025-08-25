@@ -1,6 +1,6 @@
 """Module for sync context."""
 
-from typing import Optional
+from typing import Callable, Optional
 from uuid import UUID
 
 from airweave import schemas
@@ -36,7 +36,10 @@ class SyncContext:
     - guard rail - the guard rail service
     - white label (optional)
     - logger - contextual logger with sync job metadata
-    - batch_size - max number of parents to process per micro-batch (default 64)
+
+    Concurrency / batching controls:
+    - should_batch - if True, use micro-batched pipeline; if False, process per-entity (legacy)
+    - batch_size - max parents per micro-batch (default 64)
     - max_batch_latency_ms - max time to wait before flushing a non-full batch (default 200ms)
     """
 
@@ -44,7 +47,7 @@ class SyncContext:
     destinations: list[BaseDestination]
     embedding_model: BaseEmbeddingModel
     keyword_indexing_model: BaseEmbeddingModel
-    transformers: dict[str, callable]
+    transformers: dict[str, Callable]
     sync: schemas.Sync
     sync_job: schemas.SyncJob
     dag: schemas.SyncDag
@@ -61,7 +64,8 @@ class SyncContext:
     white_label: Optional[schemas.WhiteLabel] = None
     force_full_sync: bool = False
 
-    # New: batching knobs (read by SyncOrchestrator at init)
+    # batching knobs (read by SyncOrchestrator at init)
+    should_batch: bool = True
     batch_size: int = 64
     max_batch_latency_ms: int = 200
 
@@ -71,7 +75,7 @@ class SyncContext:
         destinations: list[BaseDestination],
         embedding_model: BaseEmbeddingModel,
         keyword_indexing_model: BaseEmbeddingModel,
-        transformers: dict[str, callable],
+        transformers: dict[str, Callable],
         sync: schemas.Sync,
         sync_job: schemas.SyncJob,
         dag: schemas.SyncDag,
@@ -86,7 +90,8 @@ class SyncContext:
         logger: ContextualLogger,
         white_label: Optional[schemas.WhiteLabel] = None,
         force_full_sync: bool = False,
-        # New optional args for micro-batching
+        # Micro-batching controls
+        should_batch: bool = True,
         batch_size: int = 64,
         max_batch_latency_ms: int = 200,
     ):
@@ -111,6 +116,7 @@ class SyncContext:
         self.logger = logger
         self.force_full_sync = force_full_sync
 
-        # New: micro-batching knobs
+        # Concurrency / batching knobs
+        self.should_batch = should_batch
         self.batch_size = batch_size
         self.max_batch_latency_ms = max_batch_latency_ms

@@ -52,7 +52,7 @@ class GoogleDriveSource(BaseSource):
         instance = cls()
         instance.access_token = access_token
 
-        # Minimal addition to tolerate None and support batch size configuration
+        # Tolerate None config and set defaults
         config = config or {}
 
         instance.exclude_patterns = config.get("exclude_patterns", [])
@@ -63,8 +63,13 @@ class GoogleDriveSource(BaseSource):
         # Initialize cache for parent folder lookups
         instance._parent_folder_cache = {}
 
-        # Configurable concurrency for file processing (used by BaseSource.process_entities)
+        # Configurable concurrency for file processing
+        # (used by BaseSource.process_entities_concurrent)
+        # Default batch_size = 1 as requested
         instance.batch_size = int(config.get("batch_size", 30))
+
+        # Toggle: default to sequential flow (False) as requested
+        instance.batch_generation = bool(config.get("batch_generation", True))
 
         return instance
 
@@ -82,7 +87,7 @@ class GoogleDriveSource(BaseSource):
         This method now uses the token manager for authentication and handles
         401 errors by refreshing the token and retrying.
         """
-        # Get a valid token (will refresh if needed)
+        # Get a valid access token (will refresh if needed)
         access_token = await self.get_access_token()
         if not access_token:
             raise ValueError("No access token available")
@@ -327,6 +332,82 @@ class GoogleDriveSource(BaseSource):
             md5_checksum=file_obj.get("md5Checksum"),
         )
 
+    async def _process_file_batch(
+        self, client: httpx.AsyncClient, file_obj: Dict
+    ) -> Optional[ChunkEntity]:
+        """Process a single file for batch generation."""
+        try:
+            # Check if file should be included based on exclusion patterns
+            try:
+                should_include = await self._should_include_file(client, file_obj)
+            except Exception as e:
+                self.logger.error(f"Error checking if file should be included: {str(e)}")
+                # Skip this file if we can't check inclusion
+                return None
+
+            if not should_include:
+                return None  # Skip this file
+
+            # Get file entity (might be None for trashed files)
+            file_entity = self._build_file_entity(file_obj)
+
+            # Skip if the entity was None (likely a trashed file)
+            if not file_entity:
+                return None
+
+            # Process the entity if it has a download URL
+            if file_entity.download_url:
+                # Note: process_file_entity now uses the token manager automatically
+                processed_entity = await self.process_file_entity(file_entity=file_entity)
+                print(processed_entity)
+
+                # Yield the entity even if skipped - the entity processor will handle it
+                if processed_entity:
+                    return processed_entity
+        except Exception as e:
+            self.logger.error(f"Failed to process file {file_obj.get('name', 'unknown')}: {str(e)}")
+            # Continue processing other files instead of raising
+            return None
+        return None
+
+    async def _process_file_sequential(
+        self, client: httpx.AsyncClient, file_obj: Dict
+    ) -> Optional[ChunkEntity]:
+        """Process a single file for sequential generation."""
+        try:
+            # Check if file should be included based on exclusion patterns
+            try:
+                should_include = await self._should_include_file(client, file_obj)
+            except Exception as e:
+                self.logger.error(f"Error checking if file should be included: {str(e)}")
+                # Skip this file if we can't check inclusion
+                return None
+
+            if not should_include:
+                return None  # Skip this file
+
+            # Get file entity (might be None for trashed files)
+            file_entity = self._build_file_entity(file_obj)
+
+            # Skip if the entity was None (likely a trashed file)
+            if not file_entity:
+                return None
+
+            # Process the entity if it has a download URL
+            if file_entity.download_url:
+                # Note: process_file_entity now uses the token manager automatically
+                processed_entity = await self.process_file_entity(file_entity=file_entity)
+                print(processed_entity)
+
+                # Return the entity even if skipped - the entity processor will handle it
+                if processed_entity:
+                    return processed_entity
+        except Exception as e:
+            self.logger.error(f"Failed to process file {file_obj.get('name', 'unknown')}: {str(e)}")
+            # Continue processing other files instead of raising
+            return None
+        return None
+
     async def _generate_file_entities(
         self,
         client: httpx.AsyncClient,
@@ -337,52 +418,39 @@ class GoogleDriveSource(BaseSource):
     ) -> AsyncGenerator[ChunkEntity, None]:
         """Generate file entities from a file listing."""
         try:
-            # Minimal change: use BaseSource.process_entities for bounded concurrency
-            async def _worker(file_obj: Dict):
+            if getattr(self, "batch_generation", False):
+                # ===== Concurrent flow (A) =====
                 try:
-                    # Check if file should be included based on exclusion patterns
-                    try:
-                        should_include = await self._should_include_file(client, file_obj)
-                    except Exception as e:
-                        self.logger.error(f"Error checking if file should be included: {str(e)}")
-                        # Skip this file if we can't check inclusion
-                        return
+                    # Use BaseSource.process_entities_concurrent for bounded concurrency
+                    async def _worker(file_obj: Dict):
+                        return await self._process_file_batch(client, file_obj)
 
-                    if not should_include:
-                        return  # Skip this file
+                    async for processed in self.process_entities_concurrent(
+                        items=self._list_files(
+                            client, corpora, include_all_drives, drive_id, context
+                        ),
+                        worker=_worker,
+                        batch_size=getattr(self, "batch_size", 1),
+                        preserve_order=False,
+                    ):
+                        yield processed
 
-                    # Get file entity (might be None for trashed files)
-                    file_entity = self._build_file_entity(file_obj)
-
-                    # Skip if the entity was None (likely a trashed file)
-                    if not file_entity:
-                        return
-
-                    # Process the entity if it has a download URL
-                    if file_entity.download_url:
-                        # Note: process_file_entity now uses the token manager automatically
-                        processed_entity = await self.process_file_entity(file_entity=file_entity)
-                        print(processed_entity)
-
-                        # Yield the entity even if skipped - the entity processor will handle it
+                except Exception as e:
+                    self.logger.error(f"Critical exception in _generate_file_entities: {str(e)}")
+                    # Don't re-raise - let the generator complete
+            else:
+                # ===== Sequential flow (B) =====
+                try:
+                    async for file_obj in self._list_files(
+                        client, corpora, include_all_drives, drive_id, context
+                    ):
+                        processed_entity = await self._process_file_sequential(client, file_obj)
                         if processed_entity:
                             yield processed_entity
-                except Exception as e:
-                    error_context = f"in drive {drive_id}" if drive_id else "in MY DRIVE"
-                    self.logger.error(
-                        f"Failed to process file {file_obj.get('name', 'unknown')} "
-                        f"{error_context}: {str(e)}"
-                    )
-                    # Continue processing other files instead of raising
-                    return
 
-            async for processed in self.process_entities(
-                items=self._list_files(client, corpora, include_all_drives, drive_id, context),
-                worker=_worker,
-                batch_size=getattr(self, "batch_size", 8),
-                preserve_order=False,
-            ):
-                yield processed
+                except Exception as e:
+                    self.logger.error(f"Critical exception in _generate_file_entities: {str(e)}")
+                    # Don't re-raise - let the generator complete
 
         except Exception as e:
             self.logger.error(f"Critical exception in _generate_file_entities: {str(e)}")

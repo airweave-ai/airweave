@@ -11,7 +11,6 @@ from airweave.api.context import ApiContext
 from airweave.core.exceptions import NotFoundException
 from airweave.crud._base_organization import CRUDBaseOrganization
 from airweave.models.entity import Entity
-from airweave.models.sync import Sync
 from airweave.schemas.entity import EntityCreate, EntityUpdate
 
 
@@ -41,7 +40,7 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
             )
         return db_obj
 
-    async def get_by_entity_and_sync_id_many(
+    async def bulk_get_by_entity_and_sync(
         self,
         db: AsyncSession,
         *,
@@ -81,29 +80,19 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
         db: AsyncSession,
         *,
         objs: list[EntityCreate],
-        ctx: ApiContext | None = None,
+        ctx: ApiContext,
     ) -> list[Entity]:
         """Create many Entity rows in a single transaction.
 
-        Ensures organization_id is set. Prefer taking it from ctx; if missing,
-        fall back to the Sync row referenced by the first object.
+        Ensures organization_id is set from the provided context.
         Caller controls commit via the session context.
         """
         if not objs:
             return []
 
-        org_id = self._get_org_id_from_context(ctx) if ctx else None
-
-        # Fallback: resolve from Sync if ctx didn't have it
+        org_id = self._get_org_id_from_context(ctx)
         if org_id is None:
-            first_sync_id = objs[0].sync_id
-            res = await db.execute(select(Sync.organization_id).where(Sync.id == first_sync_id))
-            org_id = res.scalar_one_or_none()
-
-        if org_id is None:
-            raise ValueError(
-                "bulk_create requires a ctx with organization_id or resolvable org via sync_id"
-            )
+            raise ValueError("ApiContext must contain valid organization information")
 
         models_to_add: list[Entity] = []
         for o in objs:

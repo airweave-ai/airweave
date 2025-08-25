@@ -266,7 +266,7 @@ class BaseSource:
             self.logger.error(f"Error processing file {file_entity.name} with direct content: {e}")
             return None
 
-    async def process_entities(
+    async def process_entities_concurrent(
         self,
         items: Union[Iterable[Any], AsyncIterable[Any]],
         worker: Callable[[Any], AsyncIterable[ChunkEntity]],
