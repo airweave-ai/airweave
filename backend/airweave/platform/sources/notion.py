@@ -43,6 +43,13 @@ class NotionSource(BaseSource):
 
     It provides comprehensive access to databases, pages, and content with advanced content
     aggregation, lazy loading, and file processing capabilities for optimal performance.
+
+    Concurrency knobs:
+      - `batch_generation` (bool): when True, cap concurrent page materializations using
+        `batch_size`. When False, behavior matches the original implementation (no source-level
+        concurrency gate for materialization).
+      - `batch_size` (int): max concurrent page materializations when `batch_generation=True`.
+      - `_shared_wait_for_rate_limit`: caps request rate (RPS) against Notion API globally.
     """
 
     # Rate limiting constants
@@ -56,12 +63,62 @@ class NotionSource(BaseSource):
     _shared_request_times: ClassVar[List[float]] = []
     _shared_lock: ClassVar[asyncio.Lock] = asyncio.Lock()
 
+    def __init__(self):
+        """Initialize rate limiting state and tracking."""
+        super().__init__()
+        self._request_times = []
+        self._lock = asyncio.Lock()
+        self._processed_pages: Set[str] = set()
+        self._processed_databases: Set[str] = set()
+        self._child_databases_to_process: Set[str] = set()
+        self._child_database_breadcrumbs: Dict[str, List[Breadcrumb]] = {}
+        self._stats = {
+            "api_calls": 0,
+            "rate_limit_waits": 0,
+            "databases_found": 0,
+            "child_databases_found": 0,
+            "pages_found": 0,
+            "total_blocks_processed": 0,
+            "total_files_found": 0,
+            "max_page_depth": 0,
+        }
+        logger.info("Initialized comprehensive Notion source with content aggregation")
+        self._client_ref = None
+
+        # NEW: per-instance controls (defaults preserve original behavior)
+        self.batch_generation: bool = True  # off = original flow (no source-level gate)
+        self.batch_size: int = 6  # used only when batch_generation=True
+        self._materialize_semaphore: asyncio.Semaphore = asyncio.Semaphore(self.batch_size)
+
     @classmethod
     async def create(cls, credentials, config: Optional[Dict[str, Any]] = None) -> "NotionSource":
-        """Create a new Notion source."""
+        """Create a new Notion source.
+
+        Config options:
+          - batch_generation (bool): enable/disable source-level gating of page materialization.
+            False = original behavior. True = use batch_size.
+          - batch_size (int): max concurrent page materializations when batch_generation=True.
+        """
         logger.info("Creating new Notion source")
         instance = cls()
         instance.access_token = credentials.access_token
+
+        # Drive-like knobs for symmetry (while keeping original default behavior)
+        config = config or {}
+        try:
+            instance.batch_generation = bool(
+                config.get("batch_generation", instance.batch_generation)
+            )
+        except Exception:
+            instance.batch_generation = False
+        try:
+            instance.batch_size = int(config.get("batch_size", instance.batch_size))
+        except Exception:
+            instance.batch_size = 6
+
+        # Rebuild semaphore in case batch_size changed
+        instance._materialize_semaphore = asyncio.Semaphore(instance.batch_size)
+
         return instance
 
     @classmethod
@@ -94,28 +151,6 @@ class NotionSource(BaseSource):
                 ]
 
             cls._shared_request_times.append(current_time)
-
-    def __init__(self):
-        """Initialize rate limiting state and tracking."""
-        super().__init__()
-        self._request_times = []
-        self._lock = asyncio.Lock()
-        self._processed_pages: Set[str] = set()
-        self._processed_databases: Set[str] = set()
-        self._child_databases_to_process: Set[str] = set()
-        self._child_database_breadcrumbs: Dict[str, List[Breadcrumb]] = {}
-        self._stats = {
-            "api_calls": 0,
-            "rate_limit_waits": 0,
-            "databases_found": 0,
-            "child_databases_found": 0,
-            "pages_found": 0,
-            "total_blocks_processed": 0,
-            "total_files_found": 0,
-            "max_page_depth": 0,
-        }
-        logger.info("Initialized comprehensive Notion source with content aggregation")
-        self._client_ref = None
 
     async def _wait_for_rate_limit(self):
         """Implement rate limiting for Notion API requests."""
@@ -570,12 +605,12 @@ class NotionSource(BaseSource):
             content = self._format_text_blocks(block_content, block_type)
             files = []
         elif block_type in ["image", "video", "file", "pdf"]:
-            content, files = self._format_file_block(block_content, block, block_type)
+            content, files = self._format_file_block(block_content, block_type)
         elif block_type in ["embed", "bookmark", "equation", "divider"]:
             content = self._format_simple_blocks(block_content, block_type)
             files = []
         elif block_type in ["child_page", "child_database"]:
-            content = self._format_child_blocks(block_content, block, block_type, page_breadcrumbs)
+            content = self._format_child_blocks(block_content, block_type, page_breadcrumbs)
             files = []
         else:
             content = self._format_other_blocks(block_content, block_type)
@@ -631,14 +666,14 @@ class NotionSource(BaseSource):
             return "**Table of Contents**"  # table_of_contents
 
     def _format_child_blocks(
-        self, block_content: dict, block: dict, block_type: str, page_breadcrumbs: List[Breadcrumb]
+        self, block_content: dict, block_type: str, page_breadcrumbs: List[Breadcrumb]
     ) -> str:
         """Format child page and database blocks."""
         if block_type == "child_page":
             title = block_content.get("title", "Untitled Page")
             return f"📄 **[{title}]** (Child Page)"
         else:  # child_database
-            return self._format_child_database_block(block_content, block, page_breadcrumbs)
+            return self._format_child_database_block(block_content, page_breadcrumbs)
 
     def _format_other_blocks(self, block_content: dict, block_type: str) -> str:
         """Format other block types including table, column, etc."""
@@ -669,10 +704,10 @@ class NotionSource(BaseSource):
         return content
 
     def _format_file_block(
-        self, block_content: dict, block: dict, block_type: str
+        self, block_content: dict, block_type: str
     ) -> Tuple[str, List[NotionFileEntity]]:
         """Format file blocks and return content and file entities."""
-        file_entity = self._create_file_entity_from_block(block_content, block["id"])
+        file_entity = self._create_file_entity_from_block(block_content, block_type)
         files = [file_entity]
         caption = self._extract_rich_text_plain(block_content.get("caption", []))
 
@@ -687,21 +722,19 @@ class NotionSource(BaseSource):
         return content, files
 
     def _format_child_database_block(
-        self, block_content: dict, block: dict, page_breadcrumbs: List[Breadcrumb]
+        self, block_content: dict, page_breadcrumbs: List[Breadcrumb]
     ) -> str:
         """Format child database blocks."""
         title = block_content.get("title", "Untitled Database")
-        database_id = block["id"]
+        database_id = block_content.get("id") or ""  # Notion uses block id for child_database
 
         # Queue this child database for processing with proper breadcrumbs
-        self._child_databases_to_process.add(database_id)
-
-        # Create breadcrumbs for the child database (parent page + current page)
-        child_db_breadcrumbs = page_breadcrumbs.copy()
-        self._child_database_breadcrumbs[database_id] = child_db_breadcrumbs
+        if database_id:
+            self._child_databases_to_process.add(database_id)
+            self._child_database_breadcrumbs[database_id] = page_breadcrumbs.copy()
 
         self._stats["child_databases_found"] += 1
-        breadcrumb_names = [b.name for b in child_db_breadcrumbs]
+        breadcrumb_names = [b.name for b in page_breadcrumbs]
         self.logger.info(
             f"Found child database: {title} ({database_id}) in page breadcrumbs: {breadcrumb_names}"
         )
@@ -838,7 +871,7 @@ class NotionSource(BaseSource):
         )
 
     def _create_file_entity_from_block(
-        self, block_content: dict, parent_id: str
+        self, block_content: dict, parent_type_or_id: str
     ) -> NotionFileEntity:
         """Create a file entity from block content."""
         file_type = block_content.get("type", "external")
@@ -914,16 +947,14 @@ class NotionSource(BaseSource):
             mime_type = mime_type_map.get(ext)
 
         return NotionFileEntity(
-            entity_id=f"file_{parent_id}_{hash(file_id)}",
+            entity_id=f"file_{hash((file_type, file_id))}",
             breadcrumbs=[],
-            # FileEntity required fields
             file_id=file_id,
             name=name or "Untitled File",
             mime_type=mime_type,
             size=None,  # Notion API doesn't provide size in block content
             download_url=download_url,
             should_skip=False,
-            # Notion-specific fields
             file_type=file_type,
             url=url,
             expiry_time=expiry_time,
@@ -1075,20 +1106,17 @@ class NotionSource(BaseSource):
             async with httpx.AsyncClient() as client:
                 self._client_ref = client  # Store for lazy operations
 
-                # Process databases and pages as we discover them
-                # This allows the orchestrator to start processing immediately
-
-                # Phase 1 & 2: Discover and yield databases with their schemas
+                # Phase 1 & 2: Databases + schema
                 self.logger.info("Phase 1 & 2: Streaming database discovery and schema analysis")
                 async for entity in self._stream_database_discovery(client):
                     yield entity
 
-                # Phase 3: Discover and yield standalone pages
+                # Phase 3: Standalone pages
                 self.logger.info("Phase 3: Streaming standalone page discovery")
                 async for entity in self._stream_page_discovery(client):
                     yield entity
 
-                # Phase 4: Process any child databases found during page processing
+                # Phase 4: Child databases encountered during page processing
                 self.logger.info("Phase 4: Processing child databases")
                 async for entity in self._process_child_databases(client):
                     yield entity
@@ -1226,12 +1254,10 @@ class NotionSource(BaseSource):
                 # For Notion-hosted files, use the temporary URL directly
                 # Pre-signed URLs don't need authentication
                 try:
-                    # Try with access token first
                     processed_entity = await self.process_file_entity(
                         file_entity=file_entity, access_token=self.access_token
                     )
                 except Exception:
-                    # If that fails, try the custom pre-signed file processing
                     self.logger.info(
                         f"Falling back to pre-signed URL processing for {file_entity.name}"
                     )
@@ -1318,7 +1344,6 @@ class NotionSource(BaseSource):
         )
 
         # Add lazy operation for content aggregation
-        # Pass all necessary data for self-contained execution
         entity.add_lazy_operation(
             "aggregate_content",
             self._create_content_fetcher(
@@ -1354,26 +1379,51 @@ class NotionSource(BaseSource):
         return entity
 
     def _create_content_fetcher(self, access_token: str, rate_limit_config: dict):
-        """Create a content fetcher that uses the shared rate limiter."""
+        """Create a content fetcher.
+
+        Uses shared RPS limiting and optional concurrency gating.
+        """
 
         async def fetch_content(page_id: str, breadcrumbs: List[Breadcrumb]) -> dict:
-            """Fetch page content with shared rate limiting."""
-            async with httpx.AsyncClient() as client:
-                headers = {
-                    "Authorization": f"Bearer {access_token}",
-                    "Notion-Version": "2022-06-28",
-                }
+            """Fetch page content.
 
-                # Create request helper with shared rate limiting
-                async def make_request(method: str, url: str, **kwargs):
-                    await NotionSource._shared_wait_for_rate_limit()  # Use shared rate limiter
-                    response = await getattr(client, method.lower())(url, headers=headers, **kwargs)
-                    response.raise_for_status()
-                    return response.json()
+            If `batch_generation` is True, gate concurrent
+            materializations with `_materialize_semaphore`.
+            If False, run exactly like the original implementation
+            (no source-level gate).
+            """
 
-                # Fetch all blocks and aggregate content
-                result = await self._fetch_and_aggregate_blocks(make_request, page_id, breadcrumbs)
-                return result
+            async def _do_fetch() -> dict:
+                async with httpx.AsyncClient() as client:
+                    headers = {
+                        "Authorization": f"Bearer {access_token}",
+                        "Notion-Version": "2022-06-28",
+                    }
+
+                    # Create request helper with shared rate limiting
+                    async def make_request(method: str, url: str, **kwargs):
+                        await NotionSource._shared_wait_for_rate_limit()
+                        response = await getattr(client, method.lower())(
+                            url, headers=headers, **kwargs
+                        )
+                        response.raise_for_status()
+                        return response.json()
+
+                    # Fetch all blocks and aggregate content
+                    return await self._fetch_and_aggregate_blocks(
+                        make_request, page_id, breadcrumbs
+                    )
+
+            if self.batch_generation:
+                async with self._materialize_semaphore:
+                    self.logger.debug(
+                        f"[Notion] Materializing page {page_id} (batch_generation=True, "
+                        f"batch_size={self.batch_size})"
+                    )
+                    return await _do_fetch()
+            else:
+                # Original flow: no semaphore gate
+                return await _do_fetch()
 
         return fetch_content
 

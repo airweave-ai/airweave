@@ -6,6 +6,7 @@ from uuid import UUID
 
 from airweave import schemas
 from airweave.core.logging import ContextualLogger
+from airweave.core.logging import logger as default_logger
 from airweave.platform.entities._base import ChunkEntity
 
 
@@ -26,16 +27,17 @@ class BaseDestination(ABC):
         """Get the logger for this destination, falling back to default if not set."""
         if self._logger is not None:
             return self._logger
-        # Fall back to default logger
-        return
+        # Return a real default logger
+        return default_logger
 
     def set_logger(self, logger: ContextualLogger) -> None:
         """Set a contextual logger for this destination."""
         self._logger = logger
 
+    @classmethod
     @abstractmethod
     async def create(
-        self, collection_id: UUID, logger: Optional[ContextualLogger] = None
+        cls, collection_id: UUID, logger: Optional[ContextualLogger] = None
     ) -> "BaseDestination":
         """Create a new destination."""
         pass
@@ -61,8 +63,8 @@ class BaseDestination(ABC):
         pass
 
     @abstractmethod
-    async def bulk_delete(self, entity_ids: list[str]) -> None:
-        """Bulk delete entities from the destination."""
+    async def bulk_delete(self, entity_ids: list[str], sync_id: UUID) -> None:
+        """Bulk delete entities from the destination within a given sync."""
         pass
 
     @abstractmethod
@@ -71,18 +73,28 @@ class BaseDestination(ABC):
         pass
 
     @abstractmethod
-    async def bulk_delete_by_parent_id(self, parent_id: UUID) -> None:
-        """Bulk delete entities from the destination by parent ID and entity ID."""
+    async def bulk_delete_by_parent_id(self, parent_id: str, sync_id: UUID) -> None:
+        """Bulk delete entities from the destination by parent ID within a given sync."""
         pass
+
+    async def bulk_delete_by_parent_ids(self, parent_ids: list[str], sync_id: UUID) -> None:
+        """Bulk delete entities for multiple parent IDs within a given sync.
+
+        Default fan-out implementation that calls `bulk_delete_by_parent_id` for each ID.
+        Destinations can override this to issue a single optimized call.
+        """
+        for pid in parent_ids:
+            await self.bulk_delete_by_parent_id(pid, sync_id)
 
     @abstractmethod
     async def search(self, query_vector: list[float]) -> None:
         """Search for a sync_id in the destination."""
         pass
 
+    @classmethod
     @abstractmethod
-    async def get_credentials(self, user: schemas.User) -> None:
-        """Get credentials for the destination."""
+    async def get_credentials(cls, user: schemas.User | None = None):
+        """Get credentials for the destination (class-level hook)."""
         pass
 
     @abstractmethod
