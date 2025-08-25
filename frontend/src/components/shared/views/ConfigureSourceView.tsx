@@ -92,6 +92,16 @@ export const ConfigureSourceView: React.FC<ConfigureSourceViewProps> = ({
         return lowerName === 'refresh_token' || lowerName === 'access_token';
     };
 
+    // Helper function to strip whitespace from string values
+    const stripWhitespaceFromValues = (values: Record<string, any>): Record<string, any> => {
+        return Object.fromEntries(
+            Object.entries(values).map(([key, value]) => [
+                key,
+                typeof value === 'string' ? value.trim() : value
+            ])
+        );
+    };
+
     // Fetch source details including auth and config fields
     useEffect(() => {
         if (!sourceShortName) return;
@@ -431,6 +441,11 @@ export const ConfigureSourceView: React.FC<ConfigureSourceViewProps> = ({
 
         setSubmitting(true);
         try {
+            // Strip whitespace from all values before processing
+            const cleanedAuthValues = stripWhitespaceFromValues(authValues);
+            const cleanedConfigValues = stripWhitespaceFromValues(configValues);
+            const cleanedAuthProviderConfigValues = stripWhitespaceFromValues(authProviderConfigValues);
+
             // Determine which collection we're using
             let collectionId = viewData.collectionId;
 
@@ -470,8 +485,8 @@ export const ConfigureSourceView: React.FC<ConfigureSourceViewProps> = ({
                     short_name: sourceShortName,
                     collection: collectionId,
                     auth_provider: selectedAuthProviderConnection.readable_id,
-                    auth_provider_config: authProviderConfigValues,
-                    config_fields: configValues,
+                    auth_provider_config: cleanedAuthProviderConfigValues,
+                    config_fields: cleanedConfigValues,
                     sync_immediately: true
                 };
 
@@ -496,7 +511,7 @@ export const ConfigureSourceView: React.FC<ConfigureSourceViewProps> = ({
                     short_name: sourceShortName,
                     collection: collectionId,
                     credential_id: effectiveCredentialId,
-                    config_fields: configValues,
+                    config_fields: cleanedConfigValues,
                     sync_immediately: true
                 };
 
@@ -611,6 +626,9 @@ export const ConfigureSourceView: React.FC<ConfigureSourceViewProps> = ({
         if (hasEmptyRequiredAuthFields()) return;
 
         try {
+            // Strip whitespace from auth values before authentication
+            const cleanedAuthValues = stripWhitespaceFromValues(authValues);
+
             // Create a comprehensive dialog state object with all necessary data
             const dialogState = {
                 // Source information
@@ -623,8 +641,8 @@ export const ConfigureSourceView: React.FC<ConfigureSourceViewProps> = ({
                 // Connection name
                 connectionName,
 
-                // Current auth values
-                authValues,
+                // Current auth values (cleaned)
+                authValues: cleanedAuthValues,
 
                 // UI state
                 configureStep: step,
