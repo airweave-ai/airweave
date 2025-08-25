@@ -68,7 +68,6 @@ class GoogleDriveSource(BaseSource):
         # Default batch_size = 1 as requested
         instance.batch_size = int(config.get("batch_size", 30))
 
-        # Toggle: default to sequential flow (False) as requested
         instance.batch_generation = bool(config.get("batch_generation", True))
 
         return instance
@@ -359,7 +358,6 @@ class GoogleDriveSource(BaseSource):
             if file_entity.download_url:
                 # Note: process_file_entity now uses the token manager automatically
                 processed_entity = await self.process_file_entity(file_entity=file_entity)
-                print(processed_entity)
 
                 # Yield the entity even if skipped - the entity processor will handle it
                 if processed_entity:
@@ -423,7 +421,10 @@ class GoogleDriveSource(BaseSource):
                 try:
                     # Use BaseSource.process_entities_concurrent for bounded concurrency
                     async def _worker(file_obj: Dict):
-                        return await self._process_file_batch(client, file_obj)
+                        # MUST return an async iterator: yield 0..N entities
+                        ent = await self._process_file_batch(client, file_obj)
+                        if ent is not None:
+                            yield ent
 
                     async for processed in self.process_entities_concurrent(
                         items=self._list_files(
