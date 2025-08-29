@@ -24,12 +24,9 @@
     "editor.codeActionsOnSave": {
         "source.fixAll.ruff": "always",
         "source.fixAll.eslint": "always",
-        "source.formatAll.ruff": "always",
+        "source.formatAll.ruff": "always"
     },
     "editor.formatOnSave": true,
-    "ruff.format.args": [
-        "--extend-exclude=fern/**"
-    ],
     "[mdx]": {
         "editor.formatOnSave": false,
         "editor.formatOnPaste": false,
@@ -42,7 +39,12 @@
         "editor.formatOnType": false,
         "editor.defaultFormatter": null
     },
+    "[jsonc]": {
+        "editor.defaultFormatter": "vscode.json-language-features",
+        "editor.tabSize": 4,
+        "editor.detectIndentation": false
+    },
     "files.watcherExclude": {
         "**/fern/**": true
-    },
+    }
 }
