@@ -24,7 +24,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-airweave}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-airweave}" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -37,7 +37,7 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -79,7 +79,7 @@ services:
       qdrant:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8001/health" ]
       interval: 10s
       timeout: 30s
       retries: 10
@@ -99,7 +99,7 @@ services:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080"]
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:8080" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -114,7 +114,7 @@ services:
       ENABLE_CUDA: 0
       WORKERS_PER_NODE: 1
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:8080/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -129,7 +129,7 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      test: [ "CMD", "curl", "-f", "http://localhost:6333/healthz" ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -154,7 +154,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "tctl", "--address", "temporal:7233", "workflow", "list"]
+      test: [ "CMD", "tctl", "--address", "temporal:7233", "workflow", "list" ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -198,7 +198,7 @@ services:
       - TEMPORAL_ENABLED=true
     volumes:
       - ../backend:/app
-    entrypoint: ["python", "-m", "airweave.platform.temporal.worker"]
+    entrypoint: [ "python", "-m", "airweave.platform.temporal.worker" ]
     depends_on:
       postgres:
         condition: service_healthy

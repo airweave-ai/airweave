@@ -1,0 +1,53 @@
+name: notion_test
+description: End-to-end test for Notion source using Monke
+
+connector:
+  name: Notion
+  type: notion
+  auth_fields: {}  # Resolved by credentials_resolver
+  config_fields:
+    openai_model: "gpt-4.1-mini"
+  rate_limit_delay_ms: 334  # ~3 requests per second
+  # post_create_sleep_seconds: 15
+
+test_flow:
+  steps:
+    - create
+    - sync
+    - verify
+    - update
+    - sync
+    - verify
+    - partial_delete
+    - sync
+    - verify_partial_deletion
+    - verify_remaining_entities
+    - complete_delete
+    - sync
+    - verify_complete_deletion
+
+deletion:
+  partial_delete_count: 1
+  # Notion incremental sync currently doesn't detect deletions reliably
+  verify_partial_deletion: false
+  verify_remaining_entities: false
+  verify_complete_deletion: false
+
+entity_count: 3
+
+collection:
+  name: Notion Test Collection
+
+verification:
+  retry_attempts: 3
+  retry_delay_seconds: 5
+  score_threshold: 0.0
+  require_token_match: false
+  expected_fields:
+    - title
+    - token
+    - id
+
+# Optional test-specific configuration
+test_config:
+  # parent_page_id: "your-database-id-here"  # Optional

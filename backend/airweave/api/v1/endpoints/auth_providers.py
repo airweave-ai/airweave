@@ -262,6 +262,167 @@ async def get_auth_provider_connection(
     )
 
 
+@router.put("/connect", response_model=schemas.AuthProviderConnection)
+async def connect_or_update_auth_provider(
+    *,
+    db: AsyncSession = Depends(deps.get_db),
+    auth_provider_connection_in: schemas.AuthProviderConnectionCreate,
+    ctx: ApiContext = Depends(deps.get_context),
+) -> schemas.AuthProviderConnection:
+    """Create or update an auth provider connection.
+
+    If a connection for this auth provider already exists for the organization,
+    it will be updated with the new credentials and fields.
+    If no connection exists, a new one will be created.
+
+    Args:
+    -----
+        db: The database session
+        ctx: The current authentication context
+        auth_provider_connection_in: The auth provider connection data
+
+    Returns:
+    --------
+        schemas.AuthProviderConnection: The created or updated connection
+    """
+    async with UnitOfWork(db) as uow:
+        try:
+            # 1. Validate auth provider exists
+            auth_provider = await crud.auth_provider.get_by_short_name(
+                uow.session, auth_provider_connection_in.short_name
+            )
+            if not auth_provider:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Auth provider not found: {auth_provider_connection_in.short_name}",
+                )
+
+            # 2. Check if connection already exists for this auth provider and organization
+            existing_connections = await crud.connection.get_by_integration_type(
+                uow.session,
+                integration_type=IntegrationType.AUTH_PROVIDER,
+                ctx=ctx,
+            )
+
+            existing_connection = None
+            for conn in existing_connections:
+                if conn.short_name == auth_provider_connection_in.short_name:
+                    existing_connection = conn
+                    break
+
+            # 3. Validate auth fields (needed for both create and update)
+            validated_auth_fields = await _validate_auth_fields(
+                uow.session,
+                auth_provider_connection_in.short_name,
+                auth_provider_connection_in.auth_fields,
+            )
+
+            if existing_connection:
+                # UPDATE EXISTING CONNECTION
+                logger.info(
+                    f"Updating existing auth provider connection: {existing_connection.readable_id}"
+                )
+
+                # Update auth credentials
+                await _update_auth_credentials(uow, existing_connection, validated_auth_fields, ctx)
+
+                # Update connection fields
+                connection_update_data = {
+                    "name": auth_provider_connection_in.name,
+                    "description": (
+                        "Auth provider connection for {auth_provider_connection_in.name}"
+                    ),
+                }
+
+                connection_update = schemas.ConnectionUpdate(**connection_update_data)
+                await crud.connection.update(
+                    uow.session,
+                    db_obj=existing_connection,
+                    obj_in=connection_update,
+                    ctx=ctx,
+                    uow=uow,
+                )
+
+                # Ensure timestamps are updated
+                from airweave.core.datetime_utils import utc_now_naive
+
+                existing_connection.modified_at = utc_now_naive()
+                if ctx.has_user_context:
+                    existing_connection.modified_by_email = ctx.tracking_email
+                uow.session.add(existing_connection)
+
+                await uow.session.flush()
+                await uow.session.refresh(existing_connection)
+
+                connection = existing_connection
+
+            else:
+                # CREATE NEW CONNECTION
+                logger.info(
+                    "Creating new auth provider connection for: "
+                    "{auth_provider_connection_in.short_name}"
+                )
+
+                # Create integration credential with encrypted auth credentials
+                integration_credential_data = schemas.IntegrationCredentialCreateEncrypted(
+                    name=f"{auth_provider_connection_in.name} Credentials",
+                    integration_short_name=auth_provider_connection_in.short_name,
+                    description=f"Credentials for {auth_provider_connection_in.name}",
+                    integration_type=IntegrationType.AUTH_PROVIDER,
+                    auth_type=auth_provider.auth_type,
+                    encrypted_credentials=credentials.encrypt(validated_auth_fields),
+                    auth_config_class=auth_provider.auth_config_class,
+                )
+
+                integration_credential = await crud.integration_credential.create(
+                    uow.session,
+                    obj_in=integration_credential_data,
+                    ctx=ctx,
+                    uow=uow,
+                )
+                await uow.session.flush()
+
+                # Create connection
+                connection_data = schemas.ConnectionCreate(
+                    name=auth_provider_connection_in.name,
+                    readable_id=auth_provider_connection_in.readable_id,
+                    description=f"Auth provider connection for {auth_provider_connection_in.name}",
+                    integration_type=IntegrationType.AUTH_PROVIDER,
+                    status=ConnectionStatus.ACTIVE,
+                    integration_credential_id=integration_credential.id,
+                    short_name=auth_provider_connection_in.short_name,
+                )
+
+                connection = await crud.connection.create(
+                    uow.session,
+                    obj_in=connection_data,
+                    ctx=ctx,
+                    uow=uow,
+                )
+                await uow.session.flush()
+
+            # 4. Return response
+            return schemas.AuthProviderConnection(
+                id=connection.id,
+                name=connection.name,
+                readable_id=connection.readable_id,
+                short_name=connection.short_name,
+                description=connection.description,
+                created_by_email=connection.created_by_email,
+                modified_by_email=connection.modified_by_email,
+                created_at=connection.created_at,
+                modified_at=connection.modified_at,
+            )
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to connect/update auth provider: {str(e)}")
+            raise HTTPException(
+                status_code=500, detail=f"Failed to connect/update auth provider: {str(e)}"
+            ) from e
+
+
 @router.get("/detail/{short_name}", response_model=schemas.AuthProvider)
 async def get_auth_provider(
     *,

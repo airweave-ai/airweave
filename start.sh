@@ -1,7 +1,24 @@
 #!/bin/bash
 
 set -x  # Enable debug mode to see what's happening
+set -euo pipefail
 
+# ---- Optional flags/env (do not change default behavior) ---------------------
+NONINTERACTIVE="${NONINTERACTIVE:-}"
+CI_COMPOSE_OVERRIDE="${CI_COMPOSE_OVERRIDE:-}"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --noninteractive) NONINTERACTIVE=1; shift ;;
+    --compose-override) CI_COMPOSE_OVERRIDE="$2"; shift 2 ;;
+    *) echo "Unknown arg: $1"; exit 2 ;;
+  esac
+done
+
+# ---- Helpers -----------------------------------------------------------------
+have_cmd() { command -v "$1" >/dev/null 2>&1; }
+
+# ---- .env handling (backward compatible) -------------------------------------
 # Check if .env exists, if not create it from example
 if [ ! -f .env ]; then
     echo "Creating .env file from example..."
@@ -35,48 +52,57 @@ if ! grep -q "^SKIP_AZURE_STORAGE=" .env; then
     echo "Added SKIP_AZURE_STORAGE=true for faster startup"
 fi
 
-# Ask for OpenAI API key
-echo ""
-echo "OpenAI API key is required for files and natural language search functionality."
-read -p "Would you like to add your OPENAI_API_KEY now? You can also do this later by editing the .env file manually. (y/n): " ADD_OPENAI_KEY
+# Ask for OpenAI API key (skip in NONINTERACTIVE)
+if [ -z "${NONINTERACTIVE}" ]; then
+  echo ""
+  echo "OpenAI API key is required for files and natural language search functionality."
+  read -p "Would you like to add your OPENAI_API_KEY now? You can also do this later by editing the .env file manually. (y/n): " ADD_OPENAI_KEY
 
-if [ "$ADD_OPENAI_KEY" = "y" ] || [ "$ADD_OPENAI_KEY" = "Y" ]; then
-    read -p "Enter your OpenAI API key: " OPENAI_KEY
+  if [ "$ADD_OPENAI_KEY" = "y" ] || [ "$ADD_OPENAI_KEY" = "Y" ]; then
+      read -p "Enter your OpenAI API key: " OPENAI_KEY
 
-    # Remove any existing OPENAI_API_KEY line
-    grep -v "^OPENAI_API_KEY=" .env > .env.tmp
-    mv .env.tmp .env
+      # Remove any existing OPENAI_API_KEY line
+      grep -v "^OPENAI_API_KEY=" .env > .env.tmp
+      mv .env.tmp .env
 
-    # Add the new OpenAI API key
-    echo "OPENAI_API_KEY=\"$OPENAI_KEY\"" >> .env
-    echo "OpenAI API key added to .env file."
+      # Add the new OpenAI API key
+      echo "OPENAI_API_KEY=\"$OPENAI_KEY\"" >> .env
+      echo "OpenAI API key added to .env file."
+  else
+      echo "You can add your OPENAI_API_KEY later by editing the .env file manually."
+      echo "Add the following line to your .env file:"
+      echo "OPENAI_API_KEY=\"your-api-key-here\""
+  fi
 else
-    echo "You can add your OPENAI_API_KEY later by editing the .env file manually."
-    echo "Add the following line to your .env file:"
-    echo "OPENAI_API_KEY=\"your-api-key-here\""
+  echo "NONINTERACTIVE=1: Skipping OPENAI_API_KEY prompt."
 fi
 
-# Ask for Mistral API key
-echo ""
-echo "Mistral API key is required for certain AI functionality."
-read -p "Would you like to add your MISTRAL_API_KEY now? You can also do this later by editing the .env file manually. (y/n): " ADD_MISTRAL_KEY
+# Ask for Mistral API key (skip in NONINTERACTIVE)
+if [ -z "${NONINTERACTIVE}" ]; then
+  echo ""
+  echo "Mistral API key is required for certain AI functionality."
+  read -p "Would you like to add your MISTRAL_API_KEY now? You can also do this later by editing the .env file manually. (y/n): " ADD_MISTRAL_KEY
 
-if [ "$ADD_MISTRAL_KEY" = "y" ] || [ "$ADD_MISTRAL_KEY" = "Y" ]; then
-    read -p "Enter your Mistral API key: " MISTRAL_KEY
+  if [ "$ADD_MISTRAL_KEY" = "y" ] || [ "$ADD_MISTRAL_KEY" = "Y" ]; then
+      read -p "Enter your Mistral API key: " MISTRAL_KEY
 
-    # Remove any existing MISTRAL_API_KEY line
-    grep -v "^MISTRAL_API_KEY=" .env > .env.tmp
-    mv .env.tmp .env
+      # Remove any existing MISTRAL_API_KEY line
+      grep -v "^MISTRAL_API_KEY=" .env > .env.tmp
+      mv .env.tmp .env
 
-    # Add the new Mistral API key
-    echo "MISTRAL_API_KEY=\"$MISTRAL_KEY\"" >> .env
-    echo "Mistral API key added to .env file."
+      # Add the new Mistral API key
+      echo "MISTRAL_API_KEY=\"$MISTRAL_KEY\"" >> .env
+      echo "Mistral API key added to .env file."
+  else
+      echo "You can add your MISTRAL_API_KEY later by editing the .env file manually."
+      echo "Add the following line to your .env file:"
+      echo "MISTRAL_API_KEY=\"your-api-key-here\""
+  fi
 else
-    echo "You can add your MISTRAL_API_KEY later by editing the .env file manually."
-    echo "Add the following line to your .env file:"
-    echo "MISTRAL_API_KEY=\"your-api-key-here\""
+  echo "NONINTERACTIVE=1: Skipping MISTRAL_API_KEY prompt."
 fi
 
+# ---- Compose tool selection ---------------------------------------------------
 # Check if "docker compose" is available (Docker Compose v2)
 if docker compose version >/dev/null 2>&1; then
   COMPOSE_CMD="docker compose"
@@ -93,7 +119,7 @@ fi
 # Add this block: Check if Docker daemon is running
 if docker info > /dev/null 2>&1; then
     CONTAINER_CMD="docker"
-elif podman info > /dev/null 2>&1; then
+elif have_cmd podman && podman info > /dev/null 2>&1; then
     CONTAINER_CMD="podman"
 else
     echo "Error: Docker daemon is not running. Please start Docker and try again."
@@ -107,23 +133,30 @@ EXISTING_CONTAINERS=$(${CONTAINER_CMD} ps -a --filter "name=airweave" --format "
 
 if [ -n "$EXISTING_CONTAINERS" ]; then
   echo "Found existing airweave containers: $EXISTING_CONTAINERS"
-  read -p "Would you like to remove them before starting? (y/n): " REMOVE_CONTAINERS
-
-  if [ "$REMOVE_CONTAINERS" = "y" ] || [ "$REMOVE_CONTAINERS" = "Y" ]; then
-    echo "Removing existing containers..."
-    ${CONTAINER_CMD} rm -f $EXISTING_CONTAINERS
-
-    # Also remove the database volume
-    echo "Removing database volume..."
-    ${CONTAINER_CMD} volume rm airweave_postgres_data
-
-    echo "Containers and volumes removed."
+  if [ -z "${NONINTERACTIVE}" ]; then
+    read -p "Would you like to remove them before starting? (y/n): " REMOVE_CONTAINERS
+    if [ "$REMOVE_CONTAINERS" = "y" ] || [ "$REMOVE_CONTAINERS" = "Y" ]; then
+      echo "Removing existing containers..."
+      ${CONTAINER_CMD} rm -f $EXISTING_CONTAINERS || true
+      echo "Removing database volume..."
+      ${CONTAINER_CMD} volume rm airweave_postgres_data || true
+      echo "Containers and volumes removed."
+    else
+      echo "Warning: Starting with existing containers may cause conflicts."
+    fi
   else
-    echo "Warning: Starting with existing containers may cause conflicts."
+    echo "NONINTERACTIVE=1: Removing existing containers and volume..."
+    ${CONTAINER_CMD} rm -f $EXISTING_CONTAINERS || true
+    ${CONTAINER_CMD} volume rm airweave_postgres_data || true
   fi
 fi
 
-# Now run the appropriate Docker Compose command with the new path
+# Now run the appropriate Docker Compose command with optional override
+COMPOSE_FILES="-f docker/docker-compose.yml"
+if [ -n "${CI_COMPOSE_OVERRIDE:-}" ] && [ -f "$CI_COMPOSE_OVERRIDE" ]; then
+  COMPOSE_FILES="$COMPOSE_FILES -f $CI_COMPOSE_OVERRIDE"
+fi
+
 echo ""
 
 # Show which images will be used
@@ -135,7 +168,7 @@ if [ -n "$BACKEND_IMAGE" ] || [ -n "$FRONTEND_IMAGE" ]; then
 fi
 
 echo "Starting Docker services..."
-if ! $COMPOSE_CMD -f docker/docker-compose.yml up -d; then
+if ! $COMPOSE_CMD $COMPOSE_FILES up -d; then
     echo "❌ Failed to start Docker services"
     echo "Check the error messages above and try running:"
     echo "  docker logs airweave-backend"
@@ -176,10 +209,10 @@ if [ "$BACKEND_HEALTHY" = false ]; then
 fi
 
 # Check if frontend needs to be started manually
-FRONTEND_STATUS=$(${CONTAINER_CMD} inspect airweave-frontend --format='{{.State.Status}}' 2>/dev/null)
+FRONTEND_STATUS=$(${CONTAINER_CMD} inspect airweave-frontend --format='{{.State.Status}}' 2>/dev/null || true)
 if [ "$FRONTEND_STATUS" = "created" ] || [ "$FRONTEND_STATUS" = "exited" ]; then
   echo "Starting frontend container..."
-  ${CONTAINER_CMD} start airweave-frontend
+  ${CONTAINER_CMD} start airweave-frontend || true
   sleep 5
 fi
 
