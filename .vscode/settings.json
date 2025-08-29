@@ -1,48 +1,41 @@
 {
-    "python.testing.pytestArgs": [
-        "."
-    ],
-    "python.testing.unittestEnabled": false,
-    "python.testing.pytestEnabled": true,
-    "python.testing.cwd": "${workspaceFolder}/backend",
-    "python.analysis.extraPaths": [
-        "${workspaceFolder}/backend"
-    ],
-    "python.defaultInterpreterPath": "${command:python.interpreterPath}",
-    "python.testing.pytestPath": "${command:python.interpreterPath}",
-    "python.testing.autoTestDiscoverOnSaveEnabled": true,
-    "python.debugOptions": [
-        "RedirectOutput",
-        "DebugStdLib",
-        "ShowReturnValue",
-        "Django"
-    ],
-    "black-formatter.args": [
-        "--line-length",
-        "100"
-    ],
-    "editor.codeActionsOnSave": {
-        "source.fixAll.ruff": "always",
-        "source.fixAll.eslint": "always",
-        "source.formatAll.ruff": "always",
-    },
-    "editor.formatOnSave": true,
-    "ruff.format.args": [
-        "--extend-exclude=fern/**"
-    ],
-    "[mdx]": {
-        "editor.formatOnSave": false,
-        "editor.formatOnPaste": false,
-        "editor.formatOnType": false,
-        "editor.defaultFormatter": null
-    },
-    "[markdown]": {
-        "editor.formatOnSave": false,
-        "editor.formatOnPaste": false,
-        "editor.formatOnType": false,
-        "editor.defaultFormatter": null
-    },
-    "files.watcherExclude": {
-        "**/fern/**": true
-    },
+  "python.testing.pytestArgs": ["."],
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestEnabled": true,
+  "python.testing.cwd": "${workspaceFolder}/backend",
+  "python.analysis.extraPaths": ["${workspaceFolder}/backend"],
+  "python.defaultInterpreterPath": "${command:python.interpreterPath}",
+  "python.testing.pytestPath": "${command:python.interpreterPath}",
+  "python.testing.autoTestDiscoverOnSaveEnabled": true,
+  "python.debugOptions": [
+    "RedirectOutput",
+    "DebugStdLib",
+    "ShowReturnValue",
+    "Django"
+  ],
+  "black-formatter.args": ["--line-length", "100"],
+  "editor.codeActionsOnSave": {
+    "source.fixAll.ruff": "always",
+    "source.fixAll.eslint": "always",
+    "source.formatAll.ruff": "always"
+  },
+  "editor.formatOnSave": true,
+  // "ruff.format.args": [
+  //     "--extend-exclude=fern/**"
+  // ],
+  "[mdx]": {
+    "editor.formatOnSave": false,
+    "editor.formatOnPaste": false,
+    "editor.formatOnType": false,
+    "editor.defaultFormatter": null
+  },
+  "[markdown]": {
+    "editor.formatOnSave": false,
+    "editor.formatOnPaste": false,
+    "editor.formatOnType": false,
+    "editor.defaultFormatter": null
+  },
+  "files.watcherExclude": {
+    "**/fern/**": true
+  }
 }

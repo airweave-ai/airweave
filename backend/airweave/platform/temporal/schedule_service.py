@@ -396,6 +396,32 @@ class TemporalScheduleService:
 
         logger.info(f"Deleted schedule {schedule_id}")
 
+    async def delete_all_schedules_for_sync(self, sync_id: UUID, db: AsyncSession, ctx) -> None:
+        """Delete all schedules associated with a sync (minute + daily).
+
+        This attempts to delete both the minute-level and daily-cleanup schedules
+        based on naming conventions. It ignores missing schedules and continues.
+        """
+        user_dict: dict = {}
+
+        # Minute-level schedule (also stored in Sync.temporal_schedule_id)
+        minute_schedule_id = f"minute-sync-{sync_id}"
+        try:
+            await self.delete_schedule(minute_schedule_id, sync_id, user_dict, db, ctx)
+        except Exception as e:
+            logger.info(
+                f"Minute-level schedule {minute_schedule_id} not deleted (may not exist): {e}"
+            )
+
+        # Daily cleanup schedule
+        daily_schedule_id = f"daily-cleanup-{sync_id}"
+        try:
+            await self.delete_schedule(daily_schedule_id, sync_id, user_dict, db, ctx)
+        except Exception as e:
+            logger.info(
+                f"Daily cleanup schedule {daily_schedule_id} not deleted (may not exist): {e}"
+            )
+
     async def get_schedule_info(self, schedule_id: str) -> dict:
         """Get information about a schedule.
 
@@ -417,6 +443,20 @@ class TemporalScheduleService:
             # Note: next_run_time and last_run_time are not available on ScheduleState
             # They would need to be accessed differently if needed
         }
+
+    async def delete_schedule_handle(self, schedule_id: str) -> None:
+        """Delete a schedule by ID without touching the database.
+
+        Useful for model-level cascade deletions where the DB row is already
+        being removed and we only need to remove Temporal state.
+        """
+        try:
+            client = await self._get_client()
+            handle = client.get_schedule_handle(schedule_id)
+            await handle.delete()
+            logger.info(f"Deleted schedule handle {schedule_id}")
+        except Exception as e:
+            logger.info(f"Schedule handle {schedule_id} not deleted (may not exist): {e}")
 
     async def get_sync_schedule_info(self, sync_id: UUID, db: AsyncSession, ctx) -> Optional[dict]:
         """Get schedule information for a specific sync.

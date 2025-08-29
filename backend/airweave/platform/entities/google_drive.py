@@ -107,3 +107,17 @@ class GoogleDriveFileEntity(FileEntity):
         if data.get("size") is not None:
             data["size"] = str(data["size"])
         return data
+
+
+class GoogleDriveFileDeletionEntity(ChunkEntity):
+    """Deletion signal for a Google Drive file.
+
+    Emitted when the Drive Changes API reports a file was removed (deleted or access lost).
+    The `entity_id` matches the original file's `file_id` used for `GoogleDriveFileEntity` so
+    downstream deletion can target the correct parent/children.
+    """
+
+    file_id: str = AirweaveField(..., description="ID of the deleted file")
+    deletion_status: str = AirweaveField(
+        ..., description="Status indicating the file was removed (e.g., 'removed')"
+    )

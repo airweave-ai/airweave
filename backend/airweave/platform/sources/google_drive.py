@@ -23,7 +23,11 @@ from airweave.core.exceptions import TokenRefreshError
 from airweave.platform.auth.schemas import AuthType
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import ChunkEntity
-from airweave.platform.entities.google_drive import GoogleDriveDriveEntity, GoogleDriveFileEntity
+from airweave.platform.entities.google_drive import (
+    GoogleDriveDriveEntity,
+    GoogleDriveFileDeletionEntity,
+    GoogleDriveFileEntity,
+)
 from airweave.platform.sources._base import BaseSource
 
 
@@ -61,6 +65,42 @@ class GoogleDriveSource(BaseSource):
         instance._parent_folder_cache = {}
 
         return instance
+
+    # --- Incremental sync support (cursor field) ---
+    def get_default_cursor_field(self) -> Optional[str]:
+        """Default cursor field name for Google Drive incremental sync.
+
+        We use the Drive Changes API page token. The field stored in `cursor.cursor_data`
+        will be keyed under this name.
+        """
+        return "start_page_token"
+
+    def validate_cursor_field(self, cursor_field: str) -> None:
+        """Validate the cursor field for Google Drive.
+
+        Only the default field name is supported. Users may override but it must equal
+        the expected key so that the system can find the stored token.
+        """
+        valid_field = self.get_default_cursor_field()
+        if cursor_field != valid_field:
+            raise ValueError(
+                f"Invalid cursor field '{cursor_field}' for Google Drive. Use '{valid_field}'."
+            )
+
+    def _get_cursor_data(self) -> Dict[str, Any]:
+        if self.cursor:
+            return self.cursor.cursor_data or {}
+        return {}
+
+    def _update_cursor_data(self, new_token: str) -> None:
+        if not self.cursor:
+            return
+        cursor_field = self.get_effective_cursor_field() or self.get_default_cursor_field()
+        if not cursor_field:
+            return
+        if not self.cursor.cursor_data:
+            self.cursor.cursor_data = {}
+        self.cursor.cursor_data[cursor_field] = new_token
 
     @retry(
         stop=stop_after_attempt(3),
@@ -172,6 +212,60 @@ class GoogleDriveSource(BaseSource):
                 hidden=drive_obj.get("hidden", False),
                 org_unit_id=drive_obj.get("orgUnitId"),
             )
+
+    # --- Changes API helpers ---
+    async def _get_start_page_token(self, client: httpx.AsyncClient) -> str:
+        url = "https://www.googleapis.com/drive/v3/changes/startPageToken"
+        params = {
+            "supportsAllDrives": "true",
+        }
+        data = await self._get_with_auth(client, url, params=params)
+        token = data.get("startPageToken")
+        if not token:
+            raise ValueError("Failed to retrieve startPageToken from Drive API")
+        return token
+
+    async def _iterate_changes(
+        self, client: httpx.AsyncClient, start_token: str
+    ) -> AsyncGenerator[Dict, None]:
+        """Iterate over all changes since the provided page token.
+
+        Yields individual change objects. Stores the latest newStartPageToken on the instance
+        for use after the stream completes.
+        """
+        url = "https://www.googleapis.com/drive/v3/changes"
+        params: Dict[str, Any] = {
+            "pageToken": start_token,
+            "includeRemoved": "true",
+            "includeItemsFromAllDrives": "true",
+            "supportsAllDrives": "true",
+            "pageSize": 1000,
+            "fields": (
+                "nextPageToken,newStartPageToken,"
+                "changes(removed,fileId,changeType,file("
+                "id,name,mimeType,description,trashed,explicitlyTrashed,"
+                "parents,shared,webViewLink,iconLink,createdTime,modifiedTime,size,md5Checksum)"
+                ")"
+            ),
+        }
+
+        latest_new_start: Optional[str] = None
+
+        while True:
+            data = await self._get_with_auth(client, url, params=params)
+            for change in data.get("changes", []) or []:
+                yield change
+
+            next_token = data.get("nextPageToken")
+            latest_new_start = data.get("newStartPageToken") or latest_new_start
+
+            if next_token:
+                params["pageToken"] = next_token
+            else:
+                break
+
+        # Persist for caller
+        self._latest_new_start_page_token = latest_new_start
 
     async def _list_files(
         self,
@@ -357,7 +451,6 @@ class GoogleDriveSource(BaseSource):
                     if file_entity.download_url:
                         # Note: process_file_entity now uses the token manager automatically
                         processed_entity = await self.process_file_entity(file_entity=file_entity)
-                        print(processed_entity)
 
                         # Yield the entity even if skipped - the entity processor will handle it
                         if processed_entity:
@@ -376,55 +469,116 @@ class GoogleDriveSource(BaseSource):
             # Don't re-raise - let the generator complete
 
     async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
-        """Generate all Google Drive entities.
+        """Generate Google Drive entities with incremental support via Changes API.
 
-        Yields entities in the following order:
-          - Shared drives (Drive objects)
-          - Files in each shared drive
-          - Files in My Drive (corpora=user)
+        Behavior:
+        - If no cursor token exists: perform a FULL sync (shared drives + files), then store
+          the current startPageToken for the next incremental run.
+        - If a cursor token exists: perform INCREMENTAL sync using the Changes API. Emit
+          deletion entities for removed files and upsert entities for changed files.
         """
         try:
             async with httpx.AsyncClient() as client:
-                try:
-                    # 1) Generate entities for shared drives
-                    async for drive_entity in self._generate_drive_entities(client):
-                        yield drive_entity
-
-                    # 2) For each shared drive, yield file entities
-                    #    We'll re-list drives in memory so we don't have to fetch them again
-                    drive_ids = []
-                    async for drive_obj in self._list_drives(client):
-                        drive_ids.append(drive_obj["id"])
-
-                    for drive_id in drive_ids:
-                        try:
-                            async for file_entity in self._generate_file_entities(
-                                client,
-                                corpora="drive",
-                                include_all_drives=True,
-                                drive_id=drive_id,
-                                context=f"drive {drive_id}",
-                            ):
-                                yield file_entity
-                        except Exception as e:
-                            self.logger.error(f"Error processing shared drive {drive_id}: {str(e)}")
-                            # Continue with next drive
-                            continue
-                except Exception as e:
-                    self.logger.error(f"Error in shared drives phase: {str(e)}")
-                    # Continue to My Drive processing
-
-                # 3) Finally, yield file entities for My Drive (corpora=user)
-                try:
-                    async for mydrive_file_entity in self._generate_file_entities(
-                        client, corpora="user", include_all_drives=False, context="MY DRIVE"
+                cursor_field, last_token = await self._resolve_cursor_and_token()
+                if last_token:
+                    async for entity in self._run_incremental_sync(
+                        client, last_token, cursor_field
                     ):
-                        yield mydrive_file_entity
-                except Exception as e:
-                    self.logger.error(f"Error processing My Drive files: {str(e)}")
-
+                        yield entity
+                else:
+                    async for entity in self._run_full_sync(client):
+                        yield entity
         except Exception as e:
             self.logger.error(f"Critical error in generate_entities: {str(e)}")
+
+    async def _resolve_cursor_and_token(self) -> tuple[Optional[str], Optional[str]]:
+        """Resolve effective cursor field and last token from cursor data."""
+        cursor_field = self.get_effective_cursor_field() or self.get_default_cursor_field()
+        if cursor_field and cursor_field != self.get_default_cursor_field():
+            self.validate_cursor_field(cursor_field)
+        cursor_data = self._get_cursor_data()
+        last_token = cursor_data.get(cursor_field) if cursor_field else None
+        return cursor_field, last_token
+
+    async def _run_incremental_sync(
+        self, client: httpx.AsyncClient, last_token: str, cursor_field: Optional[str]
+    ) -> AsyncGenerator[ChunkEntity, None]:
+        """Execute the incremental sync flow using the Changes API."""
+        self.logger.info(f"Google Drive incremental sync using token field '{cursor_field}'")
+        self._latest_new_start_page_token = None
+        async for change in self._iterate_changes(client, last_token):
+            try:
+                if change.get("changeType") == "drive":
+                    continue
+                if change.get("removed", False):
+                    file_id = change.get("fileId")
+                    if not file_id:
+                        continue
+                    yield GoogleDriveFileDeletionEntity(
+                        entity_id=file_id, file_id=file_id, deletion_status="removed"
+                    )
+                    continue
+                file_obj = change.get("file")
+                if not file_obj:
+                    continue
+                file_entity = self._build_file_entity(file_obj)
+                if not file_entity:
+                    continue
+                processed_entity = await self.process_file_entity(file_entity=file_entity)
+                if processed_entity:
+                    yield processed_entity
+            except Exception as e:
+                self.logger.error(f"Error processing change: {str(e)}")
+                continue
+
+        new_token = getattr(self, "_latest_new_start_page_token", None)
+        if new_token:
+            self._update_cursor_data(new_token)
+            self.logger.info("Updated cursor with newStartPageToken for next run")
+        else:
+            self.logger.info("No newStartPageToken returned; cursor unchanged")
+
+    async def _run_full_sync(self, client: httpx.AsyncClient) -> AsyncGenerator[ChunkEntity, None]:
+        """Execute the initial full sync flow (drives + files) and store start token."""
+        self.logger.info("Google Drive FULL sync (no cursor token found)")
+        try:
+            async for drive_entity in self._generate_drive_entities(client):
+                yield drive_entity
+
+            drive_ids = []
+            async for drive_obj in self._list_drives(client):
+                drive_ids.append(drive_obj["id"])
+
+            for drive_id in drive_ids:
+                try:
+                    async for file_entity in self._generate_file_entities(
+                        client,
+                        corpora="drive",
+                        include_all_drives=True,
+                        drive_id=drive_id,
+                        context=f"drive {drive_id}",
+                    ):
+                        yield file_entity
+                except Exception as e:
+                    self.logger.error(f"Error processing shared drive {drive_id}: {str(e)}")
+                    continue
+        except Exception as e:
+            self.logger.error(f"Error in shared drives phase: {str(e)}")
+
+        try:
+            async for mydrive_file_entity in self._generate_file_entities(
+                client, corpora="user", include_all_drives=False, context="MY DRIVE"
+            ):
+                yield mydrive_file_entity
+        except Exception as e:
+            self.logger.error(f"Error processing My Drive files: {str(e)}")
+
+        try:
+            start_token = await self._get_start_page_token(client)
+            self._update_cursor_data(start_token)
+            self.logger.info("Stored startPageToken after full sync for next incremental run")
+        except Exception as e:
+            self.logger.error(f"Failed to fetch and store startPageToken after full sync: {e}")
 
     async def _get_file_path(self, client: httpx.AsyncClient, file_obj: Dict) -> str:
         """Get full path of file by recursively fetching parent folders."""

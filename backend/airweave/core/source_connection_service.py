@@ -22,6 +22,7 @@ from airweave.platform.auth.services import oauth2_service
 from airweave.platform.auth.settings import integration_settings
 from airweave.platform.configs.auth import OAuth2AuthConfig, OAuth2BYOCAuthConfig
 from airweave.platform.locator import resource_locator
+from airweave.platform.temporal.schedule_service import temporal_schedule_service
 
 source_connection_logger = logger.with_prefix("Source Connection Service: ").with_context(
     component="source_connection_service"
@@ -908,6 +909,17 @@ class SourceConnectionService:
                 )
                 # We don't raise here - we still want to delete the source connection
                 # even if data deletion fails
+
+        # Cleanup Temporal schedules first (if any)
+        if source_connection.sync_id:
+            try:
+                await temporal_schedule_service.delete_all_schedules_for_sync(
+                    sync_id=source_connection.sync_id, db=db, ctx=ctx
+                )
+            except Exception as e:
+                source_connection_logger.error(
+                    f"Failed to delete schedules for sync {source_connection.sync_id}: {e}"
+                )
 
         await crud.source_connection.remove(db=db, id=source_connection_id, ctx=ctx)
 

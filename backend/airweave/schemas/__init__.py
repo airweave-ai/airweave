@@ -111,6 +111,7 @@ from .source_connection import (
     SourceConnectionCreateWithWhiteLabel,
     SourceConnectionInDBBase,
     SourceConnectionListItem,
+    SourceConnectionMakeContinuous,
     SourceConnectionUpdate,
 )
 from .sync import (
