@@ -7,6 +7,10 @@ instances:
       repo: airweave
       branch: main
 title: Airweave
+analytics:
+  posthog:
+    api-key: "phc_pRMEx1bwjdogqrCL4xpfEoEwXds7eONicNSWhX45M8M"
+    endpoint: "https://eu.i.posthog.com" 
 layout:
   searchbar-placement: header
   page-width: full
