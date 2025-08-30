@@ -74,3 +74,8 @@ coverage.xml
 
 # Local storage folder
 local_storage/
+
+monke/venv/
+logs/
+monke/.runs/
+monke/env.test

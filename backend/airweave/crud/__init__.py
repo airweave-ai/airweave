@@ -5,6 +5,7 @@ from .crud_auth_provider import auth_provider
 from .crud_billing_period import billing_period
 from .crud_collection import collection
 from .crud_connection import connection
+from .crud_connection_init_session import connection_init_session
 from .crud_dag import sync_dag
 from .crud_destination import destination
 from .crud_embedding_model import embedding_model
@@ -29,6 +30,7 @@ __all__ = [
     "auth_provider",
     "billing_period",
     "collection",
+    "connection_init_session",
     "connection",
     "destination",
     "embedding_model",

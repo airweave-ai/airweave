@@ -5,6 +5,7 @@ from .auth_provider import AuthProvider
 from .billing_period import BillingPeriod
 from .collection import Collection
 from .connection import Connection
+from .connection_init_session import ConnectionInitSession
 from .dag import DagEdge, DagNode, SyncDag
 from .destination import Destination
 from .embedding_model import EmbeddingModel
@@ -33,6 +34,7 @@ __all__ = [
     "Collection",
     "Entity",
     "Connection",
+    "ConnectionInitSession",
     "DagNode",
     "DagEdge",
     "Destination",

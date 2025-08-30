@@ -6,7 +6,7 @@ automatically syncs data into your collection, enabling unified search across mu
 
 import re
 from datetime import datetime
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Literal, Optional, Tuple, Union
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
@@ -943,3 +943,43 @@ class SourceConnectionListItem(BaseModel):
             ]
         },
     )
+
+
+class SourceConnectionInitiate(SourceConnectionCreate):
+    """Unified initiation schema.
+
+    Accepts all fields of SourceConnectionCreate, plus optional overrides that define
+    the auth mode.
+      - No overrides => platform-managed OAuth (if source is OAuth)
+      - client_id + client_secret => BYOC
+      - access_token (+ refresh_token) => token injection (immediate)
+      - redirect_url => where to redirect the user AFTER completion (final landing)
+    """
+
+    client_id: Optional[str] = Field(None, description="Override OAuth client ID (BYOC).")
+    client_secret: Optional[str] = Field(None, description="Override OAuth client secret (BYOC).")
+    access_token: Optional[str] = Field(
+        None,
+        description=(
+            "Token injection: supply an access token to create immediately without OAuth redirect."
+        ),
+    )
+    refresh_token: Optional[str] = Field(
+        None, description="Optional refresh token for token injection."
+    )
+    redirect_url: Optional[str] = Field(
+        None, description="Final landing URL after the server completes the OAuth exchange."
+    )
+
+
+class SourceConnectionInitiateResponse(BaseModel):
+    """Response for initiate endpoint.
+
+    - If 'created': source_connection is present and authentication_url is null.
+    - If 'pending': authentication_url is present (visit to authorize).
+    """
+
+    connection_init_id: Optional[UUID] = None
+    authentication_url: Optional[str] = None
+    status: Literal["created", "pending"]
+    source_connection: Optional[SourceConnection] = None

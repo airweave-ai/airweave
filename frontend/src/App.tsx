@@ -47,7 +47,8 @@ function App() {
         <Route path={publicPaths.billingCancel} element={<BillingCancel />} />
 
         {/* Auth callback routes - OUTSIDE of DashboardLayout */}
-        <Route path="/auth/callback/:short_name" element={<AuthCallback />} />
+        {/* <Route path="/auth/callback/:short_name" element={<AuthCallback />} /> */}
+        <Route path="/auth/callback" element={<AuthCallback />} />
 
         {/* Protected routes */}
         <Route element={<AuthGuard><DashboardLayout /></AuthGuard>}>

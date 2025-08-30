@@ -20,6 +20,7 @@ from airweave.models.integration_credential import IntegrationType
 from airweave.platform.auth.schemas import AuthType, OAuth2TokenResponse
 from airweave.platform.auth.services import oauth2_service
 from airweave.platform.auth.settings import integration_settings
+from airweave.platform.auth.state import make_state
 from airweave.platform.configs.auth import OAuth2AuthConfig, OAuth2BYOCAuthConfig
 from airweave.platform.locator import resource_locator
 
@@ -528,6 +529,82 @@ class SourceConnectionService:
             source_connection.auth_fields = "********"
 
         return source_connection, sync_job
+
+    async def _validate_token_with_source(
+        self, db: AsyncSession, source_short_name: str, access_token: str
+    ) -> bool:
+        """Instantiate the source with the access_token and call validate().
+
+        Returns:
+            bool: True if validation succeeded, False if skipped (e.g., no validate()).
+
+        Raises:
+            HTTPException(400) if validation runs and fails.
+        """
+        import time
+
+        # contextual logger
+        _log = source_connection_logger.with_context(source=source_short_name, op="oauth_validate")
+
+        # resolve source class
+        try:
+            source_obj = await crud.source.get_by_short_name(db, short_name=source_short_name)
+            if not source_obj:
+                _log.warning(f"Skipping token validation: source '{source_short_name}' not found.")
+                return False
+            source_cls = resource_locator.get_source(source_obj)
+        except Exception as e:
+            _log.warning(
+                f"Skipping token validation: couldn't resolve source class for "
+                f"'{source_short_name}': {e}"
+            )
+            return False
+
+        # create & validate
+        start = time.perf_counter()
+        try:
+            try:
+                source_instance = await source_cls.create(access_token=access_token, config=None)
+            except TypeError:
+                source_instance = await source_cls.create(
+                    credentials={"access_token": access_token}, config=None
+                )
+
+            source_instance.set_logger(_log)
+
+            if not hasattr(source_instance, "validate"):
+                _log.info("Source has no validate(); skipping live token check.")
+                return False
+
+            is_valid = await source_instance.validate()
+            elapsed_ms = (time.perf_counter() - start) * 1000
+
+            if is_valid:
+                _log.info(
+                    f"OAuth2 token validation succeeded for '{source_short_name}' "
+                    f"via {source_cls.__name__} in {elapsed_ms:.0f} ms"
+                )
+                return True
+
+            # explicit failure
+            _log.error(
+                "OAuth2 token validation FAILED for "
+                f"'{source_short_name}' via {source_cls.__name__}"
+            )
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"OAuth2 token failed validation for '{source_short_name}'. "
+                    f"Please re-authorize with the required scopes."
+                ),
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to validate OAuth2 token for '{source_short_name}': {e}",
+            ) from e
 
     async def get_source_connection(
         self,
@@ -1152,8 +1229,13 @@ class SourceConnectionService:
                 detail=f"Source {source_short_name} does not support OAuth2 authentication",
             )
 
+        # Add source shortname in state
+        state = make_state(
+            {"short_name": source_short_name}
+        )  # add anything else you want to round-trip
+
         # Generate the authorization URL
-        auth_url = await oauth2_service.generate_auth_url(oauth2_settings, client_id)
+        auth_url = await oauth2_service.generate_auth_url(oauth2_settings, client_id, state)
 
         # Return as schema
         return schemas.OAuth2AuthUrl(url=auth_url)
@@ -1216,6 +1298,14 @@ class SourceConnectionService:
                 client_id=client_id,
                 client_secret=client_secret,
             )
+
+            # Use the fresh access token to ping the provider through the source's validate()
+            if token_response.access_token:
+                await self._validate_token_with_source(
+                    db=db,
+                    source_short_name=source_short_name,
+                    access_token=token_response.access_token,
+                )
 
             # Convert token response to auth fields
             auth_fields = token_response.model_dump()
