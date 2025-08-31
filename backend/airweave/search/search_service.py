@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud, schemas
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
-from airweave.core.exceptions import NotFoundException
+from airweave.core.exceptions import NotFoundException, QdrantServiceDisabledException
 from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.embedding_models._base import BaseEmbeddingModel
 from airweave.platform.embedding_models.bm25_text2vec import BM25Text2Vec
@@ -317,6 +317,19 @@ class SearchService:
         except NotFoundException:
             # Re-raise NotFoundExceptions as-is, will be handled by the middleware
             raise
+        except QdrantServiceDisabledException as e:
+            ctx.logger.warning(f"Vector search attempted but services are disabled: {str(e)}")
+            # Return a helpful response when vector services are disabled
+            return schemas.SearchResponse(
+                results=[],
+                completion=(
+                    "Vector search services are currently disabled in this deployment. "
+                    "Please contact your administrator to enable vector search capabilities, "
+                    "or use alternative search methods if available."
+                ),
+                response_type=response_type,
+                status=SearchStatus.NO_RESULTS,
+            )
         except Exception as e:
             ctx.logger.error(f"Search error: {str(e)}", exc_info=True)
             # Add more context to the error
@@ -390,6 +403,19 @@ class SearchService:
 
         except NotFoundException:
             raise
+        except QdrantServiceDisabledException as e:
+            ctx.logger.warning(f"Vector search attempted but services are disabled: {str(e)}")
+            # Return a helpful response when vector services are disabled
+            return schemas.SearchResponse(
+                results=[],
+                completion=(
+                    "Vector search services are currently disabled in this deployment. "
+                    "Please contact your administrator to enable vector search capabilities, "
+                    "or use alternative search methods if available."
+                ),
+                response_type=search_request.response_type,
+                status=SearchStatus.NO_RESULTS,
+            )
         except Exception as e:
             ctx.logger.error(f"Search error: {str(e)}", exc_info=True)
             if "connection" in str(e).lower():

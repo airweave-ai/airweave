@@ -9,6 +9,7 @@ from qdrant_client.http import models as rest
 from qdrant_client.local.local_collection import DEFAULT_VECTOR_NAME
 
 from airweave.core.config import settings
+from airweave.core.exceptions import QdrantServiceDisabledException
 from airweave.core.logging import ContextualLogger
 from airweave.core.logging import logger as default_logger
 from airweave.platform.auth.schemas import AuthType
@@ -54,7 +55,7 @@ class QdrantDestination(VectorDBDestination):
             QdrantDestination: The created destination.
         """
         if not settings.QDRANT_ENABLED:
-            raise ConnectionError("Qdrant services are disabled in this deployment")
+            raise QdrantServiceDisabledException("destination creation")
             
         instance = cls()
         instance.set_logger(logger or default_logger)
@@ -88,7 +89,7 @@ class QdrantDestination(VectorDBDestination):
     async def connect_to_qdrant(self) -> None:
         """Connect to Qdrant service with appropriate authentication."""
         if not settings.QDRANT_ENABLED:
-            raise ConnectionError("Qdrant services are disabled in this deployment")
+            raise QdrantServiceDisabledException("connection")
             
         if self.client is None:
             try:
@@ -143,7 +144,7 @@ class QdrantDestination(VectorDBDestination):
     def _check_qdrant_enabled(self) -> None:
         """Check if Qdrant is enabled and raise error if not."""
         if not settings.QDRANT_ENABLED:
-            raise ConnectionError("Qdrant services are disabled in this deployment")
+            raise QdrantServiceDisabledException("vector operation")
 
     async def ensure_client_readiness(self) -> None:
         """Ensure the client is ready to accept requests."""
@@ -173,6 +174,9 @@ class QdrantDestination(VectorDBDestination):
 
         Returns:
             bool: True if the collection exists, False otherwise.
+            
+        Raises:
+            QdrantServiceDisabledException: If Qdrant services are disabled.
         """
         self._check_qdrant_enabled()
         await self.ensure_client_readiness()
@@ -189,6 +193,9 @@ class QdrantDestination(VectorDBDestination):
 
         Args:
             vector_size (int): The size of the vectors to use.
+            
+        Raises:
+            QdrantServiceDisabledException: If Qdrant services are disabled.
         """
         self._check_qdrant_enabled()
         await self.ensure_client_readiness()
@@ -254,6 +261,9 @@ class QdrantDestination(VectorDBDestination):
 
         Args:
             entity (ChunkEntity): The entity to insert.
+            
+        Raises:
+            QdrantServiceDisabledException: If Qdrant services are disabled.
         """
         self._check_qdrant_enabled()
         await self.ensure_client_readiness()
@@ -298,6 +308,9 @@ class QdrantDestination(VectorDBDestination):
 
         Args:
             entities (list[ChunkEntity]): The entities to insert.
+            
+        Raises:
+            QdrantServiceDisabledException: If Qdrant services are disabled.
         """
         if not entities:
             return
@@ -361,6 +374,9 @@ class QdrantDestination(VectorDBDestination):
 
         Args:
             db_entity_id (UUID): The ID of the entity to delete.
+            
+        Raises:
+            QdrantServiceDisabledException: If Qdrant services are disabled.
         """
         self._check_qdrant_enabled()
         await self.ensure_client_readiness()
@@ -374,7 +390,14 @@ class QdrantDestination(VectorDBDestination):
         )
 
     async def delete_by_sync_id(self, sync_id: UUID) -> None:
-        """Delete entities from the destination by sync ID."""
+        """Delete entities from the destination by sync ID.
+        
+        Args:
+            sync_id (UUID): The sync ID to delete entities for.
+            
+        Raises:
+            QdrantServiceDisabledException: If Qdrant services are disabled.
+        """
         self._check_qdrant_enabled()
         await self.ensure_client_readiness()
 
@@ -399,6 +422,9 @@ class QdrantDestination(VectorDBDestination):
         Args:
             entity_ids (list[str]): The IDs of the entities to delete.
             sync_id (UUID): The sync ID.
+            
+        Raises:
+            QdrantServiceDisabledException: If Qdrant services are disabled.
         """
         if not entity_ids:
             return
@@ -430,6 +456,9 @@ class QdrantDestination(VectorDBDestination):
         Args:
             parent_id (str): The parent ID to delete children for.
             sync_id (str): The sync ID.
+            
+        Raises:
+            QdrantServiceDisabledException: If Qdrant services are disabled.
         """
         if not parent_id:
             return
@@ -800,7 +829,11 @@ class QdrantDestination(VectorDBDestination):
 
         Returns:
             list[dict]: The search results.
+            
+        Raises:
+            QdrantServiceDisabledException: If Qdrant services are disabled.
         """
+        self._check_qdrant_enabled()
         return await self.bulk_search(
             query_vectors=[query_vector],
             limit=limit,
@@ -953,7 +986,14 @@ class QdrantDestination(VectorDBDestination):
             raise
 
     async def has_keyword_index(self) -> bool:
-        """Check if the destination has a keyword index."""
+        """Check if the destination has a keyword index.
+        
+        Returns:
+            bool: True if keyword index exists, False otherwise.
+            
+        Raises:
+            QdrantServiceDisabledException: If Qdrant services are disabled.
+        """
         self._check_qdrant_enabled()
         vector_config_names = await self.get_vector_config_names()
         return KEYWORD_VECTOR_NAME in vector_config_names
@@ -964,6 +1004,9 @@ class QdrantDestination(VectorDBDestination):
         Returns:
             list[str]: A list of vector configuration names from the collection.
                 Includes both dense vector configs and sparse vector configs.
+                
+        Raises:
+            QdrantServiceDisabledException: If Qdrant services are disabled.
         """
         self._check_qdrant_enabled()
         await self.ensure_client_readiness()

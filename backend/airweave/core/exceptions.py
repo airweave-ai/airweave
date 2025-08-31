@@ -242,6 +242,89 @@ class InvalidStateError(Exception):
         super().__init__(self.message)
 
 
+# Vector service exceptions
+class VectorServiceDisabledException(AirweaveException):
+    """Exception raised when vector services are disabled but vector operations are attempted."""
+
+    def __init__(
+        self,
+        operation: str = "vector operation",
+        message: Optional[str] = None,
+    ):
+        """Create a new VectorServiceDisabledException instance.
+
+        Args:
+        ----
+            operation (str): The specific vector operation that was attempted.
+            message (str, optional): Custom error message. If not provided, generates one.
+
+        """
+        if message is None:
+            message = (
+                f"Vector services are disabled in this deployment. "
+                f"The requested {operation} cannot be performed. "
+                f"Please contact your administrator to enable vector services."
+            )
+
+        self.operation = operation
+        self.message = message
+        super().__init__(self.message)
+
+
+class QdrantServiceDisabledException(VectorServiceDisabledException):
+    """Exception raised when Qdrant services are disabled but Qdrant operations are attempted."""
+
+    def __init__(
+        self,
+        operation: str = "Qdrant operation",
+        message: Optional[str] = None,
+    ):
+        """Create a new QdrantServiceDisabledException instance.
+
+        Args:
+        ----
+            operation (str): The specific Qdrant operation that was attempted.
+            message (str, optional): Custom error message. If not provided, generates one.
+
+        """
+        if message is None:
+            message = (
+                f"Qdrant vector database services are disabled in this deployment. "
+                f"The requested {operation} cannot be performed. "
+                f"Vector search, insert, and delete operations are not available."
+            )
+
+        super().__init__(operation, message)
+
+
+class RedisServiceDisabledException(AirweaveException):
+    """Exception raised when Redis services are disabled but Redis operations are attempted."""
+
+    def __init__(
+        self,
+        operation: str = "Redis operation",
+        message: Optional[str] = None,
+    ):
+        """Create a new RedisServiceDisabledException instance.
+
+        Args:
+        ----
+            operation (str): The specific Redis operation that was attempted.
+            message (str, optional): Custom error message. If not provided, generates one.
+
+        """
+        if message is None:
+            message = (
+                f"Redis monitoring services are disabled in this deployment. "
+                f"The requested {operation} will be skipped. "
+                f"Sync monitoring will use database-only storage."
+            )
+
+        self.operation = operation
+        self.message = message
+        super().__init__(self.message)
+
+
 def unpack_validation_error(exc: ValidationError) -> dict:
     """Unpack a Pydantic validation error into a dictionary.
 
