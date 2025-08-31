@@ -53,6 +53,9 @@ class QdrantDestination(VectorDBDestination):
         Returns:
             QdrantDestination: The created destination.
         """
+        if not settings.QDRANT_ENABLED:
+            raise ConnectionError("Qdrant services are disabled in this deployment")
+            
         instance = cls()
         instance.set_logger(logger or default_logger)
         instance.collection_id = collection_id
@@ -84,6 +87,9 @@ class QdrantDestination(VectorDBDestination):
 
     async def connect_to_qdrant(self) -> None:
         """Connect to Qdrant service with appropriate authentication."""
+        if not settings.QDRANT_ENABLED:
+            raise ConnectionError("Qdrant services are disabled in this deployment")
+            
         if self.client is None:
             try:
                 # Configure client
@@ -134,8 +140,14 @@ class QdrantDestination(VectorDBDestination):
                         f"Failed to connect to Qdrant service at {location}: {str(e)}"
                     ) from e
 
+    def _check_qdrant_enabled(self) -> None:
+        """Check if Qdrant is enabled and raise error if not."""
+        if not settings.QDRANT_ENABLED:
+            raise ConnectionError("Qdrant services are disabled in this deployment")
+
     async def ensure_client_readiness(self) -> None:
         """Ensure the client is ready to accept requests."""
+        self._check_qdrant_enabled()
         if self.client is None:
             await self.connect_to_qdrant()
             if self.client is None:
@@ -162,6 +174,7 @@ class QdrantDestination(VectorDBDestination):
         Returns:
             bool: True if the collection exists, False otherwise.
         """
+        self._check_qdrant_enabled()
         await self.ensure_client_readiness()
         try:
             collections_response = await self.client.get_collections()
@@ -177,6 +190,7 @@ class QdrantDestination(VectorDBDestination):
         Args:
             vector_size (int): The size of the vectors to use.
         """
+        self._check_qdrant_enabled()
         await self.ensure_client_readiness()
 
         try:
@@ -241,6 +255,7 @@ class QdrantDestination(VectorDBDestination):
         Args:
             entity (ChunkEntity): The entity to insert.
         """
+        self._check_qdrant_enabled()
         await self.ensure_client_readiness()
 
         # Use the entity's to_storage_dict method to get properly serialized data
@@ -287,6 +302,7 @@ class QdrantDestination(VectorDBDestination):
         if not entities:
             return
 
+        self._check_qdrant_enabled()
         await self.ensure_client_readiness()
 
         # Convert entities to Qdrant points
@@ -346,6 +362,7 @@ class QdrantDestination(VectorDBDestination):
         Args:
             db_entity_id (UUID): The ID of the entity to delete.
         """
+        self._check_qdrant_enabled()
         await self.ensure_client_readiness()
 
         await self.client.delete(
@@ -358,6 +375,7 @@ class QdrantDestination(VectorDBDestination):
 
     async def delete_by_sync_id(self, sync_id: UUID) -> None:
         """Delete entities from the destination by sync ID."""
+        self._check_qdrant_enabled()
         await self.ensure_client_readiness()
 
         await self.client.delete(
@@ -385,6 +403,7 @@ class QdrantDestination(VectorDBDestination):
         if not entity_ids:
             return
 
+        self._check_qdrant_enabled()
         await self.ensure_client_readiness()
 
         await self.client.delete(
@@ -415,6 +434,7 @@ class QdrantDestination(VectorDBDestination):
         if not parent_id:
             return
 
+        self._check_qdrant_enabled()
         await self.ensure_client_readiness()
 
         # Ensure sync_id is a string
@@ -826,6 +846,7 @@ class QdrantDestination(VectorDBDestination):
             list[list[dict]]: List of search results for each query vector.
                 Each inner list contains results for the corresponding query vector.
         """
+        self._check_qdrant_enabled()
         await self.ensure_client_readiness()
 
         if not query_vectors:
@@ -933,6 +954,7 @@ class QdrantDestination(VectorDBDestination):
 
     async def has_keyword_index(self) -> bool:
         """Check if the destination has a keyword index."""
+        self._check_qdrant_enabled()
         vector_config_names = await self.get_vector_config_names()
         return KEYWORD_VECTOR_NAME in vector_config_names
 
@@ -943,6 +965,7 @@ class QdrantDestination(VectorDBDestination):
             list[str]: A list of vector configuration names from the collection.
                 Includes both dense vector configs and sparse vector configs.
         """
+        self._check_qdrant_enabled()
         await self.ensure_client_readiness()
 
         try:
