@@ -45,4 +45,5 @@
     "files.watcherExclude": {
         "**/fern/**": true
     },
+    "kiroAgent.configureMCP": "Disabled",
 }
