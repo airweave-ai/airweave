@@ -54,6 +54,10 @@ class Settings(BaseSettings):
         WEB_FETCHER_MAX_CONCURRENT (int): Max concurrent web scraping requests
         OPENAI_MAX_CONCURRENT (int): Max concurrent OpenAI API requests
         CTTI_MAX_CONCURRENT (int): Max concurrent CTTI (ClinicalTrials.gov) requests
+        VECTOR_SERVICES_ENABLED (bool): Whether vector-based services are enabled.
+        REDIS_MONITORING_ENABLED (bool): Whether Redis-based sync monitoring is enabled.
+        QDRANT_ENABLED (bool): Whether Qdrant vector database integration is enabled.
+        DEFAULT_BILLING_PLAN (str): The default billing plan for new organizations.
 
         # Custom deployment URLs
         API_FULL_URL (Optional[str]): The full URL for the API.
@@ -137,6 +141,12 @@ class Settings(BaseSettings):
     WEB_FETCHER_MAX_CONCURRENT: int = 10  # Max concurrent web scraping requests
     OPENAI_MAX_CONCURRENT: int = 20  # Max concurrent OpenAI API requests
     CTTI_MAX_CONCURRENT: int = 3  # Max concurrent CTTI (ClinicalTrials.gov) requests
+
+    # Service control flags
+    VECTOR_SERVICES_ENABLED: bool = False
+    REDIS_MONITORING_ENABLED: bool = False
+    QDRANT_ENABLED: bool = False
+    DEFAULT_BILLING_PLAN: str = "ENTERPRISE"
 
     # Custom deployment URLs - these are used to override the default URLs to allow
     # for custom domains in custom deployments
