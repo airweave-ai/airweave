@@ -129,14 +129,14 @@ class BillingService:
         if existing:
             raise InvalidStateError("Billing record already exists for organization")
 
-        # Get plan from organization metadata if available
-        selected_plan = BillingPlan.DEVELOPER  # Default
+        # Get plan from organization metadata if available, otherwise use settings default
+        selected_plan = BillingPlan(settings.DEFAULT_BILLING_PLAN)  # Use settings default
         if hasattr(organization, "org_metadata") and organization.org_metadata:
             onboarding_data = organization.org_metadata.get("onboarding", {})
-            plan_from_metadata = onboarding_data.get("subscriptionPlan", "developer")
-            # Convert to BillingPlan enum
-            if plan_from_metadata in ["developer", "startup", "enterprise"]:
-                selected_plan = BillingPlan(plan_from_metadata)
+            plan_from_metadata = onboarding_data.get("subscriptionPlan")
+            # Convert to BillingPlan enum if provided
+            if plan_from_metadata and plan_from_metadata.upper() in [plan.value for plan in BillingPlan]:
+                selected_plan = BillingPlan(plan_from_metadata.upper())
 
         billing_create = OrganizationBillingCreate(
             stripe_customer_id=stripe_customer_id,

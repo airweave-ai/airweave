@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Optional
 from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from airweave.core.config import settings
 from airweave.models._base import Base
 
 if TYPE_CHECKING:
@@ -27,7 +28,9 @@ class OrganizationBilling(Base):
     stripe_subscription_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     # Billing plan and status
-    billing_plan: Mapped[str] = mapped_column(String(50), default="TRIAL", nullable=False)
+    billing_plan: Mapped[str] = mapped_column(
+        String(50), default=lambda: settings.DEFAULT_BILLING_PLAN, nullable=False
+    )
     billing_status: Mapped[str] = mapped_column(String(50), default="ACTIVE", nullable=False)
 
     # Trial tracking - now only used for tracking Stripe's trial

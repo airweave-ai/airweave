@@ -7,6 +7,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from airweave.core.config import settings
+
 
 class BillingPlan(str, Enum):
     """Billing plan tiers."""
@@ -40,7 +42,10 @@ class PaymentStatus(str, Enum):
 class OrganizationBillingBase(BaseModel):
     """Organization billing base schema."""
 
-    billing_plan: BillingPlan = Field(default=BillingPlan.TRIAL, description="Current billing plan")
+    billing_plan: BillingPlan = Field(
+        default_factory=lambda: BillingPlan(settings.DEFAULT_BILLING_PLAN), 
+        description="Current billing plan"
+    )
     billing_status: BillingStatus = Field(
         default=BillingStatus.ACTIVE, description="Current billing status"
     )
