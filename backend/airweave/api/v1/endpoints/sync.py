@@ -267,6 +267,30 @@ async def subscribe_sync_job(
     # Track active SSE connections
     connection_id = f"{ctx}:{job_id}:{asyncio.get_event_loop().time()}"
 
+    # Check if Redis monitoring is enabled
+    from airweave.core.redis_client import redis_client
+    if not redis_client.is_enabled:
+        # Return a simple response indicating monitoring is disabled
+        async def disabled_event_stream() -> AsyncGenerator[str, None]:
+            yield f"data: {json.dumps({'type': 'connected', 'job_id': str(job_id)})}\n\n"
+            yield f"data: {json.dumps({'type': 'info', 'message': 'Real-time monitoring is disabled. Please check sync status via API.'})}\n\n"
+            # Keep connection alive with periodic heartbeats
+            while True:
+                await asyncio.sleep(30)
+                yield 'data: {"type": "heartbeat"}\n\n'
+        
+        return StreamingResponse(
+            disabled_event_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache, no-transform",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+                "Content-Type": "text/event-stream",
+                "Access-Control-Allow-Origin": "*",
+            },
+        )
+
     # Get a new pubsub instance subscribed to this job
     pubsub = await sync_pubsub.subscribe(job_id)
 

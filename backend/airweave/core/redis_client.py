@@ -17,10 +17,13 @@ class RedisClient:
         """Initialize Redis clients with separate pools."""
         self._client: Optional[redis.Redis] = None
         self._pubsub_client: Optional[redis.Redis] = None
+        self._enabled = settings.REDIS_MONITORING_ENABLED
 
     @property
     def client(self) -> redis.Redis:
         """Get or create the main Redis client."""
+        if not self._enabled:
+            raise RuntimeError("Redis monitoring is disabled in this deployment")
         if self._client is None:
             self._client = self._create_client(max_connections=50)
         return self._client
@@ -28,6 +31,8 @@ class RedisClient:
     @property
     def pubsub_client(self) -> redis.Redis:
         """Get or create the pubsub Redis client for SSE."""
+        if not self._enabled:
+            raise RuntimeError("Redis monitoring is disabled in this deployment")
         if self._pubsub_client is None:
             self._pubsub_client = self._create_client(max_connections=100)
         return self._pubsub_client
@@ -86,6 +91,9 @@ class RedisClient:
         Returns:
             The number of subscribers that received the message
         """
+        if not self._enabled:
+            logger.debug(f"Redis monitoring disabled - skipping publish to channel: {channel}")
+            return 0
         return await self.client.publish(channel, message)
 
     async def test_connection(self) -> bool:
@@ -94,6 +102,9 @@ class RedisClient:
         Returns:
             True if connection is successful, False otherwise
         """
+        if not self._enabled:
+            logger.info("Redis monitoring disabled - skipping connection test")
+            return True
         try:
             await self.client.ping()
             logger.info("Redis connection successful")
@@ -104,10 +115,66 @@ class RedisClient:
 
     async def close(self) -> None:
         """Close Redis connection gracefully."""
+        if not self._enabled:
+            logger.debug("Redis monitoring disabled - skipping connection close")
+            return
         if self._client:
             await self._client.close()
         if self._pubsub_client:
             await self._pubsub_client.close()
+
+    @property
+    def is_enabled(self) -> bool:
+        """Check if Redis monitoring is enabled.
+        
+        Returns:
+            True if Redis monitoring is enabled, False otherwise
+        """
+        return self._enabled
+
+    async def set(self, key: str, value: str, ex: Optional[int] = None) -> bool:
+        """Set a key-value pair in Redis.
+        
+        Args:
+            key: The key to set
+            value: The value to set
+            ex: Optional expiration time in seconds
+            
+        Returns:
+            True if successful, False if Redis is disabled
+        """
+        if not self._enabled:
+            logger.debug(f"Redis monitoring disabled - skipping set operation for key: {key}")
+            return False
+        return await self.client.set(key, value, ex=ex)
+
+    async def get(self, key: str) -> Optional[str]:
+        """Get a value from Redis.
+        
+        Args:
+            key: The key to get
+            
+        Returns:
+            The value if found and Redis is enabled, None otherwise
+        """
+        if not self._enabled:
+            logger.debug(f"Redis monitoring disabled - skipping get operation for key: {key}")
+            return None
+        return await self.client.get(key)
+
+    async def delete(self, key: str) -> int:
+        """Delete a key from Redis.
+        
+        Args:
+            key: The key to delete
+            
+        Returns:
+            Number of keys deleted (0 if Redis is disabled)
+        """
+        if not self._enabled:
+            logger.debug(f"Redis monitoring disabled - skipping delete operation for key: {key}")
+            return 0
+        return await self.client.delete(key)
 
 
 # Create a global instance

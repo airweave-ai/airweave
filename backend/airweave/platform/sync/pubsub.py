@@ -55,6 +55,10 @@ class SyncPubSub:
             job_id: The sync job ID.
             update: The progress update to publish.
         """
+        if not redis_client.is_enabled:
+            logger.debug(f"Redis monitoring disabled - skipping publish for job {job_id}")
+            return
+
         channel = self._channel_name(job_id)
         message = update.model_dump_json()
 
@@ -71,7 +75,13 @@ class SyncPubSub:
 
         Returns:
             redis.client.PubSub: A new Redis pubsub instance subscribed to this job's channel.
+            
+        Raises:
+            RuntimeError: If Redis monitoring is disabled.
         """
+        if not redis_client.is_enabled:
+            raise RuntimeError("Redis monitoring is disabled - pubsub subscriptions are not available")
+
         channel = self._channel_name(job_id)
 
         # Get socket keepalive options based on OS
