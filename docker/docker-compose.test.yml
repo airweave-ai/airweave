@@ -19,43 +19,43 @@ services:
       timeout: 5s
       retries: 5
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "9379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+  # redis:
+  #   image: redis:7-alpine
+  #   ports:
+  #     - "9379:6379"
+  #   volumes:
+  #     - redis_data:/data
+  #   healthcheck:
+  #     test: [ "CMD", "redis-cli", "ping" ]
+  #     interval: 5s
+  #     timeout: 5s
+  #     retries: 5
 
-  text2vec-transformers:
-    image: semitechnologies/transformers-inference:sentence-transformers-all-MiniLM-L6-v2
-    ports:
-      - "9080:8080"
-    environment:
-      ENABLE_CUDA: 0
-      WORKERS_PER_NODE: 1
-    healthcheck:
-      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:8080/health" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+  # text2vec-transformers:
+  #   image: semitechnologies/transformers-inference:sentence-transformers-all-MiniLM-L6-v2
+  #   ports:
+  #     - "9080:8080"
+  #   environment:
+  #     ENABLE_CUDA: 0
+  #     WORKERS_PER_NODE: 1
+  #   healthcheck:
+  #     test: [ "CMD", "wget", "--spider", "-q", "http://localhost:8080/health" ]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
 
-  qdrant:
-    image: qdrant/qdrant:latest
-    command: bash -c "apt-get update && apt-get install -y curl && ./entrypoint.sh" # we need to install curl to check health
-    ports:
-      - "9333:6333"
-    volumes:
-      - qdrant_data:/qdrant/storage
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:6333/healthz" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+  # qdrant:
+  #   image: qdrant/qdrant:latest
+  #   command: bash -c "apt-get update && apt-get install -y curl && ./entrypoint.sh" # we need to install curl to check health
+  #   ports:
+  #     - "9333:6333"
+  #   volumes:
+  #     - qdrant_data:/qdrant/storage
+  #   healthcheck:
+  #     test: [ "CMD", "curl", "-f", "http://localhost:6333/healthz" ]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
 
   backend:
     build:
@@ -64,17 +64,17 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-      qdrant:
-        condition: service_healthy
+      # redis:
+      #   condition: service_healthy
+      # qdrant:
+      #   condition: service_healthy
 
     # Override specific variables for container-specific settings
     environment:
       - DATABASE_URL=postgresql+asyncpg://airweave:airweave1234!@postgres:5432/airweave
-      - REDIS_HOST=redis
-      - QDRANT_HOST=qdrant
-      - QDRANT_PORT=6333
+      # - REDIS_HOST=redis
+      # - QDRANT_HOST=qdrant
+      # - QDRANT_PORT=6333
       - TESTING=true
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
@@ -84,8 +84,13 @@ services:
       - FIRST_SUPERUSER=admin@example.com
       - FIRST_SUPERUSER_PASSWORD=admin
       - ENCRYPTION_KEY="SpgLrrEEgJ/7QdhSMSvagL1juEY5eoyCG0tZN7OSQV0="
-      - TEXT2VEC_INFERENCE_URL=http://text2vec-transformers:8080
+      # - TEXT2VEC_INFERENCE_URL=http://text2vec-transformers:8080
       - AUTH_ENABLED=false
+      # Service control flags for testing
+      - VECTOR_SERVICES_ENABLED=false
+      - REDIS_MONITORING_ENABLED=false
+      - QDRANT_ENABLED=false
+      - DEFAULT_BILLING_PLAN=ENTERPRISE
 
     ports:
       - "9001:8001"
@@ -99,5 +104,5 @@ services:
 
 volumes:
   postgres_data:
-  redis_data:
-  qdrant_data:
+  # redis_data:
+  # qdrant_data:

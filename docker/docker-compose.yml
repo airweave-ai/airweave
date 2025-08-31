@@ -29,18 +29,18 @@ services:
       timeout: 5s
       retries: 5
 
-  redis:
-    container_name: airweave-redis
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+  # redis:
+  #   container_name: airweave-redis
+  #   image: redis:7-alpine
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redis_data:/data
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 5s
+  #     timeout: 5s
+  #     retries: 5
 
   backend:
     container_name: airweave-backend
@@ -58,10 +58,10 @@ services:
     environment:
       # Override any localhost references for container networking
       - POSTGRES_HOST=postgres
-      - REDIS_HOST=redis
-      - QDRANT_HOST=qdrant
-      - QDRANT_PORT=6333
-      - TEXT2VEC_INFERENCE_URL=http://text2vec-transformers:8080
+      # - REDIS_HOST=redis
+      # - QDRANT_HOST=qdrant
+      # - QDRANT_PORT=6333
+      # - TEXT2VEC_INFERENCE_URL=http://text2vec-transformers:8080
       # Environment configuration (can be overridden in .env)
       - ENVIRONMENT=${ENVIRONMENT:-local}
       - LOCAL_DEVELOPMENT=${LOCAL_DEVELOPMENT:-true}
@@ -71,13 +71,18 @@ services:
       - TEMPORAL_NAMESPACE=default
       - TEMPORAL_ENABLED=true
       - AUTH_ENABLED=false
+      # Service control flags (can be overridden in .env)
+      - VECTOR_SERVICES_ENABLED=${VECTOR_SERVICES_ENABLED:-false}
+      - REDIS_MONITORING_ENABLED=${REDIS_MONITORING_ENABLED:-false}
+      - QDRANT_ENABLED=${QDRANT_ENABLED:-false}
+      - DEFAULT_BILLING_PLAN=${DEFAULT_BILLING_PLAN:-ENTERPRISE}
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-      qdrant:
-        condition: service_healthy
+      # redis:
+      #   condition: service_healthy
+      # qdrant:
+      #   condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 10s
@@ -105,35 +110,35 @@ services:
       retries: 3
     restart: on-failure
 
-  text2vec-transformers:
-    container_name: airweave-embeddings
-    image: semitechnologies/transformers-inference:sentence-transformers-all-MiniLM-L6-v2
-    ports:
-      - "9878:8080"
-    environment:
-      ENABLE_CUDA: 0
-      WORKERS_PER_NODE: 1
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: on-failure
+  # text2vec-transformers:
+  #   container_name: airweave-embeddings
+  #   image: semitechnologies/transformers-inference:sentence-transformers-all-MiniLM-L6-v2
+  #   ports:
+  #     - "9878:8080"
+  #   environment:
+  #     ENABLE_CUDA: 0
+  #     WORKERS_PER_NODE: 1
+  #   healthcheck:
+  #     test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #   restart: on-failure
 
-  qdrant:
-    container_name: airweave-qdrant
-    image: qdrant/qdrant:latest
-    command: bash -c "apt-get update && apt-get install -y curl && ./entrypoint.sh" # we need to install curl to check health
-    ports:
-      - "6333:6333"
-    volumes:
-      - qdrant_data:/qdrant/storage
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-    restart: on-failure
+  # qdrant:
+  #   container_name: airweave-qdrant
+  #   image: qdrant/qdrant:latest
+  #   command: bash -c "apt-get update && apt-get install -y curl && ./entrypoint.sh" # we need to install curl to check health
+  #   ports:
+  #     - "6333:6333"
+  #   volumes:
+  #     - qdrant_data:/qdrant/storage
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 3
+  #   restart: on-failure
 
   temporal:
     container_name: airweave-temporal
@@ -183,10 +188,10 @@ services:
     environment:
       # Override any localhost references for container networking
       - POSTGRES_HOST=postgres
-      - REDIS_HOST=redis
-      - QDRANT_HOST=qdrant
-      - QDRANT_PORT=6333
-      - TEXT2VEC_INFERENCE_URL=http://text2vec-transformers:8080
+      # - REDIS_HOST=redis
+      # - QDRANT_HOST=qdrant
+      # - QDRANT_PORT=6333
+      # - TEXT2VEC_INFERENCE_URL=http://text2vec-transformers:8080
       # Environment configuration (can be overridden in .env)
       - ENVIRONMENT=${ENVIRONMENT:-local}
       - LOCAL_DEVELOPMENT=${LOCAL_DEVELOPMENT:-true}
@@ -196,6 +201,11 @@ services:
       - TEMPORAL_NAMESPACE=default
       - TEMPORAL_TASK_QUEUE=airweave-sync-queue
       - TEMPORAL_ENABLED=true
+      # Service control flags (can be overridden in .env)
+      - VECTOR_SERVICES_ENABLED=${VECTOR_SERVICES_ENABLED:-false}
+      - REDIS_MONITORING_ENABLED=${REDIS_MONITORING_ENABLED:-false}
+      - QDRANT_ENABLED=${QDRANT_ENABLED:-false}
+      - DEFAULT_BILLING_PLAN=${DEFAULT_BILLING_PLAN:-ENTERPRISE}
     volumes:
       - ../backend:/app
     entrypoint: ["python", "-m", "airweave.platform.temporal.worker"]
@@ -208,5 +218,5 @@ services:
 
 volumes:
   postgres_data:
-  redis_data:
-  qdrant_data:
+  # redis_data:
+  # qdrant_data:

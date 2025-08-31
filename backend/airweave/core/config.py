@@ -240,6 +240,96 @@ class Settings(BaseSettings):
             raise ValueError(f"{field_name} must be set when STRIPE_ENABLED is True")
         return v
 
+    @field_validator("QDRANT_ENABLED", mode="after")
+    def validate_qdrant_configuration(cls, v: bool, info: ValidationInfo) -> bool:
+        """Validate Qdrant configuration when QDRANT_ENABLED is True.
+        
+        Args:
+            v: The value of QDRANT_ENABLED.
+            info: Validation context containing all field values.
+            
+        Returns:
+            bool: The validated QDRANT_ENABLED value.
+            
+        Raises:
+            ValueError: If QDRANT_ENABLED is True but required Qdrant settings are missing.
+        """
+        if v:  # If Qdrant is enabled
+            qdrant_host = info.data.get("QDRANT_HOST")
+            qdrant_port = info.data.get("QDRANT_PORT")
+            
+            if not qdrant_host or not qdrant_port:
+                raise ValueError(
+                    "QDRANT_HOST and QDRANT_PORT must be set when QDRANT_ENABLED is True"
+                )
+        return v
+
+    @field_validator("REDIS_MONITORING_ENABLED", mode="after")
+    def validate_redis_configuration(cls, v: bool, info: ValidationInfo) -> bool:
+        """Validate Redis configuration when REDIS_MONITORING_ENABLED is True.
+        
+        Args:
+            v: The value of REDIS_MONITORING_ENABLED.
+            info: Validation context containing all field values.
+            
+        Returns:
+            bool: The validated REDIS_MONITORING_ENABLED value.
+            
+        Raises:
+            ValueError: If REDIS_MONITORING_ENABLED is True but Redis settings are missing.
+        """
+        if v:  # If Redis monitoring is enabled
+            redis_host = info.data.get("REDIS_HOST")
+            redis_port = info.data.get("REDIS_PORT")
+            
+            if not redis_host or not redis_port:
+                raise ValueError(
+                    "REDIS_HOST and REDIS_PORT must be set when REDIS_MONITORING_ENABLED is True"
+                )
+        return v
+
+    @field_validator("DEFAULT_BILLING_PLAN", mode="before")
+    def validate_billing_plan(cls, v: str) -> str:
+        """Validate that the default billing plan is a valid option.
+        
+        Args:
+            v: The value of DEFAULT_BILLING_PLAN.
+            
+        Returns:
+            str: The validated billing plan.
+            
+        Raises:
+            ValueError: If the billing plan is not a valid option.
+        """
+        valid_plans = ["TRIAL", "DEVELOPER", "STARTUP", "ENTERPRISE"]
+        if v not in valid_plans:
+            raise ValueError(
+                f"DEFAULT_BILLING_PLAN must be one of {valid_plans}, got '{v}'"
+            )
+        return v
+
+    @field_validator("VECTOR_SERVICES_ENABLED", mode="after")
+    def validate_vector_services_configuration(cls, v: bool, info: ValidationInfo) -> bool:
+        """Validate vector services configuration consistency.
+        
+        Args:
+            v: The value of VECTOR_SERVICES_ENABLED.
+            info: Validation context containing all field values.
+            
+        Returns:
+            bool: The validated VECTOR_SERVICES_ENABLED value.
+            
+        Raises:
+            ValueError: If vector services are enabled but Qdrant is disabled.
+        """
+        if v:  # If vector services are enabled
+            qdrant_enabled = info.data.get("QDRANT_ENABLED", False)
+            if not qdrant_enabled:
+                raise ValueError(
+                    "QDRANT_ENABLED must be True when VECTOR_SERVICES_ENABLED is True"
+                )
+        return v
+
     @field_validator("SQLALCHEMY_ASYNC_DATABASE_URI", mode="before")
     def assemble_db_connection(cls, v: Optional[str], info: ValidationInfo) -> PostgresDsn:
         """Build the SQLAlchemy database URI.
