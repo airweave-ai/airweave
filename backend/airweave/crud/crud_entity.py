@@ -4,9 +4,10 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from airweave.api.context import ApiContext
 from airweave.core.exceptions import NotFoundException
 from airweave.crud._base_organization import CRUDBaseOrganization
 from airweave.models.entity import Entity
@@ -38,6 +39,93 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
                 f"Entity with entity ID {entity_id} and sync ID {sync_id} not found"
             )
         return db_obj
+
+    async def bulk_get_by_entity_and_sync(
+        self,
+        db: AsyncSession,
+        *,
+        sync_id: UUID,
+        entity_ids: list[str],
+    ) -> dict[str, Entity]:
+        """Get many entities by (entity_id, sync_id) in a single query.
+
+        Returns a mapping of entity_id -> Entity. Missing ids are simply absent.
+        """
+        if not entity_ids:
+            return {}
+        stmt = select(Entity).where(
+            Entity.sync_id == sync_id,
+            Entity.entity_id.in_(entity_ids),
+        )
+        result = await db.execute(stmt)
+        rows = list(result.unique().scalars().all())
+        return {row.entity_id: row for row in rows}
+
+    def _get_org_id_from_context(self, ctx: ApiContext) -> UUID | None:
+        """Attempt to extract organization ID from the API context."""
+        # 1) Direct attributes
+        for attr in ("organization_id", "org_id"):
+            if org_id := getattr(ctx, attr, None):
+                return org_id
+
+        # 2) Nested objects
+        for holder_name in ("organization", "org", "tenant"):
+            if holder_obj := getattr(ctx, holder_name, None):
+                if org_id := getattr(holder_obj, "id", None):
+                    return org_id
+        return None
+
+    async def bulk_create(
+        self,
+        db: AsyncSession,
+        *,
+        objs: list[EntityCreate],
+        ctx: ApiContext,
+    ) -> list[Entity]:
+        """Create many Entity rows in a single transaction.
+
+        Ensures organization_id is set from the provided context.
+        Caller controls commit via the session context.
+        """
+        if not objs:
+            return []
+
+        org_id = self._get_org_id_from_context(ctx)
+        if org_id is None:
+            raise ValueError("ApiContext must contain valid organization information")
+
+        models_to_add: list[Entity] = []
+        for o in objs:
+            data = o.model_dump()
+            model = self.model(organization_id=org_id, **data)
+            models_to_add.append(model)
+
+        db.add_all(models_to_add)
+        # Ensure PKs and defaults are assigned by the DB before returning
+        await db.flush()
+        return models_to_add
+
+    async def bulk_update_hash(
+        self,
+        db: AsyncSession,
+        *,
+        rows: list[tuple[UUID, str]],
+    ) -> None:
+        """Bulk update the 'hash' field for many entities.
+
+        Args:
+            db: The async database session.
+            rows: list of tuples (entity_db_id, new_hash)
+        """
+        if not rows:
+            return
+        for entity_db_id, new_hash in rows:
+            stmt = (
+                update(Entity)
+                .where(Entity.id == entity_db_id)
+                .values(hash=new_hash, modified_at=datetime.now(datetime.UTC))
+            )
+            await db.execute(stmt)
 
     async def update_job_id(
         self,
