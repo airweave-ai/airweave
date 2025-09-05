@@ -325,7 +325,7 @@ class OneDriveSource(BaseSource):
         )
 
         # Add additional properties for file processing
-        entity.total_size = item.get("size", 0)
+        entity.airweave_system_metadata.total_size = item.get("size", 0)
 
         return entity
 

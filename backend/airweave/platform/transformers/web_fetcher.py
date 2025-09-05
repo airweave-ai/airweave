@@ -616,7 +616,7 @@ def _create_web_file_entity(
     enhanced_metadata: dict,
 ) -> WebFileEntity:
     """Create WebFileEntity with optimized field copying."""
-    return WebFileEntity(
+    entity = WebFileEntity(
         entity_id=web_entity.entity_id,
         file_id=f"web_{web_entity.entity_id}",
         name=f"{title}.md",
@@ -627,7 +627,6 @@ def _create_web_file_entity(
         local_path=temp_file_path,
         file_uuid=file_uuid,
         checksum=checksum,
-        total_size=file_size,
         # Copy BaseEntity fields
         breadcrumbs=web_entity.breadcrumbs,
         parent_entity_id=web_entity.parent_entity_id,
@@ -641,6 +640,9 @@ def _create_web_file_entity(
         # Enhanced metadata
         metadata=enhanced_metadata,
     )
+
+    entity.airweave_system_metadata.total_size = file_size
+    return entity
 
 
 async def _store_file_entity(

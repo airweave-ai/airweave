@@ -532,12 +532,13 @@ class GmailSource(BaseSource):
                         name=filename,
                         mime_type=mime_type,
                         size=size,
-                        total_size=size,
                         download_url=dummy_download_url,  # Required by FileEntity
                         message_id=message_id,
                         attachment_id=attachment_id,
                         thread_id=thread_id,
                     )
+
+                    file_entity.airweave_system_metadata.total_size = size
 
                     # Get base64 data
                     base64_data = attachment_data.get("data", "")
