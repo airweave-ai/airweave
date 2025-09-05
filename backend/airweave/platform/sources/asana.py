@@ -457,7 +457,6 @@ class AsanaSource(BaseSource):
                 name=attachment_detail.get("name"),
                 mime_type=attachment_detail.get("mime_type"),
                 size=attachment_detail.get("size"),
-                total_size=attachment_detail.get("size"),  # Set total_size from API response
                 download_url=attachment_detail.get("download_url"),
                 created_at=attachment_detail.get("created_at"),
                 modified_at=attachment_detail.get("modified_at"),
@@ -469,6 +468,8 @@ class AsanaSource(BaseSource):
                 view_url=attachment_detail.get("view_url"),
                 permanent=attachment_detail.get("permanent", False),
             )
+
+            file_entity.airweave_system_metadata.total_size = attachment_detail.get("size")
 
             # Different headers based on URL type
             headers = None
