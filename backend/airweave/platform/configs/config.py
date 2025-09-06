@@ -367,6 +367,105 @@ class TrelloConfig(SourceConfig):
         return v
 
 
+class AirtableConfig(SourceConfig):
+    """Airtable source behavior flags (used with OAuth 2.0)."""
+
+    base_ids: list[str] = Field(
+        default=[],
+        title="Base IDs",
+        description="Base IDs to sync (e.g., 'appXXXXXXXX'). If empty, "
+        "list bases via Meta API and sync all.",
+    )
+    table_ids: list[str] = Field(
+        default=[],
+        title="Table IDs",
+        description="Restrict to these table IDs (e.g., "
+        "'tblXXXXXXXX'). If empty, include all tables.",
+    )
+    table_names: list[str] = Field(
+        default=[],
+        title="Table Names",
+        description="Restrict to tables with these names (per base). If empty, include all tables.",
+    )
+    view: Optional[str] = Field(
+        default=None,
+        title="View",
+        description="Optional view name/ID to filter records for each table.",
+    )
+    fields: list[str] = Field(
+        default=[],
+        title="Fields",
+        description="Optional subset of field names to fetch for each table. Empty = all fields.",
+    )
+    filter_by_formula: Optional[str] = Field(
+        default=None,
+        title="Filter by formula",
+        description="Airtable filterByFormula applied to all tables (advanced).",
+    )
+    page_size: Optional[int] = Field(
+        default=100, title="Page size", description="Records per page (max 100)."
+    )
+    max_records: Optional[int] = Field(
+        default=None,
+        title="Max records",
+        description="Global cap across each table; blank for no cap.",
+    )
+    include_attachments: bool = Field(
+        default=True,
+        title="Attachments",
+        description="Download & index files from attachment fields.",
+    )
+    attachment_max_bytes: Optional[int] = Field(
+        default=None,
+        title="Attachment size cap (bytes)",
+        description="Skip attachment downloads larger than this.",
+    )
+
+    @validator("base_ids", "table_ids", "table_names", "fields", pre=True)
+    def _parse_csv(cls, v):
+        if isinstance(v, str):
+            return [x.strip() for x in v.split(",") if x.strip()]
+        return v
+
+    # blank-string-friendly coercion
+    @staticmethod
+    def _parse_bool(value: Any, default: bool) -> bool:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        if isinstance(value, str):
+            s = value.strip().lower()
+            if s == "":
+                return default
+            if s in {"1", "true", "t", "yes", "y", "on"}:
+                return True
+            if s in {"0", "false", "f", "no", "n", "off"}:
+                return False
+        raise ValueError("Invalid boolean")
+
+    @field_validator("include_attachments", mode="before")
+    @classmethod
+    def _v_include_attachments(cls, v):
+        return cls._parse_bool(v, default=True)
+
+    @field_validator("page_size", "max_records", "attachment_max_bytes", mode="before")
+    @classmethod
+    def _v_ints(cls, v):
+        if v is None:
+            return v
+        if isinstance(v, (int, float)):
+            return int(v)
+        if isinstance(v, str):
+            s = v.strip().replace(",", "").replace("_", "")
+            if s == "":
+                return None
+            return int(s)
+        return v
+
+
 # ----------------- AUTH PROVIDER CONFIGS -----------------
 
 

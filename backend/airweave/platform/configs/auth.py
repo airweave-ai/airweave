@@ -256,6 +256,22 @@ class GoogleCalendarAuthConfig(OAuth2BYOCAuthConfig):
     # Inherits client_id, client_secret, refresh_token and access_token from OAuth2BYOCAuthConfig
 
 
+class AirtableAuthConfig(OAuth2BYOCAuthConfig):
+    """Airtable OAuth 2.0 credentials (Bring Your Own Client).
+
+    Register an OAuth integration in Airtable Developer Hub, then provide:
+      - client_id, client_secret
+      - (runtime) access_token, refresh_token are managed by the token manager
+
+    OAuth endpoints:
+      - Authorize: https://airtable.com/oauth2/v1/authorize
+      - Token:     https://airtable.com/oauth2/v1/token
+    Required scopes (read-only): schema.bases:read, data.records:read
+    """
+
+    # Inherits client_id, client_secret, access_token, refresh_token
+
+
 class GoogleDriveAuthConfig(OAuth2BYOCAuthConfig):
     """Google Drive authentication credentials schema."""
 

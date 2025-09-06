@@ -9,6 +9,21 @@ integrations:
     content_type: "application/x-www-form-urlencoded"
     client_credential_location: "body"
 
+  airtable:
+      auth_type: "oauth2_with_refresh"
+      url: "https://airtable.com/oauth2/v1/authorize"
+      backend_url: "https://airtable.com/oauth2/v1/token"
+      grant_type: "authorization_code"
+      client_id: "2ef30860-3808-41ea-b957-c20666ef0b71"
+      client_secret: "9c56272a2d7c0235ada0f28f788ef77a7d045fd3446f963f0ffebdf83635ed3c"
+      content_type: "application/x-www-form-urlencoded"
+      client_credential_location: "body"
+      scope: "schema.bases:read data.records:read"
+      # optional frontend params if your flow needs them:
+      additional_frontend_params:
+        response_type: "code"
+        state: "DEV_ONLY_STATIC_STATE"
+
   bitbucket:
     auth_type: "config_class"
 
