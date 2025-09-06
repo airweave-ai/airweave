@@ -1,8 +1,8 @@
 """Configuration classes for platform components."""
 
-from typing import Optional
+from typing import Any, Optional
 
-from pydantic import Field, validator
+from pydantic import Field, field_validator, validator
 
 from airweave.platform.configs._base import BaseConfig
 
@@ -63,6 +63,8 @@ class ConfluenceConfig(SourceConfig):
 
 class DropboxConfig(SourceConfig):
     """Dropbox configuration schema."""
+
+    pass
 
 
 class ElasticsearchConfig(SourceConfig):
@@ -270,8 +272,102 @@ class TodoistConfig(SourceConfig):
     pass
 
 
-# AUTH PROVIDER CONFIGURATION CLASSES
-# These are for configuring auth provider behavior
+# ----------------- Trello (new) -----------------
+
+
+class TrelloConfig(SourceConfig):
+    """Trello source behavior flags."""
+
+    board_ids: list[str] = Field(
+        default=[],
+        title="Board IDs",
+        description="If empty, sync all boards visible to the user; otherwise only these boards.",
+    )
+    include_archived: bool = Field(
+        default=False, title="Include archived", description="Include closed boards/lists/cards."
+    )
+    include_attachments: bool = Field(
+        default=True, title="Attachments", description="Download & index card attachments."
+    )
+    include_comments: bool = Field(
+        default=True, title="Comments", description="Index card comments (commentCard actions)."
+    )
+    include_checklists: bool = Field(
+        default=True, title="Checklists", description="Index card checklists."
+    )
+    attachment_max_bytes: Optional[int] = Field(
+        default=None,
+        title="Attachment size cap (bytes)",
+        description="Skip downloads larger than this.",
+    )
+
+    @validator("board_ids", pre=True)
+    def _parse_board_ids(cls, v):
+        """Accept comma-separated string or list; blanks → empty list."""
+        if isinstance(v, str):
+            return [x.strip() for x in v.split(",") if x.strip()]
+        return v
+
+    # ---- helpers to coerce UI strings & blanks ----
+    @staticmethod
+    def _parse_bool(value: Any, default: bool) -> bool:
+        """Coerce '', None, and common string/int forms into booleans."""
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        if isinstance(value, str):
+            s = value.strip().lower()
+            if s == "":  # blank => default
+                return default
+            if s in {"1", "true", "t", "yes", "y", "on"}:
+                return True
+            if s in {"0", "false", "f", "no", "n", "off"}:
+                return False
+        raise ValueError("Invalid boolean")
+
+    @field_validator("include_archived", mode="before")
+    @classmethod
+    def _v_include_archived(cls, v):
+        return cls._parse_bool(v, default=False)
+
+    @field_validator("include_attachments", mode="before")
+    @classmethod
+    def _v_include_attachments(cls, v):
+        return cls._parse_bool(v, default=True)
+
+    @field_validator("include_comments", mode="before")
+    @classmethod
+    def _v_include_comments(cls, v):
+        return cls._parse_bool(v, default=True)
+
+    @field_validator("include_checklists", mode="before")
+    @classmethod
+    def _v_include_checklists(cls, v):
+        return cls._parse_bool(v, default=True)
+
+    @field_validator("attachment_max_bytes", mode="before")
+    @classmethod
+    def _v_attachment_max_bytes(cls, v):
+        """Accept None, '', numeric strings (with _ or ,), or ints."""
+        if v is None:
+            return None
+        if isinstance(v, (int, float)):
+            return int(v)
+        if isinstance(v, str):
+            s = v.strip().replace(",", "").replace("_", "")
+            if s == "":
+                return None
+            try:
+                return int(s)
+            except ValueError:
+                raise ValueError("Must be an integer (bytes)") from None
+        return v
+
+
+# ----------------- AUTH PROVIDER CONFIGS -----------------
 
 
 class AuthProviderConfig(BaseConfig):

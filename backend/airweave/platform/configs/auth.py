@@ -324,6 +324,15 @@ class OutlookMailAuthConfig(OAuth2WithRefreshAuthConfig):
     # Inherits refresh_token and access_token from OAuth2WithRefreshAuthConfig
 
 
+class TrelloAuthConfig(BaseConfig):
+    """Trello API auth (key + token)."""
+
+    api_key: str = Field(title="API Key", description="Trello API key (from trello.com/app-key)")
+    api_token: str = Field(
+        title="API Token", description="Trello API token authorized for the user"
+    )
+
+
 class CTTIAuthConfig(AuthConfig):
     """CTTI Clinical Trials authentication credentials schema."""
 
