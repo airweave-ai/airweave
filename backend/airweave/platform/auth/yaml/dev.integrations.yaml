@@ -25,22 +25,17 @@ integrations:
         state: "DEV_ONLY_STATIC_STATE"
 
   microsoft_teams:
-    display_name: Microsoft Teams (OAuth)
-    auth_type: oauth2_with_refresh
-    oauth2:
-      authorize_url: https://login.microsoftonline.com/common/oauth2/v2.0/authorize
-      token_url: https://login.microsoftonline.com/common/oauth2/v2.0/token
-      scopes:
-        # Sign-in basics + refresh
-        - openid
-        - profile
-        - offline_access
-        - User.Read
-        # Teams delegated scopes:
-        - Team.ReadBasic.All         # /me/joinedTeams
-        - Channel.ReadBasic.All      # list channels
-        - ChannelMessage.Read.All    # channel messages (admin consent required)
-        - Chat.Read                  # user chats & chat messages
+    auth_type: "oauth2_with_refresh"
+    url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
+    backend_url: "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+    grant_type: "authorization_code"
+    client_id: "<YOUR_AZURE_APP_ID>"
+    client_secret: "<YOUR_AZURE_APP_SECRET>"
+    content_type: "application/x-www-form-urlencoded"
+    client_credential_location: "body"
+    scope: "offline_access openid profile https://graph.microsoft.com/User.Read https://graph.microsoft.com/Team.ReadBasic.All https://graph.microsoft.com/Channel.ReadBasic.All https://graph.microsoft.com/ChannelMessage.Read.All https://graph.microsoft.com/Chat.Read"
+    additional_frontend_params:
+      response_mode: "query"
 
   bitbucket:
     auth_type: "config_class"
