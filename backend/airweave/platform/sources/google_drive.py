@@ -744,16 +744,8 @@ class GoogleDriveSource(BaseSource):
     ) -> Optional[ChunkEntity]:
         """Process a single file for batch generation."""
         try:
-            # Check if file should be included based on exclusion patterns
-            try:
-                should_include = await self._should_include_file(client, file_obj)
-            except Exception as e:
-                self.logger.error(f"Error checking if file should be included: {str(e)}")
-                # Skip this file if we can't check inclusion
-                return None
-
-            if not should_include:
-                return None  # Skip this file
+            # Server-side include filtering is applied upstream via include_patterns.
+            # No client-side exclusion check here.
 
             # Get file entity (might be None for trashed files)
             file_entity = self._build_file_entity(file_obj)
@@ -781,16 +773,8 @@ class GoogleDriveSource(BaseSource):
     ) -> Optional[ChunkEntity]:
         """Process a single file for sequential generation."""
         try:
-            # Check if file should be included based on exclusion patterns
-            try:
-                should_include = await self._should_include_file(client, file_obj)
-            except Exception as e:
-                self.logger.error(f"Error checking if file should be included: {str(e)}")
-                # Skip this file if we can't check inclusion
-                return None
-
-            if not should_include:
-                return None  # Skip this file
+            # Server-side include filtering is applied upstream via include_patterns.
+            # No client-side exclusion check here.
 
             # Get file entity (might be None for trashed files)
             file_entity = self._build_file_entity(file_obj)
