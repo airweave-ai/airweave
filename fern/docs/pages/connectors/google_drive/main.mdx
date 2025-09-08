@@ -47,7 +47,24 @@ This connector uses **OAuth 2.0 with custom credentials**. You need to provide y
 
 ### Configuration Options
 
-This connector does not have any additional configuration options.
+The following configuration options are available for this connector:
+
+<Card
+  title="Configuration Parameters"
+  className="config-card"
+  style={{ backgroundColor: 'rgba(0, 0, 0, 0.05)', padding: '16px', marginBottom: '24px' }}
+>
+
+Google Drive configuration schema.
+<ParamField
+  path="include_patterns"
+  type="list[str]"
+  required={false}
+  default="[]"
+>
+  List of file/folder paths to include in synchronization. Examples: 'my_folder/*', 'my_folder/my_file.pdf'. Separate multiple patterns with commas. If empty, all files are included.
+</ParamField>
+</Card>
 
 ## Data Models
 
@@ -95,6 +112,20 @@ Reference:
 | modified_time | Optional[datetime] | When the file was last modified (RFC 3339 date-time). |
 | size | Optional[int] | The size of the file's content in bytes. |
 | md5_checksum | Optional[str] | MD5 checksum for the content of the file. |
+
+</Accordion>
+<Accordion title="GoogleDriveFileDeletionEntity">
+
+Deletion signal for a Google Drive file.
+
+Emitted when the Drive Changes API reports a file was removed (deleted or access lost).
+The `entity_id` matches the original file's `file_id` used for `GoogleDriveFileEntity` so
+downstream deletion can target the correct parent/children.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| file_id | str | ID of the deleted file |
+| deletion_status | str | Status indicating the file was removed (e.g., 'removed') |
 
 </Accordion>
 

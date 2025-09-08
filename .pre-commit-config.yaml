@@ -33,14 +33,19 @@ repos:
     # Configuration for codespell is in .codespellrc
     rev: v2.4.1
     hooks:
-    - id: codespell
-      exclude: >
-        (?x)^(
-          .*\.venv/.*|
-          .*venv/.*|
-          .*node_modules/.*|
-          .*package-lock\.json|
-          .*package\.json|
-          .*yarn\.lock|
-          .*\.git/.*
-        )$
+      - id: codespell
+        exclude: >
+          (?x)^(
+            .*\.venv/.*|
+            .*venv/.*|
+            .*node_modules/.*|
+            .*package-lock\.json|
+            .*package\.json|
+            .*yarn\.lock|
+            .*\.git/.*
+          )$
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v1.17.0
+    hooks:
+      - id: commitizen
+        stages: [commit-msg]

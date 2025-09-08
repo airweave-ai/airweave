@@ -42,6 +42,7 @@ frontend/node_modules/
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
+!.vscode/run_worker_reload.py
 
 # OS specific
 .DS_Store
@@ -74,3 +75,7 @@ coverage.xml
 
 # Local storage folder
 local_storage/
+
+monke/venv/
+logs/
+monke/.runs/

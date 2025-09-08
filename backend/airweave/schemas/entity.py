@@ -13,6 +13,7 @@ class EntityBase(BaseModel):
     sync_job_id: UUID
     sync_id: UUID
     entity_id: str
+    entity_definition_id: Optional[UUID] = None
     hash: str
 
     class Config:
@@ -33,6 +34,7 @@ class EntityUpdate(BaseModel):
     sync_job_id: Optional[UUID] = None
     sync_id: Optional[UUID] = None
     entity_id: Optional[str] = None
+    entity_definition_id: Optional[UUID] = None
     hash: Optional[str] = None
 
 

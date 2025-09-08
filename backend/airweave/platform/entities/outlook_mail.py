@@ -98,3 +98,30 @@ class OutlookAttachmentEntity(FileEntity):
     metadata: Dict[str, Any] = AirweaveField(
         default_factory=dict, description="Additional metadata about the attachment"
     )
+
+
+class OutlookMessageDeletionEntity(ChunkEntity):
+    """Deletion signal for an Outlook message.
+
+    Emitted when the Graph delta API reports a message was removed.
+    The `entity_id` matches the original message's id so downstream deletion
+    can target the correct parent/children.
+    """
+
+    message_id: str = AirweaveField(..., description="ID of the deleted message")
+    deletion_status: str = AirweaveField(
+        ..., description="Status indicating the entity was removed (e.g., 'removed')"
+    )
+
+
+class OutlookMailFolderDeletionEntity(ChunkEntity):
+    """Deletion signal for an Outlook mail folder.
+
+    Emitted when the Graph delta API reports a folder was removed.
+    The `entity_id` matches the original folder's id.
+    """
+
+    folder_id: str = AirweaveField(..., description="ID of the deleted folder")
+    deletion_status: str = AirweaveField(
+        ..., description="Status indicating the entity was removed (e.g., 'removed')"
+    )

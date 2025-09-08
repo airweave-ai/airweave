@@ -679,7 +679,7 @@ class QdrantDestination(VectorDBDestination):
     async def search(
         self,
         query_vector: list[float],
-        limit: int = 10,
+        limit: int = 100,
         score_threshold: float | None = None,
         with_payload: bool = True,
         filter: dict | None = None,
@@ -704,7 +704,7 @@ class QdrantDestination(VectorDBDestination):
     async def bulk_search(
         self,
         query_vectors: list[list[float]],
-        limit: int = 10,
+        limit: int = 100,
         score_threshold: float | None = None,
         with_payload: bool = True,
         filter_conditions: list[dict] | None = None,

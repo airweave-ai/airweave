@@ -14,6 +14,7 @@ Airweave is an open-source platform that makes **any app searchable for your age
 ## Architecture
 - Monorepo: Python FastAPI backend + React/TypeScript frontend + Python Temporal workers
 - Data Flow: Sources → Processing → Vector/Graph DBs → Agent Queries
+- Tested with Monke (internal E2E testing framework)
 
 ## Technical Capabilities
 - Data synchronization configuration via UI or API

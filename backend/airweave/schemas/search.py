@@ -77,7 +77,7 @@ class SearchRequest(BaseModel):
     offset: Optional[int] = Field(0, ge=0, description="Number of results to skip (DEFAULT: 0)")
 
     limit: Optional[int] = Field(
-        20, ge=1, le=1000, description="Maximum number of results to return (DEFAULT: 20)"
+        100, ge=1, le=1000, description="Maximum number of results to return (DEFAULT: 100)"
     )
 
     # Search quality parameters
@@ -277,7 +277,7 @@ class SearchConfig(BaseModel):
     # Core search parameters (from request)
     query: str = Field(..., description="The search query text")
     collection_id: str = Field(..., description="ID of the collection to search")
-    limit: int = Field(20, ge=1, le=1000, description="Maximum number of results")
+    limit: int = Field(100, ge=1, le=1000, description="Maximum number of results")
     offset: int = Field(0, ge=0, description="Pagination offset")
     score_threshold: Optional[float] = Field(None, ge=0.0, le=1.0, description="Minimum score")
 

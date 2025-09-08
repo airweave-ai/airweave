@@ -5,13 +5,16 @@ order based on their dependencies, handling errors, and managing timeouts.
 """
 
 # import asyncio  # Will be used for parallel execution
+import asyncio
 import time
-from typing import Any, Dict, List, Set
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Set
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
+from airweave.core.pubsub import core_pubsub
 from airweave.schemas.search import SearchConfig
 from airweave.search.operations.base import SearchOperation
 
@@ -30,8 +33,12 @@ class SearchExecutor:
     The executor is stateless and can be reused across requests.
     """
 
-    async def execute(
-        self, config: SearchConfig, db: AsyncSession, ctx: ApiContext
+    async def execute(  # noqa: C901 - orchestrates full pipeline, acceptable complexity
+        self,
+        config: SearchConfig,
+        db: AsyncSession,
+        ctx: ApiContext,
+        request_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Execute operations and return the final context.
 
@@ -43,18 +50,29 @@ class SearchExecutor:
             config: Search configuration with operations
             db: Database session
             ctx: API context with logger
+            request_id: Optional streaming request identifier. When provided, lifecycle
+                and data events are published to ``search:<request_id>`` via Redis.
 
         Returns:
             Final context dictionary with all operation results
 
         Raises:
             Exception: If a non-optional operation fails
+
+        Notes:
+            If ``request_id`` is provided, lifecycle and data events are published to
+            the ``search:<request_id>`` Redis channel via the unified pubsub helper.
         """
         # Extract operations from config fields
         operations = self._extract_operations_from_config(config)
 
         # Initialize context with common data
         context = self._initialize_context(config, db, ctx)
+        # Attach request id for streaming (if present)
+        if request_id:
+            context["request_id"] = request_id
+            # In streaming mode, any operator failure should fail the entire search
+            context["streaming_required"] = True
 
         # Log configuration summary
         try:
@@ -75,87 +93,155 @@ class SearchExecutor:
         except Exception:
             pass
 
+        # Centralized emitter: installs an async emit() on context used by all operators
+        op_sequences: Dict[str, int] = {}
+        global_sequence: int = 0
+        emit_lock = asyncio.Lock()
+
+        async def emit(
+            event_type: str, data: Dict[str, Any], op_name: Optional[str] = None
+        ) -> None:
+            nonlocal global_sequence
+            if not request_id:
+                return
+            try:
+                async with emit_lock:
+                    global_sequence += 1
+                    seq = global_sequence
+                    op_seq_val = None
+                    if op_name:
+                        op_sequences[op_name] = op_sequences.get(op_name, 0) + 1
+                        op_seq_val = op_sequences[op_name]
+
+                payload: Dict[str, Any] = {
+                    "type": event_type,
+                    "seq": seq,
+                    "op": op_name,
+                    "op_seq": op_seq_val,
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                    **data,
+                }
+                await core_pubsub.publish("search", request_id, payload)
+            except Exception:
+                # Never fail pipeline due to streaming issues
+                pass
+
+        context["emit"] = emit
+
+        # Emit start lifecycle event
+        await emit(
+            "start",
+            {
+                "request_id": request_id,
+                "query": config.query,
+                "limit": config.limit,
+                "offset": config.offset,
+            },
+        )
+
         # Track execution state
         executed = set()
         start_time = time.time()
 
-        # Execute operations in dependency order
-        while len(executed) < len(operations):
-            # Find operations ready to execute
-            ready = self._find_ready_operations(operations, executed)
+        try:
+            # Execute operations in dependency order
+            while len(executed) < len(operations):
+                # Find operations ready to execute
+                ready = self._find_ready_operations(operations, executed)
 
-            if not ready:
-                # No more operations can execute
-                if len(executed) < len(operations):
-                    remaining = [op.name for op in operations if op.name not in executed]
-                    ctx.logger.warning(
-                        f"[SearchExecutor] Cannot execute remaining operations: {remaining}"
-                    )
-                break
+                if not ready:
+                    # No more operations can execute
+                    if len(executed) < len(operations):
+                        remaining = [op.name for op in operations if op.name not in executed]
+                        ctx.logger.warning(
+                            "[SearchExecutor] Cannot execute remaining operations: %s",
+                            remaining,
+                        )
+                    break
 
-            # Execute ready operations (could be parallelized in future)
-            for op in ready:
-                try:
-                    # Execute with timing
-                    op_start = time.time()
-                    await op.execute(context)
-                    op_time = (time.time() - op_start) * 1000
-
-                    context["timings"][op.name] = op_time
-                    executed.add(op.name)
-
-                    ctx.logger.debug(
-                        f"[SearchExecutor] Operation {op.name} completed in {op_time:.2f}ms"
-                    )
-
-                    # Log intermediate state snapshot for key artifacts
+                # Execute ready operations (could be parallelized in future)
+                for op in ready:
                     try:
-                        snapshot = {
-                            "expanded_queries": len(context.get("expanded_queries", []))
-                            if isinstance(context.get("expanded_queries"), list)
-                            else (1 if context.get("expanded_queries") else 0),
-                            "embeddings": len(context.get("embeddings", []))
-                            if isinstance(context.get("embeddings"), list)
-                            else 0,
-                            "has_filter": bool(context.get("filter")),
-                            "raw_results": len(context.get("raw_results", []))
-                            if isinstance(context.get("raw_results"), list)
-                            else 0,
-                            "final_results": len(context.get("final_results", []))
-                            if isinstance(context.get("final_results"), list)
-                            else 0,
-                            "has_completion": bool(context.get("completion")),
-                        }
-                        ctx.logger.debug(f"[SearchExecutor] State after {op.name}: {snapshot}")
-                    except Exception:
-                        pass
+                        # Emit operator_start
+                        await emit("operator_start", {"name": op.name}, op_name=op.name)
+                        # Execute with timing
+                        op_start = time.time()
+                        await op.execute(context)
+                        op_time = (time.time() - op_start) * 1000
 
-                except Exception as e:
-                    # Log the error
-                    ctx.logger.error(
-                        f"[SearchExecutor] Operation {op.name} failed: {e}", exc_info=True
-                    )
-                    context["errors"].append({"operation": op.name, "error": str(e)})
+                        context["timings"][op.name] = op_time
+                        executed.add(op.name)
 
-                    # If operation is not optional, propagate the error
-                    if not op.optional:
+                        ctx.logger.info(
+                            f"[SearchExecutor] Operation {op.name} completed in {op_time:.2f}ms"
+                        )
+
+                        # Emit operator_end
+                        await emit(
+                            "operator_end", {"name": op.name, "ms": op_time}, op_name=op.name
+                        )
+
+                        # Log intermediate state snapshot for key artifacts
+                        try:
+                            snapshot = {
+                                "expanded_queries": len(context.get("expanded_queries", []))
+                                if isinstance(context.get("expanded_queries"), list)
+                                else (1 if context.get("expanded_queries") else 0),
+                                "embeddings": len(context.get("embeddings", []))
+                                if isinstance(context.get("embeddings"), list)
+                                else 0,
+                                "has_filter": bool(context.get("filter")),
+                                "raw_results": len(context.get("raw_results", []))
+                                if isinstance(context.get("raw_results"), list)
+                                else 0,
+                                "final_results": len(context.get("final_results", []))
+                                if isinstance(context.get("final_results"), list)
+                                else 0,
+                                "has_completion": bool(context.get("completion")),
+                            }
+                            ctx.logger.debug(f"[SearchExecutor] State after {op.name}: {snapshot}")
+                        except Exception:
+                            pass
+
+                    except Exception as e:
+                        # Log the error and always fail the search
+                        ctx.logger.error(
+                            f"[SearchExecutor] Operation {op.name} failed: {e}", exc_info=True
+                        )
+                        context["errors"].append({"operation": op.name, "error": str(e)})
+
+                        # Emit error event if streaming emitter is present
+                        await emit(
+                            "error", {"operation": op.name, "message": str(e)}, op_name=op.name
+                        )
+                        # Propagate failure (both streaming and non-streaming)
                         raise
 
-                    # Mark as executed even if failed (to unblock dependencies)
-                    executed.add(op.name)
-                    ctx.logger.info(
-                        f"[SearchExecutor] Continuing after optional operation {op.name} failed"
-                    )
+            # Ensure we have final results
+            self._finalize_context(context)
 
-        # Ensure we have final results
-        self._finalize_context(context)
+            # Emit results (raw as produced by pipeline)
+            await emit("results", {"results": context.get("final_results", [])})
 
-        # Log execution summary
-        total_time = (time.time() - start_time) * 1000
-        ctx.logger.info(
-            f"[SearchExecutor] Search completed in {total_time:.2f}ms, "
-            f"executed {len(executed)}/{len(operations)} operations"
-        )
+            # Log execution summary
+            total_time = (time.time() - start_time) * 1000
+            ctx.logger.info(
+                f"[SearchExecutor] Search completed in {total_time:.2f}ms, "
+                f"executed {len(executed)}/{len(operations)} operations"
+            )
+
+            # Emit summary
+            await emit(
+                "summary",
+                {
+                    "timings": context.get("timings", {}),
+                    "errors": context.get("errors", []),
+                    "total_time_ms": total_time,
+                },
+            )
+        finally:
+            # Always emit done so clients can close streams reliably
+            await emit("done", {"request_id": request_id})
 
         return context
 
@@ -262,13 +348,14 @@ class SearchExecutor:
         # Extract operations from config fields in logical order
         # The order here represents the typical execution flow
 
-        # 1. Query interpretation (optional)
-        if config.query_interpretation:
-            operations.append(config.query_interpretation)
-
-        # 2. Query expansion (optional)
+        # 1. Query expansion (optional) — run BEFORE interpretation so interpretation
+        #    can leverage all phrasings to derive higher-quality filters
         if config.query_expansion:
             operations.append(config.query_expansion)
+
+        # 2. Query interpretation (optional)
+        if config.query_interpretation:
+            operations.append(config.query_interpretation)
 
         # 3. Qdrant filter (optional)
         if config.qdrant_filter:
@@ -314,3 +401,11 @@ class SearchExecutor:
             "total_time_ms": sum(context["timings"].values()),
             "errors_count": len(context["errors"]),
         }
+
+    async def _emit(self, context: Dict[str, Any], event_type: str, data: Dict[str, Any]) -> None:
+        """Compatibility shim: use centralized emitter if available."""
+        emitter = context.get("emit")
+        if callable(emitter):
+            await emitter(event_type, data)
+
+    # Note: cleaning of results is handled at response-building level, not during streaming

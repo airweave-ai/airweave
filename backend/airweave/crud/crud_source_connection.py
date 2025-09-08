@@ -92,6 +92,7 @@ class CRUDSourceConnection(
                 SyncJob.created_at,
                 SyncJob.started_at,
                 SyncJob.completed_at,
+                SyncJob.error,
                 func.row_number()
                 .over(partition_by=SyncJob.sync_id, order_by=SyncJob.created_at.desc())
                 .label("rn"),
@@ -113,6 +114,7 @@ class CRUDSourceConnection(
                 "status": row.status,
                 "started_at": row.started_at,
                 "completed_at": row.completed_at,
+                "error": row.error,
                 "created_at": row.created_at,  # Log created_at as well
             }
             for row in latest_jobs
@@ -127,6 +129,7 @@ class CRUDSourceConnection(
                 sc.latest_sync_job_status = job_info["status"]
                 sc.latest_sync_job_started_at = job_info["started_at"]
                 sc.latest_sync_job_completed_at = job_info["completed_at"]
+                sc.latest_sync_job_error = job_info["error"] if "error" in job_info else None
 
                 # Set the ephemeral status based on the latest sync job
                 job = SyncJob(

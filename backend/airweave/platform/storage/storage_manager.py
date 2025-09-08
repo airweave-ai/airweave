@@ -61,7 +61,7 @@ class StorageManager:
             True if file exists in storage
         """
         blob_name = self._get_blob_name(sync_id, entity_id)
-        exists = await self.client.file_exists(self.container_name, blob_name)
+        exists = await self.client.file_exists(logger, self.container_name, blob_name)
 
         if exists:
             logger.info(
@@ -140,7 +140,7 @@ class StorageManager:
             },
         )
 
-        success = await self.client.upload_file(self.container_name, blob_name, content)
+        success = await self.client.upload_file(logger, self.container_name, blob_name, content)
 
         if success:
             # Set storage blob name in system metadata (always exists for FileEntity)
@@ -246,7 +246,7 @@ class StorageManager:
         """
         # Check if file exists in storage
         blob_name = self._get_blob_name(sync_id, entity_id)
-        if not await self.client.file_exists(self.container_name, blob_name):
+        if not await self.client.file_exists(logger, self.container_name, blob_name):
             return None
 
         # Create local cache path
@@ -345,7 +345,7 @@ class StorageManager:
         # Clean entity_id to create safe filename
         safe_filename = entity_id.replace(":", "_").replace("/", "_") + ".md"
 
-        exists = await self.client.file_exists("aactmarkdowns", safe_filename)
+        exists = await self.client.file_exists(logger, "aactmarkdowns", safe_filename)
 
         if exists:
             logger.info(
@@ -390,7 +390,7 @@ class StorageManager:
         )
 
         # Store the file
-        success = await self.client.upload_file("aactmarkdowns", safe_filename, content)
+        success = await self.client.upload_file(logger, "aactmarkdowns", safe_filename, content)
 
         if success:
             # Update entity with storage information

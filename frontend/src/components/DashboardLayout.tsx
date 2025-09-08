@@ -62,15 +62,9 @@ const CollectionsSection = memo(() => {
   // Refetch collections when organization changes (for auto-switching)
   useEffect(() => {
     if (currentOrganization) {
-      console.log(`🔄 [CollectionsSection] Organization changed to ${currentOrganization.name}, refetching collections`);
       fetchCollections(true); // Force refresh
     }
   }, [currentOrganization?.id, fetchCollections]);
-
-  // Log the actual collections count for debugging
-  useEffect(() => {
-    console.log(`🔍 [CollectionsSection] Total collections: ${collections.length}`);
-  }, [collections]);
 
   // Active status for nav items
   const isActive = useCallback((path: string) => {
@@ -640,14 +634,16 @@ const DashboardLayout = () => {
         </div>
       </GradientCard>
 
-      {/* DialogFlow for creating a new collection starting with source selection */}
-      <DialogFlow
-        isOpen={showCreateCollectionFlow}
-        onOpenChange={setShowCreateCollectionFlow}
-        mode="create-collection"
-        dialogId="dashboard-layout-create-collection"
-        onComplete={handleCreateCollectionComplete}
-      />
+      {/* Conditionally render DialogFlow to unmount when not in use */}
+      {showCreateCollectionFlow && (
+        <DialogFlow
+          isOpen={showCreateCollectionFlow}
+          onOpenChange={setShowCreateCollectionFlow}
+          mode="create-collection"
+          dialogId="dashboard-layout-create-collection"
+          onComplete={handleCreateCollectionComplete}
+        />
+      )}
     </GradientBackground>
   );
 };

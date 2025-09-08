@@ -21,7 +21,9 @@ from airweave.platform.decorators import source
 from airweave.platform.entities._base import Breadcrumb, ChunkEntity
 from airweave.platform.entities.outlook_mail import (
     OutlookAttachmentEntity,
+    OutlookMailFolderDeletionEntity,
     OutlookMailFolderEntity,
+    OutlookMessageDeletionEntity,
     OutlookMessageEntity,
 )
 from airweave.platform.sources._base import BaseSource
@@ -45,6 +47,148 @@ class OutlookMailSource(BaseSource):
     """
 
     GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
+
+    def get_default_cursor_field(self) -> Optional[str]:
+        """Get the default cursor field for Outlook Mail source.
+
+        Outlook Mail uses 'deltaToken' to track changes since last sync.
+
+        Returns:
+            The default cursor field name
+        """
+        return "deltaToken"
+
+    def validate_cursor_field(self, cursor_field: str) -> None:
+        """Validate if the given cursor field is valid for Outlook Mail.
+
+        Args:
+            cursor_field: The cursor field to validate
+
+        Raises:
+            ValueError: If the cursor field is invalid
+        """
+        # Outlook Mail only supports its specific cursor field
+        valid_field = self.get_default_cursor_field()
+
+        if cursor_field != valid_field:
+            error_msg = (
+                f"Invalid cursor field '{cursor_field}' for Outlook Mail source. "
+                f"Outlook Mail requires '{valid_field}' as the cursor field. "
+                f"Outlook Mail tracks changes using delta tokens, not entity fields. "
+                f"Please use the default cursor field or omit it entirely."
+            )
+            self.logger.error(error_msg)
+            raise ValueError(error_msg)
+
+    def _get_cursor_data(self) -> Dict[str, Any]:
+        """Get cursor data from cursor.
+
+        Returns:
+            Cursor data dictionary, empty dict if no cursor exists
+        """
+        if hasattr(self, "cursor") and self.cursor:
+            return getattr(self.cursor, "cursor_data", {})
+        return {}
+
+    def _update_cursor_data(self, delta_token: str, folder_id: str, folder_name: str):
+        """Update cursor data with delta token and folder information.
+
+        Args:
+            delta_token: Delta token for next sync
+            folder_id: Folder ID being synced
+            folder_name: Folder name being synced
+        """
+        # Check if cursor exists before updating
+        if not hasattr(self, "cursor") or self.cursor is None:
+            self.logger.debug("No cursor available, skipping cursor update")
+            return
+
+        # Ensure cursor field is set to our default
+        cursor_field = self._ensure_cursor_field_set()
+
+        # Maintain legacy single-token fields for backward compatibility
+        self.cursor.cursor_data.update(
+            {
+                cursor_field: delta_token,
+                "folder_id": folder_id,
+                "folder_name": folder_name,
+                "last_sync": datetime.utcnow().isoformat(),
+            }
+        )
+
+        # Preferred: store per-folder delta links and names
+        folder_links = self.cursor.cursor_data.setdefault("folder_delta_links", {})
+        folder_names = self.cursor.cursor_data.setdefault("folder_names", {})
+        per_folder_last_sync = self.cursor.cursor_data.setdefault("folder_last_sync", {})
+
+        folder_links[folder_id] = delta_token
+        folder_names[folder_id] = folder_name
+        per_folder_last_sync[folder_id] = datetime.utcnow().isoformat()
+        self.logger.debug(
+            f"Updated cursor data with field '{cursor_field}': {self.cursor.cursor_data}"
+        )
+
+    def _ensure_cursor_field_set(self) -> str:
+        """Ensure the cursor field is set to our default value.
+
+        This method ensures that if we have a cursor but no cursor_field set,
+        we set it to our default value.
+
+        Returns:
+            The cursor field name to use
+        """
+        cursor_field = self.get_default_cursor_field()
+
+        # Debug logging to understand cursor state
+        if hasattr(self, "cursor") and self.cursor:
+            current_cursor_field = getattr(self.cursor, "cursor_field", None)
+            self.logger.debug(
+                f"Cursor exists: cursor_field={current_cursor_field}, "
+                f"default={cursor_field}, cursor_data={getattr(self.cursor, 'cursor_data', {})}"
+            )
+
+            # If we have a cursor but no cursor_field set, set it to our default
+            if not current_cursor_field:
+                self.logger.info(f"Setting cursor field to default: {cursor_field}")
+                self.cursor.cursor_field = cursor_field
+        else:
+            self.logger.debug("No cursor available yet")
+
+        return cursor_field
+
+    def _prepare_sync_context(self) -> tuple[str, Optional[str]]:
+        """Prepare sync context and return cursor field and delta token.
+
+        Returns:
+            Tuple of (cursor_field, delta_token)
+        """
+        # Ensure cursor field is set to our default
+        cursor_field = self._ensure_cursor_field_set()
+
+        # Get cursor data for incremental sync
+        cursor_data = self._get_cursor_data()
+
+        # Validate the cursor field - will raise ValueError if invalid
+        if cursor_field != self.get_default_cursor_field():
+            self.validate_cursor_field(cursor_field)
+
+        # IMPORTANT: This determines incremental vs full sync
+        # - If cursor_data[cursor_field] is None/missing: FULL SYNC (first time)
+        # - If cursor_field has a value: INCREMENTAL SYNC (subsequent syncs)
+        delta_token = cursor_data.get(cursor_field)
+
+        if delta_token:
+            self.logger.info(
+                f"Found cursor data for field '{cursor_field}': {delta_token[:100]}... "
+                f"Will perform INCREMENTAL sync."
+            )
+        else:
+            self.logger.info(
+                f"No cursor data found for field '{cursor_field}'. "
+                f"Will perform FULL sync (first sync or cursor reset)."
+            )
+
+        return cursor_field, delta_token
 
     @classmethod
     async def create(
@@ -138,6 +282,92 @@ class OutlookMailSource(BaseSource):
                 )
                 # Continue with other folders even if one fails
 
+    async def _init_and_store_message_delta_for_folder(
+        self, client: httpx.AsyncClient, folder_entity: OutlookMailFolderEntity
+    ) -> None:
+        """Initialize the per-folder message delta link and store it in the cursor."""
+        try:
+            delta_url = (
+                f"{self.GRAPH_BASE_URL}/me/mailFolders/{folder_entity.entity_id}/messages/delta"
+            )
+            self.logger.debug(f"Calling delta endpoint: {delta_url}")
+            delta_data = await self._get_with_auth(client, delta_url)
+
+            attempts = 0
+            max_attempts = 1000
+            while attempts < max_attempts:
+                attempts += 1
+                if isinstance(delta_data, dict) and "@odata.deltaLink" in delta_data:
+                    delta_link = delta_data["@odata.deltaLink"]
+                    self.logger.info(f"Storing delta link for folder: {folder_entity.display_name}")
+                    self._update_cursor_data(
+                        delta_link, folder_entity.entity_id, folder_entity.display_name
+                    )
+                    break
+
+                next_link = (
+                    delta_data.get("@odata.nextLink") if isinstance(delta_data, dict) else None
+                )
+                if next_link:
+                    self.logger.debug(
+                        f"Following delta pagination nextLink for folder "
+                        f"{folder_entity.display_name}"
+                    )
+                    delta_data = await self._get_with_auth(client, next_link)
+                else:
+                    self.logger.warning(
+                        f"No deltaLink or nextLink received for folder "
+                        f"{folder_entity.display_name} while initializing delta."
+                    )
+                    break
+        except Exception as e:
+            self.logger.warning(
+                f"Failed to get delta token for folder {folder_entity.display_name}: {str(e)}"
+            )
+
+    async def _process_single_folder_tree(
+        self,
+        client: httpx.AsyncClient,
+        folder: Dict[str, Any],
+        parent_breadcrumbs: List[Breadcrumb],
+    ) -> AsyncGenerator[ChunkEntity, None]:
+        """Yield the folder entity, its messages, initialize delta, then recurse children."""
+        folder_entity = OutlookMailFolderEntity(
+            entity_id=folder["id"],
+            breadcrumbs=parent_breadcrumbs,
+            display_name=folder["displayName"],
+            parent_folder_id=folder.get("parentFolderId"),
+            child_folder_count=folder.get("childFolderCount", 0),
+            total_item_count=folder.get("totalItemCount", 0),
+            unread_item_count=folder.get("unreadItemCount", 0),
+            well_known_name=folder.get("wellKnownName"),
+        )
+
+        self.logger.info(
+            f"Processing folder: {folder_entity.display_name} "
+            f"(ID: {folder_entity.entity_id}, Items: {folder_entity.total_item_count})"
+        )
+        yield folder_entity
+
+        folder_breadcrumb = Breadcrumb(
+            entity_id=folder_entity.entity_id,
+            name=folder_entity.display_name,
+            type="folder",
+        )
+
+        # Process messages in this folder
+        async for entity in self._process_folder_messages(client, folder_entity, folder_breadcrumb):
+            yield entity
+
+        # Initialize message delta link for this folder regardless of item count
+        await self._init_and_store_message_delta_for_folder(client, folder_entity)
+
+        # Recurse into child folders
+        async for child_entity in self._process_child_folders(
+            client, folder_entity, parent_breadcrumbs, folder_breadcrumb
+        ):
+            yield child_entity
+
     async def _generate_folder_entities(
         self,
         client: httpx.AsyncClient,
@@ -168,42 +398,10 @@ class OutlookMailSource(BaseSource):
                 self.logger.info(f"Retrieved {len(folders)} folders")
 
                 for folder in folders:
-                    # Create and yield folder entity
-                    folder_entity = OutlookMailFolderEntity(
-                        entity_id=folder["id"],
-                        breadcrumbs=parent_breadcrumbs,
-                        display_name=folder["displayName"],
-                        parent_folder_id=folder.get("parentFolderId"),
-                        child_folder_count=folder.get("childFolderCount", 0),
-                        total_item_count=folder.get("totalItemCount", 0),
-                        unread_item_count=folder.get("unreadItemCount", 0),
-                        well_known_name=folder.get("wellKnownName"),
-                    )
-
-                    self.logger.info(
-                        f"Processing folder: {folder_entity.display_name} "
-                        f"(ID: {folder_entity.entity_id}, Items: {folder_entity.total_item_count})"
-                    )
-                    yield folder_entity
-
-                    # Build breadcrumb for this folder
-                    folder_breadcrumb = Breadcrumb(
-                        entity_id=folder_entity.entity_id,
-                        name=folder_entity.display_name,
-                        type="folder",
-                    )
-
-                    # Process messages in this folder
-                    async for entity in self._process_folder_messages(
-                        client, folder_entity, folder_breadcrumb
+                    async for entity in self._process_single_folder_tree(
+                        client, folder, parent_breadcrumbs
                     ):
                         yield entity
-
-                    # Process child folders recursively
-                    async for child_entity in self._process_child_folders(
-                        client, folder_entity, parent_breadcrumbs, folder_breadcrumb
-                    ):
-                        yield child_entity
 
                 # Handle pagination
                 next_link = data.get("@odata.nextLink")
@@ -536,23 +734,434 @@ class OutlookMailSource(BaseSource):
             self.logger.error(f"Error processing attachments for message {message_id}: {str(e)}")
             # Don't re-raise - continue with other messages even if attachments fail
 
+    async def _process_delta_changes(
+        self,
+        client: httpx.AsyncClient,
+        delta_token: str,
+        folder_id: str,
+        folder_name: str,
+    ) -> AsyncGenerator[ChunkEntity, None]:
+        """Process delta changes for a specific folder using Microsoft Graph delta API.
+
+        Args:
+            client: HTTP client for API requests
+            delta_token: Delta token for fetching changes
+            folder_id: ID of the folder being synced
+            folder_name: Name of the folder being synced
+
+        Yields:
+            ChunkEntity objects for changed messages and attachments
+        """
+        self.logger.info(f"Processing delta changes for folder: {folder_name}")
+
+        try:
+            # Construct the delta URL using the token (pass via params to ensure proper encoding)
+            url = f"{self.GRAPH_BASE_URL}/me/mailFolders/{folder_id}/messages/delta"
+            params = {"$deltatoken": delta_token}
+            while url:
+                self.logger.debug(f"Fetching delta changes from: {url}")
+                data = await self._get_with_auth(client, url, params=params)
+                # Clear params after the first call; nextLink is a fully-formed URL
+                params = None
+
+                # Process changes
+                changes = data.get("value", [])
+                self.logger.info(f"Found {len(changes)} changes in delta response")
+
+                for change in changes:
+                    async for entity in self._yield_message_change_entities(
+                        client=client,
+                        change=change,
+                        folder_id=folder_id,
+                        folder_name=folder_name,
+                    ):
+                        yield entity
+
+                # Update cursor with new delta token for next sync
+                new_delta_token = data.get("@odata.deltaLink")
+                if new_delta_token:
+                    self.logger.debug("Updating cursor with new delta token")
+                    self._update_cursor_data(new_delta_token, folder_id, folder_name)
+                else:
+                    self.logger.warning("No new delta token received - this may indicate an issue")
+
+                # Handle pagination for delta responses
+                url = data.get("@odata.nextLink")
+                if url:
+                    self.logger.debug("Following delta pagination")
+
+        except Exception as e:
+            self.logger.error(f"Error processing delta changes for folder {folder_name}: {str(e)}")
+            raise
+
+    async def _yield_message_change_entities(
+        self,
+        client: httpx.AsyncClient,
+        change: Dict[str, Any],
+        folder_id: str,
+        folder_name: str,
+    ) -> AsyncGenerator[ChunkEntity, None]:
+        """Yield entities for a single message change item from Graph delta."""
+        change_type = change.get("@odata.type", "")
+
+        # Deletion indicated via @removed
+        if "@removed" in change:
+            message_id = change.get("id")
+            if message_id:
+                deletion_entity = OutlookMessageDeletionEntity(
+                    entity_id=message_id,
+                    message_id=message_id,
+                    deletion_status="removed",
+                )
+                yield deletion_entity
+            return
+
+        if "#microsoft.graph.message" in change_type or change.get("id"):
+            folder_breadcrumb = Breadcrumb(
+                entity_id=folder_id,
+                name=folder_name,
+                type="folder",
+            )
+            async for entity in self._process_message(
+                client, change, folder_name, folder_breadcrumb
+            ):
+                yield entity
+
+    async def _initialize_folders_delta_link(self, client: httpx.AsyncClient) -> None:
+        """Initialize and store the delta link for the mailFolders collection."""
+        try:
+            init_url = f"{self.GRAPH_BASE_URL}/me/mailFolders/delta"
+            self.logger.debug(f"Initializing folders delta link via: {init_url}")
+            data = await self._get_with_auth(client, init_url)
+
+            safety_counter = 0
+            while isinstance(data, dict) and safety_counter < 1000:
+                safety_counter += 1
+                delta_link = data.get("@odata.deltaLink")
+                if delta_link:
+                    if hasattr(self, "cursor") and self.cursor:
+                        self.cursor.cursor_data["folders_delta_link"] = delta_link
+                    self.logger.info("Stored folders_delta_link for future incremental syncs")
+                    break
+
+                next_link = data.get("@odata.nextLink")
+                if next_link:
+                    self.logger.debug("Following folders delta nextLink")
+                    data = await self._get_with_auth(client, next_link)
+                else:
+                    self.logger.warning("No deltaLink or nextLink while initializing folders delta")
+                    break
+        except Exception as e:
+            self.logger.warning(f"Failed to initialize folders delta link: {e}")
+
+    async def _process_folders_delta_changes(
+        self, client: httpx.AsyncClient
+    ) -> AsyncGenerator[ChunkEntity, None]:
+        """Process changes in mail folders using the stored folders_delta_link.
+
+        Yields folder entities for additions/updates and deletion entities for removals.
+        Also ensures per-folder message delta links are initialized for new folders
+        and removes stored links for deleted folders.
+        """
+        cursor_data = self._get_cursor_data()
+        delta_url = cursor_data.get("folders_delta_link")
+        if not delta_url:
+            self.logger.debug("No folders_delta_link stored; skipping folders delta processing")
+            return
+
+        try:
+            async for data in self._iterate_delta_pages(client, delta_url):
+                changes = data.get("value", [])
+                self.logger.info(f"Found {len(changes)} folder changes in delta response")
+
+                async for entity in self._yield_folder_changes(client, changes):
+                    yield entity
+
+                new_delta_link = data.get("@odata.deltaLink")
+                if new_delta_link and hasattr(self, "cursor") and self.cursor:
+                    self.cursor.cursor_data["folders_delta_link"] = new_delta_link
+                    self.logger.debug("Updated folders_delta_link for next incremental run")
+
+        except Exception as e:
+            self.logger.error(f"Error processing folders delta changes: {e}")
+
+    async def _iterate_delta_pages(
+        self, client: httpx.AsyncClient, start_url: str
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """Iterate delta/next pages starting from a delta or nextLink URL."""
+        url = start_url
+        while url:
+            self.logger.debug(f"Fetching folders delta changes from: {url}")
+            data = await self._get_with_auth(client, url)
+            yield data
+            url = data.get("@odata.nextLink")
+
+    async def _yield_folder_changes(
+        self, client: httpx.AsyncClient, changes: List[Dict[str, Any]]
+    ) -> AsyncGenerator[ChunkEntity, None]:
+        """Yield entities for a batch of folder changes from Graph delta."""
+        for folder in changes:
+            folder_id = folder.get("id")
+            if not folder_id:
+                continue
+
+            if "@removed" in folder:
+                async for e in self._emit_folder_removal(folder_id):
+                    yield e
+                continue
+
+            async for e in self._emit_folder_add_or_update(client, folder):
+                yield e
+
+    async def _emit_folder_removal(self, folder_id: str) -> AsyncGenerator[ChunkEntity, None]:
+        """Emit a folder deletion entity and clean up stored links/names."""
+        self.logger.info(f"Folder removed: {folder_id}")
+        deletion_entity = OutlookMailFolderDeletionEntity(
+            entity_id=folder_id, folder_id=folder_id, deletion_status="removed"
+        )
+        if hasattr(self, "cursor") and self.cursor:
+            folder_links = self.cursor.cursor_data.get("folder_delta_links", {})
+            folder_names = self.cursor.cursor_data.get("folder_names", {})
+            folder_links.pop(folder_id, None)
+            folder_names.pop(folder_id, None)
+            self.cursor.cursor_data["folder_delta_links"] = folder_links
+            self.cursor.cursor_data["folder_names"] = folder_names
+        yield deletion_entity
+
+    async def _emit_folder_add_or_update(
+        self, client: httpx.AsyncClient, folder: Dict[str, Any]
+    ) -> AsyncGenerator[ChunkEntity, None]:
+        """Emit folder entity and ensure per-folder message delta is initialized."""
+        folder_id = folder.get("id")
+        display_name = folder.get("displayName", "")
+        parent_folder_id = folder.get("parentFolderId")
+        child_folder_count = folder.get("childFolderCount", 0)
+        total_item_count = folder.get("totalItemCount", 0)
+        unread_item_count = folder.get("unreadItemCount", 0)
+        well_known_name = folder.get("wellKnownName")
+
+        folder_entity = OutlookMailFolderEntity(
+            entity_id=folder_id,
+            breadcrumbs=[],
+            display_name=display_name,
+            parent_folder_id=parent_folder_id,
+            child_folder_count=child_folder_count,
+            total_item_count=total_item_count,
+            unread_item_count=unread_item_count,
+            well_known_name=well_known_name,
+        )
+        yield folder_entity
+
+        # Ensure per-folder message delta link is initialized
+        try:
+            msg_delta_url = f"{self.GRAPH_BASE_URL}/me/mailFolders/{folder_id}/messages/delta"
+            msg_delta_data = await self._get_with_auth(client, msg_delta_url)
+
+            safety_counter = 0
+            while isinstance(msg_delta_data, dict) and safety_counter < 1000:
+                safety_counter += 1
+
+                messages = msg_delta_data.get("value", [])
+                folder_breadcrumb = Breadcrumb(
+                    entity_id=folder_id,
+                    name=display_name or folder_id,
+                    type="folder",
+                )
+                for change in messages:
+                    if "@removed" in change:
+                        message_id = change.get("id")
+                        if message_id:
+                            deletion_entity = OutlookMessageDeletionEntity(
+                                entity_id=message_id,
+                                message_id=message_id,
+                                deletion_status="removed",
+                            )
+                            yield deletion_entity
+                        continue
+                    async for entity in self._process_message(
+                        client, change, display_name or folder_id, folder_breadcrumb
+                    ):
+                        yield entity
+
+                delta_link = msg_delta_data.get("@odata.deltaLink")
+                if delta_link:
+                    if hasattr(self, "cursor") and self.cursor:
+                        folder_links = self.cursor.cursor_data.setdefault("folder_delta_links", {})
+                        folder_names = self.cursor.cursor_data.setdefault("folder_names", {})
+                        folder_links[folder_id] = delta_link
+                        folder_names[folder_id] = display_name or folder_id
+                    break
+
+                next_link = msg_delta_data.get("@odata.nextLink")
+                if next_link:
+                    msg_delta_data = await self._get_with_auth(client, next_link)
+                else:
+                    break
+        except Exception as e:
+            self.logger.warning(f"Failed to initialize message delta for folder {folder_id}: {e}")
+
+    async def _process_delta_changes_url(
+        self,
+        client: httpx.AsyncClient,
+        delta_url: str,
+        folder_id: str,
+        folder_name: str,
+    ) -> AsyncGenerator[ChunkEntity, None]:
+        """Process delta changes starting from a delta or nextLink URL (opaque state).
+
+        Reuses the URL returned by Microsoft Graph and follows @odata.nextLink until
+        an @odata.deltaLink is returned, which is then stored for the next round.
+        """
+        self.logger.info(f"Processing delta changes (URL) for folder: {folder_name}")
+
+        try:
+            url = delta_url
+            while url:
+                self.logger.debug(f"Fetching delta changes from: {url}")
+                data = await self._get_with_auth(client, url)
+
+                changes = data.get("value", [])
+                self.logger.info(f"Found {len(changes)} changes in delta response")
+
+                for change in changes:
+                    change_type = change.get("@odata.type", "")
+
+                    # Deletions can be indicated via @removed in Graph delta
+                    if "@removed" in change:
+                        message_id = change.get("id")
+                        if message_id:
+                            deletion_entity = OutlookMessageDeletionEntity(
+                                entity_id=message_id,
+                                message_id=message_id,
+                                deletion_status="removed",
+                            )
+                            yield deletion_entity
+                        continue
+
+                    if "#microsoft.graph.message" in change_type or change.get("id"):
+                        folder_breadcrumb = Breadcrumb(
+                            entity_id=folder_id,
+                            name=folder_name,
+                            type="folder",
+                        )
+                        async for entity in self._process_message(
+                            client, change, folder_name, folder_breadcrumb
+                        ):
+                            yield entity
+
+                next_link = data.get("@odata.nextLink")
+                if next_link:
+                    self.logger.debug("Following delta pagination nextLink")
+                    url = next_link
+                    continue
+
+                delta_link = data.get("@odata.deltaLink")
+                if delta_link:
+                    self.logger.debug("Updating cursor with new delta link")
+                    self._update_cursor_data(delta_link, folder_id, folder_name)
+                else:
+                    self.logger.warning(
+                        "No nextLink or deltaLink in delta response; ending this delta cycle"
+                    )
+                break
+
+        except Exception as e:
+            self.logger.error(
+                f"Error processing delta changes (URL) for folder {folder_name}: {str(e)}"
+            )
+            raise
+
+    async def _generate_folder_entities_incremental(
+        self,
+        client: httpx.AsyncClient,
+        delta_token: str,
+    ) -> AsyncGenerator[ChunkEntity, None]:
+        """Generate entities for incremental sync using delta token.
+
+        Args:
+            client: HTTP client for API requests
+            delta_token: Delta token for fetching changes
+
+        Yields:
+            ChunkEntity objects for changed messages and attachments
+        """
+        self.logger.info("Starting incremental sync")
+
+        # Prefer per-folder delta links (opaque URLs) if available
+        cursor_data = self._get_cursor_data()
+        folder_links = cursor_data.get("folder_delta_links", {}) or {}
+        folder_names = cursor_data.get("folder_names", {}) or {}
+
+        if folder_links:
+            for folder_id, delta_link in folder_links.items():
+                folder_name = folder_names.get(folder_id, folder_id)
+                async for entity in self._process_delta_changes_url(
+                    client, delta_link, folder_id, folder_name
+                ):
+                    yield entity
+            return
+
+        # Legacy fallback: use single token + folder_id/name if present
+        folder_id = cursor_data.get("folder_id")
+        folder_name = cursor_data.get("folder_name", "Unknown Folder")
+        if not folder_id:
+            self.logger.warning("No folder_id in cursor data for legacy delta token; skipping")
+            return
+        async for entity in self._process_delta_changes(
+            client, delta_token, folder_id, folder_name
+        ):
+            yield entity
+
     async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
-        """Generate all Outlook mail entities: Folders, Messages and Attachments."""
+        """Generate all Outlook mail entities: Folders, Messages and Attachments.
+
+        Supports both full sync (first run) and incremental sync (subsequent runs)
+        using Microsoft Graph delta API.
+        """
         self.logger.info("===== STARTING OUTLOOK MAIL ENTITY GENERATION =====")
         entity_count = 0
 
         try:
+            # Determine sync type and get delta token if available
+            cursor_field, delta_token = self._prepare_sync_context()
+
             async with httpx.AsyncClient() as client:
                 self.logger.info("HTTP client created, starting entity generation")
 
-                # Start with top-level folders and recursively process all folders and contents
-                async for entity in self._generate_folder_entities(client):
-                    entity_count += 1
-                    entity_type = type(entity).__name__
-                    self.logger.info(
-                        f"Yielding entity #{entity_count}: {entity_type} with ID {entity.entity_id}"
-                    )
-                    yield entity
+                cursor_data = self._get_cursor_data()
+                has_folder_links = bool(cursor_data.get("folder_delta_links"))
+
+                if has_folder_links or delta_token:
+                    # INCREMENTAL SYNC: Prefer per-folder delta links; fall back to legacy token
+                    self.logger.info("Performing INCREMENTAL sync")
+                    async for entity in self._generate_folder_entities_incremental(
+                        client, delta_token
+                    ):
+                        entity_count += 1
+                        entity_type = type(entity).__name__
+                        self.logger.info(
+                            (
+                                f"Yielding delta entity #{entity_count}: {entity_type} "
+                                f"with ID {entity.entity_id}"
+                            )
+                        )
+                        yield entity
+                else:
+                    # FULL SYNC: Process all folders and messages
+                    self.logger.info("Performing FULL sync (first sync or cursor reset)")
+                    # Initialize folders delta link up front for next incremental run
+                    await self._initialize_folders_delta_link(client)
+
+                    async for entity in self._generate_folder_entities(client):
+                        entity_count += 1
+                        entity_type = type(entity).__name__
+                        self.logger.info(
+                            (
+                                f"Yielding full sync entity #{entity_count}: {entity_type} "
+                                f"with ID {entity.entity_id}"
+                            )
+                        )
+                        yield entity
 
         except Exception as e:
             self.logger.error(f"Error in entity generation: {str(e)}", exc_info=True)

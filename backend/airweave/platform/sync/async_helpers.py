@@ -31,7 +31,7 @@ async def get_cpu_executor() -> ThreadPoolExecutor:
             _cpu_executor = ThreadPoolExecutor(
                 max_workers=max_workers, thread_name_prefix="airweave-cpu"
             )
-            logger.info(
+            logger.debug(
                 f"🔧 CPU_EXECUTOR_INIT Created shared CPU executor with {max_workers} workers"
             )
 
@@ -111,26 +111,94 @@ async def compute_entity_hash_async(entity: Any) -> str:
     from airweave.platform.entities._base import FileEntity
 
     # Handle FileEntity specially
-    if (
-        isinstance(entity, FileEntity)
-        and entity.airweave_system_metadata
-        and entity.airweave_system_metadata.local_path
-    ):
+    if isinstance(entity, FileEntity):
         try:
-            hash_value = await compute_file_hash_async(entity.airweave_system_metadata.local_path)
-            # Cache the hash in system metadata
-            entity.airweave_system_metadata.hash = hash_value
-            return hash_value
+            # Compute or reuse a content hash for file bytes
+            content_hash: str | None = None
+
+            # Prefer already-computed content hash within the same run
+            if entity.airweave_system_metadata and getattr(
+                entity.airweave_system_metadata, "hash", None
+            ):
+                content_hash = entity.airweave_system_metadata.hash
+
+            # Else, hash the local file if present
+            if content_hash is None:
+                local_path = (
+                    entity.airweave_system_metadata.local_path
+                    if entity.airweave_system_metadata
+                    else None
+                )
+                if local_path and os.path.exists(local_path):
+                    logger.debug(f"HASH_FILE Branch: Using file content hash | path={local_path}")
+                    content_hash = await compute_file_hash_async(local_path)
+                    # Cache the content hash in system metadata for reuse in this run
+                    entity.airweave_system_metadata.hash = content_hash
+                    logger.debug(
+                        f"🔢 HASH_FILE Result: sha256={content_hash} | "
+                        f"size={getattr(entity.airweave_system_metadata, 'total_size', 'n/a')}"
+                    )
+
+            # Fallbacks if we couldn't compute content hash now (e.g., temp file cleaned up)
+            if content_hash is None:
+                checksum = (
+                    getattr(entity.airweave_system_metadata, "checksum", None)
+                    if entity.airweave_system_metadata
+                    else None
+                )
+                if checksum:
+                    logger.debug(
+                        "🔢 HASH_FILE Fallback: using cached checksum from system metadata"
+                    )
+                    content_hash = checksum
+
+            if content_hash is None:
+                md5 = getattr(entity, "md5_checksum", None)
+                if md5:
+                    logger.debug("🔢 HASH_FILE Fallback: using md5_checksum field from entity")
+                    content_hash = md5
+
+            # Last-resort content hash when nothing else available
+            if content_hash is None:
+                logger.debug(
+                    "🔢 HASH_FILE Fallback: no content data; using pseudo-content sentinel"
+                )
+                content_hash = "no-content"
+
+            # Compose a final action hash from content hash PLUS selected stable metadata
+            # This ensures renames/moves/metadata changes trigger UPDATE even if bytes are the same.
+            composite = {
+                "file_id": getattr(entity, "file_id", None),
+                "content_hash": content_hash,
+                "name": getattr(entity, "name", None),
+                "mime_type": getattr(entity, "mime_type", None),
+                "size": getattr(entity, "size", None),
+                "md5_checksum": getattr(entity, "md5_checksum", None),
+                "modified_time": getattr(entity, "modified_time", None),
+                # Parent folder IDs capture moves between folders
+                "parents": getattr(entity, "parents", []) or [],
+            }
+
+            import json as _json
+
+            logger.debug(
+                "🔢 HASH_FILE_COMPOSITE Using content hash + metadata subset: "
+                f"keys={list(composite.keys())}"
+            )
+            return hashlib.sha256(
+                _json.dumps(stable_serialize(composite), sort_keys=True).encode()
+            ).hexdigest()
         except Exception:
-            # Fall back to metadata hash
-            pass
+            # Fall through to generic content hashing below
+            logger.exception("🔢 HASH_FILE error; falling back to generic content hashing")
 
     # For regular entities, compute hash from content fields
     def _compute_entity_hash(entity_obj) -> str:
-        # Define metadata fields to exclude
+        # Define metadata fields to exclude (top-level and known noisy fields)
         metadata_fields = {
             "sync_job_id",
             "vector",
+            "vectors",
             "_hash",
             "db_entity_id",
             "source_name",
@@ -142,6 +210,8 @@ async def compute_entity_hash_async(entity: Any) -> str:
             "_sa_instance_state",  # SQLAlchemy internal state
             "organization_id",
             "chunk_index",  # Exclude chunk_index from hash to ensure parent/chunk compatibility
+            "embeddable_text",  # Derived text can vary slightly; exclude from hash
+            "airweave_system_metadata",  # Exclude entire nested system metadata from hash
         }
 
         # Get content fields
@@ -159,13 +229,50 @@ async def compute_entity_hash_async(entity: Any) -> str:
         # Extract only content fields
         content_data = {k: v for k, v in data.items() if k in content_fields}
 
+        # Ensure nested system metadata doesn't leak volatile fields into the hash
+        # (we already excluded 'airweave_system_metadata' entirely above)
+
+        # LOGGING: show exactly which fields are included/excluded
+        try:
+            import json as _json
+
+            logger.debug(
+                "\n\n🔢 HASH_FIELDS "
+                f"all={sorted(all_fields)} "
+                f"excluded_meta={sorted(all_fields & metadata_fields)} "
+                f"included={sorted(content_fields)}\n\n"
+            )
+
+            # Explicitly log if system metadata was excluded
+            if (
+                "airweave_system_metadata" not in content_data
+                and "airweave_system_metadata" in data
+            ):
+                logger.debug("🔢 HASH_NESTED_EXCLUDED airweave_system_metadata excluded from hash")
+
+            logger.debug(
+                "\n\n🔢 HASH_CONTENT_DATA "
+                f"payload={_json.dumps(content_data, sort_keys=True, default=str)}\n\n"
+            )
+        except Exception as log_err:
+            logger.warning(f"🔢 HASH_LOG_FAIL Could not log hash payload: {log_err}")
+
         # Use stable serialization
         stable_data = stable_serialize(content_data)
-        import json
+        import json as _json2
 
-        json_str = json.dumps(stable_data, sort_keys=True, separators=(",", ":"))
+        json_str = _json2.dumps(stable_data, sort_keys=True, separators=(",", ":"))
 
-        return hashlib.sha256(json_str.encode()).hexdigest()
+        digest = hashlib.sha256(json_str.encode()).hexdigest()
+        try:
+            logger.debug(
+                f"🔢 HASH_JSON len={len(json_str)} sha256={digest} "
+                f"preview={json_str[:500]}{'...' if len(json_str) > 500 else ''}"
+            )
+        except Exception:
+            pass
+
+        return digest
 
     hash_value = await run_in_thread_pool(_compute_entity_hash, entity)
 

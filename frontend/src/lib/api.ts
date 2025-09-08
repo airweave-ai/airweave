@@ -216,6 +216,7 @@ const makeRequest = async <T>(
   options?: {
     data?: any;
     params?: Record<string, any>;
+    signal?: AbortSignal;
   },
   _isRetry: boolean = false
 ): ApiResponse<T> => {
@@ -232,6 +233,7 @@ const makeRequest = async <T>(
     const fetchOptions: RequestInit = {
       method,
       headers,
+      signal: options?.signal,
     };
 
     // Add body for methods that support it
@@ -303,7 +305,14 @@ export const apiClient = {
   },
 
   async post<T>(endpoint: string, data?: any, params?: Record<string, any>): ApiResponse<T> {
-    return makeRequest<T>('POST', endpoint, { data, params });
+    // Backwards-compatible options: allow (endpoint, data, params) or (endpoint, data, { params, signal })
+    const raw = params as any;
+    const options = {
+      data,
+      params: raw && raw.params ? raw.params : (raw && !raw.signal ? raw : undefined),
+      signal: raw && raw.signal ? raw.signal : undefined,
+    } as { data?: any; params?: Record<string, any>; signal?: AbortSignal };
+    return makeRequest<T>('POST', endpoint, options);
   },
 
   async put<T>(endpoint: string, params?: Record<string, any>, data?: any): ApiResponse<T> {

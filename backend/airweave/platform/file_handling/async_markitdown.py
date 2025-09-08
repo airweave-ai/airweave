@@ -771,4 +771,4 @@ class AsyncMarkItDown:
 
 
 # Create singleton instance
-markitdown = AsyncMarkItDown(llm_client=openai_client, llm_model="gpt-4o-mini")
+markitdown = AsyncMarkItDown(llm_client=openai_client, llm_model="gpt-5-nano")

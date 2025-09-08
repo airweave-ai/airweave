@@ -44,6 +44,10 @@ The search interface is exposed via REST API or MCP. When using MCP, Airweave es
 
 ## 🚀 Quick Start
 
+### Managed Service: [Airweave Cloud](https://app.airweave.ai/)
+
+### Self-hosted:
+
 Make sure docker and docker-compose are installed, then...
 
 ```bash
@@ -99,7 +103,7 @@ client = AirweaveSDK(
     api_key="YOUR_API_KEY",
     base_url="http://localhost:8001"
 )
-client.collections.create_collection(
+client.collections.create(
     name="name",
 )
 ```
@@ -118,7 +122,7 @@ const client = new AirweaveSDKClient({
     apiKey: "YOUR_API_KEY",
     environment: AirweaveSDKEnvironment.Local
 });
-await client.collections.createCollection({
+await client.collections.create({
     name: "name",
 });
 ```
@@ -133,7 +137,7 @@ await client.collections.createCollection({
 - **Versioning** for data changes
 - **White-labeling** support for SaaS builders
 
-## 🔧 Technology Stack
+## 🔧 Tech Stack
 
 - **Frontend**: React/TypeScript with ShadCN
 - **Backend**: FastAPI (Python)
@@ -142,10 +146,7 @@ await client.collections.createCollection({
 
 ## 🛣️ Roadmap
 
-- Additional source integrations
-- Redis worker queues for large-scale syncs
-- Webhooks for event-driven syncs
-- Kubernetes support via Helm charts
+- TBD
 
 ## 👥 Contributing
 

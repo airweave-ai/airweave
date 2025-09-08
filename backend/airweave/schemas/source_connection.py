@@ -734,6 +734,13 @@ class SourceConnectionCreateContinuous(SourceConnectionCreateBase):
             "a new collection will be automatically created."
         ),
     )
+    enable_daily_cleanup: bool = Field(
+        True,
+        description=(
+            "Whether to create a daily forced full sync with entity cleanup. "
+            "Defaults to true for resilience; set to false to rely solely on incremental changes."
+        ),
+    )
     auth_fields: Optional[ConfigValues] = Field(
         None,
         description=(
@@ -812,6 +819,7 @@ class SourceConnectionCreateContinuous(SourceConnectionCreateBase):
 
         # Extract cursor_field - DON'T store in config_fields
         cursor_field = data.pop("cursor_field", None)
+        enable_daily_cleanup = data.pop("enable_daily_cleanup", True)
 
         # Auxiliary attributes for the creation process
         auxiliary_attrs = {
@@ -822,6 +830,7 @@ class SourceConnectionCreateContinuous(SourceConnectionCreateBase):
             "minute_level_cron": "*/1 * * * *",  # Default to every minute
             "auto_start_schedule": True,  # Always auto-start
             "cursor_field": cursor_field,  # Pass cursor field separately
+            "enable_daily_cleanup": enable_daily_cleanup,
         }
 
         # Core attributes for the SourceConnection model
@@ -847,6 +856,46 @@ class SourceConnectionContinuousResponse(SourceConnection):
                 "next_run": "2024-01-15T14:05:00Z",
             }
         ],
+    )
+
+
+class SourceConnectionMakeContinuous(BaseModel):
+    """Schema for converting an existing source connection to continuous (BETA)."""
+
+    cursor_field: Optional[str] = Field(
+        None,
+        description=(
+            "Specify which field in the entity should be used as the cursor for incremental syncs. "
+            "If omitted, the source's default cursor field will be used if available. "
+            "Required for sources without a default (e.g., PostgreSQL)."
+        ),
+        examples=["updated_at", "modified_timestamp", "last_modified"],
+    )
+    enable_daily_cleanup: bool = Field(
+        True,
+        description=(
+            "Whether to create a daily forced full sync with entity cleanup. "
+            "This helps remove orphaned entities that incremental syncs cannot detect."
+        ),
+    )
+    run_initial_sync: bool = Field(
+        True,
+        description=(
+            "Whether to immediately trigger a sync job after enabling continuous mode. "
+            "If no cursor data exists yet, this initial run will perform a full sync."
+        ),
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "cursor_field": "updated_at",
+                    "enable_daily_cleanup": True,
+                    "run_initial_sync": True,
+                }
+            ]
+        }
     )
 
 

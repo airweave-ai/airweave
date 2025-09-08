@@ -332,7 +332,7 @@ async def _get_ctti_cached_content(
     """Check for and retrieve CTTI content from global storage."""
     from airweave.platform.storage import storage_manager
 
-    existing_content = await storage_manager.get_ctti_file_content(web_entity.entity_id)
+    existing_content = await storage_manager.get_ctti_file_content(logger, web_entity.entity_id)
 
     if existing_content:
         logger.debug(
@@ -577,6 +577,28 @@ async def _create_and_store_file_entity(
         enhanced_metadata,
     )
 
+    # Populate FileSystemMetadata fields after construction to satisfy model typing
+    # WebFileEntity.airweave_system_metadata is FileSystemMetadata (auto-created)
+    try:
+        fsm = file_entity.airweave_system_metadata
+        if fsm is not None:
+            fsm.file_uuid = file_uuid
+            fsm.local_path = temp_file_path
+            fsm.checksum = checksum
+            fsm.total_size = file_size
+            # carry over source context if present on the web entity
+            if (
+                hasattr(web_entity, "airweave_system_metadata")
+                and web_entity.airweave_system_metadata is not None
+            ):
+                fsm.source_name = web_entity.airweave_system_metadata.source_name
+                fsm.entity_type = web_entity.airweave_system_metadata.entity_type
+                fsm.sync_id = web_entity.airweave_system_metadata.sync_id
+                fsm.sync_job_id = web_entity.airweave_system_metadata.sync_job_id
+    except Exception:
+        # Do not fail transformation if metadata population fails
+        pass
+
     # Store in persistent storage
     await _store_file_entity(file_entity, temp_file_path, is_ctti, entity_context, logger)
 
@@ -624,15 +646,9 @@ def _create_web_file_entity(
         size=file_size,
         download_url=web_entity.url,
         url=web_entity.url,
-        local_path=temp_file_path,
-        file_uuid=file_uuid,
-        checksum=checksum,
-        total_size=file_size,
         # Copy BaseEntity fields
         breadcrumbs=web_entity.breadcrumbs,
         parent_entity_id=web_entity.parent_entity_id,
-        # Copy system metadata object
-        airweave_system_metadata=web_entity.airweave_system_metadata,
         # WebFileEntity specific
         original_url=web_entity.url,
         crawl_metadata=metadata,
@@ -655,14 +671,15 @@ async def _store_file_entity(
 
     if is_ctti:
         # Check if CTTI file already exists in global storage
-        if await storage_manager.check_ctti_file_exists(file_entity.entity_id):
+        if await storage_manager.check_ctti_file_exists(logger, file_entity.entity_id):
             logger.debug(
                 f"💾 WEB_CTTI_EXISTS [{entity_context}] "
                 f"CTTI file already exists in global storage, skipping upload"
             )
             # Still set the storage metadata on the entity
             safe_filename = file_entity.entity_id.replace(":", "_").replace("/", "_") + ".md"
-            file_entity.storage_blob_name = safe_filename
+            if file_entity.airweave_system_metadata is not None:
+                file_entity.airweave_system_metadata.storage_blob_name = safe_filename
             if not hasattr(file_entity, "metadata") or file_entity.metadata is None:
                 file_entity.metadata = {}
             file_entity.metadata["ctti_container"] = "aactmarkdowns"
@@ -671,7 +688,7 @@ async def _store_file_entity(
         else:
             # Use CTTI-specific storage (global deduplication)
             with open(temp_file_path, "rb") as f:
-                file_entity = await storage_manager.store_ctti_file(file_entity, f)
+                file_entity = await storage_manager.store_ctti_file(logger, file_entity, f)
 
             logger.debug(
                 f"💾 WEB_CTTI_STORED [{entity_context}] "

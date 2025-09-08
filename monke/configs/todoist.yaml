@@ -1,0 +1,48 @@
+# Todoist connector test configuration
+name: "Todoist Connector Test"
+description: "End-to-end test of Todoist connector sync functionality with incremental deletion testing"
+
+connector:
+  name: "todoist_test"
+  type: "todoist"
+  auth_fields: {}
+  config_fields:
+    openai_model: "gpt-5"
+    post_create_sleep_seconds: 15
+
+test_flow:
+  steps:
+    - create
+    - sync
+    - verify
+    - update
+    - sync
+    - verify
+    - complete_delete
+    - sync
+    - verify_complete_deletion
+
+# Entity configuration
+entity_count: 3  # Number of entities to create for testing
+
+deletion:
+  # Phase 1: Partial deletion
+  partial_delete_count: 1  # Number of entities to delete during partial deletion
+
+  # Verification settings
+  verify_partial_deletion: true
+  verify_remaining_entities: true
+  verify_complete_deletion: true
+
+collection:
+  name_template: "monke-{connector_type}-test-{timestamp}"
+  description: "Test collection for {connector_type} connector"
+
+verification:
+  score_threshold: 0.1
+  max_retries: 3
+  retry_delay_seconds: 5
+
+# Test-specific configuration
+# test_config:
+#   Any source-specific configuration can go here

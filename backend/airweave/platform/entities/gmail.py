@@ -86,3 +86,19 @@ class GmailAttachmentEntity(FileEntity):
 
     # Override name and mime_type to remove redundant fields (they're already in FileEntity)
     # This ensures we don't have duplicate fields
+
+
+class GmailMessageDeletionEntity(ChunkEntity):
+    """Deletion signal for a Gmail message.
+
+    Emitted when the Gmail History API reports a messageDeleted. The entity_id matches the
+    message entity's ID format so downstream deletion removes the correct parent/children.
+    """
+
+    message_id: str = AirweaveField(..., description="The Gmail message ID that was deleted")
+    thread_id: str | None = AirweaveField(
+        None, description="Thread ID (optional if not provided by change record)"
+    )
+    deletion_status: str = AirweaveField(
+        ..., description="Status indicating the message was removed (e.g., 'removed')"
+    )

@@ -3,7 +3,7 @@
   "info": {
     "title": "Airweave",
     "version": "0.1.0",
-    "description": "\n\n## API Groups\nThis API spec only includes the following API groups:\n- **Sources**: API endpoints for discovering available data source connectors and their configuration requirements\n- **Collections**: API endpoints for managing collections - logical groups of data sources that provide unified search capabilities\n- **Source Connections**: API endpoints for managing live connections to data sources. Source connections are the actual configured instances that Airweave uses to sync data from your apps and databases, transforming it into searchable, structured information within collections\n- **White Labels**: API endpoints for managing custom OAuth2 integrations with your own branding and credentials\n"
+    "description": "\n\n## API Groups\nThis API spec only includes the following API groups:\n- **Sources**: API endpoints for discovering available data source connectors and their configuration requirements\n- **Collections**: API endpoints for managing collections - logical groups of data sources that provide unified search capabilities\n- **Source Connections**: API endpoints for managing live connections to data sources. Source connections are the actual configured instances that Airweave uses to sync data from your apps and databases, transforming it into searchable, structured information within collections\n- **Auth Providers**: API endpoints for managing authentication provider connections and credentials\n- **White Labels**: API endpoints for managing custom OAuth2 integrations with your own branding and credentials\n"
   },
   "paths": {
     "/sources/detail/{short_name}": {
@@ -11,9 +11,9 @@
         "tags": [
           "sources"
         ],
-        "summary": "Read Source",
+        "summary": "Read",
         "description": "Get detailed information about a specific data source connector.",
-        "operationId": "read_source_sources_detail__short_name__get",
+        "operationId": "read_sources_detail__short_name__get",
         "parameters": [
           {
             "name": "short_name",
@@ -102,9 +102,9 @@
         "tags": [
           "sources"
         ],
-        "summary": "Read Sources",
+        "summary": "List",
         "description": "List all available data source connectors.\n\n<br/><br/>\nReturns the complete catalog of source types that Airweave can connect to.",
-        "operationId": "read_sources_sources_list_get",
+        "operationId": "list_sources_list_get",
         "parameters": [],
         "responses": {
           "200": {
@@ -116,7 +116,7 @@
                   "items": {
                     "$ref": "#/components/schemas/Source"
                   },
-                  "title": "Response Read Sources Sources List Get"
+                  "title": "Response List Sources List Get"
                 },
                 "examples": {
                   "available_sources": {
@@ -182,14 +182,110 @@
         ]
       }
     },
+    "/auth-providers/connect": {
+      "put": {
+        "tags": [
+          "auth-providers"
+        ],
+        "summary": "Connect Or Update Auth Provider",
+        "description": "Create or update an auth provider connection.\n\nIf a connection for this auth provider already exists for the organization,\nit will be updated with the new credentials and fields.\nIf no connection exists, a new one will be created.\n\nArgs:\n-----\n    db: The database session\n    ctx: The current authentication context\n    auth_provider_connection_in: The auth provider connection data\n\nReturns:\n--------\n    schemas.AuthProviderConnection: The created or updated connection",
+        "operationId": "connect_or_update_auth_provider_auth_providers_connect_put",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthProviderConnectionCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthProviderConnection"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/auth-providers/detail/{short_name}": {
+      "get": {
+        "tags": [
+          "auth-providers"
+        ],
+        "summary": "Get Auth Provider",
+        "description": "Get details of a specific auth provider.\n\nArgs:\n-----\n    db: The database session\n    short_name: The short name of the auth provider\n    ctx: The current authentication context\n\nReturns:\n--------\n    schemas.AuthProvider: The auth provider details",
+        "operationId": "get_auth_provider_auth_providers_detail__short_name__get",
+        "parameters": [
+          {
+            "name": "short_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Short Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthProvider"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      }
+    },
     "/collections": {
       "get": {
         "tags": [
           "collections"
         ],
-        "summary": "List Collections",
+        "summary": "List",
         "description": "List all collections that belong to your organization.",
-        "operationId": "list_collections_collections_get",
+        "operationId": "list_collections_get",
         "parameters": [
           {
             "name": "skip",
@@ -228,7 +324,7 @@
                   "items": {
                     "$ref": "#/components/schemas/Collection"
                   },
-                  "title": "Response List Collections Collections Get"
+                  "title": "Response List Collections Get"
                 },
                 "examples": {
                   "collections_list": {
@@ -272,9 +368,9 @@
         "tags": [
           "collections"
         ],
-        "summary": "Create Collection",
+        "summary": "Create",
         "description": "Create a new collection.\n\nThe newly created collection is initially empty and does not contain any data\nuntil you explicitly add source connections to it.",
-        "operationId": "create_collection_collections_post",
+        "operationId": "create_collections_post",
         "parameters": [],
         "requestBody": {
           "required": true,
@@ -320,9 +416,9 @@
         "tags": [
           "collections"
         ],
-        "summary": "Get Collection",
+        "summary": "Get",
         "description": "Retrieve a specific collection by its readable ID.",
-        "operationId": "get_collection_collections__readable_id__get",
+        "operationId": "get_collections__readable_id__get",
         "parameters": [
           {
             "name": "readable_id",
@@ -368,9 +464,9 @@
         "tags": [
           "collections"
         ],
-        "summary": "Update Collection",
+        "summary": "Update",
         "description": "Update a collection's properties.\n\nModifies the display name of an existing collection.\nNote that the readable ID cannot be changed after creation to maintain stable\nAPI endpoints and preserve any existing integrations or bookmarks.",
-        "operationId": "update_collection_collections__readable_id__put",
+        "operationId": "update_collections__readable_id__put",
         "parameters": [
           {
             "name": "readable_id",
@@ -426,9 +522,9 @@
         "tags": [
           "collections"
         ],
-        "summary": "Delete Collection",
+        "summary": "Delete",
         "description": "Delete a collection and all associated data.\n\nPermanently removes a collection from your organization including all synced data\nfrom the destination systems. All source connections within this collection\nwill also be deleted as part of the cleanup process. This action cannot be undone.",
-        "operationId": "delete_collection_collections__readable_id__delete",
+        "operationId": "delete_collections__readable_id__delete",
         "parameters": [
           {
             "name": "readable_id",
@@ -476,9 +572,9 @@
         "tags": [
           "collections"
         ],
-        "summary": "Search Collection",
+        "summary": "Search",
         "description": "Search across all data sources within the specified collection.\n\nThis GET endpoint provides basic search functionality. For advanced filtering\nand options, use the POST /search endpoint.",
-        "operationId": "search_collection_collections__readable_id__search_get",
+        "operationId": "search_collections__readable_id__search_get",
         "parameters": [
           {
             "name": "readable_id",
@@ -531,7 +627,7 @@
               "maximum": 1000,
               "minimum": 1,
               "description": "Maximum number of results to return",
-              "default": 20,
+              "default": 100,
               "title": "Limit"
             },
             "description": "Maximum number of results to return"
@@ -656,9 +752,9 @@
         "tags": [
           "collections"
         ],
-        "summary": "Search Collection Advanced",
+        "summary": "Search Advanced",
         "description": "Advanced search with comprehensive filtering and options.\n\nThis endpoint supports:\n- Metadata filtering using Qdrant's native filter syntax\n- Pagination with offset and limit\n- Score threshold filtering\n- Query expansion strategies (default: AUTO, generates up to 4 variations)\n- Automatic filter extraction from natural language (default: ON)\n- LLM-based result reranking (default: ON)\n\nDefault behavior:\n- Query expansion: ON (AUTO strategy)\n- Query interpretation: ON (extracts filters from natural language)\n- Reranking: ON (improves relevance using LLM)\n- Score threshold: None (no filtering)\n\nTo disable features, explicitly set:\n- enable_reranking: false\n- enable_query_interpretation: false\n- expansion_strategy: \"no_expansion\"",
-        "operationId": "search_collection_advanced_collections__readable_id__search_post",
+        "operationId": "search_advanced_collections__readable_id__search_post",
         "parameters": [
           {
             "name": "readable_id",
@@ -847,9 +943,9 @@
         "tags": [
           "source-connections"
         ],
-        "summary": "List Source Connections",
+        "summary": "List",
         "description": "List source connections across your organization.\n\nBy default, returns ALL source connections from every collection in your\norganization. Use the 'collection' parameter to filter results to a specific\ncollection. This is useful for getting an overview of all your data sources\nor managing connections within a particular collection.",
-        "operationId": "list_source_connections_source_connections_get",
+        "operationId": "list_source_connections_get",
         "parameters": [
           {
             "name": "collection",
@@ -906,7 +1002,7 @@
                   "items": {
                     "$ref": "#/components/schemas/SourceConnectionListItem"
                   },
-                  "title": "Response List Source Connections Source Connections Get"
+                  "title": "Response List Source Connections Get"
                 },
                 "examples": {
                   "source_connections_list": {
@@ -950,9 +1046,9 @@
         "tags": [
           "source-connections"
         ],
-        "summary": "Create Source Connection",
+        "summary": "Create",
         "description": "Create a new source connection to sync data into your collection.\n\n**This endpoint only works for sources that do not use OAuth2.0.**\nSources that do use OAuth2.0 like Google Drive, Slack, or HubSpot must be\nconnected through the UI where you can complete the OAuth consent flow\nor using Auth Providers (see [Auth Providers](/docs/auth-providers)).<br/><br/>\n\nCredentials for a source have to be provided using the `auth_fields` field.\nCurrently, it is not automatically checked if the provided credentials are valid.\nIf they are not valid, the data synchronization will fail.<br/><br/>\n\nCheck the documentation of a specific source (for example\n[Github](https://docs.airweave.ai/docs/connectors/github)) to see what kind\nof authentication is used.",
-        "operationId": "create_source_connection_source_connections_post",
+        "operationId": "create_source_connections_post",
         "parameters": [],
         "requestBody": {
           "required": true,
@@ -998,9 +1094,9 @@
         "tags": [
           "source-connections"
         ],
-        "summary": "Get Source Connection",
+        "summary": "Get",
         "description": "Retrieve a specific source connection by its ID.",
-        "operationId": "get_source_connection_source_connections__source_connection_id__get",
+        "operationId": "get_source_connections__source_connection_id__get",
         "parameters": [
           {
             "name": "source_connection_id",
@@ -1059,9 +1155,9 @@
         "tags": [
           "source-connections"
         ],
-        "summary": "Update Source Connection",
+        "summary": "Update",
         "description": "Update a source connection's properties.\n\nModify the configuration of an existing source connection including its name,\nauthentication credentials, configuration fields, sync schedule, or source-specific settings.",
-        "operationId": "update_source_connection_source_connections__source_connection_id__put",
+        "operationId": "update_source_connections__source_connection_id__put",
         "parameters": [
           {
             "name": "source_connection_id",
@@ -1118,9 +1214,9 @@
         "tags": [
           "source-connections"
         ],
-        "summary": "Delete Source Connection",
+        "summary": "Delete",
         "description": "Delete a source connection and all associated data.\n\nPermanently removes the source connection configuration and credentials.\nBy default, previously synced data remains in your destination systems for continuity.\nUse delete_data=true to also remove all associated data from destination systems.",
-        "operationId": "delete_source_connection_source_connections__source_connection_id__delete",
+        "operationId": "delete_source_connections__source_connection_id__delete",
         "parameters": [
           {
             "name": "source_connection_id",
@@ -1169,9 +1265,9 @@
         "tags": [
           "source-connections"
         ],
-        "summary": "Run Source Connection",
+        "summary": "Run",
         "description": "Manually trigger a data sync for this source connection.\n\nStarts an immediate synchronization job that extracts fresh data from your source,\ntransforms it according to your configuration, and updates the destination systems.\nThe job runs asynchronously and endpoint returns immediately with tracking information.",
-        "operationId": "run_source_connection_source_connections__source_connection_id__run_post",
+        "operationId": "run_source_connections__source_connection_id__run_post",
         "parameters": [
           {
             "name": "source_connection_id",
@@ -1190,7 +1286,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Body_run_source_connection_source_connections__source_connection_id__run_post"
+                "$ref": "#/components/schemas/Body_run_source_connections__source_connection_id__run_post"
               }
             }
           }
@@ -1258,9 +1354,9 @@
         "tags": [
           "source-connections"
         ],
-        "summary": "List Source Connection Jobs",
+        "summary": "List Jobs",
         "description": "List all sync jobs for a source connection.\n\nReturns the complete history of data synchronization jobs including successful syncs,\nfailed attempts, and currently running operations.",
-        "operationId": "list_source_connection_jobs_source_connections__source_connection_id__jobs_get",
+        "operationId": "list_jobs_source_connections__source_connection_id__jobs_get",
         "parameters": [
           {
             "name": "source_connection_id",
@@ -1285,7 +1381,7 @@
                   "items": {
                     "$ref": "#/components/schemas/SourceConnectionJob"
                   },
-                  "title": "Response List Source Connection Jobs Source Connections  Source Connection Id  Jobs Get"
+                  "title": "Response List Jobs Source Connections  Source Connection Id  Jobs Get"
                 },
                 "examples": {
                   "sync_job_history": {
@@ -1344,9 +1440,9 @@
         "tags": [
           "source-connections"
         ],
-        "summary": "Get Source Connection Job",
+        "summary": "Get Job",
         "description": "Get detailed information about a specific sync job.",
-        "operationId": "get_source_connection_job_source_connections__source_connection_id__jobs__job_id__get",
+        "operationId": "get_job_source_connections__source_connection_id__jobs__job_id__get",
         "parameters": [
           {
             "name": "source_connection_id",
@@ -1436,9 +1532,9 @@
         "tags": [
           "source-connections"
         ],
-        "summary": "Cancel Source Connection Job",
+        "summary": "Cancel Job",
         "description": "Cancel a running sync job.\n\nSends a cancellation signal to stop an in-progress data synchronization.\nThe job will complete its current operation and then terminate gracefully.\nOnly jobs in 'created', 'pending', or 'in_progress' states can be cancelled.",
-        "operationId": "cancel_source_connection_job_source_connections__source_connection_id__jobs__job_id__cancel_post",
+        "operationId": "cancel_job_source_connections__source_connection_id__jobs__job_id__cancel_post",
         "parameters": [
           {
             "name": "source_connection_id",
@@ -1799,7 +1895,7 @@
         ],
         "summary": "Get White Label Oauth2 Auth Url",
         "description": "Generate a branded OAuth2 authorization URL for customer authentication.\n\n<br/><br/>\nCreates the OAuth consent URL that customers should be redirected to for\nauthentication. The OAuth consent screen will display your company name and\nbranding instead of Airweave.",
-        "operationId": "get_white_label_oauth2_auth_url_white_labels__white_label_id__oauth2_auth_url_options",
+        "operationId": "get_white_label_oauth2_auth_url_white_labels__white_label_id__oauth2_auth_url_get",
         "parameters": [
           {
             "name": "white_label_id",
@@ -1821,7 +1917,7 @@
               "application/json": {
                 "schema": {
                   "type": "string",
-                  "title": "Response Get White Label Oauth2 Auth Url White Labels  White Label Id  Oauth2 Auth Url Options"
+                  "title": "Response Get White Label Oauth2 Auth Url White Labels  White Label Id  Oauth2 Auth Url Get"
                 },
                 "examples": {
                   "slack_auth_url": {
@@ -1931,7 +2027,7 @@
         ],
         "summary": "Exchange White Label Oauth2 Code",
         "description": "Complete the OAuth flow and create a source connection.\n\n<br/><br/>\n**This is the core endpoint that converts OAuth authorization codes into working\nsource connections.**<br/><br/>The OAuth credentials are obtained automatically\nfrom the authorization code - you do not need to provide auth_fields. The white\nlabel integration is automatically linked to the created source connection for\ntracking and branding purposes.",
-        "operationId": "exchange_white_label_oauth2_code_white_labels__white_label_id__oauth2_code_options",
+        "operationId": "exchange_white_label_oauth2_code_white_labels__white_label_id__oauth2_code_post",
         "parameters": [
           {
             "name": "white_label_id",
@@ -1951,7 +2047,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Body_exchange_white_label_oauth2_code_white_labels__white_label_id__oauth2_code_options"
+                "$ref": "#/components/schemas/Body_exchange_white_label_oauth2_code_white_labels__white_label_id__oauth2_code_post"
               }
             }
           }
@@ -2630,7 +2726,7 @@
         "type": "object",
         "title": "Body_create_credentials_from_authorization_code_source_connections__source_short_name__code_to_token_credentials_post"
       },
-      "Body_exchange_white_label_oauth2_code_white_labels__white_label_id__oauth2_code_options": {
+      "Body_exchange_white_label_oauth2_code_white_labels__white_label_id__oauth2_code_post": {
         "properties": {
           "code": {
             "type": "string",
@@ -2656,9 +2752,9 @@
         "required": [
           "code"
         ],
-        "title": "Body_exchange_white_label_oauth2_code_white_labels__white_label_id__oauth2_code_options"
+        "title": "Body_exchange_white_label_oauth2_code_white_labels__white_label_id__oauth2_code_post"
       },
-      "Body_run_source_connection_source_connections__source_connection_id__run_post": {
+      "Body_run_source_connections__source_connection_id__run_post": {
         "properties": {
           "access_token": {
             "anyOf": [
@@ -2679,7 +2775,7 @@
           }
         },
         "type": "object",
-        "title": "Body_run_source_connection_source_connections__source_connection_id__run_post"
+        "title": "Body_run_source_connections__source_connection_id__run_post"
       },
       "CancelSubscriptionRequest": {
         "properties": {},
@@ -3944,6 +4040,47 @@
         "title": "EntityCount",
         "description": "Schema for entity count."
       },
+      "EntityCountWithDefinition": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "entity_definition_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Entity Definition Id"
+          },
+          "entity_definition_name": {
+            "type": "string",
+            "title": "Entity Definition Name"
+          },
+          "entity_definition_type": {
+            "type": "string",
+            "title": "Entity Definition Type"
+          },
+          "entity_definition_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Definition Description"
+          }
+        },
+        "type": "object",
+        "required": [
+          "count",
+          "entity_definition_id",
+          "entity_definition_name",
+          "entity_definition_type"
+        ],
+        "title": "EntityCountWithDefinition",
+        "description": "Entity count with entity definition details."
+      },
       "EntityDefinition": {
         "properties": {
           "name": {
@@ -4095,73 +4232,6 @@
         ],
         "title": "EntityDefinitionCreate",
         "description": "Schema for creating an entity definition."
-      },
-      "EntityDefinitionUpdate": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "type": {
-            "$ref": "#/components/schemas/EntityType"
-          },
-          "entity_schema": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "additionalProperties": true,
-                "type": "object"
-              }
-            ],
-            "title": "Entity Schema"
-          },
-          "parent_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Parent Id"
-          },
-          "module_name": {
-            "type": "string",
-            "title": "Module Name"
-          },
-          "class_name": {
-            "type": "string",
-            "title": "Class Name"
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "type",
-          "entity_schema",
-          "module_name",
-          "class_name"
-        ],
-        "title": "EntityDefinitionUpdate",
-        "description": "Schema for updating an entity."
       },
       "EntityType": {
         "type": "string",
@@ -5537,8 +5607,8 @@
               }
             ],
             "title": "Limit",
-            "description": "Maximum number of results to return (DEFAULT: 20)",
-            "default": 20
+            "description": "Maximum number of results to return (DEFAULT: 100)",
+            "default": 100
           },
           "score_threshold": {
             "anyOf": [
@@ -6839,6 +6909,12 @@
             "title": "Collection",
             "description": "Readable ID of the collection where synced data will be stored. If not provided, a new collection will be automatically created."
           },
+          "enable_daily_cleanup": {
+            "type": "boolean",
+            "title": "Enable Daily Cleanup",
+            "description": "Whether to create a daily forced full sync with entity cleanup. Defaults to true for resilience; set to false to rely solely on incremental changes.",
+            "default": true
+          },
           "auth_fields": {
             "anyOf": [
               {
@@ -7517,6 +7593,49 @@
             "short_name": "github",
             "status": "active",
             "sync_id": "123e4567-e89b-12d3-a456-426614174000"
+          }
+        ]
+      },
+      "SourceConnectionMakeContinuous": {
+        "properties": {
+          "cursor_field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cursor Field",
+            "description": "Specify which field in the entity should be used as the cursor for incremental syncs. If omitted, the source's default cursor field will be used if available. Required for sources without a default (e.g., PostgreSQL).",
+            "examples": [
+              "updated_at",
+              "modified_timestamp",
+              "last_modified"
+            ]
+          },
+          "enable_daily_cleanup": {
+            "type": "boolean",
+            "title": "Enable Daily Cleanup",
+            "description": "Whether to create a daily forced full sync with entity cleanup. This helps remove orphaned entities that incremental syncs cannot detect.",
+            "default": true
+          },
+          "run_initial_sync": {
+            "type": "boolean",
+            "title": "Run Initial Sync",
+            "description": "Whether to immediately trigger a sync job after enabling continuous mode. If no cursor data exists yet, this initial run will perform a full sync.",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "SourceConnectionMakeContinuous",
+        "description": "Schema for converting an existing source connection to continuous (BETA).",
+        "examples": [
+          {
+            "cursor_field": "updated_at",
+            "enable_daily_cleanup": true,
+            "run_initial_sync": true
           }
         ]
       },

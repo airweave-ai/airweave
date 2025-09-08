@@ -50,6 +50,8 @@ from .embedding_model import (
     EmbeddingModelWithAuthenticationFields,
 )
 from .entity import Entity, EntityCount, EntityCreate, EntityInDBBase, EntityUpdate
+from .entity_count import EntityCount as EntityCountSchema
+from .entity_count import EntityCountCreate, EntityCountUpdate, EntityCountWithDefinition
 from .entity_definition import (
     EntityDefinition,
     EntityDefinitionCreate,
@@ -111,6 +113,7 @@ from .source_connection import (
     SourceConnectionCreateWithWhiteLabel,
     SourceConnectionInDBBase,
     SourceConnectionListItem,
+    SourceConnectionMakeContinuous,
     SourceConnectionUpdate,
 )
 from .sync import (

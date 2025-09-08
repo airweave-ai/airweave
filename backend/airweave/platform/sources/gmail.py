@@ -13,6 +13,7 @@ from airweave.platform.decorators import source
 from airweave.platform.entities._base import Breadcrumb, ChunkEntity
 from airweave.platform.entities.gmail import (
     GmailAttachmentEntity,
+    GmailMessageDeletionEntity,
     GmailMessageEntity,
     GmailThreadEntity,
 )
@@ -85,6 +86,37 @@ class GmailSource(BaseSource):
         self.logger.info(f"Received response from {url} - Status: {response.status_code}")
         self.logger.debug(f"Response data keys: {list(data.keys())}")
         return data
+
+    # --- Incremental sync support (cursor field) ---
+    def get_default_cursor_field(self) -> Optional[str]:
+        """Default cursor field for Gmail incremental sync.
+
+        Gmail uses historyId for incremental changes. We'll store it under a named cursor field.
+        """
+        return "history_id"
+
+    def validate_cursor_field(self, cursor_field: str) -> None:
+        """Validate the cursor field for Gmail incremental sync."""
+        valid_field = self.get_default_cursor_field()
+        if cursor_field != valid_field:
+            raise ValueError(
+                f"Invalid cursor field '{cursor_field}' for Gmail. Use '{valid_field}'."
+            )
+
+    def _get_cursor_data(self) -> Dict[str, Any]:
+        if self.cursor:
+            return self.cursor.cursor_data or {}
+        return {}
+
+    def _update_cursor_data(self, new_history_id: str) -> None:
+        if not self.cursor:
+            return
+        cursor_field = self.get_effective_cursor_field() or self.get_default_cursor_field()
+        if not cursor_field:
+            return
+        if not self.cursor.cursor_data:
+            self.cursor.cursor_data = {}
+        self.cursor.cursor_data[cursor_field] = new_history_id
 
     async def _generate_thread_entities(
         self, client: httpx.AsyncClient, processed_message_ids: set
@@ -571,27 +603,125 @@ class GmailSource(BaseSource):
         return safe_name.strip()
 
     async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
-        """Generate all Gmail entities: Threads, Messages, and Attachments."""
-        self.logger.info("===== STARTING GMAIL ENTITY GENERATION =====")
-        entity_count = 0
-        # Track processed message IDs to avoid duplicates across threads
-        processed_message_ids = set()
-
+        """Generate Gmail entities with incremental History API support."""
         try:
             async with httpx.AsyncClient() as client:
-                self.logger.info("HTTP client created, starting entity generation")
-                # Generate thread entities (which also generates messages and attachments)
-                async for entity in self._generate_thread_entities(client, processed_message_ids):
-                    entity_count += 1
-                    entity_type = type(entity).__name__
-                    self.logger.info(
-                        f"Yielding entity #{entity_count}: {entity_type} with ID {entity.entity_id}"
-                    )
-                    yield entity
+                cursor_field, last_history_id = await self._resolve_cursor_and_token()
+                if last_history_id:
+                    async for e in self._run_incremental_sync(client, last_history_id):
+                        yield e
+                else:
+                    async for e in self._run_full_sync(client):
+                        yield e
         except Exception as e:
             self.logger.error(f"Error in entity generation: {str(e)}", exc_info=True)
             raise
-        finally:
-            self.logger.info(
-                f"===== GMAIL ENTITY GENERATION COMPLETE: {entity_count} entities ====="
-            )
+
+    async def _resolve_cursor_and_token(self) -> tuple[Optional[str], Optional[str]]:
+        cursor_field = self.get_effective_cursor_field() or self.get_default_cursor_field()
+        if cursor_field and cursor_field != self.get_default_cursor_field():
+            self.validate_cursor_field(cursor_field)
+        cursor_data = self._get_cursor_data()
+        last_history_id = cursor_data.get(cursor_field) if cursor_field else None
+        return cursor_field, last_history_id
+
+    async def _run_incremental_sync(
+        self, client: httpx.AsyncClient, start_history_id: str
+    ) -> AsyncGenerator[ChunkEntity, None]:
+        """Run Gmail incremental sync using users.history.list pages."""
+        base_url = "https://gmail.googleapis.com/gmail/v1/users/me/history"
+        params: Dict[str, Any] = {
+            "startHistoryId": start_history_id,
+            "maxResults": 500,
+        }
+        latest_history_id: Optional[str] = None
+
+        while True:
+            data = await self._get_with_auth(client, base_url, params=params)
+            async for deletion in self._yield_history_deletions(data):
+                yield deletion
+            async for addition in self._yield_history_additions(client, data):
+                yield addition
+
+            latest_history_id = data.get("historyId") or latest_history_id
+
+            next_token = data.get("nextPageToken")
+            if next_token:
+                params["pageToken"] = next_token
+            else:
+                break
+
+        if latest_history_id:
+            self._update_cursor_data(str(latest_history_id))
+            self.logger.info("Updated Gmail cursor with latest historyId for next run")
+
+    async def _yield_history_deletions(
+        self, data: Dict[str, Any]
+    ) -> AsyncGenerator[ChunkEntity, None]:
+        """Yield deletion entities from a history page."""
+        for h in data.get("history", []) or []:
+            for deleted in h.get("messagesDeleted", []) or []:
+                msg = deleted.get("message") or {}
+                msg_id = msg.get("id")
+                thread_id = msg.get("threadId")
+                if not msg_id:
+                    continue
+                yield GmailMessageDeletionEntity(
+                    entity_id=f"msg_{msg_id}",
+                    message_id=msg_id,
+                    thread_id=thread_id,
+                    deletion_status="removed",
+                )
+
+    async def _yield_history_additions(
+        self, client: httpx.AsyncClient, data: Dict[str, Any]
+    ) -> AsyncGenerator[ChunkEntity, None]:
+        """Yield entities for added/changed messages from a history page."""
+        for h in data.get("history", []) or []:
+            for added in h.get("messagesAdded", []) or []:
+                msg = added.get("message") or {}
+                msg_id = msg.get("id")
+                if not msg_id:
+                    continue
+                try:
+                    detail_url = f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{msg_id}"
+                    message_data = await self._get_with_auth(client, detail_url)
+
+                    thread_id = message_data.get("threadId", "unknown")
+                    thread_breadcrumb = Breadcrumb(
+                        entity_id=f"thread_{thread_id}",
+                        name=f"Thread {thread_id}",
+                        type="thread",
+                    )
+                    async for entity in self._process_message(
+                        client, message_data, thread_id, thread_breadcrumb
+                    ):
+                        yield entity
+                except Exception as e:
+                    self.logger.error(f"Failed to fetch/process message {msg_id}: {e}")
+                    continue
+
+    async def _run_full_sync(self, client: httpx.AsyncClient) -> AsyncGenerator[ChunkEntity, None]:
+        """Run initial full sync and store a starting historyId."""
+        processed_message_ids = set()
+        async for entity in self._generate_thread_entities(client, processed_message_ids):
+            yield entity
+
+        # Capture a starting historyId
+        try:
+            url = "https://gmail.googleapis.com/gmail/v1/users/me/messages"
+            latest_list = await self._get_with_auth(client, url, params={"maxResults": 1})
+            msgs = latest_list.get("messages", [])
+            if msgs:
+                detail = await self._get_with_auth(
+                    client,
+                    f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{msgs[0]['id']}",
+                )
+                history_id = detail.get("historyId")
+                if history_id:
+                    self._update_cursor_data(str(history_id))
+                    self.logger.info(
+                        "Stored Gmail historyId after full sync for next incremental run"
+                    )
+        except Exception as e:
+            self.logger.error(f"Failed to capture starting Gmail historyId: {e}")

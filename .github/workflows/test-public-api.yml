@@ -34,10 +34,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests pytest
 
+      - name: Build test images locally
+        run: |
+          echo "Building backend image for testing..."
+          docker build -t test-backend:latest ./backend
+          echo "Building frontend image for testing..."
+          docker build -t test-frontend:latest ./frontend
+
       - name: Run Public API Test
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
+          # Override images to use locally built test images
+          BACKEND_IMAGE: test-backend:latest
+          FRONTEND_IMAGE: test-frontend:latest
         run: |
           cd backend
           python tests/e2e/smoke/test_public_api.py --env local

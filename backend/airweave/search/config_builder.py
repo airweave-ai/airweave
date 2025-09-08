@@ -30,7 +30,7 @@ from airweave.search.operations import (
 # ============================================================================
 
 # Core search defaults
-DEFAULT_LIMIT = 20
+DEFAULT_LIMIT = 100
 DEFAULT_OFFSET = 0
 DEFAULT_SCORE_THRESHOLD = None  # No threshold by default
 DEFAULT_SEARCH_METHOD = "hybrid"  # Combines neural + BM25
@@ -231,7 +231,9 @@ class SearchConfigBuilder:
 
         if response_type == ResponseType.COMPLETION:
             ctx.logger.debug("Enabling completion generation")
-            ops["completion"] = CompletionGeneration(default_model="gpt-4o", max_results_context=10)
+            ops["completion"] = CompletionGeneration(
+                default_model="gpt-5-nano", max_results_context=100
+            )
         else:
             ops["completion"] = None
 

@@ -141,6 +141,67 @@ def _validate_entity_class_fields(cls: Type, name: str, module_name: str) -> Non
                 )
 
 
+def _get_entity_schema_with_direct_fields_only(cls: Type) -> dict:
+    """Get the JSON schema for an entity class including only direct fields and breadcrumbs.
+
+    Args:
+        cls: The entity class
+
+    Returns:
+        dict: JSON schema with only direct fields and breadcrumbs
+    """
+    # Get the full schema
+    full_schema = cls.model_json_schema()
+
+    # Get direct annotations (fields defined directly in this class)
+    direct_annotations = getattr(cls, "__annotations__", {})
+
+    # Fields to always include
+    always_include = {"breadcrumbs"}
+
+    # Fields to always exclude (system metadata and internal fields)
+    always_exclude = {
+        "airweave_system_metadata",
+        "_hash",
+        "default_exclude_fields",
+        "embeddable_text",  # This is generated, not a source field
+        "entity_id",  # This is set by the source connector
+        "parent_entity_id",  # This is set by the source connector
+        "url",  # This is set by the source connector
+        "chunk_index",  # This is set by the source connector
+    }
+
+    # Build the filtered schema
+    filtered_schema = {
+        "type": "object",
+        "title": full_schema.get("title", cls.__name__),
+        "description": full_schema.get("description", ""),
+        "properties": {},
+        "required": [],
+    }
+
+    # Add properties that are either direct fields or in always_include
+    if "properties" in full_schema:
+        for field_name, field_schema in full_schema["properties"].items():
+            # Skip excluded fields
+            if field_name in always_exclude:
+                continue
+
+            # Include if it's a direct field or in always_include
+            if field_name in direct_annotations or field_name in always_include:
+                filtered_schema["properties"][field_name] = field_schema
+
+                # Add to required if it was required in the original schema
+                if "required" in full_schema and field_name in full_schema["required"]:
+                    filtered_schema["required"].append(field_name)
+
+    # If there are definitions in the schema (for nested models), include them
+    if "$defs" in full_schema:
+        filtered_schema["$defs"] = full_schema["$defs"]
+
+    return filtered_schema
+
+
 async def _sync_embedding_models(db: AsyncSession, models: list[Type[BaseEmbeddingModel]]) -> None:
     """Sync embedding models with the database.
 
@@ -239,12 +300,14 @@ async def _sync_entity_definitions(db: AsyncSession) -> Dict[str, dict]:
                 )
                 module_registry[module_name]["entity_names"].append(name)
 
-                # Create entity definition
+                # Create entity definition with filtered schema
                 entity_def = schemas.EntityDefinitionCreate(
                     name=name,
                     description=cls.__doc__ or f"Data from {name}",
                     type=EntityType.JSON,
-                    entity_schema=cls.model_json_schema(),  # Get the actual schema
+                    entity_schema=_get_entity_schema_with_direct_fields_only(
+                        cls
+                    ),  # Get filtered schema
                     module_name=module_name,
                     class_name=cls.__name__,
                 )

@@ -64,7 +64,7 @@ async def code_file_summarizer(file: CodeFileEntity, logger: ContextualLogger) -
         try:
             logger.debug("Sending request to OpenAI API")
             summary = await client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-5-nano",
                 messages=[{"role": "user", "content": PROMPT}],
             )
             file_summary = summary.choices[0].message.content

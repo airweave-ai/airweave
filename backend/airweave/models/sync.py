@@ -3,9 +3,10 @@
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import JSON, DateTime, String
+from sqlalchemy import JSON, DateTime, String, event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from airweave.core.logging import logger
 from airweave.core.shared_models import SyncStatus
 from airweave.models._base import OrganizationBase, UserMixin
 
@@ -84,3 +85,31 @@ class Sync(OrganizationBase, UserMixin):
         passive_deletes=True,
         uselist=False,  # Ensures one-to-one relationship
     )
+
+
+# Ensure Temporal schedules are deleted when a Sync row is deleted (covers cascades)
+@event.listens_for(Sync, "after_delete")
+def delete_temporal_schedules_after_sync_delete(mapper, connection, target):
+    """Delete Temporal schedules when a Sync row is deleted."""
+    try:
+        import asyncio
+
+        schedule_ids = [
+            f"minute-sync-{target.id}",
+            f"daily-cleanup-{target.id}",
+        ]
+
+        async def _cleanup():
+            # Import here to avoid circular import during module initialization
+            from airweave.platform.temporal.schedule_service import (
+                temporal_schedule_service,
+            )
+
+            for sid in schedule_ids:
+                await temporal_schedule_service.delete_schedule_handle(sid)
+
+        asyncio.get_event_loop().create_task(_cleanup())
+    except Exception as e:
+        logger.info(
+            f"Could not schedule Temporal cleanup for sync {getattr(target, 'id', None)}: {e}"
+        )

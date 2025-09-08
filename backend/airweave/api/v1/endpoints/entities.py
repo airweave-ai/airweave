@@ -33,18 +33,6 @@ async def create_entity_definition(
     return await crud.entity_definition.create(db, obj_in=definition, ctx=ctx)
 
 
-@router.put("/definitions/{definition_id}", response_model=schemas.EntityDefinition)
-async def update_entity_definition(
-    definition_id: UUID,
-    definition: schemas.EntityDefinitionUpdate,
-    db: AsyncSession = Depends(deps.get_db),
-    ctx: ApiContext = Depends(deps.get_context),
-) -> schemas.EntityDefinition:
-    """Update an entity definition."""
-    db_obj = await crud.entity_definition.get(db, id=definition_id)
-    return await crud.entity_definition.update(db, db_obj=db_obj, obj_in=definition, ctx=ctx)
-
-
 @router.post("/definitions/by-ids/", response_model=List[schemas.EntityDefinition])
 async def get_entity_definitions_by_ids(
     ids: List[UUID],

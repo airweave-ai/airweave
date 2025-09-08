@@ -309,6 +309,13 @@ class SyncOrchestrator:
         await self._wait_for_remaining_tasks(pending_tasks)
         await self.sync_context.progress.finalize(is_complete=(stream_error is None))
 
+        # Finalize entity state tracker with terminal status if present
+        if getattr(self.sync_context, "entity_state_tracker", None):
+            error_message = get_error_message(stream_error) if stream_error else None
+            await self.sync_context.entity_state_tracker.finalize(
+                is_complete=(stream_error is None), error=error_message
+            )
+
         # Cleanup orphaned entities only when safe
         has_cursor_data = bool(
             hasattr(self.sync_context, "cursor")

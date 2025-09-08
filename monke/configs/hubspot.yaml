@@ -1,0 +1,22 @@
+name: "hubspot_test"
+description: "End-to-end test for HubSpot Contacts via Monke"
+connector:
+  name: "HubSpot"
+  type: "hubspot"
+  auth_fields: {}   # resolved by credentials_resolver (expects access_token)
+  config_fields:
+    openai_model: "gpt-4.1"
+    rate_limit_delay_ms: 800
+test_flow:
+  steps: [create, sync, verify, update, sync, verify, partial_delete, sync, verify_partial_deletion, verify_remaining_entities, complete_delete, sync, verify_complete_deletion]
+entity_count: 3
+deletion:
+  partial_delete_count: 1
+  verify_partial_deletion: true
+  verify_remaining_entities: true
+  verify_complete_deletion: true
+verification:
+  retries: 3
+  retry_backoff_seconds: 5
+  resync_on_miss: true
+  search_limit: 50

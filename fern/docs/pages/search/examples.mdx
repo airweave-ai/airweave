@@ -118,11 +118,11 @@ Try the advanced search endpoint with filters in our interactive API playground.
 
 ```bash
 # GET - Basic search
-curl -X GET "https://api.airweave.ai/api/v1/collections/{id}/search?query=test" \
+curl -X GET "https://api.airweave.ai/collections/{id}/search?query=test" \
   -H "x-api-key: your-api-key"
 
 # POST - Advanced search with filters
-curl -X POST "https://api.airweave.ai/api/v1/collections/{id}/search" \
+curl -X POST "https://api.airweave.ai/collections/{id}/search" \
   -H "x-api-key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{

@@ -12,7 +12,6 @@ from airweave.core import credentials
 from airweave.core.auth_provider_service import auth_provider_service
 from airweave.core.collection_service import collection_service
 from airweave.core.constants.native_connections import NATIVE_QDRANT_UUID, NATIVE_TEXT2VEC_UUID
-from airweave.core.logging import logger
 from airweave.core.shared_models import ConnectionStatus, SourceConnectionStatus, SyncStatus
 from airweave.core.sync_service import sync_service
 from airweave.db.unit_of_work import UnitOfWork
@@ -22,10 +21,7 @@ from airweave.platform.auth.services import oauth2_service
 from airweave.platform.auth.settings import integration_settings
 from airweave.platform.configs.auth import OAuth2AuthConfig, OAuth2BYOCAuthConfig
 from airweave.platform.locator import resource_locator
-
-source_connection_logger = logger.with_prefix("Source Connection Service: ").with_context(
-    component="source_connection_service"
-)
+from airweave.platform.temporal.schedule_service import temporal_schedule_service
 
 
 class SourceConnectionService:
@@ -67,7 +63,11 @@ class SourceConnectionService:
             return False
 
     async def _validate_auth_fields(
-        self, db: AsyncSession, source_short_name: str, auth_fields: Optional[Dict[str, Any]]
+        self,
+        db: AsyncSession,
+        source_short_name: str,
+        auth_fields: Optional[Dict[str, Any]],
+        ctx: ApiContext,
     ) -> dict:
         """Validate auth fields based on auth type.
 
@@ -77,6 +77,7 @@ class SourceConnectionService:
             db: The database session
             source_short_name: The short name of the source
             auth_fields: The auth fields to validate
+            ctx: The current authentication context
 
         Returns:
             The validated auth fields as a dict
@@ -113,7 +114,7 @@ class SourceConnectionService:
             auth_config = auth_config_class(**auth_fields)
             return auth_config.model_dump()
         except Exception as e:
-            source_connection_logger.error(f"Failed to validate auth fields: {e}")
+            ctx.logger.error(f"Failed to validate auth fields: {e}")
 
             # Check if it's a Pydantic validation error and format it nicely
             from pydantic import ValidationError
@@ -142,7 +143,11 @@ class SourceConnectionService:
                 ) from e
 
     async def _validate_config_fields(
-        self, db: AsyncSession, source_short_name: str, config_fields: Optional[Dict[str, Any]]
+        self,
+        db: AsyncSession,
+        source_short_name: str,
+        config_fields: Optional[Dict[str, Any]],
+        ctx: ApiContext,
     ) -> dict:
         """Validate config fields based on source config class.
 
@@ -150,6 +155,7 @@ class SourceConnectionService:
             db: The database session
             source_short_name: The short name of the source
             config_fields: The config fields to validate
+            ctx: The current authentication context
 
         Returns:
             The validated config fields as a dict
@@ -196,7 +202,7 @@ class SourceConnectionService:
             config = config_class(**config_fields)
             return config.model_dump()
         except Exception as e:
-            source_connection_logger.error(f"Failed to validate config fields: {e}")
+            ctx.logger.error(f"Failed to validate config fields: {e}")
 
             # Check if it's a Pydantic validation error and format it nicely
             from pydantic import ValidationError
@@ -403,7 +409,7 @@ class SourceConnectionService:
                 await self._handle_oauth_validation(db, source, source_connection_in, aux_attrs)
 
                 auth_fields = await self._validate_auth_fields(
-                    uow.session, source_connection_in.short_name, aux_attrs["auth_fields"]
+                    uow.session, source_connection_in.short_name, aux_attrs["auth_fields"], ctx
                 )
 
                 integration_cred_in = schemas.IntegrationCredentialCreateEncrypted(
@@ -430,7 +436,7 @@ class SourceConnectionService:
 
             # Validate config fields
             config_fields = await self._validate_config_fields(
-                db, source_connection_in.short_name, core_attrs.get("config_fields")
+                db, source_connection_in.short_name, core_attrs.get("config_fields"), ctx
             )
             core_attrs["config_fields"] = config_fields
 
@@ -516,6 +522,7 @@ class SourceConnectionService:
                 source_connection.latest_sync_job_id = sync_job.id
                 source_connection.latest_sync_job_started_at = sync_job.started_at
                 source_connection.latest_sync_job_completed_at = sync_job.completed_at
+                source_connection.latest_sync_job_error = sync_job.error if sync_job.error else None
             else:
                 # No sync job created (sync_immediately=False)
                 source_connection.status = SourceConnectionStatus.ACTIVE
@@ -600,14 +607,14 @@ class SourceConnectionService:
                 source_connection_schema.next_scheduled_run = sync.next_scheduled_run
 
                 # Log the sync schedule information for debugging
-                source_connection_logger.info(
+                ctx.logger.info(
                     f"Adding sync schedule to source connection: "
                     f"cron_schedule={sync.cron_schedule}, "
                     f"next_scheduled_run={sync.next_scheduled_run}"
                 )
 
         # Before returning, add a log to see what's actually being sent
-        logger.info(
+        ctx.logger.info(
             "\nRETURNING SOURCE CONNECTION: "
             f"latest_sync_job_id={source_connection_schema.latest_sync_job_id},\n"
             f"cron_schedule={source_connection_schema.cron_schedule},\n"
@@ -759,6 +766,7 @@ class SourceConnectionService:
                         if hasattr(source_connection_in.config_fields, "model_dump")
                         else source_connection_in.config_fields
                     ),
+                    ctx,
                 )
                 source_connection_in.config_fields = validated_config_fields
 
@@ -812,6 +820,7 @@ class SourceConnectionService:
                             uow.session,
                             source_connection.short_name,
                             auth_fields_dict,
+                            ctx,
                         )
                         credential_update = schemas.IntegrationCredentialUpdate(
                             encrypted_credentials=credentials.encrypt(validated_auth_fields)
@@ -872,7 +881,7 @@ class SourceConnectionService:
         # Always delete data from Qdrant when deleting a source connection
         if source_connection.sync_id and source_connection.readable_collection_id:
             try:
-                source_connection_logger.info(
+                ctx.logger.info(
                     f"Deleting data for source connection {source_connection_id} "
                     f"(sync_id: {source_connection.sync_id}) from destinations"
                 )
@@ -892,22 +901,33 @@ class SourceConnectionService:
                     destination = await QdrantDestination.create(collection_id=collection.id)
                     await destination.delete_by_sync_id(source_connection.sync_id)
 
-                    source_connection_logger.info(
+                    ctx.logger.info(
                         f"Successfully deleted data for sync_id {source_connection.sync_id} "
                         f"from Qdrant collection {collection.id}"
                     )
                 else:
-                    source_connection_logger.warning(
+                    ctx.logger.warning(
                         f"Collection {source_connection.readable_collection_id} not found, "
                         f"skipping data deletion"
                     )
             except Exception as e:
-                source_connection_logger.error(
+                ctx.logger.error(
                     f"Error deleting data from destinations: {str(e)}. "
                     f"Continuing with source connection deletion."
                 )
                 # We don't raise here - we still want to delete the source connection
                 # even if data deletion fails
+
+        # Cleanup Temporal schedules first (if any)
+        if source_connection.sync_id:
+            try:
+                await temporal_schedule_service.delete_all_schedules_for_sync(
+                    sync_id=source_connection.sync_id, db=db, ctx=ctx
+                )
+            except Exception as e:
+                ctx.logger.error(
+                    f"Failed to delete schedules for sync {source_connection.sync_id}: {e}"
+                )
 
         await crud.source_connection.remove(db=db, id=source_connection_id, ctx=ctx)
 
@@ -1228,7 +1248,7 @@ class SourceConnectionService:
 
             # Validate the auth fields against the auth config class (critical step!)
             validated_auth_fields = await self._validate_auth_fields(
-                db=db, source_short_name=source_short_name, auth_fields=auth_fields
+                db=db, source_short_name=source_short_name, auth_fields=auth_fields, ctx=ctx
             )
 
             # Create the integration credential
@@ -1263,7 +1283,7 @@ class SourceConnectionService:
                 )
 
         except Exception as e:
-            source_connection_logger.error(f"Failed to create credential from OAuth2 code: {e}")
+            ctx.logger.error(f"Failed to create credential from OAuth2 code: {e}")
             if isinstance(e, HTTPException):
                 raise
             raise HTTPException(

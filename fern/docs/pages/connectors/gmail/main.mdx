@@ -104,6 +104,20 @@ Reference: https://developers.google.com/gmail/api/reference/rest/v1/users.messa
 | metadata | Optional[Dict[str, Any]] | Additional metadata about the attachment |
 
 </Accordion>
+<Accordion title="GmailMessageDeletionEntity">
+
+Deletion signal for a Gmail message.
+
+Emitted when the Gmail History API reports a messageDeleted. The entity_id matches the
+message entity's ID format so downstream deletion removes the correct parent/children.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| message_id | str | The Gmail message ID that was deleted |
+| thread_id | str | None | Thread ID (optional if not provided by change record) |
+| deletion_status | str | Status indicating the message was removed (e.g., 'removed') |
+
+</Accordion>
 
 
 

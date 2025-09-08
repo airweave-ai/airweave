@@ -60,7 +60,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.log('Auth initialization complete');
 
           // Log the token for debugging
-          console.log('Auth0 token received:', accessToken);
           console.log('Token length:', accessToken.length);
           // Print first and last 10 characters of token
           console.log('Token preview:', accessToken.substring(0, 10) + '...' + accessToken.substring(accessToken.length - 10));

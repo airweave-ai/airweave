@@ -326,6 +326,6 @@ class AsyncImageConverter(DocumentConverter):
 
         # Get response from LLM (default to vision model)
         response = await self.openai_client.chat.completions.create(
-            model="gpt-4.1-mini", messages=messages, max_tokens=300
+            model="gpt-5-nano", messages=messages, max_completion_tokens=3000
         )
         return response.choices[0].message.content

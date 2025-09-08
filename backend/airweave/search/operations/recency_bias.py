@@ -156,11 +156,27 @@ class RecencyBias(SearchOperation):
         """Compute dynamic decay from collection timestamps and store in context."""
         config = context["config"]
         logger = context["logger"]
+        emitter = context.get("emit")
 
         # Determine weight from request via builder
         recency_bias: float = float(getattr(config, "recency_bias", 0.0) or 0.0)
+        # Emit start event with requested weight
+        if callable(emitter):
+            try:
+                await emitter(
+                    "recency_start", {"requested_weight": recency_bias}, op_name=self.name
+                )
+            except Exception:
+                pass
+
         if recency_bias <= 0.0:
             context["decay_config"] = None
+            # Inform streaming clients we skipped due to zero weight
+            if callable(emitter):
+                try:
+                    await emitter("recency_skipped", {"reason": "weight_zero"}, op_name=self.name)
+                except Exception:
+                    pass
             return
 
         # Determine datetime field strictly from harmonized system metadata
@@ -188,6 +204,22 @@ class RecencyBias(SearchOperation):
             oldest, newest = await self._get_min_max(
                 destination, config.collection_id, field, qdrant_filter, logger
             )
+            # Emit span details regardless of validity so UI can show what was observed
+            if callable(emitter):
+                try:
+                    span_val = (newest - oldest).total_seconds() if (oldest and newest) else None
+                    await emitter(
+                        "recency_span",
+                        {
+                            "field": field,
+                            "oldest": oldest.isoformat() if oldest else None,
+                            "newest": newest.isoformat() if newest else None,
+                            "span_seconds": span_val,
+                        },
+                        op_name=self.name,
+                    )
+                except Exception:
+                    pass
             logger.debug(f"[RecencyBias] Got oldest={oldest}, newest={newest}")
             if oldest and newest and newest > oldest:
                 chosen_field = field
@@ -210,6 +242,12 @@ class RecencyBias(SearchOperation):
         if not chosen_field:
             logger.info("[RecencyBias] No usable datetime field found; skipping recency bias")
             context["decay_config"] = None
+            # Inform clients of skip reason
+            if callable(emitter):
+                try:
+                    await emitter("recency_skipped", {"reason": "no_field"}, op_name=self.name)
+                except Exception:
+                    pass
             return
 
         # Build DecayConfig and store in context

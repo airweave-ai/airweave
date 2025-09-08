@@ -42,7 +42,8 @@ async_engine = create_async_engine(
     # Settings to prevent connection buildup:
     connect_args={
         "server_settings": {
-            "idle_in_transaction_session_timeout": "60000",  # Kill idle transactions after 60s
+            # Kill idle transactions after 5 minutes
+            "idle_in_transaction_session_timeout": "300000",
         },
         "command_timeout": 60,
     },
@@ -68,7 +69,11 @@ async def get_db_context() -> AsyncGenerator[AsyncSession, None]:
         try:
             yield db
         finally:
-            await db.close()
+            try:
+                await db.close()
+            except Exception:
+                # Connection may have been closed by server due to idle timeout; ignore on close
+                pass
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -83,4 +88,8 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         try:
             yield db
         finally:
-            await db.close()
+            try:
+                await db.close()
+            except Exception:
+                # Connection may have been closed by server due to idle timeout; ignore on close
+                pass

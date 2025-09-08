@@ -2,6 +2,7 @@ export const protectedPaths = {
     dashboard: "/",
     collections: "/collections",
     collectionDetail: "/collections/:readable_id",
+    collectionNew: "/collections/:readable_id/new",
     apiKeys: "/api-keys",
     authProviders: "/auth-providers",
     whiteLabel: "/white-label",

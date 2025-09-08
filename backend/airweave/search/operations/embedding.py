@@ -67,11 +67,22 @@ class Embedding(SearchOperation):
         queries = context.get("expanded_queries", [context["query"]])
         logger = context["logger"]
         openai_api_key = context.get("openai_api_key")
+        emitter = context.get("emit")
 
         logger.info(
             f"[Embedding] Generating embeddings for {len(queries)} queries "
             f"with search_method={self.search_method}"
         )
+        # Emit start event with minimal info
+        if callable(emitter):
+            try:
+                await emitter(
+                    "embedding_start",
+                    {"search_method": self.search_method},
+                    op_name=self.name,
+                )
+            except Exception:
+                pass
 
         try:
             # Generate neural embeddings if needed
@@ -133,6 +144,51 @@ class Embedding(SearchOperation):
                 context["sparse_embeddings"] = None
                 logger.info("[Embedding] Skipping sparse embeddings for neural-only search")
 
+            # Emit done event with summary stats
+            if callable(emitter):
+                try:
+                    using_llm = (
+                        openai_api_key
+                        and self.search_method in ["hybrid", "neural"]
+                        and self.model in ["openai", "auto"]
+                    )
+                    using_local = (
+                        self.search_method in ["hybrid", "neural"]
+                        and self.model in ["local", "auto"]
+                        and not openai_api_key
+                    )
+                    model_used = "openai" if using_llm else ("local" if using_local else "none")
+
+                    dim = len(context["embeddings"][0]) if context.get("embeddings") else None
+                    avg_nz = None
+                    try:
+                        if context.get("sparse_embeddings"):
+                            nz = [
+                                len(getattr(v, "indices", []) or [])
+                                for v in context["sparse_embeddings"]
+                            ]
+                            if nz:
+                                avg_nz = sum(nz) / len(nz)
+                    except Exception:
+                        pass
+                    await emitter(
+                        "embedding_done",
+                        {
+                            "neural_count": len(context.get("embeddings", [])) or 0,
+                            "dim": dim,
+                            "model": model_used,
+                            "sparse_count": (
+                                len(context.get("sparse_embeddings", []) or [])
+                                if context.get("sparse_embeddings")
+                                else 0
+                            ),
+                            "avg_nonzeros": avg_nz,
+                        },
+                        op_name=self.name,
+                    )
+                except Exception:
+                    pass
+
         except Exception as e:
             logger.error(f"[Embedding] Failed: {e}", exc_info=True)
             # Create fallback embeddings to allow search to continue
@@ -140,3 +196,12 @@ class Embedding(SearchOperation):
             fallback_embedding = [0.0] * 384
             context["embeddings"] = [fallback_embedding] * len(queries)
             logger.warning(f"[Embedding] Using fallback zero embeddings for {len(queries)} queries")
+            if callable(emitter):
+                try:
+                    await emitter(
+                        "embedding_fallback",
+                        {"reason": str(e)[:200]},
+                        op_name=self.name,
+                    )
+                except Exception:
+                    pass

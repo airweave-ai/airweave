@@ -15,6 +15,20 @@ Want to try it out right now? Head to our [interactive API documentation](https:
 
 Airweave processes your search through several steps that you can configure. Each step has sensible defaults, so you can start simple and add customization as needed.
 
+## Quick reference
+
+Here are the default settings Airweave uses (you can override any of these):
+
+| Feature | Default | What it does |
+|---------|---------|--------------|
+| Query Expansion | `auto` | Automatically creates query variations when AI is available |
+| Search Method | `hybrid` | Uses both AI and keyword matching |
+| Query Interpretation | Off | You control filters manually |
+| AI Reranking | On | Improves result quality (adds ~10 seconds) |
+| Recency Boost | `0.3` | Slightly prefers newer content |
+| Score Filter | None | Returns all matches |
+| Response Format | `raw` | Returns actual documents, not AI summaries |
+
 ### Query Expansion
 
 Sometimes your exact words don't match what's in your documents, even though they mean the same thing. Query expansion helps by automatically creating variations of your search query to catch more relevant results.
@@ -107,19 +121,6 @@ const response = await client.collections.searchCollectionAdvanced({
 ```
 </CodeBlocks>
 
-## Quick reference
-
-Here are the default settings Airweave uses (you can override any of these):
-
-| Feature | Default | What it does |
-|---------|---------|--------------|
-| Query Expansion | `auto` | Automatically creates query variations when AI is available |
-| Search Method | `hybrid` | Uses both AI and keyword matching |
-| Query Interpretation | Off | You control filters manually |
-| AI Reranking | On | Improves result quality (adds ~10 seconds) |
-| Recency Boost | `0.3` | Slightly prefers newer content |
-| Score Filter | None | Returns all matches |
-| Response Format | `raw` | Returns actual documents, not AI summaries |
 
 
 ### Filtering Results

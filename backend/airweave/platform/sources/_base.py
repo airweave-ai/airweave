@@ -31,6 +31,9 @@ class BaseSource:
         """Initialize the base source."""
         self._logger: Optional[Any] = None  # Store contextual logger as instance variable
         self._token_manager: Optional[Any] = None  # Store token manager for OAuth sources
+        # Optional sync identifiers for multi-tenant scoped helpers
+        self._organization_id: Optional[str] = None
+        self._source_connection_id: Optional[str] = None
 
     @property
     def logger(self):
@@ -43,6 +46,15 @@ class BaseSource:
     def set_logger(self, logger) -> None:
         """Set a contextual logger for this source."""
         self._logger = logger
+
+    def set_sync_identifiers(self, organization_id: str, source_connection_id: str) -> None:
+        """Set sync-scoped identifiers for this source instance.
+
+        These identifiers can be used by sources to persist auxiliary metadata
+        (e.g., schema catalogs) scoped to the current tenant/connection.
+        """
+        self._organization_id = organization_id
+        self._source_connection_id = source_connection_id
 
     @property
     def token_manager(self):

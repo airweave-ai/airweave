@@ -20,7 +20,6 @@
             "console": "integratedTerminal",
             "jinja": true,
             "justMyCode": true,
-
             "envFile": "${workspaceFolder}/.env",
             "env": {
                 "LOCAL_DEVELOPMENT": "true"
@@ -59,10 +58,35 @@
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}/backend",
             "env": {
-                "PYTHONPATH": "${workspaceFolder}/backend"
+                "PYTHONPATH": "${workspaceFolder}/backend",
+                // "LOG_LEVEL": "DEBUG"
             },
             "justMyCode": false,
             "envFile": "${workspaceFolder}/.env"
+        },
+        {
+            "name": "Temporal Worker (hot reload)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/.vscode/run_worker_reload.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/backend",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/backend",
+                "AIRWEAVE_DEBUGPY_WORKER_PORT": "7233"
+            },
+            "envFile": "${workspaceFolder}/.env",
+            "justMyCode": false,
+            "subProcess": true
+        },
+        {
+            "name": "Attach to Worker",
+            "type": "debugpy",
+            "request": "attach",
+            "connect": {
+                "host": "127.0.0.1",
+                "port": 7233
+            }
         },
         {
             "name": "Debug React",
@@ -74,7 +98,7 @@
             "sourceMapPathOverrides": {
                 "webpack:///./src/*": "${webRoot}/src/*",
                 "webpack:///src/*": "${webRoot}/src/*"
-            },
+            }
         }
     ],
     "compounds": [
@@ -82,7 +106,8 @@
             "name": "Full Dev Stack",
             "configurations": [
                 "FastAPI",
-                "Temporal Worker"
+                "Temporal Worker (hot reload)",
+                "Attach to Worker"
             ],
             "stopAll": true,
             "preLaunchTask": "start-dev-stack"

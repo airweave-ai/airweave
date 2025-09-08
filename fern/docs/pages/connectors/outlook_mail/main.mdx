@@ -98,6 +98,33 @@ Reference: https://learn.microsoft.com/en-us/graph/api/resources/fileattachment?
 | metadata | Dict[str, Any] | Additional metadata about the attachment |
 
 </Accordion>
+<Accordion title="OutlookMessageDeletionEntity">
+
+Deletion signal for an Outlook message.
+
+Emitted when the Graph delta API reports a message was removed.
+The `entity_id` matches the original message's id so downstream deletion
+can target the correct parent/children.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| message_id | str | ID of the deleted message |
+| deletion_status | str | Status indicating the entity was removed (e.g., 'removed') |
+
+</Accordion>
+<Accordion title="OutlookMailFolderDeletionEntity">
+
+Deletion signal for an Outlook mail folder.
+
+Emitted when the Graph delta API reports a folder was removed.
+The `entity_id` matches the original folder's id.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| folder_id | str | ID of the deleted folder |
+| deletion_status | str | Status indicating the entity was removed (e.g., 'removed') |
+
+</Accordion>
 
 
 

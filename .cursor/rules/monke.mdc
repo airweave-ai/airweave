@@ -1,0 +1,113 @@
+---
+globs: **/monke/**
+alwaysApply: false
+---
+# Monke Framework - Agent Reference
+
+## Overview
+Monke is an end-to-end testing framework for Airweave connectors. It creates real test data in external systems, triggers syncs, and verifies data appears correctly in Qdrant.
+
+
+## Project Structure
+
+```
+monke/
+├── runner.py           # Main entry point - unified test runner
+├── core/              # Framework core
+│   ├── config.py      # TestConfig, ConnectorConfig classes
+│   ├── flow.py        # TestFlow orchestration
+│   ├── steps.py       # Test steps (Create, Update, Delete, Verify)
+│   └── runner.py      # TestRunner coordinator
+├── bongos/            # External API integrations (one per connector)
+│   └── {connector}.py # Must implement: create_entities(), update_entities(), delete_entities()
+├── generation/        # Test data generators
+│   └── {connector}.py # Generate test content using LLM
+├── configs/           # YAML test configurations
+│   └── {connector}.yaml
+└── env.test          # Environment variables template
+```
+
+## Key Concepts
+
+1. **Bongo**: Class that creates/updates/deletes test data via external APIs
+2. **Runner**: Orchestrates the test flow (setup → create → sync → verify → cleanup)
+3. **Config**: YAML file defining test parameters per connector
+
+## Adding a New Connector
+
+1. Create `bongos/{name}.py`:
+   - Class must inherit from `BaseBongo`
+   - Set `connector_type = "{name}"`
+   - Implement: `create_entities()`, `update_entities()`, `delete_entities()`, `cleanup()`
+
+2. Create `generation/{name}.py`:
+   - Function: `generate_{name}_content(token: str)`
+   - Use LLMClient to generate test data
+
+3. Create `configs/{name}.yaml`:
+   ```yaml
+   name: {name}
+   connector_type: {name}
+   auth_provider: direct  # or composio
+   auth_fields: [...]
+   config_fields:
+     entity_count: 5
+   ```
+
+4. Test: `./monke.sh {name}`
+
+## Important Files to Modify
+
+When working on monke:
+- **New connector**: Add files in `bongos/`, `generation/`, `configs/`
+- **Fix test logic**: Modify `core/steps.py` or `core/flow.py`
+- **Change CLI**: Modify `runner.py` or `monke.sh`
+- **Update auth**: Modify `auth/broker.py` or `auth/credentials_resolver.py`
+
+## Environment Variables
+
+Required in `monke/.env`:
+```bash
+AIRWEAVE_API_URL=http://localhost:8001
+OPENAI_API_KEY=sk-...
+{CONNECTOR}_PERSONAL_ACCESS_TOKEN=...
+```
+
+## Test Flow
+
+1. **Setup**: Create test collection in Airweave
+2. **Create**: Bongo creates entities → trigger sync → verify in Qdrant
+3. **Update**: Bongo updates entities → trigger sync → verify changes
+4. **Delete**: Bongo deletes entities → trigger sync → verify removal
+5. **Cleanup**: Delete test collection
+
+## Common Tasks
+
+```bash
+# Debug a failing test
+MONKE_VERBOSE=1 ./monke.sh github
+
+# Run without venv setup (in CI)
+MONKE_NO_VENV=1 python runner.py --all
+
+# Check available connectors
+./monke.sh --list
+
+# Run tests in CI (simple output)
+CI=true python runner.py --all
+```
+
+## Key Classes
+
+- `TestRunner` (core/runner.py): Main test coordinator
+- `TestFlow` (core/flow.py): Executes test steps
+- `BaseBongo` (bongos/base_bongo.py): Abstract base for API integrations
+- `TestConfig` (core/config.py): Configuration data model
+
+## Notes
+
+- Tests always run in parallel when multiple connectors specified
+- Rich UI disabled in CI environment (detected automatically)
+- Bongos are auto-discovered via registry
+- All test data includes unique tokens for verification
+- Cleanup is automatic even on failure

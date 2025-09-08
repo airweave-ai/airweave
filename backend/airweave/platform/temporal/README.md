@@ -56,8 +56,8 @@ If Temporal is not available or `TEMPORAL_ENABLED=false`, the system automatical
 ## Integration Points
 
 The Temporal integration is used in:
-- `POST /api/v1/source-connections/{id}/run` - Run individual source connection
-- `POST /api/v1/collections/{id}/refresh_all` - Run all source connections in a collection
+- `POST /source-connections/{id}/run` - Run individual source connection
+- `POST /collections/{id}/refresh_all` - Run all source connections in a collection
 
 Both endpoints check if Temporal is available and fall back to background tasks if needed.
 

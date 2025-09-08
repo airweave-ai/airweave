@@ -217,7 +217,7 @@ export function ManageSourceDialog({
 
   const handleSyncConnection = async (connectionId: string) => {
     try {
-      await apiClient.post(`/sync/run/${connectionId}`);
+      await apiClient.post(`/source-connections/${connectionId}/run`);
       toast.success("Sync started successfully");
     } catch (error) {
       toast.error("Failed to start sync");

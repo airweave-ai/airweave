@@ -870,6 +870,18 @@ class EntityProcessor:
 
         parent_hash = await compute_entity_hash_async(parent_entity)
 
+        # Get entity definition ID from the entity map
+        entity_type = type(parent_entity)
+        entity_definition_id = sync_context.entity_map.get(entity_type)
+        if not entity_definition_id:
+            sync_context.logger.warning(
+                f"⚠️  INSERT_NO_DEF [{entity_context}] No entity definition found for "
+                f"type {entity_type.__name__}"
+            )
+            await sync_context.progress.increment("skipped", 1)
+            return
+
+        # Create a new database session just for this insert
         async with get_db_context() as db:
             new_db_entity = await crud.entity.create(
                 db=db,
@@ -877,6 +889,7 @@ class EntityProcessor:
                     sync_job_id=sync_context.sync_job.id,
                     sync_id=sync_context.sync.id,
                     entity_id=parent_entity.entity_id,
+                    entity_definition_id=entity_definition_id,
                     hash=parent_hash,
                 ),
                 ctx=sync_context.ctx,
@@ -915,6 +928,22 @@ class EntityProcessor:
         )
 
         await sync_context.progress.increment("inserted", 1)
+
+        # NEW: Update total count tracker
+        if sync_context.entity_state_tracker and entity_definition_id:
+            sync_context.logger.debug(
+                f"📈 Updating entity count tracker - INSERT for {entity_type.__name__}"
+            )
+            await sync_context.entity_state_tracker.update_entity_count(
+                entity_definition_id=entity_definition_id,
+                action="insert",
+                entity_name=entity_type.__name__,
+                entity_type=str(entity_type.__name__),
+            )
+        elif not sync_context.entity_state_tracker:
+            sync_context.logger.warning("⚠️ Entity state tracker not initialized!")
+
+        # Increment guard rail usage for actual entity processing
         await sync_context.guard_rail.increment(ActionType.ENTITIES)
 
         total_elapsed = db_elapsed + dest_elapsed
@@ -1021,6 +1050,17 @@ class EntityProcessor:
         )
 
         await sync_context.progress.increment("updated", 1)
+
+        # NEW: For total counts, updates don't change count (entity already exists)
+        # But we still track the operation for completeness
+        if sync_context.entity_state_tracker and db_entity:
+            entity_definition_id = db_entity.entity_definition_id
+            if entity_definition_id:
+                await sync_context.entity_state_tracker.update_entity_count(
+                    entity_definition_id=entity_definition_id, action="update"
+                )
+
+        # Increment guard rail usage for actual entity processing
         await sync_context.guard_rail.increment(ActionType.ENTITIES)
 
         total_elapsed = db_elapsed + delete_elapsed + insert_elapsed
@@ -1058,6 +1098,7 @@ class EntityProcessor:
 
         # Delete from database if it exists
         db_start = asyncio.get_event_loop().time()
+        db_entity = None
         async with get_db_context() as db:
             try:
                 db_entity = await crud.entity.get_by_entity_and_sync_id(
@@ -1084,6 +1125,14 @@ class EntityProcessor:
         db_elapsed = asyncio.get_event_loop().time() - db_start
 
         await sync_context.progress.increment("deleted", 1)
+
+        # NEW: Update total count tracker
+        if sync_context.entity_state_tracker and db_entity:
+            entity_definition_id = db_entity.entity_definition_id
+            if entity_definition_id:
+                await sync_context.entity_state_tracker.update_entity_count(
+                    entity_definition_id=entity_definition_id, action="delete"
+                )
         total_elapsed = delete_elapsed + db_elapsed
         sync_context.logger.info(
             f"✅ DELETE_COMPLETE [{entity_context}] Delete complete in {total_elapsed:.3f}s"
@@ -1328,15 +1377,67 @@ class EntityProcessor:
             if db_ids:
                 await crud.entity.bulk_remove(db=db, ids=db_ids, ctx=sync_context.ctx)
 
+    async def _update_tracker_for_action(
+        self,
+        tracker,
+        parents: List[BaseEntity],
+        sync_context: SyncContext,
+        action: str,
+        *,
+        include_names: bool = False,
+    ) -> None:
+        if not parents:
+            return
+        for p in parents:
+            try:
+                entity_definition_id = sync_context.entity_map.get(type(p))
+                if not entity_definition_id:
+                    continue
+                if include_names:
+                    type_name = type(p).__name__
+                    await tracker.update_entity_count(
+                        entity_definition_id=entity_definition_id,
+                        action=action,
+                        entity_name=type_name,
+                        entity_type=str(type_name),
+                    )
+                else:
+                    await tracker.update_entity_count(
+                        entity_definition_id=entity_definition_id,
+                        action=action,
+                    )
+            except Exception:
+                # Best-effort only; do not fail batch on tracker errors
+                pass
+
+    async def _update_entity_state_counts(
+        self, partitions: Dict[str, List[BaseEntity]], sync_context: SyncContext
+    ) -> None:
+        tracker = getattr(sync_context, "entity_state_tracker", None)
+        if not tracker:
+            return
+        await self._update_tracker_for_action(
+            tracker, partitions.get("inserts", []), sync_context, "insert", include_names=True
+        )
+        await self._update_tracker_for_action(
+            tracker, partitions.get("updates", []), sync_context, "update"
+        )
+        await self._update_tracker_for_action(
+            tracker, partitions.get("deletes", []), sync_context, "delete"
+        )
+
     async def _update_progress_and_guard_rails(
         self, partitions: Dict[str, List[BaseEntity]], sync_context: SyncContext
     ) -> None:
-        """Update progress counters and guard rails based on actions taken."""
+        """Update progress counters, entity state counts, and guard rails based on actions taken."""
         actions = {"inserted": "inserts", "updated": "updates", "deleted": "deletes"}
         for key, partition_key in actions.items():
             count = len(partitions[partition_key])
             if count > 0:
                 await sync_context.progress.increment(key, count)
+
+        # Update totals per entity type via entity_state_tracker
+        await self._update_entity_state_counts(partitions, sync_context)
 
         work_count = len(partitions["inserts"]) + len(partitions["updates"])
         for _ in range(work_count):

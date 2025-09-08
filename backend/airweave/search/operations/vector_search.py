@@ -69,6 +69,7 @@ class VectorSearch(SearchOperation):
         # Use filter from context (set by qdrant_filter or query_interpretation ops)
         filter_dict = context.get("filter")
         logger = context["logger"]
+        emitter = context.get("emit")
 
         # Get search method and decay config from SearchConfig
         search_method = getattr(config, "search_method", self.search_method)
@@ -81,6 +82,28 @@ class VectorSearch(SearchOperation):
         if config.reranking is not None:
             # Fetch more results for reranking to work with
             limit = min(int(config.limit * 2.5), 100)
+
+        # Emit start event with current plan
+        if callable(emitter):
+            try:
+                await emitter(
+                    "vector_search_start",
+                    {
+                        "embeddings": len(embeddings),
+                        "method": search_method,
+                        "limit": limit,
+                        "offset": config.offset,
+                        "threshold": config.score_threshold,
+                        "has_sparse": bool(sparse_embeddings),
+                        "has_filter": bool(filter_dict),
+                        "decay_weight": getattr(decay_config, "weight", None)
+                        if decay_config
+                        else None,
+                    },
+                    op_name=self.name,
+                )
+            except Exception:
+                pass
 
         logger.info(
             f"[VectorSearch] Searching with {len(embeddings)} embeddings, "
@@ -160,6 +183,26 @@ class VectorSearch(SearchOperation):
         all_results = batch_results if isinstance(batch_results, list) else []
         merged_results = self._deduplicate(all_results)
 
+        # Emit batch stats before slicing
+        emitter = context.get("emit")
+        if callable(emitter):
+            try:
+                fetched = len(all_results)
+                unique = len(merged_results)
+                top_scores = [r.get("score", 0) for r in merged_results[:3] if isinstance(r, dict)]
+                await emitter(
+                    "vector_search_batch",
+                    {
+                        "fetched": fetched,
+                        "unique": unique,
+                        "dedup_dropped": max(0, fetched - unique),
+                        "top_scores": top_scores,
+                    },
+                    op_name=self.name,
+                )
+            except Exception:
+                pass
+
         self._log_search_results(merged_results, decay_config, logger)
 
         # Apply offset and limit
@@ -170,6 +213,16 @@ class VectorSearch(SearchOperation):
         if len(merged_results) > limit:
             merged_results = merged_results[:limit]
         context["raw_results"] = merged_results
+        # Emit done event with final count
+        if callable(emitter):
+            try:
+                await emitter(
+                    "vector_search_done",
+                    {"final_count": len(context["raw_results"])},
+                    op_name=self.name,
+                )
+            except Exception:
+                pass
 
     def _log_search_info(self, embeddings, sparse_embeddings, decay_config, logger) -> None:
         """Log search configuration and parameters."""
@@ -355,6 +408,23 @@ class VectorSearch(SearchOperation):
             decay_config=decay_config,
         )
         context["raw_results"] = results
+
+        # Emit done event with quick snapshot
+        emitter = context.get("emit")
+        if callable(emitter):
+            try:
+                top_scores = [
+                    r.get("score", 0)
+                    for r in (results[:3] if isinstance(results, list) else [])
+                    if isinstance(r, dict)
+                ]
+                await emitter(
+                    "vector_search_done",
+                    {"final_count": len(results or []), "top_scores": top_scores},
+                    op_name=self.name,
+                )
+            except Exception:
+                pass
 
         logger.info(f"[VectorSearch] Found {len(context['raw_results'])} results")
         if context.get("raw_results") and logger.isEnabledFor(10):

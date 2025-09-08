@@ -1,0 +1,54 @@
+name: asana_test
+description: End-to-end test for Asana source using Monke
+
+connector:
+  name: Asana
+  type: asana
+  auth_fields: {}  # Will be resolved by credentials_resolver (either from env or provider)
+  config_fields:
+    openai_model: "gpt-4.1-mini"  # Model for content generation
+    rate_limit_delay_ms: 1000  # Increased delay between API calls for Asana
+    # post_create_sleep_seconds: 15
+
+test_flow:
+  steps:
+    - cleanup
+    - create
+    - sync
+    - verify
+    - update
+    - sync
+    - verify
+    - partial_delete
+    - sync
+    - verify_partial_deletion
+    - verify_remaining_entities
+    - complete_delete
+    - sync
+    - verify_complete_deletion
+    - cleanup
+    - collection_cleanup # TODO: wrap this in "yaml decorator"
+
+deletion:
+  partial_delete_count: 1
+  verify_partial_deletion: false  # Asana source doesn't detect deletions in incremental sync
+  verify_remaining_entities: false  # Skip since deletions aren't detected
+  verify_complete_deletion: false  # Skip since deletions aren't detected
+
+entity_count: 3  # Reduced for more reliable testing
+
+collection:
+  name: Asana Test Collection
+
+verification:
+  retry_attempts: 3
+  retry_delay_seconds: 5
+  score_threshold: 0.0
+  expected_fields:
+    - name
+    - notes
+    - gid
+
+# Test-specific configuration
+# test_config:
+#   Any source-specific configuration can go here

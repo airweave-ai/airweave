@@ -29,7 +29,7 @@ from airweave.platform.sync.context import SyncContext
 from airweave.platform.sync.cursor import SyncCursor
 from airweave.platform.sync.entity_processor import EntityProcessor
 from airweave.platform.sync.orchestrator import SyncOrchestrator
-from airweave.platform.sync.pubsub import SyncProgress
+from airweave.platform.sync.pubsub import SyncEntityStateTracker, SyncProgress
 from airweave.platform.sync.router import SyncDAGRouter
 from airweave.platform.sync.token_manager import TokenManager
 from airweave.platform.sync.worker_pool import AsyncWorkerPool
@@ -197,6 +197,26 @@ class SyncFactory:
         entity_map = await cls._get_entity_definition_map(db=db)
 
         progress = SyncProgress(sync_job.id, logger=logger)
+
+        # NEW: Load initial entity counts from database for state tracking
+        initial_counts = await crud.entity_count.get_counts_per_sync_and_type(db, sync.id)
+
+        logger.info(f"🔢 Loaded initial entity counts: {len(initial_counts)} entity types")
+
+        # Log the initial counts for debugging
+        for count in initial_counts:
+            logger.debug(f"  - {count.entity_definition_name}: {count.count} entities")
+
+        # NEW: Create state-aware tracker (parallel to existing progress)
+        entity_state_tracker = SyncEntityStateTracker(
+            job_id=sync_job.id, sync_id=sync.id, initial_counts=initial_counts, logger=logger
+        )
+
+        logger.info(
+            f"✅ Created SyncEntityStateTracker for job {sync_job.id}, "
+            f"channel: sync_job_state:{sync_job.id}"
+        )
+
         router = SyncDAGRouter(dag, entity_map, logger=logger)
 
         logger.info("Sync context created")
@@ -244,6 +264,7 @@ class SyncFactory:
             collection=collection,
             source_connection=source_connection,
             progress=progress,
+            entity_state_tracker=entity_state_tracker,
             cursor=cursor,
             router=router,
             entity_map=entity_map,
@@ -338,6 +359,19 @@ class SyncFactory:
         # Step 4: Configure source with logger
         if hasattr(source, "set_logger"):
             source.set_logger(logger)
+
+        # Step 4.1: Pass sync identifiers to the source for scoped helpers
+        try:
+            organization_id = ctx.organization.id
+            source_connection_obj = source_connection_data.get("source_connection_obj")
+            if hasattr(source, "set_sync_identifiers") and source_connection_obj:
+                source.set_sync_identifiers(
+                    organization_id=str(organization_id),
+                    source_connection_id=str(source_connection_obj.id),
+                )
+        except Exception:
+            # Non-fatal: older sources may ignore this
+            pass
 
         # Step 5: Setup token manager if needed
         # The _setup_token_manager method will check if this source needs a token manager

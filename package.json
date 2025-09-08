@@ -1,6 +1,0 @@
-{
-  "dependencies": {
-    "eventsource-polyfill": "^0.9.6",
-    "remark-gfm": "^4.0.1"
-  }
-}

@@ -316,7 +316,7 @@ class NotionSource(BaseSource):
                 raise
 
     # Child Database Processing
-    async def _process_child_databases(
+    async def _process_child_databases(  # noqa: C901 - complex loop over child DB traversal
         self, client: httpx.AsyncClient
     ) -> AsyncGenerator[ChunkEntity, None]:
         """Process child databases discovered during page content extraction."""
@@ -387,21 +387,32 @@ class NotionSource(BaseSource):
                             continue
 
                 except httpx.HTTPStatusError as e:
-                    if e.response.status_code == 404:
+                    status = e.response.status_code
+                    msg = ""
+                    try:
+                        body = e.response.json()
+                        msg = body.get("message", "") or ""
+                    except Exception:
+                        pass
+
+                    inaccessible = status in (404, 403) or (
+                        status == 400 and "does not contain any data sources" in msg.lower()
+                    )
+
+                    if inaccessible:
                         self.logger.warning(
-                            f"Child database {database_id} not found (404). "
-                            f"This is expected if the user doesn't have access to this database. "
-                            f"Skipping."
+                            f"Child database {database_id} not accessible ({status}). Skipping."
                         )
-                        self._processed_databases.add(
-                            database_id
-                        )  # Mark as processed to avoid retrying
+                        # Mark as processed to avoid retrying forever
+                        self._processed_databases.add(database_id)
                         continue
-                    else:
-                        self.logger.error(
-                            f"HTTP error processing child database {database_id}: {str(e)}"
-                        )
-                        continue
+
+                    self.logger.error(
+                        f"HTTP error processing child database {database_id}: {str(e)}"
+                    )
+                    # Also mark as processed to avoid tight retry loops on persistent errors
+                    self._processed_databases.add(database_id)
+                    continue
                 except Exception as e:
                     self.logger.error(f"Error processing child database {database_id}: {str(e)}")
                     continue

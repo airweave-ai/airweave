@@ -2,19 +2,22 @@
 name = "airweave"
 version = "0.1.0"
 description = "Make any app searchable - Universal search and agent integration tool"
-authors = ["Rauf Akdemir <rauf@airweave.ai>", "Lennert Jansen <lennert@airweave.ai>"]
-packages = [{include = "airweave"}]
+authors = [
+    "Rauf Akdemir <rauf@airweave.ai>",
+    "Lennert Jansen <lennert@airweave.ai>",
+]
+packages = [{ include = "airweave" }]
 
 [tool.poetry.dependencies]
 python = "^3.11"
 fastapi = "^0.115.12"
-uvicorn = {extras = ["standard"], version = "^0.27.0"}
-sqlalchemy = {extras = ["asyncio"], version = "^2.0.25"}
+uvicorn = { extras = ["standard"], version = "^0.27.0" }
+sqlalchemy = { extras = ["asyncio"], version = "^2.0.25" }
 alembic = "^1.13.1"
 asyncpg = "^0.29.0"
-pydantic = {extras = ["email"], version = "^2.5.3"}
-python-jose = {extras = ["cryptography"], version = "^3.3.0"}
-passlib = {extras = ["bcrypt"], version = "^1.7.4"}
+pydantic = { extras = ["email"], version = "^2.5.3" }
+python-jose = { extras = ["cryptography"], version = "^3.3.0" }
+passlib = { extras = ["bcrypt"], version = "^1.7.4" }
 python-multipart = "^0.0.6"
 python-dotenv = "^1.0.0"
 httpx = "^0.28.0"
@@ -37,7 +40,7 @@ croniter = "^6.0.0"
 qdrant-client = "^1.13.3"
 openai = "^1.58.1"
 mistralai = "^1.7.0"
-chonkie = {extras = ["code"], version = "^1.0.6"}
+chonkie = { extras = ["code"], version = "^1.0.6" }
 tiktoken = "^0.5.1"
 fastapi-auth0 = "^0.5.0"
 chardet = "^5.2.0"
@@ -52,6 +55,8 @@ aiolimiter = "^1.1.0"
 pyyaml = "^6.0.1"
 fastembed = "^0.7.1"
 stripe = "^11.3.0"
+tabulate = "^0.9.0"
+pdfminer-six = "^20250506"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
@@ -69,6 +74,8 @@ types-python-jose = "^3.3.4"
 types-passlib = "^1.7.7"
 mcp = "^1.3.0"
 vulture = "^2.10"
+watchfiles = "^1.1.0"
+debugpy = "^1.8.16"
 
 [build-system]
 requires = ["poetry-core"]
@@ -105,15 +112,15 @@ extend-exclude = ["alembic", "local.py", "fern/**", "tests"]
 
 [tool.ruff.lint]
 select = [
-    "E",  # pycodestyle errors
-    "W",  # pycodestyle warnings
-    "F",  # pyflakes
-    "I",  # isort
-    "C",  # flake8-comprehensions
-    "B",  # flake8-bugbear
-    "D",  # flake8-docstrings
+    "E", # pycodestyle errors
+    "W", # pycodestyle warnings
+    "F", # pyflakes
+    "I", # isort
+    "C", # flake8-comprehensions
+    "B", # flake8-bugbear
+    "D", # flake8-docstrings
 ]
-ignore = ["B008"]  # ignore fastapi dependency injection warning
+ignore = ["B008"] # ignore fastapi dependency injection warning
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -136,6 +143,6 @@ markers = [
     "unit: mark a test as a unit test",
     "integration: mark a test as an integration test",
     "e2e: mark a test as an end-to-end test",
-    "slow: mark a test as slow running"
+    "slow: mark a test as slow running",
 ]
 extend-exclude = ["backend (old, neena, only for inspiration)"]

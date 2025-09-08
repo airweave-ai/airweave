@@ -221,7 +221,7 @@ Example:
 ```python
 async def test_create_connection(async_client: AsyncClient, auth_headers: dict):
     response = await async_client.post(
-        "/api/v1/connections",
+        "/connections",
         json={"name": "Test Connection", "type": "github"},
         headers=auth_headers
     )

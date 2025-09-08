@@ -607,7 +607,7 @@ export const BillingSettings = ({ organizationId }: BillingSettingsProps) => {
                     </Button>
                   ) : isEnterprise ? (
                     <Button
-                      onClick={() => window.open('https://cal.com/rauf-akdemir/15min', '_blank')}
+                      onClick={() => window.open('https://cal.com/lennert-airweave/airweave-q-a-demo', '_blank')}
                       variant="outline"
                       className="w-full h-9 text-sm border-border"
                     >

@@ -99,27 +99,21 @@ class GoogleCalendarConfig(SourceConfig):
 class GoogleDriveConfig(SourceConfig):
     """Google Drive configuration schema."""
 
-    # exclude_patterns: list[str] = Field(
-    #     default=[],
-    #     title="Exclude Patterns",
-    #     description=(
-    #         "List of file/folder paths or patterns to exclude from synchronization. "
-    #         "Examples: '*.tmp', 'Private/*', 'Confidential Reports/'. "
-    #         "Separate multiple patterns with commas."
-    #     ),
-    # )
+    include_patterns: list[str] = Field(
+        default=[],
+        title="Include Patterns",
+        description=(
+            "List of file/folder paths to include in synchronization. "
+            "Examples: 'my_folder/*', 'my_folder/my_file.pdf'. "
+            "Separate multiple patterns with commas. If empty, all files are included."
+        ),
+    )
 
-    # @validator("exclude_patterns", pre=True)
-    # def parse_exclude_patterns(cls, value):
-    #     """Convert string input to list if needed."""
-    #     if isinstance(value, str):
-    #         if not value.strip():
-    #             return []
-    #         # Split by commas and strip whitespace
-    #         return [pattern.strip() for pattern in value.split(",") if pattern.strip()]
-    #     return value
-
-    pass
+    @validator("include_patterns", pre=True)
+    def _parse_include_patterns(cls, value):
+        if isinstance(value, str):
+            return [p.strip() for p in value.split(",") if p.strip()]
+        return value
 
 
 class HubspotConfig(SourceConfig):

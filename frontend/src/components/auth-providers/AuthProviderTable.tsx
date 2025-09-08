@@ -225,7 +225,7 @@ export const AuthProviderTable = () => {
                     mode: dialogMode,
                     authProviderShortName: selectedAuthProvider?.short_name
                 });
-                return (
+                return dialogOpen ? (
                     <DialogFlow
                         key={dialogKey}
                         isOpen={dialogOpen}
@@ -249,7 +249,7 @@ export const AuthProviderTable = () => {
                         onComplete={handleDialogComplete}
                         dialogId="auth-provider-connection"
                     />
-                );
+                ) : null;
             })()}
         </div>
     );

@@ -8,7 +8,7 @@ alwaysApply: false
 
 ### API Layer
 - **FastAPI Application** (`main.py`): Entry point for HTTP requests
-- **API Routes** (`api/v1/endpoints/`): RESTful endpoints organized by resource
+- **API Routes** (`endpoints/`): RESTful endpoints organized by resource
 - **Dependencies** (`api/deps.py`): Authentication and request validation
 
 ### Service Layer
@@ -74,7 +74,7 @@ If necessary (like editing ), refer [sync-architecture.mdc](mdc:.cursor/rules/sy
 - Background processing with Redis workers (upcoming)
 
 ### API Convention
-- RESTful endpoints in `api/v1/endpoints/` -> the version is not part of the endpoint. It's just host.com/{endpoint}!
+- RESTful endpoints in `endpoints/` -> the version is not part of the endpoint. It's just host.com/{endpoint}!
 - Consistent response structures
 - One router per resource type
 - Logger injected via `ctx` dependency for contextual logging

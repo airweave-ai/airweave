@@ -516,7 +516,7 @@ class TestSubscribeSyncJob:
         mock_pubsub.close = AsyncMock()
 
         with patch(
-            "airweave.platform.sync.pubsub.sync_pubsub.subscribe", new_callable=AsyncMock
+            "airweave.core.pubsub.core_pubsub.subscribe", new_callable=AsyncMock
         ) as mock_subscribe:
             mock_subscribe.return_value = mock_pubsub
 
@@ -524,7 +524,7 @@ class TestSubscribeSyncJob:
             response = await sync.subscribe_sync_job(job_id=job_id, ctx=mock_user)
 
             # Assert
-            mock_subscribe.assert_called_once_with(job_id)
+            mock_subscribe.assert_called_once_with("sync_job", job_id)
             assert isinstance(response, StreamingResponse)
             assert response.media_type == "text/event-stream"
             assert response.headers["Cache-Control"] == "no-cache, no-transform"
@@ -554,7 +554,7 @@ class TestSubscribeSyncJob:
         mock_pubsub.close = AsyncMock()
 
         with patch(
-            "airweave.platform.sync.pubsub.sync_pubsub.subscribe", new_callable=AsyncMock
+            "airweave.core.pubsub.core_pubsub.subscribe", new_callable=AsyncMock
         ) as mock_subscribe:
             # Subscribe will always return a pubsub instance
             mock_subscribe.return_value = mock_pubsub
@@ -563,7 +563,7 @@ class TestSubscribeSyncJob:
             response = await sync.subscribe_sync_job(job_id=job_id, ctx=mock_user)
 
             # Assert - it creates a streaming response even for non-existent jobs
-            mock_subscribe.assert_called_once_with(job_id)
+            mock_subscribe.assert_called_once_with("sync_job", job_id)
             assert isinstance(response, StreamingResponse)
             assert response.media_type == "text/event-stream"
 

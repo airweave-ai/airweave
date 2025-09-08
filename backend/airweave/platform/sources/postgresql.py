@@ -11,6 +11,8 @@ from typing import Any, AsyncGenerator, Dict, List, Optional, Type, Union
 
 import asyncpg
 
+from airweave.core.pg_field_catalog_service import overwrite_catalog
+from airweave.db.session import get_db_context
 from airweave.platform.auth.schemas import AuthType
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import ChunkEntity, PolymorphicEntity
@@ -595,6 +597,25 @@ class PostgreSQLSource(BaseSource):
             else:
                 self.logger.info("No cursor data found. Will perform FULL sync (first sync).")
 
+            # Persist field catalog snapshot for this connection before streaming
+            try:
+                snapshot = await self._build_field_catalog_snapshot(schema, tables)
+                # Best-effort persistence (no failure of sync if catalog fails)
+                if getattr(self, "_organization_id", None) and getattr(
+                    self, "_source_connection_id", None
+                ):
+                    async with get_db_context() as db:
+                        await overwrite_catalog(
+                            db=db,
+                            organization_id=self._organization_id,  # type: ignore[arg-type]
+                            source_connection_id=self._source_connection_id,  # type: ignore[arg-type]
+                            snapshot=snapshot,
+                            logger=self.logger,
+                        )
+                        await db.commit()
+            except Exception as e:
+                self.logger.warning(f"Failed to update Postgres field catalog: {e}")
+
             # Start a transaction
             async with self.conn.transaction():
                 for table in tables:
@@ -605,3 +626,150 @@ class PostgreSQLSource(BaseSource):
             if self.conn:
                 await self.conn.close()
                 self.conn = None
+
+    async def _build_field_catalog_snapshot(
+        self, schema: str, tables: List[str]
+    ) -> List[Dict[str, Any]]:
+        """Build a full catalog snapshot for the given tables."""
+        results: List[Dict[str, Any]] = []
+
+        # Preload FK map for the schema
+        fk_query = """
+            SELECT
+                tc.table_schema,
+                tc.table_name,
+                kcu.column_name,
+                ccu.table_schema AS foreign_table_schema,
+                ccu.table_name AS foreign_table_name,
+                ccu.column_name AS foreign_column_name
+            FROM information_schema.table_constraints AS tc
+            JOIN information_schema.key_column_usage AS kcu
+              ON tc.constraint_name = kcu.constraint_name
+             AND tc.table_schema = kcu.table_schema
+            JOIN information_schema.constraint_column_usage AS ccu
+              ON ccu.constraint_name = tc.constraint_name
+             AND ccu.table_schema = tc.table_schema
+            WHERE tc.constraint_type = 'FOREIGN KEY'
+              AND tc.table_schema = $1
+        """
+        fk_rows = await self.conn.fetch(fk_query, schema)
+        fk_map: Dict[tuple[str, str, str], Dict[str, str]] = {}
+        for r in fk_rows:
+            fk_map[(r["table_schema"], r["table_name"], r["column_name"])] = {
+                "ref_schema": r["foreign_table_schema"],
+                "ref_table": r["foreign_table_name"],
+                "ref_column": r["foreign_column_name"],
+            }
+
+        # Enum values (user-defined types)
+        enum_query = """
+            SELECT t.typname AS udt_name, e.enumlabel AS enum_value
+            FROM pg_type t
+            JOIN pg_enum e ON t.oid = e.enumtypid
+            JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+        """
+        enum_rows = await self.conn.fetch(enum_query)
+        enum_values: Dict[str, List[str]] = {}
+        for r in enum_rows:
+            enum_values.setdefault(r["udt_name"], []).append(r["enum_value"])
+
+        for table in tables:
+            info = await self._get_table_info(schema, table)
+
+            # Columns with details from information_schema
+            columns_query = """
+                SELECT
+                    column_name,
+                    data_type,
+                    udt_name,
+                    is_nullable,
+                    column_default,
+                    ordinal_position
+                FROM information_schema.columns
+                WHERE table_schema = $1 AND table_name = $2
+                ORDER BY ordinal_position
+            """
+            col_rows = await self.conn.fetch(columns_query, schema, table)
+            cols: List[Dict[str, Any]] = []
+            for c in col_rows:
+                key = (schema, table, c["column_name"])
+                fk = fk_map.get(key)
+                udt = c["udt_name"]
+                cols.append(
+                    {
+                        "column_name": c["column_name"],
+                        "data_type": c["data_type"],
+                        "udt_name": udt,
+                        "is_nullable": c["is_nullable"] == "YES",
+                        "default_value": c["column_default"],
+                        "ordinal_position": c["ordinal_position"],
+                        "is_primary_key": c["column_name"] in info["primary_keys"],
+                        "is_foreign_key": fk is not None,
+                        "ref_schema": fk.get("ref_schema") if fk else None,
+                        "ref_table": fk.get("ref_table") if fk else None,
+                        "ref_column": fk.get("ref_column") if fk else None,
+                        "enum_values": enum_values.get(udt),
+                        # Simple filterable heuristic: prefer scalar/text/date
+                        "is_filterable": (c["data_type"] not in ("json", "jsonb")),
+                    }
+                )
+
+            # Choose a recency column heuristically (prefer timestamp-like names and types)
+            recency_column = self._select_recency_column(cols)
+            try:
+                self.logger.debug(
+                    f"[PGCatalog] {schema}.{table}: columns={len(cols)}, recency={recency_column}"
+                )
+            except Exception:
+                pass
+
+            results.append(
+                {
+                    "schema_name": schema,
+                    "table_name": table,
+                    "recency_column": recency_column,
+                    "primary_keys": info["primary_keys"],
+                    "foreign_keys": [
+                        {
+                            "column": k[2],
+                            **v,
+                        }
+                        for k, v in fk_map.items()
+                        if k[0] == schema and k[1] == table
+                    ],
+                    "columns": cols,
+                }
+            )
+
+        return results
+
+    def _select_recency_column(self, columns: List[Dict[str, Any]]) -> Optional[str]:
+        """Select a reasonable recency column from column metadata.
+
+        Heuristic: prefer timestamp/timestamptz types; prefer names containing
+        'updated', 'modified', 'last_edited', then fall back to any timestamp/date.
+        """
+        if not columns:
+            return None
+
+        def is_ts(col: Dict[str, Any]) -> bool:
+            dt = (col.get("data_type") or "").lower()
+            return dt in {"timestamp", "timestamp with time zone", "timestamptz", "date"}
+
+        candidates = [c for c in columns if is_ts(c)]
+        if not candidates:
+            return None
+
+        name_scores: List[tuple[int, str]] = []
+        for c in candidates:
+            name = c.get("column_name", "").lower()
+            score = 0
+            if any(k in name for k in ("updated", "modified", "last_edited", "last_modified")):
+                score += 2
+            if name.endswith("_at"):
+                score += 1
+            name_scores.append((score, c["column_name"]))
+
+        # Pick the highest score; if tie, keep first in ordinal_position order
+        name_scores.sort(key=lambda x: (-x[0],))
+        return name_scores[0][1] if name_scores else candidates[0]["column_name"]

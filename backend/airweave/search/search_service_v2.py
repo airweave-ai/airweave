@@ -5,6 +5,8 @@ is broken down into composable operations that can be configured
 and executed in a flexible pipeline.
 """
 
+from typing import Optional
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud
@@ -57,6 +59,7 @@ class SearchServiceV2:
         readable_id: str,
         search_request: SearchRequest,
         ctx: ApiContext,
+        request_id: Optional[str] = None,
     ) -> SearchResponse:
         """Execute search with the given request.
 
@@ -71,6 +74,8 @@ class SearchServiceV2:
             readable_id: Collection readable ID
             search_request: Search request with query and parameters
             ctx: API context with logger and auth
+            request_id: Optional streaming request identifier. When provided, the executor
+                will emit lifecycle and data events to ``search:<request_id>``.
 
         Returns:
             SearchResponse with results and optional completion
@@ -105,7 +110,7 @@ class SearchServiceV2:
         ctx.logger.info(
             f"[SearchServiceV2] Executing search pipeline with {enabled_count} operations"
         )
-        context = await self.executor.execute(config, db, ctx)
+        context = await self.executor.execute(config, db, ctx, request_id=request_id)
 
         # Build response from execution context
         response = self._build_response(context, search_request, config)

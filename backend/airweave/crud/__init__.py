@@ -9,6 +9,7 @@ from .crud_dag import sync_dag
 from .crud_destination import destination
 from .crud_embedding_model import embedding_model
 from .crud_entity import entity
+from .crud_entity_count import entity_count
 from .crud_entity_definition import entity_definition
 from .crud_integration_credential import integration_credential
 from .crud_organization import organization
@@ -33,6 +34,7 @@ __all__ = [
     "destination",
     "embedding_model",
     "entity",
+    "entity_count",
     "entity_definition",
     "integration_credential",
     "organization",
