@@ -607,7 +607,34 @@ class OAuth2Service:
                 status_code=400, detail="Failed to exchange authorization code"
             ) from e
 
-        return OAuth2TokenResponse(**response.json())
+        data = response.json()
+
+        # Normalize provider-specific responses (e.g., Slack nests tokens under authed_user)
+        access_token = data.get("access_token") or (data.get("authed_user") or {}).get(
+            "access_token"
+        )
+        refresh_token = data.get("refresh_token") or (data.get("authed_user") or {}).get(
+            "refresh_token"
+        )
+        token_type = data.get("token_type") or (data.get("authed_user") or {}).get("token_type")
+        expires_in = data.get("expires_in") or (data.get("authed_user") or {}).get("expires_in")
+        scope = data.get("scope") or (data.get("authed_user") or {}).get("scope")
+
+        if access_token:
+            # Construct a normalized OAuth2TokenResponse while preserving extra fields for audit
+            response = OAuth2TokenResponse(
+                access_token=access_token,
+                token_type=token_type,
+                expires_in=expires_in,
+                refresh_token=refresh_token,
+                scope=scope,
+                extra_fields=data,
+            )
+        else:
+            # Fallback: attempt direct parsing (for providers that already match the schema)
+            response = OAuth2TokenResponse(**data)
+
+        return response
 
     @staticmethod
     async def create_oauth2_connection_for_whitelabel(

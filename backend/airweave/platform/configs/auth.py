@@ -339,10 +339,10 @@ class PostgreSQLAuthConfig(BaseDatabaseAuthConfig):
     """PostgreSQL authentication configuration."""
 
 
-class SlackAuthConfig(OAuth2AuthConfig):
-    """Slack authentication credentials schema."""
+class SlackAuthConfig(OAuth2BYOCAuthConfig):
+    """Slack authentication credentials schema (BYOC)."""
 
-    # Inherits access_token from OAuth2AuthConfig
+    # Inherits client_id, client_secret, refresh_token and access_token from OAuth2BYOCAuthConfig
 
 
 class SQLServerAuthConfig(BaseDatabaseAuthConfig):

@@ -52,6 +52,10 @@ export const ConfigureSourceView: React.FC<ConfigureSourceViewProps> = ({
     const [authProviderConfigValues, setAuthProviderConfigValues] = useState<Record<string, any>>({});
     const [loadingAuthProviderDetails, setLoadingAuthProviderDetails] = useState(false);
 
+    // Slack manifest helper (BYOC setup link)
+    const SLACK_APP_MANIFEST_URL =
+        "https://api.slack.com/apps?new_app=1&manifest_json=%7B%22display_information%22%3A%7B%22name%22%3A%22Airweave%22%2C%22description%22%3A%22Let%20agents%20search%20any%20application%22%2C%22background_color%22%3A%22%23021933%22%7D%2C%22oauth_config%22%3A%7B%22redirect_urls%22%3A%5B%22https%3A//app.airweave.ai/auth/callback/slack%22%2C%22http%3A//localhost%3A8080/auth/callback/slack%22%5D%2C%22scopes%22%3A%7B%22user%22%3A%5B%22channels%3Aread%22%2C%22channels%3Ahistory%22%2C%22groups%3Aread%22%2C%22groups%3Ahistory%22%2C%22im%3Aread%22%2C%22im%3Ahistory%22%2C%22mpim%3Aread%22%2C%22mpim%3Ahistory%22%2C%22users%3Aread%22%5D%7D%7D%2C%22settings%22%3A%7B%22org_deploy_enabled%22%3Afalse%2C%22socket_mode_enabled%22%3Afalse%2C%22token_rotation_enabled%22%3Atrue%7D%7D";
+
     // Add this new state to store the credential ID
     const [credentialId, setCredentialId] = useState<string | null>(
         viewData.credentialId || null
@@ -1056,6 +1060,8 @@ export const ConfigureSourceView: React.FC<ConfigureSourceViewProps> = ({
                 )}
 
                 {/* Auth fields section - if any */}
+
+
                 {hasVisibleAuthFields && !useExternalAuthProvider && (
                     <div className="bg-muted p-6 rounded-lg mb-4">
                         {/* Render auth fields (excluding token fields) */}
@@ -1088,6 +1094,25 @@ export const ConfigureSourceView: React.FC<ConfigureSourceViewProps> = ({
                                     )}
                                 </div>
                             ))}
+                    </div>
+                )}
+
+                {/* Slack-only helper to create an app with manifest (BYOC setup) */}
+                {sourceShortName === 'slack' && !useExternalAuthProvider && (
+                    <div className="bg-muted p-6 rounded-lg mb-4">
+                        <Button asChild className="w-full bg-blue-600 hover:bg-blue-700 text-white">
+                            <a
+                                href={SLACK_APP_MANIFEST_URL}
+                                target="_blank"
+                                rel="noreferrer"
+                            >
+                                <ExternalLink className="h-4 w-4 mr-2" />
+                                Create Airweave Slack integration
+                            </a>
+                        </Button>
+                        <p className="text-xs text-muted-foreground mt-2">
+                            Paste the client ID and client secret of the newly created app above
+                        </p>
                     </div>
                 )}
             </div>

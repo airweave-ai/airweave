@@ -196,6 +196,17 @@ integrations:
     additional_frontend_params:
       response_mode: "query"
 
+  # slack:
+  #   auth_type: "oauth2"
+  #   url: "https://slack.com/oauth/v2/authorize"
+  #   backend_url: "https://slack.com/api/oauth.v2.access"
+  #   grant_type: "authorization_code"
+  #   client_id: "6769618979345.8909908171303"
+  #   client_secret: "bb2d468190471933fe358d53a1e4ac2d"
+  #   content_type: "application/x-www-form-urlencoded"
+  #   client_credential_location: "body"
+  #   scope: "app_mentions:read,channels:history,channels:join,channels:read,groups:history,groups:read,im:history,im:read,mpim:history,mpim:read,users:read"
+
   slack:
     auth_type: "oauth2"
     url: "https://slack.com/oauth/v2/authorize"
@@ -205,7 +216,10 @@ integrations:
     client_secret: "bb2d468190471933fe358d53a1e4ac2d"
     content_type: "application/x-www-form-urlencoded"
     client_credential_location: "body"
-    scope: "app_mentions:read,channels:history,channels:join,channels:read,groups:history,groups:read,im:history,im:read,mpim:history,mpim:read,users:read"
+
+    # ADD this instead:
+    additional_frontend_params:
+      user_scope: "channels:read,channels:history,groups:read,groups:history,im:read,im:history,mpim:read,mpim:history,users:read"
 
   stripe:
     auth_type: "api_key"
