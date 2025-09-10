@@ -492,6 +492,7 @@ async def get_filter_schema() -> Dict[str, Any]:
 
 
 @router.post("/{readable_id}/search/stream")
+@track_api_endpoint("stream_search")
 async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestration is acceptable
     readable_id: str = Path(
         ..., description="The unique readable identifier of the collection to search"
