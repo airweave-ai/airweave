@@ -93,7 +93,7 @@ class SyncContext:
         white_label: Optional[schemas.WhiteLabel] = None,
         force_full_sync: bool = False,
         # Micro-batching controls
-        should_batch: bool = True,
+        should_batch: bool = False,
         batch_size: int = 64,
         max_batch_latency_ms: int = 200,
     ):

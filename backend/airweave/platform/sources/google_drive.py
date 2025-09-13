@@ -60,7 +60,7 @@ class GoogleDriveSource(BaseSource):
 
         # Concurrency configuration
         instance.batch_size = int(config.get("batch_size", 30))
-        instance.batch_generation = bool(config.get("batch_generation", True))
+        instance.batch_generation = bool(config.get("batch_generation", False))
         instance.max_queue_size = int(config.get("max_queue_size", 200))
         instance.preserve_order = bool(config.get("preserve_order", False))
         instance.stop_on_error = bool(config.get("stop_on_error", False))
