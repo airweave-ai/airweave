@@ -256,6 +256,22 @@ class GoogleCalendarAuthConfig(OAuth2BYOCAuthConfig):
     # Inherits client_id, client_secret, refresh_token and access_token from OAuth2BYOCAuthConfig
 
 
+class AirtableAuthConfig(OAuth2BYOCAuthConfig):
+    """Airtable OAuth 2.0 credentials (Bring Your Own Client).
+
+    Register an OAuth integration in Airtable Developer Hub, then provide:
+      - client_id, client_secret
+      - (runtime) access_token, refresh_token are managed by the token manager
+
+    OAuth endpoints:
+      - Authorize: https://airtable.com/oauth2/v1/authorize
+      - Token:     https://airtable.com/oauth2/v1/token
+    Required scopes (read-only): schema.bases:read, data.records:read
+    """
+
+    # Inherits client_id, client_secret, access_token, refresh_token
+
+
 class GoogleDriveAuthConfig(OAuth2BYOCAuthConfig):
     """Google Drive authentication credentials schema."""
 
@@ -324,6 +340,27 @@ class OutlookMailAuthConfig(OAuth2WithRefreshAuthConfig):
     # Inherits refresh_token and access_token from OAuth2WithRefreshAuthConfig
 
 
+class DiscordAuthConfig(APIKeyAuthConfig):
+    """Discord Bot authentication schema.
+
+    Provide a Bot token from the Discord Developer Portal.
+    Sent as: 'Authorization: Bot <token>'.
+    """
+
+    api_key: str = Field(
+        title="Bot Token", description="Discord bot token (Developer Portal → Bot → Token)"
+    )
+
+
+class TrelloAuthConfig(BaseConfig):
+    """Trello API auth (key + token)."""
+
+    api_key: str = Field(title="API Key", description="Trello API key (from trello.com/app-key)")
+    api_token: str = Field(
+        title="API Token", description="Trello API token authorized for the user"
+    )
+
+
 class CTTIAuthConfig(AuthConfig):
     """CTTI Clinical Trials authentication credentials schema."""
 
@@ -333,6 +370,16 @@ class CTTIAuthConfig(AuthConfig):
     password: str = Field(
         title="Password", description="Password for the AACT Clinical Trials database"
     )
+
+
+class MicrosoftTeamsAuthConfig(OAuth2WithRefreshAuthConfig):
+    """Microsoft Teams (Graph) OAuth2 delegated credentials.
+
+    Use the authorization code flow (with refresh) to obtain access/refresh tokens.
+    Scopes are configured in dev.integrations.yaml (see snippet below).
+    """
+
+    # Inherits: access_token, refresh_token
 
 
 class PostgreSQLAuthConfig(BaseDatabaseAuthConfig):
