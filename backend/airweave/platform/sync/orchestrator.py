@@ -304,19 +304,10 @@ class SyncOrchestrator:
 
         await self._wait_for_remaining_tasks(pending_tasks)
 
-        # Publish progress finalization
-        await self.sync_context.progress.finalize(is_complete=(stream_error is None))
-
-        # Publish entity state tracker finalization as well
-        if getattr(self.sync_context, "entity_state_tracker", None):
-            from airweave.platform.utils.error_utils import get_error_message as _gem
-
-            error_message = _gem(stream_error) if stream_error else None
-            await self.sync_context.entity_state_tracker.finalize(
-                is_complete=(stream_error is None), error=error_message
-            )
-
-        # Cleanup orphaned entities only when safe
+        # ------------------------------------------------------------
+        # FIX: perform orphan cleanup BEFORE finalizing live state,
+        # so realtime totals match DB at end of run.
+        # ------------------------------------------------------------
         has_cursor_data = bool(
             hasattr(self.sync_context, "cursor")
             and self.sync_context.cursor
@@ -342,6 +333,18 @@ class SyncOrchestrator:
                     exc_info=True,
                 )
                 raise cleanup_error
+
+        # Publish progress finalization
+        await self.sync_context.progress.finalize(is_complete=(stream_error is None))
+
+        # Publish entity state tracker finalization AFTER cleanup
+        if getattr(self.sync_context, "entity_state_tracker", None):
+            from airweave.platform.utils.error_utils import get_error_message as _gem
+
+            error_message = _gem(stream_error) if stream_error else None
+            await self.sync_context.entity_state_tracker.finalize(
+                is_complete=(stream_error is None), error=error_message
+            )
 
         if stream_error:
             raise stream_error
