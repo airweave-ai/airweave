@@ -59,7 +59,7 @@ class GoogleDriveSource(BaseSource):
         instance.include_patterns = config.get("include_patterns", [])
 
         # Concurrency configuration
-        instance.batch_size = int(config.get("batch_size", 30))
+        instance.batch_size = int(config.get("batch_size", 45))
         instance.batch_generation = bool(config.get("batch_generation", True))
         instance.max_queue_size = int(config.get("max_queue_size", 200))
         instance.preserve_order = bool(config.get("preserve_order", False))
