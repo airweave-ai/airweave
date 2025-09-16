@@ -1,36 +1,12 @@
 """Temporal activities for Airweave."""
 
 import asyncio
+from contextlib import suppress
 from datetime import datetime
 from typing import Any, Dict, Optional
 from uuid import UUID
 
 from temporalio import activity
-from temporalio.exceptions import CancelledError as ActivityCancelledError
-
-
-async def _send_heartbeats(should_heartbeat_flag: dict) -> bool:
-    """Send regular heartbeats to Temporal."""
-    cancellation_requested = False
-    heartbeat_count = 0
-    while should_heartbeat_flag["value"]:
-        try:
-            # Check if cancellation was requested
-            if activity.is_cancelled():
-                activity.logger.info("Activity cancellation detected via heartbeat")
-                cancellation_requested = True
-                break
-
-            # Send heartbeat with progress info
-            heartbeat_count += 1
-            activity.heartbeat(f"Sync in progress, heartbeat #{heartbeat_count}")
-
-            # Wait 30 seconds before next heartbeat
-            await asyncio.sleep(30)
-        except Exception as e:
-            activity.logger.error(f"Error sending heartbeat: {e}")
-            break
-    return cancellation_requested
 
 
 async def _run_sync_task(
@@ -56,57 +32,6 @@ async def _run_sync_task(
         access_token=access_token,
         force_full_sync=force_full_sync,
     )
-
-
-async def _wait_for_sync_completion(sync_task, heartbeat_task, should_heartbeat_flag, sync_job):
-    """Wait for sync completion or handle cancellation."""
-    # Wait for sync to complete or cancellation
-    while not sync_task.done():
-        # Check for cancellation every second
-        try:
-            await asyncio.wait_for(asyncio.shield(sync_task), timeout=1.0)
-        except asyncio.TimeoutError:
-            # Check if we should cancel
-            cancellation_requested = False
-            if heartbeat_task.done():
-                try:
-                    cancellation_requested = await heartbeat_task
-                except Exception:
-                    pass
-
-            if cancellation_requested or activity.is_cancelled():
-                activity.logger.info("Cancelling sync task due to activity cancellation")
-                sync_task.cancel()
-                try:
-                    await sync_task
-                except asyncio.CancelledError:
-                    activity.logger.info("Sync task cancelled successfully")
-                    raise ActivityCancelledError("Activity was cancelled by user") from None
-            # Otherwise continue waiting
-            continue
-
-    # If we get here, sync completed normally
-    activity.logger.info(f"Completed sync activity for job {sync_job.id}")
-
-
-async def _cleanup_tasks(heartbeat_task, sync_task, should_heartbeat_flag):
-    """Clean up background tasks."""
-    # Stop heartbeating
-    should_heartbeat_flag["value"] = False
-    if heartbeat_task and not heartbeat_task.done():
-        heartbeat_task.cancel()
-        try:
-            await heartbeat_task
-        except asyncio.CancelledError:
-            pass
-
-    # Cancel sync task if still running
-    if sync_task and not sync_task.done():
-        sync_task.cancel()
-        try:
-            await sync_task
-        except asyncio.CancelledError:
-            pass
 
 
 # Import inside the activity to avoid issues with Temporal's sandboxing
@@ -169,46 +94,118 @@ async def run_sync_activity(
         ),
     )
 
-    activity.logger.info(f"Starting sync activity for job {sync_job.id}")
-
-    # Start background tasks
-    heartbeat_task = None
-    sync_task = None
-    should_heartbeat_flag = {"value": True}
+    ctx.logger.debug(f"\n\nStarting sync activity for job {sync_job.id}\n\n")
+    # Start the sync task
+    sync_task = asyncio.create_task(
+        _run_sync_task(
+            sync,
+            sync_job,
+            sync_dag,
+            collection,
+            source_connection,
+            ctx,
+            access_token,
+            force_full_sync,
+        )
+    )
 
     try:
-        # Import here to avoid Temporal sandboxing issues
+        while True:
+            try:
+                await asyncio.wait_for(asyncio.shield(sync_task), timeout=1)
+                break
+            except asyncio.TimeoutError:
+                ctx.logger.debug("HEARTBEAT: Sync in progress")
+                activity.heartbeat("Sync in progress")
 
-        # Start heartbeat task
-        heartbeat_task = asyncio.create_task(_send_heartbeats(should_heartbeat_flag))
+        ctx.logger.info(f"\n\nCompleted sync activity for job {sync_job.id}\n\n")
 
-        # Start the sync
-        sync_task = asyncio.create_task(
-            _run_sync_task(
-                sync,
-                sync_job,
-                sync_dag,
-                collection,
-                source_connection,
-                ctx,
-                access_token,
-                force_full_sync,
-            )
-        )
-
-        await _wait_for_sync_completion(sync_task, heartbeat_task, should_heartbeat_flag, sync_job)
-
-    except ActivityCancelledError:
-        activity.logger.info(f"Sync activity cancelled for job {sync_job.id}")
-        raise
     except asyncio.CancelledError:
-        activity.logger.info(f"Sync activity cancelled (asyncio) for job {sync_job.id}")
-        raise ActivityCancelledError("Activity was cancelled") from None
-    except Exception as e:
-        activity.logger.error(f"Failed sync activity for job {sync_job.id}: {e}")
+        ctx.logger.info(f"\n\nSync activity cancelled for job {sync_job.id}\n\n")
+        # Ensure the internal sync task is cancelled and awaited
+        sync_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await sync_task
+
+        try:
+            # Import inside to avoid sandbox issues
+            from airweave.core.datetime_utils import utc_now_naive
+            from airweave.core.shared_models import SyncJobStatus
+            from airweave.core.sync_job_service import sync_job_service
+
+            await sync_job_service.update_status(
+                sync_job_id=sync_job.id,
+                status=SyncJobStatus.CANCELLED,
+                ctx=ctx,
+                error="Workflow was cancelled",
+                failed_at=utc_now_naive(),
+            )
+            ctx.logger.debug(f"\n\nUpdated job {sync_job.id} to CANCELLED\n\n")
+        except Exception as status_err:
+            ctx.logger.error(f"Failed to update job {sync_job.id} to CANCELLED: {status_err}")
         raise
-    finally:
-        await _cleanup_tasks(heartbeat_task, sync_task, should_heartbeat_flag)
+    except Exception as e:
+        ctx.logger.error(f"Failed sync activity for job {sync_job.id}: {e}")
+        raise
+
+
+@activity.defn
+async def mark_sync_job_cancelled_activity(
+    sync_job_id: str,
+    ctx_dict: Dict[str, Any],
+    reason: Optional[str] = None,
+    when_iso: Optional[str] = None,
+) -> None:
+    """Mark a sync job as CANCELLED (used when workflow cancels before activity starts).
+
+    Args:
+        sync_job_id: The sync job ID (str UUID)
+        ctx_dict: Serialized ApiContext dict
+        reason: Optional cancellation reason
+        when_iso: Optional ISO timestamp for failed_at
+    """
+    from airweave import schemas
+    from airweave.api.context import ApiContext
+    from airweave.core.logging import LoggerConfigurator
+    from airweave.core.shared_models import SyncJobStatus
+    from airweave.core.sync_job_service import sync_job_service
+
+    # Reconstruct context
+    organization = schemas.Organization(**ctx_dict["organization"])
+    user = schemas.User(**ctx_dict["user"]) if ctx_dict.get("user") else None
+
+    ctx = ApiContext(
+        request_id=ctx_dict["request_id"],
+        organization=organization,
+        user=user,
+        auth_method=ctx_dict["auth_method"],
+        auth_metadata=ctx_dict.get("auth_metadata"),
+        logger=LoggerConfigurator.configure_logger(
+            "airweave.temporal.activity.cancel_pre_activity",
+            dimensions={
+                "sync_job_id": sync_job_id,
+                "organization_id": str(organization.id),
+                "organization_name": organization.name,
+            },
+        ),
+    )
+
+    failed_at = None
+    if when_iso:
+        try:
+            failed_at = datetime.fromisoformat(when_iso)
+        except Exception:
+            failed_at = None
+
+    ctx.logger.debug(f"Marking sync job {sync_job_id} as CANCELLED (pre-activity): {reason or ''}")
+
+    await sync_job_service.update_status(
+        sync_job_id=UUID(sync_job_id),
+        status=SyncJobStatus.CANCELLED,
+        ctx=ctx,
+        error=reason,
+        failed_at=failed_at,
+    )
 
 
 @activity.defn
@@ -233,8 +230,6 @@ async def create_sync_job_activity(
     Raises:
         Exception: If a sync job is already running and force_full_sync is False
     """
-    from uuid import UUID
-
     from airweave import crud, schemas
     from airweave.api.context import ApiContext
     from airweave.core.logging import LoggerConfigurator
@@ -260,9 +255,7 @@ async def create_sync_job_activity(
         ),
     )
 
-    activity.logger.info(
-        f"Creating sync job for sync {sync_id} (force_full_sync={force_full_sync})"
-    )
+    ctx.logger.debug(f"Creating sync job for sync {sync_id} (force_full_sync={force_full_sync})")
 
     async with get_db_context() as db:
         # Check if there's already a running sync job for this sync
@@ -275,7 +268,7 @@ async def create_sync_job_activity(
         if running_jobs:
             if force_full_sync:
                 # For daily cleanup, wait for running jobs to complete
-                activity.logger.info(
+                ctx.logger.debug(
                     f"🔄 Daily cleanup sync for {sync_id}: "
                     f"Found {len(running_jobs)} running job(s). "
                     f"Waiting for them to complete before starting cleanup..."
@@ -305,14 +298,14 @@ async def create_sync_job_activity(
                         )
 
                         if not still_running:
-                            activity.logger.info(
+                            ctx.logger.info(
                                 f"✅ Running jobs completed. "
                                 f"Proceeding with cleanup sync for {sync_id}"
                             )
                             break
                 else:
                     # Timeout reached
-                    activity.logger.error(
+                    ctx.logger.error(
                         f"❌ Timeout waiting for running jobs to complete for sync {sync_id}. "
                         f"Skipping cleanup sync."
                     )
@@ -321,7 +314,7 @@ async def create_sync_job_activity(
                     )
             else:
                 # For regular incremental syncs, skip if job is running
-                activity.logger.warning(
+                ctx.logger.warning(
                     f"Sync {sync_id} already has {len(running_jobs)} running jobs. "
                     f"Skipping new job creation."
                 )
@@ -342,102 +335,8 @@ async def create_sync_job_activity(
         # Refresh the object to ensure all attributes are loaded
         await db.refresh(sync_job)
 
-        activity.logger.info(f"Created sync job {sync_job_id} for sync {sync_id}")
+        ctx.logger.info(f"Created sync job {sync_job_id} for sync {sync_id}")
 
         # Convert to dict for return
         sync_job_schema = schemas.SyncJob.model_validate(sync_job)
         return sync_job_schema.model_dump(mode="json")
-
-
-@activity.defn
-async def update_sync_job_status_activity(
-    sync_job_id: str,
-    status: str,
-    ctx_dict: Dict[str, Any],
-    error: Optional[str] = None,
-    failed_at: Optional[str] = None,
-) -> None:
-    """Activity to update sync job status.
-
-    This activity is used to update the sync job status when errors occur
-    or when the workflow is cancelled.
-
-    Args:
-        sync_job_id: The sync job ID
-        status: The new status string (e.g., "failed", "cancelled")
-        ctx_dict: The current authentication context as dict
-        error: Optional error message
-        failed_at: Optional timestamp when the job failed
-    """
-    # Import here to avoid Temporal sandboxing issues
-    from airweave import schemas
-    from airweave.api.context import ApiContext
-    from airweave.core.logging import LoggerConfigurator
-    from airweave.core.shared_models import SyncJobStatus
-    from airweave.core.sync_job_service import sync_job_service
-
-    # Reconstruct user if present
-    user = schemas.User(**ctx_dict["user"]) if ctx_dict.get("user") else None
-
-    # Reconstruct organization from the dictionary
-    organization = schemas.Organization(**ctx_dict["organization"])
-
-    # Reconstruct ApiContext with a new logger
-    logger = LoggerConfigurator.configure_logger(
-        "airweave.temporal.activity",
-        dimensions={
-            "sync_job_id": sync_job_id,
-            "organization_id": str(organization.id),
-            "organization_name": organization.name,
-        },
-    )
-
-    # Reconstruct user if present
-    user = schemas.User(**ctx_dict["user"]) if ctx_dict.get("user") else None
-
-    ctx = ApiContext(
-        request_id=ctx_dict["request_id"],
-        organization=organization,
-        user=user,
-        auth_method=ctx_dict["auth_method"],
-        auth_metadata=ctx_dict.get("auth_metadata"),
-        logger=logger,
-    )
-
-    # Convert string status to SyncJobStatus enum
-    # Handle both lowercase (Python enum values) and uppercase (database values)
-    try:
-        # First try direct enum value match (lowercase Python enum values)
-        status_enum = SyncJobStatus(status.lower())
-    except ValueError:
-        # Fallback: try to find enum by attribute name
-        try:
-            status_upper = status.upper()
-            if hasattr(SyncJobStatus, status_upper):
-                status_enum = getattr(SyncJobStatus, status_upper)
-            else:
-                activity.logger.error(f"Invalid status: {status}")
-                raise ValueError(f"Invalid sync job status: {status}") from None
-        except ValueError:
-            activity.logger.error(f"Invalid status: {status}")
-            raise ValueError(f"Invalid sync job status: {status}") from None
-
-    # Convert failed_at string to datetime if provided
-    failed_at_dt = datetime.fromisoformat(failed_at) if failed_at else None
-
-    activity.logger.info(f"Updating sync job {sync_job_id} status to {status_enum.name}")
-
-    try:
-        await sync_job_service.update_status(
-            sync_job_id=UUID(sync_job_id),
-            status=status_enum,
-            ctx=ctx,
-            error=error,
-            failed_at=failed_at_dt,
-        )
-        activity.logger.info(
-            f"Successfully updated sync job {sync_job_id} status to {status_enum.name}"
-        )
-    except Exception as e:
-        activity.logger.error(f"Failed to update sync job {sync_job_id} status: {e}")
-        raise

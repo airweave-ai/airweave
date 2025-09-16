@@ -16,12 +16,10 @@ from airweave.api.examples import (
     create_source_connection_list_response,
 )
 from airweave.api.router import TrailingSlashRouter
-from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.guard_rail_service import GuardRailService
 from airweave.core.logging import logger
 from airweave.core.shared_models import ActionType, SyncJobStatus
 from airweave.core.source_connection_service import source_connection_service
-from airweave.core.sync_job_service import sync_job_service
 from airweave.core.sync_service import sync_service
 from airweave.core.temporal_service import temporal_service
 from airweave.db.session import get_db_context
@@ -1105,6 +1103,8 @@ async def cancel_job(
     The job will complete its current operation and then terminate gracefully.
     Only jobs in 'created', 'pending', or 'in_progress' states can be cancelled.
     """
+    ctx.logger.info(f"Cancelling sync job {job_id} for source connection {source_connection_id}")
+
     # First verify the job exists and belongs to this source connection
     sync_job = await source_connection_service.get_source_connection_job(
         db=db, source_connection_id=source_connection_id, job_id=job_id, ctx=ctx
@@ -1122,37 +1122,15 @@ async def cancel_job(
 
     # If Temporal is enabled, try to cancel the workflow
     if await temporal_service.is_temporal_enabled():
-        try:
-            cancelled = await temporal_service.cancel_sync_job_workflow(str(job_id))
-            if cancelled:
-                logger.info(f"Successfully sent cancellation signal for job {job_id}")
-            else:
-                logger.warning(f"No running Temporal workflow found for job {job_id}")
-                # Even if no workflow found, we might want to update the status
-                # if it's stuck in IN_PROGRESS or PENDING
-                if sync_job.status in [SyncJobStatus.IN_PROGRESS, SyncJobStatus.PENDING]:
-                    await sync_job_service.update_status(
-                        sync_job_id=job_id,
-                        status=SyncJobStatus.CANCELLED,
-                        ctx=ctx,
-                        error="Job cancelled by user",
-                        failed_at=utc_now_naive(),  # Using failed_at for cancelled timestamp
-                    )
-        except Exception as e:
-            logger.error(f"Error cancelling Temporal workflow: {e}")
-            raise HTTPException(status_code=500, detail="Failed to cancel workflow") from None
+        cancelled = await temporal_service.cancel_sync_job_workflow(str(job_id), ctx)
+        if not cancelled:
+            ctx.logger.error(f"Failed to cancel Temporal workflow for job {job_id}")
+            raise HTTPException(status_code=404, detail="No running workflow found for this job")
     else:
-        # For non-Temporal jobs, directly update the status
-        # (though background tasks can't really be cancelled)
-        await sync_job_service.update_status(
-            sync_job_id=job_id,
-            status=SyncJobStatus.CANCELLED,
-            ctx=ctx,
-            error="Job cancelled by user",
-            failed_at=utc_now_naive(),  # Using failed_at for cancelled timestamp
-        )
+        # If Temporal is disabled, we cannot cancel background tasks reliably
+        raise HTTPException(status_code=503, detail="Temporal is disabled; cannot cancel job")
 
-    # Fetch the updated job
+    # Fetch and return the job as-is; status will transition to cancelled via workflow update
     return await source_connection_service.get_source_connection_job(
         db=db, source_connection_id=source_connection_id, job_id=job_id, ctx=ctx
     )

@@ -11,8 +11,8 @@ from airweave.core.logging import logger
 from airweave.platform.entities._base import ensure_file_entity_models
 from airweave.platform.temporal.activities import (
     create_sync_job_activity,
+    mark_sync_job_cancelled_activity,
     run_sync_activity,
-    update_sync_job_status_activity,
 )
 from airweave.platform.temporal.client import temporal_client
 from airweave.platform.temporal.workflows import RunSourceConnectionWorkflow
@@ -45,8 +45,8 @@ class TemporalWorker:
                 workflows=[RunSourceConnectionWorkflow],
                 activities=[
                     run_sync_activity,
-                    update_sync_job_status_activity,
                     create_sync_job_activity,
+                    mark_sync_job_cancelled_activity,
                 ],
                 workflow_runner=sandbox_config,
             )
