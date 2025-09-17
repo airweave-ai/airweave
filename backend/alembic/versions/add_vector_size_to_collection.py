@@ -1,7 +1,7 @@
 """add_vector_size_to_collection
 
-Revision ID: add_vector_size_to_collection
-Revises: bf10682f1193
+Revision ID: 7f8a9b2c3d4e
+Revises: 0765a96ad189
 Create Date: 2025-09-17 00:00:00.000000
 
 """
@@ -11,8 +11,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = "add_vector_size_to_collection"
-down_revision = "bf10682f1193"
+revision = "7f8a9b2c3d4e"
+down_revision = "0765a96ad189"
 branch_labels = None
 depends_on = None
 
