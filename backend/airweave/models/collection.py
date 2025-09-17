@@ -1,8 +1,8 @@
 """Collection model."""
 
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Optional
 
-from sqlalchemy import String
+from sqlalchemy import Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from airweave.models._base import OrganizationBase, UserMixin
@@ -18,6 +18,7 @@ class Collection(OrganizationBase, UserMixin):
 
     name: Mapped[str] = mapped_column(String, nullable=False)
     readable_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    vector_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     # Status is now ephemeral - removed from database model
 
     # Relationships

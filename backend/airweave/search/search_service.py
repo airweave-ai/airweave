@@ -216,7 +216,7 @@ class SearchService:
         destination = await destination_class.create(collection_id=collection.id, logger=ctx.logger)
 
         # Get appropriate embedding models
-        embedding_model = self._get_embedding_model(readable_id, collection.id, ctx)
+        embedding_model = self._get_embedding_model(collection, ctx)
 
         # Load keyword indexing model if destination has/supports it
         keyword_indexing_model = None
@@ -413,21 +413,12 @@ class SearchService:
         return resource_locator.get_destination(destination_model)
 
     def _get_embedding_model(
-        self, readable_id: str, collection_id: str, ctx: ApiContext
+        self, collection: schemas.Collection, ctx: ApiContext
     ) -> BaseEmbeddingModel:
-        """Get the appropriate embedding model based on configuration."""
-        if settings.OPENAI_API_KEY:
-            ctx.logger.info(
-                f"Using OpenAI embedding model for search in collection "
-                f"{readable_id} {collection_id}"
-            )
-            return OpenAIText2Vec(api_key=settings.OPENAI_API_KEY, logger=ctx.logger)
-        else:
-            ctx.logger.info(
-                f"Using local embedding model for search in collection "
-                f"{readable_id} {collection_id}"
-            )
-            return LocalText2Vec(logger=ctx.logger)
+        """Get the appropriate embedding model based on collection's vector size."""
+        from airweave.core.collection_service import get_embedding_model_for_collection
+        
+        return get_embedding_model_for_collection(collection, ctx.logger)
 
     def _get_keyword_indexing_model(self, ctx: ApiContext) -> BaseEmbeddingModel:
         """Get the appropriate keyword embedding model based on configuration."""
