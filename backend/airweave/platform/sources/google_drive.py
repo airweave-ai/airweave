@@ -955,3 +955,82 @@ class GoogleDriveSource(BaseSource):
 
         except Exception as e:
             self.logger.error(f"Critical error in generate_entities: {str(e)}")
+
+    async def _resolve_pattern_to_roots(
+        self,
+        client: httpx.AsyncClient,
+        corpora: str,
+        include_all_drives: bool,
+        drive_id: Optional[str],
+        pattern: str,
+    ) -> tuple[List[str], Optional[str]]:
+        """Resolve a pattern like 'folder/subfolder/*' to root folder IDs and filename glob.
+        
+        Args:
+            client: HTTP client
+            corpora: "drive" or "user" 
+            include_all_drives: Whether to include all drives
+            drive_id: Specific drive ID (for shared drives)
+            pattern: Path pattern like "example/*" or "folder/*.pdf"
+            
+        Returns:
+            Tuple of (root_folder_ids, filename_glob)
+        """
+        import fnmatch
+        
+        self.logger.debug(f"Resolving pattern: {pattern}")
+        
+        # Handle simple filename patterns (no path separators)
+        if "/" not in pattern:
+            # This is just a filename pattern, no folder structure
+            return [], pattern
+            
+        # Split pattern into path and filename parts
+        path_parts = pattern.split("/")
+        filename_glob = path_parts[-1] if path_parts else None
+        folder_path_parts = path_parts[:-1]
+        
+        if not folder_path_parts:
+            return [], filename_glob
+            
+        # Start from root and traverse folder structure
+        current_folder_ids = [None]  # None represents root
+        
+        for folder_name_pattern in folder_path_parts:
+            next_folder_ids = []
+            
+            for parent_folder_id in current_folder_ids:
+                try:
+                    # Search for folders matching the current pattern
+                    async for folder in self._list_folders(
+                        client=client,
+                        corpora=corpora,
+                        include_all_drives=include_all_drives,
+                        drive_id=drive_id,
+                        parent_id=parent_folder_id,
+                    ):
+                        folder_name = folder.get("name", "")
+                        # Use fnmatch to support wildcards in folder names
+                        if fnmatch.fnmatch(folder_name, folder_name_pattern):
+                            next_folder_ids.append(folder["id"])
+                            self.logger.debug(
+                                f"Found matching folder: {folder_name} (ID: {folder['id']})"
+                            )
+                            
+                except Exception as e:
+                    self.logger.error(f"Error searching folders with pattern {folder_name_pattern}: {e}")
+                    continue
+                    
+            current_folder_ids = next_folder_ids
+            
+            # If no folders found at any level, stop searching
+            if not current_folder_ids:
+                self.logger.debug(f"No folders found matching pattern component: {folder_name_pattern}")
+                break
+                
+        self.logger.debug(
+            f"Pattern resolution complete. Found {len(current_folder_ids)} root folders, "
+            f"filename glob: {filename_glob}"
+        )
+        
+        return current_folder_ids, filename_glob
