@@ -185,7 +185,7 @@ class SyncFactory:
             access_token=access_token,
             logger=logger,  # Pass the contextual logger
         )
-        embedding_model = cls._get_embedding_model(logger=logger)
+        embedding_model = cls._get_embedding_model(collection=collection, logger=logger)
         keyword_indexing_model = cls._get_keyword_indexing_model(logger=logger)
         destinations = await cls._create_destination_instances(
             db=db,
@@ -783,21 +783,19 @@ class SyncFactory:
         return credential
 
     @classmethod
-    def _get_embedding_model(cls, logger: ContextualLogger) -> BaseEmbeddingModel:
-        """Get embedding model instance.
-
-        If OpenAI API key is available, it will use OpenAI embeddings instead of local.
+    def _get_embedding_model(cls, collection: schemas.Collection, logger: ContextualLogger) -> BaseEmbeddingModel:
+        """Get embedding model instance based on collection's vector size.
 
         Args:
-            logger (ContextualLogger): The logger to use
+            collection: The collection to get embedding model for
+            logger: The logger to use
 
         Returns:
             BaseEmbeddingModel: The embedding model to use
         """
-        if settings.OPENAI_API_KEY:
-            return OpenAIText2Vec(api_key=settings.OPENAI_API_KEY, logger=logger)
-
-        return LocalText2Vec(logger=logger)
+        from airweave.core.collection_service import get_embedding_model_for_collection
+        
+        return get_embedding_model_for_collection(collection, logger)
 
     @classmethod
     def _get_keyword_indexing_model(cls, logger: ContextualLogger) -> BaseEmbeddingModel:

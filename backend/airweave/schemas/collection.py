@@ -107,6 +107,14 @@ class CollectionCreate(CollectionBase):
     from various sources like databases, APIs, and file systems.
     """
 
+    vector_size: Optional[int] = Field(
+        None,
+        description=(
+            "Vector size for embeddings in this collection. If not provided, will be "
+            "determined automatically based on available embedding models."
+        ),
+    )
+
     model_config = {
         "json_schema_extra": {
             "examples": [
@@ -164,6 +172,13 @@ class CollectionInDBBase(CollectionBase):
         description=(
             "URL-safe unique identifier used in API endpoints. This becomes non-optional "
             "once the collection is created."
+        ),
+    )
+    vector_size: Optional[int] = Field(
+        None,
+        description=(
+            "Vector size used for embeddings in this collection. Determines which embedding "
+            "model to use for consistent vector dimensions across operations."
         ),
     )
     created_at: datetime = Field(
