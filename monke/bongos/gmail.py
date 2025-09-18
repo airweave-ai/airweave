@@ -31,7 +31,9 @@ class GmailBongo(BaseBongo):
 
         # Configuration from kwargs
         self.entity_count = kwargs.get("entity_count", 10)
-        self.openai_model = kwargs.get("openai_model", "gpt-4.1")  # sensible default for JSON mode
+        self.openai_model = kwargs.get(
+            "openai_model", "gpt-4.1"
+        )  # sensible default for JSON mode
         self.llm_max_concurrency = int(kwargs.get("llm_max_concurrency", 8))
 
         # Test data tracking
@@ -138,8 +140,10 @@ class GmailBongo(BaseBongo):
         # Use the specific deletion method to delete all entities
         return await self.delete_specific_entities(self.created_entities)
 
-    async def delete_specific_entities(self, entities: List[Dict[str, Any]]) -> List[str]:
-        """Delete specific entities from Gmail."""
+    async def delete_specific_entities(
+        self, entities: List[Dict[str, Any]]
+    ) -> List[str]:
+        """Permanently delete specific entities from Gmail."""
         self.logger.info(f"🥁 Deleting {len(entities)} specific emails from Gmail")
 
         deleted_ids = []
@@ -148,13 +152,20 @@ class GmailBongo(BaseBongo):
             try:
                 # Find the corresponding test email
                 test_email = next(
-                    (email for email in self.test_emails if email["id"] == entity["id"]), None
+                    (
+                        email
+                        for email in self.test_emails
+                        if email["id"] == entity["id"]
+                    ),
+                    None,
                 )
 
                 if test_email:
-                    await self._delete_test_email(test_email["id"])
+                    await self._force_delete_email(test_email["id"])
                     deleted_ids.append(test_email["id"])
-                    self.logger.info(f"🗑️ Deleted test email: {test_email['id']}")
+                    self.logger.info(
+                        f"🗑️ Permanently deleted test email: {test_email['id']}"
+                    )
                 else:
                     self.logger.warning(
                         f"⚠️ Could not find test email for entity: {entity.get('id')}"
@@ -165,17 +176,25 @@ class GmailBongo(BaseBongo):
                     await asyncio.sleep(0.5)
 
             except Exception as e:
-                self.logger.warning(f"⚠️ Could not delete entity {entity.get('id')}: {e}")
+                self.logger.warning(
+                    f"⚠️ Could not delete entity {entity.get('id')}: {e}"
+                )
 
         # VERIFICATION: Check if emails are actually deleted from Gmail
-        self.logger.info("🔍 VERIFYING: Checking if emails are actually deleted from Gmail")
+        self.logger.info(
+            "🔍 VERIFYING: Checking if emails are actually deleted from Gmail"
+        )
         for entity in entities:
             if entity["id"] in deleted_ids:
                 is_deleted = await self._verify_email_deleted(entity["id"])
                 if is_deleted:
-                    self.logger.info(f"✅ Email {entity['id']} confirmed deleted from Gmail")
+                    self.logger.info(
+                        f"✅ Email {entity['id']} confirmed deleted from Gmail"
+                    )
                 else:
-                    self.logger.warning(f"⚠️ Email {entity['id']} still exists in Gmail!")
+                    self.logger.warning(
+                        f"⚠️ Email {entity['id']} still exists in Gmail!"
+                    )
 
         return deleted_ids
 
@@ -189,7 +208,9 @@ class GmailBongo(BaseBongo):
                 await self._force_delete_email(test_email["id"])
                 self.logger.info(f"🧹 Force deleted email: {test_email['id']}")
             except Exception as e:
-                self.logger.warning(f"⚠️ Could not force delete email {test_email['id']}: {e}")
+                self.logger.warning(
+                    f"⚠️ Could not force delete email {test_email['id']}: {e}"
+                )
 
     # Helper methods for Gmail API calls
     async def _get_user_email(self) -> str:
@@ -212,7 +233,9 @@ class GmailBongo(BaseBongo):
 
             return response.json()["emailAddress"]
 
-    async def _create_test_email(self, to_email: str, subject: str, body: str) -> Dict[str, Any]:
+    async def _create_test_email(
+        self, to_email: str, subject: str, body: str
+    ) -> Dict[str, Any]:
         """Create a test email via Gmail API."""
         await self._rate_limit()
 
@@ -231,12 +254,16 @@ class GmailBongo(BaseBongo):
             )
 
             if response.status_code != 200:
-                raise Exception(f"Failed to create email: {response.status_code} - {response.text}")
+                raise Exception(
+                    f"Failed to create email: {response.status_code} - {response.text}"
+                )
 
             result = response.json()
 
             # Track created email
-            self.created_entities.append({"id": result["id"], "thread_id": result["threadId"]})
+            self.created_entities.append(
+                {"id": result["id"], "thread_id": result["threadId"]}
+            )
 
             return result
 
@@ -255,7 +282,9 @@ class GmailBongo(BaseBongo):
             )
 
             if response.status_code != 200:
-                raise Exception(f"Failed to update email: {response.status_code} - {response.text}")
+                raise Exception(
+                    f"Failed to update email: {response.status_code} - {response.text}"
+                )
 
     async def _delete_test_email(self, message_id: str):
         """Delete a test email via Gmail API (move to trash)."""
@@ -268,7 +297,9 @@ class GmailBongo(BaseBongo):
             )
 
             if response.status_code != 200:
-                raise Exception(f"Failed to delete email: {response.status_code} - {response.text}")
+                raise Exception(
+                    f"Failed to delete email: {response.status_code} - {response.text}"
+                )
 
     async def _verify_email_deleted(self, message_id: str) -> bool:
         """Verify if an email is actually deleted (in trash) from Gmail."""
@@ -294,7 +325,9 @@ class GmailBongo(BaseBongo):
                     return False
 
         except Exception as e:
-            self.logger.warning(f"⚠️ Error verifying email deletion for {message_id}: {e}")
+            self.logger.warning(
+                f"⚠️ Error verifying email deletion for {message_id}: {e}"
+            )
             return False
 
     async def _force_delete_email(self, message_id: str):

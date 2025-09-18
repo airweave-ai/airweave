@@ -720,6 +720,18 @@ class EntityProcessor:
             await destination.bulk_delete_by_parent_id(
                 parent_entity.entity_id, sync_context.sync.id
             )
+            # Safety net: also delete by the parent entity's own entity_id in case
+            # points were inserted without a parent_entity_id payload
+            try:
+                await destination.bulk_delete([parent_entity.entity_id], sync_context.sync.id)
+            except Exception:
+                # Don't fail deletion if this secondary path is unsupported by a destination
+                sync_context.logger.debug(
+                    (
+                        f"DELETE_FALLBACK_SKIP [{entity_context}] bulk_delete by entity_id not "
+                        "supported or failed: {e}"
+                    )
+                )
 
         delete_elapsed = asyncio.get_event_loop().time() - delete_start
         sync_context.logger.info(

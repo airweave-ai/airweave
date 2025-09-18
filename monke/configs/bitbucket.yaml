@@ -5,11 +5,13 @@ description: "End-to-end test of Bitbucket connector sync functionality with inc
 connector:
   name: "bitbucket_test"
   type: "bitbucket"
-  auth_fields: {}
-    # username: "${BITBUCKET_USERNAME}"
-    # app_password: "${BITBUCKET_APP_PASSWORD}"
+  auth_fields:
+    access_token: "${BITBUCKET_API_TOKEN}"
   config_fields:
     openai_model: "gpt-4.1-mini"
+    branch: "main"
+    workspace: "monke-prog"
+    file_extensions: []
     # post_create_sleep_seconds: 7  # Optional: wait N seconds after creation before first sync
 
 test_flow:
@@ -29,11 +31,11 @@ test_flow:
     - verify_complete_deletion
 
 # Entity configuration
-entity_count: 3  # Number of entities to create for testing
+entity_count: 3 # Number of entities to create for testing
 
 deletion:
   # Phase 1: Partial deletion
-  partial_delete_count: 1  # Number of entities to delete during partial deletion
+  partial_delete_count: 1 # Number of entities to delete during partial deletion
 
   # Verification settings
   verify_partial_deletion: true
@@ -51,5 +53,5 @@ verification:
 
 # Test-specific configuration
 test_config:
-  workspace: "${BITBUCKET_WORKSPACE}"  # Optional, defaults to username
-  repo_slug: "monke-test-repo"  # Repository name for testing
+  workspace: "${BITBUCKET_WORKSPACE}" # Optional, defaults to username
+  repo_slug: "monke-test-repo" # Repository name for testing

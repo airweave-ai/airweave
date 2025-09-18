@@ -3,7 +3,7 @@
 import asyncio
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from monke.core.config import TestConfig
 from monke.utils.logging import get_logger
@@ -12,7 +12,7 @@ from monke.utils.logging import get_logger
 class TestStep(ABC):
     """Abstract base class for test steps."""
 
-    def __init__(self, config: TestConfig):
+    def __init__(self, config: TestConfig) -> None:
         """Initialize the test step."""
         self.config = config
         self.logger = get_logger(f"test_step.{self.__class__.__name__}")
@@ -28,7 +28,7 @@ class TestStep(ABC):
         )
 
     @abstractmethod
-    async def execute(self):
+    async def execute(self) -> None:
         """Execute the test step."""
         raise NotImplementedError
 
@@ -36,7 +36,7 @@ class TestStep(ABC):
 class CreateStep(TestStep):
     """Create test entities step."""
 
-    async def execute(self):
+    async def execute(self) -> None:
         """Create test entities via the connector."""
         self.logger.info("🥁 Creating test entities")
 
@@ -70,14 +70,14 @@ class CreateStep(TestStep):
         if hasattr(self.config, "_bongo"):
             self.config._bongo.created_entities = entities
 
-    def _get_bongo(self):
+    def _get_bongo(self) -> Optional[Any]:
         return getattr(self.config, "_bongo", None)
 
 
 class SyncStep(TestStep):
     """Sync data to Airweave step."""
 
-    async def execute(self):
+    async def execute(self) -> None:
         """Trigger sync and wait for completion."""
         self.logger.info("🔄 Syncing data to Airweave")
         client = self._get_airweave_client()
@@ -95,7 +95,7 @@ class SyncStep(TestStep):
 
         # Try to start a new sync. If the server says one is already running, wait for that one,
         # then START OUR OWN sync and wait for it too.
-        target_job_id = None
+        target_job_id: Optional[str] = None
         try:
             run_resp = client.source_connections.run(self.config._source_connection_id)
             target_job_id = (
@@ -106,18 +106,28 @@ class SyncStep(TestStep):
         except Exception as e:
             msg = str(e).lower()
             if "already has a running job" in msg or "already running" in msg:
-                self.logger.warning("⚠️ Sync already running; discovering and waiting for that job.")
-                active_job_id = self._find_active_job_id(client) or self._latest_job_id(client)
+                self.logger.warning(
+                    "⚠️ Sync already running; discovering and waiting for that job."
+                )
+                active_job_id = self._find_active_job_id(client) or self._latest_job_id(
+                    client
+                )
                 if not active_job_id:
                     # Last resort: brief wait then re-check
                     await asyncio.sleep(2.0)
-                    active_job_id = self._find_active_job_id(client) or self._latest_job_id(client)
+                    active_job_id = self._find_active_job_id(
+                        client
+                    ) or self._latest_job_id(client)
                 if not active_job_id:
                     raise  # nothing to wait on; re-raise original error
-                await self._wait_for_sync_completion(client, target_job_id=active_job_id)
+                await self._wait_for_sync_completion(
+                    client, target_job_id=active_job_id
+                )
 
                 # IMPORTANT: after the previous job completes, start *our* job
-                run_resp = client.source_connections.run(self.config._source_connection_id)
+                run_resp = client.source_connections.run(
+                    self.config._source_connection_id
+                )
                 target_job_id = (
                     getattr(run_resp, "id", None)
                     or getattr(run_resp, "job_id", None)
@@ -129,18 +139,20 @@ class SyncStep(TestStep):
         await self._wait_for_sync_completion(client, target_job_id=target_job_id)
         self.logger.info("✅ Sync completed")
 
-    def _get_airweave_client(self):
+    def _get_airweave_client(self) -> Any:
         return getattr(self.config, "_airweave_client", None)
 
-    def _jobs_sorted(self, client):
-        jobs = client.source_connections.list_jobs(self.config._source_connection_id) or []
+    def _jobs_sorted(self, client: Any) -> List[Any]:
+        jobs = (
+            client.source_connections.list_jobs(self.config._source_connection_id) or []
+        )
 
         def _ts(j):
             return getattr(j, "started_at", None) or getattr(j, "created_at", None) or 0
 
         return sorted(jobs, key=_ts, reverse=True)
 
-    def _find_active_job_id(self, client) -> Optional[str]:
+    def _find_active_job_id(self, client: Any) -> Optional[str]:
         ACTIVE = {"created", "pending", "in_progress", "running", "queued"}
         try:
             for j in self._jobs_sorted(client):
@@ -155,7 +167,7 @@ class SyncStep(TestStep):
             pass
         return None
 
-    def _latest_job_id(self, client) -> Optional[str]:
+    def _latest_job_id(self, client: Any) -> Optional[str]:
         try:
             sc = client.source_connections.get(self.config._source_connection_id)
             latest = getattr(sc, "latest_sync_job_id", None)
@@ -180,14 +192,14 @@ class SyncStep(TestStep):
 
     async def _wait_for_sync_completion(
         self,
-        client,
+        client: Any,
         target_job_id: Optional[str],
         timeout_seconds: int = 300,
-    ):
+    ) -> None:
         """Wait for the started sync job (or current active one) to complete."""
         self.logger.info("⏳ Waiting for sync to complete...")
 
-        def _job_status_fields(job) -> Dict[str, Any]:
+        def _job_status_fields(job: Any) -> Dict[str, Any]:
             return {
                 "status": (getattr(job, "status", "") or "").lower(),
                 "is_complete": bool(getattr(job, "is_complete", False)),
@@ -209,7 +221,9 @@ class SyncStep(TestStep):
 
         # If still none, fall back to observing latest_sync_job_id
         if not target_job_id:
-            self.logger.info("ℹ️ No job id available; discovering via latest_sync_job_id …")
+            self.logger.info(
+                "ℹ️ No job id available; discovering via latest_sync_job_id …"
+            )
             start = time.monotonic()
             prev_latest = getattr(self.config, "_last_sync_job_id", None)
 
@@ -266,7 +280,9 @@ class SyncStep(TestStep):
             if fields["status"] == "completed" and (
                 fields["is_complete"] or fields["completed_at"]
             ):
-                self.config._last_sync_job_id = str(target_job_id)  # cache for next time
+                self.config._last_sync_job_id = str(
+                    target_job_id
+                )  # cache for next time
                 self.logger.info(
                     "✅ Sync completed successfully (confirmed by is_complete/completed_at)"
                 )
@@ -327,7 +343,9 @@ async def _search_collection_async(
     return _safe_results_from_search_response(resp)
 
 
-async def _token_present_in_collection(client, readable_id: str, token: str, limit: int) -> bool:
+async def _token_present_in_collection(
+    client, readable_id: str, token: str, limit: int
+) -> bool:
     """
     Check if `token` appears in any result payload (case-insensitive).
     """
@@ -356,15 +374,17 @@ def _search_limit_from_config(config: TestConfig, default: int = 50) -> int:
 class VerifyStep(TestStep):
     """Verify data in Qdrant step."""
 
-    async def execute(self):
+    async def execute(self) -> None:
         self.logger.info("🔍 Verifying entities in Qdrant")
         client = self._get_airweave_client()
         limit = _search_limit_from_config(self.config)
 
-        async def verify_one(entity: Dict[str, Any]):
+        async def verify_one(entity: Dict[str, Any]) -> Tuple[Dict[str, Any], bool]:
             expected_token = entity.get("token")
             if not expected_token:
-                self.logger.warning("⚠️ No token found in entity, falling back to filename")
+                self.logger.warning(
+                    "⚠️ No token found in entity, falling back to filename"
+                )
                 expected_token = (entity.get("path") or "").split("/")[-1]
 
             ok = await _token_present_in_collection(
@@ -374,13 +394,17 @@ class VerifyStep(TestStep):
 
         # Retry support + optional one-time rescue resync
         attempts = int(self.config.verification_config.get("retries", 5))
-        backoff = float(self.config.verification_config.get("retry_backoff_seconds", 1.0))
-        resync_on_miss = bool(self.config.verification_config.get("resync_on_miss", True))
+        backoff = float(
+            self.config.verification_config.get("retry_backoff_seconds", 1.0)
+        )
+        resync_on_miss = bool(
+            self.config.verification_config.get("resync_on_miss", True)
+        )
 
         resync_lock = asyncio.Lock()
         resync_triggered = False
 
-        async def verify_with_retries(e: Dict[str, Any]):
+        async def verify_with_retries(e: Dict[str, Any]) -> Tuple[Dict[str, Any], bool]:
             nonlocal resync_triggered
 
             for i in range(max(1, attempts)):
@@ -410,37 +434,41 @@ class VerifyStep(TestStep):
         errors = []
         for entity, ok in results:
             if not ok:
-                errors.append(f"Entity {self._display_name(entity)} not found in Qdrant")
+                errors.append(
+                    f"Entity {self._display_name(entity)} not found in Qdrant"
+                )
             else:
-                self.logger.info(f"✅ Entity {self._display_name(entity)} verified in Qdrant")
+                self.logger.info(
+                    f"✅ Entity {self._display_name(entity)} verified in Qdrant"
+                )
 
         if errors:
             raise Exception("; ".join(errors))
 
         self.logger.info("✅ All entities verified in Qdrant")
 
-    def _get_airweave_client(self):
+    def _get_airweave_client(self) -> Any:
         return getattr(self.config, "_airweave_client", None)
 
 
 class UpdateStep(TestStep):
     """Update test entities step."""
 
-    async def execute(self):
+    async def execute(self) -> None:
         self.logger.info("📝 Updating test entities")
         bongo = self._get_bongo()
         updated_entities = await bongo.update_entities()
         self.logger.info(f"✅ Updated {len(updated_entities)} test entities")
         self.config._updated_entities = updated_entities
 
-    def _get_bongo(self):
+    def _get_bongo(self) -> Optional[Any]:
         return getattr(self.config, "_bongo", None)
 
 
 class PartialDeleteStep(TestStep):
     """Partial deletion step - delete subset of entities based on test size."""
 
-    async def execute(self):
+    async def execute(self) -> None:
         self.logger.info("🗑️ Executing partial deletion")
         bongo = self._get_bongo()
 
@@ -462,9 +490,11 @@ class PartialDeleteStep(TestStep):
         self.config._partially_deleted_entities = entities_to_delete
         self.config._remaining_entities = entities_to_keep
 
-        self.logger.info(f"✅ Partial deletion completed: {len(deleted_paths)} entities deleted")
+        self.logger.info(
+            f"✅ Partial deletion completed: {len(deleted_paths)} entities deleted"
+        )
 
-    def _get_bongo(self):
+    def _get_bongo(self) -> Optional[Any]:
         return getattr(self.config, "_bongo", None)
 
     def _calculate_partial_deletion_count(self) -> int:
@@ -474,11 +504,13 @@ class PartialDeleteStep(TestStep):
 class VerifyPartialDeletionStep(TestStep):
     """Verify that partially deleted entities are removed from Qdrant."""
 
-    async def execute(self):
+    async def execute(self) -> None:
         self.logger.info("🔍 Verifying partial deletion")
 
         if not self.config.deletion.verify_partial_deletion:
-            self.logger.info("⏭️ Skipping partial deletion verification (disabled in config)")
+            self.logger.info(
+                "⏭️ Skipping partial deletion verification (disabled in config)"
+            )
             return
 
         client = self._get_airweave_client()
@@ -490,15 +522,57 @@ class VerifyPartialDeletionStep(TestStep):
                 f"   - {self._display_name(entity)} (token: {entity.get('token', 'N/A')})"
             )
 
-        async def check_deleted(entity: Dict[str, Any]):
-            expected_token = entity.get("token") or str(
-                entity.get("id") or entity.get("gid") or entity.get("name", "")
+        async def check_deleted(entity: Dict[str, Any]) -> Tuple[Dict[str, Any], bool]:
+            # Prefer searching with the most specific identifier available
+            search_query = (
+                str(entity.get("id") or "")
+                or str(entity.get("gid") or "")
+                or str(entity.get("token") or "")
+                or str(entity.get("name") or "")
+                or (str(entity.get("path") or "").split("/")[-1])
+                or str(entity.get("url") or "")
             )
-            if not expected_token:
+            if not search_query:
                 return entity, False
-            present = await _token_present_in_collection(
-                client, self.config._collection_readable_id, expected_token, limit
+
+            results = await _search_collection_async(
+                client, self.config._collection_readable_id, search_query, limit
             )
+
+            def _values_equal(a: Any, b: Any) -> bool:
+                return str(a) == str(b)
+
+            # First, try to prove presence via exact field equality on common identifiers
+            keys_to_check = [
+                "id",
+                "gid",
+                "token",
+                "path",
+                "url",
+                "external_id",
+                "name",
+            ]
+            present = False
+            for r in results:
+                payload = r.get("payload", {}) or {}
+
+                # Exact match on any known identifier
+                for k in keys_to_check:
+                    ent_val = entity.get(k)
+                    pay_val = payload.get(k)
+                    if ent_val and pay_val and _values_equal(ent_val, pay_val):
+                        present = True
+                        break
+                if present:
+                    break
+
+                # Fallback: substring match on sufficiently long tokens only
+                token_val = entity.get("token")
+                if token_val and len(str(token_val)) >= 12:
+                    if str(token_val).lower() in str(payload).lower():
+                        present = True
+                        break
+
             return entity, (not present)
 
         results = await asyncio.gather(
@@ -521,24 +595,26 @@ class VerifyPartialDeletionStep(TestStep):
 
         self.logger.info("✅ Partial deletion verification completed")
 
-    def _get_airweave_client(self):
+    def _get_airweave_client(self) -> Any:
         return getattr(self.config, "_airweave_client", None)
 
 
 class VerifyRemainingEntitiesStep(TestStep):
     """Verify that remaining entities are still present in Qdrant."""
 
-    async def execute(self):
+    async def execute(self) -> None:
         self.logger.info("🔍 Verifying remaining entities are still present")
 
         if not self.config.deletion.verify_remaining_entities:
-            self.logger.info("⏭️ Skipping remaining entities verification (disabled in config)")
+            self.logger.info(
+                "⏭️ Skipping remaining entities verification (disabled in config)"
+            )
             return
 
         client = self._get_airweave_client()
         limit = _search_limit_from_config(self.config)
 
-        async def check_present(entity: Dict[str, Any]):
+        async def check_present(entity: Dict[str, Any]) -> Tuple[Dict[str, Any], bool]:
             expected_token = entity.get("token") or (
                 (entity.get("path", "").split("/")[-1])
                 if entity.get("path")
@@ -551,7 +627,9 @@ class VerifyRemainingEntitiesStep(TestStep):
             )
             return entity, present
 
-        results = await asyncio.gather(*[check_present(e) for e in self.config._remaining_entities])
+        results = await asyncio.gather(
+            *[check_present(e) for e in self.config._remaining_entities]
+        )
 
         errors = []
         for entity, is_present in results:
@@ -569,14 +647,14 @@ class VerifyRemainingEntitiesStep(TestStep):
 
         self.logger.info("✅ Remaining entities verification completed")
 
-    def _get_airweave_client(self):
+    def _get_airweave_client(self) -> Any:
         return getattr(self.config, "_airweave_client", None)
 
 
 class CompleteDeleteStep(TestStep):
     """Complete deletion step - delete all remaining entities."""
 
-    async def execute(self):
+    async def execute(self) -> None:
         self.logger.info("🗑️ Executing complete deletion")
 
         bongo = self._get_bongo()
@@ -590,20 +668,24 @@ class CompleteDeleteStep(TestStep):
 
         deleted_paths = await bongo.delete_specific_entities(remaining_entities)
 
-        self.logger.info(f"✅ Complete deletion completed: {len(deleted_paths)} entities deleted")
+        self.logger.info(
+            f"✅ Complete deletion completed: {len(deleted_paths)} entities deleted"
+        )
 
-    def _get_bongo(self):
+    def _get_bongo(self) -> Optional[Any]:
         return getattr(self.config, "_bongo", None)
 
 
 class VerifyCompleteDeletionStep(TestStep):
     """Verify that all test entities are completely removed from Qdrant."""
 
-    async def execute(self):
+    async def execute(self) -> None:
         self.logger.info("🔍 Verifying complete deletion")
 
         if not self.config.deletion.verify_complete_deletion:
-            self.logger.info("⏭️ Skipping complete deletion verification (disabled in config)")
+            self.logger.info(
+                "⏭️ Skipping complete deletion verification (disabled in config)"
+            )
             return
 
         client = self._get_airweave_client()
@@ -613,7 +695,7 @@ class VerifyCompleteDeletionStep(TestStep):
             self.config._partially_deleted_entities + self.config._remaining_entities
         )
 
-        async def check_deleted(entity: Dict[str, Any]):
+        async def check_deleted(entity: Dict[str, Any]) -> Tuple[Dict[str, Any], bool]:
             expected_token = entity.get("token") or (
                 (entity.get("path", "").split("/")[-1])
                 if entity.get("path")
@@ -642,7 +724,9 @@ class VerifyCompleteDeletionStep(TestStep):
         if errors:
             raise Exception("; ".join(errors))
 
-        collection_empty = await self._verify_collection_empty_of_test_data(client, limit)
+        collection_empty = await self._verify_collection_empty_of_test_data(
+            client, limit
+        )
         if not collection_empty:
             self.logger.warning(
                 "⚠️ Qdrant collection still contains some data (may be metadata entities)"
@@ -652,14 +736,16 @@ class VerifyCompleteDeletionStep(TestStep):
 
         self.logger.info("✅ Complete deletion verification completed")
 
-    def _get_airweave_client(self):
+    def _get_airweave_client(self) -> Any:
         return getattr(self.config, "_airweave_client", None)
 
-    async def _verify_collection_empty_of_test_data(self, client, limit: int) -> bool:
+    async def _verify_collection_empty_of_test_data(
+        self, client: Any, limit: int
+    ) -> bool:
         try:
             test_patterns = ["monke-test", "Monke Test"]
 
-            async def search_one(pattern: str):
+            async def search_one(pattern: str) -> Tuple[str, List[Dict[str, Any]]]:
                 try:
                     results = await _search_collection_async(
                         client,
@@ -671,18 +757,24 @@ class VerifyCompleteDeletionStep(TestStep):
                 except Exception:
                     return pattern, []
 
-            pattern_results = await asyncio.gather(*[search_one(p) for p in test_patterns])
+            pattern_results = await asyncio.gather(
+                *[search_one(p) for p in test_patterns]
+            )
 
             total = 0
             for pattern, results in pattern_results:
                 count = len(results)
                 total += count
                 if count:
-                    self.logger.info(f"🔍 Found {count} results for pattern '{pattern}'")
+                    self.logger.info(
+                        f"🔍 Found {count} results for pattern '{pattern}'"
+                    )
                     for r in results[:3]:
                         payload = r.get("payload", {})
                         score = r.get("score")
-                        self.logger.info(f"   - {payload.get('name', 'Unknown')} (score: {score})")
+                        self.logger.info(
+                            f"   - {payload.get('name', 'Unknown')} (score: {score})"
+                        )
 
             if total == 0:
                 self.logger.info("✅ No test data found in collection")
@@ -699,7 +791,7 @@ class VerifyCompleteDeletionStep(TestStep):
 class CleanupStep(TestStep):
     """Cleanup step - clean up entire source workspace."""
 
-    async def execute(self):
+    async def execute(self) -> None:
         """Clean up all test data from the source workspace."""
         self.logger.info("🧹 Cleaning up source workspace")
         bongo = self._get_bongo()
@@ -711,14 +803,14 @@ class CleanupStep(TestStep):
             # Don't fail the test if cleanup fails, just log the warning
             self.logger.warning(f"⚠️ Cleanup encountered issues: {e}")
 
-    def _get_bongo(self):
+    def _get_bongo(self) -> Optional[Any]:
         return getattr(self.config, "_bongo", None)
 
 
 class CollectionCleanupStep(TestStep):
     """Collection cleanup step - clean up old test collections from Airweave."""
 
-    async def execute(self):
+    async def execute(self) -> None:
         """Clean up old test collections from Airweave."""
         self.logger.info("🧹 Cleaning up old test collections")
         client = self._get_airweave_client()
@@ -734,7 +826,9 @@ class CollectionCleanupStep(TestStep):
             test_collections = await self._find_test_collections(client)
 
             if test_collections:
-                self.logger.info(f"🔍 Found {len(test_collections)} test collections to clean up")
+                self.logger.info(
+                    f"🔍 Found {len(test_collections)} test collections to clean up"
+                )
 
                 for collection in test_collections:
                     try:
@@ -759,10 +853,10 @@ class CollectionCleanupStep(TestStep):
             self.logger.error(f"❌ Error during collection cleanup: {e}")
             # Don't re-raise - cleanup should be best-effort
 
-    def _get_airweave_client(self):
+    def _get_airweave_client(self) -> Any:
         return getattr(self.config, "_airweave_client", None)
 
-    async def _find_test_collections(self, client) -> List[Dict[str, Any]]:
+    async def _find_test_collections(self, client: Any) -> List[Dict[str, Any]]:
         """Find all test collections that should be cleaned up."""
         test_collections = []
 
@@ -782,7 +876,9 @@ class CollectionCleanupStep(TestStep):
                     collection_data = collection.dict()
                 else:
                     collection_data = (
-                        dict(collection) if hasattr(collection, "__dict__") else collection
+                        dict(collection)
+                        if hasattr(collection, "__dict__")
+                        else collection
                     )
 
                 name = collection_data.get("name", "")

@@ -1,6 +1,7 @@
 """Test flow execution engine with structured events (unique per-step metrics)."""
 
 import time
+import os
 from typing import Any, Dict, List, Optional
 
 from monke.core.config import TestConfig
@@ -19,7 +20,7 @@ class TestFlow:
         self.step_factory = TestStepFactory()
         self.metrics: Dict[str, Any] = {}
         self.warnings: List[str] = []
-        self.run_id = run_id or f"run-{int(time.time()*1000)}"
+        self.run_id = run_id or f"run-{int(time.time() * 1000)}"
         self._step_idx = 0  # ensure unique metric keys
 
     @classmethod
@@ -49,15 +50,15 @@ class TestFlow:
             self.metrics["total_duration_wall_clock"] = time.time() - flow_start
             await self._emit_event("flow_completed")
         except Exception as e:
-            # print(e)
-            # raise e
             self.logger.error(f"❌ Test flow execution failed: {e}")
             self.metrics["total_duration_wall_clock"] = time.time() - flow_start
             try:
                 await self.cleanup()
                 pass
             except Exception as cleanup_error:
-                self.logger.error(f"❌ Cleanup failed after test failure: {cleanup_error}")
+                self.logger.error(
+                    f"❌ Cleanup failed after test failure: {cleanup_error}"
+                )
             raise
 
     async def _execute_step(self, step_name: str):
@@ -77,7 +78,8 @@ class TestFlow:
             self.metrics[f"{idx:02d}_{step_name}_duration"] = duration
             self.logger.info(f"✅ Step {step_name} completed in {duration:.2f}s")
             await self._emit_event(
-                "step_completed", extra={"step": step_name, "index": idx, "duration": duration}
+                "step_completed",
+                extra={"step": step_name, "index": idx, "duration": duration},
             )
 
         except Exception as e:
@@ -86,7 +88,12 @@ class TestFlow:
             self.metrics[f"{idx:02d}_{step_name}_failed"] = True
             await self._emit_event(
                 "step_failed",
-                extra={"step": step_name, "index": idx, "duration": duration, "error": str(e)},
+                extra={
+                    "step": step_name,
+                    "index": idx,
+                    "duration": duration,
+                    "error": str(e),
+                },
             )
             raise
 
@@ -119,11 +126,10 @@ class TestFlow:
             self.config._bongo = bongo
 
             from airweave import AirweaveSDK
-            import os as _os
 
             airweave_client = AirweaveSDK(
-                base_url=_os.getenv("AIRWEAVE_API_URL", "http://localhost:8001"),
-                api_key=_os.getenv("AIRWEAVE_API_KEY"),
+                base_url=os.getenv("AIRWEAVE_API_URL", "http://localhost:8001"),
+                api_key=os.getenv("AIRWEAVE_API_KEY"),
             )
             self.config._airweave_client = airweave_client
 
@@ -144,10 +150,10 @@ class TestFlow:
         self.config._collection_id = collection.id
         self.config._collection_readable_id = collection.readable_id
 
-        import os
-
         has_explicit_auth = bool(self.config.connector.auth_fields)
-        use_provider = os.getenv("DM_AUTH_PROVIDER") is not None and not has_explicit_auth
+        use_provider = (
+            os.getenv("DM_AUTH_PROVIDER") is not None and not has_explicit_auth
+        )
 
         if has_explicit_auth:
             self.logger.info(
@@ -156,7 +162,9 @@ class TestFlow:
         elif use_provider:
             self.logger.info(f"🔐 Using auth provider: {os.getenv('DM_AUTH_PROVIDER')}")
         else:
-            self.logger.info("⚠️  No auth configured - will attempt with empty auth_fields")
+            self.logger.info(
+                "⚠️  No auth configured - will attempt with empty auth_fields"
+            )
 
         if use_provider:
             auth_provider_id = os.getenv("DM_AUTH_PROVIDER_ID")
@@ -179,6 +187,13 @@ class TestFlow:
                 src_upper = self.config.connector.type.upper()
                 auth_config_id = os.getenv(f"{src_upper}_AUTH_PROVIDER_AUTH_CONFIG_ID")
                 account_id = os.getenv(f"{src_upper}_AUTH_PROVIDER_ACCOUNT_ID")
+
+                # Fallback to global identifiers if source-specific ones are not provided
+                if not auth_config_id:
+                    auth_config_id = os.getenv("DM_AUTH_PROVIDER_AUTH_CONFIG_ID")
+                if not account_id:
+                    account_id = os.getenv("DM_AUTH_PROVIDER_ACCOUNT_ID")
+
                 auth_provider_config = None
                 if auth_config_id and account_id:
                     auth_provider_config = {
@@ -186,16 +201,50 @@ class TestFlow:
                         "account_id": account_id,
                     }
 
+                if not auth_provider_config:
+                    missing = []
+                    if not os.getenv(
+                        f"{src_upper}_AUTH_PROVIDER_AUTH_CONFIG_ID"
+                    ) and not os.getenv("DM_AUTH_PROVIDER_AUTH_CONFIG_ID"):
+                        missing.append(
+                            f"{src_upper}_AUTH_PROVIDER_AUTH_CONFIG_ID or DM_AUTH_PROVIDER_AUTH_CONFIG_ID"
+                        )
+                    if not os.getenv(
+                        f"{src_upper}_AUTH_PROVIDER_ACCOUNT_ID"
+                    ) and not os.getenv("DM_AUTH_PROVIDER_ACCOUNT_ID"):
+                        missing.append(
+                            f"{src_upper}_AUTH_PROVIDER_ACCOUNT_ID or DM_AUTH_PROVIDER_ACCOUNT_ID"
+                        )
+                    msg = (
+                        "Auth provider is configured but required auth_provider_config is missing. "
+                        "Please set: " + ", ".join(missing)
+                    )
+                    self.logger.error(msg)
+                    raise RuntimeError(msg)
+
                 kwargs = dict(
                     name=f"{self.config.connector.type.title()} Test Connection {int(time.time())}",
                     short_name=self.config.connector.type,
                     collection=self.config._collection_readable_id,
                     auth_provider=auth_provider_id,
+                    # Always pass through any connector config fields
+                    config_fields=self.config.connector.config_fields,
                 )
                 if auth_provider_config:
                     kwargs["auth_provider_config"] = auth_provider_config
 
-                source_connection = airweave_client.source_connections.create(**kwargs)
+                try:
+                    source_connection = airweave_client.source_connections.create(
+                        **kwargs
+                    )
+                except Exception as create_err:
+                    hint = (
+                        "Failed to create source connection via auth provider. "
+                        "Verify auth_provider is valid and auth_provider_config contains both "
+                        "auth_config_id and account_id."
+                    )
+                    self.logger.error(f"{hint} Raw error: {create_err}")
+                    raise
         else:
             source_connection = airweave_client.source_connections.create(
                 name=f"{self.config.connector.type.title()} Test Connection {int(time.time())}",
@@ -209,6 +258,8 @@ class TestFlow:
 
     async def cleanup(self) -> bool:
         """Clean up the test environment."""
+        self.logger.info("🧹 Cleanup skipped")
+        return True
         try:
             self.logger.info("🧹 Cleaning up test environment")
             await self._emit_event("cleanup_started")
@@ -255,7 +306,9 @@ class TestFlow:
             await self._emit_event("cleanup_failed", extra={"error": str(e)})
             return False
 
-    async def _emit_event(self, event_type: str, extra: Optional[Dict[str, Any]] = None) -> None:
+    async def _emit_event(
+        self, event_type: str, extra: Optional[Dict[str, Any]] = None
+    ) -> None:
         payload: Dict[str, Any] = {
             "type": event_type,
             "run_id": self.run_id,

@@ -40,29 +40,29 @@ The `monke.sh` script handles everything automatically:
 │                           MONKE FRAMEWORK                            │
 ├──────────────────────────────────────────────────────────────────────┤
 │                                                                      │
-│  runner.py ──► Core Framework ──► Bongo ──► External API            │
-│     │              │                │           │                   │
-│     │              │                │           ▼                   │
-│     │              │                │      (1) CREATE               │
-│     │              │                │       Test Data               │
-│     │              │                │                               │
-│     │              ▼                │                               │
-│     │         Test Config           │                               │
-│     │         (YAML files)          │                               │
-│     │                               │                               │
-│     │              │                │                               │
-│     │              ▼                ▼                               │
-│     │         (2) TRIGGER ──► Airweave Backend                      │
-│     │             Sync              │                               │
-│     │                               ▼                               │
-│     │                         (3) PULL DATA                         │
-│     │                         from External API                     │
-│     │                               │                               │
-│     │                               ▼                               │
-│     │                         (4) STORE in                          │
-│     │                         Qdrant Vector DB                      │
-│     │                               │                               │
-│     └──────► (5) VERIFY ───────────►│                               │
+│  runner.py ──► Core Framework ──► Bongo ──► External API             │
+│     │              │                │           │                    │
+│     │              │                │           ▼                    │
+│     │              │                │      (1) CREATE                │
+│     │              │                │       Test Data                │
+│     │              │                │                                │
+│     │              ▼                │                                │
+│     │         Test Config           │                                │
+│     │         (YAML files)          │                                │
+│     │                               │                                │
+│     │              │                │                                │
+│     │              ▼                ▼                                │
+│     │         (2) TRIGGER ──► Airweave Backend                       │
+│     │             Sync              │                                │
+│     │                               ▼                                │
+│     │                         (3) PULL DATA                          │
+│     │                         from External API                      │
+│     │                               │                                │
+│     │                               ▼                                │
+│     │                         (4) STORE in                           │
+│     │                         Qdrant Vector DB                       │
+│     │                               │                                │
+│     └──────► (5) VERIFY ───────────►│                                │
 │               Search & Check                                         │
 │               Relevance Scores                                       │
 │                                                                      │
@@ -266,7 +266,7 @@ monke/
 │   ├── broker.py               # Auth provider interface
 │   └── credentials_resolver.py # Credential resolution logic
 │
-└── 📝 env.test                 # Environment template
+└── 🔐 .env                    # Local environment (git-ignored)
 ```
 
 ## Authentication & Credentials
@@ -298,9 +298,9 @@ In both local development and CI/CD, we use Composio to securely manage connecto
 
 ### Setting Up Credentials
 
-#### 1. Copy the template
+#### 1. Create the env file
 ```bash
-cp monke/env.test monke/.env
+cp monke/.env.example monke/.env
 ```
 
 #### 2. Configure authentication
@@ -321,6 +321,9 @@ GITHUB_AUTH_PROVIDER_AUTH_CONFIG_ID=ac_xxx
 NOTION_AUTH_PROVIDER_ACCOUNT_ID=ca_xxx
 NOTION_AUTH_PROVIDER_AUTH_CONFIG_ID=ac_xxx
 ```
+
+__Gmail Composio config__
+To be able to delete entities from the source, explicitly add this scope to the scope: `https://mail.google.com/`.
 
 **For Direct Credentials (simpler but less secure):**
 ```bash
@@ -495,7 +498,7 @@ for collection in client.collections.list():
 |----------|-------------|---------|
 | `AIRWEAVE_API_URL` | Backend URL | `http://localhost:8001` |
 | `MONKE_MAX_PARALLEL` | Max concurrent tests | `5` |
-| `MONKE_ENV_FILE` | Environment file | `monke/env.test` |
+| `MONKE_ENV_FILE` | Environment file | `monke/.env` |
 | `MONKE_NO_VENV` | Skip venv setup | `false` |
 | `MONKE_VERBOSE` | Verbose output | `false` |
 | `CI` | CI mode (simple output) | Auto-detected |
