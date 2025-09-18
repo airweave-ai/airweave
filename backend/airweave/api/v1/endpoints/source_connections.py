@@ -926,6 +926,9 @@ async def delete(
     source_connection_id: UUID = Path(
         ..., description="The unique identifier of the source connection to delete"
     ),
+    delete_data: bool = Query(
+        False, description="Whether to delete synced data from destination systems"
+    ),
     ctx: ApiContext = Depends(deps.get_context),
     guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
 ) -> schemas.SourceConnection:
@@ -933,12 +936,13 @@ async def delete(
 
     Permanently removes the source connection configuration and credentials.
     By default, previously synced data remains in your destination systems for continuity.
-    Use delete_data=true to also remove all associated data from destination systems.
+    Set `delete_data=true` to also remove all associated data from destination systems.
     """
     await guard_rail.decrement(ActionType.SOURCE_CONNECTIONS)
     return await source_connection_service.delete_source_connection(
         db=db,
         source_connection_id=source_connection_id,
+        delete_data=delete_data,
         ctx=ctx,
     )
 

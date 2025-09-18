@@ -856,11 +856,12 @@ class SourceConnectionService:
         db: AsyncSession,
         source_connection_id: UUID,
         ctx: ApiContext,
+        delete_data: bool = False,
     ) -> schemas.SourceConnection:
         """Delete a source connection and all related components.
 
         This method:
-        1. Deletes all synced data from destination
+        1. Deletes synced data from destination (if delete_data=True)
         2. Deletes the sync if it exists
         3. Deletes the integration credential if it exists
         4. Deletes the source connection
@@ -869,6 +870,7 @@ class SourceConnectionService:
             db: The database session
             source_connection_id: The ID of the source connection to delete
             ctx: The current authentication context
+            delete_data: Whether to delete synced data from destination systems
 
         Returns:
             The deleted source connection
@@ -887,8 +889,8 @@ class SourceConnectionService:
             source_connection
         )
 
-        # Always delete data from Qdrant when deleting a source connection
-        if source_connection.sync_id and source_connection.readable_collection_id:
+        # Delete data from Qdrant only if requested
+        if delete_data and source_connection.sync_id and source_connection.readable_collection_id:
             try:
                 ctx.logger.info(
                     f"Deleting data for source connection {source_connection_id} "
@@ -926,6 +928,10 @@ class SourceConnectionService:
                 )
                 # We don't raise here - we still want to delete the source connection
                 # even if data deletion fails
+        elif not delete_data:
+            ctx.logger.info(
+                f"Skipping data deletion for source connection {source_connection_id}"
+            )
 
         # Cleanup Temporal schedules first (if any)
         if source_connection.sync_id:
