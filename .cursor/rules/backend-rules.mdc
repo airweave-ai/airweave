@@ -89,15 +89,19 @@ If necessary (like editing ), refer [sync-architecture.mdc](mdc:.cursor/rules/sy
 - Always try to use logger from ctx (in case of API) or sync_context (if during sync)
 
 ### PostHog Analytics Integration
-- **Module Path**: `airweave.analytics.service` for core analytics, `airweave.analytics.events.business_events` for business events
+- **Module Path**: `airweave.analytics.service` for core analytics and user behavior tracking
 - **Environment Variables**: `POSTHOG_API_KEY`, `POSTHOG_HOST`, `ANALYTICS_ENABLED`, `ENVIRONMENT` in `core/config.py`
 - **Event Tagging**: All events automatically include an `environment` property from `ENVIRONMENT` variable for filtering by deployment environment
 - **Usage Patterns**:
   - **API Endpoints**: Use `@track_api_endpoint("endpoint_name")` decorator on all API endpoints
   - **Search Operations**: Use `@track_search_operation()` decorator on search functions
-  - **Business Events**: Use `business_events.track_*()` methods for high-level milestones
   - **Custom Events**: Use `analytics.track_event()` for custom tracking
 - **Context Requirements**: Prefer `ApiContext` for API endpoints; some analytics helpers accept explicit IDs—do not use legacy `get_user`.
 - **Error Handling**: Analytics errors are logged but never crash the application
 - **Property Guidelines**: Use `.value` for enums, avoid mutating caller's properties dict
 - **Timing**: Use `time.monotonic()` for duration measurements, not `time.time()`
+
+### Search Persistence & Analytics
+- **Database-First Approach**: Every search is persisted to `search_queries` table via `CRUDSearchQuery`
+- **Comprehensive Analytics**: Database contains all search metadata, performance metrics, and feature usage data
+- **Non-blocking**: Search persistence failures don't affect search functionality

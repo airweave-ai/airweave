@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from airweave.models._base import OrganizationBase, UserMixin
 
 if TYPE_CHECKING:
+    from airweave.models.search_query import SearchQuery
     from airweave.models.source_connection import SourceConnection
 
 
@@ -22,10 +23,19 @@ class Collection(OrganizationBase, UserMixin):
 
     # Relationships
     if TYPE_CHECKING:
+        search_queries: List["SearchQuery"]
         source_connections: List["SourceConnection"]
 
     source_connections: Mapped[list["SourceConnection"]] = relationship(
         "SourceConnection",
+        back_populates="collection",
+        lazy="noload",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+    search_queries: Mapped[list["SearchQuery"]] = relationship(
+        "SearchQuery",
         back_populates="collection",
         lazy="noload",
         cascade="all, delete-orphan",

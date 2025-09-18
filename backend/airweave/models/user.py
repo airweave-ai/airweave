@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from airweave.models._base import Base
 
 if TYPE_CHECKING:
+    from airweave.models.search_query import SearchQuery
     from airweave.models.user_organization import UserOrganization
 
 
@@ -25,6 +26,11 @@ class User(Base):
     # Many-to-many relationship with organizations
     user_organizations: Mapped[List["UserOrganization"]] = relationship(
         "UserOrganization", back_populates="user", cascade="all, delete-orphan", lazy="noload"
+    )
+
+    # Search queries performed by this user
+    search_queries: Mapped[List["SearchQuery"]] = relationship(
+        "SearchQuery", back_populates="user", lazy="noload"
     )
 
     @property
