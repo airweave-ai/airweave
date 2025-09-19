@@ -65,13 +65,28 @@ That's it! Access the dashboard at http://localhost:8080
 
 <!-- START_APP_GRID -->
 
-<p align="center">
-  <div style="display: inline-block; text-align: center; padding: 4px;">
-    <img src="frontend/src/components/icons/apps/asana.svg" alt="Asana" width="40" height="40" style="margin: 4px; padding: 2px;" /><img src="frontend/src/components/icons/apps/bitbucket.svg" alt="Bitbucket" width="40" height="40" style="margin: 4px; padding: 2px;" /><img src="frontend/src/components/icons/apps/confluence.svg" alt="Confluence" width="40" height="40" style="margin: 4px; padding: 2px;" /><img src="frontend/src/components/icons/apps/dropbox.svg" alt="Dropbox" width="40" height="40" style="margin: 4px; padding: 2px;" /><img src="frontend/src/components/icons/apps/github.svg" alt="Github" width="40" height="40" style="margin: 4px; padding: 2px;" /><img src="frontend/src/components/icons/apps/gmail.svg" alt="Gmail" width="40" height="40" style="margin: 4px; padding: 2px;" /><img src="frontend/src/components/icons/apps/google_calendar.svg" alt="Google Calendar" width="40" height="40" style="margin: 4px; padding: 2px;" /><img src="frontend/src/components/icons/apps/google_drive.svg" alt="Google Drive" width="40" height="40" style="margin: 4px; padding: 2px;" />
-    <img src="frontend/src/components/icons/apps/hubspot.svg" alt="Hubspot" width="40" height="40" style="margin: 4px; padding: 2px;" /><img src="frontend/src/components/icons/apps/jira.svg" alt="Jira" width="40" height="40" style="margin: 4px; padding: 2px;" /><img src="frontend/src/components/icons/apps/linear.svg" alt="Linear" width="40" height="40" style="margin: 4px; padding: 2px;" /><img src="frontend/src/components/icons/apps/monday.svg" alt="Monday" width="40" height="40" style="margin: 4px; padding: 2px;" /><img src="frontend/src/components/icons/apps/notion.svg" alt="Notion" width="40" height="40" style="margin: 4px; padding: 2px;" /><img src="frontend/src/components/icons/apps/onedrive.svg" alt="Onedrive" width="40" height="40" style="margin: 4px; padding: 2px;" /><img src="frontend/src/components/icons/apps/outlook_calendar.svg" alt="Outlook Calendar" width="40" height="40" style="margin: 4px; padding: 2px;" /><img src="frontend/src/components/icons/apps/outlook_mail.svg" alt="Outlook Mail" width="40" height="40" style="margin: 4px; padding: 2px;" /><img src="frontend/src/components/icons/apps/postgresql.svg" alt="Postgresql" width="40" height="40" style="margin: 4px; padding: 2px;" />
-    <img src="frontend/src/components/icons/apps/slack.svg" alt="Slack" width="40" height="40" style="margin: 4px; padding: 2px;" /><img src="frontend/src/components/icons/apps/stripe.svg" alt="Stripe" width="40" height="40" style="margin: 4px; padding: 2px;" /><img src="frontend/src/components/icons/apps/todoist.svg" alt="Todoist" width="40" height="40" style="margin: 4px; padding: 2px;" />
-  </div>
-</p>
+<div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; padding: 8px;">
+  <img src="frontend/src/components/icons/apps/asana.svg" alt="Asana" width="40" height="40" />
+  <img src="frontend/src/components/icons/apps/bitbucket.svg" alt="Bitbucket" width="40" height="40" />
+  <img src="frontend/src/components/icons/apps/confluence.svg" alt="Confluence" width="40" height="40" />
+  <img src="frontend/src/components/icons/apps/dropbox.svg" alt="Dropbox" width="40" height="40" />
+  <img src="frontend/src/components/icons/apps/github.svg" alt="Github" width="40" height="40" />
+  <img src="frontend/src/components/icons/apps/gmail.svg" alt="Gmail" width="40" height="40" />
+  <img src="frontend/src/components/icons/apps/google_calendar.svg" alt="Google Calendar" width="40" height="40" />
+  <img src="frontend/src/components/icons/apps/google_drive.svg" alt="Google Drive" width="40" height="40" />
+  <img src="frontend/src/components/icons/apps/hubspot.svg" alt="Hubspot" width="40" height="40" />
+  <img src="frontend/src/components/icons/apps/jira.svg" alt="Jira" width="40" height="40" />
+  <img src="frontend/src/components/icons/apps/linear.svg" alt="Linear" width="40" height="40" />
+  <img src="frontend/src/components/icons/apps/monday.svg" alt="Monday" width="40" height="40" />
+  <img src="frontend/src/components/icons/apps/notion.svg" alt="Notion" width="40" height="40" />
+  <img src="frontend/src/components/icons/apps/onedrive.svg" alt="Onedrive" width="40" height="40" />
+  <img src="frontend/src/components/icons/apps/outlook_calendar.svg" alt="Outlook Calendar" width="40" height="40" />
+  <img src="frontend/src/components/icons/apps/outlook_mail.svg" alt="Outlook Mail" width="40" height="40" />
+  <img src="frontend/src/components/icons/apps/postgresql.svg" alt="Postgresql" width="40" height="40" />
+  <img src="frontend/src/components/icons/apps/slack.svg" alt="Slack" width="40" height="40" />
+  <img src="frontend/src/components/icons/apps/stripe.svg" alt="Stripe" width="40" height="40" />
+  <img src="frontend/src/components/icons/apps/todoist.svg" alt="Todoist" width="40" height="40" />
+</div>
 
 <!-- END_APP_GRID -->
 
