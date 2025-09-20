@@ -6,10 +6,11 @@ Wraps environment variables and provides defaults.
 from typing import Optional
 
 from pydantic import PostgresDsn, ValidationInfo, field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file="../.env",)
     """Pydantic settings class.
 
     Attributes:
@@ -19,6 +20,7 @@ class Settings(BaseSettings):
         LOCAL_CURSOR_DEVELOPMENT (bool): Whether cursor development features are enabled.
         ENVIRONMENT (str): The deployment environment (local, dev, test, prod).
         FRONTEND_LOCAL_DEVELOPMENT_PORT (int): Port for local frontend development.
+        SKIP_AZURE_STORAGE (bool): Whether to skip Azure Storage integration.
         FIRST_SUPERUSER (str): The email address of the first superuser.
         FIRST_SUPERUSER_PASSWORD (str): The password of the first superuser.
         ENCRYPTION_KEY (str): The encryption key.
@@ -26,6 +28,7 @@ class Settings(BaseSettings):
         DEBUG (bool): Whether debug mode is enabled.
         LOG_LEVEL (str): The logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
         POSTGRES_HOST (str): The PostgreSQL server hostname.
+        POSTGRES_PORT (int): The PostgreSQL server port.
         POSTGRES_DB (str): The PostgreSQL database name.
         POSTGRES_USER (str): The PostgreSQL username.
         POSTGRES_PASSWORD (str): The PostgreSQL password.
@@ -66,6 +69,7 @@ class Settings(BaseSettings):
     LOCAL_CURSOR_DEVELOPMENT: bool = False
     ENVIRONMENT: str = "local"
     FRONTEND_LOCAL_DEVELOPMENT_PORT: int = 8080
+    SKIP_AZURE_STORAGE: bool = True
 
     FIRST_SUPERUSER: str
     FIRST_SUPERUSER_PASSWORD: str
@@ -89,6 +93,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
 
     POSTGRES_HOST: str
+    POSTGRES_PORT: int = 5432
     POSTGRES_DB: str = "airweave"
     POSTGRES_USER: str
     POSTGRES_PASSWORD: str
