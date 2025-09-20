@@ -41,7 +41,6 @@ from airweave.db.init_db import init_db
 from airweave.db.session import AsyncSessionLocal
 from airweave.platform.db_sync import sync_platform_components
 from airweave.platform.entities._base import ensure_file_entity_models
-from airweave.platform.scheduler import platform_scheduler
 
 
 @asynccontextmanager
@@ -58,14 +57,7 @@ async def lifespan(app: FastAPI):
             await sync_platform_components("airweave/platform", db)
         await init_db(db)
 
-    # Start the sync scheduler
-    await platform_scheduler.start()
-
     yield
-
-    # Shutdown
-    # Stop the sync scheduler
-    await platform_scheduler.stop()
 
 
 # Create FastAPI app with our custom router and disable FastAPI's built-in redirects

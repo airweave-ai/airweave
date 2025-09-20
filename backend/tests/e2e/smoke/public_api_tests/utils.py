@@ -373,16 +373,27 @@ def start_local_services(openai_api_key: Optional[str] = None) -> bool:
 
 def get_api_url(env: str) -> str:
     """Get API URL based on environment."""
+    # Check if a custom port is specified via environment variable
+    local_port = os.environ.get("AIRWEAVE_LOCAL_PORT", "8001")
+
     urls = {
-        "local": "http://localhost:8001",
+        "local": f"http://localhost:{local_port}",
         "dev": "https://api.dev-airweave.com",
         "prod": "https://api.airweave.ai",
     }
     return urls[env]
 
 
-def setup_environment(env: str, openai_api_key: Optional[str] = None) -> Optional[str]:
-    """Setup environment and return API URL if successful."""
+def setup_environment(
+    env: str, openai_api_key: Optional[str] = None, skip_startup: bool = False
+) -> Optional[str]:
+    """Setup environment and return API URL if successful.
+
+    Args:
+        env: Environment to test against (local, dev, prod)
+        openai_api_key: Optional OpenAI API key for local setup
+        skip_startup: If True, skip running start.sh and health checks for local env
+    """
     api_url = get_api_url(env)
 
     # Debug info for CI
@@ -404,17 +415,23 @@ def setup_environment(env: str, openai_api_key: Optional[str] = None) -> Optiona
             print(f"    Error checking Docker: {e}")
 
     if env == "local":
-        # Start local services (they should be healthy when this completes)
-        if not start_local_services(openai_api_key):
-            return None
+        if skip_startup:
+            # Skip startup and health checks - assume services are already running
+            print("⚡ Skipping start.sh execution and health checks (--skip-startup flag set)")
+            print(f"✓ Assuming services are already running at {api_url}")
+            return api_url
+        else:
+            # Start local services (they should be healthy when this completes)
+            if not start_local_services(openai_api_key):
+                return None
 
-        # Health check to verify backend is accessible (longer timeout for full initialization)
-        print("Verifying backend is accessible...")
-        if not wait_for_health(api_url, timeout=120):  # Increased from 30 to 120 seconds
-            print("✗ Backend is not responding after 2 minutes")
-            print("📋 Checking backend logs for debugging...")
-            show_backend_logs()
-            return None
+            # Health check to verify backend is accessible (longer timeout for full initialization)
+            print("Verifying backend is accessible...")
+            if not wait_for_health(api_url, timeout=120):  # Increased from 30 to 120 seconds
+                print("✗ Backend is not responding after 2 minutes")
+                print("📋 Checking backend logs for debugging...")
+                show_backend_logs()
+                return None
 
     else:
         # For dev/prod, just check if API is reachable

@@ -21,7 +21,6 @@ class TokenManager:
     have valid access tokens during long-running sync jobs. It handles:
     - Automatic token refresh before expiry
     - Concurrent refresh prevention
-    - White label support
     - Direct token injection scenarios
     - Auth provider token refresh
     """
@@ -36,7 +35,6 @@ class TokenManager:
         source_connection: schemas.SourceConnection,
         ctx: ApiContext,
         initial_credentials: Any,
-        white_label: Optional[schemas.WhiteLabel] = None,
         is_direct_injection: bool = False,
         logger_instance=None,
         auth_provider_instance: Optional[Any] = None,
@@ -49,7 +47,6 @@ class TokenManager:
             source_connection: Source connection configuration
             ctx: The API context
             initial_credentials: The initial credentials (dict, string token, or auth config object)
-            white_label: Optional white label configuration
             is_direct_injection: Whether token was directly injected (no refresh)
             logger_instance: Optional logger instance for contextual logging
             auth_provider_instance: Optional auth provider instance for token refresh
@@ -59,10 +56,6 @@ class TokenManager:
         self.connection_id = source_connection.id
         self.integration_credential_id = source_connection.integration_credential_id
         self.ctx = ctx
-
-        self.white_label_source_short_name = white_label.source_short_name if white_label else None
-        self.white_label_client_id = white_label.client_id if white_label else None
-        self.white_label_client_secret = white_label.client_secret if white_label else None
 
         self.is_direct_injection = is_direct_injection
         self.logger = logger_instance or logger
@@ -299,20 +292,6 @@ class TokenManager:
 
                 decrypted_credential = credentials.decrypt(credential.encrypted_credentials)
 
-                # Reconstruct white_label object only if we have white label values
-                white_label = None
-                if self.white_label_source_short_name:
-                    # Create a minimal white label object with fields needed by oauth2_service
-                    white_label = type(
-                        "WhiteLabel",
-                        (),
-                        {
-                            "source_short_name": self.white_label_source_short_name,
-                            "client_id": self.white_label_client_id,
-                            "client_secret": self.white_label_client_secret,
-                        },
-                    )()
-
                 # Use the oauth2_service to refresh the token
                 oauth2_response = await oauth2_service.refresh_access_token(
                     db=refresh_db,
@@ -320,7 +299,6 @@ class TokenManager:
                     ctx=self.ctx,
                     connection_id=self.connection_id,
                     decrypted_credential=decrypted_credential,
-                    white_label=white_label,
                 )
 
                 return oauth2_response.access_token

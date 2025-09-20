@@ -9,7 +9,6 @@ from airweave.core.credential_sanitizer import (
     safe_log_credentials,
     sanitize_credentials_dict,
 )
-from airweave.platform.auth.schemas import AuthType
 from airweave.platform.auth_providers._base import BaseAuthProvider
 from airweave.platform.decorators import auth_provider
 
@@ -17,7 +16,6 @@ from airweave.platform.decorators import auth_provider
 @auth_provider(
     name="Composio",
     short_name="composio",
-    auth_type=AuthType.api_key,
     auth_config_class="ComposioAuthConfig",
     config_class="ComposioConfig",
 )

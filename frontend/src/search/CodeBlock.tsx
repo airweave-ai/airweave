@@ -193,7 +193,7 @@ ${nodeParams.join(',\n')}
         <div className="text-xs flex items-center gap-2">
             <span className={isDark ? "text-gray-400" : "text-gray-500"}>→</span>
             <a
-                href="https://docs.airweave.ai/api-reference/collections/search-collection-advanced-collections-readable-id-search-post"
+                href="https://docs.airweave.ai/api-reference/collections/search-advanced-collections-readable-id-search-post"
                 target="_blank"
                 rel="noopener noreferrer"
                 className={cn(

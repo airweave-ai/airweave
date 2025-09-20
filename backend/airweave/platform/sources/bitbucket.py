@@ -10,7 +10,6 @@ import httpx
 import tenacity
 from tenacity import retry_if_exception_type, stop_after_attempt, wait_exponential
 
-from airweave.platform.auth.schemas import AuthType
 from airweave.platform.configs.auth import BitbucketAuthConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import Breadcrumb, ChunkEntity
@@ -25,12 +24,14 @@ from airweave.platform.utils.file_extensions import (
     get_language_for_extension,
     is_text_file,
 )
+from airweave.schemas.source_connection import AuthenticationMethod
 
 
 @source(
     name="Bitbucket",
     short_name="bitbucket",
-    auth_type=AuthType.config_class,
+    auth_methods=[AuthenticationMethod.DIRECT, AuthenticationMethod.AUTH_PROVIDER],
+    oauth_type=None,
     auth_config_class="BitbucketAuthConfig",
     config_class="BitbucketConfig",
     labels=["Code"],
@@ -199,9 +200,11 @@ class BitbucketSource(BaseSource):
             name=workspace_data["name"],
             uuid=workspace_data["uuid"],
             is_private=workspace_data.get("is_private", True),
-            created_on=datetime.fromisoformat(workspace_data["created_on"].replace("Z", "+00:00"))
-            if workspace_data.get("created_on")
-            else None,
+            created_on=(
+                datetime.fromisoformat(workspace_data["created_on"].replace("Z", "+00:00"))
+                if workspace_data.get("created_on")
+                else None
+            ),
             url=workspace_data["links"]["html"]["href"],
         )
 
@@ -234,9 +237,9 @@ class BitbucketSource(BaseSource):
             created_on=datetime.fromisoformat(repo_data["created_on"].replace("Z", "+00:00")),
             updated_on=datetime.fromisoformat(repo_data["updated_on"].replace("Z", "+00:00")),
             size=repo_data.get("size"),
-            mainbranch=repo_data.get("mainbranch", {}).get("name")
-            if repo_data.get("mainbranch")
-            else None,
+            mainbranch=(
+                repo_data.get("mainbranch", {}).get("name") if repo_data.get("mainbranch") else None
+            ),
             workspace_slug=workspace_slug,
             url=repo_data["links"]["html"]["href"],
         )
@@ -466,11 +469,13 @@ class BitbucketSource(BaseSource):
                     # Required fields from CodeFileEntity base class
                     repo_name=repo_slug,  # Repository name
                     repo_owner=workspace_slug,  # Repository owner (workspace)
-                    last_modified=datetime.fromisoformat(
-                        item.get("commit", {}).get("date", "").replace("Z", "+00:00")
-                    )
-                    if item.get("commit", {}).get("date")
-                    else None,
+                    last_modified=(
+                        datetime.fromisoformat(
+                            item.get("commit", {}).get("date", "").replace("Z", "+00:00")
+                        )
+                        if item.get("commit", {}).get("date")
+                        else None
+                    ),
                 )
 
                 yield file_entity
@@ -533,3 +538,47 @@ class BitbucketSource(BaseSource):
                         if isinstance(entity, BitbucketRepositoryEntity):
                             entity.breadcrumbs = [workspace_breadcrumb]
                         yield entity
+
+    async def validate(self) -> bool:
+        """Verify Bitbucket Basic Auth and (if provided) workspace access."""
+        # Ensure credentials are present
+        if not getattr(self, "username", None) or not getattr(self, "app_password", None):
+            self.logger.error("Bitbucket validation failed: missing username or app password.")
+            return False
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                # Build Basic auth header
+                creds = f"{self.username}:{self.app_password}"
+                encoded = base64.b64encode(creds.encode()).decode()
+                headers = {"Authorization": f"Basic {encoded}", "Accept": "application/json"}
+
+                # 1) Auth check
+                resp = await client.get(f"{self.BASE_URL}/user", headers=headers)
+                if not (200 <= resp.status_code < 300):
+                    self.logger.warning(
+                        f"Bitbucket /user ping failed: {resp.status_code} - {resp.text[:200]}"
+                    )
+                    return False
+
+                # 2) Workspace reachability (optional but recommended for this connector)
+                if getattr(self, "workspace", None):
+                    ws = await client.get(
+                        f"{self.BASE_URL}/workspaces/{self.workspace}", headers=headers
+                    )
+                    if not (200 <= ws.status_code < 300):
+                        self.logger.warning(
+                            (
+                                f"Bitbucket workspace '{self.workspace}' check "
+                                f"failed: {ws.status_code} - {ws.text[:200]}"
+                            )
+                        )
+                        return False
+
+            return True
+        except httpx.RequestError as e:
+            self.logger.error(f"Bitbucket validation request error: {e}")
+            return False
+        except Exception as e:
+            self.logger.error(f"Unexpected error during Bitbucket validation: {e}")
+            return False

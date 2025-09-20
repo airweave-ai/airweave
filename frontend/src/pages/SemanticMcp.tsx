@@ -49,8 +49,8 @@ interface SourceConnection {
     short_name: string;
     collection: string;
     status?: string;
-    latest_sync_job_status?: string;
-    latest_sync_job_id?: string;
+    last_sync_job_status?: string;
+    last_sync_job_id?: string;
 }
 
 const SemanticMcp = () => {
@@ -109,8 +109,8 @@ const SemanticMcp = () => {
     // Get connection status indicator
     const getConnectionStatusIndicator = (connection: SourceConnection) => {
         // Use the status that comes directly from the API
-        // Prioritize latest_sync_job_status, then fall back to status field
-        const statusValue = connection.latest_sync_job_status || connection.status || "";
+        // Prioritize last_sync_job_status, then fall back to status field
+        const statusValue = connection.last_sync_job_status || connection.status || "";
 
         // Get the color directly from the statusConfig - same logic as StatusBadge
         const getStatusConfig = (statusKey: string = "") => {
@@ -860,7 +860,7 @@ const SemanticMcp = () => {
                                                 : "bg-gray-100/80"
                                         )}>
                                             {React.cloneElement(getConnectionStatusIndicator(connection), {
-                                                className: `inline-flex h-4 w-4 rounded-full ${getConnectionStatusIndicator(connection).props.className.split('h-2.5 w-2.5').join('').trim()} opacity-80 ${connection.latest_sync_job_status?.toLowerCase() === "in_progress" ? 'animate-pulse' : ''}`
+                                                className: `inline-flex h-4 w-4 rounded-full ${getConnectionStatusIndicator(connection).props.className.split('h-2.5 w-2.5').join('').trim()} opacity-80 ${connection.last_sync_job_status?.toLowerCase() === "in_progress" ? 'animate-pulse' : ''}`
                                             })}
                                         </div>
 

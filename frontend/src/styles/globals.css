@@ -75,8 +75,12 @@
 .focus-visible\:ring-1,
 .focus-visible\:ring-2,
 .focus-visible\:ring-4,
-.focus-visible\:ring-8 {
+.focus-visible\:ring-8,
+.focus\:ring-blue-500,
+.focus\:ring-blue-600,
+.focus\:ring-primary {
   --tw-ring-shadow: none !important;
+  --tw-ring-offset-shadow: none !important;
   box-shadow: none !important;
 }
 

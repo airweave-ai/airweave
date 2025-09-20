@@ -2,12 +2,10 @@
 
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import JSON, Column, ForeignKey, String, UniqueConstraint
-from sqlalchemy import Enum as SQLAlchemyEnum
+from sqlalchemy import JSON, Boolean, Column, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from airweave.models._base import Base
-from airweave.platform.auth.schemas import AuthType
 
 if TYPE_CHECKING:
     from airweave.models.connection import Connection
@@ -22,13 +20,18 @@ class Source(Base):
     short_name: Mapped[str] = mapped_column(String, unique=True)
     class_name: Mapped[str] = mapped_column(String, nullable=False)
     auth_config_class: Mapped[str] = mapped_column(String, nullable=True)
-    config_class: Mapped[str] = mapped_column(String, nullable=False)
-    auth_type: Mapped[Optional[AuthType]] = mapped_column(SQLAlchemyEnum(AuthType), nullable=True)
+    config_class: Mapped[str] = mapped_column(String, nullable=True)
+    # New fields for auth refactor
+    auth_methods = Column(JSON, nullable=True)  # List of AuthenticationMethod values
+    oauth_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # OAuthType value
+    requires_byoc: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="false"
+    )
     description = Column(String)
     organization_id = Column(ForeignKey("organization.id"), nullable=True)
     # List of entity IDs this source can output
     output_entity_definition_ids = Column(JSON, nullable=False)
-    config_schema = Column(JSON, nullable=False)  # JSON Schema for configuration
+    config_schema = Column(JSON, nullable=True)  # JSON Schema for configuration
     labels: Mapped[list[str]] = mapped_column(JSON, nullable=True, default=list)
 
     __table_args__ = (UniqueConstraint("name", "organization_id", name="uq_source_name_org"),)

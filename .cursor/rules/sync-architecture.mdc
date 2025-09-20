@@ -182,7 +182,6 @@ async with self._lock:
 **Key Features**:
 - **Automatic Refresh**: Refreshes tokens before expiry (25-minute intervals)
 - **Concurrent Refresh Prevention**: Uses async lock to prevent duplicate refreshes
-- **White Label Support**: Uses white label credentials if configured
 - **Direct Injection**: Supports non-refreshable tokens (skips refresh)
 
 **Refresh Logic**:
@@ -298,8 +297,8 @@ Every operation increments counter
 ### OAuth Token Management
 - Tokens never logged
 - Automatic refresh before expiry
-- White label credential support
 - Secure storage in database
+- Custom OAuth2 Token support
 
 ### Data Isolation
 - Organization-based filtering

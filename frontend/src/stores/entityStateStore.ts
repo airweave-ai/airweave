@@ -1,239 +1,311 @@
 // stores/entityStateStore.ts
+/**
+ * Entity state store for source connection schema.
+ * Works with nested LastSyncJob objects.
+ */
+
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-// Match backend SyncJobStatus enum values exactly
-export type SyncStatus = 'created' | 'pending' | 'in_progress' | 'completed' | 'failed' | 'cancelled';
+// Match backend SyncJobStatus enum
+export type SyncJobStatus = 'created' | 'pending' | 'in_progress' | 'completed' | 'failed' | 'cancelled';
+
+// Match backend nested objects
+export interface LastSyncJob {
+  id: string;
+  status: SyncJobStatus;
+  started_at?: string;
+  completed_at?: string;
+  duration_seconds?: number;
+
+  // Entity metrics
+  entities_processed: number;
+  entities_inserted: number;
+  entities_updated: number;
+  entities_deleted: number;
+  entities_failed: number;
+
+  // Error information
+  error?: string;
+  error_details?: Record<string, any>;
+}
+
+export interface Schedule {
+  cron_expression?: string;
+  next_run_at?: string;
+  is_continuous: boolean;
+  cursor_field?: string;
+  cursor_value?: any;
+}
 
 export interface EntityState {
-  connectionId: string;
-  syncId?: string;
-  entityCounts: Record<string, number>;  // name -> count
-  totalEntities: number;
-  syncStatus: SyncStatus;
-  currentJobId?: string;
+  entity_type: string;
+  total_count: number;
+  last_updated_at?: string;
+  sync_status: 'pending' | 'syncing' | 'synced' | 'failed';
+  error?: string;
+}
+
+// Source connection with nested data
+export interface SourceConnectionState {
+  id: string;
+  name: string;
+  short_name: string;
+  collection: string;
+  status: 'active' | 'in_progress' | 'failing' | 'not_yet_authorized';
+  is_authenticated: boolean;
+
+  // Nested objects (from API with depth > 0)
+  last_sync_job?: LastSyncJob;
+  schedule?: Schedule;
+  entity_states?: EntityState[];
+
+  // UI state
   lastUpdated: Date;
-  error?: string;
 }
 
-export interface EntityStateUpdate {
-  type: 'entity_state';
+// Real-time update messages
+export interface SyncProgressUpdate {
+  type: 'sync_progress';
+  source_connection_id: string;
   job_id: string;
-  sync_id: string;
-  entity_counts: Record<string, number>;
-  total_entities: number;
+  entities_processed: number;
+  entities_inserted: number;
+  entities_updated: number;
+  entities_deleted: number;
+  entities_failed: number;
   timestamp: string;
-  job_status: SyncStatus;  // Backend sends current status
 }
 
-export interface SyncCompleteMessage {
+export interface SyncCompleteUpdate {
   type: 'sync_complete';
+  source_connection_id: string;
   job_id: string;
-  sync_id: string;
-  is_complete: boolean;
-  is_failed: boolean;
-  final_counts: Record<string, number>;
-  total_entities: number;
-  total_operations: number;
-  timestamp: string;
-  final_status: SyncStatus;  // Backend sends final status
+  status: SyncJobStatus;
+  duration_seconds: number;
+  final_counts: {
+    entities_processed: number;
+    entities_inserted: number;
+    entities_updated: number;
+    entities_deleted: number;
+    entities_failed: number;
+  };
   error?: string;
+  timestamp: string;
 }
 
 interface EntityStateStore {
   // State
-  entityStates: Map<string, EntityState>;
+  sourceConnections: Map<string, SourceConnectionState>;
+  activeJobs: Set<string>; // Track active job IDs
 
   // Actions
-  setEntityState: (connectionId: string, state: EntityState) => void;
-  updateFromStream: (connectionId: string, update: EntityStateUpdate) => void;
-  clearState: (connectionId: string) => void;
+  setSourceConnection: (connection: SourceConnectionState) => void;
+  updateFromProgress: (update: SyncProgressUpdate) => void;
+  updateFromComplete: (update: SyncCompleteUpdate) => void;
+  clearConnection: (connectionId: string) => void;
+  clearAll: () => void;
 
   // Getters
-  getEntityState: (connectionId: string) => EntityState | null;
-  getTotalCount: (connectionId: string) => number;
+  getConnection: (connectionId: string) => SourceConnectionState | undefined;
+  getLastSyncJob: (connectionId: string) => LastSyncJob | undefined;
+  getTotalEntities: (connectionId: string) => number;
+  isJobActive: (jobId: string) => boolean;
+  getActiveJobsCount: () => number;
 }
 
 export const useEntityStateStore = create<EntityStateStore>()(
   persist(
     (set, get) => ({
-      entityStates: new Map<string, EntityState>(),
+      sourceConnections: new Map<string, SourceConnectionState>(),
+      activeJobs: new Set<string>(),
 
-      setEntityState: (connectionId, state) => {
-        set((current) => {
-          // Ensure entityStates is a Map with proper typing
-          const currentStates = current.entityStates instanceof Map
-            ? current.entityStates
-            : new Map<string, EntityState>(Array.isArray(current.entityStates)
-                ? current.entityStates as [string, EntityState][]
-                : []);
-
-          const newStates = new Map<string, EntityState>(currentStates);
-          newStates.set(connectionId, {
-            ...state,
-            lastUpdated: state.lastUpdated instanceof Date ? state.lastUpdated : new Date()
+      setSourceConnection: (connection) => {
+        set((state) => {
+          const connections = new Map(state.sourceConnections);
+          connections.set(connection.id, {
+            ...connection,
+            lastUpdated: new Date(),
           });
-          return { entityStates: newStates };
-        });
-      },
 
-      updateFromStream: (connectionId, update) => {
-        set((current) => {
-          // Ensure entityStates is a Map
-          const currentStates = current.entityStates instanceof Map
-            ? current.entityStates
-            : new Map<string, EntityState>(Array.isArray(current.entityStates)
-                ? current.entityStates as [string, EntityState][]
-                : []);
-
-          const existing = currentStates.get(connectionId);
-
-          if (!existing) {
-            // Create new state from stream
-            const newState: EntityState = {
-              connectionId: connectionId,
-              syncId: update.sync_id,
-              entityCounts: update.entity_counts || {},
-              totalEntities: update.total_entities || 0,
-              syncStatus: 'in_progress',  // Stream = active sync
-              currentJobId: update.job_id,
-              lastUpdated: new Date()
-            };
-            const newStates = new Map<string, EntityState>(currentStates);
-            newStates.set(connectionId, newState);
-            return { entityStates: newStates };
+          // Track active job if present
+          const activeJobs = new Set(state.activeJobs);
+          if (connection.last_sync_job?.status === 'in_progress') {
+            activeJobs.add(connection.last_sync_job.id);
           }
 
-          // Use the job_status from the update if provided, otherwise infer
-          const newStatus = update.job_status || 'in_progress';
-
-          // Always update with latest stream data
-          const updated: EntityState = {
-            ...existing,
-            entityCounts: update.entity_counts || {},
-            totalEntities: update.total_entities || 0,
-            syncStatus: newStatus,
-            currentJobId: update.job_id, // Keep job ID from stream
-            syncId: update.sync_id || existing.syncId,
-            lastUpdated: new Date()
-          };
-
-          const newStates = new Map<string, EntityState>(currentStates);
-          newStates.set(connectionId, updated);
-          return { entityStates: newStates };
+          return { sourceConnections: connections, activeJobs };
         });
       },
 
-      clearState: (connectionId) => {
-        set((current) => {
-          // Ensure entityStates is a Map
-          const currentStates = current.entityStates instanceof Map
-            ? current.entityStates
-            : new Map<string, EntityState>(Array.isArray(current.entityStates)
-                ? current.entityStates as [string, EntityState][]
-                : []);
+      updateFromProgress: (update) => {
+        set((state) => {
+          const connections = new Map(state.sourceConnections);
+          const existing = connections.get(update.source_connection_id);
 
-          const newStates = new Map<string, EntityState>(currentStates);
-          newStates.delete(connectionId);
-          return { entityStates: newStates };
+          if (!existing) {
+            // Create minimal state if doesn't exist
+            connections.set(update.source_connection_id, {
+              id: update.source_connection_id,
+              name: 'Unknown',
+              short_name: 'unknown',
+              collection: '',
+              status: 'in_progress',
+              is_authenticated: true,
+              last_sync_job: {
+                id: update.job_id,
+                status: 'in_progress',
+                entities_processed: update.entities_processed,
+                entities_inserted: update.entities_inserted,
+                entities_updated: update.entities_updated,
+                entities_deleted: update.entities_deleted,
+                entities_failed: update.entities_failed,
+              },
+              lastUpdated: new Date(),
+            });
+          } else {
+            // Update existing connection
+            connections.set(update.source_connection_id, {
+              ...existing,
+              status: 'in_progress',
+              last_sync_job: {
+                ...existing.last_sync_job,
+                id: update.job_id,
+                status: 'in_progress',
+                entities_processed: update.entities_processed,
+                entities_inserted: update.entities_inserted,
+                entities_updated: update.entities_updated,
+                entities_deleted: update.entities_deleted,
+                entities_failed: update.entities_failed,
+              },
+              lastUpdated: new Date(),
+            });
+          }
+
+          // Track as active job
+          const activeJobs = new Set(state.activeJobs);
+          activeJobs.add(update.job_id);
+
+          return { sourceConnections: connections, activeJobs };
         });
       },
 
-      getEntityState: (connectionId) => {
-        const state = get();
-        // Ensure entityStates is a Map
-        const entityStates = state.entityStates instanceof Map
-          ? state.entityStates
-          : new Map<string, EntityState>(Array.isArray(state.entityStates)
-              ? state.entityStates as [string, EntityState][]
-              : []);
+      updateFromComplete: (update) => {
+        set((state) => {
+          const connections = new Map(state.sourceConnections);
+          const existing = connections.get(update.source_connection_id);
 
-        return entityStates.get(connectionId) || null;
+          if (existing) {
+            // Determine connection status based on job status
+            let connectionStatus: SourceConnectionState['status'] = 'active';
+            if (update.status === 'failed') {
+              connectionStatus = 'failing';
+            }
+
+            connections.set(update.source_connection_id, {
+              ...existing,
+              status: connectionStatus,
+              last_sync_job: {
+                id: update.job_id,
+                status: update.status,
+                duration_seconds: update.duration_seconds,
+                entities_processed: update.final_counts.entities_processed,
+                entities_inserted: update.final_counts.entities_inserted,
+                entities_updated: update.final_counts.entities_updated,
+                entities_deleted: update.final_counts.entities_deleted,
+                entities_failed: update.final_counts.entities_failed,
+                error: update.error,
+                completed_at: update.timestamp,
+              },
+              lastUpdated: new Date(),
+            });
+          }
+
+          // Remove from active jobs
+          const activeJobs = new Set(state.activeJobs);
+          activeJobs.delete(update.job_id);
+
+          return { sourceConnections: connections, activeJobs };
+        });
       },
 
-      getTotalCount: (connectionId) => {
-        const state = get();
-        // Ensure entityStates is a Map
-        const entityStates = state.entityStates instanceof Map
-          ? state.entityStates
-          : new Map<string, EntityState>(Array.isArray(state.entityStates)
-              ? state.entityStates as [string, EntityState][]
-              : []);
+      clearConnection: (connectionId) => {
+        set((state) => {
+          const connections = new Map(state.sourceConnections);
+          const connection = connections.get(connectionId);
 
-        const entityState = entityStates.get(connectionId);
-        if (!entityState) return 0;
+          // Remove associated active job if exists
+          const activeJobs = new Set(state.activeJobs);
+          if (connection?.last_sync_job?.id) {
+            activeJobs.delete(connection.last_sync_job.id);
+          }
 
-        return Object.values(entityState.entityCounts)
-          .reduce((sum, count) => sum + count, 0);
-      }
+          connections.delete(connectionId);
+          return { sourceConnections: connections, activeJobs };
+        });
+      },
+
+      clearAll: () => {
+        set({
+          sourceConnections: new Map<string, SourceConnectionState>(),
+          activeJobs: new Set<string>(),
+        });
+      },
+
+      getConnection: (connectionId) => {
+        return get().sourceConnections.get(connectionId);
+      },
+
+      getLastSyncJob: (connectionId) => {
+        return get().sourceConnections.get(connectionId)?.last_sync_job;
+      },
+
+      getTotalEntities: (connectionId) => {
+        const connection = get().sourceConnections.get(connectionId);
+        if (!connection?.last_sync_job) return 0;
+        return connection.last_sync_job.entities_processed || 0;
+      },
+
+      isJobActive: (jobId) => {
+        return get().activeJobs.has(jobId);
+      },
+
+      getActiveJobsCount: () => {
+        return get().activeJobs.size;
+      },
     }),
     {
-      name: 'entity-state-storage',
-      // Custom storage adapter for Map serialization
+      name: 'entity-state',
+      // Custom storage to handle Map serialization
       storage: {
         getItem: (name) => {
           const str = localStorage.getItem(name);
           if (!str) return null;
 
-          try {
-            const parsed = JSON.parse(str);
-            const state = parsed.state;
-
-            // Reconstruct Map and convert ISO strings back to Dates
-            const entries = Array.isArray(state.entityStates)
-              ? state.entityStates.map(([key, value]: [string, any]) => [
-                  key,
-                  {
-                    ...value,
-                    lastUpdated: value.lastUpdated ? new Date(value.lastUpdated) : new Date()
-                  }
-                ])
-              : [];
-
-            return {
-              ...parsed,
-              state: {
-                ...state,
-                entityStates: new Map(entries)
-              }
-            };
-          } catch (e) {
-            return null;
-          }
+          const { state } = JSON.parse(str);
+          return {
+            state: {
+              ...state,
+              sourceConnections: new Map(state.sourceConnections || []),
+              activeJobs: new Set(state.activeJobs || []),
+            },
+          };
         },
         setItem: (name, value) => {
-          // Ensure entityStates is a Map before serializing
-          const entityStates = value.state.entityStates instanceof Map
-            ? value.state.entityStates
-            : new Map<string, EntityState>(Array.isArray(value.state.entityStates)
-                ? value.state.entityStates as [string, EntityState][]
-                : []);
-
-          // Convert Map to array and serialize dates as ISO strings
-          const entries = Array.from(entityStates.entries()).map(([key, entityState]) => [
-            key,
-            {
-              ...entityState,
-              lastUpdated: entityState.lastUpdated instanceof Date
-                ? entityState.lastUpdated.toISOString()
-                : entityState.lastUpdated
-            }
-          ]);
-
-          const toStore = {
-            ...value,
-            state: {
-              ...value.state,
-              entityStates: entries
-            }
-          };
-
-          localStorage.setItem(name, JSON.stringify(toStore));
+          const { state } = value as any;
+          localStorage.setItem(
+            name,
+            JSON.stringify({
+              state: {
+                ...state,
+                sourceConnections: Array.from(state.sourceConnections.entries()),
+                activeJobs: Array.from(state.activeJobs),
+              },
+            })
+          );
         },
-        removeItem: (name) => {
-          localStorage.removeItem(name);
-        }
-      }
+        removeItem: (name) => localStorage.removeItem(name),
+      },
     }
   )
 );

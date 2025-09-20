@@ -5,7 +5,6 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from airweave.platform.auth.schemas import AuthType
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import ChunkEntity
 from airweave.platform.entities.hubspot import (
@@ -16,13 +15,18 @@ from airweave.platform.entities.hubspot import (
     parse_hubspot_datetime,
 )
 from airweave.platform.sources._base import BaseSource
+from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
 @source(
     name="HubSpot",
     short_name="hubspot",
-    auth_type=AuthType.oauth2_with_refresh,
-    auth_config_class="HubspotAuthConfig",
+    auth_methods=[
+        AuthenticationMethod.OAUTH_BROWSER,
+        AuthenticationMethod.OAUTH_TOKEN,
+        AuthenticationMethod.AUTH_PROVIDER,
+    ],
+    oauth_type=OAuthType.WITH_REFRESH,
     config_class="HubspotConfig",
     labels=["CRM", "Marketing"],
 )
@@ -362,3 +366,11 @@ class HubspotSource(BaseSource):
             # Yield ticket entities
             async for ticket_entity in self._generate_ticket_entities(client):
                 yield ticket_entity
+
+    async def validate(self) -> bool:
+        """Verify HubSpot OAuth2 token by pinging a lightweight CRM endpoint."""
+        return await self._validate_oauth2(
+            ping_url="https://api.hubapi.com/crm/v3/objects/contacts?limit=1",
+            headers={"Accept": "application/json"},
+            timeout=10.0,
+        )

@@ -14,7 +14,6 @@ import tenacity
 from tenacity import stop_after_attempt, wait_exponential
 
 from airweave.core.logging import logger
-from airweave.platform.auth.schemas import AuthType
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.jira import (
@@ -22,13 +21,19 @@ from airweave.platform.entities.jira import (
     JiraProjectEntity,
 )
 from airweave.platform.sources._base import BaseSource
+from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
 @source(
     name="Jira",
     short_name="jira",
-    auth_type=AuthType.oauth2_with_refresh,
-    auth_config_class="JiraAuthConfig",
+    auth_methods=[
+        AuthenticationMethod.OAUTH_BROWSER,
+        AuthenticationMethod.OAUTH_TOKEN,
+        AuthenticationMethod.AUTH_PROVIDER,
+    ],
+    oauth_type=OAuthType.WITH_REFRESH,
+    auth_config_class=None,
     config_class="JiraConfig",
     labels=["Project Management", "Issue Tracking"],
 )
@@ -390,3 +395,29 @@ class JiraSource(BaseSource):
                 f"Completed Jira entity generation: {project_count} projects, "
                 f"{issue_count} issues total"
             )
+
+    async def validate(self) -> bool:
+        """Verify Jira OAuth2 token and site access with a lightweight ping."""
+        # Ensure cloud_id/base_url are set; if not, try to resolve with current token.
+        if not getattr(self, "cloud_id", None) or not getattr(self, "base_url", None):
+            token = await self.get_access_token()
+            if not token:
+                self.logger.error("Jira validation failed: no access token available.")
+                return False
+            cloud_id = await self._extract_cloud_id(token)
+            if not cloud_id:
+                self.logger.error("Jira validation failed: unable to resolve Atlassian cloud ID.")
+                return False
+            self.cloud_id = cloud_id
+            self.base_url = f"https://api.atlassian.com/ex/jira/{cloud_id}"
+
+        # Simple authorized ping against /myself to validate scopes and reachability.
+        return await self._validate_oauth2(
+            ping_url=f"{self.base_url}/rest/api/3/myself",
+            headers={
+                "Accept": "application/json",
+                "X-Atlassian-Token": "no-check",
+                "X-Cloud-ID": self.cloud_id,
+            },
+            timeout=10.0,
+        )

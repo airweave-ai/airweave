@@ -2,12 +2,10 @@
 
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import Enum as SQLAlchemyEnum
 from sqlalchemy import String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from airweave.models._base import Base
-from airweave.platform.auth.schemas import AuthType
 
 if TYPE_CHECKING:
     from airweave.models.connection import Connection
@@ -22,7 +20,6 @@ class EmbeddingModel(Base):
     short_name: Mapped[str] = mapped_column(String, unique=True)
     provider: Mapped[str] = mapped_column(String, nullable=False)
     auth_config_class: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    auth_type: Mapped[Optional[AuthType]] = mapped_column(SQLAlchemyEnum(AuthType), nullable=True)
     model_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     model_version: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)

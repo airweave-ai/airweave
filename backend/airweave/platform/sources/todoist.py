@@ -4,7 +4,6 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
 
-from airweave.platform.auth.schemas import AuthType
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import Breadcrumb, ChunkEntity
 from airweave.platform.entities.todoist import (
@@ -14,13 +13,19 @@ from airweave.platform.entities.todoist import (
     TodoistTaskEntity,
 )
 from airweave.platform.sources._base import BaseSource
+from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
 @source(
     name="Todoist",
     short_name="todoist",
-    auth_type=AuthType.oauth2,
-    auth_config_class="TodoistAuthConfig",
+    auth_methods=[
+        AuthenticationMethod.OAUTH_BROWSER,
+        AuthenticationMethod.OAUTH_TOKEN,
+        AuthenticationMethod.AUTH_PROVIDER,
+    ],
+    oauth_type=OAuthType.ACCESS_ONLY,
+    auth_config_class=None,
     config_class="TodoistConfig",
     labels=["Productivity", "Task Management"],
 )
@@ -326,3 +331,11 @@ class TodoistSource(BaseSource):
                         [project_breadcrumb, task_breadcrumb],
                     ):
                         yield comment_entity
+
+    async def validate(self) -> bool:
+        """Verify Todoist OAuth2 token by pinging a lightweight REST endpoint."""
+        return await self._validate_oauth2(
+            ping_url="https://api.todoist.com/rest/v2/projects",
+            headers={"Accept": "application/json"},
+            timeout=10.0,
+        )

@@ -16,7 +16,6 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from airweave.core.logging import logger
-from airweave.platform.auth.schemas import AuthType
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import Breadcrumb, ChunkEntity
 from airweave.platform.entities.outlook_mail import (
@@ -27,13 +26,19 @@ from airweave.platform.entities.outlook_mail import (
     OutlookMessageEntity,
 )
 from airweave.platform.sources._base import BaseSource
+from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
 @source(
     name="Outlook Mail",
     short_name="outlook_mail",
-    auth_type=AuthType.oauth2_with_refresh_rotating,
-    auth_config_class="OutlookMailAuthConfig",
+    auth_methods=[
+        AuthenticationMethod.OAUTH_BROWSER,
+        AuthenticationMethod.OAUTH_TOKEN,
+        AuthenticationMethod.AUTH_PROVIDER,
+    ],
+    oauth_type=OAuthType.WITH_REFRESH,
+    auth_config_class=None,
     config_class="OutlookMailConfig",
     labels=["Communication", "Email"],
 )
@@ -1170,3 +1175,11 @@ class OutlookMailSource(BaseSource):
             self.logger.info(
                 f"===== OUTLOOK MAIL ENTITY GENERATION COMPLETE: {entity_count} entities ====="
             )
+
+    async def validate(self) -> bool:
+        """Verify Outlook Mail OAuth2 token by pinging the mailFolders endpoint."""
+        return await self._validate_oauth2(
+            ping_url=f"{self.GRAPH_BASE_URL}/me/mailFolders?$top=1",
+            headers={"Accept": "application/json"},
+            timeout=10.0,
+        )

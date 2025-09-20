@@ -1,0 +1,49 @@
+---
+globs: **/frontend/**
+alwaysApply: false
+---
+# Airweave Validation System
+
+### Philosophy
+Minimal, non-intrusive validation that guides without blocking. No success messages or harsh errors, just essential hints.
+
+## Core Components
+
+### `ValidatedInput` Component
+- Replaces standard inputs with validation-aware inputs
+- Shows hints after 500ms delay (debounced)
+- Immediate validation on blur
+- Subtle 30% opacity border colors
+
+### Validation Rules (`rules.ts`)
+- `collectionNameValidation`: 4-64 chars
+- `sourceConnectionNameValidation`: 4-42 chars
+- `urlValidation`: Must start with `http://` or `https://`
+- `emailValidation`: Basic format check
+- `apiKeyValidation`: Detects placeholder text
+
+## Usage
+
+```tsx
+import { ValidatedInput } from '@/components/ui/validated-input';
+import { collectionNameValidation } from '@/lib/validation/rules';
+
+<ValidatedInput
+  value={name}
+  onChange={setName}
+  validation={collectionNameValidation}
+  placeholder="Enter name"
+  className="..."
+/>
+```
+
+## Field Type Detection
+The `getAuthFieldValidation()` function auto-detects validation based on field names:
+- `url`, `endpoint`, `cluster_url` → URL validation (requires protocol)
+- `email`, `username` → Email validation
+- `api_key`, `token` → API key validation
+
+## Visual Feedback
+- **Info**: Gray text, amber border at 20% opacity
+- **Warning**: Amber text/border at 30% opacity
+- **No success states**: We don't celebrate, just guide

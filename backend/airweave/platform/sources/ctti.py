@@ -11,12 +11,12 @@ from typing import Any, AsyncGenerator, Dict, Optional, Union
 import asyncpg
 
 from airweave.core.logging import logger
-from airweave.platform.auth.schemas import AuthType
 from airweave.platform.configs.auth import CTTIAuthConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import Breadcrumb
 from airweave.platform.entities.ctti import CTTIWebEntity
 from airweave.platform.sources._base import BaseSource
+from airweave.schemas.source_connection import AuthenticationMethod
 
 # Global connection pool for CTTI to prevent connection exhaustion
 _ctti_pool: Optional[asyncpg.Pool] = None
@@ -117,7 +117,8 @@ async def _retry_with_backoff(func, *args, max_retries=3, **kwargs):
 @source(
     name="CTTI AACT",
     short_name="ctti",
-    auth_type=AuthType.config_class,
+    auth_methods=[AuthenticationMethod.DIRECT],
+    oauth_type=None,
     auth_config_class="CTTIAuthConfig",
     config_class="CTTIConfig",
     labels=["Clinical Trials", "Database"],
@@ -210,14 +211,14 @@ class CTTISource(BaseSource):
             skip = self.config.get("skip", 0)
 
             # Simple query - URL construction in Python is fine
-            query = f'''
+            query = f"""
                 SELECT nct_id
                 FROM "{CTTISource.AACT_SCHEMA}"."{CTTISource.AACT_TABLE}"
                 WHERE nct_id IS NOT NULL
                 ORDER BY nct_id
                 LIMIT {limit}
                 OFFSET {skip}
-            '''
+            """
 
             async def _execute_query():
                 # Use connection from pool
@@ -314,3 +315,30 @@ class CTTISource(BaseSource):
             self.logger.error(f"Error in CTTI source generate_entities: {str(e)}")
             raise
         # Note: We don't close the pool here as it's shared across all CTTI instances
+
+    async def validate(self) -> bool:
+        """Verify CTTI DB credentials and basic access by running a tiny query."""
+        try:
+            # Ensure pool is initialized (also validates username/password)
+            pool = await self._ensure_pool()
+
+            # Lightweight permission/reachability check against the exact table we read later.
+            async def _ping():
+                async with pool.acquire() as conn:
+                    # Touch the studies table; result may be None if table is
+                    # empty—success still means access is OK.
+                    await conn.fetchval(
+                        f'SELECT 1 FROM "{self.AACT_SCHEMA}"."{self.AACT_TABLE}" LIMIT 1'
+                    )
+
+            # A couple of retries in case of transient network hiccups
+            await _retry_with_backoff(_ping, max_retries=2)
+            return True
+
+        except (asyncpg.InvalidPasswordError, asyncpg.InvalidCatalogNameError, ValueError) as e:
+            # Non-retryable credential/config errors
+            self.logger.error(f"CTTI validation failed (credentials/config): {e}")
+            return False
+        except Exception as e:
+            self.logger.error(f"CTTI validation encountered an error: {e}")
+            return False

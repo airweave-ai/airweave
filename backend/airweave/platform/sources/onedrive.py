@@ -20,18 +20,23 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
-from airweave.platform.auth.schemas import AuthType
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import Breadcrumb, ChunkEntity
 from airweave.platform.entities.onedrive import OneDriveDriveEntity, OneDriveDriveItemEntity
 from airweave.platform.sources._base import BaseSource
+from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
 @source(
     name="OneDrive",
     short_name="onedrive",
-    auth_type=AuthType.oauth2_with_refresh,
-    auth_config_class="OneDriveAuthConfig",
+    auth_methods=[
+        AuthenticationMethod.OAUTH_BROWSER,
+        AuthenticationMethod.OAUTH_TOKEN,
+        AuthenticationMethod.AUTH_PROVIDER,
+    ],
+    oauth_type=OAuthType.WITH_REFRESH,
+    auth_config_class=None,
     config_class="OneDriveConfig",
     labels=["File Storage"],
 )
@@ -395,3 +400,36 @@ class OneDriveSource(BaseSource):
                 client, drive_id, drive_name
             ):
                 yield file_entity
+
+    async def validate(self) -> bool:
+        """Verify OneDrive OAuth2 token and access with sensible fallbacks.
+
+        Tries default drive (/me/drive), then list drives (/me/drives),
+        then app-folder-only access (/me/drive/special/approot).
+        """
+        headers = {"Accept": "application/json"}
+
+        # 1) Default OneDrive (most common)
+        ok = await self._validate_oauth2(
+            ping_url="https://graph.microsoft.com/v1.0/me/drive",
+            headers=headers,
+            timeout=10.0,
+        )
+        if ok:
+            return True
+
+        # 2) Accounts without SPO default drive but with accessible drives list
+        ok = await self._validate_oauth2(
+            ping_url="https://graph.microsoft.com/v1.0/me/drives?$top=1",
+            headers=headers,
+            timeout=10.0,
+        )
+        if ok:
+            return True
+
+        # 3) App-folder-only scenario
+        return await self._validate_oauth2(
+            ping_url="https://graph.microsoft.com/v1.0/me/drive/special/approot",
+            headers=headers,
+            timeout=10.0,
+        )

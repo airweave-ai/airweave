@@ -49,7 +49,7 @@ class EntityStateUpdate(BaseModel):
 
     # Include the current job status for frontend state management
     job_status: SyncJobStatus = Field(
-        SyncJobStatus.IN_PROGRESS, description="Current status of the sync job"
+        SyncJobStatus.RUNNING, description="Current status of the sync job"
     )
 
 

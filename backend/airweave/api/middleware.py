@@ -3,7 +3,6 @@
 This module contains middleware that process requests and responses.
 """
 
-import re
 import traceback
 import uuid
 from typing import List, Union
@@ -118,15 +117,7 @@ class DynamicCORSMiddleware(BaseHTTPMiddleware):
     """Middleware to dynamically update CORS origins based on configuration.
 
     Simple CORS handling that permits OPTIONS preflight requests and adds appropriate headers.
-    White label endpoint authorization is handled separately in the endpoints.
     """
-
-    # OAuth endpoint patterns that should always pass OPTIONS requests
-    OAUTH_ENDPOINTS = [
-        r"/white-labels/[^/]+/oauth2/auth_url",
-        r"/white-labels/[^/]+/oauth2/code",
-    ]
-    OAUTH_PATTERNS = [re.compile(pattern) for pattern in OAUTH_ENDPOINTS]
 
     def __init__(self, app, default_origins: List[str]):
         """Initialize the middleware.
@@ -158,14 +149,10 @@ class DynamicCORSMiddleware(BaseHTTPMiddleware):
 
         # Handle OPTIONS preflight requests - only if allowed
         if request.method == "OPTIONS":
-            # Check if this is an OAuth endpoint that should always pass OPTIONS
-            is_oauth_endpoint = any(pattern.match(path) for pattern in self.OAUTH_PATTERNS)
-
-            # Other endpoints need to be either white-label endpoints or have allowed origin
-            is_white_label_endpoint = "white-labels" in path
+            # Check if origin is allowed
             is_allowed_origin = origin in self.default_origins
 
-            if is_oauth_endpoint or is_white_label_endpoint or is_allowed_origin:
+            if is_allowed_origin:
                 # Create a response with appropriate CORS headers
                 response = Response()
                 response.headers["Access-Control-Allow-Origin"] = origin
@@ -186,12 +173,10 @@ class DynamicCORSMiddleware(BaseHTTPMiddleware):
         # For non-OPTIONS requests, process the request
         response = await call_next(request)
 
-        # Add CORS headers to the response for allowed origins or white-label endpoints
-        is_oauth_endpoint = any(pattern.match(path) for pattern in self.OAUTH_PATTERNS)
-        is_white_label_endpoint = "white-labels" in path
+        # Add CORS headers to the response for allowed origins
         is_allowed_origin = origin in self.default_origins
 
-        if is_oauth_endpoint or is_white_label_endpoint or is_allowed_origin:
+        if is_allowed_origin:
             response.headers["Access-Control-Allow-Origin"] = origin
             response.headers["Access-Control-Allow-Credentials"] = "true"
             logger.debug(f"Added CORS headers for origin {origin}")

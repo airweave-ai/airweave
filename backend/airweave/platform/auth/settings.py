@@ -10,14 +10,13 @@ from airweave.core.logging import logger
 from airweave.core.secrets import secret_client
 from airweave.platform.auth.schemas import (
     APIKeyAuthSettings,
-    AuthType,
     BaseAuthSettings,
     ConfigClassAuthSettings,
-    NativeFunctionalityAuthSettings,
     OAuth2Settings,
     OAuth2WithRefreshRotatingSettings,
     OAuth2WithRefreshSettings,
 )
+from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
 class IntegrationSettings:
@@ -38,7 +37,7 @@ class IntegrationSettings:
         self.load_settings(file_path)
 
     def _parse_integration(self, name: str, config: dict[str, Any]) -> BaseAuthSettings:
-        """Dynamically parse integration settings based on the auth_type.
+        """Dynamically parse integration settings based on oauth_type presence.
 
         Args:
         ----
@@ -47,29 +46,53 @@ class IntegrationSettings:
 
         Returns:
         -------
-            BaseAuthSettings: The parsed integration settings.
+            BaseAuthSettings: The parsed integration settings with auth method and oauth type.
 
         Raises:
         ------
-            ValueError: If the auth_type is not supported.
+            ValueError: If the configuration is not supported.
 
         """
-        auth_type = config.get("auth_type", "")
-        mapping = {
-            AuthType.oauth2: OAuth2Settings,
-            AuthType.api_key: APIKeyAuthSettings,
-            AuthType.oauth2_with_refresh: OAuth2WithRefreshSettings,
-            AuthType.oauth2_with_refresh_rotating: OAuth2WithRefreshRotatingSettings,
-            AuthType.native_functionality: NativeFunctionalityAuthSettings,
-            AuthType.config_class: ConfigClassAuthSettings,
-            AuthType.none: None,
-        }
-        model = mapping.get(auth_type)
+        # Handle case where config is None (implicit direct auth)
+        if config is None:
+            config = {}
+
+        # New model: oauth_type determines if it's OAuth, absence means direct auth
+        oauth_type_str = config.get("oauth_type", "")
+
+        # Set integration short name
         config["integration_short_name"] = name
-        if model:
-            return model(**config)
+
+        if oauth_type_str:
+            # It's an OAuth integration
+            config["authentication_method"] = AuthenticationMethod.OAUTH_BROWSER.value
+
+            # Determine the OAuth settings model based on oauth_type
+            # Pydantic validation will handle field requirements
+            if oauth_type_str == "access_only":
+                model = OAuth2Settings
+                config["oauth_type"] = OAuthType.ACCESS_ONLY.value
+            elif oauth_type_str == "with_refresh":
+                model = OAuth2WithRefreshSettings
+                config["oauth_type"] = OAuthType.WITH_REFRESH.value
+            elif oauth_type_str == "with_rotating_refresh":
+                model = OAuth2WithRefreshRotatingSettings
+                config["oauth_type"] = OAuthType.WITH_ROTATING_REFRESH.value
+            else:
+                raise ValueError(f"Unknown oauth_type for integration {name}: {oauth_type_str}")
+
         else:
-            raise ValueError(f"Unsupported auth_type for integration {name}: {auth_type}")
+            # It's a direct authentication integration (API key, config class, etc.)
+            config["authentication_method"] = AuthenticationMethod.DIRECT.value
+            config["oauth_type"] = None
+
+            # Special cases for known integrations
+            if name == "stripe":
+                model = APIKeyAuthSettings
+            else:
+                model = ConfigClassAuthSettings
+
+        return model(**config) if model else None
 
     def load_settings(self, file_path: Path) -> None:
         """Loads and parses integration settings from a YAML file.
@@ -118,11 +141,20 @@ class IntegrationSettings:
             raise KeyError(f"Integration settings not found for {short_name}")
 
         # Enrich with client secret for PRD - create a copy to avoid mutating the original
-        if settings.auth_type in [
-            AuthType.oauth2,
-            AuthType.oauth2_with_refresh,
-            AuthType.oauth2_with_refresh_rotating,
-        ]:
+        # Check if this is an OAuth integration that needs client secret
+        is_oauth = False
+
+        if hasattr(settings, "oauth_type") and settings.oauth_type:
+            # If oauth_type is set, it's OAuth
+            is_oauth = True
+        elif hasattr(settings, "authentication_method"):
+            # Check authentication method
+            is_oauth = settings.authentication_method in [
+                AuthenticationMethod.OAUTH_BROWSER.value,
+                AuthenticationMethod.OAUTH_TOKEN.value,
+            ]
+
+        if is_oauth:
             # Create a copy of the settings object
             settings_dict = settings.model_dump()
             settings_dict["client_secret"] = await self._get_client_secret(settings)

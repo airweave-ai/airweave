@@ -22,7 +22,7 @@ api/
 ```
 
 ### Endpoint Categories
-- **Public API (SDK)**: `/sources/`, `/collections/`, `/source-connections/`, `/white-labels/`
+- **Public API (SDK)**: `/sources/`, `/collections/`, `/source-connections/`,
 - **Internal Frontend**: `/users/`, `/organizations/`, `/api-keys/`, `/sync/`, `/dag/`, `/entities/`, `/destinations/`
 
 ## Core Components
@@ -81,8 +81,7 @@ async def my_endpoint(
 **Request Processing Pipeline:**
 1. `add_request_id`: Generates unique request ID for tracing
 2. `log_requests`: Logs request details and duration
-3. `DynamicCORSMiddleware`: Handles CORS for white-label OAuth
-4. `exception_logging_middleware`: Catches and logs unhandled exceptions
+3. `exception_logging_middleware`: Catches and logs unhandled exceptions
 
 **CORS Handling:**
 - Dynamic origin validation
@@ -144,7 +143,6 @@ collection = await collection_service.create(
 - Organization access validated via ApiContext
 - API keys encrypted at rest
 - Auth fields hidden by default
-- White label CORS handling for OAuth
 - Request ID tracking for audit trails
 
 ## Best Practices
@@ -161,163 +159,3 @@ return await crud.resource.get(db, id=resource.id, ...)
 
 # Return complete object
 return await crud.resource.get(db, id=resource.id, ...)
-```# Airweave API Layer Rules
-
-## Overview
-FastAPI-based HTTP interface providing RESTful endpoints for SDK access and frontend communication, with unified Auth0/API key authentication.
-
-## Architecture
-
-### Structure
-```
-api/
-├── v1/
-│   ├── api.py              # Main router aggregation
-│   └── endpoints/          # Individual endpoint modules
-├── deps.py                 # Dependency injection & auth resolution
-├── router.py              # Custom TrailingSlashRouter
-├── middleware.py          # Request processing & CORS
-└── auth.py               # Auth0 integration & token validation
-```
-
-### Endpoint Categories
-- **Public API (SDK)**: `/sources/`, `/collections/`, `/source-connections/`, `/white-labels/`
-- **Internal Frontend**: `/users/`, `/organizations/`, `/api-keys/`, `/sync/`, `/dag/`, `/entities/`, `/destinations/`
-
-## Core Components
-
-### 1. TrailingSlashRouter
-```python
-from airweave.api.router import TrailingSlashRouter
-router = TrailingSlashRouter()  # Handles /endpoint and /endpoint/
-```
-
-### 2. API Context (deps.py)
-The `get_context` dependency provides unified authentication and request context handling:
-
-```python
-@router.get("/")
-async def my_endpoint(
-    ctx: ApiContext = Depends(deps.get_context),
-):
-    # Provides: organization_id, user, auth_method, auth_metadata, logger
-```
-
-**ApiContext Resolution Flow:**
-1. Check auth method: system (dev), Auth0, or API key
-2. Resolve organization ID from header or defaults
-3. Validate organization access
-4. Create contextual logger with request metadata
-5. Return unified `ApiContext` object with injected logger
-
-**Key Features:**
-- Supports multiple auth methods simultaneously
-- Organization context via `X-Organization-ID` header
-- Automatic access validation
-- Pre-configured contextual logger injected via dependency injection
-- Request tracking with unique request IDs
-
-### 3. Authentication Methods
-
-#### Auth0 Integration (auth.py)
-- Production: Real Auth0 with JWT validation
-- Development: Mock Auth0 when `AUTH_ENABLED=false`
-- Token verification: `get_user_from_token()` for WebSocket/SSE
-
-#### API Key Authentication
-- Header: `X-API-Key: <key>`
-- Single organization scope
-- Expiration validation
-- No user context (service-to-service)
-
-#### System Authentication
-- Local development with `AUTH_ENABLED=false`
-- Uses `FIRST_SUPERUSER` as default user
-- Full access to all organizations
-
-### 4. Middleware Stack (middleware.py)
-
-**Request Processing Pipeline:**
-1. `add_request_id`: Generates unique request ID for tracing
-2. `log_requests`: Logs request details and duration
-3. `DynamicCORSMiddleware`: Handles CORS for white-label OAuth
-4. `exception_logging_middleware`: Catches and logs unhandled exceptions
-
-**CORS Handling:**
-- Dynamic origin validation
-- Special handling for OAuth endpoints
-- White-label endpoint support
-- Credentials support for cross-origin requests
-
-**Exception Handlers:**
-- `validation_exception_handler`: Enhanced 422 errors with schema context
-- `permission_exception_handler`: 403 for access violations
-- `not_found_exception_handler`: 404 for missing resources
-
-## Key Patterns
-
-### Standard Endpoint Structure
-```python
-@router.post("/", response_model=schemas.ResponseModel)
-async def create_resource(
-    resource_in: schemas.ResourceCreate,
-    db: AsyncSession = Depends(deps.get_db),
-    ctx: ApiContext = Depends(deps.get_context),
-) -> schemas.ResponseModel:
-    """Clear description."""
-    # Validate → Delegate to CRUD/Service → Return schema
-```
-
-### Naming Conventions
-- `list_resources()` → GET `/`
-- `create_resource()` → POST `/`
-- `get_resource()` → GET `/{id}`
-- `update_resource()` → PUT `/{id}`
-- `delete_resource()` → DELETE `/{id}`
-
-### Error Handling
-```python
-raise HTTPException(status_code=404, detail="Resource not found")
-```
-- `NotFoundException` → 404
-- `PermissionException` → 403
-- `ValidationError` → 422
-
-### CRUD Integration
-```python
-# ✅ Always delegate to CRUD layer
-return await crud.collection.get_multi(db, ctx=ctx)
-
-# ❌ Never query directly in endpoints
-```
-
-### Service Layer Usage
-Complex operations use service layers:
-```python
-collection = await collection_service.create(
-    db, collection_in=collection_in, ctx=ctx
-)
-```
-
-## Security
-- Organization access validated via ApiContext
-- API keys encrypted at rest
-- Auth fields hidden by default
-- White label CORS handling for OAuth
-- Request ID tracking for audit trails
-
-## Best Practices
-1. Always use Pydantic schemas for request/response
-2. Include OpenAPI descriptions and examples
-3. Use dependency injection for common functionality
-4. Delegate database operations to CRUD layer
-5. Handle streaming with `StreamingResponse` for SSE
-6. Add background tasks for async operations
-7. Use contextual logger from `ctx.logger` (injected via DI)
-
-# Return complete object
-return await crud.resource.get(db, id=resource.id, ...)
-
-# Return complete object
-return await crud.resource.get(db, id=resource.id, ...)
-```

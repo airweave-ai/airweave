@@ -495,14 +495,14 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                         className={cn(
                                             "absolute top-2 right-2 h-8 w-8 rounded-md border-dashed border shadow-sm flex items-center justify-center transition-all duration-200 z-20",
                                             isDark
-                                                ? "bg-blue-500/35 border-blue-500 hover:bg-blue-500/20 hover:border-blue-400/80"
-                                                : "bg-blue-50 border-blue-400 hover:bg-blue-100 hover:border-blue-400"
+                                                ? "bg-blue-500/10 border-blue-500/30 hover:bg-blue-500/15 hover:border-blue-400/40"
+                                                : "bg-blue-50/50 border-blue-400/40 hover:bg-blue-50/70 hover:border-blue-400/50"
                                         )}
                                         title="View integration code"
                                     >
                                         <CodeXml className={cn(
                                             DESIGN_SYSTEM.icons.button,
-                                            isDark ? "text-white" : "text-black"
+                                            isDark ? "text-blue-400" : "text-blue-500"
                                         )} />
                                     </button>
                                 </TooltipTrigger>

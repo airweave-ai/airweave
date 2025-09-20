@@ -173,7 +173,6 @@ const handleError = (error: Error | string, errorSource?: string) => {
 /collections
 /collections/:readable_id
 /organization/settings
-/white-label/*
 ```
 
 ### Route Protection

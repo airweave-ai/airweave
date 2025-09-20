@@ -13,6 +13,7 @@ from airweave.core import credentials
 from airweave.core.logging import logger
 from airweave.core.shared_models import ConnectionStatus, IntegrationType
 from airweave.db.unit_of_work import UnitOfWork
+from airweave.platform.auth.settings import AuthenticationMethod
 from airweave.platform.configs._base import Fields
 from airweave.platform.locator import resource_locator
 
@@ -369,7 +370,7 @@ async def connect_or_update_auth_provider(
                     integration_short_name=auth_provider_connection_in.short_name,
                     description=f"Credentials for {auth_provider_connection_in.name}",
                     integration_type=IntegrationType.AUTH_PROVIDER,
-                    auth_type=auth_provider.auth_type,
+                    authentication_method=AuthenticationMethod.DIRECT,
                     encrypted_credentials=credentials.encrypt(validated_auth_fields),
                     auth_config_class=auth_provider.auth_config_class,
                 )
@@ -529,7 +530,7 @@ async def connect_auth_provider(
                 integration_short_name=auth_provider_connection_in.short_name,
                 description=f"Credentials for {auth_provider_connection_in.name}",
                 integration_type=IntegrationType.AUTH_PROVIDER,
-                auth_type=auth_provider.auth_type,
+                authentication_method=AuthenticationMethod.DIRECT,
                 encrypted_credentials=credentials.encrypt(validated_auth_fields),
                 auth_config_class=auth_provider.auth_config_class,
             )

@@ -1,10 +1,11 @@
 """API endpoints for usage data."""
 
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import Dict, List, Optional
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, Query
+from fastapi import Body, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
@@ -26,64 +27,99 @@ from airweave.schemas.usage_dashboard import (
 router = TrailingSlashRouter()
 
 
-@router.get("/check-action", response_model=schemas.ActionCheckResponse)
-async def check_action(
-    action: str = Query(
+class ActionCheckRequest(BaseModel):
+    """Request schema for checking multiple actions."""
+
+    actions: Dict[str, int] = Field(
         ...,
-        description="The action type to check",
-        examples=["queries", "syncs", "entities", "collections", "source_connections"],
-    ),
-    amount: int = Query(1, ge=1, description="Number of units to check (default 1)"),
+        description="Dictionary of action types to check with their amounts",
+        examples=[
+            {
+                "collections": 1,
+                "source_connections": 1,
+                "entities": 1,
+                "syncs": 1,
+                "queries": 1,
+            }
+        ],
+    )
+
+
+class ActionCheckResponse(BaseModel):
+    """Response schema for multiple action checks."""
+
+    results: Dict[str, schemas.SingleActionCheckResponse] = Field(
+        ...,
+        description="Dictionary of action check results keyed by action type",
+    )
+
+
+@router.post("/check-actions", response_model=ActionCheckResponse)
+async def check_actions(
+    request: ActionCheckRequest = Body(...),
     ctx: ApiContext = Depends(deps.get_context),
     guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
-) -> schemas.ActionCheckResponse:
-    """Check if a specific action is allowed based on usage limits and billing status.
+) -> ActionCheckResponse:
+    """Check multiple actions for usage limits and billing status.
 
-    Returns whether the action is allowed and why it might be blocked.
-    Can check for multiple units at once by specifying the amount parameter.
+    Returns a dictionary of action check results keyed by action type.
     """
-    ctx.logger.info(f"Checking if action '{action}' (amount={amount}) is allowed.")
+    ctx.logger.info(f"Checking actions: {list(request.actions.keys())}")
 
-    # Validate action type
-    try:
-        action_type = ActionType(action)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid action type: {action}. "
-            f"Must be one of: {', '.join([a.value for a in ActionType])}",
-        ) from e
+    results = {}
 
-    try:
-        # Check if the action is allowed
-        is_allowed = await guard_rail.is_allowed(action_type, amount=amount)
+    for action, amount in request.actions.items():
+        # Validate action type
+        try:
+            action_type = ActionType(action)
+        except ValueError:
+            # Skip invalid action types but log them
+            ctx.logger.warning(f"Invalid action type in check: {action}")
+            results[action] = schemas.SingleActionCheckResponse(
+                allowed=False,
+                action=action,
+                reason="usage_limit_exceeded",
+                details={"message": f"Invalid action type: {action}"},
+            )
+            continue
 
-        return schemas.ActionCheckResponse(
-            allowed=is_allowed, action=action, reason=None, details=None
-        )
+        try:
+            # Check if the action is allowed
+            is_allowed = await guard_rail.is_allowed(action_type, amount=amount)
 
-    except PaymentRequiredException as e:
-        # Action blocked due to billing status
-        return schemas.ActionCheckResponse(
-            allowed=False,
-            action=action,
-            reason="payment_required",
-            details={"message": str(e), "payment_status": e.payment_status},
-        )
+            results[action] = schemas.SingleActionCheckResponse(
+                allowed=is_allowed, action=action, reason=None, details=None
+            )
 
-    except UsageLimitExceededException as e:
-        # Action blocked due to usage limit
-        return schemas.ActionCheckResponse(
-            allowed=False,
-            action=action,
-            reason="usage_limit_exceeded",
-            details={"message": str(e), "current_usage": e.current_usage, "limit": e.limit},
-        )
+        except PaymentRequiredException as e:
+            # Action blocked due to billing status
+            results[action] = schemas.SingleActionCheckResponse(
+                allowed=False,
+                action=action,
+                reason="payment_required",
+                details={"message": str(e), "payment_status": e.payment_status},
+            )
 
-    except Exception as e:
-        # Unexpected error
-        ctx.logger.error(f"Unexpected error checking action {action}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error checking action: {str(e)}") from e
+        except UsageLimitExceededException as e:
+            # Action blocked due to usage limit
+            results[action] = schemas.SingleActionCheckResponse(
+                allowed=False,
+                action=action,
+                reason="usage_limit_exceeded",
+                details={"message": str(e), "current_usage": e.current_usage, "limit": e.limit},
+            )
+
+        except Exception as e:
+            # Unexpected error for this action
+            ctx.logger.error(f"Unexpected error checking action {action}: {str(e)}")
+            results[action] = schemas.SingleActionCheckResponse(
+                allowed=False,
+                action=action,
+                reason="usage_limit_exceeded",
+                details={"message": f"Error checking action: {str(e)}"},
+            )
+
+    return ActionCheckResponse(results=results)
 
 
 def _create_usage_snapshot(

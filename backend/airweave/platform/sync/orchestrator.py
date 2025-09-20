@@ -90,7 +90,7 @@ class SyncOrchestrator:
 
         await sync_job_service.update_status(
             sync_job_id=self.sync_context.sync_job.id,
-            status=SyncJobStatus.IN_PROGRESS,
+            status=SyncJobStatus.RUNNING,
             ctx=self.sync_context.ctx,
             started_at=utc_now_naive(),
         )

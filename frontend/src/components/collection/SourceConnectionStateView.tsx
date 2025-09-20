@@ -7,12 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useTheme } from '@/lib/theme-provider';
-import { Loader2, AlertCircle, RefreshCw, Clock, X, History, Square } from 'lucide-react';
+import { Loader2, AlertCircle, RefreshCw, Clock, X, History, Square, ExternalLink, Copy, Check, Send } from 'lucide-react';
 import { apiClient } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 import { SourceConnectionSettings } from './SourceConnectionSettings';
 import { EntityStateList } from './EntityStateList';
 import { SyncErrorCard } from './SyncErrorCard';
+import { SourceAuthenticationView } from '@/components/shared/SourceAuthenticationView';
 import {
   Tooltip,
   TooltipContent,
@@ -22,58 +23,108 @@ import {
 import { DESIGN_SYSTEM } from '@/lib/design-system';
 
 // Source Connection interface - matches backend schema
+interface LastSyncJob {
+  id?: string;
+  status?: string;
+  started_at?: string;
+  completed_at?: string;
+  duration_seconds?: number;
+  entities_processed?: number;
+  entities_inserted?: number;
+  entities_updated?: number;
+  entities_deleted?: number;
+  entities_failed?: number;
+  error?: string;
+  error_details?: Record<string, any>;
+}
+
+interface Schedule {
+  cron_expression?: string;
+  next_run_at?: string;
+  is_continuous?: boolean;
+  cursor_field?: string;
+  cursor_value?: any;
+}
+
+interface AuthenticationInfo {
+  method?: string;
+  authenticated?: boolean;  // Backend uses 'authenticated', not 'is_authenticated'
+  authenticated_at?: string;
+  expires_at?: string;
+  auth_url?: string;  // Backend uses 'auth_url', not 'authentication_url'
+  auth_url_expires?: string;  // Backend uses 'auth_url_expires'
+  provider_id?: string;  // Backend uses 'provider_id'
+  provider_name?: string;  // Backend uses 'provider_name'
+  redirect_url?: string;
+}
+
+interface EntityTypeStats {
+  count: number;
+  last_updated?: string;
+  sync_status: string;
+}
+
+interface EntitySummary {
+  total_entities: number;
+  by_type: Record<string, EntityTypeStats>;
+  last_updated?: string;
+}
+
 interface SourceConnection {
   id: string;
   name: string;
   description?: string;
   short_name: string;
-  config_fields?: Record<string, any>;
-  sync_id?: string;
-  organization_id: string;
+  readable_collection_id: string;
+  status?: string;
   created_at: string;
   modified_at: string;
+  // Authentication is now in the auth object
+  auth?: AuthenticationInfo;  // Contains authenticated, method, etc.
+  config?: Record<string, any>;  // Changed from config_fields
+  schedule?: Schedule;
+  last_sync_job?: LastSyncJob;
+  entities?: EntitySummary;  // Changed from entity_states array to entities object
+  // Legacy fields that may still exist
+  sync_id?: string;
+  organization_id?: string;
   connection_id?: string;
-  collection: string;
-  white_label_id?: string;
-  created_by_email: string;
-  modified_by_email: string;
-  auth_fields?: Record<string, any> | string;
-  status?: string;
-  latest_sync_job_status?: string;
-  latest_sync_job_id?: string;
-  latest_sync_job_started_at?: string;
-  latest_sync_job_completed_at?: string;
-  latest_sync_job_error?: string;
-  cron_schedule?: string;
-  next_scheduled_run?: string;
-  auth_provider?: string;
-  auth_provider_config?: Record<string, any>;
+  created_by_email?: string;
+  modified_by_email?: string;
 }
 
 interface Props {
   sourceConnectionId: string;
+  sourceConnectionData?: SourceConnection;  // Accept data as prop
   onConnectionDeleted?: () => void;
+  onConnectionUpdated?: () => void;  // Callback to refresh data in parent
 }
 
 const SourceConnectionStateView: React.FC<Props> = ({
   sourceConnectionId,
-  onConnectionDeleted
+  sourceConnectionData,
+  onConnectionDeleted,
+  onConnectionUpdated
 }) => {
   const [isInitializing, setIsInitializing] = useState(true);
-  const [sourceConnection, setSourceConnection] = useState<SourceConnection | null>(null);
+  const [sourceConnection, setSourceConnection] = useState<SourceConnection | null>(sourceConnectionData || null);
   const [isRunningSync, setIsRunningSync] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [nextRunTime, setNextRunTime] = useState<string | null>(null);
   const [lastRanDisplay, setLastRanDisplay] = useState<string>('Never');
+  const [isRefreshingAuth, setIsRefreshingAuth] = useState(false);
 
   const mediator = useRef<EntityStateMediator | null>(null);
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
 
-  // Direct store subscription - single source of truth
-  const state = useEntityStateStore(
-    store => store.getEntityState(sourceConnectionId)
+  // Direct store subscription - single source of truth for real-time updates
+  const storeConnection = useEntityStateStore(
+    store => store.getConnection(sourceConnectionId)
   );
+
+  // Use source connection data as primary source, with store for real-time updates
+  const connectionState = sourceConnection || storeConnection;
 
   // Format time ago display
   const formatTimeAgo = useCallback((dateStr: string | undefined) => {
@@ -198,62 +249,156 @@ const SourceConnectionStateView: React.FC<Props> = ({
     }
   }, []);
 
-  // Fetch source connection details
-  const fetchSourceConnection = useCallback(async () => {
+  // Fetch source connection details (only when not provided as prop)
+  const fetchSourceConnection = useCallback(async (regenerateAuthUrl = false) => {
+    // If data is provided as prop, use it instead of fetching
+    if (sourceConnectionData) {
+      setSourceConnection(sourceConnectionData);
+      // Calculate next run time
+      if (sourceConnectionData.schedule?.cron_expression) {
+        const nextRun = calculateNextRunTime(sourceConnectionData.schedule.cron_expression);
+        setNextRunTime(nextRun);
+      }
+      return;
+    }
+
     try {
-      const response = await apiClient.get(`/source-connections/${sourceConnectionId}`);
+      const url = regenerateAuthUrl
+        ? `/source-connections/${sourceConnectionId}?regenerate_auth_url=true`
+        : `/source-connections/${sourceConnectionId}`;
+      const response = await apiClient.get(url);
       if (response.ok) {
         const data = await response.json();
         setSourceConnection(data);
 
         // Calculate next run time
-        if (data.cron_schedule) {
-          const nextRun = calculateNextRunTime(data.cron_schedule);
+        if (data.schedule?.cron_expression) {
+          const nextRun = calculateNextRunTime(data.schedule.cron_expression);
           setNextRunTime(nextRun);
         }
+
+        // No need for separate auth URL fetch, it's handled by the regenerateAuthUrl parameter
       }
     } catch (error) {
       console.error('Failed to fetch source connection:', error);
     }
-  }, [sourceConnectionId, calculateNextRunTime]);
+  }, [sourceConnectionId, sourceConnectionData, calculateNextRunTime]);
+
+  // Handler for refreshing authentication URL
+  const handleRefreshAuthUrl = useCallback(async () => {
+    setIsRefreshingAuth(true);
+    try {
+      await fetchSourceConnection(true);
+      toast({
+        title: "Refreshed",
+        description: "Authentication URL has been refreshed"
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to refresh authentication URL",
+        variant: "destructive"
+      });
+    } finally {
+      setIsRefreshingAuth(false);
+    }
+  }, [fetchSourceConnection]);
 
   useEffect(() => {
-    // Initialize state mediator
-    mediator.current = new EntityStateMediator(sourceConnectionId);
+    const isNotAuthorized = sourceConnectionData?.status === 'not_yet_authorized' || !sourceConnectionData?.auth?.authenticated;
 
-    Promise.all([
-      mediator.current.initialize(),
-      fetchSourceConnection()
-    ]).then(() => {
-      setIsInitializing(false);
-    }).catch(error => {
-      console.error('Failed to initialize:', error);
-      setIsInitializing(false);
-    });
+    // Only initialize mediator if authenticated
+    if (!isNotAuthorized) {
+      mediator.current = new EntityStateMediator(sourceConnectionId);
+
+      // If we have source connection data, update the store immediately
+      if (sourceConnectionData && sourceConnectionData.last_sync_job?.id) {
+        const storeState = {
+          id: sourceConnectionData.id,
+          name: sourceConnectionData.name,
+          short_name: sourceConnectionData.short_name,
+          collection: sourceConnectionData.readable_collection_id,
+          status: (sourceConnectionData.status as any) || 'active',  // Cast to bypass type check
+          is_authenticated: sourceConnectionData.auth?.authenticated ?? true,
+          last_sync_job: sourceConnectionData.last_sync_job ? {
+            ...sourceConnectionData.last_sync_job,
+            id: sourceConnectionData.last_sync_job.id!  // Ensure id is not undefined
+          } : undefined,
+          schedule: sourceConnectionData.schedule,
+          entity_states: sourceConnectionData.entities ?
+            Object.entries(sourceConnectionData.entities.by_type).map(([type, stats]) => ({
+              entity_type: type,
+              total_count: stats.count,
+              last_updated_at: stats.last_updated,
+              sync_status: stats.sync_status as any
+            })) : [],
+          lastUpdated: new Date()
+        };
+        useEntityStateStore.getState().setSourceConnection(storeState as any);
+      }
+
+      Promise.all([
+        mediator.current.initialize(),
+        fetchSourceConnection()
+      ]).then(async () => {
+        setIsInitializing(false);
+
+        // Check the store for active sync job after initialization
+        const currentState = useEntityStateStore.getState().getConnection(sourceConnectionId);
+        if (currentState?.last_sync_job?.id &&
+            (currentState.last_sync_job.status === 'in_progress' ||
+             currentState.last_sync_job.status === 'pending' ||
+             currentState.last_sync_job.status === 'created')) {
+          console.log('Subscribing to active sync job:', currentState.last_sync_job.id);
+          await mediator.current.subscribeToJobUpdates(currentState.last_sync_job.id);
+        }
+      }).catch(error => {
+        console.error('Failed to initialize:', error);
+        setIsInitializing(false);
+      });
+    } else {
+      // Just fetch connection details if not authenticated
+      fetchSourceConnection().then(() => {
+        setIsInitializing(false);
+      }).catch(error => {
+        console.error('Failed to fetch connection:', error);
+        setIsInitializing(false);
+      });
+    }
 
     return () => {
       mediator.current?.cleanup();
     };
-  }, [sourceConnectionId, fetchSourceConnection]);
+  }, [sourceConnectionId, sourceConnectionData?.status, sourceConnectionData?.auth?.authenticated]); // Add auth status to deps
 
-  // Update next run time when cron_schedule changes
+  // Update source connection when prop changes
   useEffect(() => {
-    if (sourceConnection?.cron_schedule) {
-      const nextRun = calculateNextRunTime(sourceConnection.cron_schedule);
+    if (sourceConnectionData && sourceConnectionData !== sourceConnection) {
+      setSourceConnection(sourceConnectionData);
+      // Calculate next run time
+      if (sourceConnectionData.schedule?.cron_expression) {
+        const nextRun = calculateNextRunTime(sourceConnectionData.schedule.cron_expression);
+        setNextRunTime(nextRun);
+      }
+    }
+  }, [sourceConnectionData, calculateNextRunTime]);
+
+  // Update next run time when schedule changes
+  useEffect(() => {
+    if (sourceConnection?.schedule?.cron_expression) {
+      const nextRun = calculateNextRunTime(sourceConnection.schedule.cron_expression);
       setNextRunTime(nextRun);
     } else {
       setNextRunTime(null);
     }
-  }, [sourceConnection?.cron_schedule, calculateNextRunTime]);
+  }, [sourceConnection?.schedule?.cron_expression, calculateNextRunTime]);
 
   // Update last ran display
   useEffect(() => {
     const updateLastRan = () => {
-      // If a sync is currently running, show "Running now"
-      if (state?.syncStatus === 'in_progress' || state?.syncStatus === 'pending') {
-        setLastRanDisplay('Running now');
-      } else if (sourceConnection?.latest_sync_job_started_at) {
-        setLastRanDisplay(formatTimeAgo(sourceConnection.latest_sync_job_started_at));
+      // Don't show "Running now" - let the status badge handle that
+      if (sourceConnection?.last_sync_job?.started_at) {
+        setLastRanDisplay(formatTimeAgo(sourceConnection.last_sync_job.started_at));
       } else {
         setLastRanDisplay('Never');
       }
@@ -264,26 +409,29 @@ const SourceConnectionStateView: React.FC<Props> = ({
     const interval = setInterval(updateLastRan, 60000);
 
     return () => clearInterval(interval);
-  }, [sourceConnection?.latest_sync_job_started_at, state?.syncStatus, formatTimeAgo]);
+  }, [sourceConnection?.last_sync_job?.started_at, formatTimeAgo]);
 
   // Clear cancelling state when sync status changes to cancelled
   useEffect(() => {
-    if (state?.syncStatus === 'cancelled' && isCancelling) {
+    const syncStatus = storeConnection?.last_sync_job?.status;
+    if (syncStatus === 'cancelled' && isCancelling) {
       setIsCancelling(false);
       toast({
         title: "Sync Cancelled",
         description: "The sync job has been successfully cancelled.",
       });
     }
-  }, [state?.syncStatus, isCancelling]);
+  }, [storeConnection?.last_sync_job?.status, isCancelling]);
 
   // Refetch source connection when sync fails to get latest error details
   useEffect(() => {
-    if (state?.syncStatus === 'failed' || state?.error) {
-      // Refetch to get the latest_sync_job_error from backend
+    const syncStatus = storeConnection?.last_sync_job?.status;
+    const error = storeConnection?.last_sync_job?.error;
+    if (syncStatus === 'failed' || error) {
+      // Refetch to get the last_sync_job.error from backend
       fetchSourceConnection();
     }
-  }, [state?.syncStatus, state?.error, fetchSourceConnection]);
+  }, [storeConnection?.last_sync_job?.status, storeConnection?.last_sync_job?.error, fetchSourceConnection]);
 
   const handleRunSync = async () => {
     try {
@@ -316,8 +464,8 @@ const SourceConnectionStateView: React.FC<Props> = ({
   };
 
   const handleCancelSync = async () => {
-    // Use currentJobId from state if available, otherwise try syncId
-    const jobId = state?.currentJobId || state?.syncId;
+    // Use job id from last_sync_job
+    const jobId = storeConnection?.last_sync_job?.id || sourceConnection?.last_sync_job?.id;
 
     if (!jobId) {
       toast({
@@ -360,7 +508,7 @@ const SourceConnectionStateView: React.FC<Props> = ({
     fetchSourceConnection();
   };
 
-  if (isInitializing && !state) {
+  if (isInitializing && !connectionState) {
     return (
       <div className="w-full h-48 flex flex-col items-center justify-center space-y-4">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -369,39 +517,80 @@ const SourceConnectionStateView: React.FC<Props> = ({
     );
   }
 
-  // Sync states - match backend SyncJobStatus enum
-  const isRunning = state?.syncStatus === 'in_progress';
-  const isPending = state?.syncStatus === 'pending';
+  // Sync states - use real-time updates from store if available, otherwise use source connection data
+  const currentSyncJob = storeConnection?.last_sync_job || sourceConnection?.last_sync_job;
+  const isRunning = currentSyncJob?.status === 'in_progress';
+  const isPending = currentSyncJob?.status === 'pending' || currentSyncJob?.status === 'created';
   const isSyncing = isRunning || isPending;
 
   // Get sync status display
   const getSyncStatusDisplay = () => {
-    if (state?.syncStatus === 'failed') return { text: 'Failed', color: 'bg-red-500' };
-    if (state?.syncStatus === 'completed') return { text: 'Completed', color: 'bg-green-500' };
-    if (isRunning) return { text: 'Running', color: 'bg-blue-500 animate-pulse' };
-    if (isPending) return { text: 'Pending', color: 'bg-yellow-500 animate-pulse' };
-    return { text: 'Ready', color: 'bg-gray-400' };
+    if (sourceConnection?.status === 'not_yet_authorized' || !sourceConnection?.auth?.authenticated) {
+      return { text: 'Not Authenticated', color: 'bg-cyan-500', icon: null };
+    }
+    if (currentSyncJob?.status === 'failed') return { text: 'Failed', color: 'bg-red-500', icon: null };
+    if (currentSyncJob?.status === 'completed') return { text: 'Completed', color: 'bg-green-500', icon: null };
+    if (isRunning) return { text: 'Syncing', color: 'bg-blue-500 animate-pulse', icon: 'loader' };
+    if (isPending) return { text: 'Pending', color: 'bg-yellow-500 animate-pulse', icon: 'loader' };
+    return { text: 'Ready', color: 'bg-gray-400', icon: null };
   };
 
   const syncStatus = getSyncStatusDisplay();
+  const isNotAuthorized = sourceConnection?.status === 'not_yet_authorized' || !sourceConnection?.auth?.authenticated;
 
   return (
     <div className={cn("space-y-4", DESIGN_SYSTEM.typography.sizes.body)}>
-      {/* Status Dashboard with Settings - All in one row */}
+      {/* Show authorization UI if not authorized */}
+      {isNotAuthorized && sourceConnection && (
+        <SourceAuthenticationView
+          sourceName={sourceConnection.name}
+          authenticationUrl={sourceConnection.auth?.auth_url}
+          onRefreshUrl={handleRefreshAuthUrl}
+          isRefreshing={isRefreshingAuth}
+          showBorder={true}
+        />
+      )}
+
+      {/* Status Dashboard with Settings - Only show when authenticated */}
+      {!isNotAuthorized && (
       <div className="flex items-center justify-between">
         <div className="flex gap-2 flex-wrap items-center">
           {/* Entities Card */}
           <div className={cn("h-8 px-3 py-1.5 border border-border rounded-md shadow-sm flex items-center gap-2 min-w-[90px]", isDark ? "bg-gray-900" : "bg-white")}>
             <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">ENTITIES</span>
-            <span className="text-xs font-semibold text-foreground">{state?.totalEntities.toLocaleString() || 0}</span>
+            <span className="text-xs font-semibold text-foreground">
+              {/* Calculate total from real-time store data or fall back to source connection */}
+              {(
+                storeConnection?.entity_states?.reduce((sum, state) => sum + (state.total_count || 0), 0) ||
+                sourceConnection?.entities?.total_entities ||
+                0
+              ).toLocaleString()}
+            </span>
           </div>
 
           {/* Status Card */}
-          <div className={cn("h-8 px-3 py-1.5 border border-border rounded-md shadow-sm flex items-center gap-2 min-w-[90px]", isDark ? "bg-gray-900" : "bg-white")}>
+          <div className={cn(
+            "h-8 px-3 py-1.5 rounded-md shadow-sm flex items-center gap-2 min-w-[90px]",
+            // Highlight when sync is running
+            (isRunning || isPending)
+              ? isDark
+                ? "bg-blue-900/30 border border-blue-700/50"
+                : "bg-blue-50 border border-blue-200"
+              : isDark
+                ? "bg-gray-900 border border-border"
+                : "bg-white border border-border"
+          )}>
             <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">STATUS</span>
             <div className="flex items-center gap-1">
-              <span className={`inline-flex h-2 w-2 rounded-full ${syncStatus.color}`} />
-              <span className="text-xs font-medium text-foreground capitalize">{syncStatus.text}</span>
+              {syncStatus.icon === 'loader' ? (
+                <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
+              ) : (
+                <span className={`inline-flex h-2 w-2 rounded-full ${syncStatus.color}`} />
+              )}
+              <span className={cn(
+                "text-xs font-medium capitalize",
+                (isRunning || isPending) ? "text-blue-600 dark:text-blue-400" : "text-foreground"
+              )}>{syncStatus.text}</span>
             </div>
           </div>
 
@@ -411,55 +600,39 @@ const SourceConnectionStateView: React.FC<Props> = ({
             <div className="flex items-center gap-1">
               <Clock className="h-3 w-3 text-muted-foreground" />
               <span className="text-xs font-medium text-foreground">
-                {sourceConnection?.cron_schedule ?
+                {sourceConnection?.schedule?.cron_expression ?
                   (nextRunTime ? `In ${nextRunTime}` : 'Scheduled') :
                   'Manual'}
               </span>
             </div>
           </div>
 
-          {/* Last Sync Card */}
-          <TooltipProvider delayDuration={100}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className={cn(
-                  "h-8 px-3 py-1.5 rounded-md shadow-sm flex items-center gap-2 min-w-[100px] cursor-help",
-                  // Highlight when sync is running
-                  (state?.syncStatus === 'in_progress' || state?.syncStatus === 'pending')
-                    ? isDark
-                      ? "bg-blue-900/30 border border-blue-700/50"
-                      : "bg-blue-50 border border-blue-200"
-                    : isDark
-                      ? "bg-gray-900 border border-border"
-                      : "bg-white border border-border"
-                )}>
-                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">LAST SYNC</span>
-                  <div className="flex items-center gap-1">
-                    {(state?.syncStatus === 'in_progress' || state?.syncStatus === 'pending') ? (
-                      <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
-                    ) : (
+          {/* Last Sync Card - Only show when not actively syncing */}
+          {!(isRunning || isPending) && (
+            <TooltipProvider delayDuration={100}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className={cn(
+                    "h-8 px-3 py-1.5 rounded-md shadow-sm flex items-center gap-2 min-w-[100px] cursor-help",
+                    isDark ? "bg-gray-900 border border-border" : "bg-white border border-border"
+                  )}>
+                    <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">LAST SYNC</span>
+                    <div className="flex items-center gap-1">
                       <History className="h-3 w-3 text-muted-foreground" />
-                    )}
-                    <span className={cn(
-                      "text-xs font-medium",
-                      (state?.syncStatus === 'in_progress' || state?.syncStatus === 'pending')
-                        ? "text-blue-600 dark:text-blue-400"
-                        : "text-foreground"
-                    )}>
-                      {lastRanDisplay}
-                    </span>
+                      <span className="text-xs font-medium text-foreground">
+                        {lastRanDisplay}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p className="text-xs">
-                  {state?.syncStatus === 'in_progress' || state?.syncStatus === 'pending'
-                    ? 'Sync is currently running'
-                    : formatExactTime(sourceConnection?.latest_sync_job_started_at)}
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="text-xs">
+                    {formatExactTime(sourceConnection?.last_sync_job?.started_at)}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
 
         {/* Settings and Action Buttons */}
@@ -471,22 +644,24 @@ const SourceConnectionStateView: React.FC<Props> = ({
                 <button
                   type="button"
                   onClick={isSyncing ? handleCancelSync : handleRunSync}
-                  disabled={isRunningSync || isCancelling}
+                  disabled={isRunningSync || isCancelling || isNotAuthorized}
                   className={cn(
                     "h-8 w-8 rounded-md border shadow-sm flex items-center justify-center transition-all duration-200",
-                    isSyncing
-                      ? isCancelling
-                        ? isDark
-                          ? "bg-orange-900/30 border-orange-700 hover:bg-orange-900/50 cursor-not-allowed"
-                          : "bg-orange-50 border-orange-200 hover:bg-orange-100 cursor-not-allowed"
-                        : isDark
-                          ? "bg-red-900/30 border-red-700 hover:bg-red-900/50 cursor-pointer"
-                          : "bg-red-50 border-red-200 hover:bg-red-100 cursor-pointer"
-                      : isRunningSync
-                        ? "bg-muted border-border cursor-not-allowed"
-                        : isDark
-                          ? "bg-gray-900 border-border hover:bg-muted cursor-pointer"
-                          : "bg-white border-border hover:bg-muted cursor-pointer"
+                    isNotAuthorized
+                      ? "opacity-50 cursor-not-allowed bg-muted border-border"
+                      : isSyncing
+                        ? isCancelling
+                          ? isDark
+                            ? "bg-orange-900/30 border-orange-700 hover:bg-orange-900/50 cursor-not-allowed"
+                            : "bg-orange-50 border-orange-200 hover:bg-orange-100 cursor-not-allowed"
+                          : isDark
+                            ? "bg-red-900/30 border-red-700 hover:bg-red-900/50 cursor-pointer"
+                            : "bg-red-50 border-red-200 hover:bg-red-100 cursor-pointer"
+                        : isRunningSync
+                          ? "bg-muted border-border cursor-not-allowed"
+                          : isDark
+                            ? "bg-gray-900 border-border hover:bg-muted cursor-pointer"
+                            : "bg-white border-border hover:bg-muted cursor-pointer"
                   )}
                   title={isSyncing ? (isCancelling ? "Cancelling sync..." : "Cancel sync") : (isRunningSync ? "Starting sync..." : "Refresh data")}
                 >
@@ -506,13 +681,15 @@ const SourceConnectionStateView: React.FC<Props> = ({
               </TooltipTrigger>
               <TooltipContent>
                 <p className="text-xs">
-                  {isSyncing
-                    ? isCancelling
-                      ? "Cancelling sync..."
-                      : "Cancel sync"
-                    : isRunningSync
-                      ? "Starting sync..."
-                      : "Refresh data"}
+                  {isNotAuthorized
+                    ? "Authentication required before syncing"
+                    : isSyncing
+                      ? isCancelling
+                        ? "Cancelling sync..."
+                        : "Cancel sync"
+                      : isRunningSync
+                        ? "Starting sync..."
+                        : "Refresh data"}
                 </p>
               </TooltipContent>
             </Tooltip>
@@ -527,36 +704,49 @@ const SourceConnectionStateView: React.FC<Props> = ({
                 className="h-8 w-8 flex items-center justify-center hover:bg-muted rounded-md transition-all duration-200"
                 title="Settings"
               >
-                <SourceConnectionSettings
-                  sourceConnection={sourceConnection}
-                  onUpdate={handleConnectionUpdate}
-                  onDelete={onConnectionDeleted}
-                  isDark={isDark}
-                  resolvedTheme={resolvedTheme}
-                />
+        <SourceConnectionSettings
+          sourceConnection={sourceConnection as any}
+          onUpdate={handleConnectionUpdate}
+          onDelete={onConnectionDeleted}
+          isDark={isDark}
+          resolvedTheme={resolvedTheme}
+        />
               </button>
             </div>
           )}
         </div>
       </div>
+      )}
 
+      {/* Only show sync-related UI when authenticated */}
+      {!isNotAuthorized && (
+        <>
       {/* Show error card if sync failed or there's an error */}
-      {((state?.error || state?.syncStatus === 'failed') && state?.syncStatus !== 'cancelled') && (
+      {(currentSyncJob?.status === 'failed') && (
         <SyncErrorCard
-          error={state?.error || sourceConnection?.latest_sync_job_error || "The last sync failed. Check the logs for more details."}
+          error={currentSyncJob?.error || sourceConnection?.last_sync_job?.error || "The last sync failed. Check the logs for more details."}
           isDark={isDark}
         />
       )}
 
-      {/* Always show Entity State List */}
+          {/* Show Entity State List only when authenticated */}
       <EntityStateList
-        state={state}
+        state={storeConnection}  // Pass store connection for real-time updates
         sourceShortName={sourceConnection?.short_name || ''}
         isDark={isDark}
         onStartSync={handleRunSync}
         isRunning={isRunning}
         isPending={isPending}
+        entityStates={sourceConnection?.entities ?
+          Object.entries(sourceConnection.entities.by_type).map(([type, stats]) => ({
+            entity_type: type,
+            total_count: stats.count,
+            last_updated_at: stats.last_updated,
+            sync_status: stats.sync_status as 'pending' | 'syncing' | 'synced' | 'failed'
+          })) : undefined}  // Convert entities to entity_states format for EntityStateList
       />
+        </>
+      )}
     </div>
   );
 };

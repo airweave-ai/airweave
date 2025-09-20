@@ -184,8 +184,8 @@ class UsageLimit(BaseModel):
     }
 
 
-class ActionCheckResponse(BaseModel):
-    """Response schema for action permission checks."""
+class SingleActionCheckResponse(BaseModel):
+    """Response schema for single action permission check."""
 
     allowed: bool = Field(
         ...,

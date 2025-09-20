@@ -16,8 +16,8 @@ from airweave.core.logging import logger
 from airweave.core.shared_models import ConnectionStatus, SyncStatus
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models.integration_credential import IntegrationType
-from airweave.platform.auth.schemas import AuthType
 from airweave.schemas.connection import ConnectionCreate
+from airweave.schemas.source_connection import AuthenticationMethod
 
 connection_logger = logger.with_prefix("Connection Service: ").with_context(
     component="connection_service"
@@ -138,10 +138,10 @@ class ConnectionService:
                 short_name=short_name,
                 name=connection_name,
                 integration_name=source.name,
-                auth_type=AuthType.oauth2,  # We store it as OAuth2 for compatibility
+                authentication_method=AuthenticationMethod.OAUTH_TOKEN,
+                oauth_type=getattr(source, "oauth_type", None),
                 encrypted_credentials=encrypted_creds,
                 auth_config_class=None,
-                user=user,
             )
 
             await uow.commit()
@@ -283,7 +283,8 @@ class ConnectionService:
         short_name: str,
         name: Optional[str],
         integration_name: str,
-        auth_type: AuthType,
+        authentication_method: AuthenticationMethod,
+        oauth_type: Optional[str],
         encrypted_credentials: str,
         auth_config_class: Optional[str],
         ctx: ApiContext,
@@ -296,7 +297,8 @@ class ConnectionService:
             short_name: The short name of the integration
             name: The name of the connection
             integration_name: The name of the integration
-            auth_type: The authentication type
+            authentication_method: The authentication method
+            oauth_type: The OAuth type (for OAuth methods)
             encrypted_credentials: The encrypted credentials
             auth_config_class: The auth config class name
             ctx: The API context
@@ -310,7 +312,8 @@ class ConnectionService:
             description=f"Credentials for {integration_name} - {ctx.organization.id}",
             integration_short_name=short_name,
             integration_type=integration_type,
-            auth_type=auth_type,
+            authentication_method=authentication_method,
+            oauth_type=oauth_type,
             encrypted_credentials=encrypted_credentials,
             auth_config_class=auth_config_class,
         )
@@ -369,15 +372,15 @@ class ConnectionService:
                 status_code=400, detail=f"Failed to verify Slack token: {str(e)}"
             ) from e
 
-    def _supports_oauth2(self, auth_type: AuthType) -> bool:
-        """Check if the auth type supports OAuth2."""
-        return auth_type in (
-            AuthType.oauth2,
-            AuthType.oauth2_with_refresh,
-            AuthType.oauth2_with_refresh_rotating,
+    def _supports_oauth2(self, auth_method: AuthenticationMethod) -> bool:
+        """Check if the authentication method supports OAuth2."""
+        return auth_method in (
+            AuthenticationMethod.OAUTH_BROWSER,
+            AuthenticationMethod.OAUTH_TOKEN,
+            AuthenticationMethod.OAUTH_BYOC,
         )
 
-    async def create_integration_credential(
+    async def create_integration_credential(  # noqa: C901
         self,
         db: AsyncSession,
         integration_type: IntegrationType,
@@ -402,23 +405,19 @@ class ConnectionService:
         """
         # Get the integration based on type
         integration = None
-        auth_type = None
         auth_config_class = None
 
         if integration_type == IntegrationType.SOURCE:
             integration = await crud.source.get_by_short_name(db, short_name=short_name)
             if integration:
-                auth_type = integration.auth_type
                 auth_config_class = integration.auth_config_class
         elif integration_type == IntegrationType.DESTINATION:
             integration = await crud.destination.get_by_short_name(db, short_name=short_name)
             if integration:
-                auth_type = integration.auth_type
                 auth_config_class = integration.auth_config_class
         elif integration_type == IntegrationType.EMBEDDING_MODEL:
             integration = await crud.embedding_model.get_by_short_name(db, short_name=short_name)
             if integration:
-                auth_type = integration.auth_type
                 auth_config_class = integration.auth_config_class
 
         if not integration:
@@ -455,6 +454,16 @@ class ConnectionService:
         # Encrypt the validated auth fields
         encrypted_credentials = credentials.encrypt(validated_auth_fields)
 
+        # Determine authentication method (for non-sources, it's always DIRECT)
+        authentication_method = AuthenticationMethod.DIRECT
+        oauth_type = None
+
+        if integration_type == IntegrationType.SOURCE:
+            # For sources, we could check auth_methods, but for now default to DIRECT
+            # This would need to be passed in or determined from the credential_in
+            authentication_method = AuthenticationMethod.DIRECT
+            oauth_type = getattr(integration, "oauth_type", None)
+
         # Create the integration credential
         return await self._create_credential_in_db(
             db,
@@ -462,7 +471,8 @@ class ConnectionService:
             integration,
             integration_type,
             short_name,
-            auth_type,
+            authentication_method,
+            oauth_type,
             encrypted_credentials,
             auth_config_class,
             ctx,
@@ -501,7 +511,8 @@ class ConnectionService:
         integration,
         integration_type,
         short_name,
-        auth_type,
+        authentication_method,
+        oauth_type,
         encrypted_credentials,
         auth_config_class,
         ctx,
@@ -514,7 +525,8 @@ class ConnectionService:
                 or f"Credentials for {integration.name} - {ctx.organization.id}",
                 integration_short_name=short_name,
                 integration_type=integration_type,
-                auth_type=auth_type,
+                authentication_method=authentication_method,
+                oauth_type=oauth_type,
                 encrypted_credentials=encrypted_credentials,
                 auth_config_class=auth_config_class,
             )

@@ -12,6 +12,7 @@ INCLUDED_ENDPOINTS = {
     "/collections/{readable_id}/refresh_all/": {"post": True},
     # Source Connections
     "/source-connections/": {"get": True, "post": True},
+    "/source-connections/nested/": {"post": True},  # POC nested auth structure
     "/source-connections/{source_connection_id}/": {
         "get": True,
         "put": True,
@@ -24,13 +25,6 @@ INCLUDED_ENDPOINTS = {
     # Auth Providers
     "/auth-providers/connect/": {"put": True},
     "/auth-providers/detail/{short_name}/": {"get": True},
-    # White Labels
-    "/white-labels/": {"get": True, "post": True},
-    "/white-labels/{white_label_id}/": {"get": True, "put": True, "delete": True},
-    "/white-labels/list/": {"get": True},
-    "/white-labels/{white_label_id}/source-connections/": {"get": True},
-    "/white-labels/{white_label_id}/oauth2/auth_url/": {"get": True},
-    "/white-labels/{white_label_id}/oauth2/code/": {"post": True},
 }
 
 # API group descriptions for documentation
@@ -39,7 +33,6 @@ API_GROUPS = {
     "Collections": "API endpoints for managing collections - logical groups of data sources that provide unified search capabilities",
     "Source Connections": "API endpoints for managing live connections to data sources. Source connections are the actual configured instances that Airweave uses to sync data from your apps and databases, transforming it into searchable, structured information within collections",
     "Auth Providers": "API endpoints for managing authentication provider connections and credentials",
-    "White Labels": "API endpoints for managing custom OAuth2 integrations with your own branding and credentials",
 }
 
 

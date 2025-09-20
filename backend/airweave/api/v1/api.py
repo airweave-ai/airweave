@@ -22,7 +22,6 @@ from airweave.api.v1.endpoints import (
     transformers,
     usage,
     users,
-    white_label,
 )
 from airweave.core.config import settings
 
@@ -46,7 +45,6 @@ api_router.include_router(
     source_connections.router, prefix="/source-connections", tags=["source-connections"]
 )
 api_router.include_router(sync.router, prefix="/sync", tags=["sync"])
-api_router.include_router(white_label.router, prefix="/white-labels", tags=["white-labels"])
 api_router.include_router(dag.router, prefix="/dag", tags=["dag"])
 api_router.include_router(entities.router, prefix="/entities", tags=["entities"])
 api_router.include_router(entity_counts.router, prefix="/entity-counts", tags=["entity-counts"])

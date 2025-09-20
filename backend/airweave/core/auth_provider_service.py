@@ -1,12 +1,13 @@
 """Service for managing auth provider operations."""
 
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud
 from airweave.core.logging import logger
+from airweave.platform.configs._base import ConfigValues
 from airweave.platform.locator import resource_locator
 
 auth_provider_logger = logger.with_prefix("Auth Provider Service: ").with_context(
@@ -25,8 +26,9 @@ class AuthProviderService:
     ) -> List[str]:
         """Get the runtime auth fields required from an auth provider for a source.
 
-        This filters out BYOC (Bring Your Own Credentials) fields like client_id
-        and client_secret, which are managed by the auth provider internally.
+        For OAuth sources, this returns the standard OAuth fields (access_token,
+        refresh_token, etc.) that auth providers should provide. BYOC-specific fields
+        like client_id and client_secret are managed by the auth provider internally.
 
         Args:
             db: The database session
@@ -36,47 +38,34 @@ class AuthProviderService:
             List of auth field names that should be requested from auth providers
 
         Raises:
-            HTTPException: If source not found or has no auth config
+            HTTPException: If source not found
         """
         # Get the source model
         source_model = await crud.source.get_by_short_name(db, short_name=source_short_name)
         if not source_model:
             raise HTTPException(status_code=404, detail=f"Source '{source_short_name}' not found")
 
-        if not source_model.auth_config_class:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Source '{source_short_name}' has no auth config class defined",
-            )
-
-        # Get the auth config class
-        auth_config_class = resource_locator.get_auth_config(source_model.auth_config_class)
-
-        # Get all fields from the auth config
-        all_fields = list(auth_config_class.model_fields.keys())
-
-        # Dynamically determine BYOC-specific fields based on class hierarchy
-        from airweave.platform.configs.auth import OAuth2BYOCAuthConfig, OAuth2WithRefreshAuthConfig
-
-        # Check if this is a BYOC auth config
-        if issubclass(auth_config_class, OAuth2BYOCAuthConfig):
-            # Get fields defined specifically in OAuth2BYOCAuthConfig (not inherited)
-            # These are the BYOC-specific fields that auth providers manage internally
-            byoc_specific_fields = set(OAuth2BYOCAuthConfig.model_fields.keys()) - set(
-                OAuth2WithRefreshAuthConfig.model_fields.keys()
-            )
-            runtime_fields = [field for field in all_fields if field not in byoc_specific_fields]
-
+        # Check if source has auth_config_class (DIRECT auth sources)
+        if source_model.auth_config_class:
+            # Direct auth source - get fields from auth config class
+            auth_config_class = resource_locator.get_auth_config(source_model.auth_config_class)
+            runtime_fields = list(auth_config_class.model_fields.keys())
             auth_provider_logger.debug(
-                f"Source '{source_short_name}' is BYOC - "
-                f"All fields: {all_fields}, Runtime fields: {runtime_fields}, "
-                f"BYOC-specific fields filtered: {list(byoc_specific_fields)}"
+                f"Source '{source_short_name}' uses direct auth - "
+                f"returning fields: {runtime_fields}"
             )
         else:
-            # Not a BYOC source, return all fields
-            runtime_fields = all_fields
+            # OAuth source - return standard OAuth fields that auth providers should provide
+            # Auth providers handle the OAuth flow and provide these tokens
+            if source_model.oauth_type == "with_refresh":
+                runtime_fields = ["access_token", "refresh_token"]
+            else:
+                # access_only type
+                runtime_fields = ["access_token"]
+
             auth_provider_logger.debug(
-                f"Source '{source_short_name}' is not BYOC - returning all fields: {all_fields}"
+                f"Source '{source_short_name}' uses OAuth ({source_model.oauth_type}) - "
+                f"returning standard OAuth fields: {runtime_fields}"
             )
 
         return runtime_fields
@@ -85,14 +74,14 @@ class AuthProviderService:
         self,
         db: AsyncSession,
         auth_provider_short_name: str,
-        auth_provider_config: Optional[Dict[str, Any]],
+        auth_provider_config: Optional[ConfigValues],
     ) -> dict:
         """Validate auth provider config fields based on auth provider config class.
 
         Args:
             db: The database session
             auth_provider_short_name: The short name of the auth provider
-            auth_provider_config: The auth provider config fields to validate
+            auth_provider_config: The auth provider config fields to validate (ConfigValues)
 
         Returns:
             The validated auth provider config fields as a dict
@@ -145,7 +134,6 @@ class AuthProviderService:
             return config.model_dump()
         except Exception as e:
             auth_provider_logger.error(f"Failed to validate auth provider config fields: {e}")
-
             # Check if it's a Pydantic validation error and format it nicely
             from pydantic import ValidationError
 

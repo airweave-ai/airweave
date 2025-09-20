@@ -221,8 +221,7 @@ async def _sync_embedding_models(db: AsyncSession, models: list[Type[BaseEmbeddi
             provider=model_class._provider,
             model_name=model_class._model_name,
             model_version=model_class._model_version,
-            auth_type=model_class._auth_type,
-            auth_config_class=model_class._auth_config_class,
+            auth_config_class=getattr(model_class, "_auth_config_class", None),
         )
         model_definitions.append(model_def)
 
@@ -358,11 +357,18 @@ async def _sync_sources(
                 UUID(id) for id in module_entity_map[source_module_name].get("entity_ids", [])
             ]
 
+        # Convert oauth_type enum to string if present
+        oauth_type = getattr(source_class, "_oauth_type", None)
+        if oauth_type:
+            oauth_type = oauth_type.value if hasattr(oauth_type, "value") else oauth_type
+
         source_def = schemas.SourceCreate(
             name=source_class._name,
             description=source_class.__doc__,
-            auth_type=source_class._auth_type,
-            auth_config_class=source_class._auth_config_class,
+            auth_methods=[m.value for m in getattr(source_class, "_auth_methods", [])],
+            oauth_type=oauth_type,
+            requires_byoc=getattr(source_class, "_requires_byoc", False),
+            auth_config_class=getattr(source_class, "_auth_config_class", None),
             config_class=source_class._config_class,
             short_name=source_class._short_name,
             class_name=source_class.__name__,
@@ -391,8 +397,7 @@ async def _sync_destinations(db: AsyncSession, destinations: list[Type[BaseDesti
             description=dest_class.__doc__,
             short_name=dest_class._short_name,
             class_name=dest_class.__name__,
-            auth_type=dest_class._auth_type,
-            auth_config_class=dest_class._auth_config_class,
+            auth_config_class=getattr(dest_class, "_auth_config_class", None),
             labels=getattr(dest_class, "_labels", []),
         )
         destination_definitions.append(dest_def)
@@ -419,9 +424,8 @@ async def _sync_auth_providers(
             short_name=auth_provider_class._short_name,
             class_name=auth_provider_class.__name__,
             description=auth_provider_class.__doc__,
-            auth_type=auth_provider_class._auth_type,
-            auth_config_class=auth_provider_class._auth_config_class,
-            config_class=auth_provider_class._config_class,
+            auth_config_class=getattr(auth_provider_class, "_auth_config_class", None),
+            config_class=getattr(auth_provider_class, "_config_class", None),
         )
         auth_provider_definitions.append(auth_provider_def)
 
@@ -563,8 +567,6 @@ def _create_transformer_definition(
         description=transformer_func.__doc__,
         method_name=transformer_func.__name__,
         module_name=transformer_func.__module__,
-        auth_type=getattr(transformer_func, "_auth_type", None),
-        auth_config_class=getattr(transformer_func, "_auth_config_class", None),
         config_schema=getattr(transformer_func, "_config_schema", {}),
         input_entity_definition_ids=input_entity_ids,
         output_entity_definition_ids=output_entity_ids,

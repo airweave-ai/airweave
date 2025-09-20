@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { RefreshCw, Copy, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/lib/theme-provider";
-import { DialogViewProps } from "../DialogFlow";
+import type { DialogViewProps } from "@/components/types/dialog";
 import { getAppIconUrl } from "@/lib/utils/icons";
 
 /**

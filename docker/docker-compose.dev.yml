@@ -1,7 +1,6 @@
 # docker-compose.dev.yml
 # Used for local development and debugging
 # Started by VS Code tasks.json for local debugging
-
 services:
   postgres:
     container_name: airweave-db
@@ -23,11 +22,10 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U airweave" ]
+      test: ["CMD-SHELL", "pg_isready -U airweave"]
       interval: 5s
       timeout: 5s
       retries: 5
-
   redis:
     container_name: airweave-redis
     image: redis:7-alpine
@@ -36,11 +34,10 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
-
   text2vec-transformers:
     container_name: airweave-embeddings
     image: semitechnologies/transformers-inference:sentence-transformers-all-MiniLM-L6-v2
@@ -50,12 +47,11 @@ services:
       ENABLE_CUDA: 0
       WORKERS_PER_NODE: 1
     healthcheck:
-      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:8080/health" ]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
       interval: 5s
       timeout: 10s
       retries: 3
     restart: on-failure
-
   qdrant:
     container_name: airweave-qdrant
     image: qdrant/qdrant:latest
@@ -65,12 +61,11 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
     healthcheck:
-      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:6333/healthz" ]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:6333/healthz"]
       interval: 10s
       timeout: 5s
       retries: 3
     restart: on-failure
-
   temporal:
     container_name: airweave-temporal
     image: temporalio/auto-setup:1.24.2
@@ -90,12 +85,11 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: [ "CMD", "tctl", "--address", "temporal:7233", "workflow", "list" ]
+      test: ["CMD", "tctl", "--address", "temporal:7233", "workflow", "list"]
       interval: 30s
       timeout: 10s
       retries: 5
     restart: on-failure
-
   temporal-ui:
     container_name: airweave-temporal-ui
     image: temporalio/ui:2.26.2
@@ -108,7 +102,6 @@ services:
       temporal:
         condition: service_healthy
     restart: on-failure
-
 volumes:
   postgres_data:
   redis_data:

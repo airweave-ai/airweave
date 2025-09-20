@@ -32,7 +32,7 @@ import {
     DialogDescription,
     DialogFooter,
 } from "@/components/ui/dialog";
-import { DialogViewProps } from "../DialogFlow";
+import type { DialogViewProps } from "@/components/types/dialog";
 import { getAppIconUrl } from "@/lib/utils/icons";
 import { useNavigate } from "react-router-dom";
 import { redirectWithError } from "@/lib/error-utils";

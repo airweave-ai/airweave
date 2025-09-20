@@ -34,7 +34,6 @@ class SyncContext:
     - collection - the collection that the sync is for
     - source connection - the source connection that the sync is for
     - guard rail - the guard rail service
-    - white label (optional)
     - logger - contextual logger with sync job metadata
 
     Concurrency / batching controls:
@@ -62,7 +61,6 @@ class SyncContext:
     guard_rail: GuardRailService
     logger: ContextualLogger
 
-    white_label: Optional[schemas.WhiteLabel] = None
     force_full_sync: bool = False
 
     # batching knobs (read by SyncOrchestrator at init)
@@ -90,7 +88,6 @@ class SyncContext:
         ctx: ApiContext,
         guard_rail: GuardRailService,
         logger: ContextualLogger,
-        white_label: Optional[schemas.WhiteLabel] = None,
         force_full_sync: bool = False,
         # Micro-batching controls
         should_batch: bool = True,
@@ -115,7 +112,6 @@ class SyncContext:
         self.entity_map = entity_map
         self.ctx = ctx
         self.guard_rail = guard_rail
-        self.white_label = white_label
         self.logger = logger
         self.force_full_sync = force_full_sync
 

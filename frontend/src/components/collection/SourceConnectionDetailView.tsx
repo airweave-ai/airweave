@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, RefreshCw, Play, Clock, Loader2, X, MoreVertical, Edit, Trash, Pencil, Eye, EyeOff } from "lucide-react";
 import { apiClient } from "@/lib/api";
+import { useUsageStore } from "@/lib/stores/usage";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
@@ -45,7 +46,7 @@ import {
 } from "@/components/ui/tooltip";
 import { EditSourceConnectionDialog } from "./EditSourceConnectionDialog";
 import { emitCollectionEvent, SOURCE_CONNECTION_UPDATED } from "@/lib/events";
-import { ActionCheckResponse } from "@/types";
+import { SingleActionCheckResponse } from "@/types";
 
 const nodeTypes = {
     sourceNode: SourceNode,
@@ -67,16 +68,15 @@ interface SourceConnection {
     modified_at: string;
     connection_id?: string;
     collection: string;
-    white_label_id?: string;
     created_by_email: string;
     modified_by_email: string;
     auth_fields?: Record<string, any> | string;
     status?: string;
-    latest_sync_job_status?: string;
-    latest_sync_job_id?: string;
-    latest_sync_job_started_at?: string;
-    latest_sync_job_completed_at?: string;
-    latest_sync_job_error?: string;
+    last_sync_job_status?: string;
+    last_sync_job_id?: string;
+    last_sync_job_started_at?: string;
+    last_sync_job_completed_at?: string;
+    last_sync_job_error?: string;
     cron_schedule?: string;
     next_scheduled_run?: string;
     auth_provider?: string;
@@ -527,12 +527,16 @@ const SourceConnectionDetailView = ({
     });
     const [nextRunTime, setNextRunTime] = useState<string | null>(null);
 
-    // Add state for usage limits
-    const [entitiesAllowed, setEntitiesAllowed] = useState(true);
-    const [entitiesCheckDetails, setEntitiesCheckDetails] = useState<ActionCheckResponse | null>(null);
-    const [syncsAllowed, setSyncsAllowed] = useState(true);
-    const [syncsCheckDetails, setSyncsCheckDetails] = useState<ActionCheckResponse | null>(null);
-    const [isCheckingUsage, setIsCheckingUsage] = useState(true);
+    // Usage check from store
+    const checkActions = useUsageStore(state => state.checkActions);
+    const actionChecks = useUsageStore(state => state.actionChecks);
+    const isCheckingUsage = useUsageStore(state => state.isLoading);
+
+    // Derived states from usage store
+    const entitiesAllowed = actionChecks.entities?.allowed ?? true;
+    const entitiesCheckDetails = actionChecks.entities ?? null;
+    const syncsAllowed = actionChecks.syncs?.allowed ?? true;
+    const syncsCheckDetails = actionChecks.syncs ?? null;
 
     const flowContainerRef = useRef<HTMLDivElement>(null);
 
@@ -568,32 +572,14 @@ const SourceConnectionDetailView = ({
     // Check if actions are allowed based on usage limits
     const checkUsageActions = useCallback(async () => {
         try {
-            // Check both entities and syncs in parallel
-            const [entitiesResponse, syncsResponse] = await Promise.all([
-                apiClient.get('/usage/check-action?action=entities'),
-                apiClient.get('/usage/check-action?action=syncs')
-            ]);
-
-            if (entitiesResponse.ok) {
-                const data: ActionCheckResponse = await entitiesResponse.json();
-                setEntitiesAllowed(data.allowed);
-                setEntitiesCheckDetails(data);
-            }
-
-            if (syncsResponse.ok) {
-                const data: ActionCheckResponse = await syncsResponse.json();
-                setSyncsAllowed(data.allowed);
-                setSyncsCheckDetails(data);
-            }
+            await checkActions({
+                entities: 1,
+                syncs: 1
+            });
         } catch (error) {
             console.error('Failed to check usage actions:', error);
-            // Default to allowed on error to not block users
-            setEntitiesAllowed(true);
-            setSyncsAllowed(true);
-        } finally {
-            setIsCheckingUsage(false);
         }
-    }, []);
+    }, [checkActions]);
 
     // API CALL 1: Fetch Source Connection details (from /source-connections/{id})
     const fetchSourceConnection = async () => {
@@ -629,7 +615,7 @@ const SourceConnectionDetailView = ({
 
     // API CALL 2: Fetch Sync Job details (from /source-connections/{id}/jobs/{job_id})
     const fetchSyncJob = async (connection: SourceConnection) => {
-        if (!connection.latest_sync_job_id) {
+        if (!connection.last_sync_job_id) {
             console.log("No latest sync job ID found");
             setSyncJob(null);
             setTotalEntities(0);
@@ -643,10 +629,10 @@ const SourceConnectionDetailView = ({
 
         try {
             console.log("Fetching sync job details...");
-            const response = await apiClient.get(`/source-connections/${connection.id}/jobs/${connection.latest_sync_job_id}`);
+            const response = await apiClient.get(`/source-connections/${connection.id}/jobs/${connection.last_sync_job_id}`);
 
             if (!response.ok) {
-                console.error(`Failed to fetch job with ID ${connection.latest_sync_job_id}, status: ${response.status}`);
+                console.error(`Failed to fetch job with ID ${connection.last_sync_job_id}, status: ${response.status}`);
                 setSyncJob(null);
                 setTotalEntities(0);
                 setTotalRuntime(null);
@@ -778,13 +764,13 @@ const SourceConnectionDetailView = ({
             // Track approximate start time for immediate runtime display (use UTC)
             setPendingJobStartTime(utcNow());
 
-            // Also update the source connection's latest_sync_job_status to reflect the new job
+            // Also update the source connection's last_sync_job_status to reflect the new job
             if (sourceConnection) {
                 setSourceConnection({
                     ...sourceConnection,
-                    latest_sync_job_status: newJob.status,
-                    latest_sync_job_id: newJob.id,
-                    latest_sync_job_started_at: newJob.started_at || undefined
+                    last_sync_job_status: newJob.status,
+                    last_sync_job_id: newJob.id,
+                    last_sync_job_started_at: newJob.started_at || undefined
                 });
             }
 
@@ -1373,7 +1359,7 @@ const SourceConnectionDetailView = ({
 
     // Save live progress to session storage
     useEffect(() => {
-        if (liveProgress && sourceConnection?.latest_sync_job_id &&
+        if (liveProgress && sourceConnection?.last_sync_job_id &&
             // Only save if we have actual progress data (not just empty initial state)
             (liveProgress.entities_inserted > 0 ||
                 liveProgress.entities_updated > 0 ||
@@ -1384,11 +1370,11 @@ const SourceConnectionDetailView = ({
                 liveProgress.is_failed)) {
             syncStorageService.saveProgress(
                 sourceConnectionId,
-                sourceConnection.latest_sync_job_id,
+                sourceConnection.last_sync_job_id,
                 liveProgress
             );
         }
-    }, [liveProgress, sourceConnectionId, sourceConnection?.latest_sync_job_id]);
+    }, [liveProgress, sourceConnectionId, sourceConnection?.last_sync_job_id]);
 
     // Reload data when sync completes
     useEffect(() => {
@@ -1621,7 +1607,7 @@ const SourceConnectionDetailView = ({
             // Emit event to notify parent components about the update
             emitCollectionEvent(SOURCE_CONNECTION_UPDATED, {
                 id: updatedConnection.id,
-                collectionId: updatedConnection.collection,
+                collectionId: updatedConnection.readable_collection_id,
                 updatedConnection
             });
 
@@ -2014,7 +2000,7 @@ const SourceConnectionDetailView = ({
                                         // Emit event to notify parent components
                                         emitCollectionEvent(SOURCE_CONNECTION_UPDATED, {
                                             id: sourceConnection.id,
-                                            collectionId: sourceConnection.collection,
+                                            collectionId: sourceConnection.readable_collection_id,
                                             deleted: true
                                         });
 

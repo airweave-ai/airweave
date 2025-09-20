@@ -9,7 +9,6 @@ from tiktoken import get_encoding
 
 from airweave.core.config import settings
 from airweave.core.logging import ContextualLogger
-from airweave.platform.auth.schemas import AuthType
 from airweave.platform.decorators import embedding_model
 
 from ._base import BaseEmbeddingModel
@@ -25,8 +24,7 @@ _tpm_limiter: AsyncLimiter | None = None
     "OpenAI Text2Vec Simple",
     "openai_text2vec_simple",
     "openai",
-    AuthType.config_class,
-    "OpenAIAuthConfig",
+    auth_config_class="OpenAIAuthConfig",
 )
 class OpenAIText2Vec(BaseEmbeddingModel):
     """Simplified OpenAI text2vec model configuration for embedding using official OpenAI client."""

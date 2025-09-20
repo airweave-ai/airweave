@@ -1,2 +1,2 @@
-export { default as DialogFlow } from './DialogFlow';
-export type { DialogFlowMode } from './DialogFlow';
+// Shared components exports
+export { SourceAuthenticationView } from './SourceAuthenticationView';

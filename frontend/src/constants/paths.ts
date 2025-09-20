@@ -5,11 +5,6 @@ export const protectedPaths = {
     collectionNew: "/collections/:readable_id/new",
     apiKeys: "/api-keys",
     authProviders: "/auth-providers",
-    whiteLabel: "/white-label",
-    whiteLabelTab: "/white-label/:id",
-    whiteLabelCreate: "/white-label/create",
-    whiteLabelDetail: "/white-label/:id",
-    whiteLabelEdit: "/white-label/:id/edit",
     authCallback: "/auth/callback/:short_name",
 }
 

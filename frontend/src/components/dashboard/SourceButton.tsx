@@ -9,7 +9,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ActionCheckResponse } from "@/types";
+import { SingleActionCheckResponse } from "@/types";
 
 interface SourceButtonProps {
   id: string;
@@ -18,10 +18,10 @@ interface SourceButtonProps {
   onClick?: () => void;
   disabled?: boolean;
   usageCheckDetails?: {
-    collections?: ActionCheckResponse | null;
-    source_connections?: ActionCheckResponse | null;
-    entities?: ActionCheckResponse | null;
-    syncs?: ActionCheckResponse | null;
+    collections?: SingleActionCheckResponse | null;
+    source_connections?: SingleActionCheckResponse | null;
+    entities?: SingleActionCheckResponse | null;
+    syncs?: SingleActionCheckResponse | null;
   };
 }
 

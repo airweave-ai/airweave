@@ -4,7 +4,7 @@ from time import sleep
 from typing import TYPE_CHECKING, Optional
 from uuid import UUID
 
-from sqlalchemy import JSON, ForeignKey, String, Text, event
+from sqlalchemy import JSON, Boolean, ForeignKey, String, Text, event
 from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 
 from airweave.models._base import OrganizationBase, UserMixin
@@ -12,8 +12,8 @@ from airweave.models._base import OrganizationBase, UserMixin
 if TYPE_CHECKING:
     from airweave.models.collection import Collection
     from airweave.models.connection import Connection
+    from airweave.models.connection_init_session import ConnectionInitSession
     from airweave.models.sync import Sync
-    from airweave.models.white_label import WhiteLabel
 
 
 class SourceConnection(OrganizationBase, UserMixin):
@@ -49,10 +49,14 @@ class SourceConnection(OrganizationBase, UserMixin):
     connection_id: Mapped[Optional[UUID]] = mapped_column(
         ForeignKey("connection.id", ondelete="CASCADE"), nullable=True
     )
-    white_label_id: Mapped[Optional[UUID]] = mapped_column(
-        ForeignKey("white_label.id", ondelete="SET NULL"), nullable=True
+    connection_init_session_id: Mapped[Optional[UUID]] = mapped_column(
+        ForeignKey("connection_init_session.id", ondelete="SET NULL"), nullable=True
     )
+
     # Status is now ephemeral - removed from database model
+    is_authenticated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
 
     # Relationships
     sync: Mapped[Optional["Sync"]] = relationship(
@@ -73,10 +77,8 @@ class SourceConnection(OrganizationBase, UserMixin):
         cascade="all, delete-orphan",
         single_parent=True,
     )
-    white_label: Mapped[Optional["WhiteLabel"]] = relationship(
-        "WhiteLabel",
-        back_populates="source_connections",
-        lazy="noload",
+    connection_init_session: Mapped[Optional["ConnectionInitSession"]] = relationship(
+        back_populates="source_connection"
     )
 
     # Relationship to the auth provider connection

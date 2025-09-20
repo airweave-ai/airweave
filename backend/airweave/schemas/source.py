@@ -11,7 +11,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_serializer, field_validator
 
-from airweave.platform.auth.schemas import AuthType
 from airweave.platform.configs._base import Fields
 
 
@@ -32,19 +31,27 @@ class SourceBase(BaseModel):
             "typical use cases."
         ),
     )
-    auth_type: Optional[AuthType] = Field(
+    auth_methods: Optional[List[str]] = Field(
         None,
-        description="Type of authentication mechanism required by this source (e.g., 'oauth2').",
+        description="List of supported authentication methods (e.g., 'direct', 'oauth_browser').",
     )
-    auth_config_class: str = Field(
-        ...,
+    oauth_type: Optional[str] = Field(
+        None,
+        description="OAuth token type for OAuth sources (e.g., 'access_only', 'with_refresh').",
+    )
+    requires_byoc: bool = Field(
+        False,
+        description="Whether this OAuth source requires users to bring their own client.",
+    )
+    auth_config_class: Optional[str] = Field(
+        None,
         description=(
             "Python class name that defines the authentication configuration fields "
-            "required for this source."
+            "required for this source (only for DIRECT auth)."
         ),
     )
-    config_class: str = Field(
-        ...,
+    config_class: Optional[str] = Field(
+        None,
         description=(
             "Python class name that defines the source-specific configuration options "
             "and parameters."
@@ -151,11 +158,12 @@ class SourceInDBBase(SourceBase):
 class Source(SourceInDBBase):
     """Complete source representation with authentication and configuration schemas."""
 
-    auth_fields: Fields = Field(
-        ...,
+    auth_fields: Optional[Fields] = Field(
+        None,
         description=(
             "Schema definition for authentication fields required to connect to this source. "
-            "Describes field types, validation rules, and user interface hints."
+            "Only present for sources using DIRECT authentication. OAuth sources handle "
+            "authentication through browser flows."
         ),
     )
     config_fields: Fields = Field(
@@ -176,7 +184,8 @@ class Source(SourceInDBBase):
                         "Connect to GitHub repositories for code, issues, pull requests, "
                         "and documentation"
                     ),
-                    "auth_type": "config_class",
+                    "auth_methods": ["direct"],
+                    "oauth_type": None,
                     "auth_config_class": "GitHubAuthConfig",
                     "config_class": "GitHubConfig",
                     "short_name": "github",
@@ -201,6 +210,10 @@ class Source(SourceInDBBase):
                                 "type": "string",
                                 "secret": True,
                             },
+                        ]
+                    },
+                    "config_fields": {
+                        "fields": [
                             {
                                 "name": "repo_name",
                                 "title": "Repository Name",
@@ -210,10 +223,6 @@ class Source(SourceInDBBase):
                                 ),
                                 "type": "string",
                             },
-                        ]
-                    },
-                    "config_fields": {
-                        "fields": [
                             {
                                 "name": "branch",
                                 "title": "Branch name",
@@ -225,7 +234,38 @@ class Source(SourceInDBBase):
                             },
                         ]
                     },
-                }
+                },
+                {
+                    "id": "660e8400-e29b-41d4-a716-446655440001",
+                    "name": "Gmail",
+                    "description": "Connect to Gmail for email threads, messages, and attachments",
+                    "auth_methods": ["oauth_browser", "oauth_token", "oauth_byoc"],
+                    "oauth_type": "with_refresh",
+                    "auth_config_class": None,
+                    "config_class": "GmailConfig",
+                    "short_name": "gmail",
+                    "class_name": "GmailSource",
+                    "output_entity_definition_ids": [
+                        "abc12345-6789-abcd-ef01-234567890abc",
+                        "abc67890-abcd-ef01-2345-67890abcdef1",
+                    ],
+                    "organization_id": None,
+                    "labels": ["Communication", "Email"],
+                    "created_at": "2024-01-01T00:00:00Z",
+                    "modified_at": "2024-01-01T00:00:00Z",
+                    "auth_fields": None,  # OAuth sources don't have auth_fields
+                    "config_fields": {
+                        "fields": [
+                            {
+                                "name": "sync_attachments",
+                                "title": "Sync Attachments",
+                                "description": "Whether to sync email attachments",
+                                "type": "boolean",
+                                "default": True,
+                            },
+                        ]
+                    },
+                },
             ]
         }
     }

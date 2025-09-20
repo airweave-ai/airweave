@@ -153,7 +153,7 @@ class SyncFactory:
         Returns:
             SyncContext object with all required components
         """
-        # Get source connection data first to access white_label_id safely
+        # Get source connection data first to access safely
         source_connection_data = await cls._get_source_connection_data(db, sync, ctx)
 
         # Create a contextualized logger with all job metadata
@@ -170,18 +170,10 @@ class SyncFactory:
             },
         )
 
-        # Fetch white label if set in sync using pre-fetched white_label_id
-        white_label = None
-        if source_connection_data["white_label_id"]:
-            white_label = await crud.white_label.get(
-                db, id=source_connection_data["white_label_id"], ctx=ctx
-            )
-
         source = await cls._create_source_instance_with_data(
             db=db,
             source_connection_data=source_connection_data,
             ctx=ctx,
-            white_label=white_label,
             access_token=access_token,
             logger=logger,  # Pass the contextual logger
         )
@@ -272,7 +264,6 @@ class SyncFactory:
             ctx=ctx,
             logger=logger,
             guard_rail=guard_rail,
-            white_label=white_label,
             force_full_sync=force_full_sync,
         )
 
@@ -288,7 +279,6 @@ class SyncFactory:
         sync: schemas.Sync,
         logger: ContextualLogger,
         ctx: ApiContext,
-        white_label: Optional[schemas.WhiteLabel] = None,
         access_token: Optional[str] = None,
     ) -> BaseSource:
         """Create and configure the source instance based on authentication type."""
@@ -296,7 +286,7 @@ class SyncFactory:
         source_connection_data = await cls._get_source_connection_data(db, sync, ctx)
 
         return await cls._create_source_instance_with_data(
-            db, source_connection_data, ctx, white_label, access_token, logger
+            db, source_connection_data, ctx, access_token, logger
         )
 
     @classmethod
@@ -306,7 +296,6 @@ class SyncFactory:
         source_connection_data: dict,
         ctx: ApiContext,
         logger: ContextualLogger,
-        white_label: Optional[schemas.WhiteLabel] = None,
         access_token: Optional[str] = None,
     ) -> BaseSource:
         """Create and configure the source instance using pre-fetched connection data."""
@@ -326,33 +315,22 @@ class SyncFactory:
             )
 
         # Step 2: Get credentials from appropriate source
-        source_credentials = await cls._get_source_credentials(
+        raw_credentials = await cls._get_source_credentials(
             db=db,
             source_connection_data=source_connection_data,
             ctx=ctx,
-            white_label=white_label,
             access_token=access_token,
             auth_provider_instance=auth_provider_instance,
         )
 
-        # Step 2.5: Convert credentials to auth config object if needed
-        # When using auth providers, credentials come as a dict, but some sources
-        # expect an auth config object (e.g., Stripe expects StripeAuthConfig)
-        auth_config_class_name = source_connection_data.get("auth_config_class")
-        if auth_config_class_name and isinstance(source_credentials, dict):
-            # Source has an auth config class and credentials are a dict
-            # This happens with auth providers - convert dict to config object
-            try:
-                auth_config_class = resource_locator.get_auth_config(auth_config_class_name)
-                source_credentials = auth_config_class.model_validate(source_credentials)
-                logger.info(
-                    f"Converted auth provider credentials to {auth_config_class_name} object"
-                )
-            except Exception as e:
-                logger.error(f"Failed to convert credentials to auth config object: {e}")
-                raise
+        # Step 2.5: Process credentials for source consumption
+        source_credentials = await cls._process_credentials_for_source(
+            raw_credentials=raw_credentials,
+            source_connection_data=source_connection_data,
+            logger=logger,
+        )
 
-        # Step 3: Create the source instance with actual credentials
+        # Step 3: Create the source instance with processed credentials
         source = await source_connection_data["source_class"].create(
             source_credentials, config=source_connection_data["config_fields"]
         )
@@ -377,14 +355,14 @@ class SyncFactory:
         # Step 5: Setup token manager if needed
         # The _setup_token_manager method will check if this source needs a token manager
         # based on whether its auth config inherits from OAuth2AuthConfig
+        # Pass raw_credentials to token manager so it has access to full token data
         try:
             await cls._setup_token_manager(
                 db=db,
                 source=source,
                 source_connection_data=source_connection_data,
-                source_credentials=source_credentials,
+                source_credentials=raw_credentials,  # Use raw credentials for token manager
                 ctx=ctx,
-                white_label=white_label,
                 logger=logger,
                 auth_provider_instance=auth_provider_instance,
             )
@@ -397,6 +375,63 @@ class SyncFactory:
             # The source can still work, just without automatic token refresh
 
         return source
+
+    @classmethod
+    async def _process_credentials_for_source(
+        cls,
+        raw_credentials: any,
+        source_connection_data: dict,
+        logger: Any,
+    ) -> any:
+        """Process raw credentials into the format expected by the source.
+
+        This method handles three cases:
+        1. OAuth sources without auth_config_class: Extract just the access_token string
+        2. Sources with auth_config_class and dict credentials: Convert to auth config object
+        3. Other sources: Pass through as-is
+        """
+        auth_config_class_name = source_connection_data.get("auth_config_class")
+        source_model = source_connection_data.get("source_model")
+        short_name = source_connection_data["short_name"]
+
+        # Case 1: OAuth sources without auth_config_class need just the access_token string
+        # This applies to sources like Asana, Google Calendar, etc.
+        if (
+            not auth_config_class_name
+            and source_model
+            and hasattr(source_model, "oauth_type")
+            and source_model.oauth_type
+        ):
+            # Extract access token from dict if present
+            if isinstance(raw_credentials, dict) and "access_token" in raw_credentials:
+                logger.debug(f"Extracting access_token for OAuth source {short_name}")
+                return raw_credentials["access_token"]
+            elif isinstance(raw_credentials, str):
+                # Already a string token, pass through
+                logger.debug(f"OAuth source {short_name} credentials already a string token")
+                return raw_credentials
+            else:
+                logger.warning(
+                    f"OAuth source {short_name} credentials not in expected format: "
+                    f"{type(raw_credentials)}"
+                )
+                return raw_credentials
+
+        # Case 2: Sources with auth_config_class and dict credentials
+        # Convert dict to auth config object (e.g., Stripe expects StripeAuthConfig)
+        if auth_config_class_name and isinstance(raw_credentials, dict):
+            try:
+                auth_config_class = resource_locator.get_auth_config(auth_config_class_name)
+                processed_credentials = auth_config_class.model_validate(raw_credentials)
+                msg = f"Converted credentials dict to {auth_config_class_name} object"
+                logger.info(f"{msg} for {short_name}")
+                return processed_credentials
+            except Exception as e:
+                logger.error(f"Failed to convert credentials to auth config object: {e}")
+                raise
+
+        # Case 3: Pass through as-is (already in correct format)
+        return raw_credentials
 
     @classmethod
     async def _get_source_connection_data(
@@ -427,11 +462,6 @@ class SyncFactory:
         auth_config_class = source_model.auth_config_class
         # Convert SQLAlchemy values to clean Python types to avoid lazy loading
         short_name = str(source_connection_obj.short_name)  # From SourceConnection
-        white_label_id = (
-            UUID(str(source_connection_obj.white_label_id))
-            if source_connection_obj.white_label_id
-            else None
-        )
         connection_id = UUID(str(connection.id))
 
         # Check if this connection uses an auth provider
@@ -458,7 +488,6 @@ class SyncFactory:
             "source_model": source_model,
             "source_class": source_class,
             "config_fields": config_fields,  # From SourceConnection
-            "white_label_id": white_label_id,  # From SourceConnection
             "short_name": short_name,  # From SourceConnection
             "auth_config_class": auth_config_class,
             "connection_id": connection_id,
@@ -551,7 +580,6 @@ class SyncFactory:
         db: AsyncSession,
         source_connection_data: dict,
         ctx: ApiContext,
-        white_label: Optional[schemas.WhiteLabel],
         access_token: Optional[str],
         auth_provider_instance: Optional[Any] = None,
     ) -> any:
@@ -598,10 +626,10 @@ class SyncFactory:
                 decrypted_credential=decrypted_credential,
                 ctx=ctx,
                 connection_id=source_connection_data["connection_id"],
-                white_label=white_label,
             )
 
-        # Simple credentials - no token extraction needed
+        # Return decrypted credentials as-is
+        # Token extraction for OAuth sources is now handled in _process_credentials_for_source
         return decrypted_credential
 
     @classmethod
@@ -647,7 +675,6 @@ class SyncFactory:
         decrypted_credential: dict,
         ctx: ApiContext,
         connection_id: UUID,
-        white_label: Optional[schemas.WhiteLabel],
     ) -> any:
         """Handle credentials that require auth configuration."""
         # Use pre-fetched auth_config_class to avoid SQLAlchemy lazy loading issues
@@ -666,7 +693,6 @@ class SyncFactory:
                 ctx,
                 connection_id,
                 decrypted_credential,
-                white_label,
             )
             # Just use the access token
             return oauth2_response.access_token
@@ -680,7 +706,6 @@ class SyncFactory:
         source: BaseSource,
         source_connection_data: dict,
         ctx: ApiContext,
-        white_label: Optional[schemas.WhiteLabel],
         final_access_token: Optional[str],
         logger: ContextualLogger,
     ) -> None:
@@ -695,7 +720,7 @@ class SyncFactory:
                 source,
                 source_connection_data,
                 ctx,
-                white_label,
+                None,
                 final_access_token,
                 logger,
             )
@@ -708,17 +733,18 @@ class SyncFactory:
         source_connection_data: dict,
         source_credentials: any,
         ctx: ApiContext,
-        white_label: Optional[schemas.WhiteLabel],
         logger: ContextualLogger,
         auth_provider_instance: Optional[BaseAuthProvider] = None,
     ) -> None:
         """Set up token manager for OAuth sources."""
         short_name = source_connection_data["short_name"]
         auth_config_class_name = source_connection_data.get("auth_config_class")
+        source_model = source_connection_data.get("source_model")
 
-        # Only create token manager for sources that use OAuth2AuthConfig or its subclasses
+        # Determine if we should create a token manager
         should_create_token_manager = False
 
+        # Case 1: Sources with OAuth2AuthConfig or its subclasses
         if auth_config_class_name:
             try:
                 # Get the auth config class
@@ -731,6 +757,16 @@ class SyncFactory:
                     should_create_token_manager = True
             except Exception as e:
                 logger.warning(f"Could not check auth config class for {short_name}: {str(e)}")
+
+        # Case 2: OAuth sources without auth_config_class (e.g., Asana, Google Calendar)
+        # These sources still need token management for refresh
+        elif source_model and hasattr(source_model, "oauth_type") and source_model.oauth_type:
+            # Check if we have OAuth credentials (dict with access_token)
+            if isinstance(source_credentials, dict) and "access_token" in source_credentials:
+                should_create_token_manager = True
+                logger.debug(
+                    f"OAuth source {short_name} without auth_config_class will use token manager"
+                )
 
         if should_create_token_manager:
             # Create a minimal connection object with only the fields needed by TokenManager
@@ -752,7 +788,6 @@ class SyncFactory:
                 source_connection=minimal_source_connection,
                 ctx=ctx,
                 initial_credentials=source_credentials,
-                white_label=white_label,
                 is_direct_injection=False,  # TokenManager will determine this internally
                 logger_instance=logger,
                 auth_provider_instance=auth_provider_instance,

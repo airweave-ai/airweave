@@ -1,6 +1,6 @@
 integrations:
   asana:
-    auth_type: "oauth2_with_refresh"
+    oauth_type: "with_refresh"
     url: "https://app.asana.com/-/oauth_authorize"
     backend_url: "https://app.asana.com/-/oauth_token"
     grant_type: "authorization_code"
@@ -10,10 +10,9 @@ integrations:
     client_credential_location: "body"
 
   bitbucket:
-    auth_type: "config_class"
 
   confluence:
-    auth_type: "oauth2_with_refresh_rotating"
+    oauth_type: "with_rotating_refresh"
     url: "https://auth.atlassian.com/authorize"
     backend_url: "https://auth.atlassian.com/oauth/token"
     grant_type: "authorization_code"
@@ -29,7 +28,7 @@ integrations:
       state: "YOUR_USER_BOUND_VALUE"
 
   dropbox:
-    auth_type: "oauth2_with_refresh"
+    oauth_type: "with_refresh"
     url: "https://www.dropbox.com/oauth2/authorize"
     backend_url: "https://api.dropbox.com/oauth2/token"
     grant_type: "authorization_code"
@@ -41,10 +40,9 @@ integrations:
       token_access_type: "offline"
 
   github:
-    auth_type: "config_class"
 
   gmail:
-    auth_type: "oauth2_with_refresh"
+    oauth_type: "with_refresh"
     url: "https://accounts.google.com/o/oauth2/auth"
     backend_url: "https://oauth2.googleapis.com/token"
     grant_type: "authorization_code"
@@ -58,7 +56,7 @@ integrations:
       prompt: "consent"
 
   google_calendar:
-    auth_type: "oauth2_with_refresh"
+    oauth_type: "with_refresh"
     url: "https://accounts.google.com/o/oauth2/auth"
     backend_url: "https://oauth2.googleapis.com/token"
     grant_type: "authorization_code"
@@ -72,7 +70,7 @@ integrations:
       prompt: "consent"
 
   google_drive:
-    auth_type: "oauth2_with_refresh"
+    oauth_type: "with_refresh"
     url: "https://accounts.google.com/o/oauth2/auth"
     backend_url: "https://oauth2.googleapis.com/token"
     grant_type: "authorization_code"
@@ -86,7 +84,7 @@ integrations:
       prompt: "consent"
 
   hubspot:
-    auth_type: "oauth2_with_refresh"
+    oauth_type: "with_refresh"
     url: "https://app.hubspot.com/oauth/authorize"
     backend_url: "https://api.hubapi.com/oauth/v1/token"
     grant_type: "authorization_code"
@@ -97,7 +95,7 @@ integrations:
     scope: "crm.objects.companies.read crm.objects.contacts.read crm.objects.deals.read oauth tickets"
 
   intercom:
-    auth_type: "oauth2"
+    oauth_type: "access_only"
     url: "https://app.intercom.com/oauth"
     backend_url: "https://api.intercom.io/auth/eagle/token"
     grant_type: "authorization_code"
@@ -108,7 +106,7 @@ integrations:
     scope: "read write"
 
   jira:
-    auth_type: "oauth2_with_refresh_rotating"
+    oauth_type: "with_rotating_refresh"
     url: "https://auth.atlassian.com/authorize"
     backend_url: "https://auth.atlassian.com/oauth/token"
     grant_type: "authorization_code"
@@ -124,7 +122,7 @@ integrations:
       state: "YOUR_USER_BOUND_VALUE"
 
   linear:
-    auth_type: "oauth2"
+    oauth_type: "access_only"
     url: "https://linear.app/oauth/authorize"
     backend_url: "https://api.linear.app/oauth/token"
     grant_type: "authorization_code"
@@ -135,7 +133,7 @@ integrations:
     scope: "read"
 
   monday:
-    auth_type: "oauth2"
+    oauth_type: "access_only"
     url: "https://auth.monday.com/oauth2/authorize"
     backend_url: "https://auth.monday.com/oauth2/token"
     grant_type: "authorization_code"
@@ -146,7 +144,7 @@ integrations:
     scope: "me:read boards:read docs:read workspaces:read users:read account:read updates:read assets:read tags:read teams:read"
 
   notion:
-    auth_type: "oauth2"
+    oauth_type: "access_only"
     url: "https://api.notion.com/v1/oauth/authorize"
     backend_url: "https://api.notion.com/v1/oauth/token"
     grant_type: "authorization_code"
@@ -158,7 +156,7 @@ integrations:
       owner: "user"
 
   onedrive:
-    auth_type: "oauth2_with_refresh"
+    oauth_type: "with_refresh"
     url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
     backend_url: "https://login.microsoftonline.com/common/oauth2/v2.0/token"
     grant_type: "authorization_code"
@@ -171,7 +169,7 @@ integrations:
       response_type: "code"
 
   outlook_calendar:
-    auth_type: "oauth2_with_refresh_rotating"
+    oauth_type: "with_rotating_refresh"
     url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
     backend_url: "https://login.microsoftonline.com/common/oauth2/v2.0/token"
     grant_type: "authorization_code"
@@ -184,7 +182,7 @@ integrations:
       response_mode: "query"
 
   outlook_mail:
-    auth_type: "oauth2_with_refresh_rotating"
+    oauth_type: "with_rotating_refresh"
     url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
     backend_url: "https://login.microsoftonline.com/common/oauth2/v2.0/token"
     grant_type: "authorization_code"
@@ -197,7 +195,7 @@ integrations:
       response_mode: "query"
 
   slack:
-    auth_type: "oauth2"
+    oauth_type: "access_only"
     url: "https://slack.com/oauth/v2/authorize"
     backend_url: "https://slack.com/api/oauth.v2.access"
     grant_type: "authorization_code"
@@ -208,10 +206,9 @@ integrations:
     scope: "app_mentions:read,channels:history,channels:join,channels:read,groups:history,groups:read,im:history,im:read,mpim:history,mpim:read,users:read"
 
   stripe:
-    auth_type: "api_key"
 
   todoist:
-    auth_type: "oauth2"
+    oauth_type: "access_only"
     url: "https://todoist.com/oauth/authorize"
     backend_url: "https://todoist.com/oauth/access_token"
     grant_type: "authorization_code"
@@ -222,7 +219,7 @@ integrations:
     scope: "data:read"
 
   clickup:
-    auth_type: "oauth2"
+    oauth_type: "access_only"
     url: "https://app.clickup.com/api"
     backend_url: "https://api.clickup.com/api/v2/oauth/token"
     grant_type: "authorization_code"
@@ -236,4 +233,3 @@ integrations:
       prompt: "consent"
 
   qdrant:
-    auth_type: "config_class"

@@ -22,6 +22,7 @@ class Settings(BaseSettings):
         FIRST_SUPERUSER (str): The email address of the first superuser.
         FIRST_SUPERUSER_PASSWORD (str): The password of the first superuser.
         ENCRYPTION_KEY (str): The encryption key.
+        STATE_SECRET (str): The HMAC secret for OAuth state token signing.
         CODE_SUMMARIZER_ENABLED (bool): Whether the code summarizer is enabled.
         DEBUG (bool): Whether debug mode is enabled.
         LOG_LEVEL (str): The logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
@@ -79,6 +80,10 @@ class Settings(BaseSettings):
     AUTH0_M2M_CLIENT_SECRET: Optional[str] = None  # Machine-to-Machine Client Secret
 
     ENCRYPTION_KEY: str
+
+    # OAuth state HMAC secret for CSRF protection
+    # Must be a strong, random secret in production
+    STATE_SECRET: str
 
     CODE_SUMMARIZER_ENABLED: bool = False
 
@@ -253,6 +258,28 @@ class Settings(BaseSettings):
         resend_api_key = info.data.get("RESEND_API_KEY")
         if resend_api_key and not v:
             raise ValueError("RESEND_FROM_EMAIL must be set when RESEND_API_KEY is configured")
+        return v
+
+    @field_validator("STATE_SECRET", mode="before")
+    def validate_state_secret(cls, v: str, info: ValidationInfo) -> str:
+        """Validate the STATE_SECRET has minimum required length.
+
+        Args:
+            v: The STATE_SECRET value.
+            info: Validation context containing all field values.
+
+        Returns:
+            str: The validated STATE_SECRET.
+
+        Raises:
+            ValueError: If STATE_SECRET is not set or too short.
+        """
+        if not v or len(v) < 32:
+            raise ValueError(
+                "STATE_SECRET must be at least 32 characters long. "
+                "Generate a strong secret using: "
+                "python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+            )
         return v
 
     @field_validator("SQLALCHEMY_ASYNC_DATABASE_URI", mode="before")

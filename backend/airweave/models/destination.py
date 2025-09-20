@@ -3,11 +3,9 @@
 from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import JSON, Column, ForeignKey, String, Text, UniqueConstraint
-from sqlalchemy import Enum as SQLAlchemyEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from airweave.models._base import Base
-from airweave.platform.auth.schemas import AuthType
 
 if TYPE_CHECKING:
     from airweave.models.connection import Connection
@@ -22,7 +20,6 @@ class Destination(Base):
     short_name: Mapped[str] = mapped_column(String, unique=True)
     class_name: Mapped[str] = mapped_column(String, nullable=False)
     auth_config_class: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    auth_type: Mapped[Optional[AuthType]] = mapped_column(SQLAlchemyEnum(AuthType), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     input_entity_definition_ids: Mapped[Optional[JSON]] = mapped_column(JSON, nullable=False)
     config_schema: Mapped[Optional[JSON]] = mapped_column(JSON, nullable=False)

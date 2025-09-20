@@ -46,6 +46,27 @@ else
     echo "Added new ENCRYPTION_KEY to .env file"
 fi
 
+# Check if STATE_SECRET exists AND has a non-empty value in .env
+EXISTING_STATE_SECRET=$(grep "^STATE_SECRET=" .env 2>/dev/null | head -1 | cut -d'=' -f2- | tr -d '"' | tr -d ' ')
+
+if [ -n "$EXISTING_STATE_SECRET" ]; then
+    echo "STATE_SECRET already exists in .env file, skipping generation."
+    echo "Current STATE_SECRET value: ********"
+else
+    echo "No valid STATE_SECRET found. Generating new HMAC secret..."
+    # Generate a secure 32-byte URL-safe secret
+    NEW_STATE_SECRET=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))' 2>/dev/null || openssl rand -base64 32)
+    echo "Generated STATE_SECRET: ********"
+
+    # Remove any existing empty STATE_SECRET line
+    grep -v "^STATE_SECRET=" .env > .env.tmp 2>/dev/null || true
+    mv .env.tmp .env
+
+    # Add the new STATE_SECRET at the end of the file
+    echo "STATE_SECRET=\"$NEW_STATE_SECRET\"" >> .env
+    echo "Added new STATE_SECRET to .env file"
+fi
+
 # Add SKIP_AZURE_STORAGE for faster local startup
 if ! grep -q "^SKIP_AZURE_STORAGE=" .env; then
     echo "SKIP_AZURE_STORAGE=true" >> .env
