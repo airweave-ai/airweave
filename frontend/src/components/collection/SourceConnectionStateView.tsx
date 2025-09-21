@@ -286,23 +286,60 @@ const SourceConnectionStateView: React.FC<Props> = ({
 
   // Handler for refreshing authentication URL
   const handleRefreshAuthUrl = useCallback(async () => {
+    if (!sourceConnection?.short_name) {
+      console.error('No source connection or short_name available for auth URL refresh');
+      return;
+    }
+
     setIsRefreshingAuth(true);
     try {
-      await fetchSourceConnection(true);
-      toast({
-        title: "Refreshed",
-        description: "Authentication URL has been refreshed"
+      console.log(`🔄 Refreshing OAuth URL for ${sourceConnection.short_name}`);
+
+      const response = await apiClient.get(`/source-connections/${sourceConnection.short_name}/oauth2_url`);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => response.text());
+        throw new Error(typeof errorData === 'string' ? errorData : JSON.stringify(errorData));
+      }
+
+      const data = await response.json();
+      const authUrl = data.url;
+
+      if (!authUrl) {
+        throw new Error('No authorization URL returned from server');
+      }
+
+      // Update the source connection with the new auth URL
+      setSourceConnection(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          auth: {
+            ...prev.auth,
+            auth_url: authUrl
+          }
+        };
       });
-    } catch (error) {
+
+      console.log(`✅ OAuth URL refreshed: ${authUrl}`);
+
       toast({
-        title: "Error",
-        description: "Failed to refresh authentication URL",
+        title: "Authentication URL refreshed",
+        description: "The authorization link has been updated successfully.",
+      });
+
+    } catch (error) {
+      console.error('❌ Failed to refresh OAuth URL:', error);
+
+      toast({
+        title: "Failed to refresh authentication link",
+        description: error instanceof Error ? error.message : 'An error occurred while refreshing the link.',
         variant: "destructive"
       });
     } finally {
       setIsRefreshingAuth(false);
     }
-  }, [fetchSourceConnection]);
+  }, [sourceConnection?.short_name]);
 
   useEffect(() => {
     const isNotAuthorized = sourceConnectionData?.status === 'not_yet_authorized' || !sourceConnectionData?.auth?.authenticated;
@@ -346,9 +383,9 @@ const SourceConnectionStateView: React.FC<Props> = ({
         // Check the store for active sync job after initialization
         const currentState = useEntityStateStore.getState().getConnection(sourceConnectionId);
         if (currentState?.last_sync_job?.id &&
-            (currentState.last_sync_job.status === 'in_progress' ||
-             currentState.last_sync_job.status === 'pending' ||
-             currentState.last_sync_job.status === 'created')) {
+          (currentState.last_sync_job.status === 'in_progress' ||
+            currentState.last_sync_job.status === 'pending' ||
+            currentState.last_sync_job.status === 'created')) {
           console.log('Subscribing to active sync job:', currentState.last_sync_job.id);
           await mediator.current.subscribeToJobUpdates(currentState.last_sync_job.id);
         }
@@ -553,198 +590,198 @@ const SourceConnectionStateView: React.FC<Props> = ({
 
       {/* Status Dashboard with Settings - Only show when authenticated */}
       {!isNotAuthorized && (
-      <div className="flex items-center justify-between">
-        <div className="flex gap-2 flex-wrap items-center">
-          {/* Entities Card */}
-          <div className={cn("h-8 px-3 py-1.5 border border-border rounded-md shadow-sm flex items-center gap-2 min-w-[90px]", isDark ? "bg-gray-900" : "bg-white")}>
-            <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">ENTITIES</span>
-            <span className="text-xs font-semibold text-foreground">
-              {/* Calculate total from real-time store data or fall back to source connection */}
-              {(
-                storeConnection?.entity_states?.reduce((sum, state) => sum + (state.total_count || 0), 0) ||
-                sourceConnection?.entities?.total_entities ||
-                0
-              ).toLocaleString()}
-            </span>
-          </div>
-
-          {/* Status Card */}
-          <div className={cn(
-            "h-8 px-3 py-1.5 rounded-md shadow-sm flex items-center gap-2 min-w-[90px]",
-            // Highlight when sync is running
-            (isRunning || isPending)
-              ? isDark
-                ? "bg-blue-900/30 border border-blue-700/50"
-                : "bg-blue-50 border border-blue-200"
-              : isDark
-                ? "bg-gray-900 border border-border"
-                : "bg-white border border-border"
-          )}>
-            <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">STATUS</span>
-            <div className="flex items-center gap-1">
-              {syncStatus.icon === 'loader' ? (
-                <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
-              ) : (
-                <span className={`inline-flex h-2 w-2 rounded-full ${syncStatus.color}`} />
-              )}
-              <span className={cn(
-                "text-xs font-medium capitalize",
-                (isRunning || isPending) ? "text-blue-600 dark:text-blue-400" : "text-foreground"
-              )}>{syncStatus.text}</span>
-            </div>
-          </div>
-
-          {/* Schedule Card */}
-          <div className={cn("h-8 px-3 py-1.5 border border-border rounded-md shadow-sm flex items-center gap-2 min-w-[100px]", isDark ? "bg-gray-900" : "bg-white")}>
-            <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">SCHEDULE</span>
-            <div className="flex items-center gap-1">
-              <Clock className="h-3 w-3 text-muted-foreground" />
-              <span className="text-xs font-medium text-foreground">
-                {sourceConnection?.schedule?.cron_expression ?
-                  (nextRunTime ? `In ${nextRunTime}` : 'Scheduled') :
-                  'Manual'}
+        <div className="flex items-center justify-between">
+          <div className="flex gap-2 flex-wrap items-center">
+            {/* Entities Card */}
+            <div className={cn("h-8 px-3 py-1.5 border border-border rounded-md shadow-sm flex items-center gap-2 min-w-[90px]", isDark ? "bg-gray-900" : "bg-white")}>
+              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">ENTITIES</span>
+              <span className="text-xs font-semibold text-foreground">
+                {/* Calculate total from real-time store data or fall back to source connection */}
+                {(
+                  storeConnection?.entity_states?.reduce((sum, state) => sum + (state.total_count || 0), 0) ||
+                  sourceConnection?.entities?.total_entities ||
+                  0
+                ).toLocaleString()}
               </span>
             </div>
+
+            {/* Status Card */}
+            <div className={cn(
+              "h-8 px-3 py-1.5 rounded-md shadow-sm flex items-center gap-2 min-w-[90px]",
+              // Highlight when sync is running
+              (isRunning || isPending)
+                ? isDark
+                  ? "bg-blue-900/30 border border-blue-700/50"
+                  : "bg-blue-50 border border-blue-200"
+                : isDark
+                  ? "bg-gray-900 border border-border"
+                  : "bg-white border border-border"
+            )}>
+              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">STATUS</span>
+              <div className="flex items-center gap-1">
+                {syncStatus.icon === 'loader' ? (
+                  <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
+                ) : (
+                  <span className={`inline-flex h-2 w-2 rounded-full ${syncStatus.color}`} />
+                )}
+                <span className={cn(
+                  "text-xs font-medium capitalize",
+                  (isRunning || isPending) ? "text-blue-600 dark:text-blue-400" : "text-foreground"
+                )}>{syncStatus.text}</span>
+              </div>
+            </div>
+
+            {/* Schedule Card */}
+            <div className={cn("h-8 px-3 py-1.5 border border-border rounded-md shadow-sm flex items-center gap-2 min-w-[100px]", isDark ? "bg-gray-900" : "bg-white")}>
+              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">SCHEDULE</span>
+              <div className="flex items-center gap-1">
+                <Clock className="h-3 w-3 text-muted-foreground" />
+                <span className="text-xs font-medium text-foreground">
+                  {sourceConnection?.schedule?.cron_expression ?
+                    (nextRunTime ? `In ${nextRunTime}` : 'Scheduled') :
+                    'Manual'}
+                </span>
+              </div>
+            </div>
+
+            {/* Last Sync Card - Only show when not actively syncing */}
+            {!(isRunning || isPending) && (
+              <TooltipProvider delayDuration={100}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className={cn(
+                      "h-8 px-3 py-1.5 rounded-md shadow-sm flex items-center gap-2 min-w-[100px] cursor-help",
+                      isDark ? "bg-gray-900 border border-border" : "bg-white border border-border"
+                    )}>
+                      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">LAST SYNC</span>
+                      <div className="flex items-center gap-1">
+                        <History className="h-3 w-3 text-muted-foreground" />
+                        <span className="text-xs font-medium text-foreground">
+                          {lastRanDisplay}
+                        </span>
+                      </div>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="text-xs">
+                      {formatExactTime(sourceConnection?.last_sync_job?.started_at)}
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
           </div>
 
-          {/* Last Sync Card - Only show when not actively syncing */}
-          {!(isRunning || isPending) && (
+          {/* Settings and Action Buttons */}
+          <div className="flex gap-1.5 items-center">
+            {/* Refresh/Cancel Button */}
             <TooltipProvider delayDuration={100}>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <div className={cn(
-                    "h-8 px-3 py-1.5 rounded-md shadow-sm flex items-center gap-2 min-w-[100px] cursor-help",
-                    isDark ? "bg-gray-900 border border-border" : "bg-white border border-border"
-                  )}>
-                    <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">LAST SYNC</span>
-                    <div className="flex items-center gap-1">
-                      <History className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-xs font-medium text-foreground">
-                        {lastRanDisplay}
-                      </span>
-                    </div>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={isSyncing ? handleCancelSync : handleRunSync}
+                    disabled={isRunningSync || isCancelling || isNotAuthorized}
+                    className={cn(
+                      "h-8 w-8 rounded-md border shadow-sm flex items-center justify-center transition-all duration-200",
+                      isNotAuthorized
+                        ? "opacity-50 cursor-not-allowed bg-muted border-border"
+                        : isSyncing
+                          ? isCancelling
+                            ? isDark
+                              ? "bg-orange-900/30 border-orange-700 hover:bg-orange-900/50 cursor-not-allowed"
+                              : "bg-orange-50 border-orange-200 hover:bg-orange-100 cursor-not-allowed"
+                            : isDark
+                              ? "bg-red-900/30 border-red-700 hover:bg-red-900/50 cursor-pointer"
+                              : "bg-red-50 border-red-200 hover:bg-red-100 cursor-pointer"
+                          : isRunningSync
+                            ? "bg-muted border-border cursor-not-allowed"
+                            : isDark
+                              ? "bg-gray-900 border-border hover:bg-muted cursor-pointer"
+                              : "bg-white border-border hover:bg-muted cursor-pointer"
+                    )}
+                    title={isSyncing ? (isCancelling ? "Cancelling sync..." : "Cancel sync") : (isRunningSync ? "Starting sync..." : "Refresh data")}
+                  >
+                    {isSyncing ? (
+                      isCancelling ? (
+                        <Loader2 className="h-3 w-3 animate-spin text-orange-500" />
+                      ) : (
+                        <Square className="h-3 w-3 text-red-500" />
+                      )
+                    ) : (
+                      <RefreshCw className={cn(
+                        "h-3 w-3 text-muted-foreground",
+                        isRunningSync && "animate-spin"
+                      )} />
+                    )}
+                  </button>
                 </TooltipTrigger>
                 <TooltipContent>
                   <p className="text-xs">
-                    {formatExactTime(sourceConnection?.last_sync_job?.started_at)}
+                    {isNotAuthorized
+                      ? "Authentication required before syncing"
+                      : isSyncing
+                        ? isCancelling
+                          ? "Cancelling sync..."
+                          : "Cancel sync"
+                        : isRunningSync
+                          ? "Starting sync..."
+                          : "Refresh data"}
                   </p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
-          )}
-        </div>
 
-        {/* Settings and Action Buttons */}
-        <div className="flex gap-1.5 items-center">
-          {/* Refresh/Cancel Button */}
-          <TooltipProvider delayDuration={100}>
-            <Tooltip>
-              <TooltipTrigger asChild>
+            {/* Settings Menu */}
+            {sourceConnection && (
+              <div className={cn("h-8 w-8 border border-border rounded-md shadow-sm flex items-center justify-center", isDark ? "bg-gray-900" : "bg-white")}>
                 <button
                   type="button"
-                  onClick={isSyncing ? handleCancelSync : handleRunSync}
-                  disabled={isRunningSync || isCancelling || isNotAuthorized}
-                  className={cn(
-                    "h-8 w-8 rounded-md border shadow-sm flex items-center justify-center transition-all duration-200",
-                    isNotAuthorized
-                      ? "opacity-50 cursor-not-allowed bg-muted border-border"
-                      : isSyncing
-                        ? isCancelling
-                          ? isDark
-                            ? "bg-orange-900/30 border-orange-700 hover:bg-orange-900/50 cursor-not-allowed"
-                            : "bg-orange-50 border-orange-200 hover:bg-orange-100 cursor-not-allowed"
-                          : isDark
-                            ? "bg-red-900/30 border-red-700 hover:bg-red-900/50 cursor-pointer"
-                            : "bg-red-50 border-red-200 hover:bg-red-100 cursor-pointer"
-                        : isRunningSync
-                          ? "bg-muted border-border cursor-not-allowed"
-                          : isDark
-                            ? "bg-gray-900 border-border hover:bg-muted cursor-pointer"
-                            : "bg-white border-border hover:bg-muted cursor-pointer"
-                  )}
-                  title={isSyncing ? (isCancelling ? "Cancelling sync..." : "Cancel sync") : (isRunningSync ? "Starting sync..." : "Refresh data")}
+                  onClick={() => {/* Settings menu trigger logic would go here */ }}
+                  className="h-8 w-8 flex items-center justify-center hover:bg-muted rounded-md transition-all duration-200"
+                  title="Settings"
                 >
-                  {isSyncing ? (
-                    isCancelling ? (
-                      <Loader2 className="h-3 w-3 animate-spin text-orange-500" />
-                    ) : (
-                      <Square className="h-3 w-3 text-red-500" />
-                    )
-                  ) : (
-                    <RefreshCw className={cn(
-                      "h-3 w-3 text-muted-foreground",
-                      isRunningSync && "animate-spin"
-                    )} />
-                  )}
+                  <SourceConnectionSettings
+                    sourceConnection={sourceConnection as any}
+                    onUpdate={handleConnectionUpdate}
+                    onDelete={onConnectionDeleted}
+                    isDark={isDark}
+                    resolvedTheme={resolvedTheme}
+                  />
                 </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p className="text-xs">
-                  {isNotAuthorized
-                    ? "Authentication required before syncing"
-                    : isSyncing
-                      ? isCancelling
-                        ? "Cancelling sync..."
-                        : "Cancel sync"
-                      : isRunningSync
-                        ? "Starting sync..."
-                        : "Refresh data"}
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          {/* Settings Menu */}
-          {sourceConnection && (
-            <div className={cn("h-8 w-8 border border-border rounded-md shadow-sm flex items-center justify-center", isDark ? "bg-gray-900" : "bg-white")}>
-              <button
-                type="button"
-                onClick={() => {/* Settings menu trigger logic would go here */ }}
-                className="h-8 w-8 flex items-center justify-center hover:bg-muted rounded-md transition-all duration-200"
-                title="Settings"
-              >
-        <SourceConnectionSettings
-          sourceConnection={sourceConnection as any}
-          onUpdate={handleConnectionUpdate}
-          onDelete={onConnectionDeleted}
-          isDark={isDark}
-          resolvedTheme={resolvedTheme}
-        />
-              </button>
-            </div>
-          )}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
       )}
 
       {/* Only show sync-related UI when authenticated */}
       {!isNotAuthorized && (
         <>
-      {/* Show error card if sync failed or there's an error */}
-      {(currentSyncJob?.status === 'failed') && (
-        <SyncErrorCard
-          error={currentSyncJob?.error || sourceConnection?.last_sync_job?.error || "The last sync failed. Check the logs for more details."}
-          isDark={isDark}
-        />
-      )}
+          {/* Show error card if sync failed or there's an error */}
+          {(currentSyncJob?.status === 'failed') && (
+            <SyncErrorCard
+              error={currentSyncJob?.error || sourceConnection?.last_sync_job?.error || "The last sync failed. Check the logs for more details."}
+              isDark={isDark}
+            />
+          )}
 
           {/* Show Entity State List only when authenticated */}
-      <EntityStateList
-        state={storeConnection}  // Pass store connection for real-time updates
-        sourceShortName={sourceConnection?.short_name || ''}
-        isDark={isDark}
-        onStartSync={handleRunSync}
-        isRunning={isRunning}
-        isPending={isPending}
-        entityStates={sourceConnection?.entities ?
-          Object.entries(sourceConnection.entities.by_type).map(([type, stats]) => ({
-            entity_type: type,
-            total_count: stats.count,
-            last_updated_at: stats.last_updated,
-            sync_status: stats.sync_status as 'pending' | 'syncing' | 'synced' | 'failed'
-          })) : undefined}  // Convert entities to entity_states format for EntityStateList
-      />
+          <EntityStateList
+            state={storeConnection}  // Pass store connection for real-time updates
+            sourceShortName={sourceConnection?.short_name || ''}
+            isDark={isDark}
+            onStartSync={handleRunSync}
+            isRunning={isRunning}
+            isPending={isPending}
+            entityStates={sourceConnection?.entities ?
+              Object.entries(sourceConnection.entities.by_type).map(([type, stats]) => ({
+                entity_type: type,
+                total_count: stats.count,
+                last_updated_at: stats.last_updated,
+                sync_status: stats.sync_status as 'pending' | 'syncing' | 'synced' | 'failed'
+              })) : undefined}  // Convert entities to entity_states format for EntityStateList
+          />
         </>
       )}
     </div>
