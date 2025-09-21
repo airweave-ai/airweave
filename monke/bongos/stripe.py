@@ -30,7 +30,7 @@ class StripeBongo(BaseBongo):
 
         # Configuration from kwargs
         self.entity_count = kwargs.get('entity_count', 10)
-        self.openai_model = kwargs.get('openai_model', 'gpt-5')
+        self.llm_model = kwargs.get("llm_model", None)
 
         # Test data tracking
         self.test_customers = []
@@ -54,7 +54,7 @@ class StripeBongo(BaseBongo):
             # Short unique token used in name and metadata for verification
             token = str(uuid.uuid4())[:8]
 
-            name, email, description = await generate_stripe_artifact(self.openai_model, token)
+            name, email, description = await generate_stripe_artifact(self.llm_model, token)
 
             # Create customer
             customer_data = await self._create_test_customer(
@@ -98,7 +98,7 @@ class StripeBongo(BaseBongo):
 
                 # Generate new content with same token
                 name, email, description = await generate_stripe_artifact(
-                    self.openai_model, token, is_update=True
+                    self.llm_model, token, is_update=True
                 )
 
                 # Update customer

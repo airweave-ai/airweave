@@ -55,7 +55,7 @@ async def generate_dropbox_artifact(
 
     Returns (title, content). The token must be embedded in the output by instruction.
     """
-    llm = LLMClient(model_override=model)
+    llm = LLMClient(model_override=model if model else None)
 
     instructions = {
         "markdown": (

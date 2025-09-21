@@ -53,7 +53,7 @@ async def generate_asana_task(model: str, token: str) -> Tuple[str, str, List[st
     Returns:
         Tuple of (title, notes, comments)
     """
-    llm = LLMClient(model_override=model)
+    llm = LLMClient(model_override=model if model else None)
 
     instruction = (
         "Generate a realistic Asana task for a software development project. "

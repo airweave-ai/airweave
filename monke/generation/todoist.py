@@ -13,7 +13,7 @@ async def generate_todoist_artifact(
 
     Returns (content, description, priority). The token must be embedded in the output by instruction.
     """
-    llm = LLMClient(model_override=model)
+    llm = LLMClient(model_override=model if model else None)
 
     if is_update:
         instruction = (

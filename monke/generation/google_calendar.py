@@ -13,7 +13,7 @@ async def generate_google_calendar_artifact(
 
     Returns (title, description, duration_hours). The token must be embedded in the output by instruction.
     """
-    llm = LLMClient(model_override=model)
+    llm = LLMClient(model_override=model if model else None)
 
     if is_update:
         instruction = (

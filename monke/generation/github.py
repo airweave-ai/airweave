@@ -44,7 +44,7 @@ async def generate_github_artifact(file_type: str, model: str, token: str) -> Tu
 
     Returns (title, body). The token must be embedded in the output by instruction.
     """
-    llm = LLMClient(model_override=model)
+    llm = LLMClient(model_override=model if model else None)
 
     instructions = {
         "markdown": (

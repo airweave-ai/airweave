@@ -33,7 +33,7 @@ class GitHubBongo(BaseBongo):
         # Configuration from kwargs
         self.entity_count = kwargs.get('entity_count', 10)
         self.file_types = kwargs.get('file_types', ["markdown", "python", "json"])
-        self.openai_model = kwargs.get('openai_model', 'gpt-5')
+        self.llm_model = kwargs.get('llm_model', None)
 
         # Test data tracking
         self.test_files = []
@@ -58,7 +58,7 @@ class GitHubBongo(BaseBongo):
             # Short unique token used in filename and body for verification
             token = str(uuid.uuid4())[:8]
 
-            title, content = await generate_github_artifact(file_type, self.openai_model, token)
+            title, content = await generate_github_artifact(file_type, self.llm_model, token)
             slug = slugify(title)[:40] or f"monke-{token}"
             filename = f"{slug}-{token}.{self._get_file_extension(file_type)}"
 
@@ -97,7 +97,7 @@ class GitHubBongo(BaseBongo):
                 file_type = file_info.get("file_type", "markdown")
                 token = file_info.get("token") or str(uuid.uuid4())[:8]
                 # Regenerate content with same token to indicate continuity
-                title, updated_content = await generate_github_artifact(file_type, self.openai_model, token)
+                title, updated_content = await generate_github_artifact(file_type, self.llm_model, token)
 
                 updated_file = await self._update_test_file(
                     file_info["path"],

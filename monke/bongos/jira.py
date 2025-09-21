@@ -31,7 +31,7 @@ class JiraBongo(BaseBongo):
 
         # Configuration from kwargs
         self.entity_count = kwargs.get('entity_count', 10)
-        self.openai_model = kwargs.get('openai_model', 'gpt-5')
+        self.llm_model = kwargs.get("llm_model", None)
 
         # Test data tracking
         self.test_issues = []
@@ -63,7 +63,7 @@ class JiraBongo(BaseBongo):
             # Short unique token used in summary and description for verification
             token = str(uuid.uuid4())[:8]
 
-            summary, description, issue_type = await generate_jira_artifact(self.openai_model, token)
+            summary, description, issue_type = await generate_jira_artifact(self.llm_model, token)
 
             # Create issue
             issue_data = await self._create_test_issue(
@@ -108,7 +108,7 @@ class JiraBongo(BaseBongo):
 
                 # Generate new content with same token
                 summary, description, _ = await generate_jira_artifact(
-                    self.openai_model, token, is_update=True
+                    self.llm_model, token, is_update=True
                 )
 
                 # Update issue

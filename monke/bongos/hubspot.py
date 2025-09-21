@@ -18,7 +18,7 @@ class HubSpotBongo(BaseBongo):
         super().__init__(credentials)
         self.access_token: str = credentials["access_token"]
         self.entity_count: int = int(kwargs.get("entity_count", 3))
-        self.openai_model: str = kwargs.get("openai_model", "gpt-4.1")
+        self.llm_model = kwargs.get("llm_model", None)
         self.rate_limit_delay = float(kwargs.get("rate_limit_delay_ms", 800)) / 1000.0
         self.logger = get_logger("hubspot_bongo")
         self._contacts: List[Dict[str, Any]] = []
@@ -31,7 +31,7 @@ class HubSpotBongo(BaseBongo):
             for _ in range(self.entity_count):
                 await self._pace()
                 token = str(uuid.uuid4())[:8]
-                c = await generate_hubspot_contact(self.openai_model, token)
+                c = await generate_hubspot_contact(self.llm_model, token)
                 payload = {
                     "properties": {
                         "email": c.email,

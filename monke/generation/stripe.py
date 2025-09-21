@@ -13,7 +13,7 @@ async def generate_stripe_artifact(
 
     Returns (name, email, description). The token must be embedded in the output by instruction.
     """
-    llm = LLMClient(model_override=model)
+    llm = LLMClient(model_override=model if model else None)
 
     if is_update:
         instruction = (

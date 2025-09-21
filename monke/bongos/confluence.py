@@ -31,7 +31,7 @@ class ConfluenceBongo(BaseBongo):
 
         # Configuration from kwargs
         self.entity_count = kwargs.get('entity_count', 10)
-        self.openai_model = kwargs.get('openai_model', 'gpt-5')
+        self.llm_model = kwargs.get('llm_model', None)
 
         # Test data tracking
         self.test_pages = []
@@ -63,7 +63,7 @@ class ConfluenceBongo(BaseBongo):
             # Short unique token used in title and content for verification
             token = str(uuid.uuid4())[:8]
 
-            title, content = await generate_confluence_artifact(self.openai_model, token)
+            title, content = await generate_confluence_artifact(self.llm_model, token)
 
             # Create page
             page_data = await self._create_test_page(
@@ -106,7 +106,7 @@ class ConfluenceBongo(BaseBongo):
 
                 # Generate new content with same token
                 title, content = await generate_confluence_artifact(
-                    self.openai_model, token, is_update=True
+                    self.llm_model, token, is_update=True
                 )
 
                 # Update page

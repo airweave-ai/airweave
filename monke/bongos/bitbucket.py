@@ -35,7 +35,7 @@ class BitbucketBongo(BaseBongo):
         self.workspace = kwargs.get('workspace', self.username)  # Default to username
         self.repo_slug = kwargs.get('repo_slug', 'monke-test-repo')
         self.branch = kwargs.get('branch', 'main')
-        self.openai_model = kwargs.get('openai_model', 'gpt-5')
+        self.llm_model = kwargs.get('llm_model', None)
 
         # Test data tracking
         self.test_files = []
@@ -63,7 +63,7 @@ class BitbucketBongo(BaseBongo):
             token = str(uuid.uuid4())[:8]
 
             filename, content, file_type = await generate_bitbucket_artifact(
-                self.openai_model, token
+                self.llm_model, token
             )
             filepath = f"monke-test/{filename}-{token}.{file_type}"
 
@@ -106,7 +106,7 @@ class BitbucketBongo(BaseBongo):
 
                 # Generate new content with same token
                 _, content, _ = await generate_bitbucket_artifact(
-                    self.openai_model, token, is_update=True
+                    self.llm_model, token, is_update=True
                 )
 
                 # Update file

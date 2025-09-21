@@ -9,7 +9,7 @@ connector:
     # access_token: "${JIRA_ACCESS_TOKEN}"
   config_fields:
     cloud_id: "${JIRA_CLOUD_ID}"  # Optional, will be auto-discovered if not provided
-    openai_model: "gpt-4.1-mini"
+    # llm_model: "model-name"  # Optional: override LLM model (otherwise uses env.test detection)
     # post_create_sleep_seconds: 7  # Optional: wait N seconds after creation before first sync
 
 test_flow:

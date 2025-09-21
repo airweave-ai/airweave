@@ -16,7 +16,7 @@ class LinearBongo(BaseBongo):
         super().__init__(credentials)
         self.access_token: str = credentials["access_token"]  # Personal API key or OAuth token
         self.entity_count: int = int(kwargs.get("entity_count", 3))
-        self.openai_model: str = kwargs.get("openai_model", "gpt-4.1-mini")
+        self.llm_model = kwargs.get("llm_model", None)
         self.rate_limit_delay = float(kwargs.get("rate_limit_delay_ms", 500)) / 1000.0
         self.logger = get_logger("linear_bongo")
         self._issues: List[Dict[str, Any]] = []
@@ -30,7 +30,7 @@ class LinearBongo(BaseBongo):
             for _ in range(self.entity_count):
                 await self._pace()
                 token = str(uuid.uuid4())[:8]
-                data = await generate_linear_issue(self.openai_model, token)
+                data = await generate_linear_issue(self.llm_model, token)
                 q = """
                 mutation IssueCreate($input: IssueCreateInput!) {
                   issueCreate(input: $input) {

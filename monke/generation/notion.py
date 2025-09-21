@@ -77,7 +77,7 @@ async def generate_notion_page(
     update: bool = False
 ) -> Tuple[str, List[Dict[str, Any]]]:
     """Generate page content for Notion testing using LLM."""
-    llm = LLMClient(model_override=model)
+    llm = LLMClient(model_override=model if model else None)
 
     update_context = " (updated version)" if update else ""
 

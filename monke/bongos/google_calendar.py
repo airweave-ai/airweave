@@ -36,7 +36,7 @@ class GoogleCalendarBongo(BaseBongo):
 
         # Config from kwargs
         self.entity_count = kwargs.get("entity_count", 10)
-        self.openai_model = kwargs.get("openai_model", "gpt-5")
+        self.llm_model = kwargs.get("llm_model", None)
 
         # Test data tracking
         self.test_events: List[Dict[str, Any]] = []
@@ -77,7 +77,7 @@ class GoogleCalendarBongo(BaseBongo):
         for i in range(self.entity_count):
             token = str(uuid.uuid4())[:8]
             title, description, duration_hours = await generate_google_calendar_artifact(
-                self.openai_model, token
+                self.llm_model, token
             )
 
             start_time = datetime.now(timezone.utc) + timedelta(days=i + 1)
@@ -118,7 +118,7 @@ class GoogleCalendarBongo(BaseBongo):
         for event_info in self.test_events[: min(3, self.entity_count)]:
             token = event_info.get("token") or str(uuid.uuid4())[:8]
             title, description, _ = await generate_google_calendar_artifact(
-                self.openai_model, token, is_update=True
+                self.llm_model, token, is_update=True
             )
 
             await self._update_test_event(

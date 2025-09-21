@@ -7,7 +7,7 @@ connector:
   type: "todoist"
   auth_fields: {}
   config_fields:
-    openai_model: "gpt-5"
+    # llm_model: "model-name"  # Optional: override LLM model (otherwise uses env.test detection)
     post_create_sleep_seconds: 15
 
 test_flow:

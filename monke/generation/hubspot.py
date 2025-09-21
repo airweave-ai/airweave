@@ -7,7 +7,7 @@ async def generate_hubspot_contact(model: str, token: str) -> HubSpotContact:
     Generate a realistic CRM contact. The email MUST contain the token (e.g., token@monke.test)
     so we can reliably verify later via search.
     """
-    llm = LLMClient(model_override=model)
+    llm = LLMClient(model_override=model if model else None)
     instruction = (
         "Generate a realistic CRM contact for a B2B SaaS context. "
         f"The literal token '{token}' MUST be embedded in the email local-part (e.g., '{token}@example.test') "

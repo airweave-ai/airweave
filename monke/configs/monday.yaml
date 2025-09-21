@@ -5,7 +5,7 @@ connector:
   type: "monday"
   auth_fields: {}   # expects access_token (personal token or OAuth)
   config_fields:
-    openai_model: "gpt-4.1-mini"
+    # llm_model: "model-name"  # Optional: override LLM model (otherwise uses env.test detection)
     rate_limit_delay_ms: 500
 test_flow:
   steps: [create, sync, verify, update, sync, verify, partial_delete, sync, verify_partial_deletion, verify_remaining_entities, complete_delete, sync, verify_complete_deletion]

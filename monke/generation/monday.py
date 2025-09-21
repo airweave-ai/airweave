@@ -3,7 +3,7 @@ from monke.generation.schemas.monday import MondayItem
 
 
 async def generate_monday_item(model: str, token: str) -> MondayItem:
-    llm = LLMClient(model_override=model)
+    llm = LLMClient(model_override=model if model else None)
     instruction = (
         "Generate a realistic work item summary for a monday.com board. "
         f"Include the literal token '{token}' in the item name and note. "

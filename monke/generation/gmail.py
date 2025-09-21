@@ -13,7 +13,7 @@ async def generate_gmail_artifact(
     Returns (subject, body). The literal token must appear in the body.
     Uses JSON mode (response_format: json_object) under the hood.
     """
-    llm = LLMClient(model_override=model)
+    llm = LLMClient(model_override=model if model else None)
 
     if is_update:
         instruction = (

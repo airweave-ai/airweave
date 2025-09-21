@@ -31,7 +31,7 @@ class GmailBongo(BaseBongo):
 
         # Configuration from kwargs
         self.entity_count = kwargs.get("entity_count", 10)
-        self.openai_model = kwargs.get("openai_model", "gpt-4.1")  # sensible default for JSON mode
+        self.llm_model = kwargs.get("llm_model", None)
         self.llm_max_concurrency = int(kwargs.get("llm_max_concurrency", 8))
 
         # Test data tracking
@@ -60,7 +60,7 @@ class GmailBongo(BaseBongo):
 
         async def gen_one(tok: str):
             async with sem:
-                subject, body = await generate_gmail_artifact(self.openai_model, tok)
+                subject, body = await generate_gmail_artifact(self.llm_model, tok)
                 return tok, subject, body
 
         gen_results = await asyncio.gather(*[gen_one(t) for t in tokens])
@@ -104,7 +104,7 @@ class GmailBongo(BaseBongo):
             token = email_info.get("token") or str(uuid.uuid4())[:8]
             async with sem:
                 subject, body = await generate_gmail_artifact(
-                    self.openai_model, token, is_update=True
+                    self.llm_model, token, is_update=True
                 )
                 return email_info, token, subject, body
 

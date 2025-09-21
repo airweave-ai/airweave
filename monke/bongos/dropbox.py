@@ -31,7 +31,7 @@ class DropboxBongo(BaseBongo):
         # Configuration from kwargs
         self.entity_count = kwargs.get('entity_count', 10)
         self.file_types = kwargs.get('file_types', ["markdown", "text", "json"])
-        self.openai_model = kwargs.get('openai_model', 'gpt-5')
+        self.llm_model = kwargs.get('llm_model', None)
 
         # Test data tracking
         self.test_files = []
@@ -60,7 +60,7 @@ class DropboxBongo(BaseBongo):
             # Short unique token used in filename and content for verification
             token = str(uuid.uuid4())[:8]
 
-            title, content = await generate_dropbox_artifact(file_type, self.openai_model, token)
+            title, content = await generate_dropbox_artifact(file_type, self.llm_model, token)
             filename = f"{title}-{token}.{self._get_file_extension(file_type)}"
             file_path = f"{self.test_folder_path}/{filename}"
 
@@ -103,7 +103,7 @@ class DropboxBongo(BaseBongo):
 
                 # Generate new content with same token
                 title, content = await generate_dropbox_artifact(
-                    file_type, self.openai_model, token, is_update=True
+                    file_type, self.llm_model, token, is_update=True
                 )
 
                 # Update file content

@@ -7,7 +7,7 @@ async def generate_linear_issue(model: str, token: str) -> LinearIssue:
     Generate a realistic software/dev work item.
     Token MUST appear at the start of the title and inside the description/comments.
     """
-    llm = LLMClient(model_override=model)
+    llm = LLMClient(model_override=model if model else None)
     instruction = (
         "Create a realistic engineering issue for a modern web service. "
         f"Start the title with the literal token '{token}' and include it in the description and at least one comment. "

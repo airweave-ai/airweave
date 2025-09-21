@@ -3,7 +3,7 @@ from monke.generation.schemas.outlook_mail import OutlookMessage
 
 
 async def generate_outlook_message(model: str, token: str) -> OutlookMessage:
-    llm = LLMClient(model_override=model)
+    llm = LLMClient(model_override=model if model else None)
     instruction = (
         "Generate a short, safe, non-sensitive email draft about an internal product update. "
         f"Include the literal token '{token}' in subject and body. Use example recipients @example.test"

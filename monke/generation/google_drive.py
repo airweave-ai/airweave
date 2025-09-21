@@ -71,7 +71,7 @@ async def generate_google_drive_artifact(
 
     Returns (title, content, mime_type). The token must be embedded in the output by instruction.
     """
-    llm = LLMClient(model_override=model)
+    llm = LLMClient(model_override=model if model else None)
 
     instructions = {
         "document": (

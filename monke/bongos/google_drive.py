@@ -32,7 +32,7 @@ class GoogleDriveBongo(BaseBongo):
         # Configuration from kwargs
         self.entity_count = kwargs.get("entity_count", 10)
         self.file_types = kwargs.get("file_types", ["document", "spreadsheet", "pdf"])
-        self.openai_model = kwargs.get("openai_model", "gpt-5")
+        self.llm_model = kwargs.get("llm_model", None)
 
         # Test data tracking
         self.test_files = []
@@ -62,7 +62,7 @@ class GoogleDriveBongo(BaseBongo):
             token = str(uuid.uuid4())[:8]
 
             title, content, mime_type = await generate_google_drive_artifact(
-                file_type, self.openai_model, token
+                file_type, self.llm_model, token
             )
 
             filename = self._filename_with_extension(f"{title}-{token}", file_type)
@@ -112,7 +112,7 @@ class GoogleDriveBongo(BaseBongo):
 
                 # Generate new content with same token
                 title, content, mime_type = await generate_google_drive_artifact(
-                    file_type, self.openai_model, token, is_update=True
+                    file_type, self.llm_model, token, is_update=True
                 )
 
                 # Update file content

@@ -8,8 +8,8 @@ connector:
   auth_fields: {}
     # username: "${BITBUCKET_USERNAME}"
     # app_password: "${BITBUCKET_APP_PASSWORD}"
-  config_fields:
-    openai_model: "gpt-4.1-mini"
+  config_fields: {}
+    # llm_model: "model-name"  # Optional: override LLM model (otherwise uses env.test detection)
     # post_create_sleep_seconds: 7  # Optional: wait N seconds after creation before first sync
 
 test_flow:

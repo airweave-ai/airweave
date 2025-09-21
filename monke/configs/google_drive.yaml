@@ -7,8 +7,8 @@ connector:
   type: "google_drive"
   auth_fields: {}
     # access_token: "${GOOGLE_DRIVE_ACCESS_TOKEN}"
-  config_fields:
-    openai_model: "gpt-4.1"
+  config_fields: {}
+    # llm_model: "model-name"  # Optional: override LLM model (otherwise uses env.test detection)
     # post_create_sleep_seconds: 7  # Optional: wait N seconds after creation before first sync
 
 test_flow:

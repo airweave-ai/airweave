@@ -30,13 +30,13 @@ class AsanaBongo(BaseBongo):
 
         Args:
             credentials: Dict with at least "access_token" (Asana PAT)
-            **kwargs: Optional configuration such as entity_count, openai_model,
+            **kwargs: Optional configuration such as entity_count, llm_model,
                 max_concurrency, rate_limit_delay
         """
         super().__init__(credentials)
         self.access_token: str = credentials["access_token"]
         self.entity_count: int = int(kwargs.get("entity_count", 5))
-        self.openai_model: str = kwargs.get("openai_model", "gpt-4o-mini")
+        self.llm_model = kwargs.get("llm_model", None)
         self.max_concurrency: int = int(kwargs.get("max_concurrency", 1))
         # Use rate_limit_delay_ms from config if provided, otherwise default to 500ms
         rate_limit_ms = int(kwargs.get("rate_limit_delay_ms", 500))
@@ -74,7 +74,7 @@ class AsanaBongo(BaseBongo):
                         await self._rate_limit()
                         token = str(uuid.uuid4())[:8]
                         self.logger.info(f"🔨 Generating content for task with token: {token}")
-                        title, notes, comments = await generate_asana_task(self.openai_model, token)
+                        title, notes, comments = await generate_asana_task(self.llm_model, token)
                         self.logger.info(f"📝 Generated task: '{title[:50]}...'")
 
                         # Create task
@@ -171,7 +171,7 @@ class AsanaBongo(BaseBongo):
             for i in range(count):
                 await self._rate_limit()
                 t = self._tasks[i]
-                title, notes, _ = await generate_asana_task(self.openai_model, t["token"])
+                title, notes, _ = await generate_asana_task(self.llm_model, t["token"])
                 resp = await client.put(
                     f"{self.API_BASE}/tasks/{t['id']}",
                     headers=self._headers(),

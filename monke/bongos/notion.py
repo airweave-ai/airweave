@@ -26,7 +26,7 @@ class NotionBongo(BaseBongo):
         super().__init__(credentials)
         self.access_token: str = credentials["access_token"]
         self.entity_count: int = int(kwargs.get("entity_count", 5))
-        self.openai_model: str = kwargs.get("openai_model", "gpt-4o-mini")
+        self.llm_model = kwargs.get("llm_model", None)
 
         # Rate limiting: ~3 requests per second
         rate_limit_ms = int(kwargs.get("rate_limit_delay_ms", 334))
@@ -138,7 +138,7 @@ class NotionBongo(BaseBongo):
             token = str(uuid.uuid4())[:8]
 
             # Generate page content
-            title, content_blocks = await generate_notion_page(self.openai_model, token)
+            title, content_blocks = await generate_notion_page(self.llm_model, token)
             # Embed token in title to make it reliably searchable downstream
             title_with_token = f"{token} {title}"
 
@@ -188,7 +188,7 @@ class NotionBongo(BaseBongo):
 
             # Generate new content
             title, content_blocks = await generate_notion_page(
-                self.openai_model,
+                self.llm_model,
                 token,
                 update=True
             )

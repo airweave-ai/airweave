@@ -30,7 +30,7 @@ class TodoistBongo(BaseBongo):
 
         # Configuration from kwargs
         self.entity_count = kwargs.get('entity_count', 10)
-        self.openai_model = kwargs.get('openai_model', 'gpt-5')
+        self.llm_model = kwargs.get("llm_model", None)
 
         # Test data tracking
         self.test_tasks = []
@@ -58,7 +58,7 @@ class TodoistBongo(BaseBongo):
             # Short unique token used in content for verification
             token = str(uuid.uuid4())[:8]
 
-            content, description, priority = await generate_todoist_artifact(self.openai_model, token)
+            content, description, priority = await generate_todoist_artifact(self.llm_model, token)
 
             # Create task
             task_data = await self._create_test_task(
@@ -102,7 +102,7 @@ class TodoistBongo(BaseBongo):
 
                 # Generate new content with same token
                 content, description, priority = await generate_todoist_artifact(
-                    self.openai_model, token, is_update=True
+                    self.llm_model, token, is_update=True
                 )
 
                 # Update task

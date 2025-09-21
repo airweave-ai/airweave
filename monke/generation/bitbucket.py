@@ -13,7 +13,7 @@ async def generate_bitbucket_artifact(
 
     Returns (filename, content, file_type). The token must be embedded in the output by instruction.
     """
-    llm = LLMClient(model_override=model)
+    llm = LLMClient(model_override=model if model else None)
 
     if is_update:
         instruction = (
