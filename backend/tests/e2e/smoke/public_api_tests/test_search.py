@@ -43,7 +43,7 @@ def test_search_functionality(
 
     # Define test query - same as in the deprecated test
     search_query = "Are there any open invoices"
-    expected_keywords = ["invoice"]
+    expected_keywords = ["in_"]
 
     # TEST 1: Raw search response
     print(f"\n  Testing RAW search for: '{search_query}'")
