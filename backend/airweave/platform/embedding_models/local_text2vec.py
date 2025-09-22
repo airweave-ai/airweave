@@ -48,7 +48,7 @@ class LocalText2Vec(BaseEmbeddingModel):
         """Check if text should be skipped due to token limit."""
         if not text.strip():
             return False
-        
+
         token_count = count_tokens(text)
         if token_count > 250:
             if hasattr(self, "logger") and self.logger:
