@@ -1022,14 +1022,29 @@ const SemanticMcp = () => {
                                                     </p>
                                                 )}
                                                 <div className="relative">
-                                                    <Input
-                                                        id={`config_${field.name}`}
-                                                        type={getInputType(field.name, field.type, `config_${field.name}`)}
-                                                        placeholder={`Enter ${field.title.toLowerCase()}`}
-                                                        value={configValues[field.name] || ''}
-                                                        onChange={(e) => handleConfigValueChange(field.name, e.target.value)}
-                                                        className={`w-full ${isPasswordField(field.name) ? 'pr-10' : ''}`}
-                                                    />
+                                                    {field.type === 'boolean' ? (
+                                                        <div className="flex items-center space-x-2">
+                                                            <input
+                                                                type="checkbox"
+                                                                id={`config_${field.name}`}
+                                                                checked={configValues[field.name] === true || configValues[field.name] === 'true'}
+                                                                onChange={(e) => handleConfigValueChange(field.name, e.target.checked)}
+                                                                className="h-4 w-4 rounded border"
+                                                            />
+                                                            <label htmlFor={`config_${field.name}`} className="text-sm">
+                                                                {field.title}
+                                                            </label>
+                                                        </div>
+                                                    ) : (
+                                                        <Input
+                                                            id={`config_${field.name}`}
+                                                            type={getInputType(field.name, field.type, `config_${field.name}`)}
+                                                            placeholder={`Enter ${field.title.toLowerCase()}`}
+                                                            value={configValues[field.name] || ''}
+                                                            onChange={(e) => handleConfigValueChange(field.name, e.target.value)}
+                                                            className={`w-full ${isPasswordField(field.name) ? 'pr-10' : ''}`}
+                                                        />
+                                                    )}
                                                     {isPasswordField(field.name) && (
                                                         <Button
                                                             type="button"

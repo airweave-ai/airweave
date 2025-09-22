@@ -78,7 +78,7 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
   const [isCreating, setIsCreating] = useState(false);
   const [sourceDetails, setSourceDetails] = useState<SourceDetails | null>(null);
   const [authFields, setAuthFields] = useState<Record<string, string>>({});
-  const [configData, setConfigData] = useState<Record<string, string>>({});
+  const [configData, setConfigData] = useState<Record<string, any>>({});
   const [useOwnCredentials, setUseOwnCredentials] = useState(false);
   // Initialize connection name from store or with source default
   const [connectionName, setConnectionName] = useState(
@@ -199,11 +199,15 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
             setAuthFields(initialValues);
           }
 
-          // Initialize config fields
+          // Initialize config fields with proper default values based on type
           if (source.config_fields?.fields) {
-            const initialValues: Record<string, string> = {};
+            const initialValues: Record<string, any> = {};
             source.config_fields.fields.forEach((field: any) => {
-              initialValues[field.name] = '';
+              if (field.type === 'boolean') {
+                initialValues[field.name] = false; // Default boolean fields to false
+              } else {
+                initialValues[field.name] = '';
+              }
             });
             setConfigData(initialValues);
           }
@@ -541,20 +545,38 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
                               {field.description}
                             </p>
                           )}
-                          <input
-                            type="text"
-                            placeholder=""
-                            value={configData[field.name] || ''}
-                            onChange={(e) => setConfigData({ ...configData, [field.name]: e.target.value })}
-                            className={cn(
-                              "w-full px-4 py-2 rounded-lg text-sm",
-                              "border bg-transparent",
-                              "focus:outline-none focus:border-gray-400 dark:focus:border-gray-600",
-                              isDark
-                                ? "border-gray-800 text-white placeholder:text-gray-600"
-                                : "border-gray-200 text-gray-900 placeholder:text-gray-400"
-                            )}
-                          />
+                          {field.type === 'boolean' ? (
+                            <div className="flex items-center space-x-2">
+                              <input
+                                type="checkbox"
+                                id={field.name}
+                                checked={configData[field.name] === true || configData[field.name] === 'true'}
+                                onChange={(e) => setConfigData({ ...configData, [field.name]: e.target.checked })}
+                                className={cn(
+                                  "h-4 w-4 rounded border",
+                                  isDark ? "bg-gray-800 border-gray-700" : "bg-white border-gray-300"
+                                )}
+                              />
+                              <label htmlFor={field.name} className="text-sm">
+                                {field.title || field.name}
+                              </label>
+                            </div>
+                          ) : (
+                            <input
+                              type="text"
+                              placeholder=""
+                              value={configData[field.name] || ''}
+                              onChange={(e) => setConfigData({ ...configData, [field.name]: e.target.value })}
+                              className={cn(
+                                "w-full px-4 py-2 rounded-lg text-sm",
+                                "border bg-transparent",
+                                "focus:outline-none focus:border-gray-400 dark:focus:border-gray-600",
+                                isDark
+                                  ? "border-gray-800 text-white placeholder:text-gray-600"
+                                  : "border-gray-200 text-gray-900 placeholder:text-gray-400"
+                              )}
+                            />
+                          )}
                         </div>
                       ))}
                     </div>

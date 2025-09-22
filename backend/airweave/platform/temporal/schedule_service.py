@@ -60,7 +60,13 @@ class TemporalScheduleService:
                 },
             }
         except Exception as e:
-            logger.error(f"Error checking schedule {schedule_id}: {e}")
+            # Check if this is the expected "schedule not found" error from Temporal
+            error_msg = str(e).lower()
+            if "no rows in result set" in error_msg or "not found" in error_msg:
+                logger.debug(f"Schedule {schedule_id} does not exist (expected for new schedules)")
+            else:
+                # Log unexpected errors at error level
+                logger.error(f"Unexpected error checking schedule {schedule_id}: {e}")
             return {"exists": False, "running": False, "schedule_info": None}
 
     async def _create_schedule(

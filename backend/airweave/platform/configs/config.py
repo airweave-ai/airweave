@@ -262,6 +262,20 @@ class StripeConfig(SourceConfig):
     pass
 
 
+class ZendeskConfig(SourceConfig):
+    """Zendesk configuration schema."""
+
+    subdomain: str = Field(
+        title="Zendesk Subdomain",
+        description="Your Zendesk subdomain only (e.g., 'mycompany' NOT 'mycompany.zendesk.com')",
+    )
+    exclude_closed_tickets: bool = Field(
+        default=False,
+        title="Exclude Closed Tickets",
+        description="Skip closed tickets during sync (recommended for faster syncing)",
+    )
+
+
 class TodoistConfig(SourceConfig):
     """Todoist configuration schema."""
 

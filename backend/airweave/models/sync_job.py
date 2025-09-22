@@ -4,12 +4,58 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 from uuid import UUID
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String
-from sqlalchemy import Enum as SQLAlchemyEnum
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, TypeDecorator
+from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from airweave.core.shared_models import SyncJobStatus
 from airweave.models._base import OrganizationBase, UserMixin
+
+
+class MappedSyncJobStatus(TypeDecorator):
+    """Custom SQLAlchemy type that maps between Python and Database enum values.
+
+    Python: pending, running, completed, failed, cancelled
+    Database: PENDING, IN_PROGRESS, COMPLETED, FAILED, CANCELLED
+    """
+
+    # Use the actual PostgreSQL enum as the implementation
+    impl = ENUM(
+        "PENDING",
+        "IN_PROGRESS",
+        "COMPLETED",
+        "FAILED",
+        "CANCELLED",
+        name="syncjobstatus",
+        create_type=False,
+    )
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        """Convert Python enum to database string."""
+        if value is None:
+            return None
+        if isinstance(value, SyncJobStatus):
+            # Map RUNNING to IN_PROGRESS for database
+            if value == SyncJobStatus.RUNNING:
+                return "IN_PROGRESS"
+            return value.value.upper()
+        return value
+
+    def process_result_value(self, value, dialect):
+        """Convert database string to Python enum."""
+        if value is None:
+            return None
+        # Map IN_PROGRESS back to RUNNING for Python
+        if value == "IN_PROGRESS":
+            return SyncJobStatus.RUNNING
+        # Convert other uppercase values to lowercase and create enum
+        try:
+            return SyncJobStatus(value.lower())
+        except ValueError:
+            # Fallback for unknown values
+            return value
+
 
 if TYPE_CHECKING:
     from airweave.models.entity import Entity
@@ -25,7 +71,7 @@ class SyncJob(OrganizationBase, UserMixin):
         ForeignKey("sync.id", ondelete="CASCADE", name="fk_sync_job_sync_id"), nullable=False
     )
     status: Mapped[SyncJobStatus] = mapped_column(
-        SQLAlchemyEnum(SyncJobStatus), default=SyncJobStatus.PENDING
+        MappedSyncJobStatus(), default=SyncJobStatus.PENDING
     )
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

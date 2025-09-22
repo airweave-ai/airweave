@@ -239,7 +239,11 @@ class SourceConnectionHelpers:
         """Validate direct authentication credentials."""
         try:
             source_cls = resource_locator.get_source(source)
-            source_instance = await source_cls.create(auth_fields, config=config_fields)
+            # Convert Pydantic model to dictionary for source create method
+            auth_dict = (
+                auth_fields.model_dump() if hasattr(auth_fields, "model_dump") else auth_fields
+            )
+            source_instance = await source_cls.create(auth_dict, config=config_fields)
             source_instance.set_logger(ctx.logger)
 
             if hasattr(source_instance, "validate"):
@@ -270,9 +274,13 @@ class SourceConnectionHelpers:
         """Validate OAuth access token."""
         try:
             source_cls = resource_locator.get_source(source)
-            source_instance = await source_cls.create(
-                access_token=access_token, config=config_fields
+            credentials = {"access_token": access_token}
+            config = (
+                config_fields.model_dump()
+                if hasattr(config_fields, "model_dump")
+                else config_fields
             )
+            source_instance = await source_cls.create(credentials=credentials, config=config)
             source_instance.set_logger(ctx.logger)
 
             if hasattr(source_instance, "validate"):

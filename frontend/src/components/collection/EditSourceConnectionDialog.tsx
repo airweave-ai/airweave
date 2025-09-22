@@ -206,25 +206,46 @@ export const EditSourceConnectionDialog: React.FC<EditSourceConnectionDialogProp
                                                     {field.description && (
                                                         <p className="text-xs text-muted-foreground opacity-80">{field.description}</p>
                                                     )}
-                                                    <Input
-                                                        type={field.type === 'integer' ? 'number' : 'text'}
-                                                        className={cn(
-                                                            "w-full h-8 px-3 text-xs rounded-md border bg-transparent",
-                                                            isDark
-                                                                ? "border-gray-700 focus:border-blue-500"
-                                                                : "border-gray-300 focus:border-blue-500",
-                                                            "focus:outline-none"
-                                                        )}
-                                                        value={editFormData.config_fields[field.name] || ''}
-                                                        onChange={(e) => setEditFormData((prev: any) => ({
-                                                            ...prev,
-                                                            config_fields: {
-                                                                ...prev.config_fields,
-                                                                [field.name]: e.target.value
-                                                            }
-                                                        }))}
-                                                        placeholder={`Enter ${field.title || field.name}`}
-                                                    />
+                                                    {field.type === 'boolean' ? (
+                                                        <div className="flex items-center space-x-2">
+                                                            <input
+                                                                type="checkbox"
+                                                                id={field.name}
+                                                                checked={editFormData.config_fields[field.name] === true || editFormData.config_fields[field.name] === 'true'}
+                                                                onChange={(e) => setEditFormData((prev: any) => ({
+                                                                    ...prev,
+                                                                    config_fields: {
+                                                                        ...prev.config_fields,
+                                                                        [field.name]: e.target.checked
+                                                                    }
+                                                                }))}
+                                                                className="h-4 w-4 rounded border"
+                                                            />
+                                                            <label htmlFor={field.name} className="text-sm">
+                                                                {field.title || field.name}
+                                                            </label>
+                                                        </div>
+                                                    ) : (
+                                                        <Input
+                                                            type={field.type === 'integer' ? 'number' : 'text'}
+                                                            className={cn(
+                                                                "w-full h-8 px-3 text-xs rounded-md border bg-transparent",
+                                                                isDark
+                                                                    ? "border-gray-700 focus:border-blue-500"
+                                                                    : "border-gray-300 focus:border-blue-500",
+                                                                "focus:outline-none"
+                                                            )}
+                                                            value={editFormData.config_fields[field.name] || ''}
+                                                            onChange={(e) => setEditFormData((prev: any) => ({
+                                                                ...prev,
+                                                                config_fields: {
+                                                                    ...prev.config_fields,
+                                                                    [field.name]: e.target.value
+                                                                }
+                                                            }))}
+                                                            placeholder={`Enter ${field.title || field.name}`}
+                                                        />
+                                                    )}
                                                 </div>
                                             ))}
                                         </div>

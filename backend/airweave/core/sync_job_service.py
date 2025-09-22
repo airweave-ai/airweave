@@ -14,21 +14,6 @@ from airweave.db.session import get_db_context
 from airweave.platform.sync.pubsub import SyncProgressUpdate
 
 
-def map_python_enum_to_database(status: SyncJobStatus) -> str:
-    """Map Python enum status to database enum value.
-
-    Python enum uses lowercase: pending, in_progress, completed, failed, cancelled
-    Database enum uses uppercase: PENDING, IN_PROGRESS, COMPLETED, FAILED, CANCELLED
-
-    Args:
-        status: The SyncJobStatus enum value
-
-    Returns:
-        The corresponding uppercase database enum string value
-    """
-    return status.value.upper()
-
-
 class SyncJobService:
     """Service for managing sync job status updates."""
 
@@ -72,23 +57,6 @@ class SyncJobService:
 
         return update_data
 
-    async def _update_status_in_database(self, db, sync_job_id: UUID, db_status_value: str) -> None:
-        """Update status field using raw SQL."""
-        from sqlalchemy import text
-
-        # Update status with uppercase value directly
-        await db.execute(
-            text(
-                "UPDATE sync_job SET status = :status, "
-                "modified_at = :modified_at WHERE id = :sync_job_id"
-            ),
-            {
-                "status": db_status_value,
-                "modified_at": utc_now_naive(),
-                "sync_job_id": sync_job_id,
-            },
-        )
-
     async def update_status(
         self,
         sync_job_id: UUID,
@@ -110,12 +78,6 @@ class SyncJobService:
                     logger.error(f"Sync job {sync_job_id} not found")
                     return
 
-                # Map Python enum to database enum value (lowercase to uppercase)
-                db_status_value = map_python_enum_to_database(status)
-                logger.info(
-                    f"Mapping Python enum {status.value} to database value {db_status_value}"
-                )
-
                 update_data = {"status": status}
 
                 if stats:
@@ -127,19 +89,13 @@ class SyncJobService:
                 )
                 update_data.update(timestamp_data)
 
-                # Update status using raw SQL
-                await self._update_status_in_database(db, sync_job_id, db_status_value)
-
-                # Update other fields using the normal ORM
-                # (excluding status which we already updated)
-                update_data.pop("status")
-                if update_data:
-                    await crud.sync_job.update(
-                        db=db,
-                        db_obj=db_sync_job,
-                        obj_in=schemas.SyncJobUpdate(**update_data),
-                        ctx=ctx,
-                    )
+                # Update all fields using the ORM (custom type handles status mapping)
+                await crud.sync_job.update(
+                    db=db,
+                    db_obj=db_sync_job,
+                    obj_in=schemas.SyncJobUpdate(**update_data),
+                    ctx=ctx,
+                )
 
                 # Capture sync_id before commit to avoid attribute expiration
                 try:
@@ -148,9 +104,7 @@ class SyncJobService:
                     sync_id_for_analytics = None
 
                 await db.commit()
-                logger.info(
-                    f"Successfully updated sync job {sync_job_id} status to {db_status_value}"
-                )
+                logger.info(f"Successfully updated sync job {sync_job_id} status to {status.value}")
 
         except Exception as e:
             logger.error(f"Failed to update sync job status: {e}")

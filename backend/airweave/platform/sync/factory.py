@@ -572,7 +572,27 @@ class SyncFactory:
         source_model = source_connection_data.get("source_model")
         short_name = source_connection_data["short_name"]
 
-        # Case 1: OAuth sources without auth_config_class need just the access_token string
+        # Case 1: OAuth sources WITH auth_config_class need dict credentials converted
+        # to auth config
+        # This applies to sources like Zendesk that use OAuth but have structured auth configs
+        if (
+            auth_config_class_name
+            and source_model
+            and hasattr(source_model, "oauth_type")
+            and source_model.oauth_type
+            and isinstance(raw_credentials, dict)
+        ):
+            try:
+                auth_config_class = resource_locator.get_auth_config(auth_config_class_name)
+                processed_credentials = auth_config_class.model_validate(raw_credentials)
+                msg = f"Converted OAuth credentials dict to {auth_config_class_name} object"
+                logger.info(f"{msg} for OAuth source {short_name}")
+                return processed_credentials
+            except Exception as e:
+                logger.error(f"Failed to convert OAuth credentials to auth config object: {e}")
+                raise
+
+        # Case 2: OAuth sources without auth_config_class need just the access_token string
         # This applies to sources like Asana, Google Calendar, etc.
         if (
             not auth_config_class_name
@@ -595,7 +615,7 @@ class SyncFactory:
                 )
                 return raw_credentials
 
-        # Case 2: Sources with auth_config_class and dict credentials
+        # Case 3: Non-OAuth sources with auth_config_class and dict credentials
         # Convert dict to auth config object (e.g., Stripe expects StripeAuthConfig)
         if auth_config_class_name and isinstance(raw_credentials, dict):
             try:
@@ -608,7 +628,7 @@ class SyncFactory:
                 logger.error(f"Failed to convert credentials to auth config object: {e}")
                 raise
 
-        # Case 3: Pass through as-is (already in correct format)
+        # Case 4: Pass through as-is (already in correct format)
         return raw_credentials
 
     @classmethod

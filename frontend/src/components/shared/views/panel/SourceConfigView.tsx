@@ -201,12 +201,27 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ context }) =
                             <div key={field.name}>
                                 <label className="text-sm font-medium">{field.title || field.name}</label>
                                 {field.description && <p className="text-xs text-muted-foreground">{field.description}</p>}
-                                <input
-                                    type="text"
-                                    value={configValues[field.name] || ''}
-                                    onChange={(e) => handleFieldChange(setConfigValues)(field.name, e.target.value)}
-                                    className={cn("w-full p-2 mt-1 rounded border", isDark ? "bg-gray-800 border-gray-700" : "bg-white border-gray-300")}
-                                />
+                                {field.type === 'boolean' ? (
+                                    <div className="flex items-center space-x-2 mt-1">
+                                        <input
+                                            type="checkbox"
+                                            id={field.name}
+                                            checked={configValues[field.name] === true || configValues[field.name] === 'true'}
+                                            onChange={(e) => handleFieldChange(setConfigValues)(field.name, e.target.checked)}
+                                            className="h-4 w-4 rounded border"
+                                        />
+                                        <label htmlFor={field.name} className="text-sm">
+                                            {field.title || field.name}
+                                        </label>
+                                    </div>
+                                ) : (
+                                    <input
+                                        type="text"
+                                        value={configValues[field.name] || ''}
+                                        onChange={(e) => handleFieldChange(setConfigValues)(field.name, e.target.value)}
+                                        className={cn("w-full p-2 mt-1 rounded border", isDark ? "bg-gray-800 border-gray-700" : "bg-white border-gray-300")}
+                                    />
+                                )}
                             </div>
                         ))}
                     </div>

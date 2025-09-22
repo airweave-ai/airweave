@@ -131,12 +131,16 @@ export const ConfigureSourceView: React.FC<ConfigureSourceViewProps> = ({
                         setAuthValues(initialAuthValues);
                     }
 
-                    // Initialize config values with empty strings
+                    // Initialize config values with proper default values based on type
                     if (data.config_fields && data.config_fields.fields) {
                         const initialConfigValues: Record<string, any> = {};
                         data.config_fields.fields.forEach((field: any) => {
                             if (field.name) {
-                                initialConfigValues[field.name] = '';
+                                if (field.type === 'boolean') {
+                                    initialConfigValues[field.name] = false; // Default boolean fields to false
+                                } else {
+                                    initialConfigValues[field.name] = '';
+                                }
                             }
                         });
                         setConfigValues(initialConfigValues);
@@ -1155,17 +1159,36 @@ export const ConfigureSourceView: React.FC<ConfigureSourceViewProps> = ({
                                     <p className="text-xs text-muted-foreground mb-2">{field.description}</p>
                                 )}
 
-                                <input
-                                    type="text"
-                                    className={cn(
-                                        "w-full p-2 rounded border",
-                                        isDark ? "bg-gray-800 border-gray-700" : "bg-white border-gray-300",
-                                        errors[field.name] ? "border-red-500" : ""
-                                    )}
-                                    placeholder={''}
-                                    value={configValues[field.name] || ''}
-                                    onChange={(e) => handleConfigFieldChange(field.name, e.target.value)}
-                                />
+                                {field.type === 'boolean' ? (
+                                    <div className="flex items-center space-x-2">
+                                        <input
+                                            type="checkbox"
+                                            id={field.name}
+                                            className={cn(
+                                                "h-4 w-4 rounded border",
+                                                isDark ? "bg-gray-800 border-gray-700" : "bg-white border-gray-300",
+                                                errors[field.name] ? "border-red-500" : ""
+                                            )}
+                                            checked={configValues[field.name] === true || configValues[field.name] === 'true'}
+                                            onChange={(e) => handleConfigFieldChange(field.name, e.target.checked)}
+                                        />
+                                        <label htmlFor={field.name} className="text-sm">
+                                            {field.title || field.name}
+                                        </label>
+                                    </div>
+                                ) : (
+                                    <input
+                                        type="text"
+                                        className={cn(
+                                            "w-full p-2 rounded border",
+                                            isDark ? "bg-gray-800 border-gray-700" : "bg-white border-gray-300",
+                                            errors[field.name] ? "border-red-500" : ""
+                                        )}
+                                        placeholder={''}
+                                        value={configValues[field.name] || ''}
+                                        onChange={(e) => handleConfigFieldChange(field.name, e.target.value)}
+                                    />
+                                )}
 
                                 {errors[field.name] && (
                                     <p className="text-xs text-red-500">{errors[field.name]}</p>

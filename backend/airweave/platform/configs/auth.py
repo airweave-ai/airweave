@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from airweave.platform.configs._base import BaseConfig
 
@@ -362,6 +362,44 @@ class StripeAuthConfig(AuthConfig):
         " or 'sk_live_' for live mode.",
         pattern="^sk_(test|live)_[A-Za-z0-9]+$",
     )
+
+
+class ZendeskAuthConfig(AuthConfig):
+    """Zendesk authentication credentials schema."""
+
+    # OAuth fields
+    access_token: Optional[str] = Field(
+        default=None, title="Access Token", description="OAuth access token for Zendesk API"
+    )
+    refresh_token: Optional[str] = Field(
+        default=None, title="Refresh Token", description="OAuth refresh token for Zendesk API"
+    )
+    token_type: Optional[str] = Field(
+        default=None, title="Token Type", description="OAuth token type (usually 'Bearer')"
+    )
+
+    # Direct auth fields
+    email: Optional[str] = Field(
+        default=None,
+        title="Email",
+        description="Your Zendesk email address (required for API token auth)",
+    )
+    api_token: Optional[str] = Field(
+        default=None,
+        title="API Token",
+        description="Your Zendesk API token (required for API token auth)",
+    )
+
+    @model_validator(mode="after")
+    def validate_auth_method(self):
+        """Validate that either OAuth or direct auth credentials are provided."""
+        has_oauth = self.access_token is not None
+        has_direct = self.email is not None and self.api_token is not None
+
+        if not has_oauth and not has_direct:
+            raise ValueError("Either access_token or (email + api_token) must be provided")
+
+        return self
 
 
 class TodoistAuthConfig(OAuth2AuthConfig):
