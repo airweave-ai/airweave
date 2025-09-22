@@ -8,8 +8,7 @@ connector:
   auth_fields: {}
     # access_token: "${GMAIL_ACCESS_TOKEN}"
   config_fields:
-    openai_model: "gpt-4.1-mini"
-    # post_create_sleep_seconds: 7  # Optional: wait N seconds after creation before first sync
+    post_create_sleep_seconds: 10  # Wait 10 seconds for Gmail API to propagate emails
 
 test_flow:
   steps:

@@ -188,14 +188,23 @@ class SyncStep(TestStep):
         self.logger.info("⏳ Waiting for sync to complete...")
 
         def _job_status_fields(job) -> Dict[str, Any]:
+            status = (getattr(job, "status", "") or "").lower()
+            completed_at = getattr(job, "completed_at", None)
+            failed_at = getattr(job, "failed_at", None)
+            
+            is_complete = status == "completed" and completed_at is not None
+            
+            is_failed = status == "failed" or failed_at is not None
+            
             return {
-                "status": (getattr(job, "status", "") or "").lower(),
-                "is_complete": bool(getattr(job, "is_complete", False)),
-                "is_failed": bool(getattr(job, "is_failed", False)),
+                "status": status,
+                "is_complete": is_complete,
+                "is_failed": is_failed,
                 "error": getattr(job, "error", None),
                 "created_at": getattr(job, "created_at", None),
                 "started_at": getattr(job, "started_at", None),
-                "completed_at": getattr(job, "completed_at", None),
+                "completed_at": completed_at,
+                "failed_at": failed_at,
                 "id": str(getattr(job, "id", ""))
                 or str(getattr(job, "job_id", ""))
                 or str(getattr(job, "sync_job_id", "")),
@@ -262,13 +271,11 @@ class SyncStep(TestStep):
             if fields["is_failed"] or fields["status"] == "failed":
                 raise RuntimeError(f"Sync failed: {fields['error'] or 'unknown error'}")
 
-            # Done when status is completed and we see is_complete or completed_at
-            if fields["status"] == "completed" and (
-                fields["is_complete"] or fields["completed_at"]
-            ):
+            # Done when job is complete (calculated from status + completed_at)
+            if fields["is_complete"]:
                 self.config._last_sync_job_id = str(target_job_id)  # cache for next time
                 self.logger.info(
-                    "✅ Sync completed successfully (confirmed by is_complete/completed_at)"
+                    f"✅ Sync completed successfully (status={fields['status']}, completed_at={fields['completed_at']})"
                 )
                 return
 

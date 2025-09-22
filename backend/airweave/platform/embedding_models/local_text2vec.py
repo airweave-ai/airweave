@@ -8,6 +8,7 @@ from pydantic import Field
 from airweave.core.config import settings
 from airweave.core.logging import ContextualLogger
 from airweave.platform.decorators import embedding_model
+from airweave.platform.transformers.utils import count_tokens
 
 from ._base import BaseEmbeddingModel
 
@@ -43,6 +44,18 @@ class LocalText2Vec(BaseEmbeddingModel):
             self.logger = logger  # Override with contextual logger if provided
             self.logger.debug(f"Text2Vec model using inference URL: {self.inference_url}")
 
+    def _should_skip_text(self, text: str) -> bool:
+        """Check if text should be skipped due to token limit."""
+        if not text.strip():
+            return False
+        
+        token_count = count_tokens(text)
+        if token_count > 250:
+            if hasattr(self, "logger") and self.logger:
+                self.logger.warning(f"Skipping text with {token_count} tokens (>250 limit)")
+            return True
+        return False
+
     async def embed(
         self,
         text: str,
@@ -69,6 +82,10 @@ class LocalText2Vec(BaseEmbeddingModel):
 
         if not text.strip():
             # Return zero vector for empty text
+            return [0.0] * self.vector_dimensions
+
+        # Skip texts with >200 tokens to avoid ReadTimeout
+        if self._should_skip_text(text):
             return [0.0] * self.vector_dimensions
 
         async with httpx.AsyncClient() as client:
@@ -109,7 +126,9 @@ class LocalText2Vec(BaseEmbeddingModel):
         # Process each text individually since batch endpoint isn't available
         async with httpx.AsyncClient() as client:
             for text in texts:
-                if text.strip():
+                if not text.strip() or self._should_skip_text(text):
+                    result.append([0.0] * self.vector_dimensions)
+                else:
                     try:
                         response = await client.post(
                             f"{self.inference_url}/vectors/", json={"text": text}
@@ -121,8 +140,5 @@ class LocalText2Vec(BaseEmbeddingModel):
                             self.logger.error(f"Error embedding text: {e}")
                         # Return zero vector for failed embedding
                         result.append([0.0] * self.vector_dimensions)
-                else:
-                    # Return zero vector for empty text
-                    result.append([0.0] * self.vector_dimensions)
 
         return result
