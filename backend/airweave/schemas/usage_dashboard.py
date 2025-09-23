@@ -11,20 +11,18 @@ class UsageSnapshot(BaseModel):
     """Point-in-time usage data with limits."""
 
     # Current values
-    syncs: int = Field(..., description="Number of syncs executed")
     entities: int = Field(..., description="Total entities processed")
     queries: int = Field(..., description="Search queries executed")
-    collections: int = Field(..., description="Collections created")
     source_connections: int = Field(..., description="Source connections configured")
+    team_members: int = Field(..., description="Team members in the organization")
 
     # Limits (None = unlimited)
-    max_syncs: Optional[int] = Field(None, description="Maximum syncs allowed")
     max_entities: Optional[int] = Field(None, description="Maximum entities allowed")
     max_queries: Optional[int] = Field(None, description="Maximum queries allowed")
-    max_collections: Optional[int] = Field(None, description="Maximum collections allowed")
     max_source_connections: Optional[int] = Field(
         None, description="Maximum source connections allowed"
     )
+    max_team_members: Optional[int] = Field(None, description="Maximum team members allowed")
 
     # Metadata
     timestamp: datetime = Field(..., description="When this snapshot was taken")
@@ -111,16 +109,14 @@ class UsageDashboard(BaseModel):
                         "status": "active",
                         "plan": "developer",
                         "usage": {
-                            "syncs": 5,
                             "entities": 45000,
                             "queries": 89,
-                            "collections": 5,
                             "source_connections": 3,
-                            "max_syncs": 10,
+                            "team_members": 2,
                             "max_entities": 100000,
                             "max_queries": 1000,
-                            "max_collections": 5,
                             "max_source_connections": 10,
+                            "max_team_members": 2,
                             "timestamp": "2024-01-15T12:00:00Z",
                             "billing_period_id": "550e8400-e29b-41d4-a716-446655440000",
                         },

@@ -397,14 +397,7 @@ export const useOrganizationStore = create<OrganizationState>()(
           return { requiresAction: false };
         }
 
-        // Check if trial expired
-        if (billingInfo.status === 'trial_expired') {
-          return {
-            requiresAction: true,
-            message: 'Your trial has expired. Please subscribe to continue using Airweave.',
-            redirectUrl: '/billing/setup'
-          };
-        }
+        // Trials disabled: no trial_expired state
 
         return { requiresAction: false };
       },

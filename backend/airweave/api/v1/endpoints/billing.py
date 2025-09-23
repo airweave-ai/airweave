@@ -1,18 +1,22 @@
-"""Billing API endpoints for subscription management."""
+"""API endpoints for billing operations.
+
+This module provides the HTTP interface for billing operations,
+delegating all business logic to the billing service.
+"""
 
 from typing import Optional
 
-from fastapi import Depends, Header, HTTPException, Request, Response
+from fastapi import Depends, Header, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
 from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.router import TrailingSlashRouter
-from airweave.core.billing_service import billing_service
+from airweave.billing.service import billing_service
+from airweave.billing.webhook_handler import BillingWebhookProcessor
 from airweave.core.config import settings
-from airweave.core.logging import logger
-from airweave.core.stripe_webhook_handler import StripeWebhookHandler
+from airweave.core.exceptions import ExternalServiceError
 from airweave.integrations.stripe_client import stripe_client
 
 router = TrailingSlashRouter()
@@ -26,7 +30,7 @@ async def create_checkout_session(
 ) -> schemas.CheckoutSessionResponse:
     """Create a Stripe checkout session for subscription.
 
-    This endpoint initiates the Stripe checkout flow for subscribing to a plan.
+    Initiates the Stripe checkout flow for subscribing to a plan.
 
     Args:
         request: Checkout session request with plan and URLs
@@ -40,23 +44,49 @@ async def create_checkout_session(
         HTTPException: If billing is disabled or request is invalid
     """
     if not settings.STRIPE_ENABLED:
-        raise HTTPException(status_code=400, detail="Billing is not enabled for this instance")
-
-    try:
-        # Create checkout session
-        checkout_url = await billing_service.start_subscription_checkout(
-            db=db,
-            ctx=ctx,
-            plan=request.plan,
-            success_url=request.success_url,
-            cancel_url=request.cancel_url,
+        raise ExternalServiceError(
+            service_name="Billing",
+            message="Billing is not enabled for this instance",
         )
 
-        return schemas.CheckoutSessionResponse(checkout_url=checkout_url)
+    checkout_url = await billing_service.start_subscription_checkout(
+        db=db,
+        plan=request.plan,
+        success_url=request.success_url,
+        cancel_url=request.cancel_url,
+        ctx=ctx,
+    )
 
-    except Exception as e:
-        ctx.logger.error(f"Failed to create checkout session: {e}")
-        raise HTTPException(status_code=400, detail=str(e)) from e
+    return schemas.CheckoutSessionResponse(checkout_url=checkout_url)
+
+
+@router.post("/yearly/checkout-session", response_model=schemas.CheckoutSessionResponse)
+async def create_yearly_prepay_checkout_session(
+    request: schemas.CheckoutSessionRequest,
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+) -> schemas.CheckoutSessionResponse:
+    """Create a Stripe checkout session for yearly prepay (no existing subscription).
+
+    This creates a one-time payment for a full year at 20% discount, and records
+    the prepay intent. After payment (via webhook), we will credit balance,
+    create the monthly subscription and apply a 20% coupon.
+    """
+    if not settings.STRIPE_ENABLED:
+        raise ExternalServiceError(
+            service_name="Billing",
+            message="Billing is not enabled for this instance",
+        )
+
+    checkout_url = await billing_service.start_yearly_prepay_checkout(
+        db=db,
+        plan=request.plan,
+        success_url=request.success_url,
+        cancel_url=request.cancel_url,
+        ctx=ctx,
+    )
+
+    return schemas.CheckoutSessionResponse(checkout_url=checkout_url)
 
 
 @router.post("/portal-session", response_model=schemas.CustomerPortalResponse)
@@ -77,6 +107,7 @@ async def create_portal_session(
         request: Portal session request with return URL
         db: Database session
         ctx: Authentication context
+
     Returns:
         Portal session URL to redirect user to
 
@@ -84,20 +115,18 @@ async def create_portal_session(
         HTTPException: If billing is disabled or no billing record exists
     """
     if not settings.STRIPE_ENABLED:
-        raise HTTPException(status_code=400, detail="Billing is not enabled for this instance")
-
-    try:
-        portal_url = await billing_service.create_customer_portal_session(
-            db=db,
-            ctx=ctx,
-            return_url=request.return_url,
+        raise ExternalServiceError(
+            service_name="Billing",
+            message="Billing is not enabled for this instance",
         )
 
-        return schemas.CustomerPortalResponse(portal_url=portal_url)
+    portal_url = await billing_service.create_customer_portal_session(
+        db=db,
+        ctx=ctx,
+        return_url=request.return_url,
+    )
 
-    except Exception as e:
-        ctx.logger.error(f"Failed to create portal session: {e}")
-        raise HTTPException(status_code=400, detail=str(e)) from e
+    return schemas.CustomerPortalResponse(portal_url=portal_url)
 
 
 @router.get("/subscription", response_model=schemas.SubscriptionInfo)
@@ -109,7 +138,6 @@ async def get_subscription(
 
     Returns comprehensive subscription details including:
     - Current plan and status
-    - Trial information
     - Usage limits
     - Billing period
 
@@ -120,25 +148,58 @@ async def get_subscription(
     Returns:
         Subscription information
     """
-    subscription_info = await billing_service.get_subscription_info(db, ctx.organization.id)
+    return await billing_service.get_subscription_info(db, ctx.organization.id)
 
-    return subscription_info
+
+@router.post("/update-plan", response_model=schemas.MessageResponse)
+async def update_subscription_plan(
+    request: schemas.UpdatePlanRequest,
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+) -> schemas.MessageResponse:
+    """Update subscription to a different plan.
+
+    Upgrades take effect immediately with proration.
+    Downgrades take effect at the end of the current billing period.
+
+    Args:
+        request: Plan update request
+        db: Database session
+        ctx: Authentication context
+
+    Returns:
+        Success message
+
+    Raises:
+        HTTPException: If update fails or payment method required
+    """
+    if not settings.STRIPE_ENABLED:
+        raise ExternalServiceError(
+            service_name="Billing",
+            message="Billing is not enabled for this instance",
+        )
+
+    message = await billing_service.update_subscription_plan(
+        db=db,
+        ctx=ctx,
+        new_plan=request.plan,
+        period=(request.period or "monthly"),
+    )
+
+    return schemas.MessageResponse(message=message)
 
 
 @router.post("/cancel", response_model=schemas.MessageResponse)
 async def cancel_subscription(
-    request: schemas.CancelSubscriptionRequest,
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
 ) -> schemas.MessageResponse:
     """Cancel the current subscription.
 
     The subscription will be canceled at the end of the current billing period,
-    allowing continued access until then. For immediate cancellation, delete
-    the organization instead.
+    allowing continued access until then.
 
     Args:
-        request: Cancellation request (empty body)
         db: Database session
         ctx: Authentication context
 
@@ -149,16 +210,14 @@ async def cancel_subscription(
         HTTPException: If no active subscription or cancellation fails
     """
     if not settings.STRIPE_ENABLED:
-        raise HTTPException(status_code=400, detail="Billing is not enabled for this instance")
+        raise ExternalServiceError(
+            service_name="Billing",
+            message="Billing is not enabled for this instance",
+        )
 
-    try:
-        message = await billing_service.cancel_subscription(db, ctx)
+    message = await billing_service.cancel_subscription(db, ctx)
 
-        return schemas.MessageResponse(message=message)
-
-    except Exception as e:
-        ctx.logger.error(f"Failed to cancel subscription: {e}")
-        raise HTTPException(status_code=400, detail=str(e)) from e
+    return schemas.MessageResponse(message=message)
 
 
 @router.post("/reactivate", response_model=schemas.MessageResponse)
@@ -182,19 +241,14 @@ async def reactivate_subscription(
         HTTPException: If subscription is not set to cancel
     """
     if not settings.STRIPE_ENABLED:
-        raise HTTPException(status_code=400, detail="Billing is not enabled for this instance")
-
-    try:
-        message = await billing_service.reactivate_subscription(
-            db=db,
-            ctx=ctx,
+        raise ExternalServiceError(
+            service_name="Billing",
+            message="Billing is not enabled for this instance",
         )
 
-        return schemas.MessageResponse(message=message)
+    message = await billing_service.reactivate_subscription(db, ctx)
 
-    except Exception as e:
-        ctx.logger.error(f"Failed to reactivate subscription: {e}")
-        raise HTTPException(status_code=400, detail=str(e)) from e
+    return schemas.MessageResponse(message=message)
 
 
 @router.post("/cancel-plan-change", response_model=schemas.MessageResponse)
@@ -207,56 +261,22 @@ async def cancel_pending_plan_change(
     Args:
         db: Database session
         ctx: Authentication context
+
     Returns:
         Success message
-    """
-    if not settings.STRIPE_ENABLED:
-        raise HTTPException(status_code=400, detail="Billing is not enabled")
-
-    try:
-        message = await billing_service.cancel_pending_plan_change(db, ctx)
-        return schemas.MessageResponse(message=message)
-    except Exception as e:
-        ctx.logger.error(f"Failed to cancel plan change: {e}")
-        raise HTTPException(status_code=400, detail=str(e)) from e
-
-
-@router.post("/update-plan", response_model=schemas.MessageResponse)
-async def update_subscription_plan(
-    request: schemas.UpdatePlanRequest,
-    db: AsyncSession = Depends(deps.get_db),
-    ctx: ApiContext = Depends(deps.get_context),
-) -> schemas.MessageResponse:
-    """Update subscription to a different plan.
-
-    Upgrades take effect immediately with proration.
-    Downgrades take effect at the end of the current billing period.
-
-    Args:
-        request: Plan update request
-        db: Database session
-        ctx: Authentication context
-    Returns:
-        Success message or redirect URL
 
     Raises:
-        HTTPException: If update fails
+        HTTPException: If no pending plan change
     """
     if not settings.STRIPE_ENABLED:
-        raise HTTPException(status_code=400, detail="Billing is not enabled for this instance")
-
-    try:
-        message = await billing_service.update_subscription_plan(
-            db=db,
-            ctx=ctx,
-            new_plan=request.plan,
+        raise ExternalServiceError(
+            service_name="Billing",
+            message="Billing is not enabled for this instance",
         )
 
-        return schemas.MessageResponse(message=message)
+    message = await billing_service.cancel_pending_plan_change(db, ctx)
 
-    except Exception as e:
-        ctx.logger.error(f"Failed to update subscription plan: {e}")
-        raise HTTPException(status_code=400, detail=str(e)) from e
+    return schemas.MessageResponse(message=message)
 
 
 @router.post("/webhook", include_in_schema=False)
@@ -285,40 +305,31 @@ async def stripe_webhook(
     Returns:
         200 OK on success, 400 on error
     """
-    # Create a contextual logger for webhook processing
-    webhook_logger = logger.with_context(auth_method="stripe_webhook", endpoint="billing_webhook")
-
     if not settings.STRIPE_ENABLED:
         return Response(status_code=200)
 
     # Get raw body
     try:
         payload = await request.body()
-    except Exception as e:
-        webhook_logger.error(f"Failed to get request body: {e}")
+    except Exception:
         return Response(status_code=400)
 
     # Verify signature
     if not stripe_signature:
-        webhook_logger.error("Missing Stripe signature header")
         return Response(status_code=400)
 
+    if not stripe_client:
+        return Response(status_code=500)
+
     try:
-        event = stripe_client.construct_webhook_event(payload, stripe_signature)
-    except ValueError as e:
-        webhook_logger.error(f"Invalid webhook payload: {e}")
-        return Response(status_code=400)
-    except Exception as e:  # stripe.error.SignatureVerificationError
-        webhook_logger.error(f"Invalid webhook signature: {e}")
+        event = stripe_client.verify_webhook_signature(payload, stripe_signature)
+    except ValueError:
         return Response(status_code=400)
 
     # Process event
     try:
-        webhook_handler = StripeWebhookHandler(db)
-        await webhook_handler.handle_event(event)
-
+        processor = BillingWebhookProcessor(db)
+        await processor.process_event(event)
         return Response(status_code=200)
-
-    except Exception as e:
-        webhook_logger.error(f"Failed to process webhook event {event.type}: {e}")
+    except Exception:
         return Response(status_code=500)

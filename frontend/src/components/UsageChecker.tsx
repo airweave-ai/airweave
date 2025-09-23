@@ -15,11 +15,10 @@ export const UsageChecker = () => {
     if (currentOrganization) {
       console.log('[UsageChecker] Checking usage for organization:', currentOrganization.id);
       checkActions({
-        collections: 1,
         source_connections: 1,
         entities: 1,
-        syncs: 1,
-        queries: 1
+        queries: 1,
+        team_members: 1
       });
     }
   }, [currentOrganization?.id]); // Only re-check when organization changes

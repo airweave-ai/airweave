@@ -201,21 +201,11 @@ export function UserProfileDropdown() {
     if (!billingInfo || isLoadingBilling) return null;
 
     const planDisplayName = {
-      trial: 'Trial',
       developer: 'Developer',
-      startup: 'Startup',
+      pro: 'Pro',
+      team: 'Team',
       enterprise: 'Enterprise'
     }[billingInfo.plan] || billingInfo.plan;
-
-    if (billingInfo.plan === 'trial' && billingInfo.trial_ends_at) {
-      const daysLeft = Math.ceil((new Date(billingInfo.trial_ends_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-      return (
-        <Badge variant="secondary" className="text-xs px-1.5 py-0 h-5">
-          <Clock className="w-3 h-3 mr-1" />
-          {daysLeft}d left
-        </Badge>
-      );
-    }
 
     return (
       <Badge variant="secondary" className="text-xs px-1.5 py-0 h-5">
@@ -375,12 +365,12 @@ export function UserProfileDropdown() {
               </InternalMenuLink>
 
               {/* Billing Link */}
-              {billingInfo && billingInfo.plan === 'trial' && (
+              {billingInfo && !billingInfo.has_active_subscription && (
                 <InternalMenuLink
                   to="/organization/settings?tab=billing"
                   icon={<CreditCard className="h-4 w-4" />}
                 >
-                  Upgrade Plan
+                  Complete Billing Setup
                 </InternalMenuLink>
               )}
             </>

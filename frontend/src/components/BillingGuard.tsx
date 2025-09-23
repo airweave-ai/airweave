@@ -37,7 +37,7 @@ export const BillingGuard = ({ children, requiresActiveBilling = true }: Billing
   // Redirect to billing setup immediately after checking
   useEffect(() => {
     if (!isChecking && !billingLoading && billingInfo && !billingInfo.is_oss) {
-      // If no active subscription and not on a billing page, redirect to setup
+      // If there is no current billing period yet (e.g., webhooks not processed), gate access
       if (!billingInfo.has_active_subscription && !location.pathname.startsWith('/billing')) {
         navigate('/billing/setup');
       }

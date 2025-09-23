@@ -129,9 +129,7 @@ const SyncDagCard = ({
     onCancelSync,
     isCancelling,
     entitiesAllowed,
-    syncsAllowed,
     entitiesCheckDetails,
-    syncsCheckDetails,
     isCheckingUsage
 }: {
     sourceConnection: SourceConnection;
@@ -155,12 +153,12 @@ const SyncDagCard = ({
     };
     isDark: boolean;
     syncJob: SourceConnectionJob | null;
+    onRunSync: () => Promise<void>;
+    isInitiatingSyncJob: boolean;
     onCancelSync: () => void;
     isCancelling: boolean;
     entitiesAllowed: boolean;
-    syncsAllowed: boolean;
-    entitiesCheckDetails: ActionCheckResponse | null;
-    syncsCheckDetails: ActionCheckResponse | null;
+    entitiesCheckDetails: SingleActionCheckResponse | null;
     isCheckingUsage: boolean;
 }) => {
     // Calculate if sync is currently running
@@ -195,7 +193,7 @@ const SyncDagCard = ({
                                                     size="sm"
                                                     className={cn(
                                                         "h-8 gap-1.5 font-normal",
-                                                        (isSyncRunning || isInitiatingSyncJob || !entitiesAllowed || !syncsAllowed || isCheckingUsage)
+                                                        (isSyncRunning || isInitiatingSyncJob || !entitiesAllowed || !entitiesAllowed || isCheckingUsage)
                                                             ? isDark
                                                                 ? "bg-gray-800/50 border-gray-700/50 text-gray-400 cursor-not-allowed"
                                                                 : "bg-gray-50 border-gray-200 text-gray-400 cursor-not-allowed"
@@ -204,14 +202,14 @@ const SyncDagCard = ({
                                                                 : "bg-white border-gray-200 text-gray-800 hover:bg-gray-50"
                                                     )}
                                                     onClick={onRunSync}
-                                                    disabled={isSyncRunning || isInitiatingSyncJob || !entitiesAllowed || !syncsAllowed || isCheckingUsage}
+                                                    disabled={isSyncRunning || isInitiatingSyncJob || !entitiesAllowed || !entitiesAllowed || isCheckingUsage}
                                                 >
                                                     <Play className="h-3.5 w-3.5" />
                                                     {isSyncRunning ? 'Running...' : isInitiatingSyncJob ? 'Starting...' : 'Run Sync'}
                                                 </Button>
                                             </span>
                                         </TooltipTrigger>
-                                        {(!entitiesAllowed || !syncsAllowed) && (
+                                        {(!entitiesAllowed || !entitiesAllowed) && (
                                             <TooltipContent className="max-w-xs">
                                                 <p className="text-xs">
                                                     {!entitiesAllowed && entitiesCheckDetails?.reason === 'usage_limit_exceeded' ? (
@@ -226,9 +224,9 @@ const SyncDagCard = ({
                                                             </a>
                                                             {' '}to run syncs.
                                                         </>
-                                                    ) : !syncsAllowed && syncsCheckDetails?.reason === 'usage_limit_exceeded' ? (
+                                                    ) : !entitiesAllowed && entitiesCheckDetails?.reason === 'usage_limit_exceeded' ? (
                                                         <>
-                                                            Sync limit reached.{' '}
+                                                            Entity processing limit reached.{' '}
                                                             <a
                                                                 href="/organization/settings?tab=billing"
                                                                 className="underline"
@@ -236,7 +234,7 @@ const SyncDagCard = ({
                                                             >
                                                                 Upgrade your plan
                                                             </a>
-                                                            {' '}for more syncs.
+                                                            {' '}to process more data.
                                                         </>
                                                     ) : (
                                                         'Unable to run sync at this time.'
@@ -535,8 +533,6 @@ const SourceConnectionDetailView = ({
     // Derived states from usage store
     const entitiesAllowed = actionChecks.entities?.allowed ?? true;
     const entitiesCheckDetails = actionChecks.entities ?? null;
-    const syncsAllowed = actionChecks.syncs?.allowed ?? true;
-    const syncsCheckDetails = actionChecks.syncs ?? null;
 
     const flowContainerRef = useRef<HTMLDivElement>(null);
 
@@ -1728,16 +1724,16 @@ const SourceConnectionDetailView = ({
                                                     size="sm"
                                                     className={cn(
                                                         "h-6 w-6 p-0",
-                                                        (!entitiesAllowed || !syncsAllowed || isCheckingUsage) && "opacity-50 cursor-not-allowed"
+                                                        (!entitiesAllowed || !entitiesAllowed || isCheckingUsage) && "opacity-50 cursor-not-allowed"
                                                     )}
                                                     onClick={() => setShowScheduleDialog(true)}
-                                                    disabled={!entitiesAllowed || !syncsAllowed || isCheckingUsage}
+                                                    disabled={!entitiesAllowed || !entitiesAllowed || isCheckingUsage}
                                                 >
                                                     <Pencil className="h-3 w-3" />
                                                 </Button>
                                             </span>
                                         </TooltipTrigger>
-                                        {(!entitiesAllowed || !syncsAllowed) && (
+                                        {(!entitiesAllowed || !entitiesAllowed) && (
                                             <TooltipContent className="max-w-xs">
                                                 <p className="text-xs">
                                                     {!entitiesAllowed && entitiesCheckDetails?.reason === 'usage_limit_exceeded' ? (
@@ -1752,7 +1748,7 @@ const SourceConnectionDetailView = ({
                                                             </a>
                                                             {' '}to schedule syncs.
                                                         </>
-                                                    ) : !syncsAllowed && syncsCheckDetails?.reason === 'usage_limit_exceeded' ? (
+                                                    ) : !entitiesAllowed && entitiesCheckDetails?.reason === 'usage_limit_exceeded' ? (
                                                         <>
                                                             Sync limit reached.{' '}
                                                             <a
@@ -1826,9 +1822,6 @@ const SourceConnectionDetailView = ({
                 {syncJob?.error && syncJob?.status !== 'cancelled' ? (
                     <SyncErrorCard
                         error={syncJob.error}
-                        onRunSync={handleRunSync}
-                        isInitiatingSyncJob={isInitiatingSyncJob}
-                        isSyncJobRunning={false}
                         isDark={isDark}
                     />
                 ) : (
@@ -1852,9 +1845,7 @@ const SourceConnectionDetailView = ({
                         onCancelSync={handleCancelSync}
                         isCancelling={isCancelling}
                         entitiesAllowed={entitiesAllowed}
-                        syncsAllowed={syncsAllowed}
                         entitiesCheckDetails={entitiesCheckDetails}
-                        syncsCheckDetails={syncsCheckDetails}
                         isCheckingUsage={isCheckingUsage}
                     />
                 )}
@@ -2000,7 +1991,7 @@ const SourceConnectionDetailView = ({
                                         // Emit event to notify parent components
                                         emitCollectionEvent(SOURCE_CONNECTION_UPDATED, {
                                             id: sourceConnection.id,
-                                            collectionId: sourceConnection.readable_collection_id,
+                                            collectionId: (sourceConnection as any).readable_collection_id || (sourceConnection as any).collection,
                                             deleted: true
                                         });
 

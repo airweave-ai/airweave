@@ -5,17 +5,18 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import {
-  Plus, Crown, Shield, Users, Check, Copy, Star, CreditCard
+  Plus, Settings as SettingsIcon, Key, Users, Check, Copy, Star, CreditCard, MousePointerBan, TrendingUp
 } from 'lucide-react';
 import { APIKeysSettings } from '@/components/settings/APIKeysSettings';
 import { MembersSettings } from '@/components/settings/MembersSettings';
 import { BillingSettings } from '@/components/settings/BillingSettings';
+import { UsageDashboard } from '@/components/settings/UsageDashboard';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 import { OrganizationSettings } from '@/components/settings/OrganizationSettings';
 
-type TabType = 'settings' | 'api-keys' | 'members' | 'billing';
+type TabType = 'settings' | 'api-keys' | 'members' | 'billing' | 'usage';
 
 export const OrganizationSettingsUnified = () => {
   const [searchParams] = useSearchParams();
@@ -117,8 +118,8 @@ export const OrganizationSettingsUnified = () => {
 
   const getRoleIcon = (role: string) => {
     switch (role) {
-      case 'owner': return <Crown className="h-3 w-3" />;
-      case 'admin': return <Shield className="h-3 w-3" />;
+      case 'owner': return <Key className="h-3 w-3" />;
+      case 'admin': return <SettingsIcon className="h-3 w-3" />;
       default: return <Users className="h-3 w-3" />;
     }
   };
@@ -156,9 +157,10 @@ export const OrganizationSettingsUnified = () => {
   }
 
   const tabs = [
-    { id: 'settings' as TabType, label: 'Settings', icon: null },
-    { id: 'api-keys' as TabType, label: 'API Keys', icon: null },
-    { id: 'members' as TabType, label: 'Members', icon: null },
+    { id: 'settings' as TabType, label: 'Settings', icon: <SettingsIcon className="h-3.5 w-3.5" /> },
+    { id: 'api-keys' as TabType, label: 'API Keys', icon: <Key className="h-3.5 w-3.5" /> },
+    { id: 'members' as TabType, label: 'Members', icon: <Users className="h-3.5 w-3.5" /> },
+    { id: 'usage' as TabType, label: 'Usage', icon: <TrendingUp className="h-3.5 w-3.5" /> },
     { id: 'billing' as TabType, label: 'Billing', icon: <CreditCard className="h-3.5 w-3.5" /> }
   ];
 
@@ -256,6 +258,13 @@ export const OrganizationSettingsUnified = () => {
               <MembersSettings
                 currentOrganization={currentOrganization}
               />
+            )}
+
+            {/* Usage Tab */}
+            {activeTab === 'usage' && (
+              <div>
+                <UsageDashboard organizationId={currentOrganization.id} />
+              </div>
             )}
 
             {/* Billing Tab */}

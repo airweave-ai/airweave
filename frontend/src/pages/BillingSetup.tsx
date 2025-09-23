@@ -13,6 +13,7 @@ export default function BillingSetup() {
   const { currentOrganization, billingInfo, fetchBillingInfo } = useOrganizationStore();
   const [isLoading, setIsLoading] = useState(false);
   const [isCheckingStatus, setIsCheckingStatus] = useState(true);
+  const [isPolling, setIsPolling] = useState(false);
 
   const isDark = resolvedTheme === 'dark';
 
@@ -26,10 +27,32 @@ export default function BillingSetup() {
     try {
       const info = await fetchBillingInfo();
 
-      // If they have an active subscription and payment method, redirect to settings
-      if (info && info.has_active_subscription && info.payment_method_added && info.status === 'active') {
-        toast.info('You already have an active subscription');
-        navigate('/organization/settings?tab=billing');
+      // If subscription is active (paid or developer), go to success page
+      if (info && info.has_active_subscription && info.status === 'active') {
+        toast.success('Subscription activated');
+        navigate('/billing/success');
+        return;
+      }
+
+      // If not active yet, start a short poll to wait for Stripe webhooks
+      if (info && !info.has_active_subscription && !isPolling) {
+        setIsPolling(true);
+        const startedAt = Date.now();
+        const poll = async () => {
+          const refreshed = await fetchBillingInfo();
+          if (refreshed && refreshed.has_active_subscription && refreshed.status === 'active') {
+            toast.success('Subscription activated');
+            setIsPolling(false);
+            navigate('/billing/success');
+            return;
+          }
+          if (Date.now() - startedAt < 30000) {
+            setTimeout(poll, 2000);
+          } else {
+            setIsPolling(false);
+          }
+        };
+        setTimeout(poll, 1500);
       }
     } catch (error) {
       console.error('Failed to check billing status:', error);
@@ -46,8 +69,15 @@ export default function BillingSetup() {
 
     setIsLoading(true);
     try {
+      // If current plan is developer, do not go to checkout. Require webhook activation.
+      if (billingInfo?.plan === 'developer') {
+        toast.error('Stripe listener error: awaiting activation for Developer plan. Please ensure webhooks are configured.');
+        setIsLoading(false);
+        return;
+      }
+
       const response = await apiClient.post('/billing/checkout-session', {
-        plan: billingInfo?.plan || 'developer', // Use their selected plan or default to developer
+        plan: billingInfo?.plan || 'pro', // Use their selected plan or default to pro
         success_url: `${window.location.origin}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${window.location.origin}/billing/setup`
       });
@@ -82,7 +112,7 @@ export default function BillingSetup() {
   const hasActiveSubscription = billingInfo?.has_active_subscription;
   const needsPaymentMethod = billingInfo?.requires_payment_method && !billingInfo?.payment_method_added;
   const isInitialSetup = !hasActiveSubscription;
-  const selectedPlan = billingInfo?.plan || 'developer';
+  const selectedPlan = billingInfo?.plan || 'pro';
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -130,17 +160,17 @@ export default function BillingSetup() {
           <div className="border border-border/50 rounded-lg p-6 space-y-4">
             <div className="space-y-1">
               <h3 className="text-lg font-normal">
-                {selectedPlan === 'startup' ? 'Startup' : 'Developer'} Plan
+                {selectedPlan === 'team' ? 'Team' : 'Pro'} Plan
               </h3>
               <p className="text-sm text-muted-foreground">
-                {selectedPlan === 'startup'
-                  ? 'For growing teams with higher demands'
-                  : 'Perfect for small teams and projects'}
+                {selectedPlan === 'team'
+                  ? 'For fast-moving teams that need scale and control'
+                  : 'Take your agent to the next level'}
               </p>
             </div>
 
             <div className="space-y-3">
-              {selectedPlan === 'startup' ? (
+              {selectedPlan === 'team' ? (
                 <>
                   <div className="flex items-center gap-3">
                     <Check className="h-4 w-4 text-primary/70 flex-shrink-0" />
@@ -148,42 +178,54 @@ export default function BillingSetup() {
                   </div>
                   <div className="flex items-center gap-3">
                     <Check className="h-4 w-4 text-primary/70 flex-shrink-0" />
-                    <span className="text-sm">50 source connections</span>
+                    <span className="text-sm">1000 sources</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <Check className="h-4 w-4 text-primary/70 flex-shrink-0" />
-                    <span className="text-sm">1M entities per month</span>
+                    <span className="text-sm">10K queries per month</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <Check className="h-4 w-4 text-primary/70 flex-shrink-0" />
-                    <span className="text-sm">15-minute sync frequency</span>
+                    <span className="text-sm">1M entities synced per month</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <Check className="h-4 w-4 text-primary/70 flex-shrink-0" />
-                    <span className="text-sm">Up to 20 team members</span>
+                    <span className="text-sm">Up to 10 team members</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Check className="h-4 w-4 text-primary/70 flex-shrink-0" />
+                    <span className="text-sm">Dedicated Slack support</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Check className="h-4 w-4 text-primary/70 flex-shrink-0" />
+                    <span className="text-sm">Dedicated onboarding</span>
                   </div>
                 </>
               ) : (
                 <>
                   <div className="flex items-center gap-3">
                     <Check className="h-4 w-4 text-primary/70 flex-shrink-0" />
-                    <span className="text-sm">14-day free trial, then $89/month</span>
+                    <span className="text-sm">$20 per month</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <Check className="h-4 w-4 text-primary/70 flex-shrink-0" />
-                    <span className="text-sm">10 source connections</span>
+                    <span className="text-sm">50 sources</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <Check className="h-4 w-4 text-primary/70 flex-shrink-0" />
-                    <span className="text-sm">100K entities per month</span>
+                    <span className="text-sm">2K queries per month</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <Check className="h-4 w-4 text-primary/70 flex-shrink-0" />
-                    <span className="text-sm">Hourly sync frequency</span>
+                    <span className="text-sm">100K entities synced per month</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <Check className="h-4 w-4 text-primary/70 flex-shrink-0" />
-                    <span className="text-sm">Up to 5 team members</span>
+                    <span className="text-sm">Up to 2 team members</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Check className="h-4 w-4 text-primary/70 flex-shrink-0" />
+                    <span className="text-sm">Email support</span>
                   </div>
                 </>
               )}
@@ -232,13 +274,16 @@ export default function BillingSetup() {
             )}
           </div>
 
+          {/* Polling state */}
+          {isPolling && (
+            <p className="text-center text-xs text-muted-foreground mt-2">
+              Waiting for Stripe confirmation... this may take a few seconds.
+            </p>
+          )}
+
           {/* Additional Info */}
           <p className="text-center text-xs text-muted-foreground">
-            {selectedPlan === 'developer' && isInitialSetup
-              ? "You won't be charged during your 14-day trial. Cancel anytime."
-              : selectedPlan === 'startup' && isInitialSetup
-                ? "Your subscription will start immediately."
-                : "Update your payment method to continue your subscription."}
+            {isInitialSetup ? 'Your subscription will start immediately.' : 'Update your payment method to continue your subscription.'}
           </p>
         </div>
       </div>

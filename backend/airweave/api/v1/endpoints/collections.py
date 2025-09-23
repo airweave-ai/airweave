@@ -72,16 +72,12 @@ async def create(
     collection: schemas.CollectionCreate,
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
-    guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
 ) -> schemas.Collection:
     """Create a new collection.
 
     The newly created collection is initially empty and does not contain any data
     until you explicitly add source connections to it.
     """
-    # Check if the organization is allowed to create a collection
-    await guard_rail.is_allowed(ActionType.COLLECTIONS)
-
     # Create the collection
     collection_obj = await collection_service.create(db, collection_in=collection, ctx=ctx)
 
@@ -89,9 +85,6 @@ async def create(
     business_events.track_collection_created(
         ctx=ctx, collection_id=collection_obj.id, collection_name=collection_obj.name
     )
-
-    # Increment usage after successful creation
-    await guard_rail.increment(ActionType.COLLECTIONS)
 
     return collection_obj
 
@@ -140,7 +133,6 @@ async def delete(
     ),
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
-    guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
 ) -> schemas.Collection:
     """Delete a collection and all associated data.
 
@@ -167,7 +159,6 @@ async def delete(
         # Continue with deletion even if Qdrant deletion fails
 
     # Delete the collection - CASCADE will handle all child objects
-    await guard_rail.decrement(ActionType.COLLECTIONS)
     return await crud.collection.remove(db, id=db_obj.id, ctx=ctx)
 
 
@@ -398,13 +389,8 @@ async def refresh_all_source_connections(
     # Check if we're allowed to process entities
     await guard_rail.is_allowed(ActionType.ENTITIES)
 
-    # Check if we're allowed to create N syncs at once
-    num_syncs = len(source_connections)
-    await guard_rail.is_allowed(ActionType.SYNCS, amount=num_syncs)
-
     # Create a sync job for each source connection and run it in the background
     sync_jobs = []
-    successful_syncs = 0
 
     for sc in source_connections:
         # Create the sync job
@@ -458,17 +444,9 @@ async def refresh_all_source_connections(
                     ctx,
                 )
 
-            # Track successful sync setup
-            successful_syncs += 1
         except Exception as e:
             # Log the error but continue with other source connections
             logger.error(f"Failed to create sync job for source connection {sc.id}: {e}")
-            # Don't increment successful_syncs for this one
-
-    # Increment sync usage by the number of successfully created syncs
-    if successful_syncs > 0:
-        for _ in range(successful_syncs):
-            await guard_rail.increment(ActionType.SYNCS)
 
     return sync_jobs
 

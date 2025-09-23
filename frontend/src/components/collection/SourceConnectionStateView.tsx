@@ -22,6 +22,8 @@ import {
 } from '@/components/ui/tooltip';
 import { DESIGN_SYSTEM } from '@/lib/design-system';
 import { useCollectionCreationStore } from '@/stores/collectionCreationStore';
+import type { SingleActionCheckResponse } from '@/types';
+import { useUsageStore } from '@/lib/stores/usage';
 
 // Source Connection interface - matches backend schema
 interface LastSyncJob {
@@ -118,6 +120,13 @@ const SourceConnectionStateView: React.FC<Props> = ({
   const [nextRunTime, setNextRunTime] = useState<string | null>(null);
   const [lastRanDisplay, setLastRanDisplay] = useState<string>('Never');
   const [isRefreshingAuth, setIsRefreshingAuth] = useState(false);
+  // Use usage store for limits
+  const actionChecks = useUsageStore(state => state.actionChecks);
+  const isCheckingUsage = useUsageStore(state => state.isLoading);
+  const entitiesAllowed = actionChecks.entities?.allowed ?? true;
+  const entitiesCheckDetails = actionChecks.entities;
+  const sourceConnectionsAllowed = actionChecks.source_connections?.allowed ?? true;
+  const sourceConnectionsCheckDetails = actionChecks.source_connections;
 
   const mediator = useRef<EntityStateMediator | null>(null);
   const { resolvedTheme } = useTheme();
@@ -310,7 +319,7 @@ const SourceConnectionStateView: React.FC<Props> = ({
   }, [fetchSourceConnection]);
 
   useEffect(() => {
-    const isNotAuthorized = sourceConnectionData?.status === 'not_yet_authorized' || !sourceConnectionData?.auth?.authenticated;
+    const isNotAuthorized = sourceConnectionData?.status === 'pending_auth' || !sourceConnectionData?.auth?.authenticated;
 
     // Only initialize mediator if authenticated
     if (!isNotAuthorized) {
@@ -351,7 +360,8 @@ const SourceConnectionStateView: React.FC<Props> = ({
         // Check the store for active sync job after initialization
         const currentState = useEntityStateStore.getState().getConnection(sourceConnectionId);
         if (currentState?.last_sync_job?.id &&
-          (currentState.last_sync_job.status === 'in_progress' ||
+          ((currentState.last_sync_job.status as any) === 'running' ||
+            currentState.last_sync_job.status === 'in_progress' ||
             currentState.last_sync_job.status === 'pending' ||
             currentState.last_sync_job.status === 'created')) {
           console.log('Subscribing to active sync job:', currentState.last_sync_job.id);
@@ -438,7 +448,19 @@ const SourceConnectionStateView: React.FC<Props> = ({
     }
   }, [storeConnection?.last_sync_job?.status, storeConnection?.last_sync_job?.error, fetchSourceConnection]);
 
+  // Usage limits are checked at app level by UsageChecker component
+
   const handleRunSync = async () => {
+    if (!entitiesAllowed || isCheckingUsage) {
+      toast({
+        title: "Limit reached",
+        description: entitiesCheckDetails?.reason === 'usage_limit_exceeded'
+          ? "Entity processing limit reached. Upgrade your plan to continue syncing."
+          : "Sync is currently blocked by billing status.",
+        variant: 'destructive'
+      });
+      return;
+    }
     try {
       setIsRunningSync(true);
       const response = await apiClient.post(`/source-connections/${sourceConnectionId}/run`);
@@ -560,13 +582,14 @@ const SourceConnectionStateView: React.FC<Props> = ({
 
   // Sync states - use real-time updates from store if available, otherwise use source connection data
   const currentSyncJob = storeConnection?.last_sync_job || sourceConnection?.last_sync_job;
-  const isRunning = currentSyncJob?.status === 'in_progress';
+  const jobStatus = currentSyncJob?.status as unknown as string | undefined;
+  const isRunning = jobStatus === 'running' || jobStatus === 'in_progress';
   const isPending = currentSyncJob?.status === 'pending' || currentSyncJob?.status === 'created';
   const isSyncing = isRunning || isPending;
 
   // Get sync status display
   const getSyncStatusDisplay = () => {
-    if (sourceConnection?.status === 'not_yet_authorized' || !sourceConnection?.auth?.authenticated) {
+    if (sourceConnection?.status === 'pending_auth' || !sourceConnection?.auth?.authenticated) {
       return { text: 'Not Authenticated', color: 'bg-cyan-500', icon: null };
     }
     if (currentSyncJob?.status === 'failed') return { text: 'Failed', color: 'bg-red-500', icon: null };
@@ -577,7 +600,7 @@ const SourceConnectionStateView: React.FC<Props> = ({
   };
 
   const syncStatus = getSyncStatusDisplay();
-  const isNotAuthorized = sourceConnection?.status === 'not_yet_authorized' || !sourceConnection?.auth?.authenticated;
+  const isNotAuthorized = sourceConnection?.status === 'pending_auth' || !sourceConnection?.auth?.authenticated;
 
   return (
     <div className={cn("space-y-4", DESIGN_SYSTEM.typography.sizes.body)}>
@@ -685,27 +708,25 @@ const SourceConnectionStateView: React.FC<Props> = ({
                 <TooltipTrigger asChild>
                   <button
                     type="button"
-                    onClick={isSyncing ? handleCancelSync : handleRunSync}
-                    disabled={isRunningSync || isCancelling || isNotAuthorized}
+                    onClick={isSyncing ? handleCancelSync : (!entitiesAllowed || isCheckingUsage) ? undefined : handleRunSync}
+                    disabled={isRunningSync || isCancelling || (!entitiesAllowed && !isSyncing)}
                     className={cn(
                       "h-8 w-8 rounded-md border shadow-sm flex items-center justify-center transition-all duration-200",
-                      isNotAuthorized
-                        ? "opacity-50 cursor-not-allowed bg-muted border-border"
-                        : isSyncing
-                          ? isCancelling
-                            ? isDark
-                              ? "bg-orange-900/30 border-orange-700 hover:bg-orange-900/50 cursor-not-allowed"
-                              : "bg-orange-50 border-orange-200 hover:bg-orange-100 cursor-not-allowed"
-                            : isDark
-                              ? "bg-red-900/30 border-red-700 hover:bg-red-900/50 cursor-pointer"
-                              : "bg-red-50 border-red-200 hover:bg-red-100 cursor-pointer"
-                          : isRunningSync
-                            ? "bg-muted border-border cursor-not-allowed"
-                            : isDark
-                              ? "bg-gray-900 border-border hover:bg-muted cursor-pointer"
-                              : "bg-white border-border hover:bg-muted cursor-pointer"
+                      isSyncing
+                        ? isCancelling
+                          ? isDark
+                            ? "bg-orange-900/30 border-orange-700 hover:bg-orange-900/50 cursor-not-allowed"
+                            : "bg-orange-50 border-orange-200 hover:bg-orange-100 cursor-not-allowed"
+                          : isDark
+                            ? "bg-red-900/30 border-red-700 hover:bg-red-900/50 cursor-pointer"
+                            : "bg-red-50 border-red-200 hover:bg-red-100 cursor-pointer"
+                        : isRunningSync || (!entitiesAllowed && !isSyncing) || isCheckingUsage
+                          ? "bg-muted border-border cursor-not-allowed opacity-50"
+                          : isDark
+                            ? "bg-gray-900 border-border hover:bg-muted cursor-pointer"
+                            : "bg-white border-border hover:bg-muted cursor-pointer"
                     )}
-                    title={isSyncing ? (isCancelling ? "Cancelling sync..." : "Cancel sync") : (isRunningSync ? "Starting sync..." : "Refresh data")}
+                    title={isSyncing ? (isCancelling ? "Cancelling sync..." : "Cancel sync") : (isRunningSync ? "Starting sync..." : (!entitiesAllowed ? "Entity limit reached" : "Refresh data"))}
                   >
                     {isSyncing ? (
                       isCancelling ? (
@@ -723,15 +744,17 @@ const SourceConnectionStateView: React.FC<Props> = ({
                 </TooltipTrigger>
                 <TooltipContent>
                   <p className="text-xs">
-                    {isNotAuthorized
-                      ? "Authentication required before syncing"
-                      : isSyncing
-                        ? isCancelling
-                          ? "Cancelling sync..."
-                          : "Cancel sync"
-                        : isRunningSync
-                          ? "Starting sync..."
-                          : "Refresh data"}
+                    {isSyncing
+                      ? isCancelling
+                        ? "Cancelling sync..."
+                        : "Cancel sync"
+                      : isRunningSync
+                        ? "Starting sync..."
+                        : !entitiesAllowed && entitiesCheckDetails?.reason === 'usage_limit_exceeded'
+                          ? "Entity processing limit reached. Upgrade your plan to sync more data."
+                          : !entitiesAllowed && entitiesCheckDetails?.reason === 'payment_required'
+                            ? "Billing issue detected. Update billing to sync data."
+                            : "Refresh data"}
                   </p>
                 </TooltipContent>
               </Tooltip>

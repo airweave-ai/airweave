@@ -79,11 +79,12 @@ const Dashboard = () => {
   const isCheckingUsage = useUsageStore(state => state.isLoading);
 
   // Derived states from usage store
-  const collectionsAllowed = actionChecks.collections?.allowed ?? true;
   const sourceConnectionsAllowed = actionChecks.source_connections?.allowed ?? true;
   const entitiesAllowed = actionChecks.entities?.allowed ?? true;
-  const syncsAllowed = actionChecks.syncs?.allowed ?? true;
-  const usageCheckDetails = actionChecks;
+  const usageCheckDetails = {
+    source_connections: actionChecks.source_connections ?? null,
+    entities: actionChecks.entities ?? null
+  };
 
   // Usage checking is now handled by UsageChecker component at app level
 
@@ -225,12 +226,12 @@ const Dashboard = () => {
                       name={source.name}
                       shortName={source.short_name}
                       onClick={() => handleSourceClick(source)}
-                      disabled={!collectionsAllowed || !sourceConnectionsAllowed || !entitiesAllowed || !syncsAllowed || isCheckingUsage}
+                      disabled={!sourceConnectionsAllowed || !entitiesAllowed || isCheckingUsage}
                       usageCheckDetails={usageCheckDetails}
                     />
                   ))}
                   {/* Request Connector Button */}
-                  <RequestConnectorButton variant="dashboard" />
+                  <RequestConnectorButton />
                 </>
               )}
             </div>
