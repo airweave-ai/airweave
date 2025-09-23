@@ -25,6 +25,7 @@ class TemporalService:
         source_connection: schemas.SourceConnection,
         ctx: ApiContext,
         access_token: Optional[str] = None,
+        force_full_sync: bool = False,
     ) -> WorkflowHandle:
         """Start a source connection sync workflow.
 
@@ -36,6 +37,7 @@ class TemporalService:
             source_connection: The source connection
             ctx: The API context
             access_token: Optional access token
+            force_full_sync: If True, forces a full sync ignoring cursor data
 
         Returns:
             The workflow handle
@@ -60,6 +62,7 @@ class TemporalService:
                 source_connection.model_dump(mode="json"),
                 ctx.to_serializable_dict(),  # Use serializable dict instead of model_dump
                 access_token,
+                force_full_sync,  # Add force_full_sync parameter
             ],
             id=workflow_id,
             task_queue=task_queue,

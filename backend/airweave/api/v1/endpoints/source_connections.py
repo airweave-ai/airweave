@@ -1041,6 +1041,100 @@ async def run(
     return sync_job.to_source_connection_job(source_connection_id)
 
 
+@router.post(
+    "/{source_connection_id}/run-force-full",
+    response_model=schemas.SourceConnectionJob,
+    responses=create_single_job_response("completed", "Forced full sync job successfully triggered"),
+)
+async def run_force_full(
+    *,
+    db: AsyncSession = Depends(deps.get_db),
+    source_connection_id: UUID = Path(
+        ..., description="The unique identifier of the source connection to sync"
+    ),
+    access_token: Optional[str] = Body(
+        None,
+        embed=True,
+        description=(
+            "This parameter gives you the ability to start a sync job with an access "
+            "token for an OAuth2.0 source directly instead of using the credentials "
+            "that Airweave has stored for you."
+        ),
+    ),
+    ctx: ApiContext = Depends(deps.get_context),
+    guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
+    background_tasks: BackgroundTasks,
+) -> schemas.SourceConnectionJob:
+    """Manually trigger a FORCED FULL sync for this source connection.
+
+    Similar to the regular run endpoint, but forces a complete full sync by ignoring
+    any existing cursor data. This ensures all entities are fetched from the source,
+    not just incremental changes. Useful for testing or when cursor data might be stale.
+    """
+    # Check if organization is allowed to create syncs and process entities
+    await guard_rail.is_allowed(ActionType.SYNCS)
+    await guard_rail.is_allowed(ActionType.ENTITIES)
+
+    sync_job = await source_connection_service.run_source_connection(
+        db=db,
+        source_connection_id=source_connection_id,
+        ctx=ctx,
+        access_token=access_token,
+    )
+
+    # Start the sync job in the background
+    sync = await crud.sync.get(db=db, id=sync_job.sync_id, ctx=ctx, with_connections=True)
+    sync_dag = await sync_service.get_sync_dag(db=db, sync_id=sync_job.sync_id, ctx=ctx)
+
+    # Get source connection with auth_fields for temporal processing
+    source_connection_with_auth = await source_connection_service.get_source_connection(
+        db=db,
+        source_connection_id=source_connection_id,
+        show_auth_fields=True,  # Important: Need actual auth_fields for temporal
+        ctx=ctx,
+    )
+
+    collection = await crud.collection.get_by_readable_id(
+        db=db, readable_id=source_connection_with_auth.collection, ctx=ctx
+    )
+
+    sync = schemas.Sync.model_validate(sync, from_attributes=True)
+    sync_dag = schemas.SyncDag.model_validate(sync_dag, from_attributes=True)
+    collection = schemas.Collection.model_validate(collection, from_attributes=True)
+
+    # Check if Temporal is enabled, otherwise fall back to background tasks
+    if await temporal_service.is_temporal_enabled():
+        # Use Temporal workflow with FORCE_FULL_SYNC=True
+        await temporal_service.run_source_connection_workflow(
+            sync=sync,
+            sync_job=sync_job,
+            sync_dag=sync_dag,
+            collection=collection,
+            source_connection=source_connection_with_auth,
+            ctx=ctx,
+            access_token=sync_job.access_token if hasattr(sync_job, "access_token") else None,
+            force_full_sync=True,  # <-- This is the key difference
+        )
+    else:
+        # Fall back to background tasks with force_full_sync
+        background_tasks.add_task(
+            sync_service.run,
+            sync,
+            sync_job,
+            sync_dag,
+            collection,
+            source_connection_with_auth,
+            ctx,
+            access_token=sync_job.access_token if hasattr(sync_job, "access_token") else None,
+            force_full_sync=True,  # <-- Also for background tasks
+        )
+
+    # Increment sync usage only after everything is set up successfully
+    await guard_rail.increment(ActionType.SYNCS)
+
+    return sync_job.to_source_connection_job(source_connection_id)
+
+
 @router.get(
     "/{source_connection_id}/jobs",
     response_model=List[schemas.SourceConnectionJob],

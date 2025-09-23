@@ -77,6 +77,42 @@ class CreateStep(TestStep):
 class SyncStep(TestStep):
     """Sync data to Airweave step."""
 
+    def __init__(self, config: TestConfig, force_full_sync: bool = False):
+        """Initialize the sync step.
+        
+        Args:
+            config: Test configuration
+            force_full_sync: If True, forces a full sync by ignoring cursor data
+        """
+        super().__init__(config)
+        self.force_full_sync = force_full_sync
+
+    # async def _call_force_full_sync(self, client):
+    #     """Call the force-full-sync endpoint with proper error handling."""
+    #     import httpx
+    #     import os
+    #     
+    #     base_url = os.getenv("AIRWEAVE_API_URL", "http://localhost:8001")
+    #     api_key = os.getenv("AIRWEAVE_API_KEY")
+    #     headers = {"X-API-Key": api_key} if api_key else {}
+    #     
+    #     async with httpx.AsyncClient() as http_client:
+    #         response = await http_client.post(
+    #             f"{base_url}/source-connections/{self.config._source_connection_id}/run-force-full",
+    #             headers=headers,
+    #             json={}
+    #         )
+    #         response.raise_for_status()
+    #         run_resp_data = response.json()
+    #         
+    #         # Create a simple object to mimic the SDK response
+    #         class TempResponse:
+    #             def __init__(self, data):
+    #                 for k, v in data.items():
+    #                     setattr(self, k, v)
+    #         
+    #         return TempResponse(run_resp_data)
+
     async def execute(self):
         """Trigger sync and wait for completion."""
         self.logger.info("🔄 Syncing data to Airweave")
@@ -97,7 +133,12 @@ class SyncStep(TestStep):
         # then START OUR OWN sync and wait for it too.
         target_job_id = None
         try:
-            run_resp = client.source_connections.run(self.config._source_connection_id)
+            if self.force_full_sync:
+                # run_resp = await self._call_force_full_sync(client)
+                run_resp = client.source_connections.run_force_full(self.config._source_connection_id)
+            else:
+                run_resp = client.source_connections.run(self.config._source_connection_id)
+            
             target_job_id = (
                 getattr(run_resp, "id", None)
                 or getattr(run_resp, "job_id", None)
@@ -117,7 +158,11 @@ class SyncStep(TestStep):
                 await self._wait_for_sync_completion(client, target_job_id=active_job_id)
 
                 # IMPORTANT: after the previous job completes, start *our* job
-                run_resp = client.source_connections.run(self.config._source_connection_id)
+                if self.force_full_sync:
+                    run_resp = client.source_connections.run_force_full(self.config._source_connection_id)
+                else:
+                    run_resp = client.source_connections.run(self.config._source_connection_id)
+                    
                 target_job_id = (
                     getattr(run_resp, "id", None)
                     or getattr(run_resp, "job_id", None)
@@ -396,8 +441,12 @@ class VerifyStep(TestStep):
                         self.logger.info(
                             "🔁 Miss detected during verify; triggering an extra sync …"
                         )
-                        # Reuse the same SyncStep logic to avoid duplication
-                        await SyncStep(self.config).execute()
+                        
+                        # Force a full sync to ensure we don't miss newly created entities
+                        # bypasses incremental sync cursors that might skip recent changes
+                        self.logger.info("🔄 Forcing full sync to capture all recent changes")
+                        await SyncStep(self.config, force_full_sync=True).execute()
+                        
                 # Final check after resync
                 return await verify_one(e)
 
