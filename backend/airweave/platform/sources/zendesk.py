@@ -42,12 +42,12 @@ class ZendeskSource(BaseSource):
 
     @classmethod
     async def create(
-        cls, credentials: Optional[Dict[str, Any]] = None, config: Optional[Dict[str, Any]] = None
+        cls, access_token: str, config: Optional[Dict[str, Any]] = None
     ) -> "ZendeskSource":
         """Create a new Zendesk source.
 
         Args:
-            credentials: Dict containing OAuth access token for Zendesk API
+            access_token: OAuth access token for Zendesk API
             config: Optional configuration parameters
 
         Returns:
@@ -55,27 +55,11 @@ class ZendeskSource(BaseSource):
         """
         instance = cls()
 
-        if not credentials:
-            raise ValueError("Credentials are required")
+        if not access_token:
+            raise ValueError("Access token is required")
 
-        # Handle OAuth credentials from OAuth flow (dict format)
-        if isinstance(credentials, dict) and "access_token" in credentials:
-            instance.access_token = credentials["access_token"]
-            instance.auth_type = "oauth"
-        elif isinstance(credentials, str):
-            # Direct string token (fallback case)
-            instance.access_token = credentials
-            instance.auth_type = "oauth"
-        else:
-            # Debug: log what we actually received
-            cred_type = type(credentials).__name__
-            if isinstance(credentials, dict):
-                cred_attrs = list(credentials.keys())
-            else:
-                cred_attrs = "unknown"
-            raise ValueError(
-                f"OAuth access_token must be provided. Received {cred_type} with {cred_attrs}"
-            )
+        instance.access_token = access_token
+        instance.auth_type = "oauth"
 
         # Store config values as instance attributes
         if config:
