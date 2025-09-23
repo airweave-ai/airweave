@@ -27,10 +27,10 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
         AuthenticationMethod.OAUTH_BROWSER,
         AuthenticationMethod.OAUTH_TOKEN,
         AuthenticationMethod.AUTH_PROVIDER,
-        AuthenticationMethod.DIRECT,
     ],
     oauth_type=OAuthType.WITH_REFRESH,
-    auth_config_class="ZendeskAuthConfig",
+    requires_byoc=True,
+    auth_config_class=None,
     config_class="ZendeskConfig",
     labels=["Customer Support", "CRM"],
 )
@@ -47,10 +47,7 @@ class ZendeskSource(BaseSource):
         """Create a new Zendesk source.
 
         Args:
-            credentials: Dict containing either:
-                - access_token: OAuth access token for Zendesk API
-                - api_token: API token for Zendesk API
-                - email: Email address (required with api_token)
+            credentials: Dict containing OAuth access token for Zendesk API
             config: Optional configuration parameters
 
         Returns:
@@ -61,49 +58,23 @@ class ZendeskSource(BaseSource):
         if not credentials:
             raise ValueError("Credentials are required")
 
-        # Support both OAuth2 and API token authentication
-        # Handle both dict and auth config object formats
-        if hasattr(credentials, "access_token") and credentials.access_token:
-            # Auth config object format (ZendeskAuthConfig)
-            instance.access_token = credentials.access_token
-            instance.auth_type = "oauth"
-        elif isinstance(credentials, dict) and "access_token" in credentials:
-            # Dict format from OAuth flow
+        # Handle OAuth credentials from OAuth flow (dict format)
+        if isinstance(credentials, dict) and "access_token" in credentials:
             instance.access_token = credentials["access_token"]
             instance.auth_type = "oauth"
         elif isinstance(credentials, str):
             # Direct string token (fallback case)
             instance.access_token = credentials
             instance.auth_type = "oauth"
-        elif (
-            hasattr(credentials, "api_token")
-            and hasattr(credentials, "email")
-            and credentials.api_token
-            and credentials.email
-        ):
-            # Auth config object format for direct auth
-            instance.api_token = credentials.api_token
-            instance.email = credentials.email
-            instance.auth_type = "api_token"
-        elif (
-            isinstance(credentials, dict) and "api_token" in credentials and "email" in credentials
-        ):
-            # Dict format for direct auth
-            instance.api_token = credentials["api_token"]
-            instance.email = credentials["email"]
-            instance.auth_type = "api_token"
         else:
             # Debug: log what we actually received
             cred_type = type(credentials).__name__
-            if hasattr(credentials, "__dict__"):
-                cred_attrs = list(credentials.__dict__.keys())
-            elif isinstance(credentials, dict):
+            if isinstance(credentials, dict):
                 cred_attrs = list(credentials.keys())
             else:
                 cred_attrs = "unknown"
             raise ValueError(
-                f"Either access_token or (api_token + email) must be provided. "
-                f"Received {cred_type} with {cred_attrs}"
+                f"OAuth access_token must be provided. Received {cred_type} with {cred_attrs}"
             )
 
         # Store config values as instance attributes
@@ -124,7 +95,7 @@ class ZendeskSource(BaseSource):
     ) -> Dict:
         """Make authenticated GET request to Zendesk API.
 
-        Supports both OAuth2 and API token authentication.
+        Uses OAuth2 authentication.
 
         Args:
             client: HTTP client to use for the request
@@ -140,7 +111,7 @@ class ZendeskSource(BaseSource):
             if response.status_code == 401:
                 self.logger.warning(f"Received 401 Unauthorized for {url}")
 
-                if self.auth_type == "oauth" and self.token_manager:
+                if self.token_manager:
                     try:
                         # Force refresh the token
                         new_token = await self.token_manager.refresh_on_unauthorized()
@@ -154,7 +125,7 @@ class ZendeskSource(BaseSource):
                         self.logger.error(f"Failed to refresh token: {str(e)}")
                         response.raise_for_status()
                 else:
-                    # No token manager or API token auth, can't refresh
+                    # No token manager available to refresh expired token
                     self.logger.error("No token manager available to refresh expired token")
                     response.raise_for_status()
 
@@ -170,23 +141,13 @@ class ZendeskSource(BaseSource):
             raise
 
     def _get_auth_headers(self) -> Dict[str, str]:
-        """Get authentication headers based on auth type."""
-        if self.auth_type == "oauth":
-            # For OAuth2, get token from token manager or instance
-            token = getattr(self, "access_token", None)
-            if self.token_manager:
-                # This will be handled by the token manager in the request
-                return {"Authorization": f"Bearer {token}"}
+        """Get OAuth authentication headers."""
+        # For OAuth2, get token from token manager or instance
+        token = getattr(self, "access_token", None)
+        if self.token_manager:
+            # This will be handled by the token manager in the request
             return {"Authorization": f"Bearer {token}"}
-        elif self.auth_type == "api_token":
-            # For API token, use Basic Auth with email and token
-            import base64
-
-            credentials = f"{self.email}/token:{self.api_token}"
-            encoded_credentials = base64.b64encode(credentials.encode()).decode()
-            return {"Authorization": f"Basic {encoded_credentials}"}
-        else:
-            raise ValueError(f"Unknown auth type: {self.auth_type}")
+        return {"Authorization": f"Bearer {token}"}
 
     async def _generate_organization_entities(
         self, client: httpx.AsyncClient

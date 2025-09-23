@@ -485,6 +485,7 @@ class SourceConnectionService:
             redirect_uri=api_callback,
             client_id=client_id,
             state=state,
+            config_values=validated_config,
         )
 
         async with UnitOfWork(db) as uow:
@@ -1029,8 +1030,11 @@ class SourceConnectionService:
             raise HTTPException(status_code=404, detail="Source connection shell not found")
 
         # Exchange code for token
+        # Extract config values from the init session payload for URL templating
+        config_values = init_session.payload.get("config", {}) if init_session.payload else {}
+
         token_response = await self._exchange_oauth_code(
-            db, init_session.short_name, code, init_session.overrides, ctx
+            db, init_session.short_name, code, init_session.overrides, ctx, config_values
         )
 
         # Validate token

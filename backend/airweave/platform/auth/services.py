@@ -126,13 +126,24 @@ class OAuth2Service:
         redirect_uri: str,
         client_id: Optional[str] = None,
         state: Optional[str] = None,
+        config_values: Optional[dict] = None,
     ) -> str:
         """Generate an OAuth2 authorization URL but force a specific redirect_uri and include state.
 
         Useful for API-hosted callback flows.
+        Supports URL templating with config values (e.g., {subdomain}).
         """
         if not client_id:
             client_id = oauth2_settings.client_id
+
+        # Apply URL templating if config values are provided
+        auth_url = oauth2_settings.url
+        if config_values:
+            try:
+                auth_url = auth_url.format(**config_values)
+            except KeyError as e:
+                # If a placeholder is missing from config, raise a descriptive error
+                raise ValueError(f"Missing required config value for URL template: {e}")
 
         params = {
             "response_type": "code",
@@ -145,7 +156,7 @@ class OAuth2Service:
         if oauth2_settings.scope:
             params["scope"] = oauth2_settings.scope
 
-        return f"{oauth2_settings.url}?{urlencode(params)}"
+        return f"{auth_url}?{urlencode(params)}"
 
     @staticmethod
     async def exchange_authorization_code_for_token_with_redirect(
@@ -156,10 +167,12 @@ class OAuth2Service:
         redirect_uri: str,
         client_id: Optional[str] = None,
         client_secret: Optional[str] = None,
+        config_values: Optional[dict] = None,
     ) -> OAuth2TokenResponse:
         """Exchange an OAuth2 code using an explicit redirect_uri.
 
         Must match the one used in auth.
+        Supports URL templating with config values (e.g., {subdomain}).
         """
         try:
             oauth2_settings = await integration_settings.get_by_short_name(source_short_name)
@@ -168,10 +181,48 @@ class OAuth2Service:
                 status_code=404, detail=f"Settings not found for source: {source_short_name}"
             ) from e
 
+        # Apply URL templating to backend_url if config values are provided
+        if config_values:
+            try:
+                oauth2_settings.backend_url = oauth2_settings.backend_url.format(**config_values)
+            except KeyError as e:
+                # If a placeholder is missing from config, raise a descriptive error
+                raise ValueError(f"Missing required config value for backend URL template: {e}")
+
+        # Debug logging to trace credential flow
+        # Format client secrets for logging (mask all but last 4 chars)
+        client_secret_masked = (
+            "***" + client_secret[-4:]
+            if client_secret and len(client_secret) > 4
+            else str(client_secret)
+        )
+        yaml_secret_masked = (
+            "***" + oauth2_settings.client_secret[-4:]
+            if oauth2_settings.client_secret and len(oauth2_settings.client_secret) > 4
+            else str(oauth2_settings.client_secret)
+        )
+
+        ctx.logger.info(
+            f"OAuth credential flow - "
+            f"Received client_id: {client_id}, "
+            f"Received client_secret: {client_secret_masked}, "
+            f"YAML client_id: {oauth2_settings.client_id}, "
+            f"YAML client_secret: {yaml_secret_masked}"
+        )
+
+        # For BYOC sources, user must provide credentials - don't fall back to YAML placeholders
         if not client_id:
             client_id = oauth2_settings.client_id
         if not client_secret:
             client_secret = oauth2_settings.client_secret
+
+        # If we're using placeholder values, this indicates a BYOC source with missing user creds
+        if client_id == "placeholder_client_id" or client_secret == "placeholder_client_secret":
+            raise HTTPException(
+                status_code=400,
+                detail="This source requires you to provide your own OAuth client credentials. "
+                "Please ensure you've entered valid Client ID and Client Secret.",
+            )
 
         return await OAuth2Service._exchange_code(
             logger=ctx.logger,
@@ -571,15 +622,17 @@ class OAuth2Service:
             payload["client_id"] = client_id
             payload["client_secret"] = client_secret
 
-        # Log the request details for debugging
+        # Log the request details for debugging (enhanced for Zendesk troubleshooting)
         logger.info(
             f"OAuth2 code exchange request - "
             f"URL: {integration_config.backend_url}, "
             f"Redirect URI: {redirect_uri}, "
             f"Client ID: {client_id}, "
-            f"Code length: {len(code)}, "
+            f"Client Secret: {'***' + client_secret[-4:] if len(client_secret) > 4 else '***'}, "
+            f"Code: {code[:10]}...{code[-4:] if len(code) > 10 else code}, "
             f"Grant type: {integration_config.grant_type}, "
-            f"Credential location: {integration_config.client_credential_location}"
+            f"Credential location: {integration_config.client_credential_location}, "
+            f"Payload keys: {list(payload.keys())}"
         )
 
         try:

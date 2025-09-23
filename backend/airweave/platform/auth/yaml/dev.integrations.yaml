@@ -236,11 +236,11 @@ integrations:
 
   zendesk:
     oauth_type: "with_refresh"
-    url: "https://jasonsventures.zendesk.com/oauth/authorizations/new"
-    backend_url: "https://jasonsventures.zendesk.com/oauth/tokens"
+    url: "https://{subdomain}.zendesk.com/oauth/authorizations/new"
+    backend_url: "https://{subdomain}.zendesk.com/oauth/tokens"
     grant_type: "authorization_code"
-    client_id: "jasons_ventures"
-    client_secret: "b95278b0d1ce287f15baccceed4d303af0b76a443d27dc9272ce6732d42fc71e"
+    client_id: "placeholder_client_id"
+    client_secret: "placeholder_client_secret"
     content_type: "application/x-www-form-urlencoded"
     client_credential_location: "body"
     scope: "read write"

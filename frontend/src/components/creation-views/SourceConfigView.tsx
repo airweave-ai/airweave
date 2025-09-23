@@ -11,6 +11,8 @@ import { AuthMethodSelector } from './AuthMethodSelector';
 import { AuthProviderSelector } from './AuthProviderSelector';
 import { useAuthProvidersStore } from '@/lib/stores/authProviders';
 import { ValidatedInput } from '@/components/ui/validated-input';
+import { Switch } from '@/components/ui/switch';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { sourceConnectionNameValidation, getAuthFieldValidation, clientIdValidation, clientSecretValidation, redirectUrlValidation } from '@/lib/validation/rules';
 
 interface SourceConfigViewProps {
@@ -378,7 +380,7 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
         // const error = await response.json();
         const error = await response.text();
         console.error(error)
-        throw new Error(error.detail || 'Failed to create connection');
+        throw new Error(error || 'Failed to create connection');
       }
 
       const result = await response.json();
@@ -599,6 +601,45 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
                             </p>
                           </div>
 
+                          {/* Dynamic OAuth credentials button for Zendesk */}
+                          {selectedSource === 'zendesk' && typeof configData['subdomain'] === 'string' && configData['subdomain'].trim() && (
+                            <div className="flex justify-center">
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      onClick={() => {
+                                        const url = `https://${configData['subdomain']}.zendesk.com/admin/apps-integrations/apis/oauth-clients`;
+                                        window.open(url, '_blank');
+                                      }}
+                                      className={cn(
+                                        "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+                                        "border",
+                                        isDark
+                                          ? "bg-gray-800/50 border-gray-700 text-gray-300 hover:bg-gray-700 hover:text-white"
+                                          : "bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                                      )}
+                                    >
+                                      <img
+                                        src={`/icons/zendesk-${isDark ? 'dark' : 'light'}.svg`}
+                                        alt="Zendesk"
+                                        className="w-3 h-3 object-contain"
+                                        onError={(e) => {
+                                          e.currentTarget.style.display = 'none';
+                                        }}
+                                      />
+                                      Get OAuth Credentials
+                                      <ExternalLink className="w-3 h-3" />
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Opens your Zendesk OAuth clients page to retrieve your Client ID and Secret</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            </div>
+                          )}
+
                           {/* Help section with hover info */}
                           <div className="flex items-start gap-2 group">
                             <div className="relative">
@@ -646,26 +687,6 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
                               </div>
                             </div>
 
-                            <div className="text-sm">
-                              <span className={cn(
-                                "font-medium",
-                                isDark ? "text-gray-400" : "text-gray-600"
-                              )}>
-                                Need help setting up OAuth?
-                              </span>
-                              <a
-                                href="https://docs.airweave.ai/integrations/oauth-setup"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className={cn(
-                                  "ml-2 inline-flex items-center gap-1 font-medium hover:underline",
-                                  isDark ? "text-blue-400 hover:text-blue-300" : "text-blue-600 hover:text-blue-700"
-                                )}
-                              >
-                                View documentation
-                                <ExternalLink className="h-3 w-3" />
-                              </a>
-                            </div>
                           </div>
 
                           <div className="space-y-2.5">
