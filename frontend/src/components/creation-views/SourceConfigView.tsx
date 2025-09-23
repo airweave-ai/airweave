@@ -696,7 +696,7 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
                                       <button
                                         onClick={() => {
                                           const url = `https://${configData['subdomain']}.zendesk.com/admin/apps-integrations/apis/oauth-clients`;
-                                          window.open(url, '_blank');
+                                          window.open(url, '_blank', 'noopener,noreferrer');
                                         }}
                                         className={cn(
                                           "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200",

@@ -238,11 +238,8 @@ class SourceConnectionHelpers:
         """Validate direct authentication credentials."""
         try:
             source_cls = resource_locator.get_source(source)
-            # Convert Pydantic model to dictionary for source create method
-            auth_dict = (
-                auth_fields.model_dump() if hasattr(auth_fields, "model_dump") else auth_fields
-            )
-            source_instance = await source_cls.create(auth_dict, config=config_fields)
+            # Pass the AuthConfig model instance directly to avoid AttributeError
+            source_instance = await source_cls.create(auth_fields, config=config_fields)
             source_instance.set_logger(ctx.logger)
 
             if hasattr(source_instance, "validate"):
@@ -1073,9 +1070,10 @@ class SourceConnectionHelpers:
         # The token response is already validated by the OAuth exchange
         validated_auth = auth_fields
 
-        # Validate config fields if provided
+        # Validate config fields if provided (check both field names for compatibility)
+        config_data = payload.get("config") or payload.get("config_fields")
         validated_config = await self.validate_config_fields(
-            db, init_session.short_name, payload.get("config_fields"), ctx
+            db, init_session.short_name, config_data, ctx
         )
 
         async with UnitOfWork(db) as uow:

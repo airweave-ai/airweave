@@ -192,14 +192,12 @@ class OAuth2Service:
         # Debug logging to trace credential flow
         # Format client secrets for logging (mask all but last 4 chars)
         client_secret_masked = (
-            "***" + client_secret[-4:]
-            if client_secret and len(client_secret) > 4
-            else str(client_secret)
+            "***" + client_secret[-4:] if client_secret and len(client_secret) > 4 else "***"
         )
         yaml_secret_masked = (
             "***" + oauth2_settings.client_secret[-4:]
             if oauth2_settings.client_secret and len(oauth2_settings.client_secret) > 4
-            else str(oauth2_settings.client_secret)
+            else "***"
         )
 
         ctx.logger.info(
@@ -277,6 +275,10 @@ class OAuth2Service:
             client_id, client_secret = await OAuth2Service._get_client_credentials(
                 ctx.logger, integration_config, None, decrypted_credential
             )
+
+            # Guard against None client_secret to avoid TypeError
+            if client_secret is None:
+                raise TokenRefreshError("No client secret available for token refresh")
 
             # Prepare request parameters
             headers, payload = OAuth2Service._prepare_token_request(
@@ -628,8 +630,9 @@ class OAuth2Service:
             f"URL: {integration_config.backend_url}, "
             f"Redirect URI: {redirect_uri}, "
             f"Client ID: {client_id}, "
-            f"Client Secret: {'***' + client_secret[-4:] if len(client_secret) > 4 else '***'}, "
-            f"Code: {code[:10]}...{code[-4:] if len(code) > 10 else code}, "
+            f"Client Secret: "
+            f"{'***' + client_secret[-4:] if client_secret and len(client_secret) > 4 else '***'}, "
+            f"Code: (length: {len(code)}), "
             f"Grant type: {integration_config.grant_type}, "
             f"Credential location: {integration_config.client_credential_location}, "
             f"Payload keys: {list(payload.keys())}"

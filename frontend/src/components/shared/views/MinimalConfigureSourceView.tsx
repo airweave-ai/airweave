@@ -141,7 +141,8 @@ export const MinimalConfigureSourceView: React.FC<MinimalConfigureSourceViewProp
                         data.config_fields.fields.forEach((field: any) => {
                             if (field.name) {
                                 if (field.type === 'boolean') {
-                                    initialConfigValues[field.name] = false; // Default boolean fields to false
+                                    // Use backend-provided default value when available
+                                    initialConfigValues[field.name] = field.default !== undefined ? field.default : false;
                                 } else {
                                     initialConfigValues[field.name] = '';
                                 }

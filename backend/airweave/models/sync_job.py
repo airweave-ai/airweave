@@ -40,6 +40,12 @@ class MappedSyncJobStatus(TypeDecorator):
             if value == SyncJobStatus.RUNNING:
                 return "IN_PROGRESS"
             return value.value.upper()
+        # Handle string values by normalizing them
+        if isinstance(value, str):
+            # Map "running" to IN_PROGRESS to avoid enum constraint errors
+            if value.lower() == "running":
+                return "IN_PROGRESS"
+            return value.upper()
         return value
 
     def process_result_value(self, value, dialect):

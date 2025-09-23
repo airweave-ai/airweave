@@ -274,12 +274,12 @@ class ZendeskBongo(BaseBongo):
                     subject = ticket.get("subject", "")
                     description = ticket.get("description", "")
 
-                    # Check if this looks like a monke test ticket
+                    # Check if this looks like a monke test ticket using specific markers
                     is_monke_ticket = (
                         "monke" in subject.lower()
                         or "monke test" in description.lower()
-                        or any(uuid_pattern in description for uuid_pattern in ["-", "test-token"])
-                        or "test" in subject.lower()
+                        or "verification token" in description.lower()
+                        or ("debug token" in description.lower() and "test" in subject.lower())
                     )
 
                     if is_monke_ticket:

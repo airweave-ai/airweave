@@ -62,12 +62,15 @@ class ZendeskSource(BaseSource):
         instance.auth_type = "oauth"
 
         # Store config values as instance attributes
-        if config:
-            instance.subdomain = config.get("subdomain", "jasonsventures")
+        if config and config.get("subdomain"):
+            instance.subdomain = config["subdomain"]
             instance.exclude_closed_tickets = config.get("exclude_closed_tickets", False)
         else:
-            instance.subdomain = "jasonsventures"
+            # For token validation, we can use a placeholder subdomain
+            # The actual subdomain will be provided during connection creation
+            instance.subdomain = "validation-placeholder"
             instance.exclude_closed_tickets = False
+            instance._is_validation_mode = True  # Flag to indicate this is for validation only
 
         return instance
 
@@ -86,7 +89,7 @@ class ZendeskSource(BaseSource):
             url: API endpoint URL
             params: Optional query parameters
         """
-        headers = self._get_auth_headers()
+        headers = await self._get_auth_headers()
 
         try:
             response = await client.get(url, headers=headers, params=params)
@@ -124,14 +127,20 @@ class ZendeskSource(BaseSource):
             self.logger.error(f"Unexpected error accessing Zendesk API: {url}, {str(e)}")
             raise
 
-    def _get_auth_headers(self) -> Dict[str, str]:
+    async def _get_auth_headers(self) -> Dict[str, str]:
         """Get OAuth authentication headers."""
-        # For OAuth2, get token from token manager or instance
-        token = getattr(self, "access_token", None)
-        if self.token_manager:
-            # This will be handled by the token manager in the request
-            return {"Authorization": f"Bearer {token}"}
+        # Use get_access_token method to avoid sending 'Bearer None'
+        token = await self.get_access_token()
+        if not token:
+            raise ValueError("No access token available for authentication")
         return {"Authorization": f"Bearer {token}"}
+
+    async def get_access_token(self) -> Optional[str]:
+        """Get the current access token."""
+        if self.token_manager:
+            # Token manager handles token retrieval
+            return getattr(self, "access_token", None)
+        return getattr(self, "access_token", None)
 
     async def _generate_organization_entities(
         self, client: httpx.AsyncClient
@@ -173,6 +182,29 @@ class ZendeskSource(BaseSource):
             response = await self._get_with_auth(client, url)
 
             for user in response.get("users", []):
+                # Ensure email exists and handle required datetime fields properly
+                if not user.get("email"):
+                    continue  # Skip users without email
+
+                # Parse datetime fields with fallbacks
+                from datetime import datetime
+
+                now = datetime.now()
+
+                created_at = user.get("created_at")
+                if isinstance(created_at, str):
+                    from dateutil.parser import parse
+
+                    created_at = parse(created_at)
+                elif created_at is None:
+                    created_at = now
+
+                updated_at = user.get("updated_at")
+                if isinstance(updated_at, str):
+                    updated_at = parse(updated_at)
+                elif updated_at is None:
+                    updated_at = created_at
+
                 yield ZendeskUserEntity(
                     entity_id=str(user["id"]),
                     breadcrumbs=[],
@@ -181,8 +213,8 @@ class ZendeskSource(BaseSource):
                     email=user["email"],
                     role=user.get("role", "end-user"),
                     active=user.get("active", True),
-                    created_at=user.get("created_at"),
-                    updated_at=user.get("updated_at"),
+                    created_at=created_at,
+                    updated_at=updated_at,
                     last_login_at=user.get("last_login_at"),
                     organization_id=user.get("organization_id"),
                     phone=user.get("phone"),
@@ -260,16 +292,20 @@ class ZendeskSource(BaseSource):
                 # Extract author information from the comment
                 author_id = comment.get("author_id")
 
-                # Get author name from side-loaded user data or provide fallback
-                author_name = "Unknown User"
-                author_email = None
+                # Handle comments without author_id or add fallback
+                if not author_id:
+                    author_id = 0  # Use fallback ID for system comments
+                    author_name = "System"
+                    author_email = None
+                else:
+                    # Get author name from side-loaded user data or provide fallback
+                    author_name = "Unknown User"
+                    author_email = None
 
-                if author_id and author_id in users_map:
-                    user = users_map[author_id]
-                    author_name = user.get("name", f"User {author_id}")
-                    author_email = user.get("email")
-                elif author_id:
-                    author_name = f"User {author_id}"
+                    if author_id in users_map:
+                        user = users_map[author_id]
+                        author_name = user.get("name", f"User {author_id}")
+                        author_email = user.get("email")
 
                 yield ZendeskCommentEntity(
                     entity_id=f"{ticket_id}_{comment['id']}",
@@ -309,18 +345,26 @@ class ZendeskSource(BaseSource):
                 comment_created_at = comment.get("created_at")
 
                 for attachment in comment.get("attachments", []):
+                    # Ensure required fields are present before creating entity
+                    if not all(
+                        attachment.get(field) for field in ["id", "file_name", "content_url"]
+                    ):
+                        continue  # Skip attachments with missing required fields
+
                     # Use attachment created_at if available, otherwise fall back to comment
                     # created_at, and finally to current time if both are None
-                    attachment_created_at = (
-                        attachment.get("created_at")
-                        or comment_created_at
-                        or datetime.now(timezone.utc).isoformat()
-                    )
+                    attachment_created_at = attachment.get("created_at") or comment_created_at
+                    if attachment_created_at is None:
+                        attachment_created_at = datetime.now(timezone.utc)
+                    elif isinstance(attachment_created_at, str):
+                        from dateutil.parser import parse
+
+                        attachment_created_at = parse(attachment_created_at)
 
                     attachment_entity = ZendeskAttachmentEntity(
                         entity_id=str(attachment["id"]),
                         breadcrumbs=[],
-                        file_id=attachment["id"],
+                        file_id=str(attachment["id"]),  # Convert to string for consistency
                         attachment_id=attachment["id"],
                         ticket_id=ticket_id,
                         comment_id=comment["id"],
@@ -377,6 +421,12 @@ class ZendeskSource(BaseSource):
 
     async def validate(self) -> bool:
         """Verify OAuth2 token by pinging Zendesk's /users/me endpoint."""
+        # If we're in validation mode without a real subdomain, skip the actual API call
+        if getattr(self, "_is_validation_mode", False):
+            # For validation mode, we can't make a real API call without the subdomain
+            # Just validate that we have an access token
+            return bool(getattr(self, "access_token", None))
+
         return await self._validate_oauth2(
             ping_url=f"https://{self.subdomain}.zendesk.com/api/v2/users/me.json",
             headers={"Accept": "application/json"},

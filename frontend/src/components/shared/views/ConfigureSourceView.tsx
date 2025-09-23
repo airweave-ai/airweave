@@ -138,7 +138,8 @@ export const ConfigureSourceView: React.FC<ConfigureSourceViewProps> = ({
                         data.config_fields.fields.forEach((field: any) => {
                             if (field.name) {
                                 if (field.type === 'boolean') {
-                                    initialConfigValues[field.name] = false; // Default boolean fields to false
+                                    // Use backend-provided default value when available, otherwise use string 'false' for consistency
+                                    initialConfigValues[field.name] = field.default !== undefined ? field.default : 'false';
                                 } else {
                                     initialConfigValues[field.name] = '';
                                 }
@@ -1199,7 +1200,7 @@ export const ConfigureSourceView: React.FC<ConfigureSourceViewProps> = ({
                                             <Switch
                                                 id={field.name}
                                                 checked={configValues[field.name] === true || configValues[field.name] === 'true'}
-                                                onCheckedChange={(checked) => handleConfigFieldChange(field.name, checked)}
+                                                onCheckedChange={(checked) => handleConfigFieldChange(field.name, checked.toString())}
                                                 className={cn(
                                                     "data-[state=unchecked]:bg-gray-300 dark:data-[state=unchecked]:bg-gray-600",
                                                     "data-[state=checked]:bg-primary",
@@ -1220,7 +1221,7 @@ export const ConfigureSourceView: React.FC<ConfigureSourceViewProps> = ({
                                                     errors[field.name] ? "border-red-500" : ""
                                                 )}
                                                 checked={configValues[field.name] === true || configValues[field.name] === 'true'}
-                                                onChange={(e) => handleConfigFieldChange(field.name, e.target.checked)}
+                                                onChange={(e) => handleConfigFieldChange(field.name, e.target.checked.toString())}
                                             />
                                             <label htmlFor={field.name} className="text-sm">
                                                 {field.title || field.name}

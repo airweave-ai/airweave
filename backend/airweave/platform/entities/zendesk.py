@@ -185,15 +185,14 @@ class ZendeskAttachmentEntity(FileEntity):
     content_type: str = Field(..., description="MIME type of the attachment")
     size: int = Field(..., description="Size of the attachment in bytes")
     file_name: str = Field(..., description="Original filename of the attachment")
-    url: str = Field(..., description="URL to download the attachment")
     thumbnails: List[Dict[str, Any]] = Field(
         default_factory=list, description="Thumbnail information for the attachment"
     )
     created_at: datetime = AirweaveField(
         ..., description="When the attachment was created", embeddable=True, is_created_at=True
     )
-    # Override FileEntity fields to match Zendesk API
-    file_id: int = Field(..., description="ID of the file in the source system")
+    # Override FileEntity fields to match Zendesk API - use str for file_id for consistency
+    file_id: str = Field(..., description="ID of the file in the source system")
     name: str = Field(..., description="Name of the file")
     mime_type: Optional[str] = Field(None, description="MIME type of the file")
     download_url: str = Field(..., description="URL to download the file")
