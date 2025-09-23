@@ -176,18 +176,13 @@ async def run(
     *,
     db: AsyncSession = Depends(get_db),
     source_connection_id: UUID,
+    force_full_sync: bool = False,
     ctx: ApiContext = Depends(deps.get_context),
     guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
 ) -> schemas.SourceConnectionJob:
     """Trigger a sync run for a source connection.
 
     Runs are always executed through Temporal workflow engine.
-    Starts an immediate synchronization job that extracts fresh data from your source,
-    transforms it according to your configuration, and updates the destination systems.
-    The job runs asynchronously and endpoint returns immediately with tracking information.
-    
-    Set force_full_sync=True to bypass cursor data and perform a complete full sync,
-    useful for testing or when cursor data might be stale.
     """
     # Check if organization is allowed to process entities
     await guard_rail.is_allowed(ActionType.ENTITIES)
@@ -196,89 +191,34 @@ async def run(
         db,
         id=source_connection_id,
         ctx=ctx,
+        force_full_sync=force_full_sync,
     )
     return run
-
-    collection = await crud.collection.get_by_readable_id(
-        db=db, readable_id=source_connection_with_auth.collection, ctx=ctx
-    )
-
-    sync = schemas.Sync.model_validate(sync, from_attributes=True)
-    sync_dag = schemas.SyncDag.model_validate(sync_dag, from_attributes=True)
-    collection = schemas.Collection.model_validate(collection, from_attributes=True)
-
-    # Check if Temporal is enabled, otherwise fall back to background tasks
-    if await temporal_service.is_temporal_enabled():
-        # Use Temporal workflow
-        await temporal_service.run_source_connection_workflow(
-            sync=sync,
-            sync_job=sync_job,
-            sync_dag=sync_dag,
-            collection=collection,
-            source_connection=source_connection_with_auth,
-            ctx=ctx,
-            access_token=sync_job.access_token if hasattr(sync_job, "access_token") else None,
-            force_full_sync=force_full_sync,  # Pass the force_full_sync parameter
-        )
-    else:
-        # Fall back to background tasks
-        background_tasks.add_task(
-            sync_service.run,
-            sync,
-            sync_job,
-            sync_dag,
-            collection,
-            source_connection_with_auth,
-            ctx,
-            access_token=sync_job.access_token if hasattr(sync_job, "access_token") else None,
-            force_full_sync=force_full_sync,  # Pass the force_full_sync parameter
-        )
-
-    # Increment sync usage only after everything is set up successfully
-    await guard_rail.increment(ActionType.SYNCS)
-
-    return sync_job.to_source_connection_job(source_connection_id)
 
 
 @router.post(
     "/{source_connection_id}/run-force-full",
     response_model=schemas.SourceConnectionJob,
-    responses=create_single_job_response("completed", "Forced full sync job successfully triggered"),
 )
 async def run_force_full(
     *,
     db: AsyncSession = Depends(deps.get_db),
-    source_connection_id: UUID = Path(
-        ..., description="The unique identifier of the source connection to sync"
-    ),
-    access_token: Optional[str] = Body(
-        None,
-        embed=True,
-        description=(
-            "This parameter gives you the ability to start a sync job with an access "
-            "token for an OAuth2.0 source directly instead of using the credentials "
-            "that Airweave has stored for you."
-        ),
-    ),
+    source_connection_id: UUID,
     ctx: ApiContext = Depends(deps.get_context),
     guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
-    background_tasks: BackgroundTasks,
 ) -> schemas.SourceConnectionJob:
     """Manually trigger a FORCED FULL sync for this source connection.
 
     Similar to the regular run endpoint, but forces a complete full sync by ignoring
-    any existing cursor data. This ensures all entities are fetched from the source,
-    not just incremental changes. Useful for testing or when cursor data might be stale.
+    any existing cursor data.
     """
 
     return await run(
         db=db,
         source_connection_id=source_connection_id,
-        access_token=access_token,
         force_full_sync=True,  # Force full sync
         ctx=ctx,
         guard_rail=guard_rail,
-        background_tasks=background_tasks,
     )
 
 

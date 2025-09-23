@@ -854,6 +854,7 @@ class SourceConnectionService:
         *,
         id: UUID,
         ctx: ApiContext,
+        force_full_sync: bool = False,
     ) -> schemas.SourceConnectionJob:
         """Trigger a sync run for a source connection."""
         source_conn = await crud.source_connection.get(db, id=id, ctx=ctx)
@@ -893,6 +894,7 @@ class SourceConnectionService:
             collection=collection_schema,
             source_connection=source_connection_schema,
             ctx=ctx,
+            force_full_sync=force_full_sync,
         )
 
         # Convert sync_job to SourceConnectionJob using the built-in conversion method
