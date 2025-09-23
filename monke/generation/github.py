@@ -1,6 +1,7 @@
 """GitHub-specific generation adapter: artifact generator + renderer + slug."""
 
 import re
+import json
 from typing import Tuple
 
 from monke.generation.schemas.github import GitHubArtifact
@@ -19,27 +20,31 @@ def render_body(artifact: GitHubArtifact) -> str:
     common = artifact.common
     if artifact.type == "markdown":
         parts = [f"# {common.title}", common.summary, f"Token: {common.token}"]
-        parts += [f"## {s.get('heading','')}\n\n{s.get('body','')}" for s in artifact.content.sections]  # type: ignore[attr-defined]
+        parts += [
+            f"## {s.heading}\n\n{s.body}"
+            for s in artifact.content.sections  # type: ignore[attr-defined]
+        ]
         return "\n\n".join(parts)
     if artifact.type == "python":
-        fns = "\n\n".join(s.get("body", "") for s in artifact.content.functions)  # type: ignore[attr-defined]
-        classes = "\n\n".join(s.get("body", "") for s in artifact.content.classes)  # type: ignore[attr-defined]
+        fns = "\n\n".join(s.body for s in artifact.content.functions)  # type: ignore[attr-defined]
+        classes = "\n\n".join(s.body for s in artifact.content.classes)  # type: ignore[attr-defined]
         return f'"""{common.summary} | token={common.token}"""\n\n{fns}\n\n{classes}\n'
-    # json
-    import json
     c = artifact.content  # type: ignore[assignment]
-    metadata = dict(getattr(c, "metadata", {}))
+    # Convert KVPair lists to dicts
+    metadata = {kv.key: kv.value for kv in getattr(c, "metadata", [])}
     metadata.update({"token": common.token, "created_at": common.created_at})
     body = {
         "title": common.title,
         "summary": common.summary,
-        "attributes": getattr(c, "attributes", {}),
+        "attributes": {kv.key: kv.value for kv in getattr(c, "attributes", [])},
         "metadata": metadata,
     }
     return json.dumps(body, indent=2)
 
 
-async def generate_github_artifact(file_type: str, model: str, token: str) -> Tuple[str, str]:
+async def generate_github_artifact(
+    file_type: str, model: str, token: str
+) -> Tuple[str, str]:
     """Generate a GitHub artifact via LLM and render to text.
 
     Returns (title, body). The token must be embedded in the output by instruction.

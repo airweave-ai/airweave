@@ -460,7 +460,7 @@ class MondaySource(BaseSource):
             - Subitems per item
             - Updates per item or board
         """
-        async with httpx.AsyncClient() as client:
+        async with self.http_client() as client:
             # 1) Boards
             async for board_entity in self._generate_board_entities(client):
                 yield board_entity
@@ -530,7 +530,7 @@ class MondaySource(BaseSource):
 
             query = {"query": "query { me { id } }"}
 
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with self.http_client(timeout=10.0) as client:
                 headers = {
                     "Authorization": token,  # Monday expects the raw token here (no added 'Bearer')
                     "Content-Type": "application/json",

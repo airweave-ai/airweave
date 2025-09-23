@@ -62,8 +62,9 @@ class BitbucketSource(BaseSource):
         """
         instance = cls()
 
-        instance.username = credentials.username
-        instance.app_password = credentials.app_password
+        instance.access_token = getattr(credentials, "access_token", None)
+        instance.username = getattr(credentials, "username", None)
+        instance.app_password = getattr(credentials, "app_password", None)
         instance.workspace = credentials.workspace
         instance.repo_slug = credentials.repo_slug
 
@@ -81,7 +82,7 @@ class BitbucketSource(BaseSource):
     async def _get_with_auth(
         self, client: httpx.AsyncClient, url: str, params: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Make authenticated API request using Basic authentication.
+        """Make authenticated API request using Bearer or Basic authentication.
 
         Args:
             client: HTTP client
@@ -91,14 +92,19 @@ class BitbucketSource(BaseSource):
         Returns:
             JSON response
         """
-        # Create Basic auth credentials
-        credentials = f"{self.username}:{self.app_password}"
-        encoded_credentials = base64.b64encode(credentials.encode()).decode()
-
-        headers = {
-            "Authorization": f"Basic {encoded_credentials}",
-            "Accept": "application/json",
-        }
+        if getattr(self, "access_token", None):
+            headers = {
+                "Authorization": f"Bearer {self.access_token}",
+                "Accept": "application/json",
+            }
+        else:
+            # Create Basic auth credentials
+            credentials = f"{self.username}:{self.app_password}"
+            encoded_credentials = base64.b64encode(credentials.encode()).decode()
+            headers = {
+                "Authorization": f"Basic {encoded_credentials}",
+                "Accept": "application/json",
+            }
         response = await client.get(url, headers=headers, params=params)
         response.raise_for_status()
         return response.json()
@@ -123,14 +129,19 @@ class BitbucketSource(BaseSource):
         next_url = url
 
         while next_url:
-            # Create Basic auth credentials
-            credentials = f"{self.username}:{self.app_password}"
-            encoded_credentials = base64.b64encode(credentials.encode()).decode()
-
-            headers = {
-                "Authorization": f"Basic {encoded_credentials}",
-                "Accept": "application/json",
-            }
+            if getattr(self, "access_token", None):
+                headers = {
+                    "Authorization": f"Bearer {self.access_token}",
+                    "Accept": "application/json",
+                }
+            else:
+                # Create Basic auth credentials
+                credentials = f"{self.username}:{self.app_password}"
+                encoded_credentials = base64.b64encode(credentials.encode()).decode()
+                headers = {
+                    "Authorization": f"Basic {encoded_credentials}",
+                    "Accept": "application/json",
+                }
 
             response = await client.get(
                 next_url, headers=headers, params=params if next_url == url else None
@@ -412,17 +423,24 @@ class BitbucketSource(BaseSource):
                 f"{self.BASE_URL}/repositories/{workspace_slug}/{repo_slug}"
                 f"/src/{branch}/{item_path}"
             )
-            # Create Basic auth credentials
-            credentials = f"{self.username}:{self.app_password}"
-            encoded_credentials = base64.b64encode(credentials.encode()).decode()
+            if getattr(self, "access_token", None):
+                headers = {
+                    "Authorization": f"Bearer {self.access_token}",
+                    "Accept": "text/plain",
+                }
+            else:
+                # Create Basic auth credentials
+                credentials = f"{self.username}:{self.app_password}"
+                encoded_credentials = base64.b64encode(credentials.encode()).decode()
+                headers = {
+                    "Authorization": f"Basic {encoded_credentials}",
+                    "Accept": "text/plain",
+                }
 
             file_response = await client.get(
                 file_url,
-                headers={
-                    "Authorization": f"Basic {encoded_credentials}",
-                    "Accept": "text/plain",  # Request raw content, not JSON
-                },
-                params={"format": "raw"},  # BitBucket parameter to get raw file content
+                headers=headers,
+                params={"format": "raw"},
             )
             file_response.raise_for_status()
 
@@ -491,7 +509,7 @@ class BitbucketSource(BaseSource):
         if not hasattr(self, "workspace") or not self.workspace:
             raise ValueError("Workspace must be specified")
 
-        async with httpx.AsyncClient() as client:
+        async with self.http_client() as client:
             # First, yield the workspace entity
             workspace_entity = await self._get_workspace_info(client, self.workspace)
             yield workspace_entity
@@ -547,7 +565,7 @@ class BitbucketSource(BaseSource):
             return False
 
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with self.http_client(timeout=10.0) as client:
                 # Build Basic auth header
                 creds = f"{self.username}:{self.app_password}"
                 encoded = base64.b64encode(creds.encode()).decode()

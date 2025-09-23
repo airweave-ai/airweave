@@ -73,8 +73,12 @@ class AsanaBongo(BaseBongo):
                     try:
                         await self._rate_limit()
                         token = str(uuid.uuid4())[:8]
-                        self.logger.info(f"🔨 Generating content for task with token: {token}")
-                        title, notes, comments = await generate_asana_task(self.openai_model, token)
+                        self.logger.info(
+                            f"🔨 Generating content for task with token: {token}"
+                        )
+                        title, notes, comments = await generate_asana_task(
+                            self.openai_model, token
+                        )
                         self.logger.info(f"📝 Generated task: '{title[:50]}...'")
 
                         # Create task
@@ -119,7 +123,9 @@ class AsanaBongo(BaseBongo):
                                     json={"data": {"text": c}},
                                 )
                             except Exception as ex:
-                                self.logger.warning(f"Failed to add comment to {task_gid}: {ex}")
+                                self.logger.warning(
+                                    f"Failed to add comment to {task_gid}: {ex}"
+                                )
 
                         # Entity descriptor used by generic verification
                         return {
@@ -132,7 +138,9 @@ class AsanaBongo(BaseBongo):
                             "path": f"asana/task/{task_gid}",
                         }
                     except Exception as e:
-                        self.logger.error(f"❌ Error in create_one: {type(e).__name__}: {str(e)}")
+                        self.logger.error(
+                            f"❌ Error in create_one: {type(e).__name__}: {str(e)}"
+                        )
                         # Re-raise to be caught by gather
                         raise
 
@@ -143,14 +151,14 @@ class AsanaBongo(BaseBongo):
             # Process results and handle any exceptions
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
-                    self.logger.error(f"Failed to create task {i+1}: {result}")
+                    self.logger.error(f"Failed to create task {i + 1}: {result}")
                     # Re-raise the first exception we encounter
                     raise result
                 elif result:
                     entities.append(result)
                     self._tasks.append(result)
                     self.logger.info(
-                        f"✅ Created task {i+1}/{self.entity_count}: {result['name'][:50]}..."
+                        f"✅ Created task {i + 1}/{self.entity_count}: {result['name'][:50]}..."
                     )
 
         self.created_entities = entities
@@ -171,14 +179,18 @@ class AsanaBongo(BaseBongo):
             for i in range(count):
                 await self._rate_limit()
                 t = self._tasks[i]
-                title, notes, _ = await generate_asana_task(self.openai_model, t["token"])
+                title, notes, _ = await generate_asana_task(
+                    self.openai_model, t["token"]
+                )
                 resp = await client.put(
                     f"{self.API_BASE}/tasks/{t['id']}",
                     headers=self._headers(),
                     json={"data": {"name": title, "notes": notes}},
                 )
                 resp.raise_for_status()
-                updated_entities.append({**t, "name": title, "expected_content": t["token"]})
+                updated_entities.append(
+                    {**t, "name": title, "expected_content": t["token"]}
+                )
 
         return updated_entities
 
@@ -189,7 +201,9 @@ class AsanaBongo(BaseBongo):
         await self._delete_project()
         return deleted_ids
 
-    async def delete_specific_entities(self, entities: List[Dict[str, Any]]) -> List[str]:
+    async def delete_specific_entities(
+        self, entities: List[Dict[str, Any]]
+    ) -> List[str]:
         """Delete provided list of tasks by id."""
         self.logger.info(f"🥁 Deleting {len(entities)} Asana tasks")
         deleted: List[str] = []
@@ -222,19 +236,25 @@ class AsanaBongo(BaseBongo):
         try:
             # Clean up current session data first
             if self._tasks:
-                self.logger.info(f"🗑️ Cleaning up {len(self._tasks)} current session tasks")
+                self.logger.info(
+                    f"🗑️ Cleaning up {len(self._tasks)} current session tasks"
+                )
                 await self.delete_specific_entities(self._tasks)
                 cleanup_stats["tasks_deleted"] += len(self._tasks)
 
             if self._project_gid:
-                self.logger.info(f"🗑️ Cleaning up current session project {self._project_gid}")
+                self.logger.info(
+                    f"🗑️ Cleaning up current session project {self._project_gid}"
+                )
                 await self._delete_project()
                 cleanup_stats["projects_deleted"] += 1
 
             # Find and clean up all monke test projects
             monke_projects = await self._find_monke_test_projects()
             if monke_projects:
-                self.logger.info(f"🔍 Found {len(monke_projects)} monke test projects to clean up")
+                self.logger.info(
+                    f"🔍 Found {len(monke_projects)} monke test projects to clean up"
+                )
                 for project in monke_projects:
                     try:
                         await self._delete_project_by_gid(project["gid"])
@@ -244,7 +264,9 @@ class AsanaBongo(BaseBongo):
                         )
                     except Exception as e:
                         cleanup_stats["errors"] += 1
-                        self.logger.warning(f"⚠️ Failed to delete project {project['gid']}: {e}")
+                        self.logger.warning(
+                            f"⚠️ Failed to delete project {project['gid']}: {e}"
+                        )
 
             # Find and clean up orphaned monke test tasks
             orphaned_tasks = await self._find_orphaned_monke_tasks()
@@ -261,7 +283,9 @@ class AsanaBongo(BaseBongo):
                         )
                     except Exception as e:
                         cleanup_stats["errors"] += 1
-                        self.logger.warning(f"⚠️ Failed to delete task {task['gid']}: {e}")
+                        self.logger.warning(
+                            f"⚠️ Failed to delete task {task['gid']}: {e}"
+                        )
 
             # Log cleanup summary
             self.logger.info(
@@ -350,11 +374,15 @@ class AsanaBongo(BaseBongo):
         """Delete a task by its GID."""
         async with httpx.AsyncClient() as client:
             await self._rate_limit()
-            r = await client.delete(f"{self.API_BASE}/tasks/{task_gid}", headers=self._headers())
+            r = await client.delete(
+                f"{self.API_BASE}/tasks/{task_gid}", headers=self._headers()
+            )
             if r.status_code in (200, 204):
                 self.logger.debug(f"Deleted task {task_gid}")
             else:
-                self.logger.warning(f"Failed to delete task {task_gid}: {r.status_code} - {r.text}")
+                self.logger.warning(
+                    f"Failed to delete task {task_gid}: {r.status_code} - {r.text}"
+                )
                 r.raise_for_status()
 
     async def _find_monke_test_projects(self) -> List[Dict[str, Any]]:
@@ -366,7 +394,10 @@ class AsanaBongo(BaseBongo):
             r = await client.get(
                 f"{self.API_BASE}/projects",
                 headers=self._headers(),
-                params={"workspace": self._workspace_gid, "opt_fields": "name,gid,created_at"},
+                params={
+                    "workspace": self._workspace_gid,
+                    "opt_fields": "name,gid,created_at",
+                },
             )
             r.raise_for_status()
 
@@ -407,8 +438,13 @@ class AsanaBongo(BaseBongo):
                     is_monke_task = (
                         "monke" in name.lower()
                         or "monke test" in notes.lower()
-                        or any(uuid_pattern in notes for uuid_pattern in ["-", "test-token"])
-                        or (not projects and "test" in name.lower())  # Orphaned test tasks
+                        or any(
+                            uuid_pattern in notes
+                            for uuid_pattern in ["-", "test-token"]
+                        )
+                        or (
+                            not projects and "test" in name.lower()
+                        )  # Orphaned test tasks
                     )
 
                     if is_monke_task:

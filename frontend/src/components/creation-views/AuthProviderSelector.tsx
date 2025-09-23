@@ -63,8 +63,8 @@ export const AuthProviderSelector: React.FC<AuthProviderSelectorProps> = ({
         return [
           { name: 'project_id', label: 'Project ID', placeholder: 'proj_JPsD74a', required: true, validation: projectIdValidation },
           { name: 'account_id', label: 'Account ID', placeholder: 'apn_gyha5Ky', required: true, validation: accountIdValidation },
+          { name: 'external_user_id', label: 'External User ID', placeholder: 'user_123', required: true, validation: externalUserIdValidation },
           { name: 'environment', label: 'Environment', placeholder: 'production', required: false, validation: environmentValidation },
-          { name: 'external_user_id', label: 'External User ID', placeholder: 'user_123 (optional)', required: false, validation: externalUserIdValidation },
         ];
       default:
         return [];

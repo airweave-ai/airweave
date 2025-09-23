@@ -10,6 +10,8 @@ from airweave import schemas
 from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.router import TrailingSlashRouter
+from airweave.core.guard_rail_service import GuardRailService
+from airweave.core.shared_models import ActionType
 from airweave.core.source_connection_service import source_connection_service
 from airweave.db.session import get_db
 
@@ -57,6 +59,7 @@ async def create(
     db: AsyncSession = Depends(get_db),
     source_connection_in: schemas.SourceConnectionCreate,
     ctx: ApiContext = Depends(deps.get_context),
+    guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
 ) -> schemas.SourceConnection:
     """Create a new source connection.
 
@@ -69,11 +72,22 @@ async def create(
     BYOC (Bring Your Own Client) is detected when client_id and client_secret
     are provided in OAuthBrowserAuthentication.
     """
+    # Check if organization is allowed to create a source connection
+    await guard_rail.is_allowed(ActionType.SOURCE_CONNECTIONS)
+
+    # If sync_immediately is True, check if we can process entities
+    if source_connection_in.sync_immediately:
+        await guard_rail.is_allowed(ActionType.ENTITIES)
+
     result = await source_connection_service.create(
         db,
         obj_in=source_connection_in,
         ctx=ctx,
     )
+
+    # Increment source connection usage after successful creation
+    await guard_rail.increment(ActionType.SOURCE_CONNECTIONS)
+
     return result
 
 
@@ -142,13 +156,19 @@ async def delete(
     db: AsyncSession = Depends(get_db),
     source_connection_id: UUID,
     ctx: ApiContext = Depends(deps.get_context),
+    guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
 ) -> schemas.SourceConnection:
     """Delete a source connection and all related data."""
-    return await source_connection_service.delete(
+    result = await source_connection_service.delete(
         db,
         id=source_connection_id,
         ctx=ctx,
     )
+
+    # Decrement source connection usage after successful deletion
+    await guard_rail.decrement(ActionType.SOURCE_CONNECTIONS)
+
+    return result
 
 
 @router.post("/{source_connection_id}/run", response_model=schemas.SourceConnectionJob)
@@ -157,11 +177,15 @@ async def run(
     db: AsyncSession = Depends(get_db),
     source_connection_id: UUID,
     ctx: ApiContext = Depends(deps.get_context),
+    guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
 ) -> schemas.SourceConnectionJob:
     """Trigger a sync run for a source connection.
 
     Runs are always executed through Temporal workflow engine.
     """
+    # Check if organization is allowed to process entities
+    await guard_rail.is_allowed(ActionType.ENTITIES)
+
     run = await source_connection_service.run(
         db,
         id=source_connection_id,

@@ -4,6 +4,7 @@ import base64  # for JWT payload peek
 import json  # for JWT payload peek
 import time  # for exp checks
 from abc import abstractmethod
+from contextlib import asynccontextmanager
 from typing import (
     Any,
     AsyncGenerator,
@@ -38,6 +39,7 @@ class BaseSource:
         """Initialize the base source."""
         self._logger: Optional[Any] = None  # Store contextual logger as instance variable
         self._token_manager: Optional[Any] = None  # Store token manager for OAuth sources
+        self._http_client_factory: Optional[Callable] = None  # Factory for creating HTTP clients
         # Optional sync identifiers for multi-tenant scoped helpers
         self._organization_id: Optional[str] = None
         self._source_connection_id: Optional[str] = None
@@ -75,6 +77,49 @@ class BaseSource:
             token_manager: TokenManager instance for handling OAuth token refresh
         """
         self._token_manager = token_manager
+
+    def set_http_client_factory(self, factory: Optional[Callable]) -> None:
+        """Set the HTTP client factory for creating HTTP clients.
+
+        Args:
+            factory: Callable that creates HTTP clients, or None for vanilla httpx
+        """
+        self._http_client_factory = factory
+        if factory:
+            self.logger.debug("HTTP client factory configured")
+
+    @asynccontextmanager
+    async def http_client(self, **kwargs):
+        """Get HTTP client with proper lifecycle management.
+
+        Args:
+            **kwargs: Standard httpx.AsyncClient parameters
+
+        Usage:
+            async with self.http_client() as client:
+                response = await client.get(url, headers=headers)
+
+        Yields:
+            HTTP client (either vanilla httpx or Pipedream proxy)
+        """
+        if self._http_client_factory:
+            # Use factory-provided client (could be Pipedream proxy)
+            client = self._http_client_factory(**kwargs)
+            if hasattr(client, "__aenter__"):
+                # Client supports context management
+                async with client as managed_client:
+                    yield managed_client
+            else:
+                # Client doesn't need context management
+                try:
+                    yield client
+                finally:
+                    if hasattr(client, "aclose"):
+                        await client.aclose()
+        else:
+            # Use vanilla httpx
+            async with httpx.AsyncClient(**kwargs) as client:
+                yield client
 
     def set_cursor(self, cursor) -> None:
         """Set the cursor for this source.
@@ -216,7 +261,7 @@ class BaseSource:
         """Generate entities for the source."""
         pass
 
-    async def process_file_entity(
+    async def process_file_entity(  # noqa C901
         self, file_entity: FileEntity, download_url=None, access_token=None, headers=None
     ) -> Optional[ChunkEntity]:
         """Process a file entity with automatic size limit checking.
@@ -247,14 +292,26 @@ class BaseSource:
         self.logger.debug(f"Processing file entity: {file_entity.name}")
 
         try:
-            # Create stream (pass token as before)
-            file_stream = file_manager.stream_file_from_url(
-                url, access_token=token, headers=headers, logger=self.logger
-            )
+            # Stream file using our HTTP client (which might be a proxy)
+            async def stream_with_client():
+                async with self.http_client(timeout=httpx.Timeout(180.0, read=540.0)) as client:
+                    request_headers = headers or {}
+                    # Only add auth header if not using proxy
+                    if token and not hasattr(client, "_config"):  # Proxy client has _config
+                        request_headers["Authorization"] = f"Bearer {token}"
 
-            # Process entity - Fix the stream handling issue
+                    # Use stream context manager for proper streaming
+                    async with client.stream(
+                        "GET", url, headers=request_headers, follow_redirects=True
+                    ) as response:
+                        response.raise_for_status()
+                        # Stream the content
+                        async for chunk in response.aiter_bytes():
+                            yield chunk
+
+            # Process entity with the stream
             processed_entity = await file_manager.handle_file_entity(
-                stream=file_stream, entity=file_entity, logger=self.logger
+                stream=stream_with_client(), entity=file_entity, logger=self.logger
             )
 
             # Skip if file was too large

@@ -62,8 +62,7 @@ class CollectionStatus(str, Enum):
 class ActionType(str, Enum):
     """Action type enum."""
 
-    SYNCS = "syncs"
     ENTITIES = "entities"
     QUERIES = "queries"
-    COLLECTIONS = "collections"
     SOURCE_CONNECTIONS = "source_connections"
+    TEAM_MEMBERS = "team_members"

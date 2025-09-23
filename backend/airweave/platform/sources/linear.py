@@ -869,7 +869,7 @@ class LinearSource(BaseSource):
         Yields:
             All Linear entities (teams, projects, users, issues, comments, attachments)
         """
-        async with httpx.AsyncClient() as client:
+        async with self.http_client() as client:
             # Generate team entities
             try:
                 self.logger.info("Starting team entity generation")
@@ -913,7 +913,7 @@ class LinearSource(BaseSource):
 
             query = {"query": "query { viewer { id } }"}
 
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with self.http_client(timeout=10.0) as client:
                 headers = {
                     "Authorization": f"Bearer {token}",
                     "Content-Type": "application/json",
@@ -952,4 +952,4 @@ class LinearSource(BaseSource):
             return False
         except Exception as e:
             self.logger.error(f"Unexpected error during Linear validation: {e}")
-            return False            
+            return False

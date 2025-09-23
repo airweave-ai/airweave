@@ -33,6 +33,7 @@ from airweave.models.source_connection import SourceConnection
 from airweave.models.sync import Sync
 from airweave.models.sync_job import SyncJob
 from airweave.platform.auth.services import oauth2_service
+from airweave.platform.configs._base import ConfigValues
 from airweave.platform.configs.auth import AuthConfig
 from airweave.platform.locator import resource_locator
 from airweave.platform.temporal.schedule_service import temporal_schedule_service
@@ -232,12 +233,13 @@ class SourceConnectionHelpers:
         db: AsyncSession,
         source: schemas.Source,
         auth_fields: AuthConfig,
+        config_fields: Optional[ConfigValues],
         ctx: ApiContext,
     ) -> Dict[str, Any]:
         """Validate direct authentication credentials."""
         try:
             source_cls = resource_locator.get_source(source)
-            source_instance = await source_cls.create(auth_fields, config=None)
+            source_instance = await source_cls.create(auth_fields, config=config_fields)
             source_instance.set_logger(ctx.logger)
 
             if hasattr(source_instance, "validate"):
@@ -262,12 +264,15 @@ class SourceConnectionHelpers:
         db: AsyncSession,
         source: schemas.Source,
         access_token: str,
+        config_fields: Optional[ConfigValues],
         ctx: ApiContext,
     ) -> Dict[str, Any]:
         """Validate OAuth access token."""
         try:
             source_cls = resource_locator.get_source(source)
-            source_instance = await source_cls.create(access_token=access_token, config=None)
+            source_instance = await source_cls.create(
+                access_token=access_token, config=config_fields
+            )
             source_instance.set_logger(ctx.logger)
 
             if hasattr(source_instance, "validate"):
@@ -562,27 +567,46 @@ class SourceConnectionHelpers:
             and source_conn.readable_auth_provider_id
         ):
             auth_info["provider_id"] = source_conn.readable_auth_provider_id
-            auth_info["provider_name"] = source_conn.readable_auth_provider_id
+            auth_info["provider_readable_id"] = source_conn.readable_auth_provider_id
 
         # Add OAuth pending info
         if (
             hasattr(source_conn, "connection_init_session_id")
             and source_conn.connection_init_session_id
         ):
-            # Load the connection init session to get the redirect URL
-            # (for both pending and completed OAuth)
-            from airweave.crud import connection_init_session
+            # Load the connection init session to get the redirect URL and auth URL
+            from sqlalchemy import select
+            from sqlalchemy.orm import selectinload
 
-            init_session = await connection_init_session.get(
-                db, id=source_conn.connection_init_session_id, ctx=ctx
+            from airweave.models import ConnectionInitSession
+
+            # Explicitly load with the redirect_session relationship
+            stmt = (
+                select(ConnectionInitSession)
+                .where(ConnectionInitSession.id == source_conn.connection_init_session_id)
+                .where(ConnectionInitSession.organization_id == ctx.organization.id)
+                .options(selectinload(ConnectionInitSession.redirect_session))
             )
-            if init_session and init_session.overrides:
-                redirect_url = init_session.overrides.get("redirect_url")
-                if redirect_url:
-                    auth_info["redirect_url"] = redirect_url
+            result = await db.execute(stmt)
+            init_session = result.scalar_one_or_none()
+            if init_session:
+                # Get redirect URL from overrides
+                if init_session.overrides:
+                    redirect_url = init_session.overrides.get("redirect_url")
+                    if redirect_url:
+                        auth_info["redirect_url"] = redirect_url
 
-        # Check for auth URL (set during OAuth flow)
-        if hasattr(source_conn, "authentication_url") and source_conn.authentication_url:
+                # Get auth URL from linked redirect session
+                if init_session.redirect_session and not source_conn.is_authenticated:
+                    # Construct the auth URL from the redirect session
+                    auth_info["auth_url"] = (
+                        f"{core_settings.api_url}/source-connections/authorize/"
+                        f"{init_session.redirect_session.code}"
+                    )
+                    auth_info["auth_url_expires"] = init_session.redirect_session.expires_at
+
+        # Check for auth URL (set during OAuth flow creation as temporary attribute)
+        elif hasattr(source_conn, "authentication_url") and source_conn.authentication_url:
             auth_info["auth_url"] = source_conn.authentication_url
             if hasattr(source_conn, "authentication_url_expiry"):
                 auth_info["auth_url_expires"] = source_conn.authentication_url_expiry
@@ -673,7 +697,6 @@ class SourceConnectionHelpers:
                     entities = schemas.EntitySummary(
                         total_entities=total_entities,
                         by_type=by_type,
-                        last_updated=source_conn.modified_at,
                     )
             except Exception as e:
                 ctx.logger.warning(f"Failed to get entity summary: {e}")
@@ -781,11 +804,22 @@ class SourceConnectionHelpers:
         ctx: ApiContext,
         uow: Any,
     ) -> None:
-        """Update sync schedule."""
+        """Update sync schedule in database and Temporal."""
         sync = await crud.sync.get(db, id=sync_id, ctx=ctx)
         if sync:
+            # Update in database
             sync_update = schemas.SyncUpdate(cron_schedule=cron_schedule)
             await crud.sync.update(db, db_obj=sync, obj_in=sync_update, ctx=ctx, uow=uow)
+
+            # Update in Temporal if a schedule exists
+            from airweave.platform.temporal.schedule_service import temporal_schedule_service
+
+            await temporal_schedule_service.create_or_update_schedule(
+                sync_id=sync_id,
+                cron_schedule=cron_schedule,
+                db=db,
+                ctx=ctx,
+            )
 
     async def update_auth_fields(
         self,
@@ -871,6 +905,7 @@ class SourceConnectionHelpers:
         state: str,
         ctx: ApiContext,
         uow: Any,
+        redirect_session_id: Optional[UUID] = None,
     ) -> Any:
         """Create connection init session for OAuth flow."""
         # Handle both new and legacy schemas
@@ -920,6 +955,7 @@ class SourceConnectionHelpers:
                 "state": state,
                 "status": ConnectionInitStatus.PENDING,
                 "expires_at": expires_at,
+                "redirect_session_id": redirect_session_id,
             },
             ctx=ctx,
             uow=uow,
@@ -927,13 +963,17 @@ class SourceConnectionHelpers:
 
     async def create_proxy_url(
         self, db: AsyncSession, provider_auth_url: str, ctx: ApiContext, uow: Any = None
-    ) -> Tuple[str, datetime]:
-        """Create proxy URL for OAuth flow."""
+    ) -> Tuple[str, datetime, UUID]:
+        """Create proxy URL for OAuth flow.
+
+        Returns:
+            Tuple of (proxy_url, proxy_expires, redirect_session_id)
+        """
         proxy_ttl = 1440  # 24 hours
         proxy_expires = datetime.now(timezone.utc) + timedelta(minutes=proxy_ttl)
         code8 = await redirect_session.generate_unique_code(db, length=8)
 
-        await redirect_session.create(
+        redirect_sess = await redirect_session.create(
             db,
             code=code8,
             final_url=provider_auth_url,
@@ -943,7 +983,7 @@ class SourceConnectionHelpers:
         )
 
         proxy_url = f"{core_settings.api_url}/source-connections/authorize/{code8}"
-        return proxy_url, proxy_expires
+        return proxy_url, proxy_expires, redirect_sess.id
 
     async def exchange_oauth_code(
         self,
@@ -1021,7 +1061,7 @@ class SourceConnectionHelpers:
         )
 
         # Create new proxy URL
-        proxy_url, proxy_expiry = await self.create_proxy_url(db, provider_auth_url, ctx)
+        proxy_url, proxy_expiry, _ = await self.create_proxy_url(db, provider_auth_url, ctx)
 
         return proxy_url, proxy_expiry
 

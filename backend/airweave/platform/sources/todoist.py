@@ -247,7 +247,7 @@ class TodoistSource(BaseSource):
           - yield tasks not associated with any section
           - yield TodoistCommentEntities for each task
         """
-        async with httpx.AsyncClient() as client:
+        async with self.http_client() as client:
             # 1) Generate (and yield) all Projects
             async for project_entity in self._generate_project_entities(client):
                 yield project_entity

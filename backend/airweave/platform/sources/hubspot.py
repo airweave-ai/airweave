@@ -350,7 +350,7 @@ class HubspotSource(BaseSource):
         Yields:
             HubSpot entities: Contacts, Companies, Deals, and Tickets.
         """
-        async with httpx.AsyncClient() as client:
+        async with self.http_client() as client:
             # Yield contact entities
             async for contact_entity in self._generate_contact_entities(client):
                 yield contact_entity

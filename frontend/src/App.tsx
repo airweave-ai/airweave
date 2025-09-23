@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { ThemeProvider } from '@/lib/theme-provider';
 import { Routes, Route } from 'react-router-dom';
 import { Toaster } from 'sonner';
+import '@/styles/toast.css';
 
 import DashboardLayout from '@/components/DashboardLayout';
 import Dashboard from '@/pages/Dashboard';
@@ -68,6 +69,20 @@ function App() {
         position="top-right"
         expand={false}
         closeButton
+        toastOptions={{
+          style: {
+            background: 'hsl(var(--background))',
+            border: '1px solid hsl(var(--border))',
+            borderRadius: '12px',
+            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            fontSize: '14px',
+            fontWeight: '500',
+            color: 'hsl(var(--foreground))',
+          },
+          className: 'toast-custom',
+          duration: 4000,
+        }}
+        theme="system"
       />
     </ThemeProvider>
   );

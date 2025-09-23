@@ -244,7 +244,7 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
       case 'composio':
         return ['auth_config_id', 'account_id'];
       case 'pipedream':
-        return ['project_id', 'account_id'];  // environment and external_user_id are optional
+        return ['project_id', 'account_id', 'external_user_id'];  // environment is optional
       default:
         return [];
     }
@@ -346,7 +346,7 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
           return;
         }
         authentication = {
-          provider_name: selectedAuthProvider,
+          provider_readable_id: selectedAuthProvider,
           provider_config: authProviderConfig && Object.keys(authProviderConfig).length > 0 ? authProviderConfig : undefined
         };
       }

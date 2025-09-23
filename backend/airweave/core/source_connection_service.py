@@ -180,45 +180,37 @@ class SourceConnectionService:
         skip: int = 0,
         limit: int = 100,
     ) -> List[SourceConnectionListItem]:
-        """List source connections with minimal fields."""
-        if readable_collection_id:
-            source_conns = await crud.source_connection.get_for_collection(
-                db,
-                readable_collection_id=readable_collection_id,
-                ctx=ctx,
-                skip=skip,
-                limit=limit,
-            )
-        else:
-            source_conns = await crud.source_connection.get_multi(
-                db, ctx=ctx, skip=skip, limit=limit
-            )
+        """List source connections with complete stats."""
+        # Use the new CRUD method that fetches all data efficiently
+        connections_with_stats = await crud.source_connection.get_multi_with_stats(
+            db, ctx=ctx, collection_id=readable_collection_id, skip=skip, limit=limit
+        )
 
-        if not source_conns:
-            return []
-
-        # Build list items - schema will compute auth_method and status automatically
+        # Transform to schema objects
         result = []
-        for sc in source_conns:
-            # TODO: Fetch sync summary and entity count in bulk for performance
-            # TODO: Fetch last job status for computing status
+        for data in connections_with_stats:
+            # Extract last job status for status computation
+            last_job = data.get("last_job", {})
+            last_job_status = last_job.get("status") if last_job else None
+
+            # Build clean list item
             result.append(
                 SourceConnectionListItem(
-                    id=sc.id,
-                    name=sc.name,
-                    short_name=sc.short_name,
-                    readable_collection_id=sc.readable_collection_id,
-                    created_at=sc.created_at,
-                    modified_at=sc.modified_at,
-                    # Fields needed for computed properties
-                    is_authenticated=sc.is_authenticated,
-                    readable_auth_provider_id=sc.readable_auth_provider_id,
-                    connection_init_session_id=sc.connection_init_session_id,
-                    is_active=getattr(sc, "is_active", True),  # Default to True if not present
-                    # TODO: Add these when available
-                    last_sync=None,  # TODO: Add sync summary
-                    entity_count=0,  # TODO: Add entity count
-                    last_job_status=None,  # TODO: Add last job status
+                    # Core fields
+                    id=data["id"],
+                    name=data["name"],
+                    short_name=data["short_name"],
+                    readable_collection_id=data["readable_collection_id"],
+                    created_at=data["created_at"],
+                    modified_at=data["modified_at"],
+                    # Authentication
+                    is_authenticated=data["is_authenticated"],
+                    authentication_method=data.get("authentication_method"),
+                    # Stats
+                    entity_count=data.get("entity_count", 0),
+                    # Hidden fields for status computation
+                    is_active=data.get("is_active", True),
+                    last_job_status=last_job_status,
                 )
             )
 
@@ -345,7 +337,7 @@ class SourceConnectionService:
         )
 
         # Validate credentials with source
-        await self._validate_direct_auth(db, source, validated_auth, ctx)
+        await self._validate_direct_auth(db, source, validated_auth, validated_config, ctx)
 
         async with UnitOfWork(db) as uow:
             # Get collection
@@ -501,17 +493,19 @@ class SourceConnectionService:
                 uow=uow,
             )
 
-            # Create init session
-            init_session = await self._create_init_session(uow.session, obj_in, state, ctx, uow)
+            # Generate proxy URL first to get the redirect_session_id
+            proxy_url, proxy_expiry, redirect_session_id = await self._create_proxy_url(
+                uow.session, provider_auth_url, ctx, uow
+            )
+
+            # Create init session with the redirect_session_id
+            init_session = await self._create_init_session(
+                uow.session, obj_in, state, ctx, uow, redirect_session_id=redirect_session_id
+            )
 
             # Link them
             source_conn.connection_init_session_id = init_session.id
             uow.session.add(source_conn)
-
-            # Generate proxy URL
-            proxy_url, proxy_expiry = await self._create_proxy_url(
-                uow.session, provider_auth_url, ctx, uow
-            )
 
             # Add auth URL to response
             source_conn.authentication_url = proxy_url
@@ -552,12 +546,14 @@ class SourceConnectionService:
         if obj_in.authentication.expires_at:
             oauth_creds["expires_at"] = obj_in.authentication.expires_at.isoformat()
 
-        # Validate token
-        await self._validate_oauth_token(db, source, obj_in.authentication.access_token, ctx)
-
         # Validate config
         validated_config = await self._validate_config_fields(
             db, obj_in.short_name, obj_in.config, ctx
+        )
+
+        # Validate token
+        await self._validate_oauth_token(
+            db, source, obj_in.authentication.access_token, validated_config, ctx
         )
 
         async with UnitOfWork(db) as uow:
@@ -697,12 +693,12 @@ class SourceConnectionService:
 
         # Validate auth provider exists
         auth_provider_conn = await crud.connection.get_by_readable_id(
-            db, readable_id=obj_in.authentication.provider_name, ctx=ctx
+            db, readable_id=obj_in.authentication.provider_readable_id, ctx=ctx
         )
         if not auth_provider_conn:
             raise HTTPException(
                 status_code=404,
-                detail=f"Auth provider '{obj_in.authentication.provider_name}' not found",
+                detail=f"Auth provider '{obj_in.authentication.provider_readable_id}' not found",
             )
 
         # Validate provider config
@@ -1036,6 +1032,7 @@ class SourceConnectionService:
             db,
             await crud.source.get_by_short_name(db, short_name=init_session.short_name),
             token_response.access_token,
+            None,
             ctx,
         )
 

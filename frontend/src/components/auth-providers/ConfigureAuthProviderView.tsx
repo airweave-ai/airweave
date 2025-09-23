@@ -10,7 +10,8 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuthProvidersStore } from "@/lib/stores/authProviders";
 import { getAuthProviderIconUrl } from "@/lib/utils/icons";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Loader2, Key } from "lucide-react";
+import '@/styles/connection-animation.css';
 import {
     Tooltip,
     TooltipContent,
@@ -72,6 +73,45 @@ export interface ConfigureAuthProviderViewProps extends DialogViewProps {
     };
 }
 
+// Secure fallback components for image errors
+const AirweaveFallback: React.FC<{ isDark: boolean }> = ({ isDark }) => (
+    <div className={cn(
+        "w-full h-full rounded flex items-center justify-center",
+        isDark ? "bg-blue-900" : "bg-blue-100"
+    )}>
+        <span className={cn(
+            "text-xl font-bold",
+            isDark ? "text-blue-400" : "text-blue-600"
+        )}>
+            AW
+        </span>
+    </div>
+);
+
+const AuthProviderFallback: React.FC<{
+    authProviderShortName: string;
+    isDark: boolean
+}> = ({ authProviderShortName, isDark }) => {
+    // Safely extract initials from authProviderShortName
+    const initials = authProviderShortName
+        ? authProviderShortName.substring(0, 2).toUpperCase()
+        : "AP";
+
+    return (
+        <div className={cn(
+            "w-full h-full rounded-lg flex items-center justify-center",
+            isDark ? "bg-blue-900" : "bg-blue-100"
+        )}>
+            <span className={cn(
+                "text-xl font-bold",
+                isDark ? "text-blue-400" : "text-blue-600"
+            )}>
+                {initials}
+            </span>
+        </div>
+    );
+};
+
 export const ConfigureAuthProviderView: React.FC<ConfigureAuthProviderViewProps> = ({
     onNext,
     onCancel,
@@ -103,6 +143,11 @@ export const ConfigureAuthProviderView: React.FC<ConfigureAuthProviderViewProps>
     const [authProviderDetails, setAuthProviderDetails] = useState<any>(null);
     const [authFieldValues, setAuthFieldValues] = useState<Record<string, any>>({});
     const [errors, setErrors] = useState<Record<string, string>>({});
+    const [formError, setFormError] = useState<string | null>(null);
+
+    // Image error state for secure fallbacks
+    const [airweaveImageError, setAirweaveImageError] = useState(false);
+    const [authProviderImageError, setAuthProviderImageError] = useState(false);
 
     // Log loading state changes
     useEffect(() => {
@@ -235,6 +280,11 @@ export const ConfigureAuthProviderView: React.FC<ConfigureAuthProviderViewProps>
             });
         }
 
+        // Clear form error when user starts typing
+        if (formError) {
+            setFormError(null);
+        }
+
         if (previousNameRef.current && newName === "" && !userEditedId) {
             randomSuffixRef.current = generateRandomSuffix();
         }
@@ -333,6 +383,11 @@ export const ConfigureAuthProviderView: React.FC<ConfigureAuthProviderViewProps>
                 return updated;
             });
         }
+
+        // Clear form error when user starts typing (gives them a chance to retry)
+        if (formError) {
+            setFormError(null);
+        }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -351,6 +406,7 @@ export const ConfigureAuthProviderView: React.FC<ConfigureAuthProviderViewProps>
         if (!validateAuthFields()) return;
 
         setIsSubmitting(true);
+        setFormError(null); // Clear any previous form errors
 
         try {
             // Create auth provider connection
@@ -370,8 +426,14 @@ export const ConfigureAuthProviderView: React.FC<ConfigureAuthProviderViewProps>
 
             const connection = await response.json();
 
-            // Show success message first
-            toast.success(`Successfully connected to ${authProviderName}`);
+            // Add a small delay to simulate connection process and show loading state
+            await new Promise(resolve => setTimeout(resolve, 1500));
+
+            // Show success message after delay
+            toast.success(`Successfully connected to ${authProviderName}`, {
+                description: 'Your connection is now active and ready to use.',
+                duration: 5000,
+            });
 
             // Navigate to detail view BEFORE refreshing connections
             console.log('🎯 [ConfigureAuthProviderView] Connection created successfully:', {
@@ -400,9 +462,36 @@ export const ConfigureAuthProviderView: React.FC<ConfigureAuthProviderViewProps>
             }
         } catch (error) {
             console.error("Error creating auth provider connection:", error);
-            if (onError) {
-                onError(error instanceof Error ? error : new Error(String(error)), authProviderName);
+
+            // Extract error message from the response
+            let errorMessage = "Failed to create connection";
+            if (error instanceof Error) {
+                errorMessage = error.message;
+
+                // Try to extract more specific error from API response
+                if (errorMessage.includes("Failed to create auth provider connection:")) {
+                    const apiError = errorMessage.replace("Failed to create auth provider connection:", "").trim();
+                    try {
+                        // Try to parse as JSON in case it's a structured error
+                        const parsedError = JSON.parse(apiError);
+                        errorMessage = parsedError.detail || apiError;
+                    } catch {
+                        // If not JSON, use as-is
+                        errorMessage = apiError;
+                    }
+                }
             }
+
+            // Set form error state for inline display
+            setFormError(errorMessage);
+
+            // Also show error as a toast for better visibility
+            toast.error("Connection Failed", {
+                description: errorMessage,
+                duration: 8000, // Longer duration for error messages
+            });
+
+            // Don't call onError to avoid redirect - just stay on the form
         } finally {
             setIsSubmitting(false);
         }
@@ -417,42 +506,91 @@ export const ConfigureAuthProviderView: React.FC<ConfigureAuthProviderViewProps>
     }
 
     return (
-        <div className="h-full flex flex-col min-h-0">
+        <div className="h-full flex flex-col max-h-[90vh]">
+            {/* Fixed header */}
+            <div className={cn(
+                "px-6 pt-6 pb-4 border-b",
+                isDark ? "border-gray-800/50" : "border-gray-100"
+            )}>
+                <div>
+                    <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">
+                        Connect to {authProviderName}
+                    </h2>
+                    <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                        Create a connection to {authProviderName} that can be used to authenticate to data sources
+                    </p>
+                </div>
+            </div>
+
             {/* Content area - scrollable */}
             <div className="px-8 py-10 flex-1 overflow-auto min-h-0">
                 <div className="space-y-8">
-                    {/* Header */}
-                    <div>
-                        <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">
-                            Connect to {authProviderName}
-                        </h2>
-                        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                            Create a connection to {authProviderName} that can be used to authenticate to data sources
-                        </p>
-                    </div>
 
-                    {/* Auth Provider Icon - smaller, cleaner */}
+                    {/* Connection Animation */}
                     {authProviderShortName && (
-                        <div className="flex justify-center py-8">
-                            <div className={cn(
-                                "w-32 h-32 flex items-center justify-center rounded-2xl p-4",
-                                isDark ? "bg-gray-800/50" : "bg-gray-50"
-                            )}>
-                                <img
-                                    src={getAuthProviderIconUrl(authProviderShortName, resolvedTheme)}
-                                    alt={`${authProviderName} icon`}
-                                    className="w-full h-full object-contain"
-                                    onError={(e) => {
-                                        e.currentTarget.style.display = 'none';
-                                        e.currentTarget.parentElement!.innerHTML = `
-                                            <div class="w-full h-full rounded-lg flex items-center justify-center ${isDark ? 'bg-blue-900' : 'bg-blue-100'}">
-                                                <span class="text-3xl font-bold ${isDark ? 'text-blue-400' : 'text-blue-600'}">
-                                                    ${authProviderShortName.substring(0, 2).toUpperCase()}
-                                                </span>
-                                            </div>
-                                        `;
-                                    }}
-                                />
+                        <div className="flex justify-center py-6">
+                            <div className="relative flex items-center gap-8">
+                                {/* Airweave Logo */}
+                                <div className="flex flex-col items-center gap-2">
+                                    <div className={cn(
+                                        "w-16 h-16 rounded-xl flex items-center justify-center p-3",
+                                        "transition-all duration-500 ease-in-out",
+                                        isDark ? "bg-gray-800/50" : "bg-white/80",
+                                        "shadow-lg ring-2 ring-gray-400/30"
+                                    )}>
+                                        {airweaveImageError ? (
+                                            <AirweaveFallback isDark={isDark} />
+                                        ) : (
+                                            <img
+                                                src={isDark ? "/airweave-logo-svg-white-darkbg.svg" : "/airweave-logo-svg-lightbg-blacklogo.svg"}
+                                                alt="Airweave"
+                                                className="w-full h-full object-contain"
+                                                onError={() => setAirweaveImageError(true)}
+                                            />
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Connecting Status Text */}
+                                <div className="flex items-center justify-center">
+                                    <p className={cn(
+                                        "text-sm font-medium relative transition-all duration-500 ease-in-out",
+                                        "bg-clip-text text-transparent",
+                                        isDark
+                                            ? "bg-gradient-to-r from-gray-400 via-white to-gray-400"
+                                            : "bg-gradient-to-r from-gray-500 via-gray-900 to-gray-500"
+                                    )}
+                                        style={{
+                                            backgroundSize: '200% 100%',
+                                            animation: 'textShimmer 2.5s ease-in-out infinite'
+                                        }}>
+                                        Waiting for connection...
+                                    </p>
+                                </div>
+
+                                {/* Auth Provider Logo */}
+                                <div className="flex flex-col items-center gap-2">
+                                    <div className={cn(
+                                        "w-16 h-16 rounded-xl flex items-center justify-center p-3",
+                                        "transition-all duration-500 ease-in-out",
+                                        isDark ? "bg-gray-800/50" : "bg-white/80",
+                                        "shadow-lg ring-2 ring-gray-400/30"
+                                    )}>
+                                        {authProviderImageError ? (
+                                            <AuthProviderFallback
+                                                authProviderShortName={authProviderShortName || ''}
+                                                isDark={isDark}
+                                            />
+                                        ) : (
+                                            <img
+                                                src={getAuthProviderIconUrl(authProviderShortName, resolvedTheme)}
+                                                alt={authProviderName}
+                                                className="w-full h-full object-contain"
+                                                onError={() => setAuthProviderImageError(true)}
+                                            />
+                                        )}
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -606,6 +744,28 @@ export const ConfigureAuthProviderView: React.FC<ConfigureAuthProviderViewProps>
                 "px-8 py-6 border-t flex-shrink-0",
                 isDark ? "border-gray-800" : "border-gray-200"
             )}>
+                {/* Form Error Display */}
+                {formError && (
+                    <div className={cn(
+                        "mb-4 p-4 rounded-lg border",
+                        "bg-red-50/50 border-red-200/60",
+                        "dark:bg-red-950/20 dark:border-red-800/30"
+                    )}>
+                        <div className="flex items-start gap-3">
+                            <div className="flex-shrink-0 mt-0.5">
+                                <svg className="w-4 h-4 text-red-500 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                                </svg>
+                            </div>
+                            <div className="flex-1">
+                                <p className="text-sm text-red-700 dark:text-red-300 font-medium">
+                                    {formError}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 <div className="flex gap-3">
                     <button
                         onClick={onCancel}
@@ -622,12 +782,20 @@ export const ConfigureAuthProviderView: React.FC<ConfigureAuthProviderViewProps>
                         onClick={handleSubmit}
                         disabled={isSubmitting || hasEmptyRequiredFields()}
                         className={cn(
-                            "flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all",
+                            "flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all duration-200",
                             "disabled:opacity-50 disabled:cursor-not-allowed",
-                            "bg-blue-600 hover:bg-blue-700 text-white"
+                            "bg-blue-600 hover:bg-blue-700 text-white",
+                            "flex items-center justify-center gap-2"
                         )}
                     >
-                        {isSubmitting ? 'Connecting...' : 'Connect'}
+                        {isSubmitting ? (
+                            <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                <span>Connecting...</span>
+                            </>
+                        ) : (
+                            'Connect'
+                        )}
                     </button>
                 </div>
             </div>

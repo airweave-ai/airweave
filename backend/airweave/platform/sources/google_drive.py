@@ -706,7 +706,7 @@ class GoogleDriveSource(BaseSource):
           deletion entities for removed files and upsert entities for changed files.
         """
         try:
-            async with httpx.AsyncClient() as client:
+            async with self.http_client() as client:
                 patterns: List[str] = getattr(self, "include_patterns", []) or []
                 self.logger.debug(f"Include patterns: {patterns}")
 

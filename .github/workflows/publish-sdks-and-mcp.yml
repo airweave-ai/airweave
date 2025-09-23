@@ -48,6 +48,7 @@ jobs:
           POSTGRES_PASSWORD: "postgres"
           OPENAI_API_KEY: "sk-docs"
           LOCAL_DEVELOPMENT: "true"
+          STATE_SECRET: "dummy-state-secret-key-1234567890-abcdefghijklmn"
 
       - name: Setup Node.js
         uses: actions/setup-node@v3

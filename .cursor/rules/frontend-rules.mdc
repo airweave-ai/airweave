@@ -30,7 +30,9 @@ frontend/src/
 ├── hooks/             # Custom React hooks
 ├── services/          # Business logic services
 ├── config/            # Configuration files
-└── constants/         # App constants
+├── constants/         # App constants
+└── styles/            # Global CSS styles
+    └── toast.css      # Custom toast styling
 ```
 
 ## API Layer (`lib/api.ts`)
@@ -188,9 +190,41 @@ const handleError = (error: Error | string, errorSource?: string) => {
 - Dialog-specific error targeting via `dialogId`
 
 ### Toast Notifications
-- Using `sonner` for toast messages
-- Organization switch notifications
-- Success/error feedback patterns
+
+#### Setup & Configuration
+- **Sonner** library with custom styling via `toast-custom` class
+- Global CSS import: `import '@/styles/toast.css'` in `App.tsx`
+- Toaster configured with `className: 'toast-custom'` for custom styling
+
+#### Toast Types & Patterns
+```typescript
+import { toast } from 'sonner';
+
+// Success notifications (green theme)
+toast.success('Operation completed successfully');
+
+// Error notifications (red theme)
+toast.error('Something went wrong');
+
+// Info notifications (blue theme)
+toast.info('Additional information');
+
+// Warning notifications (yellow theme)
+toast.warning('Please review this action');
+```
+
+#### Custom Styling Features
+- **Enhanced animations**: Slide-in from right with custom easing
+- **Type-specific styling**: Each toast type has distinct colors and borders
+- **Colored left border**: Visual indicator for toast type
+- **Consistent theming**: Uses CSS variables for dark/light mode
+- **Hover effects**: Subtle transform and shadow changes
+
+#### Usage Guidelines
+- Use appropriate toast types for different scenarios
+- Keep messages concise and actionable
+- Avoid overusing toasts for non-critical information
+- Organization switch notifications use success type
 
 ### Error Views
 - `ConnectionErrorView` for connection failures

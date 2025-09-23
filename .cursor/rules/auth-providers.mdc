@@ -90,3 +90,35 @@ token_manager = TokenManager(
 - **auth_provider_connections**: User's configured providers (encrypted)
 - **source_connections**: Links to auth provider via `auth_provider_connection_id`
 # Airweave Auth Providers
+
+
+### Pipedream Proxy Authentication
+
+Pipedream supports two authentication modes depending on the OAuth client type:
+
+#### Direct Mode (Custom OAuth Clients)
+- Used when accounts are connected via custom OAuth clients
+- Credentials are retrievable and used directly by sources
+- Standard authentication flow
+
+#### Proxy Mode (Default OAuth Clients)
+- Required when using Pipedream's default OAuth client
+- Credentials are not exposed for security
+- All API requests route through Pipedream's proxy endpoint
+- Pipedream injects authentication credentials server-side
+
+The system automatically detects which mode to use:
+1. Attempts to retrieve credentials
+2. If unavailable (default OAuth), switches to proxy mode
+3. Sources use `PipedreamProxyClient` transparently
+
+**Benefits:**
+- Supports both custom and default OAuth clients
+- Maintains security for default OAuth credentials
+- Transparent to source implementations (same API)
+- No code changes needed in individual sources
+
+**Technical Details:**
+- Proxy URL: `https://api.pipedream.com/v1/connect/{project_id}/proxy/{encoded_url}`
+- Auth headers stripped and injected by Pipedream
+- Non-auth headers forwarded with `x-pd-proxy-` prefix

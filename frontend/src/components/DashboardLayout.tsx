@@ -202,10 +202,8 @@ const DashboardLayout = () => {
   const isCheckingUsage = useUsageStore(state => state.isLoading);
 
   // Derived states from usage store
-  const collectionsAllowed = actionChecks.collections?.allowed ?? true;
   const sourceConnectionsAllowed = actionChecks.source_connections?.allowed ?? true;
   const entitiesAllowed = actionChecks.entities?.allowed ?? true;
-  const syncsAllowed = actionChecks.syncs?.allowed ?? true;
   const usageCheckDetails = actionChecks;
 
   // Add array of routes that should be non-scrollable
@@ -258,10 +256,10 @@ const DashboardLayout = () => {
                       onClick={handleCreateCollection}
                       variant="outline"
                       size="sm"
-                      disabled={!collectionsAllowed || !sourceConnectionsAllowed || !entitiesAllowed || !syncsAllowed || isCheckingUsage}
+                      disabled={!sourceConnectionsAllowed || !entitiesAllowed || isCheckingUsage}
                       className={cn(
                         "flex items-center justify-center w-[214px] gap-1.5 text-sm bg-background border rounded-lg py-2 hover:shadow-sm",
-                        (!collectionsAllowed || !sourceConnectionsAllowed || !entitiesAllowed || !syncsAllowed || isCheckingUsage)
+                        (!sourceConnectionsAllowed || !entitiesAllowed || isCheckingUsage)
                           ? "opacity-50 cursor-not-allowed text-muted-foreground border-border"
                           : "text-primary hover:bg-primary/15 border-primary/60 hover:text-primary font-medium transition-all duration-200"
                       )}
@@ -271,22 +269,10 @@ const DashboardLayout = () => {
                     </Button>
                   </span>
                 </TooltipTrigger>
-                {(!collectionsAllowed || !sourceConnectionsAllowed || !entitiesAllowed || !syncsAllowed) && (
+                {(!sourceConnectionsAllowed || !entitiesAllowed) && (
                   <TooltipContent className="max-w-xs">
                     <p className="text-xs">
-                      {!collectionsAllowed && usageCheckDetails.collections?.reason === 'usage_limit_exceeded' ? (
-                        <>
-                          Collection limit reached.{' '}
-                          <a
-                            href="/organization/settings?tab=billing"
-                            className="underline"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            Upgrade your plan
-                          </a>
-                          {' '}to create more collections.
-                        </>
-                      ) : !sourceConnectionsAllowed && usageCheckDetails.source_connections?.reason === 'usage_limit_exceeded' ? (
+                      {!sourceConnectionsAllowed && usageCheckDetails.source_connections?.reason === 'usage_limit_exceeded' ? (
                         <>
                           Source connection limit reached.{' '}
                           <a
@@ -309,18 +295,6 @@ const DashboardLayout = () => {
                             Upgrade your plan
                           </a>
                           {' '}to process more data.
-                        </>
-                      ) : !syncsAllowed && usageCheckDetails.syncs?.reason === 'usage_limit_exceeded' ? (
-                        <>
-                          Sync limit reached.{' '}
-                          <a
-                            href="/organization/settings?tab=billing"
-                            className="underline"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            Upgrade your plan
-                          </a>
-                          {' '}for more syncs.
                         </>
                       ) : (
                         'Unable to create collection at this time.'
@@ -376,7 +350,7 @@ const DashboardLayout = () => {
         <UserProfileDropdown />
       </div>
     </div>
-  ), [resolvedTheme, handleCreateCollection, isDashboardActive, isApiKeysActive, isAuthProvidersActive, currentOrganization?.id, collectionsAllowed, sourceConnectionsAllowed, entitiesAllowed, syncsAllowed, isCheckingUsage, usageCheckDetails]);
+  ), [resolvedTheme, handleCreateCollection, isDashboardActive, isApiKeysActive, isAuthProvidersActive, currentOrganization?.id, sourceConnectionsAllowed, entitiesAllowed, isCheckingUsage, usageCheckDetails]);
 
   // Main component render
   return (
@@ -453,7 +427,7 @@ const DashboardLayout = () => {
 
                     {/* Get a demo button */}
                     <a
-                      href="https://cal.com/lennert-airweave/airweave-q-a-demo"
+                      href="https://cal.com/lennert-airweave/airweave-demo"
                       target="_blank"
                       rel="noopener noreferrer"
                     >
@@ -461,7 +435,7 @@ const DashboardLayout = () => {
                         variant="outline"
                         className="hidden md:flex border-primary/60 border-[1px] text-primary/90 hover:bg-primary/10 hover:text-foreground/65 h-9 px-4 text-sm rounded-lg transition-all duration-200 hover:shadow-sm"
                       >
-                        Talk to a Founder
+                        Get a Demo
                       </Button>
                     </a>
 

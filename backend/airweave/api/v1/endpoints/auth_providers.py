@@ -94,6 +94,65 @@ async def _validate_auth_fields(
             raise HTTPException(status_code=422, detail=f"Invalid auth fields: {str(e)}") from e
 
 
+async def _validate_auth_provider_credentials(
+    db: AsyncSession,
+    auth_provider_short_name: str,
+    validated_auth_fields: dict,
+    validated_provider_config: dict,
+    ctx: ApiContext,
+) -> None:
+    """Validate that the auth provider connection actually works.
+
+    Args:
+        db: The database session
+        auth_provider_short_name: The short name of the auth provider
+        validated_auth_fields: The validated auth fields
+        validated_provider_config: The validated provider config
+        ctx: The API context
+
+    Raises:
+        HTTPException: If the connection validation fails
+    """
+    try:
+        # First get the auth provider object from the database
+        from airweave import crud
+
+        auth_provider = await crud.auth_provider.get_by_short_name(
+            db, short_name=auth_provider_short_name
+        )
+        if not auth_provider:
+            raise HTTPException(
+                status_code=404, detail=f"Auth provider not found: {auth_provider_short_name}"
+            )
+
+        # Get the auth provider class using the full auth provider object
+        auth_provider_class = resource_locator.get_auth_provider(auth_provider)
+
+        # Create a temporary instance with the provided credentials
+        auth_provider_instance = await auth_provider_class.create(
+            credentials=validated_auth_fields,
+            config=validated_provider_config,
+        )
+
+        # Set the logger from context
+        auth_provider_instance.set_logger(ctx.logger)
+
+        # Validate the connection
+        await auth_provider_instance.validate()
+
+        ctx.logger.info(
+            f"✅ Auth provider connection validation successful for {auth_provider_short_name}"
+        )
+
+    except HTTPException:
+        # Re-raise HTTPException as-is (these come from the validation methods)
+        raise
+    except Exception as e:
+        error_msg = f"Failed to validate {auth_provider_short_name} connection: {str(e)}"
+        ctx.logger.error(f"❌ {error_msg}")
+        raise HTTPException(status_code=422, detail=error_msg) from e
+
+
 @router.get("/list", response_model=List[schemas.AuthProvider])
 async def list_auth_providers(
     *,
@@ -524,7 +583,16 @@ async def connect_auth_provider(
                 auth_provider_connection_in.auth_fields,
             )
 
-            # 3. Create integration credential with encrypted auth credentials
+            # 3. Test the actual connection by creating a temporary auth provider instance
+            await _validate_auth_provider_credentials(
+                uow.session,
+                auth_provider_connection_in.short_name,
+                validated_auth_fields,
+                {},  # Empty config - validation now works without it
+                ctx,
+            )
+
+            # 5. Create integration credential with encrypted auth credentials
             integration_credential_data = schemas.IntegrationCredentialCreateEncrypted(
                 name=f"{auth_provider_connection_in.name} Credentials",
                 integration_short_name=auth_provider_connection_in.short_name,
@@ -662,6 +730,13 @@ async def _update_auth_credentials(
         uow.session, connection.short_name, auth_fields
     )
     logger.info("[UPDATE AUTH CREDENTIALS] Auth fields validated successfully")
+
+    # TODO: Add connection validation once provider config is supported
+    # For now, skip validation since we don't have the required config parameters
+    logger.info(
+        f"⚠️  [UPDATE AUTH CREDENTIALS] Skipping connection validation for {connection.short_name} "
+        f"- provider config not yet supported"
+    )
 
     if not connection.integration_credential_id:
         raise HTTPException(status_code=500, detail="Connection missing integration credential")

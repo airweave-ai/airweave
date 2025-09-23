@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud
 from airweave.api.context import ApiContext
 from airweave.core.exceptions import NotFoundException
-from airweave.core.shared_models import CollectionStatus, SourceConnectionStatus
+from airweave.core.shared_models import CollectionStatus
 from airweave.crud._base_organization import CRUDBaseOrganization
 from airweave.models.collection import Collection
 from airweave.schemas.collection import CollectionCreate, CollectionUpdate
@@ -40,16 +40,18 @@ class CRUDCollection(CRUDBaseOrganization[Collection, CollectionCreate, Collecti
         Returns:
             The computed ephemeral status
         """
-        # Get all source connections for this collection
-        source_connections = await crud.source_connection.get_for_collection(
-            db, readable_collection_id=collection.readable_id, ctx=ctx
+        # Get source connections with their stats to compute proper status
+        connections_with_stats = await crud.source_connection.get_multi_with_stats(
+            db, ctx=ctx, collection_id=collection.readable_id
         )
 
-        if not source_connections:
+        if not connections_with_stats:
             return CollectionStatus.NEEDS_SOURCE
 
         # Filter out pending shells to evaluate the status of active connections
-        active_connections = [sc for sc in source_connections if sc.is_authenticated]
+        active_connections = [
+            conn for conn in connections_with_stats if conn.get("is_authenticated", False)
+        ]
 
         # If there are no authenticated connections, it's effectively the same as needing a source
         if not active_connections:
@@ -59,14 +61,18 @@ class CRUDCollection(CRUDBaseOrganization[Collection, CollectionCreate, Collecti
         failing_count = 0
         in_progress_count = 0
 
-        for sc in active_connections:
-            if sc.status == SourceConnectionStatus.ERROR:
+        for conn in active_connections:
+            # Get last job status to compute connection status
+            last_job = conn.get("last_job", {})
+            last_job_status = last_job.get("status") if last_job else None
+
+            # Determine connection status based on last job
+            if last_job_status == "failed":
                 failing_count += 1
-            elif sc.status in [
-                SourceConnectionStatus.SYNCING,
-                SourceConnectionStatus.PENDING_SYNC,
-                SourceConnectionStatus.ACTIVE,
-            ]:
+            elif last_job_status == "running":
+                in_progress_count += 1
+            else:
+                # Active, completed, or no jobs yet
                 in_progress_count += 1
 
         # If any active connections are in progress, the collection is active

@@ -474,7 +474,7 @@ class StripeSource(BaseSource):
         - Refunds
         - Subscriptions
         """
-        async with httpx.AsyncClient() as client:
+        async with self.http_client() as client:
             # 1) Single Balance resource
             async for balance_entity in self._generate_balance_entity(client):
                 yield balance_entity
@@ -525,7 +525,7 @@ class StripeSource(BaseSource):
             self.logger.error("Stripe validation failed: missing API key.")
             return False
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with self.http_client(timeout=10.0) as client:
                 # Reuse the authenticated helper for consistency
                 await self._get_with_auth(client, "https://api.stripe.com/v1/balance")
                 return True

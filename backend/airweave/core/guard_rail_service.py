@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 from typing import Optional
 from uuid import UUID
 
+from sqlalchemy import func, select
+
 from airweave import crud
 from airweave.core.config import settings
 from airweave.core.exceptions import PaymentRequiredException, UsageLimitExceededException
@@ -12,6 +14,7 @@ from airweave.core.logging import ContextualLogger
 from airweave.core.logging import logger as default_logger
 from airweave.core.shared_models import ActionType
 from airweave.db.session import get_db_context
+from airweave.models.user_organization import UserOrganization
 from airweave.schemas.billing_period import BillingPeriodStatus
 from airweave.schemas.organization_billing import BillingPlan
 from airweave.schemas.usage import Usage, UsageLimit
@@ -24,10 +27,8 @@ class GuardRailService:
 
     # Per-action-type flush thresholds
     FLUSH_THRESHOLDS = {
-        ActionType.SYNCS: 1,
         ActionType.ENTITIES: 100,
         ActionType.QUERIES: 1,
-        ActionType.COLLECTIONS: 1,
         ActionType.SOURCE_CONNECTIONS: 1,
     }
 
@@ -40,21 +41,16 @@ class GuardRailService:
         BillingPeriodStatus.TRIAL: set(),  # No restrictions during trial
         BillingPeriodStatus.GRACE: {
             # During grace period, block resource creation but allow queries
-            ActionType.COLLECTIONS,
             ActionType.SOURCE_CONNECTIONS,
         },
         BillingPeriodStatus.ENDED_UNPAID: {
             # When unpaid, only allow queries - block all resource creation/modification
-            ActionType.SYNCS,
             ActionType.ENTITIES,
-            ActionType.COLLECTIONS,
             ActionType.SOURCE_CONNECTIONS,
         },
         BillingPeriodStatus.COMPLETED: {
             # Completed periods should not be current, but if they are, block everything
-            ActionType.SYNCS,
             ActionType.ENTITIES,
-            ActionType.COLLECTIONS,
             ActionType.SOURCE_CONNECTIONS,
             ActionType.QUERIES,
         },
@@ -63,25 +59,28 @@ class GuardRailService:
     # Plan limits configuration (matching BillingService)
     PLAN_LIMITS = {
         BillingPlan.DEVELOPER: {
-            "max_syncs": 10,
-            "max_entities": 100000,
-            "max_queries": 1000,
-            "max_collections": 5,
+            "max_entities": 50000,
+            "max_queries": 500,
             "max_source_connections": 10,
+            "max_team_members": 1,
         },
-        BillingPlan.STARTUP: {
-            "max_syncs": 50,
+        BillingPlan.PRO: {
+            "max_entities": 100000,
+            "max_queries": 2000,
+            "max_source_connections": 50,
+            "max_team_members": 2,
+        },
+        BillingPlan.TEAM: {
             "max_entities": 1000000,
             "max_queries": 10000,
-            "max_collections": 20,
-            "max_source_connections": 50,
+            "max_source_connections": 1000,
+            "max_team_members": 10,
         },
         BillingPlan.ENTERPRISE: {
-            "max_syncs": None,  # Unlimited
             "max_entities": None,
             "max_queries": None,
-            "max_collections": None,
             "max_source_connections": None,
+            "max_team_members": None,
         },
     }
 
@@ -99,12 +98,10 @@ class GuardRailService:
         self.usage_limit: Optional[UsageLimit] = None
         self.usage_fetched_at: Optional[datetime] = None
         self._has_billing: Optional[bool] = None  # Cache whether org has billing
-        # Track pending increments in memory
+        # Track pending increments in memory (team_members not included - it's counted dynamically)
         self.pending_increments = {
-            ActionType.SYNCS: 0,
             ActionType.ENTITIES: 0,
             ActionType.QUERIES: 0,
-            ActionType.COLLECTIONS: 0,
             ActionType.SOURCE_CONNECTIONS: 0,
         }
         # Lock for thread-safe operations
@@ -177,6 +174,10 @@ class GuardRailService:
                     payment_status=billing_status.value,
                 )
 
+            # Special handling for team members - count from UserOrganization table
+            if action_type == ActionType.TEAM_MEMBERS:
+                return await self._check_team_members_allowed(amount)
+
             # Check if we need to refresh usage (TTL expired or never fetched)
             should_refresh = (
                 self.usage is None
@@ -233,6 +234,13 @@ class GuardRailService:
             action_type: The type of action to increment
             amount: The amount to increment by (default 1)
         """
+        # Team members are not tracked as cumulative usage - they're counted dynamically
+        if action_type == ActionType.TEAM_MEMBERS:
+            self.logger.debug(
+                "Team members are tracked dynamically, not incrementing usage counter"
+            )
+            return
+
         # Use lock to ensure thread-safe increment and flush
         async with self._lock:
             # Skip incrementing for legacy organizations
@@ -260,6 +268,13 @@ class GuardRailService:
 
     async def decrement(self, action_type: ActionType, amount: int = 1) -> None:
         """Decrement the usage for the action."""
+        # Team members are not tracked as cumulative usage
+        if action_type == ActionType.TEAM_MEMBERS:
+            self.logger.debug(
+                "Team members are tracked dynamically, not decrementing usage counter"
+            )
+            return
+
         async with self._lock:
             self.pending_increments[action_type] = (
                 self.pending_increments.get(action_type, 0) - amount
@@ -318,12 +333,14 @@ class GuardRailService:
                 # Update in-memory usage with the fresh database values
                 if updated_usage_record:
                     self.usage = Usage.model_validate(updated_usage_record)
+                    # Populate team_members field (not stored in database)
+                    self.usage.team_members = await self._count_team_members()
                     self.usage_fetched_at = datetime.utcnow()
                     self.logger.info(
-                        f"Updated in-memory usage from database: syncs={self.usage.syncs}, "
+                        f"Updated in-memory usage from database: "
                         f"entities={self.usage.entities}, queries={self.usage.queries}, "
-                        f"collections={self.usage.collections}, "
-                        f"source_connections={self.usage.source_connections}"
+                        f"source_connections={self.usage.source_connections}, "
+                        f"team_members={self.usage.team_members}"
                     )
 
                 # Clear flushed increments
@@ -373,10 +390,13 @@ class GuardRailService:
             if usage_record:
                 # Convert SQLAlchemy model to Pydantic schema
                 usage = Usage.model_validate(usage_record)
+                # Populate team_members field (not stored in database)
+                usage.team_members = await self._count_team_members()
                 self.logger.info(
-                    f"\n\nRetrieved current usage: syncs={usage.syncs}, entities={usage.entities}, "
-                    f"queries={usage.queries}, collections={usage.collections}, "
-                    f"source_connections={usage.source_connections}\n\n"
+                    f"\n\nRetrieved current usage: entities={usage.entities}, "
+                    f"queries={usage.queries}, "
+                    f"source_connections={usage.source_connections}, "
+                    f"team_members={usage.team_members}\n\n"
                 )
                 return usage
             else:
@@ -424,6 +444,83 @@ class GuardRailService:
 
             return current_period.status
 
+    async def _get_current_plan(self) -> BillingPlan:
+        """Get the organization's current billing plan.
+
+        Falls back to developer if no active period is found.
+        """
+        async with get_db_context() as db:
+            current_period = await crud.billing_period.get_current_period(
+                db, organization_id=self.organization_id
+            )
+            if not current_period or not current_period.plan:
+                return BillingPlan.DEVELOPER
+            return current_period.plan
+
+    async def get_team_member_count(self) -> int:
+        """Get the current number of team members in the organization.
+
+        Public method for retrieving team member count for usage reporting.
+
+        Returns:
+            Current number of team members
+        """
+        return await self._count_team_members()
+
+    async def _count_team_members(self) -> int:
+        """Count current team members in the organization."""
+        async with get_db_context() as db:
+            stmt = (
+                select(func.count())
+                .select_from(UserOrganization)
+                .where(UserOrganization.organization_id == self.organization_id)
+            )
+            result = await db.execute(stmt)
+            return int(result.scalar_one() or 0)
+
+    async def _check_team_members_allowed(self, amount: int) -> bool:
+        """Check if adding team members is allowed.
+
+        Args:
+            amount: Number of team members to add
+
+        Returns:
+            True if allowed
+
+        Raises:
+            UsageLimitExceededException: If limit would be exceeded
+        """
+        current_count = await self._count_team_members()
+
+        # Get limit from usage limit or plan limits
+        if self.usage_limit is None:
+            self.usage_limit = await self._infer_usage_limit()
+
+        max_team_members = getattr(self.usage_limit, "max_team_members", None)
+
+        # If no limit (None), it's unlimited - always allowed
+        if max_team_members is None:
+            self.logger.debug("Team members have unlimited usage")
+            return True
+
+        # Check if adding the requested amount would exceed the limit
+        if current_count + amount > max_team_members:
+            self.logger.warning(
+                f"Team member limit exceeded: current={current_count}, "
+                f"requested={amount}, limit={max_team_members}"
+            )
+            raise UsageLimitExceededException(
+                action_type="team_members",
+                limit=max_team_members,
+                current_usage=current_count,
+            )
+
+        self.logger.info(
+            f"Team member check: current={current_count}, "
+            f"requested={amount}, limit={max_team_members}"
+        )
+        return True
+
     async def _infer_usage_limit(self) -> UsageLimit:
         """Infer usage limit based on current billing period's plan.
 
@@ -439,38 +536,43 @@ class GuardRailService:
                 db, organization_id=self.organization_id
             )
 
-            if not current_period or not current_period.plan:
-                # Default to developer limits if no period found
-                self.logger.warning(
-                    f"No active billing period found for organization {self.organization_id}. "
-                    "Using developer plan limits as default."
+        if not current_period or not current_period.plan:
+            # Default to developer limits if no period found
+            self.logger.warning(
+                f"No active billing period found for organization {self.organization_id}. "
+                "Using developer plan limits as default."
+            )
+            plan = BillingPlan.DEVELOPER
+        else:
+            # Normalize plan to enum if needed
+            try:
+                plan = (
+                    current_period.plan
+                    if hasattr(current_period, "plan") and hasattr(current_period.plan, "value")
+                    else BillingPlan(str(current_period.plan))
                 )
+            except Exception:
                 plan = BillingPlan.DEVELOPER
-            else:
-                plan = current_period.plan
-                self.logger.info(
-                    f"\n\nRetrieved billing period for limits calculation: "
-                    f"plan={plan}, status={current_period.status}, "
-                    f"period_id={current_period.id}, "
-                    f"organization_id={self.organization_id}\n\n"
-                )
+            self.logger.info(
+                f"\n\nRetrieved billing period for limits calculation: "
+                f"plan={plan}, status={current_period.status}, "
+                f"period_id={current_period.id}, "
+                f"organization_id={self.organization_id}\n\n"
+            )
 
         # Get limits for the plan
         limits = self.PLAN_LIMITS.get(plan, self.PLAN_LIMITS[BillingPlan.DEVELOPER])
 
         self.logger.debug(
             f"Applied limits for {plan} plan: "
-            f"syncs={limits.get('max_syncs')}, "
             f"entities={limits.get('max_entities')}, "
             f"queries={limits.get('max_queries')}, "
-            f"collections={limits.get('max_collections')}, "
             f"source_connections={limits.get('max_source_connections')}"
         )
 
         return UsageLimit(
-            max_syncs=limits.get("max_syncs"),
             max_entities=limits.get("max_entities"),
             max_queries=limits.get("max_queries"),
-            max_collections=limits.get("max_collections"),
             max_source_connections=limits.get("max_source_connections"),
+            max_team_members=limits.get("max_team_members"),
         )

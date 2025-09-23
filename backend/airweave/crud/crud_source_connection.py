@@ -73,8 +73,12 @@ class CRUDSourceConnection(
         collection_id: Optional[str] = None,
         skip: int = 0,
         limit: int = 100,
-    ) -> List[SourceConnection]:
-        """Get multiple source connections with aggregated stats."""
+    ) -> List[Dict[str, Any]]:
+        """Get source connections with all necessary stats in minimal queries.
+
+        Returns list of dictionaries with complete data for the list endpoint.
+        """
+        # 1. Get base source connections
         query = select(SourceConnection).where(
             SourceConnection.organization_id == ctx.organization.id
         )
@@ -82,19 +86,43 @@ class CRUDSourceConnection(
         if collection_id:
             query = query.where(SourceConnection.readable_collection_id == collection_id)
 
-        query = query.offset(skip).limit(limit)
-
+        query = query.offset(skip).limit(limit).order_by(SourceConnection.created_at.desc())
         result = await db.execute(query)
         source_connections = list(result.scalars().all())
 
-        if source_connections:
-            # Bulk fetch last sync job info
-            await self._attach_last_sync_info_bulk(db, source_connections)
+        if not source_connections:
+            return []
 
-            # Bulk fetch entity counts
-            # await self._attach_entity_counts_bulk(db, source_connections)
+        # 2. Bulk fetch all related data
+        # These queries can run independently
+        auth_methods = await self._fetch_auth_methods(db, source_connections)
+        last_jobs = await self._fetch_last_jobs(db, source_connections)
+        entity_counts = await self._fetch_entity_counts(db, source_connections)
 
-        return source_connections
+        # 3. Combine into response dictionaries
+        results = []
+        for sc in source_connections:
+            results.append(
+                {
+                    # Base fields
+                    "id": sc.id,
+                    "name": sc.name,
+                    "short_name": sc.short_name,
+                    "readable_collection_id": sc.readable_collection_id,
+                    "created_at": sc.created_at,
+                    "modified_at": sc.modified_at,
+                    "is_authenticated": sc.is_authenticated,
+                    "readable_auth_provider_id": sc.readable_auth_provider_id,
+                    "connection_init_session_id": sc.connection_init_session_id,
+                    "is_active": getattr(sc, "is_active", True),
+                    # Fetched data
+                    "authentication_method": auth_methods.get(sc.id),
+                    "last_job": last_jobs.get(sc.id),
+                    "entity_count": entity_counts.get(sc.id, 0),
+                }
+            )
+
+        return results
 
     async def _attach_last_sync_info_bulk(
         self,
@@ -170,37 +198,97 @@ class CRUDSourceConnection(
             else:
                 sc.status = SourceConnectionStatus.PENDING_SYNC
 
-    async def _attach_entity_counts_bulk(
-        self,
-        db: AsyncSession,
-        source_connections: List[SourceConnection],
-    ) -> None:
-        """Efficiently attach entity counts to multiple connections."""
-        sync_ids = [sc.sync_id for sc in source_connections if sc.sync_id]
-        if not sync_ids:
-            return
+    async def _fetch_auth_methods(
+        self, db: AsyncSession, source_conns: List[SourceConnection]
+    ) -> Dict[UUID, str]:
+        """Fetch authentication methods from credentials."""
+        from airweave.models.connection import Connection
+        from airweave.models.integration_credential import IntegrationCredential
 
-        # Get entity counts per sync
+        conn_ids = [sc.connection_id for sc in source_conns if sc.connection_id]
+        if not conn_ids:
+            return {}
+
         query = (
-            select(
-                SyncJob.sync_id,
-                func.sum(SyncJob.entities_inserted).label("total_entities_inserted"),
-                func.sum(SyncJob.entities_updated).label("total_entities_updated"),
-                func.sum(SyncJob.entities_deleted).label("total_entities_deleted"),
-                func.sum(SyncJob.entities_kept).label("total_entities_kept"),
-                func.sum(SyncJob.entities_skipped).label("total_entities_skipped"),
+            select(SourceConnection.id, IntegrationCredential.authentication_method)
+            .join(Connection, SourceConnection.connection_id == Connection.id)
+            .join(
+                IntegrationCredential,
+                Connection.integration_credential_id == IntegrationCredential.id,
             )
-            .where(SyncJob.sync_id.in_(sync_ids))
-            .group_by(SyncJob.sync_id)
+            .where(SourceConnection.id.in_([sc.id for sc in source_conns]))
         )
 
         result = await db.execute(query)
-        entity_counts = {row.sync_id: row.total_entities or 0 for row in result}
+        auth_methods = {}
 
-        # Attach to source connections
-        for sc in source_connections:
-            if sc.sync_id:
-                sc._entities_count = entity_counts.get(sc.sync_id, 0)
+        for row in result:
+            # Store the raw authentication method string
+            auth_methods[row[0]] = row[1]
+
+        # Also check for auth provider connections
+        for sc in source_conns:
+            if hasattr(sc, "readable_auth_provider_id") and sc.readable_auth_provider_id:
+                auth_methods[sc.id] = "auth_provider"
+
+        return auth_methods
+
+    async def _fetch_last_jobs(
+        self, db: AsyncSession, source_conns: List[SourceConnection]
+    ) -> Dict[UUID, Dict]:
+        """Fetch last sync job for each connection."""
+        sync_ids = [sc.sync_id for sc in source_conns if sc.sync_id]
+        if not sync_ids:
+            return {}
+
+        # Use window function to get latest job per sync
+        subq = (
+            select(
+                SyncJob.sync_id,
+                SyncJob.status,
+                SyncJob.completed_at,
+                func.row_number()
+                .over(partition_by=SyncJob.sync_id, order_by=SyncJob.created_at.desc())
+                .label("rn"),
+            )
+            .where(SyncJob.sync_id.in_(sync_ids))
+            .subquery()
+        )
+
+        query = select(subq).where(subq.c.rn == 1)
+        result = await db.execute(query)
+
+        # Map to source connection IDs
+        sync_to_sc = {sc.sync_id: sc.id for sc in source_conns if sc.sync_id}
+        return {
+            sync_to_sc[row.sync_id]: {"status": row.status, "completed_at": row.completed_at}
+            for row in result
+            if row.sync_id in sync_to_sc
+        }
+
+    async def _fetch_entity_counts(
+        self, db: AsyncSession, source_conns: List[SourceConnection]
+    ) -> Dict[UUID, int]:
+        """Fetch total entity counts from EntityCount table."""
+        from airweave.models.entity_count import EntityCount
+
+        sync_ids = [sc.sync_id for sc in source_conns if sc.sync_id]
+        if not sync_ids:
+            return {}
+
+        query = (
+            select(EntityCount.sync_id, func.sum(EntityCount.count).label("total"))
+            .where(EntityCount.sync_id.in_(sync_ids))
+            .group_by(EntityCount.sync_id)
+        )
+
+        result = await db.execute(query)
+
+        # Map to source connection IDs
+        sync_to_sc = {sc.sync_id: sc.id for sc in source_conns if sc.sync_id}
+        return {
+            sync_to_sc[row.sync_id]: row.total or 0 for row in result if row.sync_id in sync_to_sc
+        }
 
     async def get_by_query_and_org(
         self,
@@ -341,13 +429,15 @@ class CRUDSourceConnection(
         limit: int = 100,
     ) -> List[SourceConnection]:
         """Get all source connections for a collection."""
-        return await self.get_multi_with_stats(
-            db,
-            ctx=ctx,
-            collection_id=readable_collection_id,
-            skip=skip,
-            limit=limit,
+        query = select(SourceConnection).where(
+            and_(
+                SourceConnection.readable_collection_id == readable_collection_id,
+                SourceConnection.organization_id == ctx.organization.id,
+            )
         )
+        query = query.offset(skip).limit(limit).order_by(SourceConnection.created_at.desc())
+        result = await db.execute(query)
+        return list(result.scalars().all())
 
     async def get_by_sync_id(
         self,

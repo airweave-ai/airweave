@@ -493,7 +493,7 @@ class AsanaSource(BaseSource):
 
     async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
         """Generate all entities from Asana."""
-        async with httpx.AsyncClient() as client:
+        async with self.http_client() as client:
             async for workspace_entity in self._generate_workspace_entities(client):
                 yield workspace_entity
 

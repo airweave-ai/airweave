@@ -1,102 +1,209 @@
-"""Stripe API client wrapper for billing operations."""
+"""Stripe API client for billing operations.
 
-from typing import Dict, Optional
+This module provides a clean interface to Stripe API,
+handling all direct Stripe interactions without business logic.
+"""
+
+from typing import Any, Dict, Optional
 
 import stripe
 from stripe.error import StripeError
 
 from airweave.core.config import settings
 from airweave.core.exceptions import ExternalServiceError
-from airweave.core.logging import logger
+from airweave.schemas.organization_billing import BillingPlan
 
 
 class StripeClient:
-    """Low-level Stripe API wrapper with error handling."""
+    """Client for Stripe API operations."""
 
     def __init__(self):
-        """Initialize Stripe client with API key."""
+        """Initialize Stripe client."""
         if not settings.STRIPE_ENABLED:
             raise ValueError("Stripe is not enabled in settings")
 
         stripe.api_key = settings.STRIPE_SECRET_KEY
         self.webhook_secret = settings.STRIPE_WEBHOOK_SECRET
 
-        # Price IDs from configuration
+        # Price ID configuration
         self.price_ids = {
-            "developer": settings.STRIPE_DEVELOPER_PRICE_ID,
-            "startup": settings.STRIPE_STARTUP_PRICE_ID,
+            BillingPlan.DEVELOPER: settings.STRIPE_DEVELOPER_MONTHLY,
+            BillingPlan.PRO: settings.STRIPE_PRO_MONTHLY,
+            BillingPlan.TEAM: settings.STRIPE_TEAM_MONTHLY,
+            BillingPlan.ENTERPRISE: settings.STRIPE_ENTERPRISE_MONTHLY,
         }
 
-    def _sanitize_for_stripe(self, text: str) -> str:
-        """Sanitize text for Stripe API to prevent encoding issues.
+    def get_price_id_mapping(self) -> dict[str, BillingPlan]:
+        """Get reverse mapping from price IDs to plans."""
+        return {price_id: plan for plan, price_id in self.price_ids.items() if price_id}
 
-        Removes or replaces non-ASCII characters that can cause issues
-        with URL encoding in certain environments.
-        """
+    def get_price_for_plan(self, plan: BillingPlan) -> Optional[str]:
+        """Get Stripe price ID for a billing plan."""
+        return self.price_ids.get(plan)
+
+    def _sanitize_text(self, text: str) -> str:
+        """Sanitize text for Stripe API (ASCII-only)."""
         if not text:
             return text
 
-        # First, try to encode as ASCII, replacing non-ASCII with '?'
         try:
-            # This will replace any non-ASCII character with '?'
             return text.encode("ascii", "replace").decode("ascii")
         except Exception:
-            # Fallback: remove all non-ASCII characters
             return "".join(char for char in text if ord(char) < 128)
 
+    def _clean_metadata(self, metadata: Optional[Dict[str, str]]) -> Dict[str, str]:
+        """Clean metadata values for Stripe."""
+        if not metadata:
+            return {}
+
+        return {
+            self._sanitize_text(str(key)): self._sanitize_text(str(value))
+            for key, value in metadata.items()
+        }
+
+    # Customer operations
+
     async def create_customer(
-        self, email: str, name: str, metadata: Optional[Dict[str, str]] = None
+        self,
+        email: str,
+        name: str,
+        metadata: Optional[Dict[str, str]] = None,
+        test_clock: Optional[str] = None,
     ) -> stripe.Customer:
-        """Create a Stripe customer.
-
-        Args:
-            email: Customer email
-            name: Customer name (organization name)
-            metadata: Additional metadata to attach
-
-        Returns:
-            Stripe Customer object
-
-        Raises:
-            ExternalServiceError: If Stripe API call fails
-        """
+        """Create a Stripe customer."""
         try:
-            # Sanitize all inputs to be ASCII-safe
-            clean_email = self._sanitize_for_stripe(email)
-            clean_name = self._sanitize_for_stripe(name)
+            params: Dict[str, Any] = {
+                "email": self._sanitize_text(email),
+                "name": self._sanitize_text(name),
+                "metadata": self._clean_metadata(metadata),
+            }
+            if test_clock:
+                params["test_clock"] = test_clock
 
-            # Clean metadata values
-            clean_metadata = {}
-            if metadata:
-                for key, value in metadata.items():
-                    clean_key = self._sanitize_for_stripe(str(key))
-                    clean_value = self._sanitize_for_stripe(str(value))
-                    clean_metadata[clean_key] = clean_value
-
-            return await stripe.Customer.create_async(
-                email=clean_email, name=clean_name, metadata=clean_metadata
-            )
+            return await stripe.Customer.create_async(**params)
         except StripeError as e:
-            logger.error(f"Failed to create Stripe customer: {e}")
             raise ExternalServiceError(
                 service_name="Stripe",
-                message=f"Failed to create billing account: {str(e)}",
+                message=f"Failed to create customer: {str(e)}",
             ) from e
 
     async def delete_customer(self, customer_id: str) -> None:
-        """Delete a Stripe customer (for rollback scenarios).
-
-        Args:
-            customer_id: Stripe customer ID
-
-        Raises:
-            ExternalServiceError: If deletion fails
-        """
+        """Delete a Stripe customer (for rollback)."""
         try:
             await stripe.Customer.delete_async(customer_id)
-        except StripeError as e:
-            logger.error(f"Failed to delete Stripe customer {customer_id}: {e}")
+        except StripeError:
             # Don't raise on cleanup failures
+            pass
+
+    async def get_customer(self, customer_id: str) -> stripe.Customer:
+        """Retrieve a Stripe customer."""
+        try:
+            return await stripe.Customer.retrieve_async(customer_id)
+        except StripeError as e:
+            raise ExternalServiceError(
+                service_name="Stripe",
+                message=f"Failed to retrieve customer: {str(e)}",
+            ) from e
+
+    # Subscription operations
+
+    async def create_subscription(
+        self,
+        customer_id: str,
+        price_id: str,
+        metadata: Optional[Dict[str, str]] = None,
+        coupon_id: Optional[str] = None,
+        default_payment_method: Optional[str] = None,
+    ) -> stripe.Subscription:
+        """Create a subscription directly (no checkout)."""
+        try:
+            params: Dict[str, Any] = {
+                "customer": customer_id,
+                "items": [{"price": price_id}],
+                "metadata": self._clean_metadata(metadata),
+            }
+            if coupon_id:
+                params["coupon"] = coupon_id
+            if default_payment_method:
+                params["default_payment_method"] = default_payment_method
+
+            return await stripe.Subscription.create_async(**params)
+        except StripeError as e:
+            raise ExternalServiceError(
+                service_name="Stripe",
+                message=f"Failed to create subscription: {str(e)}",
+            ) from e
+
+    async def get_subscription(self, subscription_id: str) -> stripe.Subscription:
+        """Retrieve a subscription."""
+        try:
+            return await stripe.Subscription.retrieve_async(subscription_id)
+        except StripeError as e:
+            raise ExternalServiceError(
+                service_name="Stripe",
+                message=f"Failed to retrieve subscription: {str(e)}",
+            ) from e
+
+    async def update_subscription(
+        self,
+        subscription_id: str,
+        price_id: Optional[str] = None,
+        cancel_at_period_end: Optional[bool] = None,
+        proration_behavior: str = "create_prorations",
+        default_payment_method: Optional[str] = None,
+    ) -> stripe.Subscription:
+        """Update a subscription."""
+        try:
+            update_params: Dict[str, Any] = {
+                "proration_behavior": proration_behavior,
+            }
+
+            # Handle price change
+            if price_id:
+                subscription = await self.get_subscription(subscription_id)
+                items_data = subscription.get("items", {}).get("data", [])
+                if not items_data:
+                    raise ExternalServiceError(
+                        service_name="Stripe",
+                        message=f"Subscription {subscription_id} has no items",
+                    )
+
+                item_id = items_data[0]["id"]
+                update_params["items"] = [{"id": item_id, "price": price_id}]
+
+            # Handle cancellation flag
+            if cancel_at_period_end is not None:
+                update_params["cancel_at_period_end"] = cancel_at_period_end
+
+            # Handle default payment method
+            if default_payment_method:
+                update_params["default_payment_method"] = default_payment_method
+
+            return await stripe.Subscription.modify_async(subscription_id, **update_params)
+        except StripeError as e:
+            raise ExternalServiceError(
+                service_name="Stripe",
+                message=f"Failed to update subscription: {str(e)}",
+            ) from e
+
+    async def cancel_subscription(
+        self, subscription_id: str, at_period_end: bool = True
+    ) -> stripe.Subscription:
+        """Cancel a subscription."""
+        try:
+            if at_period_end:
+                return await stripe.Subscription.modify_async(
+                    subscription_id, cancel_at_period_end=True
+                )
+            else:
+                return await stripe.Subscription.delete_async(subscription_id)
+        except StripeError as e:
+            raise ExternalServiceError(
+                service_name="Stripe",
+                message=f"Failed to cancel subscription: {str(e)}",
+            ) from e
+
+    # Checkout operations
 
     async def create_checkout_session(
         self,
@@ -105,258 +212,329 @@ class StripeClient:
         success_url: str,
         cancel_url: str,
         metadata: Optional[Dict[str, str]] = None,
-        trial_end: Optional[int] = None,
-        trial_period_days: Optional[int] = None,
     ) -> stripe.checkout.Session:
-        """Create a checkout session for subscription.
-
-        Args:
-            customer_id: Stripe customer ID
-            price_id: Stripe price ID for the plan
-            success_url: URL to redirect on success
-            cancel_url: URL to redirect on cancel
-            metadata: Additional metadata
-            trial_end: Unix timestamp for when trial should end (for existing trials)
-            trial_period_days: Number of days for the trial period (for new trials)
-
-        Returns:
-            Stripe Checkout Session
-
-        Raises:
-            ExternalServiceError: If session creation fails
-        """
+        """Create a checkout session."""
         try:
-            # Sanitize URLs to be ASCII-safe
-            clean_success_url = self._sanitize_for_stripe(success_url)
-            clean_cancel_url = self._sanitize_for_stripe(cancel_url)
+            clean_metadata = self._clean_metadata(metadata)
 
-            # Clean metadata values
-            clean_metadata = {}
-            if metadata:
-                for key, value in metadata.items():
-                    clean_key = self._sanitize_for_stripe(str(key))
-                    clean_value = self._sanitize_for_stripe(str(value))
-                    clean_metadata[clean_key] = clean_value
-
-            session_params = {
-                "customer": customer_id,
-                "line_items": [
-                    {
-                        "price": price_id,
-                        "quantity": 1,
-                    }
-                ],
-                "mode": "subscription",
-                "success_url": clean_success_url,
-                "cancel_url": clean_cancel_url,
-                "metadata": clean_metadata,
-                "allow_promotion_codes": True,
-                "billing_address_collection": "required",
-                "customer_update": {
+            return await stripe.checkout.Session.create_async(
+                customer=customer_id,
+                line_items=[{"price": price_id, "quantity": 1}],
+                mode="subscription",
+                success_url=self._sanitize_text(success_url),
+                cancel_url=self._sanitize_text(cancel_url),
+                metadata=clean_metadata,
+                allow_promotion_codes=True,
+                billing_address_collection="required",
+                customer_update={
                     "address": "auto",
                     "name": "auto",
                 },
-                "subscription_data": {
+                subscription_data={
                     "metadata": clean_metadata,
                 },
-            }
-
-            # Add trial_end to subscription_data if provided
-            if trial_end:
-                session_params["subscription_data"]["trial_end"] = trial_end
-            elif trial_period_days:
-                session_params["subscription_data"]["trial_period_days"] = trial_period_days
-
-            return await stripe.checkout.Session.create_async(**session_params)
+            )
         except StripeError as e:
-            logger.error(f"Failed to create checkout session: {e}")
             raise ExternalServiceError(
                 service_name="Stripe",
                 message=f"Failed to create checkout session: {str(e)}",
             ) from e
 
+    # Portal operations
+
     async def create_portal_session(
         self, customer_id: str, return_url: str
     ) -> stripe.billing_portal.Session:
-        """Create a customer portal session for subscription management.
-
-        Args:
-            customer_id: Stripe customer ID
-            return_url: URL to return to after portal session
-
-        Returns:
-            Stripe Portal Session
-
-        Raises:
-            ExternalServiceError: If portal creation fails
-        """
+        """Create a customer portal session."""
         try:
-            # Sanitize return URL to be ASCII-safe
-            clean_return_url = self._sanitize_for_stripe(return_url)
-
             return await stripe.billing_portal.Session.create_async(
                 customer=customer_id,
-                return_url=clean_return_url,
+                return_url=self._sanitize_text(return_url),
             )
         except StripeError as e:
-            logger.error(f"Failed to create portal session: {e}")
             raise ExternalServiceError(
                 service_name="Stripe",
-                message=f"Failed to create billing portal: {str(e)}",
+                message=f"Failed to create portal session: {str(e)}",
             ) from e
 
-    async def get_subscription(self, subscription_id: str) -> stripe.Subscription:
-        """Retrieve a subscription by ID.
+    # Payment method operations
 
-        Args:
-            subscription_id: Stripe subscription ID
-
-        Returns:
-            Stripe Subscription object
-
-        Raises:
-            ExternalServiceError: If retrieval fails
-        """
-        try:
-            return await stripe.Subscription.retrieve_async(subscription_id)
-        except StripeError as e:
-            logger.error(f"Failed to retrieve subscription {subscription_id}: {e}")
-            raise ExternalServiceError(
-                service_name="Stripe",
-                message=f"Failed to retrieve subscription: {str(e)}",
-            ) from e
-
-    async def cancel_subscription(
-        self, subscription_id: str, cancel_at_period_end: bool = True
-    ) -> stripe.Subscription:
-        """Cancel a subscription.
-
-        Args:
-            subscription_id: Stripe subscription ID
-            cancel_at_period_end: If True, cancel at end of period
+    async def detect_payment_method(
+        self, subscription: stripe.Subscription
+    ) -> tuple[bool, Optional[str]]:
+        """Detect if subscription has a payment method.
 
         Returns:
-            Updated Stripe Subscription
-
-        Raises:
-            ExternalServiceError: If cancellation fails
+            Tuple of (has_payment_method, payment_method_id)
         """
+        # Check subscription-level payment method
+        pm = getattr(subscription, "default_payment_method", None)
+        pm_id = pm.get("id") if isinstance(pm, dict) else pm
+        if pm_id:
+            return True, pm_id
+
+        # Check customer-level payment method
         try:
-            if cancel_at_period_end:
-                return await stripe.Subscription.modify_async(
-                    subscription_id, cancel_at_period_end=True
-                )
+            customer_id = getattr(subscription, "customer", None)
+            if customer_id:
+                customer = await stripe.Customer.retrieve_async(customer_id)
+
+                # Check invoice settings
+                inv_settings = getattr(customer, "invoice_settings", {})
+                inv_pm = getattr(inv_settings, "default_payment_method", None)
+                inv_pm_id = inv_pm.get("id") if isinstance(inv_pm, dict) else inv_pm
+                if inv_pm_id:
+                    return True, inv_pm_id
+
+                # Check legacy default source
+                default_source = getattr(customer, "default_source", None)
+                if default_source:
+                    return True, default_source
+        except Exception:
+            pass
+
+        return False, None
+
+    # Webhook operations
+
+    def verify_webhook_signature(self, payload: bytes, signature: str) -> stripe.Event:
+        """Verify and construct webhook event."""
+        try:
+            return stripe.Webhook.construct_event(payload, signature, self.webhook_secret)
+        except ValueError as e:
+            raise ValueError(f"Invalid webhook payload: {e}") from e
+        except stripe.error.SignatureVerificationError as e:
+            raise ValueError(f"Invalid webhook signature: {e}") from e
+
+    # Helper methods
+
+    def extract_subscription_items(self, subscription: Any) -> list[str]:
+        """Extract price IDs from subscription items."""
+        price_ids = []
+
+        try:
+            # Handle both dict and object formats
+            if hasattr(subscription, "items") and hasattr(subscription.items, "data"):
+                items_data = subscription.items.data or []
+            elif isinstance(subscription, dict):
+                items_data = (subscription.get("items") or {}).get("data") or []
             else:
-                return await stripe.Subscription.delete_async(subscription_id)
-        except StripeError as e:
-            logger.error(f"Failed to cancel subscription {subscription_id}: {e}")
-            raise ExternalServiceError(
-                service_name="Stripe",
-                message=f"Failed to cancel subscription: {str(e)}",
-            ) from e
+                return price_ids
 
-    async def update_subscription(
+            for item in items_data:
+                price_obj = None
+                if hasattr(item, "price"):
+                    price_obj = item.price
+                elif isinstance(item, dict):
+                    price_obj = item.get("price")
+
+                if hasattr(price_obj, "id"):
+                    price_ids.append(price_obj.id)
+                elif isinstance(price_obj, dict) and "id" in price_obj:
+                    price_ids.append(price_obj["id"])
+        except Exception:
+            pass
+
+        return price_ids
+
+    # --------------------------- Yearly Prepay Helpers --------------------------- #
+
+    async def create_prepay_checkout_session(
         self,
-        subscription_id: str,
-        price_id: Optional[str] = None,
-        proration_behavior: str = "create_prorations",
-        cancel_at_period_end: Optional[bool] = None,
-        trial_end: Optional[str] = None,
-    ) -> stripe.Subscription:
-        """Update a subscription with new plan or settings.
+        *,
+        customer_id: str,
+        amount_cents: int,
+        currency: str = "usd",
+        success_url: str,
+        cancel_url: str,
+        metadata: Optional[Dict[str, str]] = None,
+    ) -> stripe.checkout.Session:
+        """Create a one-time payment checkout session for yearly prepay credit.
 
-        Args:
-            subscription_id: Stripe subscription ID
-            price_id: New price ID for plan change
-            proration_behavior: How to handle proration
-            cancel_at_period_end: Update cancellation status
-            trial_end: When to end the trial ("now" to end immediately)
-
-        Returns:
-            Updated Stripe Subscription
-
-        Raises:
-            ExternalServiceError: If update fails
+        Uses Payment mode instead of Subscription mode.
         """
         try:
-            # Get current subscription to find the item ID
-            subscription = await self.get_subscription(subscription_id)
+            clean_metadata = self._clean_metadata(metadata)
+            return await stripe.checkout.Session.create_async(
+                customer=customer_id,
+                mode="payment",
+                success_url=self._sanitize_text(success_url),
+                cancel_url=self._sanitize_text(cancel_url),
+                line_items=[
+                    {
+                        "price_data": {
+                            "currency": currency,
+                            "product_data": {"name": "Yearly prepay credit"},
+                            "unit_amount": int(amount_cents),
+                        },
+                        "quantity": 1,
+                    }
+                ],
+                payment_intent_data={
+                    "setup_future_usage": "off_session",  # Save payment method for future use
+                },
+                metadata=clean_metadata,
+            )
+        except StripeError as e:
+            raise ExternalServiceError(
+                service_name="Stripe",
+                message=f"Failed to create prepay checkout session: {str(e)}",
+            ) from e
 
-            # Use dictionary-style access to avoid collision with `dict.items()`
-            items_data = subscription.get("items", {}).get("data")
-            subscription_item_id = items_data[0]["id"] if items_data else None
+    async def get_customer_balance_cents(self, *, customer_id: str) -> int:
+        """Return the customer's current account balance in cents.
 
-            update_params = {
-                "proration_behavior": proration_behavior,
+        Stripe semantics: positive balance = amount owed; negative balance = credit.
+        We return the raw integer (can be negative). Remaining credit is max(0, -balance).
+        """
+        try:
+            customer = await stripe.Customer.retrieve_async(customer_id)
+            balance = getattr(customer, "balance", 0) or 0
+            return int(balance)
+        except StripeError as e:
+            raise ExternalServiceError(
+                service_name="Stripe",
+                message=f"Failed to retrieve customer balance: {str(e)}",
+            ) from e
+
+    async def get_subscription_coupon_id(self, *, subscription_id: str) -> Optional[str]:
+        """Return active coupon id applied to the subscription, if any."""
+        try:
+            sub = await stripe.Subscription.retrieve_async(subscription_id)
+            coupon_id: Optional[str] = None
+            try:
+                discount = getattr(sub, "discount", None)
+                if discount is not None:
+                    coupon = getattr(discount, "coupon", None)
+                    if coupon is not None:
+                        cid = getattr(coupon, "id", None)
+                        if cid:
+                            coupon_id = str(cid)
+                # dict-like fallback
+                if coupon_id is None and isinstance(sub, dict):
+                    d = sub.get("discount")
+                    if isinstance(d, dict):
+                        c = d.get("coupon")
+                        if isinstance(c, dict):
+                            cid2 = c.get("id")
+                            if cid2:
+                                coupon_id = str(cid2)
+            except Exception:
+                coupon_id = None
+            return coupon_id
+        except StripeError as e:
+            raise ExternalServiceError(
+                service_name="Stripe",
+                message=f"Failed to retrieve subscription coupon: {str(e)}",
+            ) from e
+
+    async def create_or_get_yearly_coupon(
+        self,
+        *,
+        percent_off: int,
+        duration: str = "repeating",
+        duration_in_months: int = 12,
+        idempotency_key: Optional[str] = None,
+        metadata: Optional[Dict[str, str]] = None,
+    ) -> stripe.Coupon:
+        """Create a reusable coupon for yearly prepay discount or retrieve by metadata key.
+
+        We use metadata keys to dedupe (e.g., organization_id + plan + year marker).
+        Default: 20% off for 12 months (repeating duration).
+        """
+        try:
+            # Try to search existing coupon by metadata idempotency key if provided
+            if idempotency_key:
+                try:
+                    coupons = await stripe.Coupon.search_async(
+                        query=f"metadata['idempotency_key']:'{idempotency_key}'"
+                    )
+                    if getattr(coupons, "data", []):
+                        return coupons.data[0]
+                except Exception:
+                    pass
+
+            params: Dict[str, Any] = {
+                "percent_off": percent_off,
+                "duration": duration,
+                "metadata": (
+                    self._clean_metadata({"idempotency_key": idempotency_key or ""})
+                    if idempotency_key
+                    else self._clean_metadata(metadata)
+                ),
             }
 
-            # If a new price ID is provided, this is a plan change
-            if price_id:
-                if not subscription_item_id:
-                    raise ExternalServiceError(
-                        service_name="Stripe",
-                        message=f"Subscription {subscription_id} has no items to update.",
-                    )
-                update_params["items"] = [
-                    {
-                        "id": subscription_item_id,
-                        "price": price_id,
-                    }
-                ]
-            # If no price ID, but cancel or trial status is changing, this is a status update
-            elif cancel_at_period_end is not None or trial_end is not None:
-                pass  # No item changes needed, just status update
-            else:
-                raise ExternalServiceError(
-                    service_name="Stripe",
-                    message=(
-                        f"No valid update parameters provided for subscription {subscription_id}"
-                    ),
-                )
+            # Add duration_in_months only if duration is "repeating"
+            if duration == "repeating":
+                params["duration_in_months"] = duration_in_months
 
-            # Add cancel_at_period_end if specified
-            if cancel_at_period_end is not None:
-                update_params["cancel_at_period_end"] = cancel_at_period_end
-
-            # Add trial_end if specified
-            if trial_end is not None:
-                update_params["trial_end"] = trial_end
-
-            return await stripe.Subscription.modify_async(subscription_id, **update_params)
-
+            return await stripe.Coupon.create_async(**params)
         except StripeError as e:
-            logger.error(f"Failed to update subscription {subscription_id}: {e}")
             raise ExternalServiceError(
                 service_name="Stripe",
-                message=f"Failed to update subscription: {str(e)}",
+                message=f"Failed to create yearly coupon: {str(e)}",
             ) from e
 
-    def construct_webhook_event(self, payload: bytes, sig_header: str) -> stripe.Event:
-        """Verify and construct webhook event from Stripe.
+    async def apply_coupon_to_subscription(
+        self,
+        *,
+        subscription_id: str,
+        coupon_id: str,
+    ) -> stripe.Subscription:
+        """Apply a coupon to an existing subscription."""
+        try:
+            return await stripe.Subscription.modify_async(
+                subscription_id,
+                coupon=coupon_id,
+            )
+        except StripeError as e:
+            raise ExternalServiceError(
+                service_name="Stripe",
+                message=f"Failed to apply coupon to subscription: {str(e)}",
+            ) from e
 
-        Args:
-            payload: Raw request body
-            sig_header: Stripe signature header
+    async def remove_subscription_discount(self, *, subscription_id: str) -> None:
+        """Remove any active discount/coupon from a subscription."""
+        try:
+            await stripe.Subscription.delete_discount_async(subscription_id)
+        except StripeError as e:
+            raise ExternalServiceError(
+                service_name="Stripe",
+                message=f"Failed to remove subscription discount: {str(e)}",
+            ) from e
 
-        Returns:
-            Verified Stripe Event
+    async def delete_coupon(self, *, coupon_id: str) -> None:
+        """Delete a coupon (cleanup)."""
+        try:
+            await stripe.Coupon.delete_async(coupon_id)
+        except StripeError:
+            # Best-effort cleanup
+            pass
 
-        Raises:
-            ValueError: If payload is invalid
-            stripe.error.SignatureVerificationError: If signature is invalid
+    async def credit_customer_balance(
+        self,
+        *,
+        customer_id: str,
+        amount_cents: int,
+        currency: str = "usd",
+        description: Optional[str] = None,
+    ) -> Any:
+        """Credit customer's balance by the given amount (in cents).
+
+        Stripe expects credits as negative amounts.
         """
-        return stripe.Webhook.construct_event(payload, sig_header, self.webhook_secret)
-
-    def get_price_id_for_plan(self, plan_name: str) -> Optional[str]:
-        """Get Stripe price ID for a plan name.
-
-        Args:
-            plan_name: Plan name (developer, startup)
-
-        Returns:
-            Stripe price ID or None if not found
-        """
-        return self.price_ids.get(plan_name.lower())
+        try:
+            return await stripe.Customer.create_balance_transaction_async(
+                customer_id,
+                amount=-int(amount_cents),
+                currency=currency,
+                description=self._sanitize_text(description or "Yearly prepay credit"),
+            )
+        except StripeError as e:
+            raise ExternalServiceError(
+                service_name="Stripe",
+                message=f"Failed to credit customer balance: {str(e)}",
+            ) from e
 
 
 # Singleton instance

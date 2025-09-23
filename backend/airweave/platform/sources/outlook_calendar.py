@@ -488,7 +488,7 @@ class OutlookCalendarSource(BaseSource):
         entity_count = 0
 
         try:
-            async with httpx.AsyncClient() as client:
+            async with self.http_client() as client:
                 self.logger.info("HTTP client created, starting entity generation")
 
                 # Generate calendar entities and their events

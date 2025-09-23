@@ -1130,7 +1130,7 @@ class OutlookMailSource(BaseSource):
             # Determine sync type and get delta token if available
             cursor_field, delta_token = self._prepare_sync_context()
 
-            async with httpx.AsyncClient() as client:
+            async with self.http_client() as client:
                 self.logger.info("HTTP client created, starting entity generation")
 
                 cursor_data = self._get_cursor_data()

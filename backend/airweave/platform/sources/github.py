@@ -835,7 +835,7 @@ class GitHubSource(BaseSource):
         # Prepare sync context
         cursor_field, last_pushed_at = self._prepare_sync_context()
 
-        async with httpx.AsyncClient() as client:
+        async with self.http_client() as client:
             repo_url = f"{self.BASE_URL}/repos/{self.repo_name}"
             repo_data = await self._get_with_auth(client, repo_url)
             current_pushed_at = repo_data["pushed_at"]
@@ -896,7 +896,7 @@ class GitHubSource(BaseSource):
         }
 
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with self.http_client(timeout=10.0) as client:
                 # 1) Token validity
                 me = await client.get(f"{self.BASE_URL}/user", headers=headers)
                 if not (200 <= me.status_code < 300):

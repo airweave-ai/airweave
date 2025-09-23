@@ -493,7 +493,7 @@ class DropboxSource(BaseSource):
             1. Account-level entities
             2. For each folder (including root), folder entity and its contents recursively
         """
-        async with httpx.AsyncClient() as client:
+        async with self.http_client() as client:
             # 1. Account(s)
             async for account_entity in self._generate_account_entities(client):
                 yield account_entity
@@ -551,7 +551,7 @@ class DropboxSource(BaseSource):
                 self.logger.error("Dropbox validation failed: no access token available.")
                 return False
 
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with self.http_client(timeout=10.0) as client:
                 # Uses the same auth/refresh/retry logic as the rest of the connector
                 await self._post_with_auth(
                     client,

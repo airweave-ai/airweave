@@ -1,7 +1,5 @@
 """Configuration classes for platform components."""
 
-from typing import Optional
-
 from pydantic import Field, validator
 
 from airweave.platform.configs._base import BaseConfig
@@ -304,13 +302,12 @@ class PipedreamConfig(AuthProviderConfig):
         title="Account ID",
         description="Pipedream account ID (e.g., apn_gyha5Ky)",
     )
+    external_user_id: str = Field(
+        title="External User ID",
+        description="External user ID associated with the account",
+    )
     environment: str = Field(
         default="production",
         title="Environment",
         description="Pipedream environment (production or development)",
-    )
-    external_user_id: Optional[str] = Field(
-        default=None,
-        title="External User ID",
-        description="External user ID associated with the account",
     )

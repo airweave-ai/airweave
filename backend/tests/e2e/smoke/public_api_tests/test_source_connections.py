@@ -158,8 +158,8 @@ class OAuthBrowserTest(SourceConnectionTestBase):
 
     def create_payload(self) -> dict:
         return {
-            "name": "Test Slack OAuth Browser",
-            "short_name": "slack",
+            "name": "Test Linear OAuth Browser",
+            "short_name": "linear",
             "readable_collection_id": self.collection_id,
             "description": "Testing OAuth browser flow",
             "authentication": {},  # Empty for browser flow
@@ -168,15 +168,16 @@ class OAuthBrowserTest(SourceConnectionTestBase):
 
     def run_test(self) -> Optional[str]:
         """Run OAuth browser test - stops at shell creation in CI"""
-        print("  Testing OAuth Browser Flow (Slack)...")
+        print("  Testing OAuth Browser Flow (Linear)...")
 
         # Step 1: Create shell connection
         payload = self.create_payload()
         response = self.create_connection(payload)
 
         if response.status_code != 200:
-            print(f"    ⚠️ OAuth browser test skipped: {response.status_code}")
-            return None
+            print(f"    ❌ OAuth browser test failed: {response.status_code}")
+            print(f"    Response: {response.text}")
+            raise AssertionError(f"Failed to create OAuth browser connection: {response.text}")
 
         conn = response.json()
         conn_id = conn["id"]
@@ -204,11 +205,14 @@ class AuthProviderTest(SourceConnectionTestBase):
         super().__init__(api_url, headers, collection_id)
         self.provider_readable_id = provider_readable_id
 
-    def create_payload(self, provider_name: str, provider_config: Optional[dict] = None) -> dict:
+    def create_payload(
+        self, provider_readable_id: str, provider_config: Optional[dict] = None
+    ) -> dict:
         """Create payload for auth provider connection"""
-        # Use provider_name for the auth provider connection (matches AuthProviderAuthentication schema)
+        # Use provider_readable_id for the auth provider connection (matches AuthProviderAuthentication schema)
         auth = {
-            "provider_name": self.provider_readable_id or f"composio-test-{int(time.time())}",
+            "provider_readable_id": self.provider_readable_id
+            or f"composio-test-{int(time.time())}",
         }
 
         # Add Composio-specific config if provided
@@ -216,7 +220,7 @@ class AuthProviderTest(SourceConnectionTestBase):
             auth["provider_config"] = provider_config
 
         return {
-            "name": f"Test {provider_name} Auth Provider Source",
+            "name": f"Test {provider_readable_id} Auth Provider Source",
             "short_name": "asana",  # Using Asana for auth provider test
             "readable_collection_id": self.collection_id,
             "description": "Testing auth provider authentication with Asana",
@@ -224,22 +228,26 @@ class AuthProviderTest(SourceConnectionTestBase):
             "sync_immediately": False,
         }
 
-    def run_test(self, provider_name: str, provider_config: Optional[dict] = None) -> Optional[str]:
+    def run_test(
+        self, provider_readable_id: str, provider_config: Optional[dict] = None
+    ) -> Optional[str]:
         """Run auth provider test"""
-        print(f"  Testing Auth Provider ({provider_name})...")
+        print(f"  Testing Auth Provider ({provider_readable_id})...")
 
         # Step 1: Create connection with auth provider
-        payload = self.create_payload(provider_name, provider_config)
+        payload = self.create_payload(provider_readable_id, provider_config)
         response = self.create_connection(payload)
 
         if response.status_code == 404:
-            print(f"    ⚠️ Auth provider '{provider_name}' not found in this environment")
-            return None
+            print(f"    ❌ Auth provider '{provider_readable_id}' not found")
+            raise AssertionError(
+                f"Auth provider '{provider_readable_id}' not found in this environment"
+            )
 
         if response.status_code != 200:
-            print(f"    ⚠️ Auth provider test failed: {response.status_code}")
+            print(f"    ❌ Auth provider test failed: {response.status_code}")
             print(f"    Response: {response.text}")
-            return None
+            raise AssertionError(f"Failed to create auth provider connection: {response.text}")
 
         conn = response.json()
         conn_id = conn["id"]
@@ -252,7 +260,7 @@ class AuthProviderTest(SourceConnectionTestBase):
         assert conn["status"] == "active", f"Expected active status, got {conn['status']}"
 
         print(f"    ✓ Connection created via auth provider: {conn_id}")
-        print(f"    ✓ Provider: {provider_name}")
+        print(f"    ✓ Provider: {provider_readable_id}")
 
         return conn_id
 
@@ -339,13 +347,14 @@ class OAuthTokenTest(SourceConnectionTestBase):
 
         if response.status_code == 400:
             # Token might be invalid or expired
-            print(f"    ⚠️ Token validation failed for {source_name}")
-            return None
+            print(f"    ❌ Token validation failed for {source_name}")
+            print(f"    Response: {response.text}")
+            raise AssertionError(f"Token validation failed for {source_name}: {response.text}")
 
         if response.status_code != 200:
-            print(f"    ⚠️ OAuth token test failed: {response.status_code}")
+            print(f"    ❌ OAuth token test failed: {response.status_code}")
             print(f"    Response: {response.text}")
-            return None
+            raise AssertionError(f"Failed to create OAuth token connection: {response.text}")
 
         conn = response.json()
         conn_id = conn["id"]
@@ -547,7 +556,8 @@ def test_source_connections(
             created_connections.append(conn_id)
             print("  ✅ OAuth browser shell creation test passed")
     except Exception as e:
-        print(f"  ⚠️ OAuth browser test skipped: {e}")
+        print(f"  ❌ OAuth browser test failed: {e}")
+        raise AssertionError(f"OAuth browser test failed: {e}")
 
     # =============================
     # Test 3.5: OAuth BYOC Flow (REQUIRED)
@@ -634,20 +644,23 @@ def test_source_connections(
     print("  ✅ Notion OAuth token injection test passed")
 
     # =============================
-    # Test 5: Auth Provider (REQUIRED)
+    # Test 5: Auth Providers (Composio and Pipedream)
     # =============================
-    print("\n📌 Test 5: Auth Provider (Composio)")
+    print("\n📌 Test 5: Auth Providers")
+
+    # Test 5a: Composio Auth Provider
+    print("\n  📌 Test 5a: Composio Auth Provider")
 
     # Require auth provider configuration
-    auth_provider_name = os.environ.get("TEST_AUTH_PROVIDER_NAME")
-    if not auth_provider_name:
+    auth_provider_readable_id = os.environ.get("TEST_AUTH_PROVIDER_NAME")
+    if not auth_provider_readable_id:
         raise AssertionError(
             "TEST_AUTH_PROVIDER_NAME environment variable is required. Set it to 'composio' to run tests."
         )
 
-    if auth_provider_name != "composio":
+    if auth_provider_readable_id != "composio":
         raise AssertionError(
-            f"Only 'composio' auth provider is supported. Got: {auth_provider_name}"
+            f"Only 'composio' auth provider is supported. Got: {auth_provider_readable_id}"
         )
 
     # Require Composio API key
@@ -657,7 +670,7 @@ def test_source_connections(
             "TEST_COMPOSIO_API_KEY environment variable is required for Composio auth provider tests."
         )
 
-    print(f"  Creating Composio auth provider connection...")
+    print(f"    Creating Composio auth provider connection...")
 
     # Get Composio auth_config_id and account_id for Asana
     composio_auth_config_id = os.environ.get("TEST_COMPOSIO_AUTH_CONFIG_ID")
@@ -691,14 +704,14 @@ def test_source_connections(
     )
 
     if auth_provider_response.status_code != 200:
-        print(f"  ❌ Failed to create Composio auth provider: {auth_provider_response.text}")
+        print(f"    ❌ Failed to create Composio auth provider: {auth_provider_response.text}")
         raise AssertionError(
             f"Failed to create Composio auth provider: {auth_provider_response.text}"
         )
 
     auth_provider_conn = auth_provider_response.json()
     actual_provider_id = auth_provider_conn["readable_id"]
-    print(f"  ✓ Created Composio auth provider connection: {actual_provider_id}")
+    print(f"    ✓ Created Composio auth provider connection: {actual_provider_id}")
 
     # Now test creating a source connection using the auth provider
     auth_provider_test = AuthProviderTest(api_url, headers, collection_id, actual_provider_id)
@@ -710,14 +723,207 @@ def test_source_connections(
     }
 
     try:
-        conn_id = auth_provider_test.run_test(auth_provider_name, provider_config)
+        conn_id = auth_provider_test.run_test(auth_provider_readable_id, provider_config)
         if not conn_id:
             raise AssertionError(f"Auth provider test returned None - failed to create connection")
         created_connections.append(conn_id)
-        print("  ✅ Auth provider test passed")
+        print("    ✅ Composio auth provider test passed")
     except Exception as e:
-        print(f"  ❌ Auth provider test failed: {e}")
-        raise AssertionError(f"Auth provider test failed: {e}")
+        print(f"    ❌ Composio auth provider test failed: {e}")
+        raise AssertionError(f"Composio auth provider test failed: {e}")
+
+    # Test 5b: Pipedream Proxy Auth Provider
+    print("\n  📌 Test 5b: Pipedream Proxy Auth Provider")
+
+    # Check for Pipedream environment variables
+    pipedream_client_id = os.environ.get("TEST_PIPEDREAM_CLIENT_ID")
+    pipedream_client_secret = os.environ.get("TEST_PIPEDREAM_CLIENT_SECRET")
+    pipedream_project_id = os.environ.get("TEST_PIPEDREAM_PROJECT_ID")
+    pipedream_account_id = os.environ.get("TEST_PIPEDREAM_ACCOUNT_ID")
+    pipedream_external_user_id = os.environ.get("TEST_PIPEDREAM_EXTERNAL_USER_ID")
+    pipedream_environment = os.environ.get("TEST_PIPEDREAM_ENVIRONMENT", "development")
+
+    if not all(
+        [
+            pipedream_client_id,
+            pipedream_client_secret,
+            pipedream_project_id,
+            pipedream_account_id,
+            pipedream_external_user_id,
+        ]
+    ):
+        print("    ⚠️ Skipping Pipedream proxy test - missing required environment variables:")
+        if not pipedream_client_id:
+            print("      - TEST_PIPEDREAM_CLIENT_ID")
+        if not pipedream_client_secret:
+            print("      - TEST_PIPEDREAM_CLIENT_SECRET")
+        if not pipedream_project_id:
+            print("      - TEST_PIPEDREAM_PROJECT_ID")
+        if not pipedream_account_id:
+            print("      - TEST_PIPEDREAM_ACCOUNT_ID")
+        if not pipedream_external_user_id:
+            print("      - TEST_PIPEDREAM_EXTERNAL_USER_ID")
+        print(
+            "    ℹ️ To run this test, set up a Pipedream OAuth client and connected Google Drive account"
+        )
+    else:
+        try:
+            # Create the Pipedream auth provider connection
+            pipedream_provider_id = f"pipedream-test-{int(time.time())}"
+
+            # Create Pipedream auth provider using AuthProviderTest
+            auth_provider_test = AuthProviderTest(
+                api_url, headers, collection_id, pipedream_provider_id
+            )
+
+            # First create the Pipedream auth provider
+            pipedream_auth_payload = {
+                "name": "Test Pipedream Provider",
+                "short_name": "pipedream",
+                "readable_id": pipedream_provider_id,
+                "auth_fields": {
+                    "client_id": pipedream_client_id,
+                    "client_secret": pipedream_client_secret,
+                },
+            }
+
+            # Create Pipedream auth provider
+            pipedream_response = requests.put(
+                f"{api_url}/auth-providers/connect", json=pipedream_auth_payload, headers=headers
+            )
+
+            if pipedream_response.status_code != 200:
+                print(f"    ❌ Failed to create Pipedream auth provider: {pipedream_response.text}")
+                raise AssertionError(
+                    f"Failed to create Pipedream auth provider: {pipedream_response.text}"
+                )
+
+            pipedream_provider = pipedream_response.json()
+            actual_pipedream_id = pipedream_provider["readable_id"]
+            print(f"    ✓ Created Pipedream auth provider: {actual_pipedream_id}")
+
+            # Now create a Google Drive source connection using the auth provider
+            google_drive_payload = {
+                "name": "Test Google Drive via Pipedream",
+                "short_name": "google_drive",
+                "readable_collection_id": collection_id,
+                "description": "Testing Google Drive with Pipedream proxy authentication",
+                "authentication": {
+                    "provider_readable_id": actual_pipedream_id,
+                    "provider_config": {
+                        "project_id": pipedream_project_id,
+                        "account_id": pipedream_account_id,
+                        "environment": pipedream_environment,
+                        "external_user_id": pipedream_external_user_id,
+                    },
+                },
+                "sync_immediately": False,
+            }
+
+            # Create the source connection
+            google_response = requests.post(
+                f"{api_url}/source-connections", json=google_drive_payload, headers=headers
+            )
+
+            if google_response.status_code != 200:
+                print(f"    ❌ Failed to create Google Drive connection: {google_response.text}")
+                raise AssertionError(f"Failed to create Google Drive connection via Pipedream")
+
+            google_conn = google_response.json()
+            google_conn_id = google_conn["id"]
+            created_connections.append(google_conn_id)
+
+            # Verify the connection
+            assert (
+                google_conn["auth"]["method"] == "auth_provider"
+            ), "Should use auth_provider method"
+            assert google_conn["auth"]["authenticated"] == True, "Should be authenticated"
+            assert (
+                google_conn["auth"]["provider_id"] == actual_pipedream_id
+            ), "Provider ID should match"
+            assert (
+                google_conn["status"] == "active"
+            ), f"Expected active status, got {google_conn['status']}"
+
+            print(f"    ✓ Google Drive connection created via Pipedream: {google_conn_id}")
+
+            # Test syncing and verify entities are created
+            print("    Testing sync and entity creation...")
+
+            # Trigger a sync
+            sync_response = requests.post(
+                f"{api_url}/source-connections/{google_conn_id}/run", headers=headers
+            )
+
+            if sync_response.status_code == 200:
+                sync_job = sync_response.json()
+                sync_job_id = sync_job["id"]
+                print(f"    ✓ Sync job started: {sync_job_id}")
+
+                # Wait for sync to process some entities (give it 30 seconds)
+                print("    Waiting for sync to process entities...")
+                time.sleep(30)
+
+                # Check if entities were created
+                entities_response = requests.get(
+                    f"{api_url}/source-connections/{google_conn_id}/entities", headers=headers
+                )
+
+                if entities_response.status_code == 200:
+                    entities = entities_response.json()
+                    entity_count = (
+                        len(entities) if isinstance(entities, list) else entities.get("count", 0)
+                    )
+
+                    if entity_count > 0:
+                        print(
+                            f"    ✓ Successfully synced {entity_count} entities from Google Drive"
+                        )
+                        print(
+                            "    ✅ Pipedream proxy auth provider test passed with entity sync verification"
+                        )
+                    else:
+                        print("    ⚠️ No entities synced yet - checking job status...")
+
+                        # Check job status to see if it's still running or failed
+                        jobs_response = requests.get(
+                            f"{api_url}/source-connections/{google_conn_id}/jobs", headers=headers
+                        )
+
+                        if jobs_response.status_code == 200:
+                            jobs = jobs_response.json()
+                            if jobs and len(jobs) > 0:
+                                latest_job = jobs[0]
+                                print(f"    Job status: {latest_job['status']}")
+
+                                if latest_job["status"] == "failed":
+                                    print(f"    ❌ Sync job failed - check logs for details")
+                                    raise AssertionError(
+                                        "Google Drive sync failed - proxy authentication may have issues"
+                                    )
+                                elif latest_job["status"] == "in_progress":
+                                    print("    ℹ️ Sync still in progress - may need more time")
+                                    print(
+                                        "    ✅ Pipedream proxy auth provider test passed (sync started successfully)"
+                                    )
+                                else:
+                                    print(
+                                        f"    ✅ Pipedream proxy auth provider test passed (job status: {latest_job['status']})"
+                                    )
+                else:
+                    print(f"    ⚠️ Could not fetch entities: {entities_response.status_code}")
+                    print(
+                        "    ✅ Pipedream proxy auth provider test passed (connection created successfully)"
+                    )
+            else:
+                print(f"    ⚠️ Could not start sync: {sync_response.status_code}")
+                print(
+                    "    ✅ Pipedream proxy auth provider test passed (connection created successfully)"
+                )
+
+        except Exception as e:
+            print(f"    ❌ Pipedream test failed: {e}")
+            raise AssertionError(f"Pipedream proxy auth provider test failed: {e}")
 
     # =============================
     # Test 6: Error Handling
@@ -810,7 +1016,8 @@ def test_source_connections(
                 else:
                     print("  ⚠️ PubSub test timed out (may be normal for quick jobs)")
         except Exception as e:
-            print(f"  ⚠️ PubSub test skipped: {e}")
+            print(f"  ❌ PubSub test failed: {e}")
+            raise AssertionError(f"PubSub/SSE test failed: {e}")
 
     # =============================
     # Summary
@@ -818,7 +1025,7 @@ def test_source_connections(
     print("\n✅ Source Connections test completed successfully")
     print(f"   Created {len(created_connections)} connections")
     print(
-        f"   Tests run: Direct Auth, OAuth Browser, OAuth Token, Auth Provider, Error Handling, List Operations"
+        f"   Tests run: Direct Auth, OAuth Browser, OAuth Token, Auth Providers (Composio, Pipedream), Error Handling, List Operations"
     )
 
     # Return first two connection IDs (maintains compatibility with runner.py)

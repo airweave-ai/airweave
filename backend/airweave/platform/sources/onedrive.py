@@ -378,7 +378,7 @@ class OneDriveSource(BaseSource):
           - OneDriveDriveEntity for the user's drive
           - OneDriveDriveItemEntity for each file in the drive
         """
-        async with httpx.AsyncClient() as client:
+        async with self.http_client() as client:
             # 1) Generate drive entity
             drive_entity = None
             async for drive in self._generate_drive_entity(client):

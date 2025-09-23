@@ -864,7 +864,7 @@ class GmailSource(BaseSource):
     async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
         """Generate Gmail entities with incremental History API support."""
         try:
-            async with httpx.AsyncClient() as client:
+            async with self.http_client() as client:
                 cursor_field, last_history_id = await self._resolve_cursor_and_token()
                 if last_history_id:
                     async for e in self._run_incremental_sync(client, last_history_id):
