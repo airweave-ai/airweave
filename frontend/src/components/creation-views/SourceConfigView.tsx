@@ -14,6 +14,7 @@ import { ValidatedInput } from '@/components/ui/validated-input';
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { sourceConnectionNameValidation, getAuthFieldValidation, clientIdValidation, clientSecretValidation, redirectUrlValidation } from '@/lib/validation/rules';
+import { getAppIconUrl } from '@/lib/utils/icons';
 
 interface SourceConfigViewProps {
   humanReadableId: string;
@@ -601,92 +602,134 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
                             </p>
                           </div>
 
-                          {/* Dynamic OAuth credentials button for Zendesk */}
-                          {selectedSource === 'zendesk' && typeof configData['subdomain'] === 'string' && configData['subdomain'].trim() && (
-                            <div className="flex justify-center">
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <button
-                                      onClick={() => {
-                                        const url = `https://${configData['subdomain']}.zendesk.com/admin/apps-integrations/apis/oauth-clients`;
-                                        window.open(url, '_blank');
-                                      }}
-                                      className={cn(
-                                        "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
-                                        "border",
-                                        isDark
-                                          ? "bg-gray-800/50 border-gray-700 text-gray-300 hover:bg-gray-700 hover:text-white"
-                                          : "bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-                                      )}
-                                    >
-                                      <img
-                                        src={`/icons/zendesk-${isDark ? 'dark' : 'light'}.svg`}
-                                        alt="Zendesk"
-                                        className="w-3 h-3 object-contain"
-                                        onError={(e) => {
-                                          e.currentTarget.style.display = 'none';
-                                        }}
-                                      />
-                                      Get OAuth Credentials
-                                      <ExternalLink className="w-3 h-3" />
-                                    </button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p>Opens your Zendesk OAuth clients page to retrieve your Client ID and Secret</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            </div>
-                          )}
 
-                          {/* Help section with hover info */}
-                          <div className="flex items-start gap-2 group">
-                            <div className="relative">
-                              <HelpCircle className={cn(
-                                "h-4 w-4 mt-0.5 flex-shrink-0 transition-all cursor-help",
-                                isDark
-                                  ? "text-gray-500 group-hover:text-blue-400"
-                                  : "text-gray-400 group-hover:text-blue-600"
-                              )} />
-
-                              {/* Hover tooltip */}
-                              <div className={cn(
-                                "absolute left-0 top-6 z-50 w-80 p-4 rounded-lg shadow-xl",
-                                "opacity-0 invisible group-hover:opacity-100 group-hover:visible",
-                                "transition-all duration-200 transform group-hover:translate-y-0 translate-y-1",
-                                isDark
-                                  ? "bg-gray-800 border border-gray-700"
-                                  : "bg-white border border-gray-200"
+                          {/* OAuth Credentials section with help info */}
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 group">
+                              <h4 className={cn(
+                                "text-sm font-medium",
+                                isDark ? "text-gray-200" : "text-gray-800"
                               )}>
-                                <div className="space-y-3">
-                                  <p className={cn(
-                                    "text-sm font-medium",
-                                    isDark ? "text-white" : "text-gray-900"
-                                  )}>
-                                    What are OAuth credentials?
-                                  </p>
-                                  <p className={cn(
-                                    "text-xs leading-relaxed",
-                                    isDark ? "text-gray-400" : "text-gray-600"
-                                  )}>
-                                    OAuth credentials (Client ID and Client Secret) are like a special key that allows Airweave to securely access your {sourceName} data on your behalf. You create these in {sourceName}'s developer settings, and they ensure only authorized applications can connect to your account.
-                                  </p>
-                                  <div className={cn(
-                                    "text-xs space-y-1 pt-2 border-t",
-                                    isDark ? "border-gray-700" : "border-gray-200"
-                                  )}>
-                                    <p className={cn(isDark ? "text-gray-500" : "text-gray-500")}>
-                                      <span className="font-medium">Client ID:</span> Public identifier for your app
+                                OAuth Credentials
+                              </h4>
+
+                              <div className="relative">
+                                <HelpCircle className={cn(
+                                  "h-4 w-4 flex-shrink-0 transition-all cursor-help",
+                                  isDark
+                                    ? "text-gray-500 group-hover:text-blue-400"
+                                    : "text-gray-400 group-hover:text-blue-600"
+                                )} />
+
+                                {/* Hover tooltip */}
+                                <div className={cn(
+                                  "absolute right-0 top-6 z-50 w-80 p-4 rounded-lg shadow-xl",
+                                  "opacity-0 invisible group-hover:opacity-100 group-hover:visible",
+                                  "transition-all duration-200 transform group-hover:translate-y-0 translate-y-1",
+                                  isDark
+                                    ? "bg-gray-800 border border-gray-700"
+                                    : "bg-white border border-gray-200"
+                                )}>
+                                  <div className="space-y-3">
+                                    <p className={cn(
+                                      "text-sm font-medium",
+                                      isDark ? "text-white" : "text-gray-900"
+                                    )}>
+                                      What are OAuth credentials?
                                     </p>
-                                    <p className={cn(isDark ? "text-gray-500" : "text-gray-500")}>
-                                      <span className="font-medium">Client Secret:</span> Private key (keep this secure!)
+                                    <p className={cn(
+                                      "text-xs leading-relaxed",
+                                      isDark ? "text-gray-400" : "text-gray-600"
+                                    )}>
+                                      OAuth credentials (Client ID and Client Secret) are like a special key that allows Airweave to securely access your {sourceName} data on your behalf. You create these in {sourceName}'s developer settings, and they ensure only authorized applications can connect to your account.
                                     </p>
+                                    <div className={cn(
+                                      "text-xs space-y-1 pt-2 border-t",
+                                      isDark ? "border-gray-700" : "border-gray-200"
+                                    )}>
+                                      <p className={cn(isDark ? "text-gray-500" : "text-gray-500")}>
+                                        <span className="font-medium">Client ID:</span> Public identifier for your app
+                                      </p>
+                                      <p className={cn(isDark ? "text-gray-500" : "text-gray-500")}>
+                                        <span className="font-medium">Client Secret:</span> Private key (keep this secure!)
+                                      </p>
+                                    </div>
                                   </div>
                                 </div>
                               </div>
                             </div>
 
+                            {/* Zendesk-specific OAuth credentials button */}
+                            {selectedSource === 'zendesk' && typeof configData['subdomain'] === 'string' && configData['subdomain'].trim() && (
+                              <div className="animate-in fade-in slide-in-from-right-2 duration-300 ease-out">
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <button
+                                        onClick={() => {
+                                          const url = `https://${configData['subdomain']}.zendesk.com/admin/apps-integrations/apis/oauth-clients`;
+                                          window.open(url, '_blank');
+                                        }}
+                                        className={cn(
+                                          "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200",
+                                          "border shadow-sm hover:shadow-md transform hover:scale-105",
+                                          isDark
+                                            ? "bg-gradient-to-r from-blue-900/80 to-blue-800/80 border-blue-700/50 text-blue-100 hover:from-blue-800 hover:to-blue-700 hover:border-blue-600 hover:text-white"
+                                            : "bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 text-blue-700 hover:from-blue-100 hover:to-indigo-100 hover:border-blue-300 hover:text-blue-800"
+                                        )}
+                                      >
+                                        <img
+                                          src={getAppIconUrl('zendesk', resolvedTheme)}
+                                          alt="Zendesk"
+                                          className="w-3.5 h-3.5 object-contain"
+                                          onError={(e) => {
+                                            e.currentTarget.style.display = 'none';
+                                          }}
+                                        />
+                                        Get Client ID & Secret
+                                        <ExternalLink className="w-3.5 h-3.5" />
+                                      </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent
+                                      className={cn(
+                                        "max-w-sm px-4 py-3 text-sm shadow-xl border-2 rounded-lg",
+                                        "animate-in fade-in-0 zoom-in-95 duration-200",
+                                        isDark
+                                          ? "bg-gray-900/95 text-gray-100 border-blue-500/30 backdrop-blur-sm"
+                                          : "bg-white/95 text-gray-900 border-blue-200/50 backdrop-blur-sm"
+                                      )}
+                                      sideOffset={10}
+                                    >
+                                      <div className="space-y-2">
+                                        <div className="flex items-center gap-2">
+                                          <ExternalLink className={cn(
+                                            "w-4 h-4 flex-shrink-0",
+                                            isDark ? "text-blue-400" : "text-blue-600"
+                                          )} />
+                                          <p className="font-medium text-sm">
+                                            Get OAuth Credentials
+                                          </p>
+                                        </div>
+                                        <div className={cn(
+                                          "text-xs leading-relaxed pl-6",
+                                          isDark ? "text-gray-300" : "text-gray-600"
+                                        )}>
+                                          <p>Opens your Zendesk admin panel at:</p>
+                                          <code className={cn(
+                                            "inline-block mt-1 px-2 py-0.5 rounded text-xs font-mono break-all",
+                                            isDark
+                                              ? "bg-gray-800/80 text-blue-300 border border-gray-700/50"
+                                              : "bg-blue-50/80 text-blue-700 border border-blue-200/50"
+                                          )}>
+                                            {configData['subdomain']}.zendesk.com
+                                          </code>
+                                        </div>
+                                      </div>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              </div>
+                            )}
                           </div>
 
                           <div className="space-y-2.5">
