@@ -62,7 +62,7 @@ class TemporalService:
                 source_connection.model_dump(mode="json"),
                 ctx.to_serializable_dict(),  # Use serializable dict instead of model_dump
                 access_token,
-                force_full_sync,  # Add force_full_sync parameter
+                force_full_sync,
             ],
             id=workflow_id,
             task_queue=task_queue,

@@ -48,6 +48,11 @@ verification:
   max_retries: 3
   retry_delay_seconds: 5
 
+sync:
+  auto_fallback_to_force: true
+  # Use step numbers (1-based) or step names to specify which syncs should be forced
+  force_sync_steps: []  # e.g., [8, 12] for steps 8 and 12, or ["verify_partial_deletion"] for semantic names
+
 # Test-specific configuration
 # test_config:
 #   Any source-specific configuration can go here

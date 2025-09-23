@@ -58,6 +58,16 @@ class TestFlowConfig:
 
 
 @dataclass
+class SyncConfig:
+    """Configuration for sync behavior."""
+
+    # If verification fails after sync, retry with force_sync
+    auto_fallback_to_force: bool = True
+    # Force certain sync steps to use force_sync (by step name or index)
+    force_sync_steps: List[str] = field(default_factory=list)
+
+
+@dataclass
 class TestConfig:
     """Main test configuration."""
 
@@ -66,6 +76,7 @@ class TestConfig:
     connector: ConnectorConfig
     test_flow: TestFlowConfig
     deletion: DeletionConfig
+    sync: SyncConfig
     collection_config: Dict[str, Any]
     verification_config: Dict[str, Any]
     cleanup_config: Dict[str, Any]
@@ -97,6 +108,7 @@ class TestConfig:
             connector=ConnectorConfig(**data["connector"]),
             test_flow=TestFlowConfig(**data.get("test_flow", {})),
             deletion=DeletionConfig(**data.get("deletion", {})),
+            sync=SyncConfig(**data.get("sync", {})),
             entity_count=data.get("entity_count", 10),
             collection_config=data.get("collection", {}),
             verification_config=data.get("verification", {}),
@@ -112,6 +124,7 @@ class TestConfig:
             connector=ConnectorConfig(**data["connector"]),
             test_flow=TestFlowConfig(**data.get("test_flow", {})),
             deletion=DeletionConfig(**data.get("deletion", {})),
+            sync=SyncConfig(**data.get("sync", {})),
             entity_count=data.get("entity_count", 10),
             collection_config=data.get("collection", {}),
             verification_config=data.get("verification", {}),

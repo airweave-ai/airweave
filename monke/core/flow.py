@@ -81,6 +81,20 @@ class TestFlow:
             )
 
         except Exception as e:
+            # Check if this is a verification failure that might benefit from force sync retry
+            should_retry_with_force_sync = self._should_retry_with_force_sync(step_name, e)
+            
+            if should_retry_with_force_sync:
+                self.logger.warning(f"⚠️ Step {step_name} failed: {e}")
+                self.logger.info(f"🔄 Retrying {step_name} with force sync")
+                
+                try:
+                    await self._retry_with_force_sync(step_name, idx, start_time)
+                    return  # Success
+                except Exception as retry_error:
+                    self.logger.error(f"❌ Force_sync retry also failed: {retry_error}")
+                    e = retry_error  # Use the retry error for final failure
+            
             duration = time.time() - start_time
             self.metrics[f"{idx:02d}_{step_name}_duration"] = duration
             self.metrics[f"{idx:02d}_{step_name}_failed"] = True
@@ -89,6 +103,57 @@ class TestFlow:
                 extra={"step": step_name, "index": idx, "duration": duration, "error": str(e)},
             )
             raise
+
+    def _should_retry_with_force_sync(self, step_name: str, error: Exception) -> bool:
+        """Determine if a failed step should be retried with force_sync."""
+        # Check if auto-fallback is enabled
+        sync_config = getattr(self.config, 'sync', None)
+        
+        if sync_config is None:
+            auto_fallback = False
+        else:
+            auto_fallback = sync_config.auto_fallback_to_force
+        
+        if not auto_fallback:
+            return False
+            
+        verification_steps = ["verify", "verify_partial_deletion", "verify_remaining_entities", "verify_complete_deletion"]
+        
+        if step_name not in verification_steps:
+            return False
+
+        return True
+
+    async def _retry_with_force_sync(self, failed_step_name: str, step_idx: int, original_start_time: float):
+        """Retry the verification by running a force_sync first, then re-running the failed step."""
+        # Run a force_sync to ensure data is up-to-date
+        force_sync_step = self.step_factory.create_step("sync", self.config)
+        force_sync_step.force_full_sync = True  # Override to force full sync
+        
+        try:
+            await force_sync_step.execute()
+            self.logger.info("✅ Force sync completed successfully")
+        except Exception as sync_error:
+            raise Exception(f"Force sync failed: {sync_error}")
+
+        # Retry the original failed step
+        self.logger.info(f"🔄 Re-running {failed_step_name} after force sync...")
+        retry_step = self.step_factory.create_step(failed_step_name, self.config)
+        await retry_step.execute()
+        
+        total_duration = time.time() - original_start_time
+        self.metrics[f"{step_idx:02d}_{failed_step_name}_duration"] = total_duration
+        self.metrics[f"{step_idx:02d}_{failed_step_name}_retry_success"] = True
+        self.logger.info(f"✅ Step {failed_step_name} completed successfully after force sync")
+        await self._emit_event(
+            "step_completed", 
+            extra={
+                "step": failed_step_name, 
+                "index": step_idx, 
+                "duration": total_duration,
+                "retry_with_force_sync": True
+            }
+        )
 
     def get_metrics(self) -> Dict[str, Any]:
         """Get test execution metrics."""

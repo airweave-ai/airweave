@@ -91,11 +91,11 @@ class SyncStep(TestStep):
     #     """Call the force-full-sync endpoint with proper error handling."""
     #     import httpx
     #     import os
-    #     
+        
     #     base_url = os.getenv("AIRWEAVE_API_URL", "http://localhost:8001")
     #     api_key = os.getenv("AIRWEAVE_API_KEY")
     #     headers = {"X-API-Key": api_key} if api_key else {}
-    #     
+        
     #     async with httpx.AsyncClient() as http_client:
     #         response = await http_client.post(
     #             f"{base_url}/source-connections/{self.config._source_connection_id}/run-force-full",
@@ -104,13 +104,13 @@ class SyncStep(TestStep):
     #         )
     #         response.raise_for_status()
     #         run_resp_data = response.json()
-    #         
+            
     #         # Create a simple object to mimic the SDK response
     #         class TempResponse:
     #             def __init__(self, data):
     #                 for k, v in data.items():
     #                     setattr(self, k, v)
-    #         
+            
     #         return TempResponse(run_resp_data)
 
     async def execute(self):
@@ -874,4 +874,25 @@ class TestStepFactory:
     def create_step(self, step_name: str, config: TestConfig) -> TestStep:
         if step_name not in self._steps:
             raise ValueError(f"Unknown test step: {step_name}")
-        return self._steps[step_name](config)
+            
+        step = self._steps[step_name](config)
+        
+        if step_name == "sync" and isinstance(step, SyncStep):
+            step.force_full_sync = self._should_force_sync(step_name, config)
+            
+        return step
+    
+    def _should_force_sync(self, step_name: str, config: TestConfig) -> bool:
+        """Determine if a sync step should use force_full_sync based on configuration."""
+        sync_config = getattr(config, 'sync', None)
+        
+        if sync_config is None:
+            force_sync_steps = []
+        else:
+            force_sync_steps = sync_config.force_sync_steps
+        
+        # If no force steps configured, use default (incremental)
+        if not force_sync_steps:
+            return False
+            
+        return step_name in force_sync_steps or "all" in force_sync_steps
