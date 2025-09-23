@@ -536,17 +536,21 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
                   {sourceDetails?.config_fields?.fields && sourceDetails.config_fields.fields.length > 0 && (
                     <div className="space-y-3">
                       <label className="block text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Additional Configuration (optional)
+                        {sourceDetails.short_name === 'zendesk' ? 'Configuration' : 'Additional Configuration (optional)'}
                       </label>
                       {sourceDetails.config_fields.fields.map((field) => (
                         <div key={field.name}>
-                          <label className="block text-sm font-medium mb-1">
-                            {field.title || field.name}
-                          </label>
-                          {field.description && (
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">
-                              {field.description}
-                            </p>
+                          {!(sourceDetails.short_name === 'zendesk' && field.name === 'exclude_closed_tickets') && (
+                            <>
+                              <label className="block text-sm font-medium mb-1">
+                                {field.title || field.name}
+                              </label>
+                              {field.description && (
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">
+                                  {field.description}
+                                </p>
+                              )}
+                            </>
                           )}
                           {field.type === 'boolean' ? (
                             // Special handling for Zendesk exclude_closed_tickets field
@@ -558,10 +562,20 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
                                     <TooltipProvider>
                                       <Tooltip>
                                         <TooltipTrigger>
-                                          <Info className="h-4 w-4 text-muted-foreground" />
+                                          <Info className="h-4 w-4 text-muted-foreground cursor-help" />
                                         </TooltipTrigger>
-                                        <TooltipContent>
-                                          <p className="max-w-xs">Skipping closed tickets significantly improves sync performance and reduces storage usage</p>
+                                        <TooltipContent className="max-w-sm p-4">
+                                          <div className="space-y-3">
+                                            <p className="text-sm font-medium">Why exclude closed tickets?</p>
+                                            <p className="text-xs leading-relaxed">
+                                              Closed tickets are typically resolved and don't change frequently. Excluding them from sync can significantly improve performance and reduce storage usage, especially for organizations with large ticket volumes.
+                                            </p>
+                                            <div className="text-xs space-y-1 pt-2 border-t border-border">
+                                              <p><span className="font-medium">✓ Faster sync:</span> Less data to process</p>
+                                              <p><span className="font-medium">✓ Lower storage:</span> Reduced database size</p>
+                                              <p><span className="font-medium">✓ Better performance:</span> Queries run faster</p>
+                                            </div>
+                                          </div>
                                         </TooltipContent>
                                       </Tooltip>
                                     </TooltipProvider>
@@ -574,6 +588,12 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
                                   id={field.name}
                                   checked={configData[field.name] === true || configData[field.name] === 'true'}
                                   onCheckedChange={(checked) => setConfigData({ ...configData, [field.name]: checked })}
+                                  className={cn(
+                                    "data-[state=unchecked]:bg-gray-300 dark:data-[state=unchecked]:bg-gray-600",
+                                    "data-[state=checked]:bg-primary",
+                                    "border-2 border-gray-200 dark:border-gray-700",
+                                    "data-[state=unchecked]:border-gray-300 dark:data-[state=unchecked]:border-gray-500"
+                                  )}
                                 />
                               </div>
                             ) : (
@@ -635,7 +655,7 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
 
                           {/* OAuth Credentials section with help info */}
                           <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2 group">
+                            <div className="flex items-center gap-2">
                               <h4 className={cn(
                                 "text-sm font-medium",
                                 isDark ? "text-gray-200" : "text-gray-800"
@@ -643,50 +663,28 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
                                 OAuth Credentials
                               </h4>
 
-                              <div className="relative">
-                                <HelpCircle className={cn(
-                                  "h-4 w-4 flex-shrink-0 transition-all cursor-help",
-                                  isDark
-                                    ? "text-gray-500 group-hover:text-blue-400"
-                                    : "text-gray-400 group-hover:text-blue-600"
-                                )} />
-
-                                {/* Hover tooltip */}
-                                <div className={cn(
-                                  "absolute right-0 top-6 z-50 w-80 p-4 rounded-lg shadow-xl",
-                                  "opacity-0 invisible group-hover:opacity-100 group-hover:visible",
-                                  "transition-all duration-200 transform group-hover:translate-y-0 translate-y-1",
-                                  isDark
-                                    ? "bg-gray-800 border border-gray-700"
-                                    : "bg-white border border-gray-200"
-                                )}>
-                                  <div className="space-y-3">
-                                    <p className={cn(
-                                      "text-sm font-medium",
-                                      isDark ? "text-white" : "text-gray-900"
-                                    )}>
-                                      What are OAuth credentials?
-                                    </p>
-                                    <p className={cn(
-                                      "text-xs leading-relaxed",
-                                      isDark ? "text-gray-400" : "text-gray-600"
-                                    )}>
-                                      OAuth credentials (Client ID and Client Secret) are like a special key that allows Airweave to securely access your {sourceName} data on your behalf. You create these in {sourceName}'s developer settings, and they ensure only authorized applications can connect to your account.
-                                    </p>
-                                    <div className={cn(
-                                      "text-xs space-y-1 pt-2 border-t",
-                                      isDark ? "border-gray-700" : "border-gray-200"
-                                    )}>
-                                      <p className={cn(isDark ? "text-gray-500" : "text-gray-500")}>
-                                        <span className="font-medium">Client ID:</span> Public identifier for your app
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger>
+                                    <HelpCircle className={cn(
+                                      "h-4 w-4 flex-shrink-0 transition-colors cursor-help",
+                                      isDark ? "text-gray-500 hover:text-blue-400" : "text-gray-400 hover:text-blue-600"
+                                    )} />
+                                  </TooltipTrigger>
+                                  <TooltipContent className="max-w-xs p-4">
+                                    <div className="space-y-3">
+                                      <p className="text-sm font-medium">What are OAuth credentials?</p>
+                                      <p className="text-xs leading-relaxed">
+                                        OAuth credentials (Client ID and Client Secret) are like a special key that allows Airweave to securely access your {sourceName} data on your behalf. You create these in {sourceName}'s developer settings, and they ensure only authorized applications can connect to your account.
                                       </p>
-                                      <p className={cn(isDark ? "text-gray-500" : "text-gray-500")}>
-                                        <span className="font-medium">Client Secret:</span> Private key (keep this secure!)
-                                      </p>
+                                      <div className="text-xs space-y-1 pt-2 border-t border-border">
+                                        <p><span className="font-medium">Client ID:</span> Public identifier for your app</p>
+                                        <p><span className="font-medium">Client Secret:</span> Private key (keep this secure!)</p>
+                                      </div>
                                     </div>
-                                  </div>
-                                </div>
-                              </div>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
                             </div>
 
                             {/* Zendesk-specific OAuth credentials button */}

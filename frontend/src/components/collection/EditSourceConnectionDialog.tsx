@@ -202,11 +202,15 @@ export const EditSourceConnectionDialog: React.FC<EditSourceConnectionDialogProp
                                             <h3 className="text-sm font-semibold text-foreground border-b pb-2 mb-3">Configuration</h3>
                                             {sourceDetails.config_fields.fields.map((field: any) => (
                                                 <div key={field.name} className="space-y-1">
-                                                    <Label className="text-xs text-muted-foreground font-normal">
-                                                        {field.title || field.name}
-                                                    </Label>
-                                                    {field.description && (
-                                                        <p className="text-xs text-muted-foreground opacity-80">{field.description}</p>
+                                                    {!(sourceConnection?.short_name === 'zendesk' && field.name === 'exclude_closed_tickets') && (
+                                                        <>
+                                                            <Label className="text-xs text-muted-foreground font-normal">
+                                                                {field.title || field.name}
+                                                            </Label>
+                                                            {field.description && (
+                                                                <p className="text-xs text-muted-foreground opacity-80">{field.description}</p>
+                                                            )}
+                                                        </>
                                                     )}
                                                     {field.type === 'boolean' ? (
                                                         // Special handling for Zendesk exclude_closed_tickets field
@@ -218,10 +222,20 @@ export const EditSourceConnectionDialog: React.FC<EditSourceConnectionDialogProp
                                                                         <TooltipProvider>
                                                                             <Tooltip>
                                                                                 <TooltipTrigger>
-                                                                                    <Info className="h-4 w-4 text-muted-foreground" />
+                                                                                    <Info className="h-4 w-4 text-muted-foreground cursor-help" />
                                                                                 </TooltipTrigger>
-                                                                                <TooltipContent>
-                                                                                    <p className="max-w-xs">Skipping closed tickets significantly improves sync performance and reduces storage usage</p>
+                                                                                <TooltipContent className="max-w-sm p-4">
+                                                                                    <div className="space-y-3">
+                                                                                        <p className="text-sm font-medium">Why exclude closed tickets?</p>
+                                                                                        <p className="text-xs leading-relaxed">
+                                                                                            Closed tickets are typically resolved and don't change frequently. Excluding them from sync can significantly improve performance and reduce storage usage, especially for organizations with large ticket volumes.
+                                                                                        </p>
+                                                                                        <div className="text-xs space-y-1 pt-2 border-t border-border">
+                                                                                            <p><span className="font-medium">✓ Faster sync:</span> Less data to process</p>
+                                                                                            <p><span className="font-medium">✓ Lower storage:</span> Reduced database size</p>
+                                                                                            <p><span className="font-medium">✓ Better performance:</span> Queries run faster</p>
+                                                                                        </div>
+                                                                                    </div>
                                                                                 </TooltipContent>
                                                                             </Tooltip>
                                                                         </TooltipProvider>
@@ -240,6 +254,12 @@ export const EditSourceConnectionDialog: React.FC<EditSourceConnectionDialogProp
                                                                             [field.name]: checked
                                                                         }
                                                                     }))}
+                                                                    className={cn(
+                                                                        "data-[state=unchecked]:bg-gray-300 dark:data-[state=unchecked]:bg-gray-600",
+                                                                        "data-[state=checked]:bg-primary",
+                                                                        "border-2 border-gray-200 dark:border-gray-700",
+                                                                        "data-[state=unchecked]:border-gray-300 dark:data-[state=unchecked]:border-gray-500"
+                                                                    )}
                                                                 />
                                                             </div>
                                                         ) : (
