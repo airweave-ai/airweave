@@ -13,9 +13,9 @@ from temporalio.client import (
     ScheduleState,
 )
 
+from airweave import crud, schemas
 from airweave.core.config import settings
 from airweave.core.logging import logger
-from airweave.crud.crud_sync import sync as sync_crud
 from airweave.platform.temporal.client import temporal_client
 from airweave.platform.temporal.workflows import RunSourceConnectionWorkflow
 
@@ -63,7 +63,7 @@ class TemporalScheduleService:
             logger.error(f"Error checking schedule {schedule_id}: {e}")
             return {"exists": False, "running": False, "schedule_info": None}
 
-    async def create_minute_level_schedule(
+    async def _create_schedule(
         self,
         sync_id: UUID,
         cron_expression: str,
@@ -75,14 +75,15 @@ class TemporalScheduleService:
         db: AsyncSession,
         ctx,
         access_token: Optional[str] = None,
+        schedule_type: str = "regular",  # "regular", "minute", or "cleanup"
+        force_full_sync: bool = False,
     ) -> str:
-        """Create a minute-level schedule for incremental sync.
+        """Private method to create any type of schedule.
 
         Args:
             sync_id: The sync ID
-            cron_expression: Cron expression for the schedule (e.g., "*/1 * * * *")
+            cron_expression: Cron expression for the schedule
             sync_dict: The sync configuration as dict
-            sync_job_dict: The sync job as dict
             sync_dag_dict: The sync DAG as dict
             collection_dict: The collection as dict
             source_connection_dict: The source connection as dict
@@ -90,14 +91,33 @@ class TemporalScheduleService:
             db: Database session
             ctx: Authentication context
             access_token: Optional access token
+            schedule_type: Type of schedule ("regular", "minute", or "cleanup")
+            force_full_sync: Whether to force full sync (for cleanup schedules)
 
         Returns:
             The schedule ID
         """
         client = await self._get_client()
 
-        # Create schedule ID using sync ID
-        schedule_id = f"minute-sync-{sync_id}"
+        # Create schedule ID and parameters based on type
+        if schedule_type == "minute":
+            schedule_id = f"minute-sync-{sync_id}"
+            jitter = timedelta(seconds=10)
+            workflow_id_prefix = "minute-sync-workflow"
+            note = f"Minute-level sync schedule for sync {sync_id} (paused initially)"
+            sync_type = "incremental"
+        elif schedule_type == "cleanup":
+            schedule_id = f"daily-cleanup-{sync_id}"
+            jitter = timedelta(minutes=30)
+            workflow_id_prefix = "daily-cleanup-workflow"
+            note = f"Daily cleanup schedule for sync {sync_id} (paused initially)"
+            sync_type = "full"
+        else:  # regular
+            schedule_id = f"sync-{sync_id}"
+            jitter = timedelta(minutes=5)
+            workflow_id_prefix = "sync-workflow"
+            note = f"Regular sync schedule for sync {sync_id} (paused initially)"
+            sync_type = "full"
 
         # Check if schedule already exists and is running
         schedule_status = await self.check_schedule_exists_and_running(schedule_id)
@@ -118,13 +138,25 @@ class TemporalScheduleService:
         # Create schedule spec with cron expression
         schedule_spec = ScheduleSpec(
             cron_expressions=[cron_expression],
-            # Start immediately (but schedule will be paused initially)
             start_at=datetime.now(timezone.utc),
-            # No end time (runs indefinitely)
             end_at=None,
-            # Jitter to avoid thundering herd
-            jitter=timedelta(seconds=10),
+            jitter=jitter,
         )
+
+        # Build workflow args
+        workflow_args = [
+            sync_dict,
+            None,  # No pre-created sync job for scheduled runs
+            sync_dag_dict,
+            collection_dict,
+            source_connection_dict,
+            user_dict,
+            access_token,
+        ]
+
+        # Add force_full_sync for cleanup schedules
+        if force_full_sync:
+            workflow_args.append(True)
 
         # Create the schedule in paused state
         await client.create_schedule(
@@ -132,45 +164,100 @@ class TemporalScheduleService:
             Schedule(
                 action=ScheduleActionStartWorkflow(
                     RunSourceConnectionWorkflow.run,
-                    args=[
-                        sync_dict,
-                        None,  # No pre-created sync job for scheduled runs
-                        sync_dag_dict,
-                        collection_dict,
-                        source_connection_dict,
-                        user_dict,
-                        access_token,
-                    ],
-                    id=f"minute-sync-workflow-{sync_id}",
+                    args=workflow_args,
+                    id=f"{workflow_id_prefix}-{sync_id}",
                     task_queue=settings.TEMPORAL_TASK_QUEUE,
                 ),
                 spec=schedule_spec,
                 state=ScheduleState(
-                    note=f"Minute-level sync schedule for sync {sync_id} (paused initially)",
+                    note=note,
                     paused=True,
                 ),
             ),
         )
 
-        # Update the sync record in the database
-        # Get the sync model object (not schema) for updating
-        sync_obj = await sync_crud.get(db=db, id=sync_id, ctx=ctx, with_connections=False)
-        await sync_crud.update(
-            db=db,
-            db_obj=sync_obj,
-            obj_in={
+        # Update the sync record in the database (only for non-cleanup schedules)
+        if schedule_type != "cleanup":
+            sync_obj = await crud.sync.get(db=db, id=sync_id, ctx=ctx, with_connections=False)
+            update_fields = {
                 "temporal_schedule_id": schedule_id,
-                "minute_level_cron_schedule": cron_expression,
-                "sync_type": "incremental",
+                "sync_type": sync_type,
                 "status": "INACTIVE",  # Mark as inactive since schedule is paused
-            },
-            ctx=ctx,
-        )
+            }
+
+            # Store cron schedule for minute-level syncs
+            if schedule_type == "minute":
+                update_fields["minute_level_cron_schedule"] = cron_expression
+            elif schedule_type == "regular":
+                update_fields["cron_schedule"] = cron_expression
+
+            await crud.sync.update(
+                db=db,
+                db_obj=sync_obj,
+                obj_in=update_fields,
+                ctx=ctx,
+            )
 
         logger.info(
-            f"Created minute-level schedule {schedule_id} for sync {sync_id} (paused initially)"
+            f"Created {schedule_type} schedule {schedule_id} for sync {sync_id} (paused initially)"
         )
         return schedule_id
+
+    async def create_minute_level_schedule(
+        self,
+        sync_id: UUID,
+        cron_expression: str,
+        sync_dict: dict,
+        sync_dag_dict: dict,
+        collection_dict: dict,
+        source_connection_dict: dict,
+        user_dict: dict,
+        db: AsyncSession,
+        ctx,
+        access_token: Optional[str] = None,
+    ) -> str:
+        """Create a minute-level schedule for incremental sync."""
+        return await self._create_schedule(
+            sync_id=sync_id,
+            cron_expression=cron_expression,
+            sync_dict=sync_dict,
+            sync_dag_dict=sync_dag_dict,
+            collection_dict=collection_dict,
+            source_connection_dict=source_connection_dict,
+            user_dict=user_dict,
+            db=db,
+            ctx=ctx,
+            access_token=access_token,
+            schedule_type="minute",
+        )
+
+    async def create_regular_schedule(
+        self,
+        sync_id: UUID,
+        cron_expression: str,
+        sync_dict: dict,
+        sync_dag_dict: dict,
+        collection_dict: dict,
+        source_connection_dict: dict,
+        user_dict: dict,
+        db: AsyncSession,
+        ctx,
+        access_token: Optional[str] = None,
+    ) -> str:
+        """Create a regular (e.g., daily) schedule for sync."""
+        return await self._create_schedule(
+            sync_id=sync_id,
+            cron_expression=cron_expression,
+            sync_dict=sync_dict,
+            sync_dag_dict=sync_dag_dict,
+            collection_dict=collection_dict,
+            source_connection_dict=source_connection_dict,
+            user_dict=user_dict,
+            db=db,
+            ctx=ctx,
+            access_token=access_token,
+            schedule_type="regular",
+        )
 
     async def create_daily_cleanup_schedule(
         self,
@@ -298,8 +385,8 @@ class TemporalScheduleService:
         )
 
         # Update the sync record in the database
-        sync_obj = await sync_crud.get(db=db, id=sync_id, ctx=ctx, with_connections=False)
-        await sync_crud.update(
+        sync_obj = await crud.sync.get(db=db, id=sync_id, ctx=ctx, with_connections=False)
+        await crud.sync.update(
             db=db,
             db_obj=sync_obj,
             obj_in={"minute_level_cron_schedule": cron_expression},
@@ -326,8 +413,8 @@ class TemporalScheduleService:
         await handle.pause()
 
         # Update sync status to indicate paused schedule
-        sync_obj = await sync_crud.get(db=db, id=sync_id, ctx=ctx, with_connections=False)
-        await sync_crud.update(
+        sync_obj = await crud.sync.get(db=db, id=sync_id, ctx=ctx, with_connections=False)
+        await crud.sync.update(
             db=db,
             db_obj=sync_obj,
             obj_in={"status": "INACTIVE"},
@@ -354,8 +441,8 @@ class TemporalScheduleService:
         await handle.unpause()
 
         # Update sync status to indicate active schedule
-        sync_obj = await sync_crud.get(db=db, id=sync_id, ctx=ctx, with_connections=False)
-        await sync_crud.update(
+        sync_obj = await crud.sync.get(db=db, id=sync_id, ctx=ctx, with_connections=False)
+        await crud.sync.update(
             db=db,
             db_obj=sync_obj,
             obj_in={"status": "ACTIVE"},
@@ -364,10 +451,10 @@ class TemporalScheduleService:
 
         logger.info(f"Resumed schedule {schedule_id}")
 
-    async def delete_schedule(
+    async def delete_schedule_by_id(
         self, schedule_id: str, sync_id: UUID, user_dict: dict, db: AsyncSession, ctx
     ) -> None:
-        """Delete a schedule.
+        """Delete a schedule by schedule ID.
 
         Args:
             schedule_id: The schedule ID to delete
@@ -382,8 +469,8 @@ class TemporalScheduleService:
         await handle.delete()
 
         # Clear the temporal schedule fields from the sync record
-        sync_obj = await sync_crud.get(db=db, id=sync_id, ctx=ctx, with_connections=False)
-        await sync_crud.update(
+        sync_obj = await crud.sync.get(db=db, id=sync_id, ctx=ctx, with_connections=False)
+        await crud.sync.update(
             db=db,
             db_obj=sync_obj,
             obj_in={
@@ -469,7 +556,7 @@ class TemporalScheduleService:
         Returns:
             Schedule information if exists, None otherwise
         """
-        sync = await sync_crud.get(db=db, id=sync_id, ctx=ctx, with_connections=False)
+        sync = await crud.sync.get(db=db, id=sync_id, ctx=ctx, with_connections=False)
         if not sync or not sync.temporal_schedule_id:
             return None
 
@@ -484,6 +571,140 @@ class TemporalScheduleService:
         except Exception as e:
             logger.error(f"Error getting schedule info for sync {sync_id}: {e}")
             return None
+
+    async def create_or_update_schedule(
+        self,
+        sync_id: UUID,
+        cron_schedule: str,
+        db: AsyncSession,
+        ctx,
+    ) -> str:
+        """Create or update a schedule for a sync.
+
+        If a schedule already exists for the sync, it will be updated.
+        If no schedule exists, a new one will be created.
+
+        Args:
+            sync_id: The sync ID
+            cron_schedule: Cron expression for the schedule
+            db: Database session
+            ctx: Authentication context
+
+        Returns:
+            The schedule ID
+        """
+        # Get the sync - first just check if it exists and has a schedule
+        sync = await crud.sync.get(db=db, id=sync_id, ctx=ctx, with_connections=False)
+        if not sync:
+            raise ValueError(f"Sync {sync_id} not found")
+
+        user_dict = ctx.to_serializable_dict()
+
+        # Check if a schedule already exists and is valid in Temporal
+        if sync.temporal_schedule_id:
+            schedule_id = sync.temporal_schedule_id
+            schedule_status = await self.check_schedule_exists_and_running(schedule_id)
+
+            if schedule_status["exists"]:
+                # Just update the existing schedule
+                await self.update_schedule(
+                    schedule_id=schedule_id,
+                    cron_expression=cron_schedule,
+                    sync_id=sync_id,
+                    user_dict=user_dict,
+                    db=db,
+                    ctx=ctx,
+                )
+                logger.info(f"Updated existing schedule {schedule_id} for sync {sync_id}")
+                return schedule_id
+            else:
+                logger.warning(
+                    f"Schedule {schedule_id} not found in Temporal for sync {sync_id}, "
+                    "will create new one"
+                )
+
+        # Need to create a new schedule - gather required data
+        # Load the sync with all relationships needed
+        sync = await crud.sync.get(db=db, id=sync_id, ctx=ctx, with_connections=True)
+
+        source_connection = await crud.source_connection.get_by_sync_id(
+            db=db, sync_id=sync_id, ctx=ctx
+        )
+        if not source_connection:
+            raise ValueError(f"No source connection found for sync {sync_id}")
+
+        # Get the collection - it should be loaded with the source connection
+        collection = await crud.collection.get_by_readable_id(
+            db=db, readable_id=source_connection.readable_collection_id, ctx=ctx
+        )
+        if not collection:
+            raise ValueError(f"No collection found for source connection {source_connection.id}")
+
+        # Get the sync DAG
+        sync_dag = await crud.sync_dag.get_by_sync_id(db=db, sync_id=sync_id, ctx=ctx)
+        if not sync_dag:
+            raise ValueError(f"No DAG found for sync {sync_id}")
+
+        sync_schema = schemas.Sync.model_validate(sync, from_attributes=True)
+        sync_dag_schema = schemas.SyncDag.model_validate(sync_dag, from_attributes=True)
+        collection_schema = schemas.Collection.model_validate(collection, from_attributes=True)
+        source_connection_schema = schemas.SourceConnectionSimple.model_validate(
+            source_connection, from_attributes=True
+        )
+
+        # Convert to dicts for Temporal workflow
+        sync_dict = sync_schema.model_dump(mode="json")
+        sync_dag_dict = sync_dag_schema.model_dump(mode="json")
+        collection_dict = collection_schema.model_dump(mode="json")
+        source_connection_dict = source_connection_schema.model_dump(mode="json")
+
+        # Create new schedule (use regular schedule for daily crons)
+        schedule_id = await self.create_regular_schedule(
+            sync_id=sync_id,
+            cron_expression=cron_schedule,
+            sync_dict=sync_dict,
+            sync_dag_dict=sync_dag_dict,
+            collection_dict=collection_dict,
+            source_connection_dict=source_connection_dict,
+            user_dict=user_dict,
+            db=db,
+            ctx=ctx,
+            access_token=None,  # Access token will be handled by the workflow
+        )
+
+        logger.info(f"Created new schedule {schedule_id} for sync {sync_id}")
+        return schedule_id
+
+    async def delete_schedule(
+        self,
+        sync_id: UUID,
+        db: AsyncSession,
+        ctx,
+    ) -> None:
+        """Delete a schedule for a sync by sync ID.
+
+        This is a convenience method that looks up the schedule ID from the sync
+        and delegates to delete_schedule_by_id.
+
+        Args:
+            sync_id: The sync ID
+            db: Database session
+            ctx: Authentication context
+        """
+        # Get the sync to find the schedule ID
+        sync = await crud.sync.get(db=db, id=sync_id, ctx=ctx, with_connections=False)
+        if not sync or not sync.temporal_schedule_id:
+            logger.warning(f"No schedule found for sync {sync_id}")
+            return
+
+        # Delegate to the main delete method
+        await self.delete_schedule_by_id(
+            schedule_id=sync.temporal_schedule_id,
+            sync_id=sync_id,
+            user_dict=ctx.to_serializable_dict(),
+            db=db,
+            ctx=ctx,
+        )
 
 
 # Singleton instance

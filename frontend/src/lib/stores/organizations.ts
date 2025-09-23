@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { apiClient } from '@/lib/api';
 import { BillingInfo } from '@/types';
+import { useUsageStore } from './usage';
 
 interface Organization {
   id: string;
@@ -40,6 +41,12 @@ interface OrganizationState {
   isLoading: boolean;
   billingInfo: BillingInfo | null;
   billingLoading: boolean;
+
+  // Request deduplication
+  inflightOrgRequest: Promise<Organization[]> | null;
+  inflightBillingRequest: Promise<BillingInfo | null> | null;
+  lastOrgFetch: number;
+  lastBillingFetch: number;
 
   // Actions
   setOrganizations: (orgs: Organization[]) => void;
@@ -103,6 +110,10 @@ export const useOrganizationStore = create<OrganizationState>()(
       isLoading: false,
       billingInfo: null,
       billingLoading: false,
+      inflightOrgRequest: null,
+      inflightBillingRequest: null,
+      lastOrgFetch: 0,
+      lastBillingFetch: 0,
 
       setOrganizations: (organizations) => {
         const currentOrgId = get().currentOrganization?.id;
@@ -145,6 +156,9 @@ export const useOrganizationStore = create<OrganizationState>()(
         if (org) {
           set({ currentOrganization: org, billingInfo: null }); // Clear billing info on switch
           console.log(`🔄 [OrganizationStore] Switched to organization: ${org.name} (${org.id})`);
+
+          // Clear usage cache when switching organizations
+          useUsageStore.getState().clearCache();
         }
       },
 
@@ -181,69 +195,69 @@ export const useOrganizationStore = create<OrganizationState>()(
       },
 
       initializeOrganizations: async (): Promise<Organization[]> => {
-        try {
-          set({ isLoading: true });
+        // Check if we have a recent fetch (within 5 seconds)
+        const now = Date.now();
+        const { lastOrgFetch, organizations, inflightOrgRequest } = get();
 
-          // Get organizations directly from the new endpoint
-          const response = await apiClient.get('/users/me/organizations');
-
-          if (!response.ok) {
-            throw new Error(`Failed to fetch organizations: ${response.status}`);
-          }
-
-          const organizations: Organization[] = await response.json();
-
-          // Respect persisted organization selection if available, otherwise prefer primary organization
-          const currentOrgId = get().currentOrganization?.id;
-          const currentOrg = selectBestOrganization(organizations, currentOrgId);
-
-          set({
-            organizations,
-            currentOrganization: currentOrg,
-            isLoading: false
-          });
-
-          console.log('Organizations initialized:', {
-            total: organizations.length,
-            selected: currentOrg?.name,
-            isPrimary: currentOrg?.is_primary,
-            wasFromPersistence: !!currentOrgId && currentOrgId === currentOrg?.id
-          });
-
+        if (lastOrgFetch && (now - lastOrgFetch) < 5000 && organizations.length > 0) {
+          console.log('Using cached organizations (fetched', Math.round((now - lastOrgFetch) / 1000), 'seconds ago)');
           return organizations;
-        } catch (error) {
-          console.error('Failed to initialize organizations:', error);
-          set({ isLoading: false });
-          throw error;
         }
+
+        // If there's already a request in flight, return it
+        if (inflightOrgRequest) {
+          console.log('Returning existing organization request');
+          return inflightOrgRequest;
+        }
+
+        // Create new request
+        const request = (async () => {
+          try {
+            set({ isLoading: true });
+
+            // Get organizations directly from the new endpoint
+            const response = await apiClient.get('/users/me/organizations');
+
+            if (!response.ok) {
+              throw new Error(`Failed to fetch organizations: ${response.status}`);
+            }
+
+            const organizations: Organization[] = await response.json();
+
+            // Respect persisted organization selection if available, otherwise prefer primary organization
+            const currentOrgId = get().currentOrganization?.id;
+            const currentOrg = selectBestOrganization(organizations, currentOrgId);
+
+            set({
+              organizations,
+              currentOrganization: currentOrg,
+              isLoading: false,
+              inflightOrgRequest: null,
+              lastOrgFetch: Date.now()
+            });
+
+            console.log('Organizations initialized:', {
+              total: organizations.length,
+              selected: currentOrg?.name,
+              isPrimary: currentOrg?.is_primary,
+              wasFromPersistence: !!currentOrgId && currentOrgId === currentOrg?.id
+            });
+
+            return organizations;
+          } catch (error) {
+            console.error('Failed to initialize organizations:', error);
+            set({ isLoading: false, inflightOrgRequest: null });
+            throw error;
+          }
+        })();
+
+        set({ inflightOrgRequest: request });
+        return request;
       },
 
       fetchUserOrganizations: async () => {
-        try {
-          set({ isLoading: true });
-
-          const response = await apiClient.get('/users/me/organizations');
-
-          if (!response.ok) {
-            throw new Error(`Failed to fetch organizations: ${response.status}`);
-          }
-
-          const organizations: Organization[] = await response.json();
-
-          // For regular fetches, preserve current selection if valid
-          const currentOrgId = get().currentOrganization?.id;
-          const currentOrg = selectBestOrganization(organizations, currentOrgId);
-
-          set({
-            organizations,
-            currentOrganization: currentOrg,
-            isLoading: false
-          });
-        } catch (error) {
-          console.error('Failed to fetch user organizations:', error);
-          set({ isLoading: false });
-          throw error;
-        }
+        // Just use initializeOrganizations which has deduplication
+        return get().initializeOrganizations();
       },
 
       createOrganization: async (orgData: CreateOrganizationRequest) => {
@@ -275,28 +289,54 @@ export const useOrganizationStore = create<OrganizationState>()(
 
       // Billing methods
       fetchBillingInfo: async (): Promise<BillingInfo | null> => {
-        try {
-          set({ billingLoading: true });
+        // Check if we have a recent fetch (within 10 seconds)
+        const now = Date.now();
+        const { lastBillingFetch, billingInfo, inflightBillingRequest } = get();
 
-          const response = await apiClient.get('/billing/subscription');
-
-          if (!response.ok) {
-            if (response.status === 400) {
-              // Billing not enabled (OSS mode)
-              set({ billingInfo: null, billingLoading: false });
-              return null;
-            }
-            throw new Error(`Failed to fetch billing info: ${response.status}`);
-          }
-
-          const billingInfo: BillingInfo = await response.json();
-          set({ billingInfo, billingLoading: false });
+        if (lastBillingFetch && (now - lastBillingFetch) < 10000 && billingInfo) {
+          console.log('Using cached billing info (fetched', Math.round((now - lastBillingFetch) / 1000), 'seconds ago)');
           return billingInfo;
-        } catch (error) {
-          console.error('Failed to fetch billing info:', error);
-          set({ billingLoading: false });
-          return null;
         }
+
+        // If there's already a request in flight, return it
+        if (inflightBillingRequest) {
+          console.log('Returning existing billing request');
+          return inflightBillingRequest;
+        }
+
+        // Create new request
+        const request = (async () => {
+          try {
+            set({ billingLoading: true });
+
+            const response = await apiClient.get('/billing/subscription');
+
+            if (!response.ok) {
+              if (response.status === 400) {
+                // Billing not enabled (OSS mode)
+                set({ billingInfo: null, billingLoading: false, inflightBillingRequest: null });
+                return null;
+              }
+              throw new Error(`Failed to fetch billing info: ${response.status}`);
+            }
+
+            const billingInfo: BillingInfo = await response.json();
+            set({
+              billingInfo,
+              billingLoading: false,
+              inflightBillingRequest: null,
+              lastBillingFetch: Date.now()
+            });
+            return billingInfo;
+          } catch (error) {
+            console.error('Failed to fetch billing info:', error);
+            set({ billingLoading: false, inflightBillingRequest: null });
+            return null;
+          }
+        })();
+
+        set({ inflightBillingRequest: request });
+        return request;
       },
 
       checkBillingStatus: async (): Promise<{ requiresAction: boolean; message?: string; redirectUrl?: string }> => {
@@ -357,14 +397,7 @@ export const useOrganizationStore = create<OrganizationState>()(
           return { requiresAction: false };
         }
 
-        // Check if trial expired
-        if (billingInfo.status === 'trial_expired') {
-          return {
-            requiresAction: true,
-            message: 'Your trial has expired. Please subscribe to continue using Airweave.',
-            redirectUrl: '/billing/setup'
-          };
-        }
+        // Trials disabled: no trial_expired state
 
         return { requiresAction: false };
       },

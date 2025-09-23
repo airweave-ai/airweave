@@ -34,7 +34,6 @@ from qdrant_client.local.local_collection import DEFAULT_VECTOR_NAME
 from airweave.core.config import settings
 from airweave.core.logging import ContextualLogger
 from airweave.core.logging import logger as default_logger
-from airweave.platform.auth.schemas import AuthType
 from airweave.platform.configs.auth import QdrantAuthConfig
 from airweave.platform.decorators import destination
 from airweave.platform.destinations._base import VectorDBDestination
@@ -44,7 +43,7 @@ from airweave.search.decay import DecayConfig
 KEYWORD_VECTOR_NAME = "bm25"
 
 
-@destination("Qdrant", "qdrant", AuthType.config_class, "QdrantAuthConfig", labels=["Vector"])
+@destination("Qdrant", "qdrant", config_class=QdrantAuthConfig, supports_vector=True)
 class QdrantDestination(VectorDBDestination):
     """Qdrant destination with legacy-compatible sparse querying + batch search."""
 

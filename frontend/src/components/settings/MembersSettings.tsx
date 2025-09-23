@@ -12,6 +12,7 @@ import {
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api';
+import { useUsageStore } from '@/lib/stores/usage';
 
 // Member interfaces
 interface Member {
@@ -53,6 +54,11 @@ export const MembersSettings = ({ currentOrganization }: MembersSettingsProps) =
   const [emailError, setEmailError] = useState('');
   const [emailValidationTimeout, setEmailValidationTimeout] = useState<NodeJS.Timeout | null>(null);
 
+  // Use usage store for team member limits
+  const actionChecks = useUsageStore(state => state.actionChecks);
+  const teamMembersAllowed = actionChecks.team_members?.allowed ?? true;
+  const teamMembersCheckDetails = actionChecks.team_members;
+
   // Fetch members and invitations on mount
   useEffect(() => {
     fetchMembersAndInvitations();
@@ -76,6 +82,8 @@ export const MembersSettings = ({ currentOrganization }: MembersSettingsProps) =
         setPendingInvitations(invitationsData);
       }
 
+      // Team member limits are now handled by the usage store
+
     } catch (error) {
       console.error('Failed to fetch members and invitations:', error);
       toast.error('Failed to load member data');
@@ -86,6 +94,16 @@ export const MembersSettings = ({ currentOrganization }: MembersSettingsProps) =
 
   const handleInvite = async () => {
     if (!inviteEmail || emailError) return;
+
+    // Check if team members are allowed
+    if (!teamMembersAllowed) {
+      const reason = teamMembersCheckDetails?.reason;
+      const message = reason === 'usage_limit_exceeded'
+        ? 'Team member limit reached for your plan. Upgrade to add more members.'
+        : 'Unable to invite team members at this time.';
+      toast.error(message);
+      return;
+    }
 
     try {
       setIsInviting(true);
@@ -267,6 +285,7 @@ export const MembersSettings = ({ currentOrganization }: MembersSettingsProps) =
 
   const isValidEmail = inviteEmail && !emailError;
   const canEdit = ['owner', 'admin'].includes(currentOrganization.role);
+  const atLimit = !teamMembersAllowed && teamMembersCheckDetails?.reason === 'usage_limit_exceeded';
 
   if (isLoading) {
     return (
@@ -279,13 +298,31 @@ export const MembersSettings = ({ currentOrganization }: MembersSettingsProps) =
 
   return (
     <div className="space-y-8">
+      {/* Team Members Usage */}
+      <div className="flex items-center justify-between">
+        <div className="text-xs text-muted-foreground">
+          Team members: <span className="font-medium text-foreground">{members.length}</span>
+          {teamMembersCheckDetails?.details?.limit ? (
+            <span className="text-muted-foreground"> / {teamMembersCheckDetails.details.limit}</span>
+          ) : (
+            <span className="text-muted-foreground"> / Unlimited</span>
+          )}
+        </div>
+        {atLimit && (
+          <Badge variant="secondary" className="text-[11px]">
+            Limit reached
+          </Badge>
+        )}
+      </div>
       {/* Invite Members */}
       {canEdit && (
         <div className="space-y-4">
           <div>
             <h3 className="text-sm font-medium text-foreground">Invite new member</h3>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Send an invitation to add a member to your organization
+              {atLimit
+                ? 'You have reached the member limit for your plan. Upgrade your plan to invite more.'
+                : 'Send an invitation to add a member to your organization'}
             </p>
           </div>
           <div className="space-y-3">
@@ -299,15 +336,20 @@ export const MembersSettings = ({ currentOrganization }: MembersSettingsProps) =
                   onBlur={handleEmailBlur}
                   className={cn(
                     "h-8 text-sm border-border focus:border-border transition-colors placeholder:text-muted-foreground/60",
-                    emailError && inviteEmail && "border-destructive/50"
+                    emailError && inviteEmail && "border-destructive/50",
+                    atLimit && "opacity-50 cursor-not-allowed"
                   )}
+                  disabled={atLimit}
                 />
                 {emailError && inviteEmail && (
                   <p className="text-xs text-destructive/80 mt-1">{emailError}</p>
                 )}
               </div>
               <Select value={inviteRole} onValueChange={setInviteRole}>
-                <SelectTrigger className="w-32 h-8 text-sm border-border focus:border-border transition-colors">
+                <SelectTrigger className={cn(
+                  "w-32 h-8 text-sm border-border focus:border-border transition-colors",
+                  atLimit && "opacity-50 cursor-not-allowed"
+                )}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -317,9 +359,14 @@ export const MembersSettings = ({ currentOrganization }: MembersSettingsProps) =
               </Select>
               <Button
                 onClick={handleInvite}
-                disabled={isInviting || !isValidEmail}
+                disabled={isInviting || !isValidEmail || atLimit}
                 size="sm"
-                className="h-8 px-4 text-sm bg-primary hover:bg-primary/90 text-white"
+                className={cn(
+                  "h-8 px-4 text-sm",
+                  atLimit
+                    ? "bg-muted text-muted-foreground cursor-not-allowed"
+                    : "bg-primary hover:bg-primary/90 text-white"
+                )}
               >
                 {isInviting ? (
                   <>

@@ -32,9 +32,9 @@ import { apiClient } from "@/lib/api";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { onCollectionEvent, COLLECTION_DELETED, COLLECTION_CREATED, COLLECTION_UPDATED } from "@/lib/events";
 import { APIKeysSettings } from "@/components/settings/APIKeysSettings";
-import { DialogFlow } from '@/components/shared';
 import { useCollectionsStore, useSourcesStore } from "@/lib/stores";
 import { useOrganizationStore } from "@/lib/stores/organizations";
+import { useUsageStore } from "@/lib/stores/usage";
 import { getStoredErrorDetails, clearStoredErrorDetails } from "@/lib/error-utils";
 import { BillingGuard } from "@/components/BillingGuard";
 import {
@@ -43,7 +43,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ActionCheckResponse } from "@/types";
+import { SingleActionCheckResponse } from "@/types";
+import { SidePanelFlow } from "@/components/shared/SidePanelFlow"; // Import the new SidePanel
+import { useSidePanelStore } from "@/lib/stores/sidePanelStore"; // Import the new store
+import { useCollectionCreationStore } from "@/stores/collectionCreationStore"; // Import collection creation store
+import { CollectionCreationModal } from "@/components/CollectionCreationModal"; // Import the modal
+import { UsageChecker } from "@/components/UsageChecker"; // App-level usage checker
 
 // Memoized Collections Section to prevent re-renders of the entire sidebar
 const CollectionsSection = memo(() => {
@@ -58,13 +63,6 @@ const CollectionsSection = memo(() => {
     const unsubscribe = useCollectionsStore.getState().subscribeToEvents();
     return unsubscribe;
   }, [fetchCollections]);
-
-  // Refetch collections when organization changes (for auto-switching)
-  useEffect(() => {
-    if (currentOrganization) {
-      fetchCollections(true); // Force refresh
-    }
-  }, [currentOrganization?.id, fetchCollections]);
 
   // Active status for nav items
   const isActive = useCallback((path: string) => {
@@ -196,22 +194,17 @@ const DashboardLayout = () => {
   const { resolvedTheme, setTheme } = useTheme();
   const { fetchSources } = useSourcesStore();
   const { currentOrganization } = useOrganizationStore();
+  const { openPanel } = useSidePanelStore(); // Get the function to open the panel
 
-  // State for the create collection dialog
-  const [showCreateCollectionFlow, setShowCreateCollectionFlow] = useState(false);
+  // Usage check from store
+  const checkActions = useUsageStore(state => state.checkActions);
+  const actionChecks = useUsageStore(state => state.actionChecks);
+  const isCheckingUsage = useUsageStore(state => state.isLoading);
 
-  // State for usage limits
-  const [collectionsAllowed, setCollectionsAllowed] = useState(true);
-  const [sourceConnectionsAllowed, setSourceConnectionsAllowed] = useState(true);
-  const [entitiesAllowed, setEntitiesAllowed] = useState(true);
-  const [syncsAllowed, setSyncsAllowed] = useState(true);
-  const [usageCheckDetails, setUsageCheckDetails] = useState<{
-    collections?: ActionCheckResponse | null;
-    source_connections?: ActionCheckResponse | null;
-    entities?: ActionCheckResponse | null;
-    syncs?: ActionCheckResponse | null;
-  }>({});
-  const [isCheckingUsage, setIsCheckingUsage] = useState(true);
+  // Derived states from usage store
+  const sourceConnectionsAllowed = actionChecks.source_connections?.allowed ?? true;
+  const entitiesAllowed = actionChecks.entities?.allowed ?? true;
+  const usageCheckDetails = actionChecks;
 
   // Add array of routes that should be non-scrollable
   const nonScrollableRoutes = ['/chat', '/chat/'];
@@ -220,87 +213,21 @@ const DashboardLayout = () => {
   const isNonScrollable = nonScrollableRoutes.some(route =>
     location.pathname === route || location.pathname.startsWith('/chat/'));
 
-  // Check if actions are allowed based on usage limits
-  const checkUsageActions = useCallback(async () => {
-    try {
-      // Check all four actions in parallel
-      const [collectionsRes, sourceConnectionsRes, entitiesRes, syncsRes] = await Promise.all([
-        apiClient.get('/usage/check-action?action=collections'),
-        apiClient.get('/usage/check-action?action=source_connections'),
-        apiClient.get('/usage/check-action?action=entities'),
-        apiClient.get('/usage/check-action?action=syncs')
-      ]);
-
-      const details: typeof usageCheckDetails = {};
-
-      if (collectionsRes.ok) {
-        const data: ActionCheckResponse = await collectionsRes.json();
-        setCollectionsAllowed(data.allowed);
-        details.collections = data;
-      }
-
-      if (sourceConnectionsRes.ok) {
-        const data: ActionCheckResponse = await sourceConnectionsRes.json();
-        setSourceConnectionsAllowed(data.allowed);
-        details.source_connections = data;
-      }
-
-      if (entitiesRes.ok) {
-        const data: ActionCheckResponse = await entitiesRes.json();
-        setEntitiesAllowed(data.allowed);
-        details.entities = data;
-      }
-
-      if (syncsRes.ok) {
-        const data: ActionCheckResponse = await syncsRes.json();
-        setSyncsAllowed(data.allowed);
-        details.syncs = data;
-      }
-
-      setUsageCheckDetails(details);
-    } catch (error) {
-      console.error('Failed to check usage actions:', error);
-      // Default to allowed on error to not block users
-      setCollectionsAllowed(true);
-      setSourceConnectionsAllowed(true);
-      setEntitiesAllowed(true);
-      setSyncsAllowed(true);
-    } finally {
-      setIsCheckingUsage(false);
-    }
-  }, []);
+  // Usage checking is now handled by UsageChecker component at app level
 
   const handleCreateCollection = useCallback(() => {
-    setShowCreateCollectionFlow(true);
+    // Use the modal instead of side panel for collection creation
+    const store = useCollectionCreationStore.getState();
+    store.openForCreateCollection();
   }, []);
 
-  const handleCreateCollectionComplete = useCallback(async () => {
-    setShowCreateCollectionFlow(false);
-    // Re-check usage limits after creating a collection
-    await checkUsageActions();
-  }, [checkUsageActions]);
-
-  // Check usage limits on mount
-  useEffect(() => {
-    checkUsageActions();
-  }, [checkUsageActions]);
-
-  // Re-check usage limits when organization changes
-  useEffect(() => {
-    if (currentOrganization) {
-      console.log(`🔄 [DashboardLayout] Organization changed to ${currentOrganization.name}, re-checking usage limits`);
-      checkUsageActions();
-    }
-  }, [currentOrganization?.id, checkUsageActions]);
+  // Usage limits are now checked by UsageChecker component
 
   // Memoize active status checks
   const isDashboardActive = useMemo(() =>
     location.pathname === "/",
     [location.pathname]);
 
-  const isWhiteLabelActive = useMemo(() =>
-    location.pathname.startsWith('/white-label'),
-    [location.pathname]);
 
   const isApiKeysActive = useMemo(() =>
     location.pathname === '/api-keys',
@@ -329,10 +256,10 @@ const DashboardLayout = () => {
                       onClick={handleCreateCollection}
                       variant="outline"
                       size="sm"
-                      disabled={!collectionsAllowed || !sourceConnectionsAllowed || !entitiesAllowed || !syncsAllowed || isCheckingUsage}
+                      disabled={!sourceConnectionsAllowed || !entitiesAllowed || isCheckingUsage}
                       className={cn(
                         "flex items-center justify-center w-[214px] gap-1.5 text-sm bg-background border rounded-lg py-2 hover:shadow-sm",
-                        (!collectionsAllowed || !sourceConnectionsAllowed || !entitiesAllowed || !syncsAllowed || isCheckingUsage)
+                        (!sourceConnectionsAllowed || !entitiesAllowed || isCheckingUsage)
                           ? "opacity-50 cursor-not-allowed text-muted-foreground border-border"
                           : "text-primary hover:bg-primary/15 border-primary/60 hover:text-primary font-medium transition-all duration-200"
                       )}
@@ -342,22 +269,10 @@ const DashboardLayout = () => {
                     </Button>
                   </span>
                 </TooltipTrigger>
-                {(!collectionsAllowed || !sourceConnectionsAllowed || !entitiesAllowed || !syncsAllowed) && (
+                {(!sourceConnectionsAllowed || !entitiesAllowed) && (
                   <TooltipContent className="max-w-xs">
                     <p className="text-xs">
-                      {!collectionsAllowed && usageCheckDetails.collections?.reason === 'usage_limit_exceeded' ? (
-                        <>
-                          Collection limit reached.{' '}
-                          <a
-                            href="/organization/settings?tab=billing"
-                            className="underline"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            Upgrade your plan
-                          </a>
-                          {' '}to create more collections.
-                        </>
-                      ) : !sourceConnectionsAllowed && usageCheckDetails.source_connections?.reason === 'usage_limit_exceeded' ? (
+                      {!sourceConnectionsAllowed && usageCheckDetails.source_connections?.reason === 'usage_limit_exceeded' ? (
                         <>
                           Source connection limit reached.{' '}
                           <a
@@ -380,18 +295,6 @@ const DashboardLayout = () => {
                             Upgrade your plan
                           </a>
                           {' '}to process more data.
-                        </>
-                      ) : !syncsAllowed && usageCheckDetails.syncs?.reason === 'usage_limit_exceeded' ? (
-                        <>
-                          Sync limit reached.{' '}
-                          <a
-                            href="/organization/settings?tab=billing"
-                            className="underline"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            Upgrade your plan
-                          </a>
-                          {' '}for more syncs.
                         </>
                       ) : (
                         'Unable to create collection at this time.'
@@ -439,16 +342,6 @@ const DashboardLayout = () => {
             </NavItem>
           </div>
 
-          {/* White Label moved outside Configure section */}
-          <div>
-            <NavItem
-              to="/white-label"
-              isActive={isWhiteLabelActive}
-              icon={<Tag className="mr-2 h-4 w-4 opacity-70 group-hover:opacity-100 transition-opacity" />}
-            >
-              White Label
-            </NavItem>
-          </div>
         </div>
       </ScrollArea>
 
@@ -457,12 +350,19 @@ const DashboardLayout = () => {
         <UserProfileDropdown />
       </div>
     </div>
-  ), [resolvedTheme, handleCreateCollection, isDashboardActive, isApiKeysActive, isAuthProvidersActive, isWhiteLabelActive, currentOrganization?.id, collectionsAllowed, sourceConnectionsAllowed, entitiesAllowed, syncsAllowed, isCheckingUsage, usageCheckDetails]);
+  ), [resolvedTheme, handleCreateCollection, isDashboardActive, isApiKeysActive, isAuthProvidersActive, currentOrganization?.id, sourceConnectionsAllowed, entitiesAllowed, isCheckingUsage, usageCheckDetails]);
 
   // Main component render
   return (
     <GradientBackground className="min-h-screen">
       <GradientCard className="h-full">
+        {/* Global usage checker - checks once at app level */}
+        <UsageChecker />
+
+        {/* Global modals and panels - available on all pages */}
+        <CollectionCreationModal />
+        <SidePanelFlow />
+
         <div className="flex h-screen overflow-hidden">
           {/* Mobile Menu Button */}
           <div className="lg:hidden fixed top-4 left-4 z-[30]">
@@ -527,7 +427,7 @@ const DashboardLayout = () => {
 
                     {/* Get a demo button */}
                     <a
-                      href="https://cal.com/lennert-airweave/airweave-q-a-demo"
+                      href="https://cal.com/lennert-airweave/airweave-demo"
                       target="_blank"
                       rel="noopener noreferrer"
                     >
@@ -535,7 +435,7 @@ const DashboardLayout = () => {
                         variant="outline"
                         className="hidden md:flex border-primary/60 border-[1px] text-primary/90 hover:bg-primary/10 hover:text-foreground/65 h-9 px-4 text-sm rounded-lg transition-all duration-200 hover:shadow-sm"
                       >
-                        Talk to a Founder
+                        Get a Demo
                       </Button>
                     </a>
 
@@ -633,17 +533,6 @@ const DashboardLayout = () => {
           </div>
         </div>
       </GradientCard>
-
-      {/* Conditionally render DialogFlow to unmount when not in use */}
-      {showCreateCollectionFlow && (
-        <DialogFlow
-          isOpen={showCreateCollectionFlow}
-          onOpenChange={setShowCreateCollectionFlow}
-          mode="create-collection"
-          dialogId="dashboard-layout-create-collection"
-          onComplete={handleCreateCollectionComplete}
-        />
-      )}
     </GradientBackground>
   );
 };

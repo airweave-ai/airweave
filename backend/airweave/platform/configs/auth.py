@@ -163,17 +163,36 @@ class AsanaAuthConfig(OAuth2WithRefreshAuthConfig):
 
 
 class BitbucketAuthConfig(AuthConfig):
-    """Bitbucket authentication credentials schema."""
+    """Bitbucket authentication credentials schema.
 
-    username: str = Field(
+    Supports either:
+    - access_token (Bearer) + workspace/repo_slug, or
+    - username + app_password (legacy Basic) + workspace/repo_slug
+    """
+
+    # New token-based auth
+    access_token: Optional[str] = Field(
+        default=None,
+        title="API Token",
+        description=(
+            "Bitbucket API token used as a Bearer token. Provide this to use token-based auth."
+        ),
+    )
+
+    # Legacy Basic auth (deprecated)
+    username: Optional[str] = Field(
+        default=None,
         title="Username",
-        description="Your Bitbucket username",
+        description="Your Bitbucket username (deprecated when using API token)",
     )
-    app_password: str = Field(
+    app_password: Optional[str] = Field(
+        default=None,
         title="App Password",
-        description="Bitbucket app password with repository read permissions",
+        description=("Bitbucket app password (deprecated). Prefer API tokens where available."),
     )
+
     workspace: str = Field(
+        default=None,
         title="Workspace",
         description="Bitbucket workspace slug (e.g., 'my-workspace')",
     )

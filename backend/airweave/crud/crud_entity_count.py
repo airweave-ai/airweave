@@ -59,6 +59,7 @@ class CRUDEntityCount(CRUDBaseOrganization[EntityCount, EntityCountCreate, Entit
                     else row.EntityDefinition.type
                 ),
                 entity_definition_description=row.EntityDefinition.description,
+                modified_at=row.EntityCount.modified_at,
             )
             for row in rows
         ]

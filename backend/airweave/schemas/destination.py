@@ -6,7 +6,6 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from airweave.platform.auth.schemas import AuthType
 from airweave.platform.configs._base import Fields
 
 
@@ -17,7 +16,6 @@ class DestinationBase(BaseModel):
     description: Optional[str] = None
     short_name: str
     class_name: str
-    auth_type: Optional[AuthType] = None
     auth_config_class: Optional[str] = None
     input_entity_definition_ids: Optional[List[UUID]] = None
     organization_id: Optional[UUID] = None

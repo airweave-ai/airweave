@@ -12,8 +12,9 @@ import {
   RequestConnectorButton,
 } from "@/components/dashboard";
 import { clearStoredErrorDetails, getStoredErrorDetails } from "@/lib/error-utils";
-import { DialogFlow } from "@/components/shared/DialogFlow";
+import { useCollectionCreationStore } from "@/stores/collectionCreationStore";
 import { useCollectionsStore, useSourcesStore } from "@/lib/stores";
+import { useUsageStore } from "@/lib/stores/usage";
 import { apiClient } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
@@ -22,7 +23,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ActionCheckResponse } from "@/types";
+import { SingleActionCheckResponse } from "@/types";
 
 // Collection type definition
 interface Collection {
@@ -39,6 +40,7 @@ interface Source {
   description?: string | null;
   short_name: string;
   labels?: string[];
+  auth_type?: string;
 }
 
 // Source Connection definition
@@ -69,76 +71,22 @@ const Dashboard = () => {
   // Use sources store
   const { sources, isLoading: isLoadingSources, fetchSources } = useSourcesStore();
 
-  // Dialog state
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [selectedSource, setSelectedSource] = useState<{ id: string; name: string; short_name: string } | null>(null);
 
-  // Error state for connection errors
-  const [connectionError, setConnectionError] = useState<any>(null);
-  const [errorDialogOpen, setErrorDialogOpen] = useState(false);
 
-  // State for usage limits
-  const [collectionsAllowed, setCollectionsAllowed] = useState(true);
-  const [sourceConnectionsAllowed, setSourceConnectionsAllowed] = useState(true);
-  const [entitiesAllowed, setEntitiesAllowed] = useState(true);
-  const [syncsAllowed, setSyncsAllowed] = useState(true);
-  const [usageCheckDetails, setUsageCheckDetails] = useState<{
-    collections?: ActionCheckResponse | null;
-    source_connections?: ActionCheckResponse | null;
-    entities?: ActionCheckResponse | null;
-    syncs?: ActionCheckResponse | null;
-  }>({});
-  const [isCheckingUsage, setIsCheckingUsage] = useState(true);
+  // Usage check from store
+  const checkActions = useUsageStore(state => state.checkActions);
+  const actionChecks = useUsageStore(state => state.actionChecks);
+  const isCheckingUsage = useUsageStore(state => state.isLoading);
 
-  // Check if actions are allowed based on usage limits
-  const checkUsageActions = useCallback(async () => {
-    try {
-      // Check all four actions in parallel
-      const [collectionsRes, sourceConnectionsRes, entitiesRes, syncsRes] = await Promise.all([
-        apiClient.get('/usage/check-action?action=collections'),
-        apiClient.get('/usage/check-action?action=source_connections'),
-        apiClient.get('/usage/check-action?action=entities'),
-        apiClient.get('/usage/check-action?action=syncs')
-      ]);
+  // Derived states from usage store
+  const sourceConnectionsAllowed = actionChecks.source_connections?.allowed ?? true;
+  const entitiesAllowed = actionChecks.entities?.allowed ?? true;
+  const usageCheckDetails = {
+    source_connections: actionChecks.source_connections ?? null,
+    entities: actionChecks.entities ?? null
+  };
 
-      const details: typeof usageCheckDetails = {};
-
-      if (collectionsRes.ok) {
-        const data: ActionCheckResponse = await collectionsRes.json();
-        setCollectionsAllowed(data.allowed);
-        details.collections = data;
-      }
-
-      if (sourceConnectionsRes.ok) {
-        const data: ActionCheckResponse = await sourceConnectionsRes.json();
-        setSourceConnectionsAllowed(data.allowed);
-        details.source_connections = data;
-      }
-
-      if (entitiesRes.ok) {
-        const data: ActionCheckResponse = await entitiesRes.json();
-        setEntitiesAllowed(data.allowed);
-        details.entities = data;
-      }
-
-      if (syncsRes.ok) {
-        const data: ActionCheckResponse = await syncsRes.json();
-        setSyncsAllowed(data.allowed);
-        details.syncs = data;
-      }
-
-      setUsageCheckDetails(details);
-    } catch (error) {
-      console.error('Failed to check usage actions:', error);
-      // Default to allowed on error to not block users
-      setCollectionsAllowed(true);
-      setSourceConnectionsAllowed(true);
-      setEntitiesAllowed(true);
-      setSyncsAllowed(true);
-    } finally {
-      setIsCheckingUsage(false);
-    }
-  }, []);
+  // Usage checking is now handled by UsageChecker component at app level
 
   // Check for connection errors on mount
   useEffect(() => {
@@ -147,8 +95,7 @@ const Dashboard = () => {
       const errorDetails = getStoredErrorDetails();
       if (errorDetails) {
         console.log("🔔 [Dashboard] Found stored error details:", errorDetails);
-        setConnectionError(errorDetails);
-        setErrorDialogOpen(true);
+        // TODO: Handle error display in new modal system
 
         // Clean up URL
         const newUrl = window.location.pathname;
@@ -180,10 +127,7 @@ const Dashboard = () => {
     };
   }, [fetchCollections, fetchSources]);
 
-  // Check usage limits on mount
-  useEffect(() => {
-    checkUsageActions();
-  }, [checkUsageActions]);
+  // Usage limits are now checked by UsageChecker component
 
 
   const handleRequestNewKey = () => {
@@ -192,72 +136,25 @@ const Dashboard = () => {
   };
 
   const handleSourceClick = (source: Source) => {
-    setSelectedSource(source);
-    setDialogOpen(true);
+    const store = useCollectionCreationStore.getState();
+    // Determine auth mode based on source
+    let authMode: 'oauth2' | 'direct_auth' | undefined;
+    if (source.auth_type?.startsWith('oauth2')) {
+      authMode = 'oauth2';
+    } else if (source.auth_type === 'api_key' || source.auth_type === 'basic') {
+      authMode = 'direct_auth';
+    }
+    // Use the new flow-specific method
+    store.openForCreateWithSource(source.short_name, source.name, authMode);
   };
 
 
-
-  // Handle dialog close
-  const handleDialogClose = async () => {
-    setDialogOpen(false);
-    setSelectedSource(null);
-    setConnectionError(null);
-    clearStoredErrorDetails(); // Ensure error data is cleared
-    // Refresh collections
-    fetchCollections();
-    // Re-check usage limits after potentially creating a collection
-    await checkUsageActions();
-  };
-
-  // Handle error dialog close
-  const handleErrorDialogClose = () => {
-    setErrorDialogOpen(false);
-    setConnectionError(null);
-    clearStoredErrorDetails();
-  };
 
   // Top 3 collections
   const topCollections = collections.slice(0, 3);
 
-  // Log when dialog open state changes
-  useEffect(() => {
-    console.log("🚪 Dashboard dialog open state:", dialogOpen);
-  }, [dialogOpen]);
-
-  // Modify the dialog open handler
-  const handleDialogOpen = (open: boolean) => {
-    console.log("🚪 Dashboard handleDialogOpen called with:", open);
-    setDialogOpen(open);
-  };
-
   return (
     <div className="mx-auto w-full max-w-[1800px] px-6 py-6 pb-8">
-      <DialogFlow
-        isOpen={dialogOpen}
-        onOpenChange={handleDialogOpen}
-        mode="source-button"
-        sourceId={selectedSource?.id}
-        sourceName={selectedSource?.name}
-        sourceShortName={selectedSource?.short_name}
-        dialogId="dashboard-source-dialog"
-        onComplete={() => {
-          // Handle completion
-          fetchCollections(false);
-        }}
-      />
-
-      {/* Error Dialog - for displaying errors from other pages */}
-      {connectionError && (
-        <DialogFlow
-          isOpen={errorDialogOpen}
-          onOpenChange={setErrorDialogOpen}
-          mode="source-button"
-          dialogId="dashboard-error-dialog"
-          errorData={connectionError}
-          onComplete={handleErrorDialogClose}
-        />
-      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Main content (left column) */}
@@ -329,12 +226,12 @@ const Dashboard = () => {
                       name={source.name}
                       shortName={source.short_name}
                       onClick={() => handleSourceClick(source)}
-                      disabled={!collectionsAllowed || !sourceConnectionsAllowed || !entitiesAllowed || !syncsAllowed || isCheckingUsage}
+                      disabled={!sourceConnectionsAllowed || !entitiesAllowed || isCheckingUsage}
                       usageCheckDetails={usageCheckDetails}
                     />
                   ))}
                   {/* Request Connector Button */}
-                  <RequestConnectorButton variant="dashboard" />
+                  <RequestConnectorButton />
                 </>
               )}
             </div>

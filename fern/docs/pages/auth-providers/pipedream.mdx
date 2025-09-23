@@ -96,7 +96,8 @@ Follow similar steps for Google Drive, GitHub, or other source integrations.
 To create source connections, you'll need these identifiers:
 
 1. **project_id**: Found in the URL when viewing your project (e.g., `proj_JPsD74a`)
-2. **account_id**: Retrieved via Pipedream API:
+2. **account_id**: Retrieved via Pipedream UI or API
+3. **external_user_id**: Retrieved via Pipedream UI or API
 
 ```bash
 curl -X GET "https://api.pipedream.com/v1/connect/{project_id}/accounts?include_credentials=true" \
@@ -116,15 +117,15 @@ from airweave import AirweaveSDK
 client = AirweaveSDK(api_key="YOUR_API_KEY")
 
 # Create a Notion connection using Pipedream credentials
-source_connection = client.source_connections.create_source_connection(
+source_connection = client.source_connections.create(
     name="Company Notion Workspace",
     short_name="notion",
-    auth_provider="my-pipedream-connection-xyz789",  # Your Pipedream connection ID
-    auth_provider_config={
+    provider_readable_id="my-pipedream-connection-xyz789",  # Your Pipedream connection ID
+    provider_config={
         "project_id": "proj_JPsD74a",      # From Pipedream
         "account_id": "apn_gyha5Ky",       # From Pipedream API
+        "external_user_id": "user123"      # Required: unique user identifier
         "environment": "production",        # Optional, defaults to "production"
-        "external_user_id": "user123"      # Optional, for user mapping
     }
 )
 
@@ -139,15 +140,15 @@ const client = new AirweaveSDKClient({
 });
 
 // Create a Notion connection using Pipedream credentials
-const sourceConnection = await client.sourceConnections.createSourceConnection({
+const sourceConnection = await client.sourceConnections.create({
   name: "Company Notion Workspace",
   shortName: "notion",
-  authProvider: "my-pipedream-connection-xyz789",  // Your Pipedream connection ID
-  authProviderConfig: {
+  providerReadableId: "my-pipedream-connection-xyz789",  // Your Pipedream connection ID
+  providerConfig: {
     project_id: "proj_JPsD74a",      // From Pipedream
     account_id: "apn_gyha5Ky",       // From Pipedream API
+    external_user_id: "user123"      // Required: unique user identifier
     environment: "production",      // Optional, defaults to "production"
-    external_user_id: "user123"      // Optional, for user mapping
   }
 });
 
@@ -161,8 +162,8 @@ curl -X POST 'https://app.airweave.ai/source-connections' \
   -d '{
   "name": "Company Notion Workspace",
   "short_name": "notion",
-  "auth_provider": "my-pipedream-connection-xyz789",
-  "auth_provider_config": {
+  "provider_readable_id": "my-pipedream-connection-xyz789",
+  "provider_config": {
     "project_id": "proj_JPsD74a",
     "account_id": "apn_gyha5Ky",
     "environment": "production",
@@ -201,7 +202,7 @@ sequenceDiagram
     You->>Airweave: Configure Pipedream auth provider
     Note over You,Airweave: Uses your Pipedream OAuth client
     You->>Airweave: POST /source-connections
-    Note over You,Airweave: auth_provider: "pipedream-prod-xyz789"<br/>project_id: "proj_JPsD74a"<br/>account_id: "apn_gyha5Ky"
+    Note over You,Airweave: provider_readable_id: "pipedream-prod-xyz789"<br/>project_id: "proj_JPsD74a"<br/>account_id: "apn_gyha5Ky"
 
     Note over You,Notion: Sync data (Runtime)
     You->>Airweave: Trigger sync
@@ -239,6 +240,10 @@ Pipedream OAuth tokens have specific characteristics:
 - **Auto-refresh**: Airweave refreshes tokens 5 minutes before expiry
 - **Concurrency**: Token refresh is thread-safe with async locks
 - **Grant Type**: Uses `client_credentials` flow
+
+## Proxy Authentication
+
+When you connect accounts using Pipedream's default OAuth clients, credentials aren't directly exposed for security reasons. Instead, Airweave automatically routes API requests through [Pipedream's proxy endpoint](https://pipedream.com/docs/connect/api-proxy), where the actual credentials are injected server-side. This happens transparently - sources continue using the same HTTP client interface whether they're accessing credentials directly (custom OAuth) or through the proxy (default OAuth). The system automatically detects which mode to use based on the OAuth client type, ensuring your data syncs work seamlessly regardless of how the account was connected in Pipedream.
 
 ## Troubleshooting
 
@@ -288,14 +293,15 @@ from airweave import AirweaveSDK
 
 client = AirweaveSDK(api_key="YOUR_API_KEY")
 
-source_connection = client.source_connections.create_source_connection(
+source_connection = client.source_connections.create(
     name="Team Notion",
     short_name="notion",
-    auth_provider="pipedream-connection-id",
-    auth_provider_config={
+    provider_readable_id="pipedream-connection-id",
+    provider_config={
         "project_id": "proj_JPsD74a",
         "account_id": "apn_gyha5Ky",
-        "environment": "production"
+        "external_user_id": "user123",
+        "environment": "production"         # Optional, defaults to "production"
     }
 )
 ```
@@ -307,14 +313,15 @@ const client = new AirweaveSDKClient({
   apiKey: "YOUR_API_KEY"
 });
 
-const sourceConnection = await client.sourceConnections.createSourceConnection({
+const sourceConnection = await client.sourceConnections.create({
   name: "Team Notion",
   shortName: "notion",
-  authProvider: "pipedream-connection-id",
-  authProviderConfig: {
+  providerReadableId: "pipedream-connection-id",
+  providerConfig: {
     projectId: "proj_JPsD74a",
     accountId: "apn_gyha5Ky",
-    environment: "production"
+    externalUserId: "user123",
+    environment: "production"      // Optional, defaults to "production"
   }
 });
 ```
@@ -326,10 +333,11 @@ curl -X POST 'https://app.airweave.ai/source-connections' \
   -d '{
   "name": "Team Notion",
   "short_name": "notion",
-  "auth_provider": "pipedream-connection-id",
-  "auth_provider_config": {
+  "provider_readable_id": "pipedream-connection-id",
+  "provider_config": {
     "project_id": "proj_JPsD74a",
     "account_id": "apn_gyha5Ky",
+    "external_user_id": "user123",
     "environment": "production"
   }
 }'

@@ -4,7 +4,7 @@ import asyncio
 import base64
 import time
 import uuid
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import httpx
 from monke.bongos.base_bongo import BaseBongo
@@ -23,19 +23,32 @@ class BitbucketBongo(BaseBongo):
         """Initialize the Bitbucket bongo.
 
         Args:
-            credentials: Bitbucket credentials with username and app_password
+            credentials: Bitbucket credentials with either:
+              - username + app_password (Basic auth), or
+              - access_token/token/generic_api_key (Bearer token)
             **kwargs: Additional configuration (e.g., entity_count, workspace, repo)
         """
         super().__init__(credentials)
-        self.username = credentials["username"]
-        self.app_password = credentials["app_password"]
+        # Support both Basic and Bearer auth
+        self.username: Optional[str] = credentials.get("username")
+        self.app_password: Optional[str] = credentials.get("app_password")
+        self.access_token: Optional[str] = (
+            credentials.get("access_token")
+            or credentials.get("token")
+            or credentials.get("generic_api_key")
+        )
 
         # Configuration from kwargs
-        self.entity_count = kwargs.get('entity_count', 10)
-        self.workspace = kwargs.get('workspace', self.username)  # Default to username
-        self.repo_slug = kwargs.get('repo_slug', 'monke-test-repo')
-        self.branch = kwargs.get('branch', 'main')
-        self.openai_model = kwargs.get('openai_model', 'gpt-5')
+        self.entity_count = kwargs.get("entity_count", 10)
+        self.workspace = kwargs.get("workspace", self.username)  # Default to username
+        self.repo_slug = kwargs.get("repo_slug", "monke-test-repo")
+        self.branch = kwargs.get("branch", "main")
+        self.openai_model = kwargs.get("openai_model", "gpt-5")
+
+        if not self.workspace:
+            raise ValueError(
+                "workspace is required (set config_fields.workspace or provide username)"
+            )
 
         # Test data tracking
         self.test_files = []
@@ -46,6 +59,22 @@ class BitbucketBongo(BaseBongo):
 
         # Logger
         self.logger = get_logger("bitbucket_bongo")
+
+    def _auth_headers(self, extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+        """Build Authorization headers based on available credentials."""
+        headers: Dict[str, str] = {"Accept": "application/json"}
+        print(f"access_token: {self.access_token}")
+        if self.access_token:
+            print(f"access_token: {self.access_token}")
+            headers["Authorization"] = f"Bearer {self.access_token}"
+        elif self.username and self.app_password:
+            basic = base64.b64encode(
+                f"{self.username}:{self.app_password}".encode()
+            ).decode()
+            headers["Authorization"] = f"Basic {basic}"
+        if extra:
+            headers.update(extra)
+        return headers
 
     async def create_entities(self) -> List[Dict[str, Any]]:
         """Create test files in Bitbucket."""
@@ -70,15 +99,17 @@ class BitbucketBongo(BaseBongo):
             # Create file
             await self._create_test_file(filepath, content)
 
-            entities.append({
-                "type": "file",
-                "path": filepath,
-                "workspace": self.workspace,
-                "repo": self.repo_slug,
-                "file_type": file_type,
-                "token": token,
-                "expected_content": token,
-            })
+            entities.append(
+                {
+                    "type": "file",
+                    "path": filepath,
+                    "workspace": self.workspace,
+                    "repo": self.repo_slug,
+                    "file_type": file_type,
+                    "token": token,
+                    "expected_content": token,
+                }
+            )
 
             self.logger.info(f"📄 Created test file: {filepath}")
 
@@ -96,7 +127,10 @@ class BitbucketBongo(BaseBongo):
 
         # Update a subset of files based on configuration
         from monke.generation.bitbucket import generate_bitbucket_artifact
-        files_to_update = min(3, self.entity_count)  # Update max 3 files for any test size
+
+        files_to_update = min(
+            3, self.entity_count
+        )  # Update max 3 files for any test size
 
         for i in range(files_to_update):
             if i < len(self.test_files):
@@ -112,16 +146,18 @@ class BitbucketBongo(BaseBongo):
                 # Update file
                 await self._update_test_file(file_info["path"], content)
 
-                updated_entities.append({
-                    "type": "file",
-                    "path": file_info["path"],
-                    "workspace": self.workspace,
-                    "repo": self.repo_slug,
-                    "file_type": file_type,
-                    "token": token,
-                    "expected_content": token,
-                    "updated": True,
-                })
+                updated_entities.append(
+                    {
+                        "type": "file",
+                        "path": file_info["path"],
+                        "workspace": self.workspace,
+                        "repo": self.repo_slug,
+                        "file_type": file_type,
+                        "token": token,
+                        "expected_content": token,
+                        "updated": True,
+                    }
+                )
 
                 self.logger.info(f"📝 Updated test file: {file_info['path']}")
 
@@ -138,7 +174,9 @@ class BitbucketBongo(BaseBongo):
         # Use the specific deletion method to delete all entities
         return await self.delete_specific_entities(self.created_entities)
 
-    async def delete_specific_entities(self, entities: List[Dict[str, Any]]) -> List[str]:
+    async def delete_specific_entities(
+        self, entities: List[Dict[str, Any]]
+    ) -> List[str]:
         """Delete specific entities from Bitbucket."""
         self.logger.info(f"🥁 Deleting {len(entities)} specific files from Bitbucket")
 
@@ -147,24 +185,33 @@ class BitbucketBongo(BaseBongo):
         for entity in entities:
             try:
                 # Find the corresponding test file
-                test_file = next((tf for tf in self.test_files if tf["path"] == entity.get("path")), None)
+                test_file = next(
+                    (tf for tf in self.test_files if tf["path"] == entity.get("path")),
+                    None,
+                )
 
                 if test_file:
                     await self._delete_test_file(test_file["path"])
                     deleted_paths.append(test_file["path"])
                     self.logger.info(f"🗑️ Deleted test file: {test_file['path']}")
                 else:
-                    self.logger.warning(f"⚠️ Could not find test file for entity: {entity.get('path')}")
+                    self.logger.warning(
+                        f"⚠️ Could not find test file for entity: {entity.get('path')}"
+                    )
 
                 # Rate limiting
                 if len(entities) > 10:
                     await asyncio.sleep(0.5)
 
             except Exception as e:
-                self.logger.warning(f"⚠️ Could not delete entity {entity.get('path')}: {e}")
+                self.logger.warning(
+                    f"⚠️ Could not delete entity {entity.get('path')}: {e}"
+                )
 
         # VERIFICATION: Check if files are actually deleted
-        self.logger.info("🔍 VERIFYING: Checking if files are actually deleted from Bitbucket")
+        self.logger.info(
+            "🔍 VERIFYING: Checking if files are actually deleted from Bitbucket"
+        )
         for entity in entities:
             path = entity.get("path")
             if path and path in deleted_paths:
@@ -193,15 +240,10 @@ class BitbucketBongo(BaseBongo):
         await self._rate_limit()
 
         # Check if repo exists
-        auth = base64.b64encode(f"{self.username}:{self.app_password}".encode()).decode()
-
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"https://api.bitbucket.org/2.0/repositories/{self.workspace}/{self.repo_slug}",
-                headers={
-                    "Authorization": f"Basic {auth}",
-                    "Accept": "application/json"
-                }
+                headers=self._auth_headers(),
             )
 
             if response.status_code == 404:
@@ -209,82 +251,72 @@ class BitbucketBongo(BaseBongo):
                 self.logger.info(f"📁 Creating test repository: {self.repo_slug}")
                 response = await client.post(
                     f"https://api.bitbucket.org/2.0/repositories/{self.workspace}/{self.repo_slug}",
-                    headers={
-                        "Authorization": f"Basic {auth}",
-                        "Accept": "application/json",
-                        "Content-Type": "application/json"
-                    },
+                    headers=self._auth_headers({"Content-Type": "application/json"}),
                     json={
                         "scm": "git",
                         "is_private": True,
-                        "description": "Temporary repository for Monke testing"
-                    }
+                        "description": "Temporary repository for Monke testing",
+                    },
                 )
 
                 if response.status_code not in [200, 201]:
-                    raise Exception(f"Failed to create repository: {response.status_code} - {response.text}")
+                    raise Exception(
+                        f"Failed to create repository: {response.status_code} - {response.text}"
+                    )
 
             elif response.status_code == 200:
                 self.logger.info(f"📁 Using existing repository: {self.repo_slug}")
             else:
-                raise Exception(f"Failed to check repository: {response.status_code} - {response.text}")
+                raise Exception(
+                    f"Failed to check repository: {response.status_code} - {response.text}"
+                )
 
     async def _create_test_file(self, filepath: str, content: str):
         """Create a test file via Bitbucket API."""
         await self._rate_limit()
 
-        auth = base64.b64encode(f"{self.username}:{self.app_password}".encode()).decode()
-
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"https://api.bitbucket.org/2.0/repositories/{self.workspace}/{self.repo_slug}/src",
-                headers={
-                    "Authorization": f"Basic {auth}",
-                    "Accept": "application/json"
-                },
+                headers=self._auth_headers(),
                 data={
                     filepath: content,
                     "message": f"Add monke test file: {filepath}",
-                    "branch": self.branch
-                }
+                    "branch": self.branch,
+                },
             )
 
             if response.status_code not in [200, 201]:
-                raise Exception(f"Failed to create file: {response.status_code} - {response.text}")
+                raise Exception(
+                    f"Failed to create file: {response.status_code} - {response.text}"
+                )
 
             # Track created file
-            self.created_entities.append({
-                "path": filepath
-            })
+            self.created_entities.append({"path": filepath})
 
     async def _update_test_file(self, filepath: str, new_content: str):
         """Update a test file via Bitbucket API."""
         await self._rate_limit()
 
-        auth = base64.b64encode(f"{self.username}:{self.app_password}".encode()).decode()
-
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"https://api.bitbucket.org/2.0/repositories/{self.workspace}/{self.repo_slug}/src",
-                headers={
-                    "Authorization": f"Basic {auth}",
-                    "Accept": "application/json"
-                },
+                headers=self._auth_headers(),
                 data={
                     filepath: new_content,
                     "message": f"Update monke test file: {filepath}",
-                    "branch": self.branch
-                }
+                    "branch": self.branch,
+                },
             )
 
             if response.status_code not in [200, 201]:
-                raise Exception(f"Failed to update file: {response.status_code} - {response.text}")
+                raise Exception(
+                    f"Failed to update file: {response.status_code} - {response.text}"
+                )
 
     async def _delete_test_file(self, filepath: str):
         """Delete a test file via Bitbucket API."""
         await self._rate_limit()
-
-        auth = base64.b64encode(f"{self.username}:{self.app_password}".encode()).decode()
 
         # Bitbucket doesn't have a direct delete API, so we update with empty content
         # and a delete commit message
@@ -293,31 +325,26 @@ class BitbucketBongo(BaseBongo):
             # We'll use the src endpoint with files parameter
             response = await client.post(
                 f"https://api.bitbucket.org/2.0/repositories/{self.workspace}/{self.repo_slug}/src",
-                headers={
-                    "Authorization": f"Basic {auth}",
-                    "Accept": "application/json"
-                },
+                headers=self._auth_headers(),
                 data={
                     "files": filepath,
                     "message": f"Delete monke test file: {filepath}",
-                    "branch": self.branch
-                }
+                    "branch": self.branch,
+                },
             )
 
             if response.status_code not in [200, 201, 204]:
-                self.logger.warning(f"Could not delete file via API: {response.status_code}")
+                self.logger.warning(
+                    f"Could not delete file via API: {response.status_code}"
+                )
 
     async def _verify_file_deleted(self, filepath: str) -> bool:
         """Verify if a file is actually deleted from Bitbucket."""
         try:
-            auth = base64.b64encode(f"{self.username}:{self.app_password}".encode()).decode()
-
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     f"https://api.bitbucket.org/2.0/repositories/{self.workspace}/{self.repo_slug}/src/{self.branch}/{filepath}",
-                    headers={
-                        "Authorization": f"Basic {auth}"
-                    }
+                    headers=self._auth_headers(),
                 )
 
                 if response.status_code == 404:
@@ -328,7 +355,9 @@ class BitbucketBongo(BaseBongo):
                     return False
                 else:
                     # Unexpected response
-                    self.logger.warning(f"⚠️ Unexpected response checking {filepath}: {response.status_code}")
+                    self.logger.warning(
+                        f"⚠️ Unexpected response checking {filepath}: {response.status_code}"
+                    )
                     return False
 
         except Exception as e:

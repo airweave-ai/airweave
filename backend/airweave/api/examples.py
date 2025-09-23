@@ -108,21 +108,103 @@ SOURCE_CONNECTION_LIST_EXAMPLES = {
         "modified_at": "2024-01-15T14:22:15Z",
         "sync_id": "123e4567-e89b-12d3-a456-426614174000",
         "collection": "engineering-docs-ab123",
-        "white_label_id": None,
     },
-    "white_label_slack": {
-        "id": "white123-4567-89ab-cdef-012345678901",
-        "name": "Customer Slack Workspace",
-        "description": (
-            "Team communications and project discussions from customer's Slack workspace"
-        ),
+    "slack_workspace": {
+        "id": "660f9511-f39c-52e5-b827-557766551111",
+        "name": "Slack - Company Workspace",
+        "description": "Sync messages and threads from company Slack channels",
         "short_name": "slack",
         "status": "active",
-        "created_at": "2024-01-16T10:15:00Z",
-        "modified_at": "2024-01-16T10:15:00Z",
-        "sync_id": "wl456789-abcd-ef01-2345-67890abcdef1",
-        "collection": "customer-communications-xy789",
-        "white_label_id": "wl123456-789a-bcde-f012-345678901234",
+        "created_at": "2024-01-10T11:00:00Z",
+        "modified_at": "2024-01-16T08:15:30Z",
+        "sync_id": "234f5678-f90c-23e4-b567-537725285111",
+        "collection": "slack-workspace-cd456",
+    },
+    "google_drive": {
+        "id": "770g0622-g40d-63f6-c938-668877662222",
+        "name": "Google Drive - Product Docs",
+        "description": "Sync product documentation from shared Google Drive folders",
+        "short_name": "google_drive",
+        "status": "active",
+        "created_at": "2024-01-12T13:45:00Z",
+        "modified_at": "2024-01-17T10:30:45Z",
+        "sync_id": "345g6789-g01d-34f5-c678-648836396222",
+        "collection": "product-docs-ef789",
+    },
+}
+
+# OAuth flow examples for source connections
+SOURCE_CONNECTION_OAUTH_EXAMPLES = {
+    "oauth_init_response": {
+        "authentication_url": "https://api.airweave.ai/source-connections/authorize/a1b2c3d4",
+        "authentication_url_expiry": "2024-01-15T14:30:00Z",
+        "source_connection": {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "name": "Slack - Company Workspace",
+            "short_name": "slack",
+            "status": "pending_auth",
+            "collection": "slack-workspace-cd456",
+            "created_at": "2024-01-15T14:00:00Z",
+        },
+    },
+    "oauth_callback_redirect": {
+        "status_code": 302,
+        "headers": {
+            "Location": "https://app.airweave.ai/connections?status=sync_started&source_connection_id=550e8400-e29b-41d4-a716-446655440000&collection=slack-workspace-cd456&sync_job_id=987fcdeb-51a2-43d7-8f3e-1234567890ab"
+        },
+        "description": "Redirect to app with connection and sync status",
+    },
+    "oauth_authorize_redirect": {
+        "status_code": 302,
+        "headers": {
+            "Location": "https://slack.com/oauth/v2/authorize?client_id=YOUR_CLIENT_ID&scope=channels:read,chat:write&redirect_uri=https://api.airweave.ai/source-connections/callback&state=SECURE_STATE_TOKEN"
+        },
+        "description": "Redirect to OAuth provider for user consent",
+    },
+}
+
+# Source connection create examples
+SOURCE_CONNECTION_CREATE_EXAMPLES = {
+    "oauth_flow": {
+        "name": "Slack - Company Workspace",
+        "short_name": "slack",
+        "collection": "slack-workspace-cd456",
+        "config_fields": {
+            "workspace_name": "company-workspace",
+            "channels": ["general", "engineering", "product"],
+            "include_private_channels": False,
+        },
+        "auth_mode": "oauth",
+        "sync_immediately": True,
+        "redirect_url": "https://app.airweave.ai/connections",
+    },
+    "api_key_flow": {
+        "name": "GitHub - Engineering Repos",
+        "short_name": "github",
+        "collection": "engineering-docs-ab123",
+        "config_fields": {
+            "repo_name": "company/main-repo",
+            "include_issues": True,
+            "include_pull_requests": True,
+        },
+        "auth_fields": {
+            "personal_access_token": "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        },
+        "auth_mode": "manual",
+        "sync_immediately": True,
+    },
+    "token_inject_flow": {
+        "name": "Google Drive - Product Docs",
+        "short_name": "google_drive",
+        "collection": "product-docs-ef789",
+        "config_fields": {
+            "folder_ids": ["1A2B3C4D5E6F", "7G8H9I0J1K2L"],
+            "include_shared_drives": True,
+        },
+        "auth_mode": "token_inject",
+        "access_token": "ya29.a0AfH6SMBxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "refresh_token": "1//0gxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "sync_immediately": False,
     },
 }
 
@@ -179,24 +261,6 @@ COLLECTION_EXAMPLES = {
         "created_by_email": "admin@company.com",
         "modified_by_email": "finance@company.com",
         "status": "ACTIVE",
-    },
-}
-
-# White label examples for different source types
-WHITE_LABEL_EXAMPLES = {
-    "github_integration": {
-        "id": "white789-0abc-def0-1234-567890abcdef",
-        "name": "Support Team GitHub Integration",
-        "source_short_name": "github",
-        "redirect_url": "https://support.yoursite.com/integrations/github/callback",
-        "client_id": "Iv1.a1b2c3d4e5f6g7h8",
-        "client_secret": "1234567890abcdef1234567890abcdef12345678",
-        "allowed_origins": "https://support.yoursite.com,https://internal.yoursite.com",
-        "organization_id": "org12345-6789-abcd-ef01-234567890abc",
-        "created_at": "2024-01-05T16:45:00Z",
-        "modified_at": "2024-01-14T10:20:00Z",
-        "created_by_email": "support@company.com",
-        "modified_by_email": "admin@company.com",
     },
 }
 
@@ -515,28 +579,6 @@ def create_collection_list_response(collection_types: list, summary: str):
     }
 
 
-def create_white_label_list_response(white_label_types: list, summary: str):
-    """Create a white label list response example with multiple white label integrations."""
-    return {
-        "200": {
-            "description": "Successful Response",
-            "content": {
-                "application/json": {
-                    "examples": {
-                        "white_labels_list": {
-                            "summary": summary,
-                            "value": [
-                                WHITE_LABEL_EXAMPLES[white_label_type]
-                                for white_label_type in white_label_types
-                            ],
-                        }
-                    }
-                }
-            },
-        }
-    }
-
-
 def create_search_response(response_type: str, summary: str):
     """Create a search response example."""
     return {
@@ -553,4 +595,46 @@ def create_search_response(response_type: str, summary: str):
                 }
             },
         }
+    }
+
+
+def create_source_connection_create_examples():
+    """Create source connection creation request examples."""
+    return {
+        "oauth_flow": {
+            "summary": "OAuth Flow - Slack Connection",
+            "description": "Create a Slack connection using OAuth authentication",
+            "value": SOURCE_CONNECTION_CREATE_EXAMPLES["oauth_flow"],
+        },
+        "api_key_flow": {
+            "summary": "API Key Flow - GitHub Connection",
+            "description": "Create a GitHub connection using personal access token",
+            "value": SOURCE_CONNECTION_CREATE_EXAMPLES["api_key_flow"],
+        },
+        "token_inject_flow": {
+            "summary": "Token Inject Flow - Google Drive",
+            "description": "Create a Google Drive connection with pre-obtained tokens",
+            "value": SOURCE_CONNECTION_CREATE_EXAMPLES["token_inject_flow"],
+        },
+    }
+
+
+def create_oauth_response_examples():
+    """Create OAuth flow response examples."""
+    return {
+        "oauth_init": {
+            "summary": "OAuth Initialization Response",
+            "description": "Response when initiating OAuth flow with authentication URL",
+            "value": SOURCE_CONNECTION_OAUTH_EXAMPLES["oauth_init_response"],
+        },
+        "oauth_callback": {
+            "summary": "OAuth Callback Redirect",
+            "description": "Redirect response after successful OAuth callback",
+            "value": SOURCE_CONNECTION_OAUTH_EXAMPLES["oauth_callback_redirect"],
+        },
+        "oauth_authorize": {
+            "summary": "OAuth Provider Redirect",
+            "description": "Redirect to OAuth provider for user consent",
+            "value": SOURCE_CONNECTION_OAUTH_EXAMPLES["oauth_authorize_redirect"],
+        },
     }

@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { Button } from "@/components/ui/button";
 import { DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { DialogViewProps } from "../DialogFlow";
+import type { DialogViewProps } from "@/components/types/dialog";
 import { useTheme } from "@/lib/theme-provider";
 import { cn } from "@/lib/utils";
 import { apiClient } from "@/lib/api";

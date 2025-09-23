@@ -6,9 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from airweave.platform.auth.schemas import AuthType
-from airweave.platform.configs._base import Fields
-from airweave.schemas.source_connection import ConfigValues
+from airweave.platform.configs._base import ConfigValues, Fields
 
 
 class AuthProviderBase(BaseModel):
@@ -38,10 +36,6 @@ class AuthProviderBase(BaseModel):
     config_class: str = Field(
         ...,
         description="Python class name that defines the auth provider-specific configuration",
-    )
-    auth_type: AuthType = Field(
-        ...,
-        description="Type of authentication mechanism used by this provider",
     )
     description: Optional[str] = Field(
         None,

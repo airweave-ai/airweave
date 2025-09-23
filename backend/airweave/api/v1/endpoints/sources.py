@@ -39,29 +39,24 @@ async def read(
         if not source:
             raise HTTPException(status_code=404, detail=f"Source not found: {short_name}")
 
-        # Validate auth_config_class
-        if not source.auth_config_class:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Source {short_name} does not have authentication configuration",
-            )
-
-        # Validate config_class
+        # Config class is always required
         if not source.config_class:
             raise HTTPException(
                 status_code=400,
                 detail=f"Source {short_name} does not have a configuration class",
             )
 
-        # Get auth fields
-        try:
-            auth_config_class = resource_locator.get_auth_config(source.auth_config_class)
-            auth_fields = Fields.from_config_class(auth_config_class)
-        except Exception as e:
-            ctx.logger.error(f"Failed to get auth config for {short_name}: {str(e)}")
-            raise HTTPException(
-                status_code=500, detail=f"Invalid auth configuration for source {short_name}"
-            ) from e
+        # Auth fields - only for sources with auth_config_class (DIRECT auth)
+        auth_fields = Fields(fields=[])
+        if source.auth_config_class:
+            try:
+                auth_config_class = resource_locator.get_auth_config(source.auth_config_class)
+                auth_fields = Fields.from_config_class(auth_config_class)
+            except Exception as e:
+                ctx.logger.error(f"Failed to get auth config for {short_name}: {str(e)}")
+                raise HTTPException(
+                    status_code=500, detail=f"Invalid auth configuration for source {short_name}"
+                ) from e
 
         # Get config fields
         try:
@@ -128,22 +123,27 @@ async def list(
 
     for source in sources:
         try:
-            # Strict validation for both config classes
-            if not source.auth_config_class:
-                invalid_sources.append(f"{source.short_name} (missing auth_config_class)")
-                continue
-
+            # Config class is always required
             if not source.config_class:
                 invalid_sources.append(f"{source.short_name} (missing config_class)")
                 continue
 
-            # Get authentication configuration class
-            try:
-                auth_config_class = resource_locator.get_auth_config(source.auth_config_class)
-                auth_fields = Fields.from_config_class(auth_config_class)
-            except AttributeError as e:
-                invalid_sources.append(f"{source.short_name} (invalid auth_config_class: {str(e)})")
-                continue
+            # Auth config class is only required for sources with DIRECT auth
+            # OAuth sources don't have auth_config_class
+            auth_fields = None
+            if source.auth_config_class:
+                # Get authentication configuration class if it exists
+                try:
+                    auth_config_class = resource_locator.get_auth_config(source.auth_config_class)
+                    auth_fields = Fields.from_config_class(auth_config_class)
+                except AttributeError as e:
+                    invalid_sources.append(
+                        f"{source.short_name} (invalid auth_config_class: {str(e)})"
+                    )
+                    continue
+            else:
+                # For OAuth sources, auth_fields is None (handled by OAuth flow)
+                auth_fields = Fields(fields=[])
 
             # Get configuration class
             try:

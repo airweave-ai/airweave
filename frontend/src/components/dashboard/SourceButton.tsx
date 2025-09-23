@@ -9,7 +9,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ActionCheckResponse } from "@/types";
+import { SingleActionCheckResponse } from "@/types";
 
 interface SourceButtonProps {
   id: string;
@@ -18,10 +18,8 @@ interface SourceButtonProps {
   onClick?: () => void;
   disabled?: boolean;
   usageCheckDetails?: {
-    collections?: ActionCheckResponse | null;
-    source_connections?: ActionCheckResponse | null;
-    entities?: ActionCheckResponse | null;
-    syncs?: ActionCheckResponse | null;
+    source_connections?: SingleActionCheckResponse | null;
+    entities?: SingleActionCheckResponse | null;
   };
 }
 
@@ -68,23 +66,9 @@ export const SourceButton = ({ id, name, shortName, onClick, disabled, usageChec
   const getTooltipContent = () => {
     if (!usageCheckDetails || !disabled) return null;
 
-    const { collections, source_connections, entities, syncs } = usageCheckDetails;
+    const { source_connections, entities } = usageCheckDetails;
 
-    if (collections && !collections.allowed && collections.reason === 'usage_limit_exceeded') {
-      return (
-        <>
-          Collection limit reached.{' '}
-          <a
-            href="/organization/settings?tab=billing"
-            className="underline"
-            onClick={(e) => e.stopPropagation()}
-          >
-            Upgrade your plan
-          </a>
-          {' '}to create more collections.
-        </>
-      );
-    } else if (source_connections && !source_connections.allowed && source_connections.reason === 'usage_limit_exceeded') {
+    if (source_connections && !source_connections.allowed && source_connections.reason === 'usage_limit_exceeded') {
       return (
         <>
           Source connection limit reached.{' '}
@@ -110,20 +94,6 @@ export const SourceButton = ({ id, name, shortName, onClick, disabled, usageChec
             Upgrade your plan
           </a>
           {' '}to process more data.
-        </>
-      );
-    } else if (syncs && !syncs.allowed && syncs.reason === 'usage_limit_exceeded') {
-      return (
-        <>
-          Sync limit reached.{' '}
-          <a
-            href="/organization/settings?tab=billing"
-            className="underline"
-            onClick={(e) => e.stopPropagation()}
-          >
-            Upgrade your plan
-          </a>
-          {' '}for more syncs.
         </>
       );
     }

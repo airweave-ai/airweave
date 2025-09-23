@@ -16,7 +16,7 @@ class SyncJobStatus(str, Enum):
 
     CREATED = "created"
     PENDING = "pending"
-    IN_PROGRESS = "in_progress"
+    RUNNING = "running"  # Changed from IN_PROGRESS for consistency
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -40,11 +40,14 @@ class SyncStatus(str, Enum):
 
 
 class SourceConnectionStatus(str, Enum):
-    """Source connection status enum."""
+    """Source connection status enum - represents overall connection state."""
 
-    ACTIVE = "active"
-    IN_PROGRESS = "in_progress"
-    FAILING = "failing"
+    ACTIVE = "active"  # Authenticated and ready to sync
+    PENDING_AUTH = "pending_auth"  # Awaiting authentication (OAuth flow, etc.)
+    SYNCING = "syncing"  # Currently running a sync job
+    ERROR = "error"  # Last sync failed or auth error
+    INACTIVE = "inactive"  # Manually disabled
+    PENDING_SYNC = "pending_sync"  # Awaiting a sync job to start
 
 
 class CollectionStatus(str, Enum):
@@ -59,8 +62,7 @@ class CollectionStatus(str, Enum):
 class ActionType(str, Enum):
     """Action type enum."""
 
-    SYNCS = "syncs"
     ENTITIES = "entities"
     QUERIES = "queries"
-    COLLECTIONS = "collections"
     SOURCE_CONNECTIONS = "source_connections"
+    TEAM_MEMBERS = "team_members"

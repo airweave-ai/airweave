@@ -37,8 +37,6 @@ navigation:
       path: docs/pages/auth-providers/composio.mdx
     - page: Pipedream
       path: docs/pages/auth-providers/pipedream.mdx
-  - page: White Labels
-    path: docs/pages/white-labeling.mdx
   - page: Add New Connector
     path: docs/pages/add-new-source.mdx
   - section: Advanced Concepts
@@ -116,16 +114,6 @@ navigation:
     contents:
     - GET /sources/list
     - GET /sources/detail/{short_name}
-  - section: White Labels
-    contents:
-    - GET /white-labels/list
-    - GET /white-labels/{white_label_id}
-    - GET /white-labels/{white_label_id}/source-connections
-    - GET /white-labels/{white_label_id}/oauth2/auth_url
-    - PUT /white-labels/{white_label_id}
-    - POST /white-labels
-    - POST /white-labels/{white_label_id}/oauth2/code
-    - DELETE /white-labels/{white_label_id}
   snippets:
     python: airweave-sdk
     typescript: '@airweave/sdk'
@@ -135,7 +123,7 @@ navbar-links:
   url: https://github.com/airweave-ai/airweave/fork
 - type: primary
   text: Get a demo
-  url: https://cal.com/lennert-airweave/airweave-q-a-demo
+  url: https://cal.com/lennert-airweave/airweave-demo
 colors:
   accentPrimary:
     dark: '#4199D3'

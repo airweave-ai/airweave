@@ -121,7 +121,10 @@ select = [
     "B", # flake8-bugbear
     "D", # flake8-docstrings
 ]
-ignore = ["B008"] # ignore fastapi dependency injection warning
+ignore = [
+    "B008",  # ignore fastapi dependency injection warning
+    "B904",  # ignore raise-without-from within except clauses
+]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

@@ -6,7 +6,6 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from airweave.platform.auth.schemas import AuthType
 from airweave.platform.configs._base import Fields
 
 
@@ -19,7 +18,6 @@ class EmbeddingModelBase(BaseModel):
     provider: str
     model_name: Optional[str] = None
     model_version: Optional[str] = None
-    auth_type: Optional[AuthType] = None
     auth_config_class: Optional[str] = None
 
     class Config:

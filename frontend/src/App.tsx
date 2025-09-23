@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { ThemeProvider } from '@/lib/theme-provider';
 import { Routes, Route } from 'react-router-dom';
 import { Toaster } from 'sonner';
+import '@/styles/toast.css';
 
 import DashboardLayout from '@/components/DashboardLayout';
 import Dashboard from '@/pages/Dashboard';
@@ -9,10 +10,6 @@ import CollectionDetailView from "@/pages/CollectionDetailView";
 import CollectionsView from "@/pages/CollectionsView";
 
 import AuthProviders from '@/pages/AuthProviders';
-import WhiteLabel from '@/pages/WhiteLabel';
-import CreateWhiteLabel from '@/pages/CreateWhiteLabel';
-import WhiteLabelDetail from '@/pages/WhiteLabelDetail';
-import WhiteLabelEdit from '@/pages/WhiteLabelEdit';
 import SemanticMcp from '@/pages/SemanticMcp';
 import { useCollectionsStore } from '@/lib/stores';
 import { NotFound } from '@/pages/NotFound';
@@ -47,7 +44,8 @@ function App() {
         <Route path={publicPaths.billingCancel} element={<BillingCancel />} />
 
         {/* Auth callback routes - OUTSIDE of DashboardLayout */}
-        <Route path="/auth/callback/:short_name" element={<AuthCallback />} />
+        {/* <Route path="/auth/callback/:short_name" element={<AuthCallback />} /> */}
+        <Route path="/auth/callback" element={<AuthCallback />} />
 
         {/* Protected routes */}
         <Route element={<AuthGuard><DashboardLayout /></AuthGuard>}>
@@ -56,11 +54,6 @@ function App() {
           <Route path={protectedPaths.collectionDetail} element={<CollectionDetailView />} />
           <Route path={protectedPaths.apiKeys} />
           <Route path={protectedPaths.authProviders} element={<AuthProviders />} />
-          <Route path={protectedPaths.whiteLabel} element={<WhiteLabel />} />
-          <Route path={protectedPaths.whiteLabelTab} element={<WhiteLabelDetail />} />
-          <Route path={protectedPaths.whiteLabelCreate} element={<CreateWhiteLabel />} />
-          <Route path={protectedPaths.whiteLabelDetail} element={<WhiteLabelDetail />} />
-          <Route path={protectedPaths.whiteLabelEdit} element={<WhiteLabelEdit />} />
 
           {/* Organization routes */}
           <Route path="/organization/settings" element={<OrganizationSettingsUnified />} />
@@ -76,6 +69,20 @@ function App() {
         position="top-right"
         expand={false}
         closeButton
+        toastOptions={{
+          style: {
+            background: 'hsl(var(--background))',
+            border: '1px solid hsl(var(--border))',
+            borderRadius: '12px',
+            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            fontSize: '14px',
+            fontWeight: '500',
+            color: 'hsl(var(--foreground))',
+          },
+          className: 'toast-custom',
+          duration: 4000,
+        }}
+        theme="system"
       />
     </ThemeProvider>
   );

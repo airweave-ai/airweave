@@ -1,5 +1,6 @@
 """Entity count schema."""
 
+from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
@@ -50,6 +51,7 @@ class EntityCountWithDefinition(BaseModel):
     entity_definition_name: str
     entity_definition_type: str
     entity_definition_description: Optional[str] = None
+    modified_at: datetime
 
     class Config:
         """Pydantic config."""

@@ -44,16 +44,15 @@ interface SourceConnection {
     modified_at: string;
     connection_id?: string;
     collection: string;
-    white_label_id?: string;
     created_by_email: string;
     modified_by_email: string;
     auth_fields?: Record<string, any> | string;
     status?: string;
-    latest_sync_job_status?: string;
-    latest_sync_job_id?: string;
-    latest_sync_job_started_at?: string;
-    latest_sync_job_completed_at?: string;
-    latest_sync_job_error?: string;
+    last_sync_job_status?: string;
+    last_sync_job_id?: string;
+    last_sync_job_started_at?: string;
+    last_sync_job_completed_at?: string;
+    last_sync_job_error?: string;
     cron_schedule?: string;
     next_scheduled_run?: string;
 }
@@ -400,7 +399,7 @@ const SimplifiedSourceConnectionDetailView = ({
 
     // API CALL 2: Fetch Sync Job details (from /source-connections/{id}/jobs/{job_id})
     const fetchSyncJob = async (connection: SourceConnection) => {
-        if (!connection.latest_sync_job_id) {
+        if (!connection.last_sync_job_id) {
             console.log("No latest sync job ID found");
             setSyncJob(null);
             setTotalEntities(0);
@@ -414,10 +413,10 @@ const SimplifiedSourceConnectionDetailView = ({
 
         try {
             console.log("Fetching sync job details...");
-            const response = await apiClient.get(`/source-connections/${connection.id}/jobs/${connection.latest_sync_job_id}`);
+            const response = await apiClient.get(`/source-connections/${connection.id}/jobs/${connection.last_sync_job_id}`);
 
             if (!response.ok) {
-                console.error(`Failed to fetch job with ID ${connection.latest_sync_job_id}, status: ${response.status}`);
+                console.error(`Failed to fetch job with ID ${connection.last_sync_job_id}, status: ${response.status}`);
                 setSyncJob(null);
                 setTotalEntities(0);
                 setTotalRuntime(null);

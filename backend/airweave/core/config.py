@@ -22,6 +22,7 @@ class Settings(BaseSettings):
         FIRST_SUPERUSER (str): The email address of the first superuser.
         FIRST_SUPERUSER_PASSWORD (str): The password of the first superuser.
         ENCRYPTION_KEY (str): The encryption key.
+        STATE_SECRET (str): The HMAC secret for OAuth state token signing.
         CODE_SUMMARIZER_ENABLED (bool): Whether the code summarizer is enabled.
         DEBUG (bool): Whether debug mode is enabled.
         LOG_LEVEL (str): The logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
@@ -54,6 +55,10 @@ class Settings(BaseSettings):
         WEB_FETCHER_MAX_CONCURRENT (int): Max concurrent web scraping requests
         OPENAI_MAX_CONCURRENT (int): Max concurrent OpenAI API requests
         CTTI_MAX_CONCURRENT (int): Max concurrent CTTI (ClinicalTrials.gov) requests
+        STRIPE_DEVELOPER_MONTHLY: str = ""
+        STRIPE_PRO_MONTHLY: str = ""
+        STRIPE_TEAM_MONTHLY: str = ""
+        STRIPE_ENTERPRISE_MONTHLY: str = ""
 
         # Custom deployment URLs
         API_FULL_URL (Optional[str]): The full URL for the API.
@@ -79,6 +84,10 @@ class Settings(BaseSettings):
     AUTH0_M2M_CLIENT_SECRET: Optional[str] = None  # Machine-to-Machine Client Secret
 
     ENCRYPTION_KEY: str
+
+    # OAuth state HMAC secret for CSRF protection
+    # Must be a strong, random secret in production
+    STATE_SECRET: str
 
     CODE_SUMMARIZER_ENABLED: bool = False
 
@@ -128,8 +137,14 @@ class Settings(BaseSettings):
     STRIPE_ENABLED: bool = False
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
-    STRIPE_DEVELOPER_PRICE_ID: str = ""
-    STRIPE_STARTUP_PRICE_ID: str = ""
+
+    STRIPE_DEVELOPER_MONTHLY: str = ""
+    STRIPE_PRO_MONTHLY: str = ""
+    STRIPE_PRO_YEARLY: str = ""
+    STRIPE_TEAM_MONTHLY: str = ""
+    STRIPE_TEAM_YEARLY: str = ""
+    STRIPE_ENTERPRISE_MONTHLY: str = ""
+    STRIPE_YEARLY_DISCOUNT_COUPON_ID: str = ""
 
     # Email settings - only for production Airweave instance
     RESEND_API_KEY: Optional[str] = None
@@ -225,8 +240,9 @@ class Settings(BaseSettings):
     @field_validator(
         "STRIPE_SECRET_KEY",
         "STRIPE_WEBHOOK_SECRET",
-        "STRIPE_DEVELOPER_PRICE_ID",
-        "STRIPE_STARTUP_PRICE_ID",
+        "STRIPE_DEVELOPER_MONTHLY",
+        "STRIPE_PRO_MONTHLY",
+        "STRIPE_TEAM_MONTHLY",
         mode="before",
     )
     def validate_stripe_settings(cls, v: str, info: ValidationInfo) -> str:
@@ -253,6 +269,28 @@ class Settings(BaseSettings):
         resend_api_key = info.data.get("RESEND_API_KEY")
         if resend_api_key and not v:
             raise ValueError("RESEND_FROM_EMAIL must be set when RESEND_API_KEY is configured")
+        return v
+
+    @field_validator("STATE_SECRET", mode="before")
+    def validate_state_secret(cls, v: str, info: ValidationInfo) -> str:
+        """Validate the STATE_SECRET has minimum required length.
+
+        Args:
+            v: The STATE_SECRET value.
+            info: Validation context containing all field values.
+
+        Returns:
+            str: The validated STATE_SECRET.
+
+        Raises:
+            ValueError: If STATE_SECRET is not set or too short.
+        """
+        if not v or len(v) < 32:
+            raise ValueError(
+                "STATE_SECRET must be at least 32 characters long. "
+                "Generate a strong secret using: "
+                "python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+            )
         return v
 
     @field_validator("SQLALCHEMY_ASYNC_DATABASE_URI", mode="before")

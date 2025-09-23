@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Alert } from "@/components/ui/alert";
-import { AlertCircle, RefreshCw, Pencil, Trash, Plus, Clock, Play, Plug, Copy, Check, Loader2, RotateCw } from "lucide-react";
+import { AlertCircle, RefreshCw, Pencil, Trash, Plus, Clock, Play, Plug, Copy, Check, Loader2, RotateCw, AlertTriangle } from "lucide-react";
 import { apiClient } from "@/lib/api";
+import { useUsageStore } from "@/lib/stores/usage";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -30,12 +31,15 @@ import {
 import SourceConnectionStateView from "@/components/collection/SourceConnectionStateView";
 import { emitCollectionEvent, onCollectionEvent, COLLECTION_DELETED, SOURCE_CONNECTION_UPDATED } from "@/lib/events";
 import { Search } from '@/search/Search';
-import { DialogFlow } from '@/components/shared';
+// import { DialogFlow } from '@/components/shared'; // TODO: Implement DialogFlow component
 import { protectedPaths } from "@/constants/paths";
 import { useEntityStateStore } from "@/stores/entityStateStore";
+import { useSidePanelStore } from "@/lib/stores/sidePanelStore";
+import { useCollectionCreationStore } from "@/stores/collectionCreationStore";
 import { redirectWithError } from "@/lib/error-utils";
-import { ActionCheckResponse } from "@/types";
+import { SingleActionCheckResponse } from "@/types";
 import { DESIGN_SYSTEM } from "@/lib/design-system";
+
 
 interface DeleteCollectionDialogProps {
     open: boolean;
@@ -56,58 +60,114 @@ const DeleteCollectionDialog = ({
 }: DeleteCollectionDialogProps) => {
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === 'dark';
+    const isConfirmValid = confirmText === collectionReadableId;
 
     return (
         <AlertDialog open={open} onOpenChange={onOpenChange}>
             <AlertDialogContent className={cn(
-                "border-border",
+                "border-border max-w-md",
                 isDark ? "bg-card-solid text-foreground" : "bg-white"
             )}>
-                <AlertDialogHeader>
-                    <AlertDialogTitle className="text-foreground">Delete Collection</AlertDialogTitle>
-                    <AlertDialogDescription className={isDark ? "text-gray-300" : "text-foreground"}>
-                        <div className="space-y-3">
-                            <p className="font-medium">This action will permanently delete:</p>
-                            <ul className="space-y-2 ml-4">
-                                <li className="flex items-start">
-                                    <span className="mr-2">•</span>
+                <AlertDialogHeader className="space-y-4">
+                    {/* Header with warning icon */}
+                    <div className="flex items-center gap-3">
+                        <div className="flex-shrink-0 w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center">
+                            <AlertTriangle className="w-5 h-5 text-destructive" />
+                        </div>
+                        <div>
+                            <AlertDialogTitle className="text-lg font-semibold text-foreground">
+                                Delete Collection
+                            </AlertDialogTitle>
+                            <p className="text-sm text-muted-foreground mt-1">
+                                This action cannot be undone
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Warning content */}
+                    <AlertDialogDescription className="space-y-4">
+                        <div className="bg-destructive/5 border border-destructive/20 rounded-lg p-4">
+                            <p className="font-medium text-foreground mb-3">
+                                This will permanently delete:
+                            </p>
+                            <ul className="space-y-2 text-sm text-muted-foreground">
+                                <li className="flex items-start gap-2">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-destructive/60 mt-2 flex-shrink-0" />
                                     <span>The collection and all its source connections</span>
                                 </li>
-                                <li className="flex items-start">
-                                    <span className="mr-2">•</span>
+                                <li className="flex items-start gap-2">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-destructive/60 mt-2 flex-shrink-0" />
                                     <span>All synced data from the knowledge base</span>
                                 </li>
-                                <li className="flex items-start">
-                                    <span className="mr-2">•</span>
+                                <li className="flex items-start gap-2">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-destructive/60 mt-2 flex-shrink-0" />
                                     <span>All sync history and configuration</span>
                                 </li>
                             </ul>
-                            <p className="text-sm font-semibold text-destructive">This action cannot be undone.</p>
                         </div>
 
-                        <div className="mt-4">
-                            <label htmlFor="confirm-delete" className="text-sm font-medium block mb-2">
-                                Type <span className="font-bold">{collectionReadableId}</span> to confirm deletion
-                            </label>
-                            <Input
-                                id="confirm-delete"
-                                value={confirmText}
-                                onChange={(e) => setConfirmText(e.target.value)}
-                                className="w-full"
-                                placeholder={collectionReadableId}
-                            />
+                        {/* Confirmation input */}
+                        <div className="space-y-3">
+                            <div>
+                                <label htmlFor="confirm-delete" className="text-sm font-medium text-foreground block mb-2">
+                                    Type <span className="font-mono font-semibold text-destructive bg-destructive/10 px-1.5 py-0.5 rounded">
+                                        {collectionReadableId}
+                                    </span> to confirm deletion
+                                </label>
+                                <Input
+                                    id="confirm-delete"
+                                    value={confirmText}
+                                    onChange={(e) => setConfirmText(e.target.value)}
+                                    className={cn(
+                                        "w-full transition-colors",
+                                        isConfirmValid && confirmText.length > 0
+                                            ? "border-green-500 focus:border-green-500 focus:ring-green-500/20"
+                                            : confirmText.length > 0
+                                                ? "border-destructive focus:border-destructive focus:ring-destructive/20"
+                                                : ""
+                                    )}
+                                    placeholder={collectionReadableId}
+                                />
+                            </div>
+
+                            {/* Validation feedback */}
+                            {confirmText.length > 0 && (
+                                <div className="flex items-center gap-2 text-sm">
+                                    {isConfirmValid ? (
+                                        <>
+                                            <Check className="w-4 h-4 text-green-500" />
+                                            <span className="text-green-600 dark:text-green-400">
+                                                Confirmation matches
+                                            </span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <AlertCircle className="w-4 h-4 text-destructive" />
+                                            <span className="text-destructive">
+                                                Confirmation does not match
+                                            </span>
+                                        </>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </AlertDialogDescription>
                 </AlertDialogHeader>
-                <AlertDialogFooter>
-                    <AlertDialogCancel className={isDark ? "bg-gray-800 text-white hover:bg-gray-700" : ""}>
+
+                <AlertDialogFooter className="gap-3">
+                    <AlertDialogCancel className="flex-1">
                         Cancel
                     </AlertDialogCancel>
                     <AlertDialogAction
                         onClick={onConfirm}
-                        disabled={confirmText !== collectionReadableId}
-                        className="bg-red-600 text-white hover:bg-red-700 dark:bg-red-500 dark:text-white dark:hover:bg-red-600 disabled:opacity-50"
+                        disabled={!isConfirmValid}
+                        className={cn(
+                            "flex-1 bg-destructive text-destructive-foreground hover:bg-destructive/90",
+                            "disabled:opacity-50 disabled:cursor-not-allowed",
+                            "transition-all duration-200"
+                        )}
                     >
+                        <Trash className="w-4 h-4 mr-2" />
                         Delete Collection
                     </AlertDialogAction>
                 </AlertDialogFooter>
@@ -133,6 +193,7 @@ interface SourceConnection {
     name: string;
     description?: string;
     short_name: string;
+    readable_collection_id: string;
     config_fields?: Record<string, any>;
     sync_id?: string;
     organization_id: string;
@@ -144,10 +205,12 @@ interface SourceConnection {
     modified_by_email: string;
     auth_fields?: Record<string, any> | string;
     status?: string;
-    latest_sync_job_status?: string;
-    latest_sync_job_id?: string;
-    latest_sync_job_started_at?: string;
-    latest_sync_job_completed_at?: string;
+    is_authenticated?: boolean;
+    authentication_url?: string;
+    last_sync_job_status?: string;
+    last_sync_job_id?: string;
+    last_sync_job_started_at?: string;
+    last_sync_job_completed_at?: string;
     cron_schedule?: string;
 }
 
@@ -159,11 +222,17 @@ const Collections = () => {
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === 'dark';
     const navigate = useNavigate();
-    const [searchParams] = useSearchParams();
-    const isFromOAuthSuccess = searchParams.get("connected") === "success";
+    const [searchParams, setSearchParams] = useSearchParams(); // Use setSearchParams to clean URL
+    const isFromOAuthSuccess = searchParams.get("status") === "success";
 
     // Entity state store for new architecture
     const entityStateStore = useEntityStateStore();
+
+    // Side panel store
+    const { isOpen: isPanelOpen, openPanel } = useSidePanelStore();
+
+    // Collection creation store to track modal state
+    const { isOpen: isCreationModalOpen } = useCollectionCreationStore();
 
     // Page state
     const [isLoading, setIsLoading] = useState(true);
@@ -187,63 +256,23 @@ const Collections = () => {
     // Add state for copy animation
     const [isCopied, setIsCopied] = useState(false);
 
-    // Add state for add source dialog
-    const [showAddSourceDialog, setShowAddSourceDialog] = useState(false);
-
     // Add state for refreshing all sources
     const [isRefreshingAll, setIsRefreshingAll] = useState(false);
     const [refreshingSourceIds, setRefreshingSourceIds] = useState<string[]>([]);
 
-    // Add state for usage limits
-    const [sourceConnectionsAllowed, setSourceConnectionsAllowed] = useState(true);
-    const [sourceConnectionCheckDetails, setSourceConnectionCheckDetails] = useState<ActionCheckResponse | null>(null);
-    const [entitiesAllowed, setEntitiesAllowed] = useState(true);
-    const [entitiesCheckDetails, setEntitiesCheckDetails] = useState<ActionCheckResponse | null>(null);
-    const [syncsAllowed, setSyncsAllowed] = useState(true);
-    const [syncsCheckDetails, setSyncsCheckDetails] = useState<ActionCheckResponse | null>(null);
-    const [isCheckingUsage, setIsCheckingUsage] = useState(true);
+    // Usage check from store (read-only, checking happens at app level)
+    const actionChecks = useUsageStore(state => state.actionChecks);
+    const isCheckingUsage = useUsageStore(state => state.isLoading);
+
+    // Derived states from usage store
+    const sourceConnectionsAllowed = actionChecks.source_connections?.allowed ?? true;
+    const sourceConnectionCheckDetails = actionChecks.source_connections ?? null;
+    const entitiesAllowed = actionChecks.entities?.allowed ?? true;
+    const entitiesCheckDetails = actionChecks.entities ?? null;
 
     /********************************************
      * API AND DATA FETCHING FUNCTIONS
      ********************************************/
-
-    // Check if actions are allowed based on usage limits
-    const checkUsageActions = useCallback(async (syncAmount: number = 1) => {
-        try {
-            // Check all three actions in parallel
-            const [sourceResponse, entitiesResponse, syncsResponse] = await Promise.all([
-                apiClient.get('/usage/check-action?action=source_connections'),
-                apiClient.get('/usage/check-action?action=entities'),
-                apiClient.get(`/usage/check-action?action=syncs&amount=${syncAmount}`)
-            ]);
-
-            if (sourceResponse.ok) {
-                const data: ActionCheckResponse = await sourceResponse.json();
-                setSourceConnectionsAllowed(data.allowed);
-                setSourceConnectionCheckDetails(data);
-            }
-
-            if (entitiesResponse.ok) {
-                const data: ActionCheckResponse = await entitiesResponse.json();
-                setEntitiesAllowed(data.allowed);
-                setEntitiesCheckDetails(data);
-            }
-
-            if (syncsResponse.ok) {
-                const data: ActionCheckResponse = await syncsResponse.json();
-                setSyncsAllowed(data.allowed);
-                setSyncsCheckDetails(data);
-            }
-        } catch (error) {
-            console.error('Failed to check usage actions:', error);
-            // Default to allowed on error to not block users
-            setSourceConnectionsAllowed(true);
-            setEntitiesAllowed(true);
-            setSyncsAllowed(true);
-        } finally {
-            setIsCheckingUsage(false);
-        }
-    }, []);
 
     // Fetch source connections for a collection with detailed sync job status
     const fetchSourceConnections = async (collectionId: string) => {
@@ -263,8 +292,8 @@ const Collections = () => {
                             if (detailResponse.ok) {
                                 const detailedData = await detailResponse.json();
                                 console.log(`📝 Fetched detailed data for ${connection.name}:`, {
-                                    latest_sync_job_status: detailedData.latest_sync_job_status,
-                                    latest_sync_job_id: detailedData.latest_sync_job_id
+                                    last_sync_job_status: detailedData.last_sync_job_status,
+                                    last_sync_job_id: detailedData.last_sync_job_id
                                 });
                                 return detailedData;
                             } else {
@@ -284,8 +313,14 @@ const Collections = () => {
 
                 // Always select the first connection when loading a new collection
                 if (detailedConnections.length > 0) {
-                    console.log("Auto-selecting first connection:", detailedConnections[0]);
-                    setSelectedConnection(detailedConnections[0]);
+                    // if a source connection was just added, select that one
+                    const newSourceId = searchParams.get("source_connection_id");
+                    const newConnection = newSourceId ? detailedConnections.find(c => c.id === newSourceId) : null;
+                    if (newConnection) {
+                        setSelectedConnection(newConnection);
+                    } else {
+                        setSelectedConnection(detailedConnections[0]);
+                    }
                 } else {
                     // If no connections, ensure selectedConnection is null
                     setSelectedConnection(null);
@@ -335,9 +370,56 @@ const Collections = () => {
         }
     };
 
+    // ** NEW: Handle OAuth callback and toast notification **
+    useEffect(() => {
+        if (isFromOAuthSuccess) {
+            const newSourceId = searchParams.get("source_connection_id");
+
+            // Always refresh source connections when returning from OAuth
+            if (collection?.readable_id) {
+                fetchSourceConnections(collection.readable_id);
+            }
+
+            if (newSourceId && sourceConnections.length > 0) {
+                const newConnection = sourceConnections.find(c => c.id === newSourceId);
+                if (newConnection) {
+                    toast({
+                        title: "Success",
+                        description: `Source "${newConnection.name}" connected successfully!`
+                    });
+                }
+            }
+
+            // Clean up URL params
+            const newSearchParams = new URLSearchParams(searchParams);
+            newSearchParams.delete("status");
+            newSearchParams.delete("source_connection_id");
+            newSearchParams.delete("collection");
+            setSearchParams(newSearchParams, { replace: true });
+        }
+    }, [isFromOAuthSuccess, collection?.readable_id, searchParams, setSearchParams]);
+
+    // ** NEW: Refresh connections when panel or creation modal closes, in case a new one was added **
+    useEffect(() => {
+        if (!isPanelOpen && !isCreationModalOpen) {
+            if (collection?.readable_id) {
+                fetchSourceConnections(collection.readable_id);
+            }
+        }
+    }, [isPanelOpen, isCreationModalOpen, collection?.readable_id]);
+
+
     /********************************************
      * UI EVENT HANDLERS
      ********************************************/
+
+    // ** MODIFIED: Trigger the modal for adding source to existing collection **
+    const handleAddSource = () => {
+        if (collection) {
+            const store = useCollectionCreationStore.getState();
+            store.openForAddToCollection(collection.readable_id, collection.name);
+        }
+    };
 
     // Update selected connection
     const handleSelectConnection = async (connection: SourceConnection) => {
@@ -444,19 +526,9 @@ const Collections = () => {
         console.log(`\nFetching collection because of readable id change\n`)
         setSelectedConnection(null);
         fetchCollection();
-    }, [readable_id]);
+    }, [readable_id]); // Only depend on readable_id
 
-    // Initial usage check on mount
-    useEffect(() => {
-        checkUsageActions(1);
-    }, []);
-
-    // Re-check usage limits when source connections change
-    useEffect(() => {
-        if (!isCheckingUsage && sourceConnections.length > 0) {
-            checkUsageActions(sourceConnections.length);
-        }
-    }, [sourceConnections.length, checkUsageActions]);
+    // Usage is now checked at app level by UsageChecker component
 
     // Handle collection deletion
     const handleDeleteCollection = async () => {
@@ -561,8 +633,7 @@ const Collections = () => {
                     setIsRefreshingAll(false);
                 }
 
-                // Re-check usage limits after refresh
-                await checkUsageActions(sourceConnections.length);
+                // Usage limits will be checked automatically by UsageChecker
             } else {
                 throw new Error("Failed to refresh sources");
             }
@@ -619,32 +690,49 @@ const Collections = () => {
         });
     }, [selectedConnection?.id]);
 
-    // Get connection status indicator based on entity state
+    // Get connection status indicator based on connection state
     const getConnectionStatusIndicator = (connection: SourceConnection) => {
-        const entityState = entityStateStore.getEntityState(connection.id);
-
+        // Use the connection's status directly from the API response
         let colorClass = "bg-gray-400";
         let status = "unknown";
+        let isAnimated = false;
 
-        if (entityState) {
-            if (entityState.syncStatus === 'pending') {
-                colorClass = "bg-yellow-500 animate-pulse";
-                status = "pending";
-            } else if (entityState.syncStatus === 'in_progress') {
-                colorClass = "bg-blue-500 animate-pulse";
-                status = "running";
-            } else if (entityState.syncStatus === 'failed') {
+        // Map the backend SourceConnectionStatus enum values
+        switch (connection.status) {
+            case 'pending_auth':
+                colorClass = "bg-cyan-500";
+                status = "Authentication required";
+                break;
+            case 'syncing':
+                colorClass = "bg-blue-500";
+                status = "Syncing";
+                isAnimated = true;
+                break;
+            case 'error':
                 colorClass = "bg-red-500";
-                status = "error";
-            } else if (entityState.syncStatus === 'completed') {
+                status = "Sync failed";
+                break;
+            case 'active':
                 colorClass = "bg-green-500";
-                status = "healthy";
-            }
+                status = "Active";
+                break;
+            case 'inactive':
+                colorClass = "bg-gray-400";
+                status = "Inactive";
+                break;
+            default:
+                // Fallback for unknown status
+                colorClass = "bg-gray-400";
+                status = "Unknown";
         }
 
         return (
             <span
-                className={`inline-flex h-2.5 w-2.5 rounded-full ${colorClass} opacity-80`}
+                className={cn(
+                    "inline-flex h-2 w-2 rounded-full opacity-80",
+                    colorClass,
+                    isAnimated && "animate-pulse"
+                )}
                 title={status}
             />
         );
@@ -685,8 +773,8 @@ const Collections = () => {
                     <div className="w-full max-w-[1000px] flex items-center justify-between py-4">
                         <div className="flex items-center gap-3">
                             {/* Source Icons */}
-                            <div className="flex justify-start" style={{ minWidth: "3.5rem" }}>
-                                {sourceConnections.map((connection, index) => (
+                            <div className="flex justify-start items-center" style={{ minWidth: "3.5rem" }}>
+                                {sourceConnections.slice(0, 3).map((connection, index) => (
                                     <div
                                         key={connection.id}
                                         className={cn(
@@ -695,7 +783,7 @@ const Collections = () => {
                                         )}
                                         style={{
                                             marginLeft: index > 0 ? `-${Math.min(index * 8, 24)}px` : "0px",
-                                            zIndex: sourceConnections.length - index
+                                            zIndex: 3 - index
                                         }}
                                     >
                                         <img
@@ -705,6 +793,11 @@ const Collections = () => {
                                         />
                                     </div>
                                 ))}
+                                {sourceConnections.length > 3 && (
+                                    <div className="ml-2 text-sm font-medium text-slate-500 dark:text-slate-400">
+                                        +{sourceConnections.length - 3}
+                                    </div>
+                                )}
                             </div>
 
                             <div className="flex flex-col justify-center">
@@ -766,50 +859,66 @@ const Collections = () => {
                         {/* Header action buttons */}
                         <div className="flex gap-1.5 items-center">
                             {/* Refresh Page Button - EXACT match to refresh source button */}
-                            <button
-                                type="button"
-                                onClick={reloadData}
-                                disabled={isReloading}
-                                className={cn(
-                                    "h-8 w-8 rounded-md border shadow-sm flex items-center justify-center transition-all duration-200",
-                                    isReloading
-                                        ? isDark
-                                            ? "bg-gray-900 border-border cursor-not-allowed"
-                                            : "bg-white border-border cursor-not-allowed"
-                                        : isDark
-                                            ? "bg-gray-900 border-border hover:bg-muted cursor-pointer"
-                                            : "bg-white border-border hover:bg-muted cursor-pointer"
-                                )}
-                                title="Reload page"
-                            >
-                                <RotateCw className={cn(
-                                    "h-3 w-3 text-muted-foreground",
-                                    "transition-transform duration-500",
-                                    isReloading && "animate-spin"
-                                )} />
-                            </button>
+                            <TooltipProvider>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <button
+                                            type="button"
+                                            onClick={reloadData}
+                                            disabled={isReloading}
+                                            className={cn(
+                                                "h-8 w-8 rounded-md border shadow-sm flex items-center justify-center transition-all duration-200",
+                                                isReloading
+                                                    ? isDark
+                                                        ? "bg-gray-900 border-border cursor-not-allowed"
+                                                        : "bg-white border-border cursor-not-allowed"
+                                                    : isDark
+                                                        ? "bg-gray-900 border-border hover:bg-muted cursor-pointer"
+                                                        : "bg-white border-border hover:bg-muted cursor-pointer"
+                                            )}
+                                        >
+                                            <RotateCw className={cn(
+                                                "h-3 w-3 text-muted-foreground",
+                                                "transition-transform duration-500",
+                                                isReloading && "animate-spin"
+                                            )} />
+                                        </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p>Reload page</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
 
                             {/* Delete Collection Button - EXACT match to refresh button styling */}
-                            <button
-                                type="button"
-                                onClick={() => setShowDeleteDialog(true)}
-                                className={cn(
-                                    "h-8 w-8 rounded-md border shadow-sm flex items-center justify-center transition-all duration-200",
-                                    isDark
-                                        ? "bg-gray-900 border-border hover:bg-muted cursor-pointer"
-                                        : "bg-white border-border hover:bg-muted cursor-pointer"
-                                )}
-                                title="Delete collection"
-                            >
-                                <Trash className="h-3 w-3 text-muted-foreground" />
-                            </button>
+                            <TooltipProvider>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowDeleteDialog(true)}
+                                            className={cn(
+                                                "h-8 w-8 rounded-md border shadow-sm flex items-center justify-center transition-all duration-200",
+                                                isDark
+                                                    ? "bg-gray-900 border-border hover:bg-muted cursor-pointer"
+                                                    : "bg-white border-border hover:bg-muted cursor-pointer"
+                                            )}
+                                        >
+                                            <Trash className="h-3 w-3 text-muted-foreground" />
+                                        </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p>Delete collection</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
                         </div>
                     </div>
 
 
 
-                    {/* Add Search component when a connection with syncId is selected */}
-                    {selectedConnection?.sync_id && collection?.readable_id && (
+                    {/* Add Search component when collection has any synced data */}
+                    {collection?.readable_id && (
                         <div className="w-full max-w-[1000px] mt-10">
                             <Search
                                 collectionReadableId={collection.readable_id}
@@ -821,142 +930,206 @@ const Collections = () => {
 
                     {/* Source Connections Section */}
                     <div className="w-full max-w-[1000px] mt-8">
-                        <div className={cn("flex flex-wrap", DESIGN_SYSTEM.spacing.gaps.standard)}>
-                            {sourceConnections.map((connection) => (
-                                <div
-                                    key={connection.id}
-                                    className={cn(
-                                        DESIGN_SYSTEM.buttons.heights.primary,
-                                        "flex items-center overflow-hidden flex-shrink-0 flex-grow-0 cursor-pointer",
-                                        DESIGN_SYSTEM.spacing.gaps.standard,
-                                        DESIGN_SYSTEM.buttons.padding.secondary,
-                                        "py-2",
-                                        DESIGN_SYSTEM.radius.button,
-                                        DESIGN_SYSTEM.transitions.standard,
-                                        selectedConnection?.id === connection.id
-                                            ? isDark
-                                                ? "border-2 border-primary bg-gray-900"
-                                                : "border-2 border-primary bg-white"
-                                            : isDark
-                                                ? "border border-border bg-gray-900 hover:bg-muted"
-                                                : "border border-border bg-white hover:bg-muted"
-                                    )}
-                                    onClick={() => handleSelectConnection(connection)}
-                                >
-                                    {getConnectionStatusIndicator(connection)}
+                        {sourceConnections.length > 0 && (
+                            <div className={cn("flex flex-wrap", DESIGN_SYSTEM.spacing.gaps.standard)}>
+                                {sourceConnections.map((connection) => (
+                                    <div
+                                        key={connection.id}
+                                        className={cn(
+                                            DESIGN_SYSTEM.buttons.heights.primary,
+                                            "flex items-center overflow-hidden flex-shrink-0 flex-grow-0 cursor-pointer",
+                                            DESIGN_SYSTEM.spacing.gaps.standard,
+                                            DESIGN_SYSTEM.buttons.padding.secondary,
+                                            "py-2",
+                                            DESIGN_SYSTEM.radius.button,
+                                            DESIGN_SYSTEM.transitions.standard,
+                                            selectedConnection?.id === connection.id
+                                                ? isDark
+                                                    ? "border border-blue-500 bg-blue-500/10 shadow-lg shadow-blue-500/20 ring-2 ring-blue-500/30"
+                                                    : "border border-blue-500 bg-blue-50 shadow-lg shadow-blue-500/20 ring-2 ring-blue-500/30"
+                                                : isDark
+                                                    ? "border border-gray-800/50 bg-gray-900 hover:bg-muted"
+                                                    : "border border-gray-200/60 bg-white hover:bg-muted"
+                                        )}
+                                        onClick={() => handleSelectConnection(connection)}
+                                    >
+                                        {getConnectionStatusIndicator(connection)}
 
-                                    <div className={cn(
-                                        "rounded-md flex items-center justify-center overflow-hidden flex-shrink-0",
-                                    )}>
-                                        <img
-                                            src={getAppIconUrl(connection.short_name, resolvedTheme)}
-                                            alt={connection.name}
-                                            className={cn(DESIGN_SYSTEM.icons.large, "object-contain")}
-                                        />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <span className={cn(
-                                            DESIGN_SYSTEM.typography.sizes.header,
-                                            DESIGN_SYSTEM.typography.weights.medium,
-                                            "truncate block text-foreground"
-                                        )}>{connection.name}</span>
-                                    </div>
-                                </div>
-                            ))}
-
-                            {/* Add Source Button - Now in the source connections row */}
-                            <TooltipProvider delayDuration={100}>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <div
-                                            className={cn(
-                                                DESIGN_SYSTEM.buttons.heights.primary,
-                                                "flex items-center overflow-hidden flex-shrink-0 flex-grow-0 cursor-pointer",
-                                                DESIGN_SYSTEM.spacing.gaps.standard,
-                                                DESIGN_SYSTEM.buttons.padding.secondary,
-                                                "py-2",
-                                                DESIGN_SYSTEM.radius.button,
-                                                DESIGN_SYSTEM.transitions.standard,
-                                                "border-2 border-dashed",
-                                                (!sourceConnectionsAllowed || isCheckingUsage)
-                                                    ? "opacity-50 cursor-not-allowed border-border border"
-                                                    : isDark
-                                                        ? "border-blue-500 bg-blue-500/35 hover:bg-blue-500/20 hover:border-blue-400/80 border"
-                                                        : "border-blue-400 bg-blue-50 hover:bg-blue-100 hover:border-blue-400 border"
-                                            )}
-                                            onClick={(!sourceConnectionsAllowed || isCheckingUsage) ? undefined : () => setShowAddSourceDialog(true)}
-                                        >
-                                            <Plus className={cn(
-                                                DESIGN_SYSTEM.icons.large,
-                                                (!sourceConnectionsAllowed || isCheckingUsage)
-                                                    ? "text-black"
-                                                    : isDark ? "text-white" : "text-black"
-                                            )} strokeWidth={1.5} />
+                                        <div className={cn(
+                                            "rounded-md flex items-center justify-center overflow-hidden flex-shrink-0",
+                                        )}>
+                                            <img
+                                                src={getAppIconUrl(connection.short_name, resolvedTheme)}
+                                                alt={connection.name}
+                                                className={cn(DESIGN_SYSTEM.icons.large, "object-contain")}
+                                            />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
                                             <span className={cn(
                                                 DESIGN_SYSTEM.typography.sizes.header,
                                                 DESIGN_SYSTEM.typography.weights.medium,
-                                                "text-foreground"
-                                            )}>Add Source</span>
+                                                "truncate block text-foreground"
+                                            )}>{connection.name}</span>
                                         </div>
-                                    </TooltipTrigger>
-                                    {!sourceConnectionsAllowed && sourceConnectionCheckDetails?.reason === 'usage_limit_exceeded' && (
-                                        <TooltipContent className="max-w-xs">
-                                            <p className={DESIGN_SYSTEM.typography.sizes.body}>
-                                                Source connection limit reached.{' '}
-                                                <a
-                                                    href="/organization/settings?tab=billing"
-                                                    className="underline"
-                                                    onClick={(e) => e.stopPropagation()}
-                                                >
-                                                    Upgrade your plan
-                                                </a>
-                                                {' '}for more connections.
-                                            </p>
-                                        </TooltipContent>
-                                    )}
-                                </Tooltip>
-                            </TooltipProvider>
-                        </div>
+                                    </div>
+                                ))}
+
+                                {/* Add Source Button - Row (main UI + usage gating) */}
+                                <TooltipProvider delayDuration={100}>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <div
+                                                className={cn(
+                                                    DESIGN_SYSTEM.buttons.heights.primary,
+                                                    "flex items-center overflow-hidden flex-shrink-0 flex-grow-0 cursor-pointer",
+                                                    DESIGN_SYSTEM.spacing.gaps.standard,
+                                                    DESIGN_SYSTEM.buttons.padding.secondary,
+                                                    "py-2",
+                                                    DESIGN_SYSTEM.radius.button,
+                                                    DESIGN_SYSTEM.transitions.standard,
+                                                    "border border-dashed",
+                                                    (!sourceConnectionsAllowed || !entitiesAllowed || isCheckingUsage)
+                                                        ? "opacity-50 cursor-not-allowed border-gray-300 dark:border-gray-700"
+                                                        : isDark
+                                                            ? "border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/15 hover:border-blue-400/40"
+                                                            : "border-blue-400/40 bg-blue-50/30 hover:bg-blue-50/70 hover:border-blue-400/50"
+                                                )}
+                                                onClick={(!sourceConnectionsAllowed || !entitiesAllowed || isCheckingUsage) ? undefined : handleAddSource}
+                                            >
+                                                <Plus className={cn(
+                                                    DESIGN_SYSTEM.icons.large,
+                                                    (!sourceConnectionsAllowed || !entitiesAllowed || isCheckingUsage)
+                                                        ? "text-gray-400"
+                                                        : isDark ? "text-blue-400" : "text-blue-500"
+                                                )} strokeWidth={1.5} />
+                                                <span className={cn(
+                                                    DESIGN_SYSTEM.typography.sizes.header,
+                                                    DESIGN_SYSTEM.typography.weights.medium,
+                                                    "text-foreground"
+                                                )}>Add Source</span>
+                                            </div>
+                                        </TooltipTrigger>
+                                        {(!entitiesAllowed || !sourceConnectionsAllowed) && (
+                                            <TooltipContent className="max-w-xs">
+                                                <p className={DESIGN_SYSTEM.typography.sizes.body}>
+                                                    {(!entitiesAllowed && entitiesCheckDetails?.reason === 'usage_limit_exceeded') && (
+                                                        <>Entity processing limit reached.{' '}
+                                                            <a href="/organization/settings?tab=billing" className="underline" onClick={(e) => e.stopPropagation()}>Upgrade your plan</a>
+                                                            {' '}to add new sources.
+                                                        </>
+                                                    )}
+                                                    {(!entitiesAllowed && entitiesCheckDetails?.reason === 'payment_required') && (
+                                                        <>Billing issue detected.{' '}
+                                                            <a href="/organization/settings?tab=billing" className="underline" onClick={(e) => e.stopPropagation()}>Update billing</a>
+                                                            {' '}to add new sources.
+                                                        </>
+                                                    )}
+                                                    {(entitiesAllowed && !sourceConnectionsAllowed && sourceConnectionCheckDetails?.reason === 'usage_limit_exceeded') && (
+                                                        <>Source connection limit reached.{' '}
+                                                            <a href="/organization/settings?tab=billing" className="underline" onClick={(e) => e.stopPropagation()}>Upgrade your plan</a>
+                                                            {' '}for more connections.
+                                                        </>
+                                                    )}
+                                                    {(entitiesAllowed && !sourceConnectionsAllowed && sourceConnectionCheckDetails?.reason === 'payment_required') && (
+                                                        <>Billing issue detected.{' '}
+                                                            <a href="/organization/settings?tab=billing" className="underline" onClick={(e) => e.stopPropagation()}>Update billing</a>
+                                                            {' '}to add new sources.
+                                                        </>
+                                                    )}
+                                                </p>
+                                            </TooltipContent>
+                                        )}
+                                    </Tooltip>
+                                </TooltipProvider>
+                            </div>
+                        )}
 
                         {sourceConnections.length === 0 && (
                             <div className={cn(
-                                "text-center py-6 rounded-md border",
-                                isDark ? "border-border bg-muted/20 text-muted-foreground" : "border-border bg-background text-muted-foreground"
+                                "flex flex-col items-center justify-center py-12 rounded-lg border-2 border-dashed",
+                                isDark
+                                    ? "border-gray-700 bg-gray-900/30"
+                                    : "border-gray-200 bg-gray-50/50"
                             )}>
-                                <p className="mb-2">No source connections found.</p>
+                                <div className={cn(
+                                    "w-12 h-12 rounded-full flex items-center justify-center mb-4",
+                                    isDark
+                                        ? "bg-gray-800 border border-gray-700"
+                                        : "bg-white border border-gray-200"
+                                )}>
+                                    <Plug className={cn(
+                                        "h-6 w-6",
+                                        isDark ? "text-gray-400" : "text-gray-500"
+                                    )} strokeWidth={1.5} />
+                                </div>
+
+                                <h3 className={cn(
+                                    "text-base font-medium mb-1",
+                                    isDark ? "text-gray-200" : "text-gray-900"
+                                )}>
+                                    No sources connected
+                                </h3>
+                                <p className={cn(
+                                    "text-sm mb-6 max-w-sm text-center",
+                                    isDark ? "text-gray-400" : "text-gray-600"
+                                )}>
+                                    Connect your first data source to start syncing and searching your data
+                                </p>
+
                                 <TooltipProvider delayDuration={100}>
                                     <Tooltip>
                                         <TooltipTrigger asChild>
                                             <span tabIndex={0}>
-                                                <Button
-                                                    variant="outline"
+                                                <button
+                                                    type="button"
                                                     className={cn(
-                                                        "mt-2",
-                                                        DESIGN_SYSTEM.buttons.heights.secondary,
-                                                        DESIGN_SYSTEM.buttons.padding.secondary,
-                                                        isDark ? "border-border-border hover:bg-muted" : "border-border hover:bg-muted",
-                                                        (!sourceConnectionsAllowed || isCheckingUsage) && "opacity-50 cursor-not-allowed"
+                                                        "inline-flex items-center justify-center",
+                                                        "h-9 px-4 py-2",
+                                                        "text-sm font-medium",
+                                                        "rounded-md",
+                                                        "transition-all duration-200",
+                                                        "border",
+                                                        (!sourceConnectionsAllowed || !entitiesAllowed || isCheckingUsage)
+                                                            ? "opacity-50 cursor-not-allowed border-gray-300 bg-gray-100 text-gray-400"
+                                                            : isDark
+                                                                ? "border-blue-500 bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 hover:border-blue-400"
+                                                                : "border-blue-500 bg-blue-50 text-blue-600 hover:bg-blue-100 hover:border-blue-600"
                                                     )}
-                                                    onClick={() => setShowAddSourceDialog(true)}
-                                                    disabled={!sourceConnectionsAllowed || isCheckingUsage}
+                                                    onClick={(!sourceConnectionsAllowed || !entitiesAllowed || isCheckingUsage) ? undefined : handleAddSource}
+                                                    disabled={!sourceConnectionsAllowed || !entitiesAllowed || isCheckingUsage}
                                                 >
-                                                    <Plus className={cn(DESIGN_SYSTEM.icons.button, "mr-2")} />
-                                                    Add a source connection
-                                                </Button>
+                                                    <Plus className="h-4 w-4 mr-1.5" strokeWidth={2} />
+                                                    Connect a source
+                                                </button>
                                             </span>
                                         </TooltipTrigger>
-                                        {!sourceConnectionsAllowed && sourceConnectionCheckDetails?.reason === 'usage_limit_exceeded' && (
+                                        {(!entitiesAllowed || !sourceConnectionsAllowed) && (
                                             <TooltipContent className="max-w-xs">
                                                 <p className={DESIGN_SYSTEM.typography.sizes.body}>
-                                                    Source connection limit reached.{' '}
-                                                    <a
-                                                        href="/organization/settings?tab=billing"
-                                                        className="underline"
-                                                        onClick={(e) => e.stopPropagation()}
-                                                    >
-                                                        Upgrade your plan
-                                                    </a>
-                                                    {' '}for more connections.
+                                                    {(!entitiesAllowed && entitiesCheckDetails?.reason === 'usage_limit_exceeded') && (
+                                                        <>Entity processing limit reached.{' '}
+                                                            <a href="/organization/settings?tab=billing" className="underline" onClick={(e) => e.stopPropagation()}>Upgrade your plan</a>
+                                                            {' '}to add new sources.
+                                                        </>
+                                                    )}
+                                                    {(!entitiesAllowed && entitiesCheckDetails?.reason === 'payment_required') && (
+                                                        <>Billing issue detected.{' '}
+                                                            <a href="/organization/settings?tab=billing" className="underline" onClick={(e) => e.stopPropagation()}>Update billing</a>
+                                                            {' '}to add new sources.
+                                                        </>
+                                                    )}
+                                                    {(entitiesAllowed && !sourceConnectionsAllowed && sourceConnectionCheckDetails?.reason === 'usage_limit_exceeded') && (
+                                                        <>Source connection limit reached.{' '}
+                                                            <a href="/organization/settings?tab=billing" className="underline" onClick={(e) => e.stopPropagation()}>Upgrade your plan</a>
+                                                            {' '}for more connections.
+                                                        </>
+                                                    )}
+                                                    {(entitiesAllowed && !sourceConnectionsAllowed && sourceConnectionCheckDetails?.reason === 'payment_required') && (
+                                                        <>Billing issue detected.{' '}
+                                                            <a href="/organization/settings?tab=billing" className="underline" onClick={(e) => e.stopPropagation()}>Update billing</a>
+                                                            {' '}to add new sources.
+                                                        </>
+                                                    )}
                                                 </p>
                                             </TooltipContent>
                                         )}
@@ -972,9 +1145,18 @@ const Collections = () => {
                             <SourceConnectionStateView
                                 key={selectedConnection.id}
                                 sourceConnectionId={selectedConnection.id}
+                                sourceConnectionData={selectedConnection}
+                                collectionId={collection?.readable_id}
+                                collectionName={collection?.name}
                                 onConnectionDeleted={() => {
                                     // Clear selection and reload connections
                                     setSelectedConnection(null);
+                                    if (collection?.readable_id) {
+                                        fetchSourceConnections(collection.readable_id);
+                                    }
+                                }}
+                                onConnectionUpdated={() => {
+                                    // Refresh the connection data
                                     if (collection?.readable_id) {
                                         fetchSourceConnections(collection.readable_id);
                                     }
@@ -993,28 +1175,6 @@ const Collections = () => {
                         setConfirmText={setConfirmText}
                     />
 
-                    {/* Replace this ConnectFlow with DialogFlow */}
-                    {collection && (
-                        <DialogFlow
-                            isOpen={showAddSourceDialog}
-                            onOpenChange={setShowAddSourceDialog}
-                            mode="add-source"
-                            collectionId={collection.readable_id}
-                            collectionName={collection.name}
-                            dialogId="collection-detail-add-source"
-                            onComplete={async (newSourceConnection?: any) => {
-                                setShowAddSourceDialog(false);
-
-                                // Entity state mediator will handle subscriptions automatically
-
-                                // Reload to get the new source connection in the list
-                                await reloadData();
-
-                                // Re-check source connection limits after creating a new one
-                                await checkUsageActions(sourceConnections.length + 1);
-                            }}
-                        />
-                    )}
                 </>
             )}
         </div>

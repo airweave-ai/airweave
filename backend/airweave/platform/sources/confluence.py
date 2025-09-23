@@ -22,7 +22,6 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 import httpx
 
 from airweave.core.logging import logger
-from airweave.platform.auth.schemas import AuthType
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import Breadcrumb, ChunkEntity
 from airweave.platform.entities.confluence import (
@@ -35,6 +34,7 @@ from airweave.platform.entities.confluence import (
     ConfluenceSpaceEntity,
 )
 from airweave.platform.sources._base import BaseSource
+from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
 class AsyncIteratorWrapper:
@@ -79,8 +79,13 @@ class AsyncIteratorWrapper:
 @source(
     name="Confluence",
     short_name="confluence",
-    auth_type=AuthType.oauth2_with_refresh,
-    auth_config_class="ConfluenceAuthConfig",
+    auth_methods=[
+        AuthenticationMethod.OAUTH_BROWSER,
+        AuthenticationMethod.OAUTH_TOKEN,
+        AuthenticationMethod.AUTH_PROVIDER,
+    ],
+    oauth_type=OAuthType.WITH_REFRESH,
+    auth_config_class=None,
     config_class="ConfluenceConfig",
     labels=["Knowledge Base", "Documentation"],
 )
@@ -461,6 +466,34 @@ class ConfluenceSource(BaseSource):
                 )
             next_link = data.get("_links", {}).get("next")
             url = f"{self.base_url}{next_link}" if next_link else None
+
+    async def validate(self) -> bool:
+        """Verify Confluence OAuth2 token and site access by pinging a lightweight endpoint."""
+        # Ensure we have a cloud_id/base_url; if missing, try to resolve from the current token.
+        if not getattr(self, "cloud_id", None) or not getattr(self, "base_url", None):
+            token = await self.get_access_token()
+            if not token:
+                self.logger.error("Confluence validation failed: no access token available.")
+                return False
+            cloud_id = await self._extract_cloud_id(token)
+            if not cloud_id:
+                self.logger.error(
+                    "Confluence validation failed: unable to resolve Atlassian cloud ID."
+                )
+                return False
+            self.cloud_id = cloud_id
+            self.base_url = f"https://api.atlassian.com/ex/confluence/{cloud_id}"
+
+        # Simple authorized ping against spaces (validates scopes and site reachability).
+        return await self._validate_oauth2(
+            ping_url=f"{self.base_url}/wiki/api/v2/spaces?limit=1",
+            headers={
+                "Accept": "application/json",
+                "X-Atlassian-Token": "no-check",
+                "X-Cloud-ID": self.cloud_id,
+            },
+            timeout=10.0,
+        )
 
     async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:  # noqa: C901
         """Generate all Confluence content."""

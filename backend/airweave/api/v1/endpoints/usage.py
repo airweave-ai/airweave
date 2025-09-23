@@ -1,10 +1,11 @@
 """API endpoints for usage data."""
 
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import Dict, List, Optional
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
@@ -26,83 +27,160 @@ from airweave.schemas.usage_dashboard import (
 router = TrailingSlashRouter()
 
 
-@router.get("/check-action", response_model=schemas.ActionCheckResponse)
-async def check_action(
-    action: str = Query(
+class ActionCheckRequest(BaseModel):
+    """Request body for checking multiple actions at once."""
+
+    actions: Dict[str, int] = Field(
         ...,
-        description="The action type to check",
-        examples=["queries", "syncs", "entities", "collections", "source_connections"],
-    ),
+        description="Map of action short name to amount to check",
+        examples=[
+            {
+                "queries": 1,
+                "entities": 1,
+                "source_connections": 1,
+            }
+        ],
+    )
+
+
+class ActionCheckResponse(BaseModel):
+    """Response containing per-action check results."""
+
+    results: Dict[str, schemas.SingleActionCheckResponse]
+
+
+@router.post("/check-actions", response_model=ActionCheckResponse)
+async def check_actions(
+    request: ActionCheckRequest,
+    ctx: ApiContext = Depends(deps.get_context),
+    guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
+) -> ActionCheckResponse:
+    """Check multiple actions for usage limits and billing status.
+
+    Returns a dictionary of action check results keyed by action type.
+    """
+    ctx.logger.info(f"Checking actions: {list(request.actions.keys())}")
+
+    results: Dict[str, schemas.SingleActionCheckResponse] = {}
+
+    for action, amount in request.actions.items():
+        # Validate action type
+        try:
+            action_type = ActionType(action)
+        except ValueError:
+            # Skip invalid action types but log them
+            ctx.logger.warning(f"Invalid action type in check: {action}")
+            results[action] = schemas.SingleActionCheckResponse(
+                allowed=False,
+                action=action,
+                reason="usage_limit_exceeded",
+                details={"message": f"Invalid action type: {action}"},
+            )
+            continue
+
+        try:
+            # Check if the action is allowed
+            is_allowed = await guard_rail.is_allowed(action_type, amount=amount)
+
+            results[action] = schemas.SingleActionCheckResponse(
+                allowed=is_allowed, action=action, reason=None, details=None
+            )
+
+        except PaymentRequiredException as e:
+            # Action blocked due to billing status
+            results[action] = schemas.SingleActionCheckResponse(
+                allowed=False,
+                action=action,
+                reason="payment_required",
+                details={"message": str(e), "payment_status": e.payment_status},
+            )
+
+        except UsageLimitExceededException as e:
+            # Action blocked due to usage limit
+            results[action] = schemas.SingleActionCheckResponse(
+                allowed=False,
+                action=action,
+                reason="usage_limit_exceeded",
+                details={"message": str(e), "current_usage": e.current_usage, "limit": e.limit},
+            )
+
+        except Exception as e:
+            # Unexpected error for this action
+            ctx.logger.error(f"Unexpected error checking action {action}: {str(e)}")
+            results[action] = schemas.SingleActionCheckResponse(
+                allowed=False,
+                action=action,
+                reason="usage_limit_exceeded",
+                details={"message": f"Error checking action: {str(e)}"},
+            )
+
+    return ActionCheckResponse(results=results)
+
+
+@router.get("/check-action", response_model=schemas.SingleActionCheckResponse)
+async def check_action(
+    action: str = Query(..., description="Action to check e.g. queries, entities"),
     amount: int = Query(1, ge=1, description="Number of units to check (default 1)"),
     ctx: ApiContext = Depends(deps.get_context),
     guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
-) -> schemas.ActionCheckResponse:
-    """Check if a specific action is allowed based on usage limits and billing status.
-
-    Returns whether the action is allowed and why it might be blocked.
-    Can check for multiple units at once by specifying the amount parameter.
-    """
-    ctx.logger.info(f"Checking if action '{action}' (amount={amount}) is allowed.")
-
-    # Validate action type
+) -> schemas.SingleActionCheckResponse:
+    """Check a single action for usage limits and billing status."""
     try:
         action_type = ActionType(action)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid action type: {action}. "
-            f"Must be one of: {', '.join([a.value for a in ActionType])}",
-        ) from e
-
-    try:
-        # Check if the action is allowed
-        is_allowed = await guard_rail.is_allowed(action_type, amount=amount)
-
-        return schemas.ActionCheckResponse(
-            allowed=is_allowed, action=action, reason=None, details=None
+    except ValueError:
+        ctx.logger.warning(f"Invalid action type in single check: {action}")
+        return schemas.SingleActionCheckResponse(
+            allowed=False,
+            action=action,
+            reason="usage_limit_exceeded",
+            details={"message": f"Invalid action type: {action}"},
         )
 
+    try:
+        is_allowed = await guard_rail.is_allowed(action_type, amount=amount)
+        return schemas.SingleActionCheckResponse(
+            allowed=is_allowed, action=action, reason=None, details=None
+        )
     except PaymentRequiredException as e:
-        # Action blocked due to billing status
-        return schemas.ActionCheckResponse(
+        return schemas.SingleActionCheckResponse(
             allowed=False,
             action=action,
             reason="payment_required",
             details={"message": str(e), "payment_status": e.payment_status},
         )
-
     except UsageLimitExceededException as e:
-        # Action blocked due to usage limit
-        return schemas.ActionCheckResponse(
+        return schemas.SingleActionCheckResponse(
             allowed=False,
             action=action,
             reason="usage_limit_exceeded",
             details={"message": str(e), "current_usage": e.current_usage, "limit": e.limit},
         )
-
     except Exception as e:
-        # Unexpected error
         ctx.logger.error(f"Unexpected error checking action {action}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error checking action: {str(e)}") from e
+        return schemas.SingleActionCheckResponse(
+            allowed=False,
+            action=action,
+            reason="usage_limit_exceeded",
+            details={"message": f"Error checking action: {str(e)}"},
+        )
 
 
 def _create_usage_snapshot(
     usage_record: Optional[Usage],
     plan_limits: dict,
     billing_period_id: UUID,
+    team_members: int,
 ) -> UsageSnapshot:
     """Create a usage snapshot from usage record and plan limits."""
     return UsageSnapshot(
-        syncs=usage_record.syncs if usage_record else 0,
         entities=usage_record.entities if usage_record else 0,
         queries=usage_record.queries if usage_record else 0,
-        collections=usage_record.collections if usage_record else 0,
         source_connections=usage_record.source_connections if usage_record else 0,
-        max_syncs=plan_limits.get("max_syncs"),
+        team_members=team_members,
         max_entities=plan_limits.get("max_entities"),
         max_queries=plan_limits.get("max_queries"),
-        max_collections=plan_limits.get("max_collections"),
         max_source_connections=plan_limits.get("max_source_connections"),
+        max_team_members=plan_limits.get("max_team_members"),
         timestamp=datetime.utcnow(),
         billing_period_id=billing_period_id,
     )
@@ -133,16 +211,14 @@ def _create_default_dashboard() -> UsageDashboard:
             status="legacy",
             plan="legacy",
             usage=UsageSnapshot(
-                syncs=0,
                 entities=0,
                 queries=0,
-                collections=0,
                 source_connections=0,
-                max_syncs=None,
+                team_members=0,
                 max_entities=None,
                 max_queries=None,
-                max_collections=None,
                 max_source_connections=None,
+                max_team_members=None,
                 timestamp=datetime.utcnow(),
                 billing_period_id=UUID("00000000-0000-0000-0000-000000000000"),
             ),
@@ -185,7 +261,7 @@ def _calculate_trends(
     metrics = [
         ("entities", current_usage.entities, prev_usage.entities),
         ("queries", current_usage.queries, prev_usage.queries),
-        ("syncs", current_usage.syncs, prev_usage.syncs),
+        ("source_connections", current_usage.source_connections, prev_usage.source_connections),
     ]
 
     for metric_name, current_val, prev_val in metrics:
@@ -212,6 +288,7 @@ def _calculate_trends(
 async def _build_previous_periods(
     db: AsyncSession,
     organization_id: UUID,
+    ctx: ApiContext,
     limit: int = 6,
 ) -> List[BillingPeriodUsage]:
     """Build list of previous billing period usage data."""
@@ -219,12 +296,28 @@ async def _build_previous_periods(
         db, organization_id=organization_id, limit=limit
     )
 
+    # Get team member count from guard rail service
+    team_guard_rail = GuardRailService(
+        organization_id=organization_id, logger=ctx.logger.with_context(component="guardrail")
+    )
+    team_members_count = await team_guard_rail.get_team_member_count()
+
     previous_periods = []
     for period in previous_periods_data:
         period_usage = await crud.usage.get_by_billing_period(db, billing_period_id=period.id)
 
+        # Normalize plan to enum before looking up limits
+        try:
+            plan_enum = (
+                period.plan
+                if hasattr(period, "plan") and hasattr(period.plan, "value")
+                else BillingPlan(str(period.plan))
+            )
+        except Exception:
+            plan_enum = BillingPlan.PRO
+
         period_limits = GuardRailService.PLAN_LIMITS.get(
-            period.plan, GuardRailService.PLAN_LIMITS[BillingPlan.DEVELOPER]
+            plan_enum, GuardRailService.PLAN_LIMITS[BillingPlan.PRO]
         )
 
         status_str, plan_str = _get_status_and_plan_strings(period)
@@ -236,7 +329,9 @@ async def _build_previous_periods(
                 period_end=period.period_end,
                 status=status_str,
                 plan=plan_str,
-                usage=_create_usage_snapshot(period_usage, period_limits, period.id),
+                usage=_create_usage_snapshot(
+                    period_usage, period_limits, period.id, team_members_count
+                ),
                 daily_usage=[],
                 days_remaining=None,
                 is_current=False,
@@ -269,12 +364,32 @@ async def get_usage_dashboard(
         usage_record = await crud.usage.get_by_billing_period(
             db, billing_period_id=target_period.id
         )
+        # Normalize plan to enum before looking up limits
+        try:
+            plan_enum = (
+                target_period.plan
+                if hasattr(target_period, "plan") and hasattr(target_period.plan, "value")
+                else BillingPlan(str(target_period.plan))
+            )
+        except Exception:
+            plan_enum = BillingPlan.PRO
+
         plan_limits = GuardRailService.PLAN_LIMITS.get(
-            target_period.plan, GuardRailService.PLAN_LIMITS[BillingPlan.DEVELOPER]
+            plan_enum, GuardRailService.PLAN_LIMITS[BillingPlan.PRO]
         )
 
+        # Get team member count from guard rail service (already injected)
+        # Note: guard_rail is not injected here, so create one
+        usage_guard_rail = GuardRailService(
+            organization_id=ctx.organization.id,
+            logger=ctx.logger.with_context(component="guardrail"),
+        )
+        team_members_count = await usage_guard_rail.get_team_member_count()
+
         # Create usage snapshot
-        usage_snapshot = _create_usage_snapshot(usage_record, plan_limits, target_period.id)
+        usage_snapshot = _create_usage_snapshot(
+            usage_record, plan_limits, target_period.id, team_members_count
+        )
 
         # Calculate period status
         now = datetime.utcnow()
@@ -298,7 +413,7 @@ async def get_usage_dashboard(
         )
 
         # Get previous periods
-        previous_periods = await _build_previous_periods(db, ctx.organization.id)
+        previous_periods = await _build_previous_periods(db, ctx.organization.id, ctx)
 
         # Calculate aggregate stats
         all_usage_records = await crud.usage.get_all_by_organization(

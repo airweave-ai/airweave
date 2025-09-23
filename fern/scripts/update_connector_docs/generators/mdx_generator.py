@@ -59,37 +59,21 @@ def generate_mdx_content(
             # Add authentication information section
             content += "### Authentication\n\n"
 
-            auth_type = source.get("auth_type")
+            auth_methods = source.get("auth_methods", [])
+            oauth_type = source.get("oauth_type")
             auth_config_class = source.get("auth_config_class")
+            requires_byoc = source.get("requires_byoc", False)
 
-            # Handle different authentication types
-            if (
-                auth_type == "oauth2"
-                or auth_type == "oauth2_with_refresh"
-                or auth_type == "oauth2_with_refresh_rotating"
-            ):
-                # Check if this is a BYOC OAuth source
-                is_byoc_oauth = False
-                if auth_config_class and auth_config_class in auth_configs:
-                    auth_info = auth_configs[auth_config_class]
-                    parent_class = auth_info.get("parent_class")
-                    # Check if it inherits from OAuth2BYOCAuthConfig or is OAuth2BYOCAuthConfig itself
-                    if (
-                        parent_class == "OAuth2BYOCAuthConfig"
-                        or auth_config_class == "OAuth2BYOCAuthConfig"
-                    ):
-                        is_byoc_oauth = True
-                    # Also check the grandparent for deeper inheritance
-                    elif parent_class and parent_class in auth_configs:
-                        grandparent_class = auth_configs[parent_class].get(
-                            "parent_class"
-                        )
-                        if grandparent_class == "OAuth2BYOCAuthConfig":
-                            is_byoc_oauth = True
+            # Determine authentication type from auth_methods and oauth_type
+            has_oauth = any(method in ["OAUTH_BROWSER", "OAUTH_TOKEN"] for method in auth_methods)
+            has_direct = "DIRECT" in auth_methods
+            has_auth_provider = "AUTH_PROVIDER" in auth_methods
 
-                if is_byoc_oauth:
+            # Handle OAuth authentication
+            if has_oauth and oauth_type:
+                if requires_byoc:
                     # BYOC (Bring Your Own Credentials) OAuth
-                    content += "This connector uses **OAuth 2.0 with custom credentials**. You need to provide your OAuth application's Client ID and Client Secret in the Airweave UI, then go through the OAuth consent screen.\n\n"
+                    content += "This connector uses **OAuth 2.0 with custom credentials**. You need to provide your OAuth application's Client ID and Client Secret, then complete the OAuth consent flow.\n\n"
 
                     content += """<Card
   title="OAuth Setup Required"
@@ -98,22 +82,33 @@ def generate_mdx_content(
 >
 
 1. Create an OAuth application in your provider's developer console
-2. Enter your Client ID and Client Secret in the Airweave UI
-3. Complete the OAuth consent flow when connecting the source
+2. Enter your Client ID and Client Secret when configuring the connection
+3. Complete the OAuth consent flow
 
 </Card>
 
 """
                 else:
                     # Regular OAuth (Airweave-managed credentials)
-                    content += "This connector uses **OAuth 2.0 authentication**. Connect this source through the Airweave UI, which will guide you through the OAuth flow.\n\n"
+                    content += "This connector uses **OAuth 2.0 authentication**. You can connect through the Airweave UI or API using the OAuth flow.\n\n"
 
-            elif auth_config_class and auth_config_class in auth_configs:
+                    # Show available authentication methods
+                    if auth_methods:
+                        content += "**Supported authentication methods:**\n"
+                        for method in auth_methods:
+                            if method == "OAUTH_BROWSER":
+                                content += "- OAuth Browser Flow (recommended for UI)\n"
+                            elif method == "OAUTH_TOKEN":
+                                content += "- OAuth Token (for programmatic access)\n"
+                            elif method == "AUTH_PROVIDER":
+                                content += "- Auth Provider (enterprise SSO)\n"
+                        content += "\n"
+
+            # Handle Direct authentication
+            elif has_direct and auth_config_class and auth_config_class in auth_configs:
                 # Custom authentication config class
                 auth_info = auth_configs[auth_config_class]
-                content += (
-                    "This connector uses a custom authentication configuration.\n\n"
-                )
+                content += "This connector uses a custom authentication configuration.\n\n"
 
                 # Only show auth fields for non-OAuth configs
                 content += """<Card
@@ -130,26 +125,20 @@ def generate_mdx_content(
                     for field in auth_info["fields"]:
                         # Get descriptions from parent class if available
                         field_description = field["description"]
-                        if (
-                            field_description == "No description"
-                            and "parent_class" in auth_info
-                        ):
+                        if field_description == "No description" and "parent_class" in auth_info:
                             parent_class = auth_info["parent_class"]
                             if parent_class in auth_configs:
                                 parent_fields = auth_configs[parent_class]["fields"]
                                 for parent_field in parent_fields:
                                     if (
                                         parent_field["name"] == field["name"]
-                                        and parent_field["description"]
-                                        != "No description"
+                                        and parent_field["description"] != "No description"
                                     ):
                                         field_description = parent_field["description"]
                                         break
 
                         # Escape special characters in description
-                        escaped_description = escape_mdx_special_chars(
-                            field_description
-                        )
+                        escaped_description = escape_mdx_special_chars(field_description)
 
                         # Prepare default value attribute if exists
                         default_attr = ""
@@ -165,9 +154,7 @@ def generate_mdx_content(
                                 default_attr = f"  default={{{default_value}}}\n"
                             elif isinstance(default_value, bool):
                                 # Booleans need curly braces and proper JS boolean values
-                                default_attr = (
-                                    f"  default={{{str(default_value).lower()}}}\n"
-                                )
+                                default_attr = f"  default={{{str(default_value).lower()}}}\n"
                             elif isinstance(default_value, list):
                                 # Arrays need curly braces and proper formatting
                                 default_attr = f"  default={{{str(default_value)}}}\n"
@@ -187,10 +174,24 @@ def generate_mdx_content(
                 # Close the Card component
                 content += "</Card>\n\n"
 
-            elif auth_type == "none":
+            # Handle cases where no auth methods are specified or authentication is not required
+            elif not auth_methods:
                 content += "This connector does not require authentication.\n\n"
             else:
-                content += "Please refer to the Airweave documentation for authentication details.\n\n"
+                # Generic fallback for other authentication scenarios
+                content += "**Supported authentication methods:**\n"
+                for method in auth_methods:
+                    if method == "OAUTH_BROWSER":
+                        content += "- OAuth Browser Flow\n"
+                    elif method == "OAUTH_TOKEN":
+                        content += "- OAuth Token\n"
+                    elif method == "AUTH_PROVIDER":
+                        content += "- Auth Provider\n"
+                    elif method == "DIRECT":
+                        content += "- Direct Credentials\n"
+                    else:
+                        content += f"- {method}\n"
+                content += "\n"
 
             # Add configuration options section
             config_class = source.get("config_class")
@@ -201,7 +202,9 @@ def generate_mdx_content(
 
                 # Check if there are actually fields to display
                 if config_info["fields"] and len(config_info["fields"]) > 0:
-                    content += "The following configuration options are available for this connector:\n\n"
+                    content += (
+                        "The following configuration options are available for this connector:\n\n"
+                    )
 
                     # Wrap the configuration options in a Card
                     content += """<Card
@@ -216,9 +219,7 @@ def generate_mdx_content(
 
                     for field in config_info["fields"]:
                         # Escape special characters in description
-                        escaped_description = escape_mdx_special_chars(
-                            field["description"]
-                        )
+                        escaped_description = escape_mdx_special_chars(field["description"])
 
                         # Prepare default value attribute if exists
                         default_attr = ""
@@ -234,9 +235,7 @@ def generate_mdx_content(
                                 default_attr = f"  default={{{default_value}}}\n"
                             elif isinstance(default_value, bool):
                                 # Booleans need curly braces and proper JS boolean values
-                                default_attr = (
-                                    f"  default={{{str(default_value).lower()}}}\n"
-                                )
+                                default_attr = f"  default={{{str(default_value).lower()}}}\n"
                             elif isinstance(default_value, list):
                                 # Arrays need curly braces and proper formatting
                                 default_attr = f"  default={{{str(default_value)}}}\n"
@@ -257,7 +256,9 @@ def generate_mdx_content(
                     content += "</Card>\n\n"
                 else:
                     # No configuration fields available
-                    content += "This connector does not have any additional configuration options.\n\n"
+                    content += (
+                        "This connector does not have any additional configuration options.\n\n"
+                    )
             else:
                 # No config class found
                 content += "### Configuration Options\n\n"
@@ -279,9 +280,7 @@ def generate_mdx_content(
             for field in entity["fields"]:
                 # Escape special characters in the description
                 escaped_description = escape_mdx_special_chars(field["description"])
-                content += (
-                    f"| {field['name']} | {field['type']} | {escaped_description} |\n"
-                )
+                content += f"| {field['name']} | {field['type']} | {escaped_description} |\n"
 
             content += "\n</Accordion>\n"
 

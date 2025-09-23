@@ -22,13 +22,22 @@ interface EntityDefinition {
   organization_id?: string;
 }
 
+interface EntityStateFromBackend {
+  entity_type: string;
+  total_count: number;
+  last_updated_at?: string;
+  sync_status: 'pending' | 'syncing' | 'synced' | 'failed';
+  error?: string;
+}
+
 interface EntityStateListProps {
-  state: EntityState | undefined;
+  state: any | undefined;  // Store connection for real-time updates
   sourceShortName: string;
   isDark: boolean;
   onStartSync: () => void;
   isRunning: boolean;
   isPending: boolean;
+  entityStates?: EntityStateFromBackend[];  // Primary source from backend
 }
 
 // Component for animated count display with blue chip effect
@@ -42,6 +51,7 @@ const AnimatedCount: React.FC<{
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
+    console.log(`[AnimatedCount] Count changed from ${prevCount} to ${count}`);
     if (count !== prevCount && count > prevCount) {
       // Clear any existing interval
       if (intervalRef.current) {
@@ -598,12 +608,25 @@ export const EntityStateList: React.FC<EntityStateListProps> = ({
   isDark,
   onStartSync,
   isRunning,
-  isPending
+  isPending,
+  entityStates
 }) => {
   const [expandedEntity, setExpandedEntity] = useState<string | null>(null);
   const [entityDefinitions, setEntityDefinitions] = useState<EntityDefinition[]>([]);
   const [isLoadingDefinitions, setIsLoadingDefinitions] = useState(true);
   const isSyncing = isRunning || isPending;
+
+  // Debug logging to track real-time updates
+  useEffect(() => {
+    console.log('[EntityStateList] Props updated:', {
+      hasState: !!state,
+      stateEntityStates: state?.entity_states,
+      propEntityStates: entityStates,
+      isRunning,
+      isPending,
+      stateLastUpdated: state?.lastUpdated
+    });
+  }, [state, entityStates, isRunning, isPending]);
 
   // Fetch entity definitions for this source
   useEffect(() => {
@@ -631,6 +654,21 @@ export const EntityStateList: React.FC<EntityStateListProps> = ({
 
   // Combine state counts with entity definitions
   const combinedEntities = React.useMemo(() => {
+    // Always prefer store data if it exists and has been updated (real-time updates)
+    // The store gets updated via SSE during syncs
+    const entityStatesToUse = state?.entity_states && state.entity_states.length > 0
+      ? state.entity_states  // Real-time updates from store
+      : entityStates;  // Fallback to prop data
+
+    console.log('[EntityStateList] Computing combined entities:', {
+      entityStatesFromProp: entityStates,
+      entityStatesFromStore: state?.entity_states,
+      usingSource: state?.entity_states ? 'store' : 'prop',
+      storeLastUpdated: state?.lastUpdated,
+      isRunning,
+      isPending
+    });
+
     const entityMap = new Map<string, { name: string; count: number; definition?: EntityDefinition }>();
 
     // Create a mapping from simplified names to definitions
@@ -644,14 +682,15 @@ export const EntityStateList: React.FC<EntityStateListProps> = ({
       }
     });
 
-    // Build combined list from entity counts (which use simple names)
-    if (state?.entityCounts) {
-      Object.entries(state.entityCounts).forEach(([name, count]) => {
-        if (!name.includes('Chunk') && !name.includes('Parent')) {
-          const definition = defBySimpleName.get(name);
-          entityMap.set(name, {
-            name,
-            count: count as number,
+    if (entityStatesToUse && entityStatesToUse.length > 0) {
+      entityStatesToUse.forEach((entityState: EntityStateFromBackend) => {
+        // Remove "Entity" suffix from entity_type for display
+        const simpleName = entityState.entity_type.replace(/Entity$/, '');
+        if (!simpleName.includes('Chunk') && !simpleName.includes('Parent')) {
+          const definition = defBySimpleName.get(simpleName);
+          entityMap.set(simpleName, {
+            name: simpleName,
+            count: entityState.total_count,
             definition
           });
         }
@@ -674,7 +713,7 @@ export const EntityStateList: React.FC<EntityStateListProps> = ({
       if (b.count !== a.count) return b.count - a.count;
       return a.name.localeCompare(b.name);
     });
-  }, [state?.entityCounts, entityDefinitions]);
+  }, [state?.entity_states, entityDefinitions, entityStates]);  // Watch for entity_states updates
 
   // Calculate total
   const totalCount = React.useMemo(() => {
@@ -737,23 +776,23 @@ export const EntityStateList: React.FC<EntityStateListProps> = ({
         isSyncing ? "border-transparent" : isDark ? "border-gray-800" : "border-gray-200"
       )}
         style={{
-          // Custom animated border using CSS gradient
+          // Custom animated border using CSS gradient - blue for both running and pending
           ...(isSyncing && {
             background: isDark
               ? `linear-gradient(${isDark ? '#1a1f2e' : '#ffffff'}, ${isDark ? '#1a1f2e' : '#ffffff'}) padding-box,
                linear-gradient(90deg,
-                 ${isRunning ? '#3b82f6' : '#eab308'} 0%,
-                 ${isRunning ? '#60a5fa' : '#fbbf24'} 25%,
-                 ${isRunning ? '#3b82f6' : '#eab308'} 50%,
-                 ${isRunning ? '#60a5fa' : '#fbbf24'} 75%,
-                 ${isRunning ? '#3b82f6' : '#eab308'} 100%) border-box`
+                 #3b82f6 0%,
+                 #60a5fa 25%,
+                 #3b82f6 50%,
+                 #60a5fa 75%,
+                 #3b82f6 100%) border-box`
               : `linear-gradient(white, white) padding-box,
                linear-gradient(90deg,
-                 ${isRunning ? '#3b82f6' : '#eab308'} 0%,
-                 ${isRunning ? '#60a5fa' : '#fbbf24'} 25%,
-                 ${isRunning ? '#3b82f6' : '#eab308'} 50%,
-                 ${isRunning ? '#60a5fa' : '#fbbf24'} 75%,
-                 ${isRunning ? '#3b82f6' : '#eab308'} 100%) border-box`,
+                 #3b82f6 0%,
+                 #60a5fa 25%,
+                 #3b82f6 50%,
+                 #60a5fa 75%,
+                 #3b82f6 100%) border-box`,
             border: '1px solid transparent',
             backgroundSize: isSyncing ? '200% 100%, 200% 100%' : '100% 100%, 100% 100%',
             backgroundPosition: isSyncing ? '0 0, 0 0' : '0 0, 0 0',

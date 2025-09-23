@@ -1,33 +1,8 @@
 """Schemas for integration auth settings."""
 
-from enum import Enum
 from typing import Any, Optional
 
-from pydantic import BaseModel
-
-
-class AuthType(str, Enum):
-    """Enumeration of supported authentication types.
-
-    Attributes:
-    ----------
-        oauth2: OAuth2 authentication.
-        oauth2_with_refresh: OAuth2 authentication with refresh token.
-        oauth2_with_refresh_rotating: OAuth2 authentication with rotating refresh token.
-        api_key: API key authentication.
-        native_functionality: Native functionality.
-        url_and_api_key: URL and API key authentication.
-        none: No authentication.
-    """
-
-    oauth2 = "oauth2"
-    oauth2_with_refresh = "oauth2_with_refresh"
-    oauth2_with_refresh_rotating = "oauth2_with_refresh_rotating"
-    api_key = "api_key"
-    native_functionality = "native_functionality"
-    config_class = "config_class"
-    trello_auth = "trello_auth"
-    none = "none"
+from pydantic import BaseModel, model_validator
 
 
 class OAuth2TokenResponse(BaseModel):
@@ -67,11 +42,15 @@ class BaseAuthSettings(BaseModel):
 
     Attributes:
     ----------
-        auth_type (AuthType): The authentication type.
+        integration_short_name: The short name of the integration.
+        authentication_method: The authentication method (OAUTH_BROWSER, OAUTH_TOKEN, DIRECT, etc.).
+        oauth_type: The OAuth type if applicable (ACCESS_ONLY, WITH_REFRESH, WITH_ROTATING_REFRESH).
 
     """
 
-    auth_type: AuthType
+    integration_short_name: Optional[str] = None
+    authentication_method: Optional[str] = None  # AuthenticationMethod value
+    oauth_type: Optional[str] = None  # OAuthType value if OAuth
 
 
 class NativeFunctionalityAuthSettings(BaseAuthSettings):
@@ -120,6 +99,21 @@ class OAuth2Settings(BaseAuthSettings):
     client_credential_location: str
     additional_frontend_params: Optional[dict[str, str]] = None
     scope: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_oauth_fields(self):
+        """Validate that OAuth integrations have required fields."""
+        if not self.url:
+            raise ValueError(f"OAuth integration {self.integration_short_name} missing 'url' field")
+        if not self.backend_url:
+            raise ValueError(
+                f"OAuth integration {self.integration_short_name} missing 'backend_url' field"
+            )
+        if not self.client_id:
+            raise ValueError(
+                f"OAuth integration {self.integration_short_name} missing 'client_id' field"
+            )
+        return self
 
 
 class OAuth2WithRefreshSettings(OAuth2Settings):

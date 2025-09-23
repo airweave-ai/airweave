@@ -4,7 +4,7 @@ Public API Test Script
 
 Entry point for the modularized public API test suite.
 Tests Airweave API across different environments:
-- local: Starts services via start.sh, uses localhost:8001
+- local: Starts services via start.sh, uses localhost:8001 (or AIRWEAVE_LOCAL_PORT)
 - dev: Uses api.dev-airweave.com
 - prod: Uses api.airweave.ai
 

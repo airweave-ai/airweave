@@ -7,15 +7,34 @@ import httpx
 from fastapi import HTTPException
 
 from airweave.core.credential_sanitizer import safe_log_credentials
-from airweave.platform.auth.schemas import AuthType
 from airweave.platform.auth_providers._base import BaseAuthProvider
+from airweave.platform.auth_providers.auth_result import AuthResult
 from airweave.platform.decorators import auth_provider
+
+
+class PipedreamDefaultOAuthException(Exception):
+    """Raised when trying to access credentials for a Pipedream default OAuth client.
+
+    This happens when the connected account uses Pipedream's built-in OAuth client
+    rather than a custom OAuth client. In this case, credentials cannot be retrieved
+    directly and the proxy must be used.
+    """
+
+    def __init__(self, source_short_name: str, message: str = None):
+        """Initialize the exception."""
+        self.source_short_name = source_short_name
+        if message is None:
+            message = (
+                f"Cannot retrieve credentials for {source_short_name}. "
+                "This account uses Pipedream's default OAuth client. "
+                "Proxy mode must be used for this connection."
+            )
+        super().__init__(message)
 
 
 @auth_provider(
     name="Pipedream",
     short_name="pipedream",
-    auth_type=AuthType.oauth2_with_refresh,
     auth_config_class="PipedreamAuthConfig",
     config_class="PipedreamConfig",
 )
@@ -28,8 +47,9 @@ class PipedreamAuthProvider(BaseAuthProvider):
     Pipedream uses OAuth2 client credentials flow with access tokens that expire after 3600 seconds.
     """
 
-    # Token expiry buffer (refresh 5 minutes before expiry)
-    TOKEN_EXPIRY_BUFFER = 300  # 5 minutes in seconds
+    # Token expiry buffer (refresh 10 minutes before expiry)
+    # This ensures tokens are refreshed well before expiry during long-running syncs
+    TOKEN_EXPIRY_BUFFER = 600  # 10 minutes in seconds
 
     # Pipedream OAuth token endpoint
     TOKEN_ENDPOINT = "https://api.pipedream.com/v1/oauth/token"
@@ -95,15 +115,15 @@ class PipedreamAuthProvider(BaseAuthProvider):
         if credentials is None:
             raise ValueError("credentials parameter is required")
         if config is None:
-            raise ValueError("config parameter is required")
+            config = {}
 
         instance = cls()
         instance.client_id = credentials["client_id"]
         instance.client_secret = credentials["client_secret"]
-        instance.project_id = config["project_id"]
-        instance.account_id = config["account_id"]
-        instance.environment = config.get("environment", "production")
+        instance.project_id = config.get("project_id")
+        instance.account_id = config.get("account_id")
         instance.external_user_id = config.get("external_user_id")
+        instance.environment = config.get("environment", "production")
 
         # Initialize token management
         instance._access_token = None
@@ -271,6 +291,63 @@ class PipedreamAuthProvider(BaseAuthProvider):
             )
             return found_credentials
 
+    async def validate(self) -> bool:
+        """Validate that the Pipedream connection works by testing client credentials.
+
+        Returns:
+            True if the connection is valid
+
+        Raises:
+            HTTPException: If validation fails with detailed error message
+        """
+        try:
+            self.logger.info("🔍 [Pipedream] Validating client credentials...")
+
+            async with httpx.AsyncClient() as client:
+                # Test OAuth token generation with client credentials
+                token_data = {
+                    "grant_type": "client_credentials",
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                }
+
+                response = await client.post(self.TOKEN_ENDPOINT, data=token_data)
+                response.raise_for_status()
+
+                token_response = response.json()
+                if "access_token" not in token_response:
+                    raise HTTPException(
+                        status_code=422, detail="Pipedream API returned invalid token response"
+                    )
+
+                self.logger.info("✅ [Pipedream] Client credentials validated successfully")
+                return True
+
+        except httpx.HTTPStatusError as e:
+            error_msg = f"Pipedream client credentials validation failed: {e.response.status_code}"
+            if e.response.status_code == 401:
+                error_msg += " - Invalid client credentials"
+            elif e.response.status_code == 400:
+                try:
+                    error_detail = e.response.json().get("error_description", e.response.text)
+                    error_msg += f" - {error_detail}"
+                except Exception:
+                    error_msg += " - Bad request"
+            else:
+                try:
+                    error_detail = e.response.json().get("error", e.response.text)
+                    error_msg += f" - {error_detail}"
+                except Exception:
+                    error_msg += f" - {e.response.text}"
+
+            self.logger.error(f"❌ [Pipedream] {error_msg}")
+            raise HTTPException(status_code=422, detail=error_msg)
+
+        except Exception as e:
+            error_msg = f"Pipedream client credentials validation failed: {str(e)}"
+            self.logger.error(f"❌ [Pipedream] {error_msg}")
+            raise HTTPException(status_code=422, detail=error_msg)
+
     async def _get_account_with_credentials(
         self, client: httpx.AsyncClient, pipedream_app_slug: str, source_short_name: str
     ) -> Dict[str, Any]:
@@ -314,11 +391,7 @@ class PipedreamAuthProvider(BaseAuthProvider):
                     "❌ [Pipedream] No credentials in response. This usually means the account "
                     "was created with Pipedream's default OAuth client, not a custom one."
                 )
-                raise HTTPException(
-                    status_code=422,
-                    detail="Credentials not available. Pipedream only exposes credentials for "
-                    "accounts created with custom OAuth clients, not default Pipedream OAuth.",
-                )
+                raise PipedreamDefaultOAuthException(source_short_name)
 
             self.logger.info(
                 f"✅ [Pipedream] Found account '{account_data.get('name')}' "
@@ -409,3 +482,43 @@ class PipedreamAuthProvider(BaseAuthProvider):
         )
 
         return found_credentials
+
+    async def get_auth_result(
+        self, source_short_name: str, source_auth_config_fields: List[str]
+    ) -> AuthResult:
+        """Get auth result with explicit mode for Pipedream.
+
+        Determines whether to use direct credentials or proxy based on OAuth client type.
+        """
+        # Check if source is in blocked list (must use proxy)
+        if source_short_name in self.BLOCKED_SOURCES:
+            self.logger.info(f"Source {source_short_name} is in blocked list - using proxy mode")
+            return AuthResult.proxy(
+                {
+                    "reason": "blocked_source",
+                    "source": source_short_name,
+                }
+            )
+
+        # Try to get credentials to determine OAuth client type
+        try:
+            credentials = await self.get_creds_for_source(
+                source_short_name, source_auth_config_fields
+            )
+            # Custom OAuth client - can use direct access
+            self.logger.info(
+                f"Custom OAuth client detected for {source_short_name} - using direct mode"
+            )
+            return AuthResult.direct(credentials)
+
+        except PipedreamDefaultOAuthException:
+            # Default OAuth client - must use proxy
+            self.logger.info(
+                f"Default OAuth client detected for {source_short_name} - using proxy mode"
+            )
+            return AuthResult.proxy(
+                {
+                    "reason": "default_oauth",
+                    "source": source_short_name,
+                }
+            )

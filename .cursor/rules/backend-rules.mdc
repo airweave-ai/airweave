@@ -14,7 +14,7 @@ alwaysApply: false
 ### Service Layer
 - **Sync Service**: Orchestrates data synchronization between sources and destinations
 - **DAG Service**: Manages directed acyclic graphs for data transformations
-- **OAuth2 Service**: Handles authentication for (white-labeled) integrations
+- **OAuth2 Service**: Handles authentication for integrations
 - **Auth0 Service**: Manages user authentication, roles, and organization memberships
 - **Stripe Service**: Handles subscription management and billing operations
 - **Resend Service**: Manages transactional email delivery and templates

@@ -19,7 +19,6 @@ from airweave.core.shared_models import ConnectionStatus
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models.integration_credential import IntegrationType
 from airweave.platform.auth.schemas import (
-    AuthType,
     BaseAuthSettings,
     OAuth2Settings,
     OAuth2TokenResponse,
@@ -34,12 +33,14 @@ class OAuth2Service:
     async def generate_auth_url(
         oauth2_settings: OAuth2Settings,
         client_id: Optional[str] = None,
+        state: Optional[str] = None,
     ) -> str:
         """Generate the OAuth2 authorization URL for an integration.
 
         Args:
             oauth2_settings: The OAuth2 settings for the integration
             client_id: Optional client ID to override the default one
+            state: Optional state token to round-trip through the OAuth flow
 
         Returns:
             The authorization URL for the OAuth2 flow
@@ -62,6 +63,9 @@ class OAuth2Service:
 
         if oauth2_settings.scope:
             params["scope"] = oauth2_settings.scope
+
+        if state is not None:
+            params["state"] = state
 
         auth_url = f"{oauth2_settings.url}?{urlencode(params)}"
 
@@ -116,13 +120,75 @@ class OAuth2Service:
         )
 
     @staticmethod
+    async def generate_auth_url_with_redirect(
+        oauth2_settings: OAuth2Settings,
+        *,
+        redirect_uri: str,
+        client_id: Optional[str] = None,
+        state: Optional[str] = None,
+    ) -> str:
+        """Generate an OAuth2 authorization URL but force a specific redirect_uri and include state.
+
+        Useful for API-hosted callback flows.
+        """
+        if not client_id:
+            client_id = oauth2_settings.client_id
+
+        params = {
+            "response_type": "code",
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            **(oauth2_settings.additional_frontend_params or {}),
+        }
+        if state:
+            params["state"] = state
+        if oauth2_settings.scope:
+            params["scope"] = oauth2_settings.scope
+
+        return f"{oauth2_settings.url}?{urlencode(params)}"
+
+    @staticmethod
+    async def exchange_authorization_code_for_token_with_redirect(
+        ctx: ApiContext,
+        *,
+        source_short_name: str,
+        code: str,
+        redirect_uri: str,
+        client_id: Optional[str] = None,
+        client_secret: Optional[str] = None,
+    ) -> OAuth2TokenResponse:
+        """Exchange an OAuth2 code using an explicit redirect_uri.
+
+        Must match the one used in auth.
+        """
+        try:
+            oauth2_settings = await integration_settings.get_by_short_name(source_short_name)
+        except KeyError as e:
+            raise HTTPException(
+                status_code=404, detail=f"Settings not found for source: {source_short_name}"
+            ) from e
+
+        if not client_id:
+            client_id = oauth2_settings.client_id
+        if not client_secret:
+            client_secret = oauth2_settings.client_secret
+
+        return await OAuth2Service._exchange_code(
+            logger=ctx.logger,
+            code=code,
+            redirect_uri=redirect_uri,
+            client_id=client_id,
+            client_secret=client_secret,
+            integration_config=oauth2_settings,
+        )
+
+    @staticmethod
     async def refresh_access_token(
         db: AsyncSession,
         integration_short_name: str,
         ctx: ApiContext,
         connection_id: UUID,
         decrypted_credential: dict,
-        white_label: Optional[schemas.WhiteLabel] = None,
     ) -> OAuth2TokenResponse:
         """Refresh an access token using a refresh token.
 
@@ -135,8 +201,6 @@ class OAuth2Service:
             ctx (ApiContext): The API context.
             connection_id (UUID): The ID of the connection to refresh the token for.
             decrypted_credential (dict): The token and optional config fields
-            white_label (Optional[schemas.WhiteLabel]): White label configuration to use if
-                available.
 
         Returns:
         -------
@@ -162,11 +226,6 @@ class OAuth2Service:
             client_id, client_secret = await OAuth2Service._get_client_credentials(
                 ctx.logger, integration_config, None, decrypted_credential
             )
-
-            # Override with white label credentials if available
-            if white_label and white_label.source_short_name == integration_short_name:
-                client_id = white_label.client_id
-                client_secret = white_label.client_secret
 
             # Prepare request parameters
             headers, payload = OAuth2Service._prepare_token_request(
@@ -399,7 +458,11 @@ class OAuth2Service:
         """
         oauth2_token_response = OAuth2TokenResponse(**response.json())
 
-        if integration_config.auth_type == "oauth2_with_refresh_rotating":
+        # Check if this is a rotating refresh token OAuth
+        if (
+            hasattr(integration_config, "oauth_type")
+            and integration_config.oauth_type == "with_rotating_refresh"
+        ):
             # Get connection and its credential
             connection = await crud.connection.get(db=db, id=connection_id, ctx=ctx)
             integration_credential = await crud.integration_credential.get(
@@ -460,76 +523,7 @@ class OAuth2Service:
         # paste: https://redirectmeto.com/ before the redirect uri
         # and set change the redirect uri in the oauth app as well
 
-        return f"{app_url}/auth/callback/{integration_short_name}"
-
-    @staticmethod
-    async def generate_auth_url_for_whitelabel(
-        db: AsyncSession, white_label: schemas.WhiteLabel
-    ) -> str:
-        """Generate the OAuth2 authorization URL for a white label integration."""
-        source = await crud.source.get_by_short_name(
-            db=db, short_name=white_label.source_short_name
-        )
-
-        if not source:
-            raise NotFoundException(f"Source not found: {white_label.source_short_name}")
-
-        integration_config = await integration_settings.get_by_short_name(source.short_name)
-
-        if not integration_config:
-            raise NotFoundException("Integration not found")
-
-        # Use white_label's redirect_url instead of the default one
-        params = {
-            "response_type": "code",
-            "client_id": white_label.client_id,
-            "redirect_uri": white_label.redirect_url,
-            **(integration_config.additional_frontend_params or {}),
-        }
-
-        if integration_config.scope:
-            params["scope"] = integration_config.scope
-
-        auth_url = f"{integration_config.url}?{urlencode(params)}"
-        return auth_url
-
-    @staticmethod
-    async def exchange_code_for_whitelabel(
-        logger: ContextualLogger,
-        code: str,
-        white_label: schemas.WhiteLabel,
-    ) -> OAuth2TokenResponse:
-        """Exchange OAuth2 authorization code for tokens using white label credentials.
-
-        Args:
-        ----
-            logger: The logger to use.
-            code: The authorization code to exchange
-            white_label: The white label configuration to use
-
-        Returns:
-        -------
-            OAuth2TokenResponse: The response containing the access token and other token details.
-
-        Raises:
-        ------
-            NotFoundException: If the integration is not found
-        """
-        integration_config = await integration_settings.get_by_short_name(
-            white_label.source_short_name
-        )
-        if not integration_config:
-            raise NotFoundException(f"Integration {white_label.source_short_name} not found.")
-
-        logger.info(f"Exchanging code for white label: {white_label.source_short_name}")
-        logger.info(f"Client ID: {white_label.client_id}")
-        return await OAuth2Service._exchange_code(
-            code=code,
-            redirect_uri=white_label.redirect_url,
-            client_id=white_label.client_id,
-            client_secret=white_label.client_secret,
-            integration_config=integration_config,
-        )
+        return f"{app_url}/auth/callback"
 
     @staticmethod
     async def _exchange_code(
@@ -610,57 +604,9 @@ class OAuth2Service:
         return OAuth2TokenResponse(**response.json())
 
     @staticmethod
-    async def create_oauth2_connection_for_whitelabel(
-        db: AsyncSession,
-        white_label: schemas.WhiteLabel,
-        code: str,
-        ctx: ApiContext,
-    ) -> schemas.Connection:
-        """Create a new OAuth2 connection using white label credentials.
-
-        Args:
-        ----
-            db: Database session
-            white_label: The white label configuration to use
-            code: The authorization code to exchange
-            ctx: The API context
-
-        Returns:
-        -------
-            schemas.Connection: The created connection
-        """
-        source = await crud.source.get_by_short_name(db, white_label.source_short_name)
-        if not source:
-            raise NotFoundException(f"Source not found: {white_label.source_short_name}")
-
-        settings = await integration_settings.get_by_short_name(source.short_name)
-        if not settings:
-            raise NotFoundException("Integration not found")
-
-        if not OAuth2Service._supports_oauth2(source.auth_type):
-            raise HTTPException(status_code=400, detail="Source does not support OAuth2")
-
-        # Exchange code for token using white label credentials
-        oauth2_response = await OAuth2Service.exchange_code_for_whitelabel(
-            ctx.logger, code=code, white_label=white_label
-        )
-
-        return await OAuth2Service._create_connection(
-            db=db,
-            source=source,
-            settings=settings,
-            oauth2_response=oauth2_response,
-            ctx=ctx,
-        )
-
-    @staticmethod
-    def _supports_oauth2(auth_type: AuthType) -> bool:
-        """Check if the auth type supports OAuth2."""
-        return auth_type in (
-            AuthType.oauth2,
-            AuthType.oauth2_with_refresh,
-            AuthType.oauth2_with_refresh_rotating,
-        )
+    def _supports_oauth2(oauth_type: Optional[str]) -> bool:
+        """Check if the integration supports OAuth2 based on oauth_type."""
+        return oauth_type is not None
 
     @staticmethod
     async def _create_connection(
@@ -671,10 +617,12 @@ class OAuth2Service:
         ctx: ApiContext,
     ) -> schemas.Connection:
         """Create a new connection with OAuth2 credentials."""
-        # Prepare credentials based on auth type
+        # Prepare credentials based on oauth type
+        # If it's access_only OAuth, only store access token
+        # Otherwise store both refresh and access tokens
         decrypted_credentials = (
             {"access_token": oauth2_response.access_token}
-            if settings.auth_type == AuthType.oauth2
+            if (hasattr(settings, "oauth_type") and settings.oauth_type == "access_only")
             else {
                 "refresh_token": oauth2_response.refresh_token,
                 "access_token": oauth2_response.access_token,
@@ -690,7 +638,6 @@ class OAuth2Service:
                 description=(f"OAuth2 credentials for {source.name} - {ctx.organization.id}"),
                 integration_short_name=source.short_name,
                 integration_type=IntegrationType.SOURCE,
-                auth_type=source.auth_type,
                 encrypted_credentials=encrypted_credentials,
             )
 

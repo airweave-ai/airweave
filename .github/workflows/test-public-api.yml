@@ -45,6 +45,19 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
+          # Required test environment variables
+          TEST_NOTION_TOKEN: ${{ secrets.TEST_NOTION_TOKEN }}
+          TEST_GOOGLE_CLIENT_ID: ${{ secrets.TEST_GOOGLE_CLIENT_ID }}
+          TEST_GOOGLE_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_CLIENT_SECRET }}
+          TEST_AUTH_PROVIDER_NAME: composio
+          TEST_COMPOSIO_API_KEY: ${{ secrets.TEST_COMPOSIO_API_KEY }}
+          TEST_COMPOSIO_AUTH_CONFIG_ID: ${{ secrets.TEST_COMPOSIO_AUTH_CONFIG_ID }}
+          TEST_COMPOSIO_ACCOUNT_ID: ${{ secrets.TEST_COMPOSIO_ACCOUNT_ID }}
+          TEST_PIPEDREAM_CLIENT_ID: ${{ secrets.TEST_PIPEDREAM_CLIENT_ID }}
+          TEST_PIPEDREAM_CLIENT_SECRET: ${{ secrets.TEST_PIPEDREAM_CLIENT_SECRET }}
+          TEST_PIPEDREAM_PROJECT_ID: ${{ secrets.TEST_PIPEDREAM_PROJECT_ID }}
+          TEST_PIPEDREAM_ACCOUNT_ID: ${{ secrets.TEST_PIPEDREAM_ACCOUNT_ID }}
+          TEST_PIPEDREAM_EXTERNAL_USER_ID: ${{ secrets.TEST_PIPEDREAM_EXTERNAL_USER_ID }}
           # Override images to use locally built test images
           BACKEND_IMAGE: test-backend:latest
           FRONTEND_IMAGE: test-frontend:latest

@@ -1,5 +1,5 @@
-// Action check response for billing/usage checks
-export interface ActionCheckResponse {
+// Single action check response for billing/usage checks
+export interface SingleActionCheckResponse {
   allowed: boolean;
   action: string;
   reason?: 'payment_required' | 'usage_limit_exceeded' | null;

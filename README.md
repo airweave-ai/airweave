@@ -148,7 +148,6 @@ await client.collections.create({
 - **Incremental updates** using content hashing
 - **Semantic search** for agent queries
 - **Versioning** for data changes
-- **White-labeling** support for SaaS builders
 
 ## 🔧 Tech Stack
 

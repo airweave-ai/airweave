@@ -1,10 +1,9 @@
 import { apiClient } from '@/lib/api';
-import { useEntityStateStore, EntityState, EntityStateUpdate, SyncCompleteMessage, SyncStatus } from '@/stores/entityStateStore';
+import { useEntityStateStore, SourceConnectionState, SyncProgressUpdate, SyncCompleteUpdate } from '@/stores/entityStateStore';
 import { useSyncStateStore } from '@/stores/syncStateStore';
 
 export class EntityStateMediator {
   private connectionId: string;
-  private syncId?: string;
   private currentJobId?: string;
   private stateStore = useEntityStateStore.getState();
   private syncStore = useSyncStateStore.getState();
@@ -14,26 +13,29 @@ export class EntityStateMediator {
     this.connectionId = connectionId;
   }
 
-  async initialize(): Promise<EntityState> {
+  async initialize(): Promise<SourceConnectionState | undefined> {
     // RULE 1: Show local state instantly if available
-    const localState = this.stateStore.getEntityState(this.connectionId);
-
-    // Use local state if available
+    const localState = this.stateStore.getConnection(this.connectionId);
 
     // RULE 2: ALWAYS fetch DB state in parallel (non-blocking)
     const dbFetchPromise = this.fetchDatabaseState()
       .then(dbState => {
-        // Update local store with DB truth
-        this.stateStore.setEntityState(this.connectionId, dbState);
+        if (dbState) {
+          // Update local store with DB truth
+          this.stateStore.setSourceConnection(dbState);
 
-        // RULE 3: If sync is active (pending/in_progress), subscribe to stream
-        if ((dbState.syncStatus === 'in_progress' || dbState.syncStatus === 'pending') && dbState.currentJobId) {
-          this.subscribeToUpdates(dbState.currentJobId);
+          // RULE 3: If sync is active (pending/in_progress), subscribe to stream
+          if (dbState.last_sync_job?.status === 'in_progress' || dbState.last_sync_job?.status === 'pending') {
+            const jobId = dbState.last_sync_job.id;
+            if (jobId) {
+              this.subscribeToUpdates(jobId);
+            }
+          }
         }
-
         return dbState;
       })
       .catch(error => {
+        console.error('Failed to fetch database state:', error);
         return localState; // Fallback to local if DB fails
       });
 
@@ -48,81 +50,45 @@ export class EntityStateMediator {
     return await dbFetchPromise;
   }
 
-  private async fetchDatabaseState(): Promise<EntityState> {
-    // Fetch source connection details
-    const connectionResponse = await apiClient.get(
-      `/source-connections/${this.connectionId}`
-    );
-    const connection = await connectionResponse.json();
-
-    this.syncId = connection.sync_id;
-
-    // Fetch entity counts if sync exists
-    let entityCounts: Record<string, number> = {};
-    let syncStatus: SyncStatus = 'completed';  // Default to completed if no active sync
-    let currentJobId: string | undefined;
-
-    if (this.syncId) {
-      // Fetch entity counts
-      const countsResponse = await apiClient.get(
-        `/entity-counts/syncs/${this.syncId}/counts`
+  private async fetchDatabaseState(): Promise<SourceConnectionState | undefined> {
+    try {
+      // Fetch source connection details with entity_states included
+      const connectionResponse = await apiClient.get(
+        `/source-connections/${this.connectionId}`
       );
 
-      if (countsResponse.ok) {
-        const counts = await countsResponse.json();
-        entityCounts = counts.reduce((acc: Record<string, number>, count: any) => {
-          const name = count.entity_definition_name
-            .replace('Entity', '')
-            .trim();
-          acc[name] = count.count;
-          return acc;
-        }, {});
+      if (!connectionResponse.ok) {
+        console.error('Failed to fetch source connection:', connectionResponse.status);
+        return undefined;
       }
+
+      const connection = await connectionResponse.json();
+
+      // Convert backend response to our store format
+      const state: SourceConnectionState = {
+        id: connection.id,
+        name: connection.name,
+        short_name: connection.short_name,
+        collection: connection.readable_collection_id,  // Changed from connection.collection
+        status: connection.status || 'active',
+        is_authenticated: connection.auth?.authenticated ?? true,  // Changed from connection.is_authenticated
+        last_sync_job: connection.sync?.last_job || connection.last_sync_job,  // Try new structure first
+        schedule: connection.schedule,
+        entity_states: connection.entities ?  // Convert entities object to entity_states array
+          Object.entries(connection.entities.by_type || {}).map(([type, stats]: [string, any]) => ({
+            entity_type: type,
+            total_count: stats.count,
+            last_updated_at: stats.last_updated,
+            sync_status: stats.sync_status
+          })) : [],
+        lastUpdated: new Date()
+      };
+
+      return state;
+    } catch (error) {
+      console.error('Error fetching database state:', error);
+      return undefined;
     }
-
-    // Map backend status directly - no translation needed anymore
-
-    // Map backend status directly - no translation needed anymore
-    switch (connection.latest_sync_job_status) {
-      case 'created':
-      case 'pending':
-        syncStatus = 'pending';
-        currentJobId = connection.latest_sync_job_id;
-        break;
-      case 'in_progress':
-        syncStatus = 'in_progress';
-        currentJobId = connection.latest_sync_job_id;
-        break;
-      case 'failed':
-        syncStatus = 'failed';
-        break;
-      case 'completed':
-        syncStatus = 'completed';
-        break;
-      case 'cancelled':
-        syncStatus = 'cancelled';
-        break;
-      default:
-        // No sync job or unknown status - check if we have a job ID
-        // This handles the case where a new sync was just started
-        if (connection.latest_sync_job_id && !connection.latest_sync_job_status) {
-          syncStatus = 'pending';
-          currentJobId = connection.latest_sync_job_id;
-        } else {
-          syncStatus = 'completed';  // Default to completed if no active sync
-        }
-    }
-
-    return {
-      connectionId: this.connectionId,
-      syncId: this.syncId,
-      entityCounts,
-      totalEntities: Object.values(entityCounts).reduce((a, b) => a + b, 0),
-      syncStatus,
-      currentJobId,
-      lastUpdated: new Date(),
-      error: connection.latest_sync_job_error
-    };
   }
 
   private async subscribeToUpdates(jobId: string): Promise<void> {
@@ -142,9 +108,9 @@ export class EntityStateMediator {
     await this.subscribeToEntityState(
       jobId,
       this.connectionId,
-      (update: EntityStateUpdate) => {
-        // Stream updates are authoritative during sync
-        this.stateStore.updateFromStream(this.connectionId, update);
+      (update: SyncProgressUpdate) => {
+        // Progress updates are handled by the store
+        // The store will update the connection state
       }
     );
   }
@@ -152,21 +118,27 @@ export class EntityStateMediator {
   async subscribeToJobUpdates(jobId: string): Promise<void> {
     // Public method called when a new sync is triggered
     // Immediately update state to show sync is starting
-    const currentState = this.stateStore.getEntityState(this.connectionId);
+    const currentState = this.stateStore.getConnection(this.connectionId);
 
-    // For a brand new source connection, we might not have a syncId yet
-    // The syncId will be created by the backend when the sync starts
-    const stateToSet: EntityState = {
-      connectionId: this.connectionId,
-      syncId: currentState?.syncId || this.syncId, // Use existing or current syncId
-      entityCounts: currentState?.entityCounts || {},
-      totalEntities: currentState?.totalEntities || 0,
-      syncStatus: 'pending',
-      currentJobId: jobId,
-      lastUpdated: new Date()
-    };
+    if (currentState) {
+      // Update the existing state to show sync is starting
+      const updatedState: SourceConnectionState = {
+        ...currentState,
+        status: 'in_progress',
+        last_sync_job: {
+          id: jobId,
+          status: 'pending',
+          entities_processed: 0,
+          entities_inserted: 0,
+          entities_updated: 0,
+          entities_deleted: 0,
+          entities_failed: 0
+        },
+        lastUpdated: new Date()
+      };
 
-    this.stateStore.setEntityState(this.connectionId, stateToSet);
+      this.stateStore.setSourceConnection(updatedState);
+    }
 
     // Subscribe to stream updates
     await this.subscribeToUpdates(jobId);
@@ -175,7 +147,7 @@ export class EntityStateMediator {
   private async subscribeToEntityState(
     jobId: string,
     sourceConnectionId: string,
-    onUpdate: (state: EntityStateUpdate) => void
+    onUpdate: (update: SyncProgressUpdate) => void
   ): Promise<void> {
     // Use apiClient.sse so headers/baseURL/token-refresh are consistent
     const controller = new AbortController();
@@ -189,56 +161,69 @@ export class EntityStateMediator {
             const data = JSON.parse((msg as any).data);
 
             if (data.type === 'entity_state') {
-              const update = data as EntityStateUpdate;
+              // Handle entity state updates from backend
+              // The backend sends entity_counts as a map of entity_type -> count
+              console.log('[EntityStateMediator] Entity state update received:', data);
 
-              // Always call onUpdate to update counts
-              onUpdate(update);
+              // Update the store's entity_states array
+              const currentConnection = this.stateStore.getConnection(this.connectionId);
+              if (currentConnection) {
+                // Convert entity_counts map to entity_states array format
+                const entityStates = Object.entries(data.entity_counts || {}).map(([entityType, count]) => ({
+                  entity_type: entityType + 'Entity',  // Add Entity suffix back for consistency
+                  total_count: count as number,
+                  last_updated_at: data.timestamp || new Date().toISOString(),
+                  sync_status: 'syncing' as const
+                }));
 
-              // Additionally, handle state transition from pending to running
-              const currentState = this.stateStore.getEntityState(this.connectionId);
-              if (currentState?.syncStatus === 'pending') {
-                // The updateFromStream in the store will handle the transition
-                // We just need to ensure the status changes
-                this.stateStore.setEntityState(this.connectionId, {
-                  ...currentState,
-                  syncStatus: 'in_progress',
+                // Update the connection with new entity states
+                const updatedConnection = {
+                  ...currentConnection,
+                  entity_states: entityStates,
+                  last_sync_job: {
+                    ...currentConnection.last_sync_job,
+                    status: 'in_progress' as const,
+                    entities_processed: data.total_entities || 0
+                  },
                   lastUpdated: new Date()
-                });
+                };
+
+                this.stateStore.setSourceConnection(updatedConnection);
               }
+            } else if (data.type === 'sync_progress') {
+              // Handle regular sync progress updates if any
+              const progressUpdate: SyncProgressUpdate = data as SyncProgressUpdate;
+              this.stateStore.updateFromProgress(progressUpdate);
             } else if (data.type === 'sync_complete') {
-              const completeMsg = data as SyncCompleteMessage;
+              console.log('[EntityStateMediator] Sync completion message received:', data);
 
-              console.log('[EntityStateMediator] Sync completion message received:', {
-                is_failed: completeMsg.is_failed,
-                final_status: completeMsg.final_status,
-                error: completeMsg.error,
-                final_counts: completeMsg.final_counts
-              });
+              // Update the store with final entity states
+              const currentConnection = this.stateStore.getConnection(this.connectionId);
+              if (currentConnection) {
+                // Convert final_counts to entity_states array
+                const finalEntityStates = Object.entries(data.final_counts || {}).map(([entityType, count]) => ({
+                  entity_type: entityType + 'Entity',  // Add Entity suffix back
+                  total_count: count as number,
+                  last_updated_at: data.timestamp || new Date().toISOString(),
+                  sync_status: 'synced' as const
+                }));
 
-              // IMMEDIATELY update status to reflect completion
-              const currentState = this.stateStore.getEntityState(this.connectionId);
-              if (currentState) {
-                // Use the final_status from backend (completed/failed)
-                const finalStatus = completeMsg.final_status || (completeMsg.is_failed ? 'failed' : 'completed');
-                const finalCounts = completeMsg.final_counts || currentState.entityCounts;
-                const finalTotal = completeMsg.total_entities ?? currentState.totalEntities;
-                const errorMessage = completeMsg.error || (completeMsg.is_failed ? 'Sync failed' : undefined);
+                // Update connection with final state
+                const updatedConnection = {
+                  ...currentConnection,
+                  entity_states: finalEntityStates,
+                  status: data.is_failed ? 'failing' : 'active' as any,
+                  last_sync_job: {
+                    ...currentConnection.last_sync_job,
+                    status: data.final_status || (data.is_failed ? 'failed' : 'completed'),
+                    entities_processed: data.total_entities || 0,
+                    completed_at: data.timestamp || new Date().toISOString(),
+                    error: data.error
+                  },
+                  lastUpdated: new Date()
+                };
 
-                console.log('[EntityStateMediator] Updating state with:', {
-                  finalStatus,
-                  errorMessage,
-                  isSyncing: false
-                });
-
-                this.stateStore.setEntityState(this.connectionId, {
-                  ...currentState,
-                  entityCounts: finalCounts,
-                  totalEntities: finalTotal,
-                  syncStatus: finalStatus,
-                  currentJobId: undefined, // Clear job ID
-                  lastUpdated: new Date(),
-                  error: errorMessage
-                });
+                this.stateStore.setSourceConnection(updatedConnection);
               }
 
               // Close the SSE connection
@@ -248,9 +233,9 @@ export class EntityStateMediator {
               // Fetch DB state after a short delay to ensure it's updated
               setTimeout(() => {
                 this.fetchDatabaseState().then(dbState => {
-                  const current = this.stateStore.getEntityState(this.connectionId);
-                  if (current && dbState.totalEntities !== current.totalEntities) {
-                    this.stateStore.setEntityState(this.connectionId, dbState);
+                  if (dbState) {
+                    // Just update with the new state from backend
+                    this.stateStore.setSourceConnection(dbState);
                   }
                 }).catch(error => {
                   // Silent fail - we already have the stream data

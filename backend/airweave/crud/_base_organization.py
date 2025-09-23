@@ -240,6 +240,30 @@ class CRUDBaseOrganization(Generic[ModelType, CreateSchemaType, UpdateSchemaType
 
         return db_obj
 
+    async def get_by_query_and_org(
+        self, db: AsyncSession, *, ctx: ApiContext, **kwargs: Any
+    ) -> Optional[ModelType]:
+        """Get a single object by a flexible query, scoped to the organization.
+
+        Args:
+            db: The database session.
+            ctx: The API context.
+            **kwargs: The query parameters (e.g., name="test", id=UUID(...)).
+
+        Returns:
+            The object if found, otherwise None.
+        """
+        query = select(self.model).where(self.model.organization_id == ctx.organization.id)
+        for key, value in kwargs.items():
+            if hasattr(self.model, key):
+                query = query.where(getattr(self.model, key) == value)
+            else:
+                # Defensive: prevent querying on columns that don't exist
+                raise AttributeError(f"Model {self.model.__name__} has no attribute '{key}'")
+
+        result = await db.execute(query)
+        return result.scalar_one_or_none()
+
     async def bulk_remove(
         self,
         db: AsyncSession,

@@ -317,7 +317,7 @@ class SyncEntityStateTracker:
             sync_id=self.sync_id,
             entity_counts=entity_counts_named,
             total_entities=total_entities,
-            job_status=SyncJobStatus.IN_PROGRESS,  # Always IN_PROGRESS during updates
+            job_status=SyncJobStatus.RUNNING,  # Always RUNNING during updates
         )
 
         try:

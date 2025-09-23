@@ -28,7 +28,6 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from airweave.core.logging import logger
-from airweave.platform.auth.schemas import AuthType
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import Breadcrumb, ChunkEntity
 from airweave.platform.entities.gmail import (
@@ -38,13 +37,20 @@ from airweave.platform.entities.gmail import (
     GmailThreadEntity,
 )
 from airweave.platform.sources._base import BaseSource
+from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
 @source(
     name="Gmail",
     short_name="gmail",
-    auth_type=AuthType.oauth2_with_refresh,
-    auth_config_class="GmailAuthConfig",
+    auth_methods=[
+        AuthenticationMethod.OAUTH_BROWSER,
+        AuthenticationMethod.OAUTH_TOKEN,
+        AuthenticationMethod.AUTH_PROVIDER,
+    ],
+    oauth_type=OAuthType.WITH_REFRESH,
+    requires_byoc=True,
+    auth_config_class=None,
     config_class="GmailConfig",
     labels=["Communication", "Email"],
 )
@@ -858,7 +864,7 @@ class GmailSource(BaseSource):
     async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
         """Generate Gmail entities with incremental History API support."""
         try:
-            async with httpx.AsyncClient() as client:
+            async with self.http_client() as client:
                 cursor_field, last_history_id = await self._resolve_cursor_and_token()
                 if last_history_id:
                     async for e in self._run_incremental_sync(client, last_history_id):
@@ -893,3 +899,11 @@ class GmailSource(BaseSource):
         except Exception as e:
             self.logger.error(f"Error in entity generation: {str(e)}", exc_info=True)
             raise
+
+    async def validate(self) -> bool:
+        """Verify Gmail OAuth2 token by pinging the users.getProfile endpoint."""
+        return await self._validate_oauth2(
+            ping_url="https://gmail.googleapis.com/gmail/v1/users/me/profile",
+            headers={"Accept": "application/json"},
+            timeout=10.0,
+        )

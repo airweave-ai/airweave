@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { apiClient, API_CONFIG } from '@/lib/api';
+import { useUsageStore } from '@/lib/stores/usage';
 import { Copy, Check, Braces, SearchCode, TerminalSquare, Clock, AlertCircle, ChevronDown, ChevronRight, Terminal, Code, Layers, Book } from 'lucide-react';
 import { useTheme } from '@/lib/theme-provider';
 import { cn } from '@/lib/utils';
@@ -30,7 +31,7 @@ import {
     TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { JsonViewer } from '@textea/json-viewer';
-import { ActionCheckResponse } from '@/types';
+import { SingleActionCheckResponse } from '@/types';
 
 interface QueryToolAndLiveDocProps {
     collectionReadableId: string;
@@ -52,10 +53,14 @@ export const QueryToolAndLiveDoc = ({ collectionReadableId }: QueryToolAndLiveDo
     const [searchStatus, setSearchStatus] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
 
-    // Usage limit state
-    const [queriesAllowed, setQueriesAllowed] = useState(true);
-    const [queryCheckDetails, setQueryCheckDetails] = useState<ActionCheckResponse | null>(null);
-    const [isCheckingUsage, setIsCheckingUsage] = useState(true);
+    // Usage check from store
+    const checkActions = useUsageStore(state => state.checkActions);
+    const actionChecks = useUsageStore(state => state.actionChecks);
+    const isCheckingUsage = useUsageStore(state => state.isLoading);
+
+    // Derived states from usage store
+    const queriesAllowed = actionChecks.queries?.allowed ?? true;
+    const queryCheckDetails = actionChecks.queries ?? null;
 
     // LiveApiDoc state
     const [viewMode, setViewMode] = useState<"restapi" | "mcpserver">("restapi");
@@ -213,20 +218,11 @@ airweave-mcp-search`;
     // Check if queries are allowed
     const checkQueryAction = useCallback(async () => {
         try {
-            const response = await apiClient.get('/usage/check-action?action=queries');
-            if (response.ok) {
-                const data: ActionCheckResponse = await response.json();
-                setQueriesAllowed(data.allowed);
-                setQueryCheckDetails(data);
-            }
+            await checkActions({ queries: 1 });
         } catch (error) {
             console.error('Failed to check query action:', error);
-            // Default to allowed on error to not block users
-            setQueriesAllowed(true);
-        } finally {
-            setIsCheckingUsage(false);
         }
-    }, []);
+    }, [checkActions]);
 
     // Check on mount and when collection changes
     useEffect(() => {

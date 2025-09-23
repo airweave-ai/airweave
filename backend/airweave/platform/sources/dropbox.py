@@ -5,7 +5,6 @@ from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from airweave.platform.auth.schemas import AuthType
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import Breadcrumb, ChunkEntity
 from airweave.platform.entities.dropbox import (
@@ -14,13 +13,20 @@ from airweave.platform.entities.dropbox import (
     DropboxFolderEntity,
 )
 from airweave.platform.sources._base import BaseSource
+from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
 @source(
     name="Dropbox",
     short_name="dropbox",
-    auth_type=AuthType.oauth2_with_refresh,
-    auth_config_class="DropboxAuthConfig",
+    auth_methods=[
+        AuthenticationMethod.OAUTH_BROWSER,
+        AuthenticationMethod.OAUTH_TOKEN,
+        AuthenticationMethod.AUTH_PROVIDER,
+    ],
+    oauth_type=OAuthType.WITH_REFRESH,
+    requires_byoc=True,
+    auth_config_class=None,
     config_class="DropboxConfig",
     labels=["File Storage"],
 )
@@ -487,7 +493,7 @@ class DropboxSource(BaseSource):
             1. Account-level entities
             2. For each folder (including root), folder entity and its contents recursively
         """
-        async with httpx.AsyncClient() as client:
+        async with self.http_client() as client:
             # 1. Account(s)
             async for account_entity in self._generate_account_entities(client):
                 yield account_entity
@@ -535,3 +541,33 @@ class DropboxSource(BaseSource):
                         client, folder_entity.path_lower, folder_breadcrumbs
                     ):
                         yield entity
+
+    async def validate(self) -> bool:
+        """Verify Dropbox OAuth2 token by calling /users/get_current_account (POST, no body)."""
+        try:
+            # Quick sanity check before making the request
+            token = await self.get_access_token()
+            if not token:
+                self.logger.error("Dropbox validation failed: no access token available.")
+                return False
+
+            async with self.http_client(timeout=10.0) as client:
+                # Uses the same auth/refresh/retry logic as the rest of the connector
+                await self._post_with_auth(
+                    client,
+                    "https://api.dropboxapi.com/2/users/get_current_account",
+                    None,  # no request body for this endpoint
+                )
+            return True
+
+        except httpx.HTTPStatusError as e:
+            self.logger.error(
+                (
+                    f"Dropbox validation failed: HTTP"
+                    f"{e.response.status_code} - {e.response.text[:200]}"
+                )
+            )
+            return False
+        except Exception as e:
+            self.logger.error(f"Unexpected error during Dropbox validation: {e}")
+            return False

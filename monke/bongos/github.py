@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 import httpx
 from monke.bongos.base_bongo import BaseBongo
 from monke.utils.logging import get_logger
+from monke.auth.keyvault_adapter import get_keyvault_adapter
 
 
 class GitHubBongo(BaseBongo):
@@ -27,13 +28,22 @@ class GitHubBongo(BaseBongo):
             **kwargs: Additional configuration (e.g., entity_count, file_types)
         """
         super().__init__(credentials)
-        self.personal_access_token = credentials["personal_access_token"]
+        # Resolve GitHub PAT from env or Azure Key Vault (fallback to provided credential)
+        adapter = get_keyvault_adapter()
+        self.personal_access_token = adapter.get_env_or_secret(
+            "GITHUB_PERSONAL_ACCESS_TOKEN", credentials.get("personal_access_token")
+        )
+        if not self.personal_access_token:
+            raise RuntimeError(
+                "GitHub PAT not found. Set GITHUB_PERSONAL_ACCESS_TOKEN in env or Key Vault."
+            )
         self.repo_name = credentials["repo_name"]
 
         # Configuration from kwargs
-        self.entity_count = kwargs.get('entity_count', 10)
-        self.file_types = kwargs.get('file_types', ["markdown", "python", "json"])
-        self.openai_model = kwargs.get('openai_model', 'gpt-5')
+        self.entity_count = kwargs.get("entity_count", 10)
+        self.file_types = kwargs.get("file_types", ["markdown", "python", "json"])
+        self.openai_model = kwargs.get("openai_model", "gpt-5")
+        self.branch = kwargs.get("branch", "main")
 
         # Test data tracking
         self.test_files = []
@@ -44,6 +54,13 @@ class GitHubBongo(BaseBongo):
 
         # Logger
         self.logger = get_logger("github_bongo")
+
+        # Sanity check: repo should be in owner/repo format
+        if "/" not in self.repo_name:
+            self.logger.warning(
+                "repo_name should be in 'owner/repo' format; got '%s'",
+                self.repo_name,
+            )
 
     async def create_entities(self) -> List[Dict[str, Any]]:
         """Create test files in GitHub repository."""
@@ -58,20 +75,24 @@ class GitHubBongo(BaseBongo):
             # Short unique token used in filename and body for verification
             token = str(uuid.uuid4())[:8]
 
-            title, content = await generate_github_artifact(file_type, self.openai_model, token)
+            title, content = await generate_github_artifact(
+                file_type, self.openai_model, token
+            )
             slug = slugify(title)[:40] or f"monke-{token}"
             filename = f"{slug}-{token}.{self._get_file_extension(file_type)}"
 
             test_file = await self._create_test_file(filename, content)
-            entities.append({
-                "type": "file",
-                "path": test_file["content"]["path"],
-                "sha": test_file["content"]["sha"],
-                "file_type": file_type,
-                "title": title,
-                "token": token,
-                "expected_content": token,
-            })
+            entities.append(
+                {
+                    "type": "file",
+                    "path": test_file["content"]["path"],
+                    "sha": test_file["content"]["sha"],
+                    "file_type": file_type,
+                    "title": title,
+                    "token": token,
+                    "expected_content": token,
+                }
+            )
 
             self.logger.info(f"📄 Created test file: {test_file['content']['path']}")
 
@@ -89,7 +110,10 @@ class GitHubBongo(BaseBongo):
 
         # Update a subset of files based on configuration
         from monke.generation.github import generate_github_artifact
-        files_to_update = min(3, self.entity_count)  # Update max 3 files for any test size
+
+        files_to_update = min(
+            3, self.entity_count
+        )  # Update max 3 files for any test size
 
         for i in range(files_to_update):
             if i < len(self.test_files):
@@ -97,24 +121,28 @@ class GitHubBongo(BaseBongo):
                 file_type = file_info.get("file_type", "markdown")
                 token = file_info.get("token") or str(uuid.uuid4())[:8]
                 # Regenerate content with same token to indicate continuity
-                title, updated_content = await generate_github_artifact(file_type, self.openai_model, token)
+                title, updated_content = await generate_github_artifact(
+                    file_type, self.openai_model, token
+                )
 
                 updated_file = await self._update_test_file(
-                    file_info["path"],
-                    file_info["sha"],
-                    updated_content
+                    file_info["path"], file_info["sha"], updated_content
                 )
-                updated_entities.append({
-                    "type": "file",
-                    "path": updated_file["content"]["path"],
-                    "sha": updated_file["content"]["sha"],
-                    "file_type": file_type,
-                    "title": title,
-                    "token": token,
-                    "expected_content": token,
-                })
+                updated_entities.append(
+                    {
+                        "type": "file",
+                        "path": updated_file["content"]["path"],
+                        "sha": updated_file["content"]["sha"],
+                        "file_type": file_type,
+                        "title": title,
+                        "token": token,
+                        "expected_content": token,
+                    }
+                )
 
-                self.logger.info(f"📝 Updated test file: {updated_file['content']['path']}")
+                self.logger.info(
+                    f"📝 Updated test file: {updated_file['content']['path']}"
+                )
 
                 # Rate limiting for larger test sizes
                 if self.entity_count > 10:
@@ -129,7 +157,9 @@ class GitHubBongo(BaseBongo):
         # Use the specific deletion method to delete all entities
         return await self.delete_specific_entities(self.created_entities)
 
-    async def delete_specific_entities(self, entities: List[Dict[str, Any]]) -> List[str]:
+    async def delete_specific_entities(
+        self, entities: List[Dict[str, Any]]
+    ) -> List[str]:
         """Delete specific entities from GitHub."""
         self.logger.info(f"🥁 Deleting {len(entities)} specific entities from GitHub")
 
@@ -138,14 +168,18 @@ class GitHubBongo(BaseBongo):
         for entity in entities:
             try:
                 # Find the corresponding test file
-                test_file = next((tf for tf in self.test_files if tf["path"] == entity["path"]), None)
+                test_file = next(
+                    (tf for tf in self.test_files if tf["path"] == entity["path"]), None
+                )
 
                 if test_file:
                     await self._delete_test_file(test_file["path"], test_file["sha"])
                     deleted_paths.append(test_file["path"])
                     self.logger.info(f"🗑️ Deleted test file: {test_file['path']}")
                 else:
-                    self.logger.warning(f"⚠️ Could not find test file for entity: {entity['path']}")
+                    self.logger.warning(
+                        f"⚠️ Could not find test file for entity: {entity['path']}"
+                    )
 
                 # Rate limiting for larger test sizes
                 if len(entities) > 10:
@@ -155,14 +189,20 @@ class GitHubBongo(BaseBongo):
                 self.logger.warning(f"⚠️ Could not delete entity {entity['path']}: {e}")
 
         # VERIFICATION: Check if files are actually deleted from GitHub
-        self.logger.info("🔍 VERIFYING: Checking if files are actually deleted from GitHub")
+        self.logger.info(
+            "🔍 VERIFYING: Checking if files are actually deleted from GitHub"
+        )
         for entity in entities:
             if entity["path"] in deleted_paths:
                 is_deleted = await self._verify_file_deleted(entity["path"])
                 if is_deleted:
-                    self.logger.info(f"✅ File {entity['path']} confirmed deleted from GitHub")
+                    self.logger.info(
+                        f"✅ File {entity['path']} confirmed deleted from GitHub"
+                    )
                 else:
-                    self.logger.warning(f"⚠️ File {entity['path']} still exists in GitHub!")
+                    self.logger.warning(
+                        f"⚠️ File {entity['path']} still exists in GitHub!"
+                    )
 
         return deleted_paths
 
@@ -176,7 +216,9 @@ class GitHubBongo(BaseBongo):
                 await self._force_delete_file(test_file["path"])
                 self.logger.info(f"🧹 Force deleted file: {test_file['path']}")
             except Exception as e:
-                self.logger.warning(f"⚠️ Could not force delete file {test_file['path']}: {e}")
+                self.logger.warning(
+                    f"⚠️ Could not force delete file {test_file['path']}: {e}"
+                )
 
     # Helper methods for GitHub API calls
     async def _create_test_file(self, filename: str, content: str) -> Dict[str, Any]:
@@ -195,11 +237,14 @@ class GitHubBongo(BaseBongo):
                     f"https://api.github.com/repos/{self.repo_name}/contents/{filename}",
                     headers={
                         "Authorization": f"token {self.personal_access_token}",
-                        "Accept": "application/vnd.github.v3+json"
-                    }
+                        "Accept": "application/vnd.github.v3+json",
+                    },
+                    params={"ref": self.branch},
                 )
 
-                self.logger.info(f"   Check response status: {check_response.status_code}")
+                self.logger.info(
+                    f"   Check response status: {check_response.status_code}"
+                )
 
                 if check_response.status_code == 200:
                     # File exists, get current SHA for update
@@ -223,7 +268,7 @@ class GitHubBongo(BaseBongo):
             payload = {
                 "message": message,
                 "content": base64.b64encode(content.encode()).decode(),
-                "branch": "main"
+                "branch": self.branch,
             }
 
             # Add SHA if updating existing file
@@ -231,33 +276,36 @@ class GitHubBongo(BaseBongo):
                 payload["sha"] = current_sha
 
             self.logger.info(f"   Creating file with payload: {payload}")
-            self.logger.info(f"   URL: https://api.github.com/repos/{self.repo_name}/contents/{filename}")
+            self.logger.info(
+                f"   URL: https://api.github.com/repos/{self.repo_name}/contents/{filename}"
+            )
 
             response = await client.put(
                 f"https://api.github.com/repos/{self.repo_name}/contents/{filename}",
                 headers={
                     "Authorization": f"token {self.personal_access_token}",
                     "Accept": "application/vnd.github.v3+json",
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
                 },
-                json=payload
+                json=payload,
             )
 
             self.logger.info(f"   Response status: {response.status_code}")
             self.logger.info(f"   Response text: {response.text}")
 
             if response.status_code not in [200, 201]:  # 200 = updated, 201 = created
-                raise Exception(f"Failed to create/update file: {response.status_code} - {response.text}")
+                raise Exception(
+                    f"Failed to create/update file: {response.status_code} - {response.text}"
+                )
 
             result = response.json()
-            self.test_files.append({
-                "path": filename,
-                "sha": result["content"]["sha"]
-            })
+            self.test_files.append({"path": filename, "sha": result["content"]["sha"]})
 
             return result
 
-    async def _update_test_file(self, filename: str, current_sha: str, new_content: str) -> Dict[str, Any]:
+    async def _update_test_file(
+        self, filename: str, current_sha: str, new_content: str
+    ) -> Dict[str, Any]:
         """Update a test file via GitHub API."""
         await self._rate_limit()
 
@@ -267,18 +315,20 @@ class GitHubBongo(BaseBongo):
                 headers={
                     "Authorization": f"token {self.personal_access_token}",
                     "Accept": "application/vnd.github.v3+json",
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
                 },
                 json={
                     "message": f"Update monke test file: {filename}",
                     "content": base64.b64encode(new_content.encode()).decode(),
                     "sha": current_sha,
-                    "branch": "main"
-                }
+                    "branch": self.branch,
+                },
             )
 
             if response.status_code != 200:
-                raise Exception(f"Failed to update file: {response.status_code} - {response.text}")
+                raise Exception(
+                    f"Failed to update file: {response.status_code} - {response.text}"
+                )
 
             result = response.json()
 
@@ -297,23 +347,28 @@ class GitHubBongo(BaseBongo):
         async with httpx.AsyncClient() as client:
             # Use request method for DELETE with body
             import json
+
             response = await client.request(
                 "DELETE",
                 f"https://api.github.com/repos/{self.repo_name}/contents/{filename}",
                 headers={
                     "Authorization": f"token {self.personal_access_token}",
                     "Accept": "application/vnd.github.v3+json",
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
                 },
-                data=json.dumps({
-                    "message": f"Remove monke test file: {filename}",
-                    "sha": sha,
-                    "branch": "main"
-                })
+                data=json.dumps(
+                    {
+                        "message": f"Remove monke test file: {filename}",
+                        "sha": sha,
+                        "branch": self.branch,
+                    }
+                ),
             )
 
             if response.status_code != 200:
-                raise Exception(f"Failed to delete file: {response.status_code} - {response.text}")
+                raise Exception(
+                    f"Failed to delete file: {response.status_code} - {response.text}"
+                )
 
     async def _verify_file_deleted(self, filename: str) -> bool:
         """Verify if a file is actually deleted from GitHub."""
@@ -323,8 +378,9 @@ class GitHubBongo(BaseBongo):
                     f"https://api.github.com/repos/{self.repo_name}/contents/{filename}",
                     headers={
                         "Authorization": f"token {self.personal_access_token}",
-                        "Accept": "application/vnd.github.v3+json"
-                    }
+                        "Accept": "application/vnd.github.v3+json",
+                    },
+                    params={"ref": self.branch},
                 )
 
                 if response.status_code == 404:
@@ -335,7 +391,9 @@ class GitHubBongo(BaseBongo):
                     return False
                 else:
                     # Unexpected response
-                    self.logger.warning(f"⚠️ Unexpected response checking {filename}: {response.status_code}")
+                    self.logger.warning(
+                        f"⚠️ Unexpected response checking {filename}: {response.status_code}"
+                    )
                     return False
 
         except Exception as e:
@@ -351,33 +409,39 @@ class GitHubBongo(BaseBongo):
                     f"https://api.github.com/repos/{self.repo_name}/contents/{filename}",
                     headers={
                         "Authorization": f"token {self.personal_access_token}",
-                        "Accept": "application/vnd.github.v3+json"
-                    }
+                        "Accept": "application/vnd.github.v3+json",
+                    },
+                    params={"ref": self.branch},
                 )
 
                 if response.status_code == 200:
                     file_info = response.json()
                     # Use the request method for DELETE with body
                     import json
+
                     delete_response = await client.request(
                         "DELETE",
                         f"https://api.github.com/repos/{self.repo_name}/contents/{filename}",
                         headers={
                             "Authorization": f"token {self.personal_access_token}",
                             "Accept": "application/vnd.github.v3+json",
-                            "Content-Type": "application/json"
+                            "Content-Type": "application/json",
                         },
-                        data=json.dumps({
-                            "message": f"Force delete monke test file: {filename}",
-                            "sha": file_info["sha"],
-                            "branch": "main"
-                        })
+                        data=json.dumps(
+                            {
+                                "message": f"Force delete monke test file: {filename}",
+                                "sha": file_info["sha"],
+                                "branch": "main",
+                            }
+                        ),
                     )
 
                     if delete_response.status_code == 200:
                         self.logger.info(f"🧹 Force deleted file: {filename}")
                     else:
-                        self.logger.warning(f"⚠️ Force delete failed for {filename}: {delete_response.status_code}")
+                        self.logger.warning(
+                            f"⚠️ Force delete failed for {filename}: {delete_response.status_code}"
+                        )
                 else:
                     # File might already be deleted
                     pass
@@ -514,11 +578,13 @@ This is an updated plain text file for testing various content types and ensurin
             "txt": "txt",
             "md": "md",
             "py": "py",
-            "js": "js"
+            "js": "js",
         }
         return extensions.get(file_type, "txt")
 
-    def _generate_file_content(self, file_type: str, file_num: int, random_suffix: str) -> str:
+    def _generate_file_content(
+        self, file_type: str, file_num: int, random_suffix: str
+    ) -> str:
         """Generate content for a test file based on type."""
         timestamp = str(int(time.time()))
 

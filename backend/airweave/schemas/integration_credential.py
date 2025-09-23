@@ -6,7 +6,7 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from airweave.models.integration_credential import IntegrationType
-from airweave.platform.auth.schemas import AuthType
+from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
 class IntegrationCredentialBase(BaseModel):
@@ -16,7 +16,8 @@ class IntegrationCredentialBase(BaseModel):
     integration_short_name: str
     description: Optional[str] = None
     integration_type: IntegrationType
-    auth_type: AuthType
+    authentication_method: AuthenticationMethod
+    oauth_type: Optional[OAuthType] = None
     auth_config_class: Optional[str] = None
 
 

@@ -32,6 +32,7 @@ def build_search_properties(
         Dictionary of analytics properties
     """
     properties = {
+        "query": query,  # Full query text for PostHog history
         "query_length": len(query),
         "collection_slug": collection_slug,
         "duration_ms": duration_ms,
@@ -71,6 +72,7 @@ def build_search_error_properties(
         Dictionary of analytics properties
     """
     return {
+        "query": query,  # Full query text for PostHog history
         "query_length": len(query) if query else 0,
         "collection_slug": collection_slug,
         "duration_ms": duration_ms,

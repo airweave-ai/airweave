@@ -3,12 +3,10 @@
 from typing import TYPE_CHECKING, Optional
 from uuid import UUID
 
-from sqlalchemy import Enum as SQLAlchemyEnum
 from sqlalchemy import ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from airweave.models._base import Base
-from airweave.platform.auth.schemas import AuthType
 
 if TYPE_CHECKING:
     from airweave.models.connection import Connection
@@ -29,7 +27,6 @@ class AuthProvider(Base):
     class_name: Mapped[str] = mapped_column(String, nullable=False)
     auth_config_class: Mapped[str] = mapped_column(String, nullable=False)
     config_class: Mapped[str] = mapped_column(String, nullable=False)
-    auth_type: Mapped[AuthType] = mapped_column(SQLAlchemyEnum(AuthType), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     organization_id: Mapped[Optional[UUID]] = mapped_column(
         ForeignKey("organization.id"), nullable=True

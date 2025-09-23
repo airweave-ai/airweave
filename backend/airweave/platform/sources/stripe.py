@@ -21,7 +21,6 @@ from typing import Any, AsyncGenerator, Dict, Optional
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from airweave.platform.auth.schemas import AuthType
 from airweave.platform.configs.auth import StripeAuthConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import ChunkEntity
@@ -39,12 +38,14 @@ from airweave.platform.entities.stripe import (
     StripeSubscriptionEntity,
 )
 from airweave.platform.sources._base import BaseSource
+from airweave.schemas.source_connection import AuthenticationMethod
 
 
 @source(
     name="Stripe",
     short_name="stripe",
-    auth_type=AuthType.config_class,
+    auth_methods=[AuthenticationMethod.DIRECT, AuthenticationMethod.AUTH_PROVIDER],
+    oauth_type=None,
     auth_config_class="StripeAuthConfig",
     config_class="StripeConfig",
     labels=["Payment"],
@@ -473,7 +474,7 @@ class StripeSource(BaseSource):
         - Refunds
         - Subscriptions
         """
-        async with httpx.AsyncClient() as client:
+        async with self.http_client() as client:
             # 1) Single Balance resource
             async for balance_entity in self._generate_balance_entity(client):
                 yield balance_entity
@@ -517,3 +518,22 @@ class StripeSource(BaseSource):
             # 11) Subscriptions
             async for sub_entity in self._generate_subscription_entities(client):
                 yield sub_entity
+
+    async def validate(self) -> bool:
+        """Verify Stripe API key by pinging a lightweight endpoint (/v1/balance)."""
+        if not getattr(self, "api_key", None):
+            self.logger.error("Stripe validation failed: missing API key.")
+            return False
+        try:
+            async with self.http_client(timeout=10.0) as client:
+                # Reuse the authenticated helper for consistency
+                await self._get_with_auth(client, "https://api.stripe.com/v1/balance")
+                return True
+        except httpx.HTTPStatusError as e:
+            self.logger.error(
+                f"Stripe validation failed: HTTP {e.response.status_code} - {e.response.text[:200]}"
+            )
+            return False
+        except Exception as e:
+            self.logger.error(f"Unexpected error during Stripe validation: {e}")
+            return False

@@ -16,6 +16,7 @@ import { RecencyBiasSlider } from "@/search/RecencyBiasSlider";
 import { apiClient } from "@/lib/api";
 import type { SearchEvent, PartialStreamUpdate, StreamPhase } from "@/search/types";
 import { DESIGN_SYSTEM } from "@/lib/design-system";
+import { ActionCheckResponse } from "@/types";
 
 // Search method types
 type SearchMethod = "hybrid" | "neural" | "keyword";
@@ -114,6 +115,11 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
 
     // (Removed) Code button attention nudge state
 
+    // Usage limits: queries
+    const [queriesAllowed, setQueriesAllowed] = useState(true);
+    const [queriesCheckDetails, setQueriesCheckDetails] = useState<ActionCheckResponse | null>(null);
+    const [isCheckingUsage, setIsCheckingUsage] = useState(true);
+
     // Fetch API key on mount
     useEffect(() => {
         const fetchApiKey = async () => {
@@ -180,11 +186,41 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
             try { onStreamUpdateProp?.({ status: 'cancelled' }); } catch { void 0; }
             try { onCancel?.(); } catch { void 0; }
         }
+        // Re-check queries allowance after cancellation
+        try { void checkQueriesAllowed(); } catch { void 0; }
     }, [onStreamEventProp, onStreamUpdateProp, onCancel]);
+
+    // Check if queries are allowed based on usage limits
+    const checkQueriesAllowed = useCallback(async () => {
+        try {
+            setIsCheckingUsage(true);
+            const response = await apiClient.get('/usage/check-action?action=queries');
+            if (response.ok) {
+                const data: ActionCheckResponse = await response.json();
+                setQueriesAllowed(data.allowed);
+                setQueriesCheckDetails(data);
+            } else {
+                // Default to allowed on error to not block users
+                setQueriesAllowed(true);
+                setQueriesCheckDetails(null);
+            }
+        } catch (error) {
+            // Default to allowed on error to not block users
+            setQueriesAllowed(true);
+            setQueriesCheckDetails(null);
+        } finally {
+            setIsCheckingUsage(false);
+        }
+    }, []);
+
+    // Initial usage check on mount
+    useEffect(() => {
+        void checkQueriesAllowed();
+    }, [checkQueriesAllowed]);
 
     // Main search handler
     const handleSendQuery = useCallback(async () => {
-        if (!hasQuery || !collectionId || isSearching) return;
+        if (!hasQuery || !collectionId || isSearching || !queriesAllowed || isCheckingUsage) return;
 
         // Abort previous stream if any
         if (abortRef.current) {
@@ -382,12 +418,14 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
             if (searchSeqRef.current === mySeq) {
                 setIsSearching(false);
                 onSearchEnd?.();
+                // Re-check queries allowance after a search completes
+                try { void checkQueriesAllowed(); } catch { void 0; }
                 if (abortRef.current === abortController) {
                     abortRef.current = null;
                 }
             }
         }
-    }, [hasQuery, collectionId, query, searchMethod, toggles, filterJson, isFilterValid, recencyBiasValue, isSearching, onSearch, onSearchStart, onSearchEnd, onStreamEventProp, onStreamUpdateProp]);
+    }, [hasQuery, collectionId, query, searchMethod, toggles, filterJson, isFilterValid, recencyBiasValue, isSearching, onSearch, onSearchStart, onSearchEnd, onStreamEventProp, onStreamUpdateProp, queriesAllowed, isCheckingUsage, checkQueriesAllowed]);
 
     // Handle search method change
     const handleMethodChange = useCallback((newMethod: SearchMethod) => {
@@ -484,7 +522,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                 >
                     <div className="relative px-2 pt-2 pb-1">
                         {/* Code button with tooltip */}
-                        <TooltipProvider>
+                        <TooltipProvider delayDuration={0}>
                             <Tooltip>
                                 <TooltipTrigger asChild>
                                     <button
@@ -493,16 +531,16 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                             setShowCodeBlock(true);
                                         }}
                                         className={cn(
-                                            "absolute top-2 right-2 h-8 w-8 rounded-md border-dashed border shadow-sm flex items-center justify-center transition-all duration-200 z-20",
+                                            "absolute top-2 right-2 h-8 w-8 rounded-md border-dashed border shadow-sm flex items-center justify-center transition-all z-20",
                                             isDark
-                                                ? "bg-blue-500/35 border-blue-500 hover:bg-blue-500/20 hover:border-blue-400/80"
-                                                : "bg-blue-50 border-blue-400 hover:bg-blue-100 hover:border-blue-400"
+                                                ? "bg-blue-500/10 border-blue-500/30 hover:bg-blue-500/15 hover:border-blue-400/40"
+                                                : "bg-blue-50/50 border-blue-400/40 hover:bg-blue-50/70 hover:border-blue-400/50"
                                         )}
                                         title="View integration code"
                                     >
                                         <CodeXml className={cn(
                                             DESIGN_SYSTEM.icons.button,
-                                            isDark ? "text-white" : "text-black"
+                                            isDark ? "text-blue-400" : "text-blue-500"
                                         )} />
                                     </button>
                                 </TooltipTrigger>
@@ -531,32 +569,97 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                             </Tooltip>
                         </TooltipProvider>
 
-                        <textarea
-                            value={query}
-                            onChange={(e) => setQuery(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === "Enter" && !e.shiftKey) {
-                                    if (!hasQuery || isSearching) return;
-                                    e.preventDefault();
-                                    handleSendQuery();
-                                }
-                            }}
-                            placeholder="Ask a question about your data"
-                            className={cn(
-                                // pr-16 ensures text wraps before overlay button
-                                // increase right padding to prevent text from flowing under the top-right Code button at all widths
-                                "w-full h-20 px-2 pr-28 sm:pr-24 md:pr-28 py-1.5 leading-relaxed resize-none overflow-y-auto outline-none rounded-xl bg-transparent",
-                                DESIGN_SYSTEM.typography.sizes.header,
-                                isDark ? "placeholder:text-gray-500" : "placeholder:text-gray-500"
-                            )}
-                        />
+                        {(!queriesAllowed || isCheckingUsage) ? (
+                            <TooltipProvider delayDuration={0}>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <div>
+                                            <textarea
+                                                value={query}
+                                                onChange={(e) => setQuery(e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === "Enter" && !e.shiftKey) {
+                                                        if (!hasQuery || isSearching || !queriesAllowed || isCheckingUsage) return;
+                                                        e.preventDefault();
+                                                        handleSendQuery();
+                                                    }
+                                                }}
+                                                placeholder="Ask a question about your data"
+                                                disabled={!queriesAllowed || isCheckingUsage}
+                                                className={cn(
+                                                    // pr-16 ensures text wraps before overlay button
+                                                    // increase right padding to prevent text from flowing under the top-right Code button at all widths
+                                                    "w-full h-20 px-2 pr-28 sm:pr-24 md:pr-28 py-1.5 leading-relaxed resize-none overflow-y-auto outline-none rounded-xl bg-transparent",
+                                                    DESIGN_SYSTEM.typography.sizes.header,
+                                                    isDark ? "placeholder:text-gray-500" : "placeholder:text-gray-500",
+                                                    (!queriesAllowed || isCheckingUsage) && "opacity-60 cursor-not-allowed"
+                                                )}
+                                            />
+                                        </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-xs">
+                                        <p className={DESIGN_SYSTEM.typography.sizes.body}>
+                                            {isCheckingUsage ? (
+                                                "Checking usage…"
+                                            ) : queriesCheckDetails?.reason === 'usage_limit_exceeded' ? (
+                                                <>
+                                                    Query limit reached.{' '}
+                                                    <a
+                                                        href="/organization/settings?tab=billing"
+                                                        className="underline"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        Upgrade your plan
+                                                    </a>
+                                                    {' '}to continue searching.
+                                                </>
+                                            ) : queriesCheckDetails?.reason === 'payment_required' ? (
+                                                <>
+                                                    Billing issue detected.{' '}
+                                                    <a
+                                                        href="/organization/settings?tab=billing"
+                                                        className="underline"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        Update billing
+                                                    </a>
+                                                    {' '}to continue searching.
+                                                </>
+                                            ) : (
+                                                "Search is currently disabled."
+                                            )}
+                                        </p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
+                        ) : (
+                            <textarea
+                                value={query}
+                                onChange={(e) => setQuery(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter" && !e.shiftKey) {
+                                        if (!hasQuery || isSearching || !queriesAllowed || isCheckingUsage) return;
+                                        e.preventDefault();
+                                        handleSendQuery();
+                                    }
+                                }}
+                                placeholder="Ask a question about your data"
+                                className={cn(
+                                    // pr-16 ensures text wraps before overlay button
+                                    // increase right padding to prevent text from flowing under the top-right Code button at all widths
+                                    "w-full h-20 px-2 pr-28 sm:pr-24 md:pr-28 py-1.5 leading-relaxed resize-none overflow-y-auto outline-none rounded-xl bg-transparent",
+                                    DESIGN_SYSTEM.typography.sizes.header,
+                                    isDark ? "placeholder:text-gray-500" : "placeholder:text-gray-500"
+                                )}
+                            />
+                        )}
                     </div>
                     <div className={cn(
                         // Compact controls row
                         "flex items-center justify-between px-2 pb-2"
                     )}>
                         {/* Controlled tooltips for instant response */}
-                        <TooltipProvider>
+                        <TooltipProvider delayDuration={0}>
                             {/* Left side controls */}
                             <div className="flex items-center gap-1.5">
                                 {/* 1. Method segmented control (icons) */}
@@ -1074,33 +1177,75 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                 </Tooltip>
                             </div>
 
-                            {/* Right side send button */}
-                            <button
-                                type="button"
-                                onClick={isSearching ? handleCancelSearch : handleSendQuery}
-                                disabled={!isSearching && !hasQuery}
-                                className={cn(
-                                    "h-8 w-8 rounded-md border shadow-sm flex items-center justify-center transition-all duration-200",
-                                    isSearching
-                                        ? isDark
-                                            ? "bg-red-900/30 border-red-700 hover:bg-red-900/50 cursor-pointer"
-                                            : "bg-red-50 border-red-200 hover:bg-red-100 cursor-pointer"
-                                        : hasQuery
-                                            ? isDark
-                                                ? "bg-gray-800 border-border hover:bg-muted text-foreground border-gray-700"
-                                                : "bg-white border-border hover:bg-muted text-foreground"
-                                            : isDark
-                                                ? "bg-muted text-muted-foreground cursor-not-allowed"
-                                                : "bg-muted text-muted-foreground cursor-not-allowed"
-                                )}
-                                title={isSearching ? "Stop search" : (hasQuery ? "Send query" : "Type a question to enable")}
-                            >
-                                {isSearching ? (
-                                    <Square className={cn(DESIGN_SYSTEM.icons.button, "text-red-500")} />
-                                ) : (
-                                    <ArrowUp className={DESIGN_SYSTEM.icons.button} />
-                                )}
-                            </button>
+                            {/* Right side send button with usage gating */}
+                            <TooltipProvider delayDuration={0}>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <button
+                                            type="button"
+                                            onClick={isSearching ? handleCancelSearch : handleSendQuery}
+                                            disabled={isSearching ? false : (!hasQuery || !queriesAllowed || isCheckingUsage)}
+                                            className={cn(
+                                                "h-8 w-8 rounded-md border shadow-sm flex items-center justify-center transition-all",
+                                                isSearching
+                                                    ? isDark
+                                                        ? "bg-red-900/30 border-red-700 hover:bg-red-900/50 cursor-pointer"
+                                                        : "bg-red-50 border-red-200 hover:bg-red-100 cursor-pointer"
+                                                    : (hasQuery && queriesAllowed && !isCheckingUsage)
+                                                        ? (isDark
+                                                            ? "bg-gray-800 border-border hover:bg-muted text-foreground border-gray-700"
+                                                            : "bg-white border-border hover:bg-muted text-foreground")
+                                                        : (isDark
+                                                            ? "bg-muted text-muted-foreground cursor-not-allowed"
+                                                            : "bg-muted text-muted-foreground cursor-not-allowed")
+                                            )}
+                                            title={isSearching
+                                                ? "Stop search"
+                                                : (!hasQuery
+                                                    ? "Type a question to enable"
+                                                    : (!queriesAllowed
+                                                        ? "Query limit reached — upgrade to run searches"
+                                                        : (isCheckingUsage ? "Checking usage..." : "Send query")))}
+                                        >
+                                            {isSearching ? (
+                                                <Square className={cn(DESIGN_SYSTEM.icons.button, "text-red-500")} />
+                                            ) : (
+                                                <ArrowUp className={DESIGN_SYSTEM.icons.button} />
+                                            )}
+                                        </button>
+                                    </TooltipTrigger>
+                                    {!queriesAllowed && queriesCheckDetails?.reason === 'usage_limit_exceeded' && (
+                                        <TooltipContent className="max-w-xs">
+                                            <p className={DESIGN_SYSTEM.typography.sizes.body}>
+                                                Query limit reached.{' '}
+                                                <a
+                                                    href="/organization/settings?tab=billing"
+                                                    className="underline"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    Upgrade your plan
+                                                </a>
+                                                {' '}to continue searching.
+                                            </p>
+                                        </TooltipContent>
+                                    )}
+                                    {!queriesAllowed && queriesCheckDetails?.reason === 'payment_required' && (
+                                        <TooltipContent className="max-w-xs">
+                                            <p className={DESIGN_SYSTEM.typography.sizes.body}>
+                                                Billing issue detected.{' '}
+                                                <a
+                                                    href="/organization/settings?tab=billing"
+                                                    className="underline"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    Update billing
+                                                </a>
+                                                {' '}to continue searching.
+                                            </p>
+                                        </TooltipContent>
+                                    )}
+                                </Tooltip>
+                            </TooltipProvider>
                         </TooltipProvider>
                     </div>
                 </div>

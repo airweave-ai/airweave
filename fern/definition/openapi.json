@@ -3,7 +3,7 @@
   "info": {
     "title": "Airweave",
     "version": "0.1.0",
-    "description": "\n\n## API Groups\nThis API spec only includes the following API groups:\n- **Sources**: API endpoints for discovering available data source connectors and their configuration requirements\n- **Collections**: API endpoints for managing collections - logical groups of data sources that provide unified search capabilities\n- **Source Connections**: API endpoints for managing live connections to data sources. Source connections are the actual configured instances that Airweave uses to sync data from your apps and databases, transforming it into searchable, structured information within collections\n- **Auth Providers**: API endpoints for managing authentication provider connections and credentials\n- **White Labels**: API endpoints for managing custom OAuth2 integrations with your own branding and credentials\n"
+    "description": "\n\n## API Groups\nThis API spec only includes the following API groups:\n- **Sources**: API endpoints for discovering available data source connectors and their configuration requirements\n- **Collections**: API endpoints for managing collections - logical groups of data sources that provide unified search capabilities\n- **Source Connections**: API endpoints for managing live connections to data sources. Source connections are the actual configured instances that Airweave uses to sync data from your apps and databases, transforming it into searchable, structured information within collections\n- **Auth Providers**: API endpoints for managing authentication provider connections and credentials\n"
   },
   "paths": {
     "/sources/detail/{short_name}": {
@@ -939,115 +939,12 @@
       }
     },
     "/source-connections": {
-      "get": {
-        "tags": [
-          "source-connections"
-        ],
-        "summary": "List",
-        "description": "List source connections across your organization.\n\nBy default, returns ALL source connections from every collection in your\norganization. Use the 'collection' parameter to filter results to a specific\ncollection. This is useful for getting an overview of all your data sources\nor managing connections within a particular collection.",
-        "operationId": "list_source_connections_get",
-        "parameters": [
-          {
-            "name": "collection",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Filter source connections by collection readable ID",
-              "title": "Collection"
-            },
-            "description": "Filter source connections by collection readable ID"
-          },
-          {
-            "name": "skip",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "description": "Number of source connections to skip for pagination",
-              "default": 0,
-              "title": "Skip"
-            },
-            "description": "Number of source connections to skip for pagination"
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 1000,
-              "minimum": 1,
-              "description": "Maximum number of source connections to return (1-1000)",
-              "default": 100,
-              "title": "Limit"
-            },
-            "description": "Maximum number of source connections to return (1-1000)"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/SourceConnectionListItem"
-                  },
-                  "title": "Response List Source Connections Get"
-                },
-                "examples": {
-                  "source_connections_list": {
-                    "summary": "Multiple source connections across collections",
-                    "value": [
-                      {
-                        "id": "550e8400-e29b-41d4-a716-446655440000",
-                        "name": "GitHub - Engineering Documentation",
-                        "description": "Sync technical documentation and code from our engineering repos",
-                        "short_name": "github",
-                        "status": "active",
-                        "created_at": "2024-01-15T09:30:00Z",
-                        "modified_at": "2024-01-15T14:22:15Z",
-                        "sync_id": "123e4567-e89b-12d3-a456-426614174000",
-                        "collection": "engineering-docs-ab123"
-                      }
-                    ]
-                  }
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ]
-      },
       "post": {
         "tags": [
           "source-connections"
         ],
         "summary": "Create",
-        "description": "Create a new source connection to sync data into your collection.\n\n**This endpoint only works for sources that do not use OAuth2.0.**\nSources that do use OAuth2.0 like Google Drive, Slack, or HubSpot must be\nconnected through the UI where you can complete the OAuth consent flow\nor using Auth Providers (see [Auth Providers](/docs/auth-providers)).<br/><br/>\n\nCredentials for a source have to be provided using the `auth_fields` field.\nCurrently, it is not automatically checked if the provided credentials are valid.\nIf they are not valid, the data synchronization will fail.<br/><br/>\n\nCheck the documentation of a specific source (for example\n[Github](https://docs.airweave.ai/docs/connectors/github)) to see what kind\nof authentication is used.",
+        "description": "Create a new source connection.\n\nThe authentication configuration determines the flow:\n- DirectAuthentication: Immediate creation with provided credentials\n- OAuthBrowserAuthentication: Returns shell with authentication URL\n- OAuthTokenAuthentication: Immediate creation with provided token\n- AuthProviderAuthentication: Using external auth provider\n\nBYOC (Bring Your Own Client) is detected when client_id and client_secret\nare provided in OAuthBrowserAuthentication.",
         "operationId": "create_source_connections_post",
         "parameters": [],
         "requestBody": {
@@ -1087,40 +984,55 @@
             "ApiKeyAuth": []
           }
         ]
-      }
-    },
-    "/source-connections/{source_connection_id}": {
+      },
       "get": {
         "tags": [
           "source-connections"
         ],
-        "summary": "Get",
-        "description": "Retrieve a specific source connection by its ID.",
-        "operationId": "get_source_connections__source_connection_id__get",
+        "summary": "List",
+        "description": "List source connections with minimal fields for performance.",
+        "operationId": "list_source_connections_get",
         "parameters": [
           {
-            "name": "source_connection_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "description": "The unique identifier of the source connection",
-              "title": "Source Connection Id"
-            },
-            "description": "The unique identifier of the source connection"
-          },
-          {
-            "name": "show_auth_fields",
+            "name": "collection",
             "in": "query",
             "required": false,
             "schema": {
-              "type": "boolean",
-              "description": "Whether to reveal authentication credentials.",
-              "default": false,
-              "title": "Show Auth Fields"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by collection readable ID",
+              "title": "Collection"
             },
-            "description": "Whether to reveal authentication credentials."
+            "description": "Filter by collection readable ID"
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Skip"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
           }
         ],
         "responses": {
@@ -1129,7 +1041,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SourceConnection"
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SourceConnectionListItem"
+                  },
+                  "title": "Response List Source Connections Get"
                 }
               }
             }
@@ -1150,14 +1066,16 @@
             "ApiKeyAuth": []
           }
         ]
-      },
-      "put": {
+      }
+    },
+    "/source-connections/{source_connection_id}": {
+      "get": {
         "tags": [
           "source-connections"
         ],
-        "summary": "Update",
-        "description": "Update a source connection's properties.\n\nModify the configuration of an existing source connection including its name,\nauthentication credentials, configuration fields, sync schedule, or source-specific settings.",
-        "operationId": "update_source_connections__source_connection_id__put",
+        "summary": "Get",
+        "description": "Get a source connection with optional depth expansion.",
+        "operationId": "get_source_connections__source_connection_id__get",
         "parameters": [
           {
             "name": "source_connection_id",
@@ -1166,22 +1084,10 @@
             "schema": {
               "type": "string",
               "format": "uuid",
-              "description": "The unique identifier of the source connection to update",
               "title": "Source Connection Id"
-            },
-            "description": "The unique identifier of the source connection to update"
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SourceConnectionUpdate"
-              }
             }
           }
-        },
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1215,7 +1121,7 @@
           "source-connections"
         ],
         "summary": "Delete",
-        "description": "Delete a source connection and all associated data.\n\nPermanently removes the source connection configuration and credentials.\nBy default, previously synced data remains in your destination systems for continuity.\nUse delete_data=true to also remove all associated data from destination systems.",
+        "description": "Delete a source connection and all related data.",
         "operationId": "delete_source_connections__source_connection_id__delete",
         "parameters": [
           {
@@ -1225,10 +1131,8 @@
             "schema": {
               "type": "string",
               "format": "uuid",
-              "description": "The unique identifier of the source connection to delete",
               "title": "Source Connection Id"
-            },
-            "description": "The unique identifier of the source connection to delete"
+            }
           }
         ],
         "responses": {
@@ -1266,7 +1170,7 @@
           "source-connections"
         ],
         "summary": "Run",
-        "description": "Manually trigger a data sync for this source connection.\n\nStarts an immediate synchronization job that extracts fresh data from your source,\ntransforms it according to your configuration, and updates the destination systems.\nThe job runs asynchronously and endpoint returns immediately with tracking information.",
+        "description": "Trigger a sync run for a source connection.\n\nRuns are always executed through Temporal workflow engine.",
         "operationId": "run_source_connections__source_connection_id__run_post",
         "parameters": [
           {
@@ -1276,21 +1180,10 @@
             "schema": {
               "type": "string",
               "format": "uuid",
-              "description": "The unique identifier of the source connection to sync",
               "title": "Source Connection Id"
-            },
-            "description": "The unique identifier of the source connection to sync"
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_run_source_connections__source_connection_id__run_post"
-              }
             }
           }
-        },
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1298,35 +1191,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SourceConnectionJob"
-                },
-                "examples": {
-                  "completed_job": {
-                    "summary": "Sync job successfully triggered",
-                    "value": {
-                      "source_connection_id": "550e8400-e29b-41d4-a716-446655440000",
-                      "id": "987fcdeb-51a2-43d7-8f3e-1234567890ab",
-                      "organization_id": "org12345-6789-abcd-ef01-234567890abc",
-                      "created_by_email": "engineering@company.com",
-                      "modified_by_email": "engineering@company.com",
-                      "created_at": "2024-01-15T14:00:00Z",
-                      "modified_at": "2024-01-15T14:05:22Z",
-                      "status": "completed",
-                      "entities_inserted": 45,
-                      "entities_updated": 12,
-                      "entities_deleted": 3,
-                      "entities_kept": 234,
-                      "entities_skipped": 8,
-                      "entities_encountered": {
-                        "issues": 67,
-                        "pull_requests": 23,
-                        "commits": 156,
-                        "releases": 12,
-                        "readme_files": 8
-                      },
-                      "started_at": "2024-01-15T14:00:15Z",
-                      "completed_at": "2024-01-15T14:05:22Z"
-                    }
-                  }
                 }
               }
             }
@@ -1354,9 +1218,9 @@
         "tags": [
           "source-connections"
         ],
-        "summary": "List Jobs",
-        "description": "List all sync jobs for a source connection.\n\nReturns the complete history of data synchronization jobs including successful syncs,\nfailed attempts, and currently running operations.",
-        "operationId": "list_jobs_source_connections__source_connection_id__jobs_get",
+        "summary": "Get Source Connection Jobs",
+        "description": "Get sync jobs for a source connection.",
+        "operationId": "get_source_connection_jobs_source_connections__source_connection_id__jobs_get",
         "parameters": [
           {
             "name": "source_connection_id",
@@ -1365,10 +1229,20 @@
             "schema": {
               "type": "string",
               "format": "uuid",
-              "description": "The unique identifier of the source connection",
               "title": "Source Connection Id"
-            },
-            "description": "The unique identifier of the source connection"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
           }
         ],
         "responses": {
@@ -1381,130 +1255,7 @@
                   "items": {
                     "$ref": "#/components/schemas/SourceConnectionJob"
                   },
-                  "title": "Response List Jobs Source Connections  Source Connection Id  Jobs Get"
-                },
-                "examples": {
-                  "sync_job_history": {
-                    "summary": "Complete sync job history",
-                    "value": [
-                      {
-                        "source_connection_id": "550e8400-e29b-41d4-a716-446655440000",
-                        "id": "987fcdeb-51a2-43d7-8f3e-1234567890ab",
-                        "organization_id": "org12345-6789-abcd-ef01-234567890abc",
-                        "created_by_email": "engineering@company.com",
-                        "modified_by_email": "engineering@company.com",
-                        "created_at": "2024-01-15T14:00:00Z",
-                        "modified_at": "2024-01-15T14:05:22Z",
-                        "status": "completed",
-                        "entities_inserted": 45,
-                        "entities_updated": 12,
-                        "entities_deleted": 3,
-                        "entities_kept": 234,
-                        "entities_skipped": 8,
-                        "entities_encountered": {
-                          "issues": 67,
-                          "pull_requests": 23,
-                          "commits": 156,
-                          "releases": 12,
-                          "readme_files": 8
-                        },
-                        "started_at": "2024-01-15T14:00:15Z",
-                        "completed_at": "2024-01-15T14:05:22Z"
-                      }
-                    ]
-                  }
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ]
-      }
-    },
-    "/source-connections/{source_connection_id}/jobs/{job_id}": {
-      "get": {
-        "tags": [
-          "source-connections"
-        ],
-        "summary": "Get Job",
-        "description": "Get detailed information about a specific sync job.",
-        "operationId": "get_job_source_connections__source_connection_id__jobs__job_id__get",
-        "parameters": [
-          {
-            "name": "source_connection_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "description": "The unique identifier of the source connection",
-              "title": "Source Connection Id"
-            },
-            "description": "The unique identifier of the source connection"
-          },
-          {
-            "name": "job_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "description": "The unique identifier of the sync job",
-              "title": "Job Id"
-            },
-            "description": "The unique identifier of the sync job"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SourceConnectionJob"
-                },
-                "examples": {
-                  "completed_job": {
-                    "summary": "Detailed sync job information",
-                    "value": {
-                      "source_connection_id": "550e8400-e29b-41d4-a716-446655440000",
-                      "id": "987fcdeb-51a2-43d7-8f3e-1234567890ab",
-                      "organization_id": "org12345-6789-abcd-ef01-234567890abc",
-                      "created_by_email": "engineering@company.com",
-                      "modified_by_email": "engineering@company.com",
-                      "created_at": "2024-01-15T14:00:00Z",
-                      "modified_at": "2024-01-15T14:05:22Z",
-                      "status": "completed",
-                      "entities_inserted": 45,
-                      "entities_updated": 12,
-                      "entities_deleted": 3,
-                      "entities_kept": 234,
-                      "entities_skipped": 8,
-                      "entities_encountered": {
-                        "issues": 67,
-                        "pull_requests": 23,
-                        "commits": 156,
-                        "releases": 12,
-                        "readme_files": 8
-                      },
-                      "started_at": "2024-01-15T14:00:15Z",
-                      "completed_at": "2024-01-15T14:05:22Z"
-                    }
-                  }
+                  "title": "Response Get Source Connection Jobs Source Connections  Source Connection Id  Jobs Get"
                 }
               }
             }
@@ -1533,7 +1284,7 @@
           "source-connections"
         ],
         "summary": "Cancel Job",
-        "description": "Cancel a running sync job.\n\nSends a cancellation signal to stop an in-progress data synchronization.\nThe job will complete its current operation and then terminate gracefully.\nOnly jobs in 'created', 'pending', or 'in_progress' states can be cancelled.",
+        "description": "Cancel a running sync job for a source connection.\n\nThis will update the job status in the database to CANCELLED and\nsend a cancellation request to the Temporal workflow if it's running.",
         "operationId": "cancel_job_source_connections__source_connection_id__jobs__job_id__cancel_post",
         "parameters": [
           {
@@ -1543,10 +1294,8 @@
             "schema": {
               "type": "string",
               "format": "uuid",
-              "description": "The unique identifier of the source connection",
               "title": "Source Connection Id"
-            },
-            "description": "The unique identifier of the source connection"
+            }
           },
           {
             "name": "job_id",
@@ -1555,10 +1304,8 @@
             "schema": {
               "type": "string",
               "format": "uuid",
-              "description": "The unique identifier of the sync job to cancel",
               "title": "Job Id"
-            },
-            "description": "The unique identifier of the sync job to cancel"
+            }
           }
         ],
         "responses": {
@@ -1568,497 +1315,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SourceConnectionJob"
-                },
-                "examples": {
-                  "cancelled_job": {
-                    "summary": "Successfully cancelled sync job",
-                    "value": {
-                      "source_connection_id": "550e8400-e29b-41d4-a716-446655440000",
-                      "id": "987fcdeb-51a2-43d7-8f3e-1234567890ab",
-                      "organization_id": "org12345-6789-abcd-ef01-234567890abc",
-                      "created_by_email": "engineering@company.com",
-                      "modified_by_email": "engineering@company.com",
-                      "created_at": "2024-01-15T14:00:00Z",
-                      "modified_at": "2024-01-15T14:02:30Z",
-                      "status": "cancelled",
-                      "entities_inserted": 12,
-                      "entities_updated": 3,
-                      "entities_deleted": 0,
-                      "entities_kept": 89,
-                      "entities_skipped": 2,
-                      "entities_encountered": {
-                        "issues": 23,
-                        "pull_requests": 8,
-                        "commits": 67
-                      },
-                      "started_at": "2024-01-15T14:00:15Z",
-                      "failed_at": "2024-01-15T14:02:30Z",
-                      "error": "Job cancelled by user"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ]
-      }
-    },
-    "/white-labels/list": {
-      "get": {
-        "tags": [
-          "white-labels"
-        ],
-        "summary": "List White Labels",
-        "description": "List all white label integrations for your organization.\n\n<br/><br/>\nReturns all custom OAuth integrations configured with your own branding and\ncredentials. These integrations allow you to present OAuth consent screens with\nyour company name instead of Airweave.<br/><br/>**White label integrations only\nwork with OAuth2.0 sources** like Slack, Google Drive, or HubSpot that require\nOAuth consent flows.",
-        "operationId": "list_white_labels_white_labels_list_get",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/WhiteLabel"
-                  },
-                  "title": "Response List White Labels White Labels List Get"
-                },
-                "examples": {
-                  "white_labels_list": {
-                    "summary": "GitHub integration",
-                    "value": [
-                      {
-                        "id": "white789-0abc-def0-1234-567890abcdef",
-                        "name": "Support Team GitHub Integration",
-                        "source_short_name": "github",
-                        "redirect_url": "https://support.yoursite.com/integrations/github/callback",
-                        "client_id": "Iv1.a1b2c3d4e5f6g7h8",
-                        "client_secret": "1234567890abcdef1234567890abcdef12345678",
-                        "allowed_origins": "https://support.yoursite.com,https://internal.yoursite.com",
-                        "organization_id": "org12345-6789-abcd-ef01-234567890abc",
-                        "created_at": "2024-01-05T16:45:00Z",
-                        "modified_at": "2024-01-14T10:20:00Z",
-                        "created_by_email": "support@company.com",
-                        "modified_by_email": "admin@company.com"
-                      }
-                    ]
-                  }
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ]
-      }
-    },
-    "/white-labels": {
-      "post": {
-        "tags": [
-          "white-labels"
-        ],
-        "summary": "Create White Label",
-        "description": "Create a new white label integration.\n\n<br/><br/>\n**This only works for sources that use OAuth2.0 authentication** like Slack,\nGoogle Drive, GitHub, or HubSpot.<br/><br/>Sets up a custom OAuth integration\nusing your own OAuth application credentials and branding. Once created,\ncustomers will see your company name during OAuth consent flows instead of\nAirweave. This requires you to have already configured your own OAuth\napplication with the target service provider.",
-        "operationId": "create_white_label_white_labels_post",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/WhiteLabelCreate"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WhiteLabel"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ]
-      }
-    },
-    "/white-labels/{white_label_id}": {
-      "get": {
-        "tags": [
-          "white-labels"
-        ],
-        "summary": "Get White Label",
-        "description": "Retrieve a specific white label integration by its ID.",
-        "operationId": "get_white_label_white_labels__white_label_id__get",
-        "parameters": [
-          {
-            "name": "white_label_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "description": "The unique identifier of the white label integration",
-              "title": "White Label Id"
-            },
-            "description": "The unique identifier of the white label integration"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WhiteLabel"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ]
-      },
-      "put": {
-        "tags": [
-          "white-labels"
-        ],
-        "summary": "Update White Label",
-        "description": "Update a white label integration's configuration.",
-        "operationId": "update_white_label_white_labels__white_label_id__put",
-        "parameters": [
-          {
-            "name": "white_label_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "description": "The unique identifier of the white label integration to update",
-              "title": "White Label Id"
-            },
-            "description": "The unique identifier of the white label integration to update"
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/WhiteLabelUpdate"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WhiteLabel"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ]
-      },
-      "delete": {
-        "tags": [
-          "white-labels"
-        ],
-        "summary": "Delete White Label",
-        "description": "Delete a white label integration.\n\n<br/><br/>\nPermanently removes the white label configuration and OAuth credentials.\nExisting source connections created through this integration will continue to work,\nbut no new OAuth flows can be initiated until a new white label integration is created.",
-        "operationId": "delete_white_label_white_labels__white_label_id__delete",
-        "parameters": [
-          {
-            "name": "white_label_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "description": "The unique identifier of the white label integration to delete",
-              "title": "White Label Id"
-            },
-            "description": "The unique identifier of the white label integration to delete"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WhiteLabel"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ]
-      }
-    },
-    "/white-labels/{white_label_id}/oauth2/auth_url": {
-      "get": {
-        "tags": [
-          "white-labels"
-        ],
-        "summary": "Get White Label Oauth2 Auth Url",
-        "description": "Generate a branded OAuth2 authorization URL for customer authentication.\n\n<br/><br/>\nCreates the OAuth consent URL that customers should be redirected to for\nauthentication. The OAuth consent screen will display your company name and\nbranding instead of Airweave.",
-        "operationId": "get_white_label_oauth2_auth_url_white_labels__white_label_id__oauth2_auth_url_get",
-        "parameters": [
-          {
-            "name": "white_label_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "description": "The unique identifier of the white label integration",
-              "title": "White Label Id"
-            },
-            "description": "The unique identifier of the white label integration"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OAuth2 authorization URL with your branding",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "string",
-                  "title": "Response Get White Label Oauth2 Auth Url White Labels  White Label Id  Oauth2 Auth Url Get"
-                },
-                "examples": {
-                  "slack_auth_url": {
-                    "summary": "Slack OAuth URL",
-                    "value": "https://slack.com/oauth/v2/authorize?response_type=code&client_id=1234567890.1234567890123&redirect_uri=https%3A//yourapp.com/auth/slack/callback&scope=channels%3Aread+chat%3Awrite+users%3Aread"
-                  }
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ]
-      }
-    },
-    "/white-labels/{white_label_id}/source-connections": {
-      "get": {
-        "tags": [
-          "white-labels"
-        ],
-        "summary": "List White Label Source Connections",
-        "description": "List all source connections created through a specific white label integration.\n\n<br/><br/>\nReturns source connections that were established using this white label's OAuth flow.",
-        "operationId": "list_white_label_source_connections_white_labels__white_label_id__source_connections_get",
-        "parameters": [
-          {
-            "name": "white_label_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "description": "The unique identifier of the white label integration",
-              "title": "White Label Id"
-            },
-            "description": "The unique identifier of the white label integration"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/SourceConnectionListItem"
-                  },
-                  "title": "Response List White Label Source Connections White Labels  White Label Id  Source Connections Get"
-                },
-                "examples": {
-                  "source_connections_list": {
-                    "summary": "Source connections created through white label OAuth flows",
-                    "value": [
-                      {
-                        "id": "white123-4567-89ab-cdef-012345678901",
-                        "name": "Customer Slack Workspace",
-                        "description": "Team communications and project discussions from customer's Slack workspace",
-                        "short_name": "slack",
-                        "status": "active",
-                        "created_at": "2024-01-16T10:15:00Z",
-                        "modified_at": "2024-01-16T10:15:00Z",
-                        "sync_id": "wl456789-abcd-ef01-2345-67890abcdef1",
-                        "collection": "customer-communications-xy789",
-                        "white_label_id": "wl123456-789a-bcde-f012-345678901234"
-                      }
-                    ]
-                  }
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ]
-      }
-    },
-    "/white-labels/{white_label_id}/oauth2/code": {
-      "post": {
-        "tags": [
-          "white-labels"
-        ],
-        "summary": "Exchange White Label Oauth2 Code",
-        "description": "Complete the OAuth flow and create a source connection.\n\n<br/><br/>\n**This is the core endpoint that converts OAuth authorization codes into working\nsource connections.**<br/><br/>The OAuth credentials are obtained automatically\nfrom the authorization code - you do not need to provide auth_fields. The white\nlabel integration is automatically linked to the created source connection for\ntracking and branding purposes.",
-        "operationId": "exchange_white_label_oauth2_code_white_labels__white_label_id__oauth2_code_options",
-        "parameters": [
-          {
-            "name": "white_label_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "description": "The unique identifier of the white label integration",
-              "title": "White Label Id"
-            },
-            "description": "The unique identifier of the white label integration"
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_exchange_white_label_oauth2_code_white_labels__white_label_id__oauth2_code_options"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SourceConnection"
                 }
               }
             }
@@ -2184,61 +1440,50 @@
         "title": "APIKeyCreate",
         "description": "Schema for creating an APIKey object."
       },
-      "ActionCheckResponse": {
+      "ActionCheckRequest": {
         "properties": {
-          "allowed": {
-            "type": "boolean",
-            "title": "Allowed",
-            "description": "Whether the action is allowed for the organization"
-          },
-          "action": {
-            "type": "string",
-            "title": "Action",
-            "description": "The action type that was checked"
-          },
-          "reason": {
-            "anyOf": [
+          "actions": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Actions",
+            "description": "Dictionary of action types to check with their amounts",
+            "examples": [
               {
-                "type": "string",
-                "enum": [
-                  "payment_required",
-                  "usage_limit_exceeded"
-                ]
-              },
-              {
-                "type": "null"
+                "collections": 1,
+                "entities": 1,
+                "queries": 1,
+                "source_connections": 1,
+                "syncs": 1
               }
-            ],
-            "title": "Reason",
-            "description": "Reason why the action is not allowed (if applicable)"
-          },
-          "details": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Details",
-            "description": "Additional details about why the action is not allowed"
+            ]
           }
         },
         "type": "object",
         "required": [
-          "allowed",
-          "action"
+          "actions"
+        ],
+        "title": "ActionCheckRequest",
+        "description": "Request schema for checking multiple actions."
+      },
+      "ActionCheckResponse": {
+        "properties": {
+          "results": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SingleActionCheckResponse"
+            },
+            "type": "object",
+            "title": "Results",
+            "description": "Dictionary of action check results keyed by action type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "results"
         ],
         "title": "ActionCheckResponse",
-        "description": "Response schema for action permission checks.",
-        "examples": [
-          {
-            "action": "queries",
-            "allowed": true
-          }
-        ]
+        "description": "Response schema for multiple action checks."
       },
       "AuthProvider": {
         "properties": {
@@ -2270,10 +1515,6 @@
             "type": "string",
             "title": "Config Class",
             "description": "Python class name that defines the auth provider-specific configuration"
-          },
-          "auth_type": {
-            "$ref": "#/components/schemas/AuthType",
-            "description": "Type of authentication mechanism used by this provider"
           },
           "description": {
             "anyOf": [
@@ -2346,13 +1587,40 @@
           "class_name",
           "auth_config_class",
           "config_class",
-          "auth_type",
           "id",
           "created_at",
           "modified_at"
         ],
         "title": "AuthProvider",
         "description": "Schema for auth provider response."
+      },
+      "AuthProviderAuthentication": {
+        "properties": {
+          "provider_readable_id": {
+            "type": "string",
+            "title": "Provider Readable Id",
+            "description": "Auth provider readable ID"
+          },
+          "provider_config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Config",
+            "description": "Provider-specific configuration"
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider_readable_id"
+        ],
+        "title": "AuthProviderAuthentication",
+        "description": "Authentication via external provider."
       },
       "AuthProviderConnection": {
         "properties": {
@@ -2559,20 +1827,116 @@
           "name": "Updated Composio Connection"
         }
       },
-      "AuthType": {
+      "AuthenticationDetails": {
+        "properties": {
+          "method": {
+            "$ref": "#/components/schemas/AuthenticationMethod"
+          },
+          "authenticated": {
+            "type": "boolean",
+            "title": "Authenticated"
+          },
+          "authenticated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authenticated At"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "auth_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auth Url",
+            "description": "For pending OAuth flows"
+          },
+          "auth_url_expires": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auth Url Expires"
+          },
+          "redirect_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redirect Url"
+          },
+          "provider_readable_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Readable Id"
+          },
+          "provider_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "method",
+          "authenticated"
+        ],
+        "title": "AuthenticationDetails",
+        "description": "Authentication information."
+      },
+      "AuthenticationMethod": {
         "type": "string",
         "enum": [
-          "oauth2",
-          "oauth2_with_refresh",
-          "oauth2_with_refresh_rotating",
-          "api_key",
-          "native_functionality",
-          "config_class",
-          "trello_auth",
-          "none"
+          "direct",
+          "oauth_browser",
+          "oauth_token",
+          "oauth_byoc",
+          "auth_provider"
         ],
-        "title": "AuthType",
-        "description": "Enumeration of supported authentication types.\n\nAttributes:\n----------\n    oauth2: OAuth2 authentication.\n    oauth2_with_refresh: OAuth2 authentication with refresh token.\n    oauth2_with_refresh_rotating: OAuth2 authentication with rotating refresh token.\n    api_key: API key authentication.\n    native_functionality: Native functionality.\n    url_and_api_key: URL and API key authentication.\n    none: No authentication."
+        "title": "AuthenticationMethod",
+        "description": "Authentication methods for source connections."
       },
       "BillingPeriodUsage": {
         "properties": {
@@ -2671,111 +2035,6 @@
           "token"
         ],
         "title": "Body_connect_slack_with_token_connections_direct_token_slack_post"
-      },
-      "Body_create_credentials_from_authorization_code_source_connections__source_short_name__code_to_token_credentials_post": {
-        "properties": {
-          "credential_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Credential Name",
-            "description": "Custom name for the stored credential"
-          },
-          "credential_description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Credential Description",
-            "description": "Description to help identify this credential"
-          },
-          "client_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Client Id",
-            "description": "OAuth client ID (required for bring-your-own-credentials)"
-          },
-          "client_secret": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Client Secret",
-            "description": "OAuth client secret (required for bring-your-own-credentials)"
-          }
-        },
-        "type": "object",
-        "title": "Body_create_credentials_from_authorization_code_source_connections__source_short_name__code_to_token_credentials_post"
-      },
-      "Body_exchange_white_label_oauth2_code_white_labels__white_label_id__oauth2_code_options": {
-        "properties": {
-          "code": {
-            "type": "string",
-            "title": "Code",
-            "description": "The OAuth2 authorization code received from the OAuth callback after customer authentication",
-            "examples": [
-              "4/P7q7W91a-oMsCeLvIaQm6bTrgtp7"
-            ]
-          },
-          "source_connection_in": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SourceConnectionCreateWithWhiteLabel"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Optional configuration for the source connection. If not provided, a source connection will be created automatically with default settings. The white label integration is automatically linked to the source connection."
-          }
-        },
-        "type": "object",
-        "required": [
-          "code"
-        ],
-        "title": "Body_exchange_white_label_oauth2_code_white_labels__white_label_id__oauth2_code_options"
-      },
-      "Body_run_source_connections__source_connection_id__run_post": {
-        "properties": {
-          "access_token": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Access Token",
-            "description": "This parameter gives you the ability to start a sync job with an access token for an OAuth2.0 source directly instead of using the credentials that Airweave has stored for you. Learn more about direct token injection [here](https://docs.airweave.ai/direct-token-injection).",
-            "examples": [
-              "ya29.a0AfH6SMBxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-              "gho_abcdefghijklmnopqrstuvwxyz1234567890",
-              "sk-1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQR"
-            ]
-          }
-        },
-        "type": "object",
-        "title": "Body_run_source_connections__source_connection_id__run_post"
       },
       "CancelSubscriptionRequest": {
         "properties": {},
@@ -3585,16 +2844,6 @@
             "type": "string",
             "title": "Class Name"
           },
-          "auth_type": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/AuthType"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "auth_config_class": {
             "anyOf": [
               {
@@ -3712,16 +2961,6 @@
             "type": "string",
             "title": "Class Name"
           },
-          "auth_type": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/AuthType"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "auth_config_class": {
             "anyOf": [
               {
@@ -3824,6 +3063,22 @@
         "title": "DestinationWithAuthenticationFields",
         "description": "Schema for Destination with auth config."
       },
+      "DirectAuthentication": {
+        "properties": {
+          "credentials": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Credentials",
+            "description": "Authentication credentials"
+          }
+        },
+        "type": "object",
+        "required": [
+          "credentials"
+        ],
+        "title": "DirectAuthentication",
+        "description": "Direct authentication with API keys or passwords."
+      },
       "EmbeddingModel": {
         "properties": {
           "name": {
@@ -3870,16 +3125,6 @@
               }
             ],
             "title": "Model Version"
-          },
-          "auth_type": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/AuthType"
-              },
-              {
-                "type": "null"
-              }
-            ]
           },
           "auth_config_class": {
             "anyOf": [
@@ -3966,16 +3211,6 @@
               }
             ],
             "title": "Model Version"
-          },
-          "auth_type": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/AuthType"
-              },
-              {
-                "type": "null"
-              }
-            ]
           },
           "auth_config_class": {
             "anyOf": [
@@ -4069,6 +3304,11 @@
               }
             ],
             "title": "Entity Definition Description"
+          },
+          "modified_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Modified At"
           }
         },
         "type": "object",
@@ -4076,7 +3316,8 @@
           "count",
           "entity_definition_id",
           "entity_definition_name",
-          "entity_definition_type"
+          "entity_definition_type",
+          "modified_at"
         ],
         "title": "EntityCountWithDefinition",
         "description": "Entity count with entity definition details."
@@ -4233,6 +3474,37 @@
         "title": "EntityDefinitionCreate",
         "description": "Schema for creating an entity definition."
       },
+      "EntitySummary": {
+        "properties": {
+          "total_entities": {
+            "type": "integer",
+            "title": "Total Entities",
+            "default": 0
+          },
+          "by_type": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/EntityTypeStats"
+            },
+            "type": "object",
+            "title": "By Type"
+          },
+          "last_updated": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Updated"
+          }
+        },
+        "type": "object",
+        "title": "EntitySummary",
+        "description": "Entity state summary."
+      },
       "EntityType": {
         "type": "string",
         "enum": [
@@ -4241,6 +3513,32 @@
         ],
         "title": "EntityType",
         "description": "Type of entity."
+      },
+      "EntityTypeStats": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "last_updated": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Updated"
+          }
+        },
+        "type": "object",
+        "required": [
+          "count"
+        ],
+        "title": "EntityTypeStats",
+        "description": "Statistics for a specific entity type."
       },
       "FieldCondition": {
         "properties": {
@@ -4762,8 +4060,18 @@
           "integration_type": {
             "$ref": "#/components/schemas/IntegrationType"
           },
-          "auth_type": {
-            "$ref": "#/components/schemas/AuthType"
+          "authentication_method": {
+            "$ref": "#/components/schemas/AuthenticationMethod"
+          },
+          "oauth_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OAuthType"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "auth_config_class": {
             "anyOf": [
@@ -4796,7 +4104,7 @@
           "name",
           "integration_short_name",
           "integration_type",
-          "auth_type",
+          "authentication_method",
           "id",
           "organization_id",
           "encrypted_credentials"
@@ -4828,8 +4136,18 @@
           "integration_type": {
             "$ref": "#/components/schemas/IntegrationType"
           },
-          "auth_type": {
-            "$ref": "#/components/schemas/AuthType"
+          "authentication_method": {
+            "$ref": "#/components/schemas/AuthenticationMethod"
+          },
+          "oauth_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OAuthType"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "auth_config_class": {
             "anyOf": [
@@ -4853,7 +4171,7 @@
           "name",
           "integration_short_name",
           "integration_type",
-          "auth_type",
+          "authentication_method",
           "auth_fields"
         ],
         "title": "IntegrationCredentialRawCreate",
@@ -5230,19 +4548,98 @@
         "title": "NodeType",
         "description": "Type of node."
       },
-      "OAuth2AuthUrl": {
+      "OAuthBrowserAuthentication": {
         "properties": {
-          "url": {
+          "redirect_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redirect Uri",
+            "description": "OAuth redirect URI"
+          },
+          "client_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Id",
+            "description": "OAuth client ID (for custom apps)"
+          },
+          "client_secret": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Secret",
+            "description": "OAuth client secret (for custom apps)"
+          }
+        },
+        "type": "object",
+        "title": "OAuthBrowserAuthentication",
+        "description": "OAuth authentication via browser flow."
+      },
+      "OAuthTokenAuthentication": {
+        "properties": {
+          "access_token": {
             "type": "string",
-            "title": "Url"
+            "title": "Access Token",
+            "description": "OAuth access token"
+          },
+          "refresh_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refresh Token",
+            "description": "OAuth refresh token"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At",
+            "description": "Token expiry time"
           }
         },
         "type": "object",
         "required": [
-          "url"
+          "access_token"
         ],
-        "title": "OAuth2AuthUrl",
-        "description": "OAuth2 authorization URL schema.\n\nAttributes:\n----------\n    url (str): The authorization URL."
+        "title": "OAuthTokenAuthentication",
+        "description": "OAuth authentication with pre-obtained token."
+      },
+      "OAuthType": {
+        "type": "string",
+        "enum": [
+          "access_only",
+          "with_refresh",
+          "with_rotating_refresh"
+        ],
+        "title": "OAuthType",
+        "description": "OAuth token types for sources."
       },
       "Organization": {
         "properties": {
@@ -5531,6 +4928,98 @@
         ],
         "title": "ResponseType",
         "description": "Response format options for search results."
+      },
+      "ScheduleConfig": {
+        "properties": {
+          "cron": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cron",
+            "description": "Cron expression for scheduled syncs"
+          },
+          "continuous": {
+            "type": "boolean",
+            "title": "Continuous",
+            "description": "Enable continuous sync mode",
+            "default": false
+          },
+          "cursor_field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cursor Field",
+            "description": "Field for incremental sync"
+          }
+        },
+        "type": "object",
+        "title": "ScheduleConfig",
+        "description": "Schedule configuration for syncs."
+      },
+      "ScheduleDetails": {
+        "properties": {
+          "cron": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cron"
+          },
+          "next_run": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Run"
+          },
+          "continuous": {
+            "type": "boolean",
+            "title": "Continuous",
+            "default": false
+          },
+          "cursor_field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cursor Field"
+          },
+          "cursor_value": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cursor Value"
+          }
+        },
+        "type": "object",
+        "title": "ScheduleDetails",
+        "description": "Schedule information."
       },
       "ScheduleResponse": {
         "properties": {
@@ -5839,6 +5328,62 @@
         "title": "SearchStatus",
         "description": "Status indicators for search operation outcomes."
       },
+      "SingleActionCheckResponse": {
+        "properties": {
+          "allowed": {
+            "type": "boolean",
+            "title": "Allowed",
+            "description": "Whether the action is allowed for the organization"
+          },
+          "action": {
+            "type": "string",
+            "title": "Action",
+            "description": "The action type that was checked"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "payment_required",
+                  "usage_limit_exceeded"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Reason why the action is not allowed (if applicable)"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Details",
+            "description": "Additional details about why the action is not allowed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "allowed",
+          "action"
+        ],
+        "title": "SingleActionCheckResponse",
+        "description": "Response schema for single action permission check.",
+        "examples": [
+          {
+            "action": "queries",
+            "allowed": true
+          }
+        ]
+      },
       "Source": {
         "properties": {
           "name": {
@@ -5858,24 +5403,60 @@
             "title": "Description",
             "description": "Detailed description explaining what data this source can extract and its typical use cases."
           },
-          "auth_type": {
+          "auth_methods": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/AuthType"
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Type of authentication mechanism required by this source (e.g., 'oauth2')."
+            "title": "Auth Methods",
+            "description": "List of supported authentication methods (e.g., 'direct', 'oauth_browser')."
+          },
+          "oauth_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oauth Type",
+            "description": "OAuth token type for OAuth sources (e.g., 'access_only', 'with_refresh')."
+          },
+          "requires_byoc": {
+            "type": "boolean",
+            "title": "Requires Byoc",
+            "description": "Whether this OAuth source requires users to bring their own client.",
+            "default": false
           },
           "auth_config_class": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Auth Config Class",
-            "description": "Python class name that defines the authentication configuration fields required for this source."
+            "description": "Python class name that defines the authentication configuration fields required for this source (only for DIRECT auth)."
           },
           "config_class": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Config Class",
             "description": "Python class name that defines the source-specific configuration options and parameters."
           },
@@ -5951,8 +5532,15 @@
             "description": "Timestamp when this source type was last updated (ISO 8601 format)."
           },
           "auth_fields": {
-            "$ref": "#/components/schemas/Fields",
-            "description": "Schema definition for authentication fields required to connect to this source. Describes field types, validation rules, and user interface hints."
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Fields"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Schema definition for authentication fields required to connect to this source. Only present for sources using DIRECT authentication. OAuth sources handle authentication through browser flows."
           },
           "config_fields": {
             "$ref": "#/components/schemas/Fields",
@@ -5962,14 +5550,11 @@
         "type": "object",
         "required": [
           "name",
-          "auth_config_class",
-          "config_class",
           "short_name",
           "class_name",
           "id",
           "created_at",
           "modified_at",
-          "auth_fields",
           "config_fields"
         ],
         "title": "Source",
@@ -5985,20 +5570,22 @@
                   "secret": true,
                   "title": "Personal Access Token",
                   "type": "string"
-                },
+                }
+              ]
+            },
+            "auth_methods": [
+              "direct"
+            ],
+            "class_name": "GitHubSource",
+            "config_class": "GitHubConfig",
+            "config_fields": {
+              "fields": [
                 {
                   "description": "Full repository name in format 'owner/repo' (e.g., 'airweave-ai/airweave')",
                   "name": "repo_name",
                   "title": "Repository Name",
                   "type": "string"
-                }
-              ]
-            },
-            "auth_type": "config_class",
-            "class_name": "GitHubSource",
-            "config_class": "GitHubConfig",
-            "config_fields": {
-              "fields": [
+                },
                 {
                   "description": "Specific branch to sync (e.g., 'main', 'development'). If empty, uses the default branch.",
                   "name": "branch",
@@ -6020,67 +5607,56 @@
               "def67890-abcd-ef01-2345-67890abcdef1"
             ],
             "short_name": "github"
+          },
+          {
+            "auth_methods": [
+              "oauth_browser",
+              "oauth_token",
+              "oauth_byoc"
+            ],
+            "class_name": "GmailSource",
+            "config_class": "GmailConfig",
+            "config_fields": {
+              "fields": [
+                {
+                  "default": true,
+                  "description": "Whether to sync email attachments",
+                  "name": "sync_attachments",
+                  "title": "Sync Attachments",
+                  "type": "boolean"
+                }
+              ]
+            },
+            "created_at": "2024-01-01T00:00:00Z",
+            "description": "Connect to Gmail for email threads, messages, and attachments",
+            "id": "660e8400-e29b-41d4-a716-446655440001",
+            "labels": [
+              "Communication",
+              "Email"
+            ],
+            "modified_at": "2024-01-01T00:00:00Z",
+            "name": "Gmail",
+            "oauth_type": "with_refresh",
+            "output_entity_definition_ids": [
+              "abc12345-6789-abcd-ef01-234567890abc",
+              "abc67890-abcd-ef01-2345-67890abcdef1"
+            ],
+            "short_name": "gmail"
           }
         ]
       },
       "SourceConnection": {
         "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
           "name": {
             "type": "string",
-            "maxLength": 64,
-            "minLength": 1,
-            "title": "Name",
-            "description": "Human-readable display name for the source connection. This helps you identify the connection in the UI and should clearly describe what data it connects to (e.g., 'Production Stripe Account', 'Customer Support Database')."
+            "title": "Name"
           },
           "description": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 255
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description",
-            "description": "Optional additional context about the data this connection provides. Use this to document the purpose, data types, or any special considerations for this connection."
-          },
-          "config_fields": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ConfigValues"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Source-specific configuration options that control data retrieval behavior. These vary by source type and control how data is retrieved (e.g., database queries, API filters, file paths). Check the documentation of a specific source (for example [Github](https://docs.airweave.ai/docs/connectors/github)) to see what is required.",
-            "examples": []
-          },
-          "short_name": {
-            "type": "string",
-            "title": "Short Name",
-            "description": "Technical identifier of the source type (e.g., 'github', 'stripe', 'postgresql', 'slack'). This determines which connector Airweave uses to sync data.",
-            "examples": [
-              "stripe",
-              "postgresql",
-              "slack"
-            ]
-          },
-          "white_label_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "White Label Id",
-            "description": "Identifier for custom OAuth integrations. Only present for connections created through white label OAuth flows."
-          },
-          "auth_provider": {
             "anyOf": [
               {
                 "type": "string"
@@ -6089,10 +5665,33 @@
                 "type": "null"
               }
             ],
-            "title": "Auth Provider",
-            "description": "Readable ID of the auth provider used to create this connection. Present only if the connection was created through an auth provider."
+            "title": "Description"
           },
-          "auth_provider_config": {
+          "short_name": {
+            "type": "string",
+            "title": "Short Name"
+          },
+          "readable_collection_id": {
+            "type": "string",
+            "title": "Readable Collection Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SourceConnectionStatus"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "modified_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Modified At"
+          },
+          "auth": {
+            "$ref": "#/components/schemas/AuthenticationDetails"
+          },
+          "config": {
             "anyOf": [
               {
                 "additionalProperties": true,
@@ -6102,1336 +5701,166 @@
                 "type": "null"
               }
             ],
-            "title": "Auth Provider Config",
-            "description": "Configuration used with the auth provider to create this connection. Present only if the connection was created through an auth provider."
+            "title": "Config"
           },
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id",
-            "description": "Unique system identifier for this source connection. This UUID is generated automatically and used for API operations."
-          },
-          "sync_id": {
+          "schedule": {
             "anyOf": [
               {
-                "type": "string",
-                "format": "uuid"
+                "$ref": "#/components/schemas/ScheduleDetails"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Sync Id",
-            "description": "Internal identifier for the sync configuration associated with this source connection. Managed automatically by the system."
-          },
-          "organization_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Organization Id",
-            "description": "Identifier of the organization that owns this source connection. Source connections are isolated per organization."
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At",
-            "description": "Timestamp when the source connection was created (ISO 8601 format)."
-          },
-          "modified_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Modified At",
-            "description": "Timestamp when the source connection was last modified (ISO 8601 format)."
-          },
-          "connection_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Connection Id",
-            "description": "Internal identifier for the underlying connection object that manages authentication and configuration."
-          },
-          "collection": {
-            "type": "string",
-            "title": "Collection",
-            "description": "Readable ID of the collection where this source connection syncs its data. This creates the link between your data source and searchable content.",
-            "examples": [
-              "finance-data-ab123",
-              "customer-support-xy789"
             ]
           },
-          "created_by_email": {
+          "sync": {
             "anyOf": [
               {
-                "type": "string",
-                "format": "email"
+                "$ref": "#/components/schemas/SyncDetails"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Created By Email",
-            "description": "Email address of the user who created this source connection."
-          },
-          "modified_by_email": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "email"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Modified By Email",
-            "description": "Email address of the user who last modified this source connection."
-          },
-          "auth_fields": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ConfigValues"
-              },
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Auth Fields",
-            "description": "Authentication credentials for the data source. Returns '********' by default for security."
-          },
-          "status": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SourceConnectionStatus"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Current operational status of the source connection:<br/>\u2022 **active**: Connection is healthy and ready for data synchronization<br/>\u2022 **in_progress**: Currently syncing data from the source<br/>\u2022 **failing**: Recent sync attempts have failed and require attention"
-          },
-          "latest_sync_job_status": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SyncJobStatus"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Status of the most recent data synchronization job:<br/>\u2022 **completed**: Last sync finished successfully<br/>\u2022 **failed**: Last sync encountered errors<br/>\u2022 **in_progress**: Currently running a sync job<br/>\u2022 **pending**: Sync job is queued and waiting to start"
-          },
-          "latest_sync_job_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Latest Sync Job Id",
-            "description": "Unique identifier of the most recent sync job. Use this to track sync progress or retrieve detailed job information."
-          },
-          "latest_sync_job_started_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Latest Sync Job Started At",
-            "description": "Timestamp when the most recent sync job started (ISO 8601 format)."
-          },
-          "latest_sync_job_completed_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Latest Sync Job Completed At",
-            "description": "Timestamp when the most recent sync job completed (ISO 8601 format). Null if the job is still running or failed."
-          },
-          "latest_sync_job_error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Latest Sync Job Error",
-            "description": "Error message from the most recent sync job if it failed. Use this to diagnose and resolve sync issues."
-          },
-          "cron_schedule": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cron Schedule",
-            "description": "Cron expression defining when automatic data synchronization occurs. Null if automatic syncing is disabled and syncs must be triggered manually.",
-            "examples": [
-              "0 */6 * * *",
-              "0 9,17 * * 1-5"
             ]
           },
-          "next_scheduled_run": {
+          "entities": {
             "anyOf": [
               {
-                "type": "string",
-                "format": "date-time"
+                "$ref": "#/components/schemas/EntitySummary"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Next Scheduled Run",
-            "description": "Timestamp when the next automatic sync is scheduled to run (ISO 8601 format). Null if no automatic schedule is configured."
+            ]
           }
         },
         "type": "object",
         "required": [
-          "name",
-          "short_name",
           "id",
-          "organization_id",
+          "name",
+          "description",
+          "short_name",
+          "readable_collection_id",
+          "status",
           "created_at",
           "modified_at",
-          "collection"
+          "auth"
         ],
         "title": "SourceConnection",
-        "description": "Complete source connection representation returned by the API.",
-        "examples": [
-          {
-            "auth_fields": {
-              "personal_access_token": "********",
-              "repo_name": "airweave-ai/docs"
-            },
-            "collection": "engineering-docs-ab123",
-            "config_fields": {
-              "branch": "main"
-            },
-            "connection_id": "conn9876-5432-10fe-dcba-098765432100",
-            "created_at": "2024-01-15T09:30:00Z",
-            "created_by_email": "engineering@company.com",
-            "cron_schedule": "0 */6 * * *",
-            "description": "Sync technical documentation and code from our engineering repos",
-            "id": "550e8400-e29b-41d4-a716-446655440000",
-            "latest_sync_job_completed_at": "2024-01-15T14:05:22Z",
-            "latest_sync_job_id": "987fcdeb-51a2-43d7-8f3e-1234567890ab",
-            "latest_sync_job_started_at": "2024-01-15T14:00:00Z",
-            "latest_sync_job_status": "completed",
-            "modified_at": "2024-01-15T14:22:15Z",
-            "modified_by_email": "engineering@company.com",
-            "name": "GitHub - Engineering Documentation",
-            "next_scheduled_run": "2024-01-16T02:00:00Z",
-            "organization_id": "org12345-6789-abcd-ef01-234567890abc",
-            "short_name": "github",
-            "status": "active",
-            "sync_id": "123e4567-e89b-12d3-a456-426614174000"
-          }
-        ]
-      },
-      "SourceConnectionContinuousResponse": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "maxLength": 64,
-            "minLength": 1,
-            "title": "Name",
-            "description": "Human-readable display name for the source connection. This helps you identify the connection in the UI and should clearly describe what data it connects to (e.g., 'Production Stripe Account', 'Customer Support Database')."
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 255
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description",
-            "description": "Optional additional context about the data this connection provides. Use this to document the purpose, data types, or any special considerations for this connection."
-          },
-          "config_fields": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ConfigValues"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Source-specific configuration options that control data retrieval behavior. These vary by source type and control how data is retrieved (e.g., database queries, API filters, file paths). Check the documentation of a specific source (for example [Github](https://docs.airweave.ai/docs/connectors/github)) to see what is required.",
-            "examples": []
-          },
-          "short_name": {
-            "type": "string",
-            "title": "Short Name",
-            "description": "Technical identifier of the source type (e.g., 'github', 'stripe', 'postgresql', 'slack'). This determines which connector Airweave uses to sync data.",
-            "examples": [
-              "stripe",
-              "postgresql",
-              "slack"
-            ]
-          },
-          "white_label_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "White Label Id",
-            "description": "Identifier for custom OAuth integrations. Only present for connections created through white label OAuth flows."
-          },
-          "auth_provider": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Auth Provider",
-            "description": "Readable ID of the auth provider used to create this connection. Present only if the connection was created through an auth provider."
-          },
-          "auth_provider_config": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Auth Provider Config",
-            "description": "Configuration used with the auth provider to create this connection. Present only if the connection was created through an auth provider."
-          },
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id",
-            "description": "Unique system identifier for this source connection. This UUID is generated automatically and used for API operations."
-          },
-          "sync_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sync Id",
-            "description": "Internal identifier for the sync configuration associated with this source connection. Managed automatically by the system."
-          },
-          "organization_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Organization Id",
-            "description": "Identifier of the organization that owns this source connection. Source connections are isolated per organization."
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At",
-            "description": "Timestamp when the source connection was created (ISO 8601 format)."
-          },
-          "modified_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Modified At",
-            "description": "Timestamp when the source connection was last modified (ISO 8601 format)."
-          },
-          "connection_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Connection Id",
-            "description": "Internal identifier for the underlying connection object that manages authentication and configuration."
-          },
-          "collection": {
-            "type": "string",
-            "title": "Collection",
-            "description": "Readable ID of the collection where this source connection syncs its data. This creates the link between your data source and searchable content.",
-            "examples": [
-              "finance-data-ab123",
-              "customer-support-xy789"
-            ]
-          },
-          "created_by_email": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "email"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Created By Email",
-            "description": "Email address of the user who created this source connection."
-          },
-          "modified_by_email": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "email"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Modified By Email",
-            "description": "Email address of the user who last modified this source connection."
-          },
-          "auth_fields": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ConfigValues"
-              },
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Auth Fields",
-            "description": "Authentication credentials for the data source. Returns '********' by default for security."
-          },
-          "status": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SourceConnectionStatus"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Current operational status of the source connection:<br/>\u2022 **active**: Connection is healthy and ready for data synchronization<br/>\u2022 **in_progress**: Currently syncing data from the source<br/>\u2022 **failing**: Recent sync attempts have failed and require attention"
-          },
-          "latest_sync_job_status": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SyncJobStatus"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Status of the most recent data synchronization job:<br/>\u2022 **completed**: Last sync finished successfully<br/>\u2022 **failed**: Last sync encountered errors<br/>\u2022 **in_progress**: Currently running a sync job<br/>\u2022 **pending**: Sync job is queued and waiting to start"
-          },
-          "latest_sync_job_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Latest Sync Job Id",
-            "description": "Unique identifier of the most recent sync job. Use this to track sync progress or retrieve detailed job information."
-          },
-          "latest_sync_job_started_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Latest Sync Job Started At",
-            "description": "Timestamp when the most recent sync job started (ISO 8601 format)."
-          },
-          "latest_sync_job_completed_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Latest Sync Job Completed At",
-            "description": "Timestamp when the most recent sync job completed (ISO 8601 format). Null if the job is still running or failed."
-          },
-          "latest_sync_job_error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Latest Sync Job Error",
-            "description": "Error message from the most recent sync job if it failed. Use this to diagnose and resolve sync issues."
-          },
-          "cron_schedule": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cron Schedule",
-            "description": "Cron expression defining when automatic data synchronization occurs. Null if automatic syncing is disabled and syncs must be triggered manually.",
-            "examples": [
-              "0 */6 * * *",
-              "0 9,17 * * 1-5"
-            ]
-          },
-          "next_scheduled_run": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Next Scheduled Run",
-            "description": "Timestamp when the next automatic sync is scheduled to run (ISO 8601 format). Null if no automatic schedule is configured."
-          },
-          "minute_level_schedule": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Minute Level Schedule",
-            "description": "Information about the created minute-level schedule including schedule ID, cron expression, and current status.",
-            "examples": [
-              {
-                "cron_expression": "*/5 * * * *",
-                "next_run": "2024-01-15T14:05:00Z",
-                "schedule_id": "sync_550e8400-e29b-41d4_schedule",
-                "status": "active"
-              }
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "short_name",
-          "id",
-          "organization_id",
-          "created_at",
-          "modified_at",
-          "collection"
-        ],
-        "title": "SourceConnectionContinuousResponse",
-        "description": "Response schema for continuous source connection creation.",
-        "examples": [
-          {
-            "auth_fields": {
-              "personal_access_token": "********",
-              "repo_name": "airweave-ai/docs"
-            },
-            "collection": "engineering-docs-ab123",
-            "config_fields": {
-              "branch": "main"
-            },
-            "connection_id": "conn9876-5432-10fe-dcba-098765432100",
-            "created_at": "2024-01-15T09:30:00Z",
-            "created_by_email": "engineering@company.com",
-            "cron_schedule": "0 */6 * * *",
-            "description": "Sync technical documentation and code from our engineering repos",
-            "id": "550e8400-e29b-41d4-a716-446655440000",
-            "latest_sync_job_completed_at": "2024-01-15T14:05:22Z",
-            "latest_sync_job_id": "987fcdeb-51a2-43d7-8f3e-1234567890ab",
-            "latest_sync_job_started_at": "2024-01-15T14:00:00Z",
-            "latest_sync_job_status": "completed",
-            "modified_at": "2024-01-15T14:22:15Z",
-            "modified_by_email": "engineering@company.com",
-            "name": "GitHub - Engineering Documentation",
-            "next_scheduled_run": "2024-01-16T02:00:00Z",
-            "organization_id": "org12345-6789-abcd-ef01-234567890abc",
-            "short_name": "github",
-            "status": "active",
-            "sync_id": "123e4567-e89b-12d3-a456-426614174000"
-          }
-        ]
+        "description": "Complete source connection details."
       },
       "SourceConnectionCreate": {
         "properties": {
           "name": {
-            "type": "string",
-            "maxLength": 42,
-            "minLength": 4,
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 42,
+                "minLength": 4
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Name",
-            "description": "Human-readable name for the source connection. This helps you identify the connection in the UI and should clearly describe what data it connects to.",
-            "examples": [
-              "Production Stripe Account",
-              "Main PostgreSQL DB",
-              "Support Tickets API"
-            ]
+            "description": "Connection name (defaults to '{Source Name} Connection')"
+          },
+          "short_name": {
+            "type": "string",
+            "title": "Short Name",
+            "description": "Source identifier (e.g., 'slack', 'github')"
+          },
+          "readable_collection_id": {
+            "type": "string",
+            "title": "Readable Collection Id",
+            "description": "Collection readable ID"
           },
           "description": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 255
               },
               {
                 "type": "null"
               }
             ],
             "title": "Description",
-            "description": "Optional detailed description of what this source connection provides. Use this to document the purpose, data types, or any special considerations for this connection.",
-            "examples": [
-              "Production Stripe account for payment and subscription data",
-              "Customer support tickets from Zendesk"
-            ]
+            "description": "Connection description"
           },
-          "config_fields": {
+          "config": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/ConfigValues"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Source-specific configuration parameters required for data extraction. These vary by source type and control how data is retrieved (e.g., database queries, API filters, file paths). Check the documentation of a specific source (for example [Github](https://docs.airweave.ai/docs/connectors/github)) to see what is required."
-          },
-          "short_name": {
-            "type": "string",
-            "title": "Short Name",
-            "description": "Technical identifier of the source type that determines which connector to use for data synchronization.",
-            "examples": [
-              "stripe",
-              "postgresql",
-              "slack",
-              "notion"
-            ]
-          },
-          "collection": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Collection",
-            "description": "Readable ID of the collection where synced data will be stored. If not provided, a new collection will be automatically created."
-          },
-          "cron_schedule": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cron Schedule",
-            "description": "Cron expression for automatic data synchronization schedule. If not provided, data will only sync when manually triggered. Use standard cron format: minute hour day month weekday."
-          },
-          "auth_fields": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ConfigValues"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Authentication credentials required to access the data source. The required fields vary by source type. Check the documentation of a specific source (for example [Github](https://docs.airweave.ai/docs/connectors/github)) to see what is required."
-          },
-          "auth_provider": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Auth Provider",
-            "description": "Unique readable ID of a connected auth provider to use for authentication instead of providing auth_fields directly. When specified, credentials for the source will be obtained and refreshed automatically by Airweave interaction with the auth provider. To see which auth providers are supported and learn more about how to use them, check [this page](https://docs.airweave.ai/docs/auth-providers).",
-            "examples": [
-              "composio"
-            ]
-          },
-          "auth_provider_config": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ConfigValues"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Configuration for the auth provider when using auth_provider field. Required fields vary by auth provider. For Composio, use auth_config_id and  account_id to specify which integration and account from Composio you want to use to connect to the source."
-          },
-          "sync_immediately": {
-            "type": "boolean",
-            "title": "Sync Immediately",
-            "description": "Whether to start an initial data synchronization immediately after creating the connection.",
-            "default": true
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "short_name"
-        ],
-        "title": "SourceConnectionCreate",
-        "description": "Schema for creating a source connection through the public API.",
-        "examples": [
-          {
-            "auth_fields": {
-              "personal_access_token": "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-              "repo_name": "airweave-ai/airweave"
-            },
-            "collection": "engineering-docs",
-            "config_fields": {
-              "branch": "main"
-            },
-            "cron_schedule": "0 */6 * * *",
-            "description": "Sync code and documentation from our main repository",
-            "name": "GitHub - Airweave Repository",
-            "short_name": "github",
-            "sync_immediately": true
-          }
-        ]
-      },
-      "SourceConnectionCreateContinuous": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "maxLength": 42,
-            "minLength": 4,
-            "title": "Name",
-            "description": "Human-readable name for the source connection. This helps you identify the connection in the UI and should clearly describe what data it connects to.",
-            "examples": [
-              "Production Stripe Account",
-              "Main PostgreSQL DB",
-              "Support Tickets API"
-            ]
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description",
-            "description": "Optional detailed description of what this source connection provides. Use this to document the purpose, data types, or any special considerations for this connection.",
-            "examples": [
-              "Production Stripe account for payment and subscription data",
-              "Customer support tickets from Zendesk"
-            ]
-          },
-          "config_fields": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ConfigValues"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Source-specific configuration parameters required for data extraction. These vary by source type and control how data is retrieved (e.g., database queries, API filters, file paths). Check the documentation of a specific source (for example [Github](https://docs.airweave.ai/docs/connectors/github)) to see what is required."
-          },
-          "short_name": {
-            "type": "string",
-            "title": "Short Name",
-            "description": "Technical identifier of the source type that determines which connector to use for data synchronization.",
-            "examples": [
-              "stripe",
-              "postgresql",
-              "slack",
-              "notion"
-            ]
-          },
-          "collection": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Collection",
-            "description": "Readable ID of the collection where synced data will be stored. If not provided, a new collection will be automatically created."
-          },
-          "enable_daily_cleanup": {
-            "type": "boolean",
-            "title": "Enable Daily Cleanup",
-            "description": "Whether to create a daily forced full sync with entity cleanup. Defaults to true for resilience; set to false to rely solely on incremental changes.",
-            "default": true
-          },
-          "auth_fields": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ConfigValues"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Authentication credentials required to access the data source. The required fields vary by source type. Check the documentation of a specific source (for example [Github](https://docs.airweave.ai/docs/connectors/github)) to see what is required."
-          },
-          "auth_provider": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Auth Provider",
-            "description": "Unique readable ID of a connected auth provider to use for authentication instead of providing auth_fields directly.",
-            "examples": [
-              "composio"
-            ]
-          },
-          "auth_provider_config": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ConfigValues"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Configuration for the auth provider when using auth_provider field."
-          },
-          "cursor_field": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cursor Field",
-            "description": "Specify which field in the entity should be used as the cursor for incremental syncs. This field must contain a timestamp or incrementing value that indicates when records were last modified. Required for sources without predefined entities (e.g., databases). If not specified, the source's default cursor field will be used if available.",
-            "examples": [
-              "updated_at",
-              "modified_timestamp",
-              "last_modified",
-              "created_at"
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "short_name"
-        ],
-        "title": "SourceConnectionCreateContinuous",
-        "description": "Schema for creating a continuously syncing source connection (BETA).\n\nThis endpoint creates a source connection that stays continuously in sync with your\ndata source. Your data will be automatically synchronized every minute, ensuring it's\nalways up-to-date without any manual intervention or sync management.",
-        "examples": [
-          {
-            "auth_fields": {
-              "personal_access_token": "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-              "repo_name": "airweave-ai/airweave"
-            },
-            "collection": "engineering-docs",
-            "config_fields": {
-              "branch": "main"
-            },
-            "description": "Continuously sync our GitHub repository",
-            "name": "GitHub - Live Repository Mirror",
-            "short_name": "github"
-          },
-          {
-            "auth_fields": {
-              "database": "myapp",
-              "host": "localhost",
-              "password": "secret",
-              "port": 5432,
-              "schema": "public",
-              "tables": "users,orders",
-              "user": "postgres"
-            },
-            "collection": "customer-data",
-            "cursor_field": "updated_at",
-            "description": "Keep database records continuously synchronized",
-            "name": "Database - Live Sync",
-            "short_name": "postgresql"
-          }
-        ]
-      },
-      "SourceConnectionCreateWithCredential": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "maxLength": 42,
-            "minLength": 4,
-            "title": "Name",
-            "description": "Human-readable name for the source connection. This helps you identify the connection in the UI and should clearly describe what data it connects to.",
-            "examples": [
-              "Production Stripe Account",
-              "Main PostgreSQL DB",
-              "Support Tickets API"
-            ]
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description",
-            "description": "Optional detailed description of what this source connection provides. Use this to document the purpose, data types, or any special considerations for this connection.",
-            "examples": [
-              "Production Stripe account for payment and subscription data",
-              "Customer support tickets from Zendesk"
-            ]
-          },
-          "config_fields": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ConfigValues"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Source-specific configuration parameters required for data extraction. These vary by source type and control how data is retrieved (e.g., database queries, API filters, file paths). Check the documentation of a specific source (for example [Github](https://docs.airweave.ai/docs/connectors/github)) to see what is required."
-          },
-          "short_name": {
-            "type": "string",
-            "title": "Short Name",
-            "description": "Technical identifier of the source type that determines which connector to use for data synchronization.",
-            "examples": [
-              "stripe",
-              "postgresql",
-              "slack",
-              "notion"
-            ]
-          },
-          "collection": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Collection",
-            "description": "Readable ID of the collection where synced data will be stored."
-          },
-          "cron_schedule": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cron Schedule",
-            "description": "Cron expression for automatic data synchronization schedule."
-          },
-          "credential_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Credential Id",
-            "description": "ID of the existing integration credential to use for authentication. This credential must already exist and be associated with the same source type."
-          },
-          "sync_immediately": {
-            "type": "boolean",
-            "title": "Sync Immediately",
-            "description": "Whether to start an initial data synchronization immediately after creating the connection.",
-            "default": true
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "short_name",
-          "credential_id"
-        ],
-        "title": "SourceConnectionCreateWithCredential",
-        "description": "Schema for creating a source connection with pre-existing credentials (internal use).",
-        "examples": [
-          {
-            "collection": "finance-data",
-            "config_fields": {
-              "webhook_url": "https://my-app.com/webhooks"
-            },
-            "credential_id": "123e4567-e89b-12d3-a456-426614174000",
-            "cron_schedule": "0 0,6,12,18 * * *",
-            "description": "Stripe connection created through OAuth flow",
-            "name": "OAuth Stripe Connection",
-            "short_name": "stripe",
-            "sync_immediately": true
-          }
-        ]
-      },
-      "SourceConnectionCreateWithWhiteLabel": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "maxLength": 42,
-            "minLength": 4,
-            "title": "Name",
-            "description": "Human-readable name for the source connection. This helps you identify the connection in the UI and should clearly describe what data it connects to.",
-            "examples": [
-              "Production Stripe Account",
-              "Main PostgreSQL DB",
-              "Support Tickets API"
-            ]
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description",
-            "description": "Optional detailed description of what this source connection provides. Use this to document the purpose, data types, or any special considerations for this connection.",
-            "examples": [
-              "Production Stripe account for payment and subscription data",
-              "Customer support tickets from Zendesk"
-            ]
-          },
-          "config_fields": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ConfigValues"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Source-specific configuration parameters required for data extraction. These vary by source type and control how data is retrieved (e.g., database queries, API filters, file paths). Check the documentation of a specific source (for example [Github](https://docs.airweave.ai/docs/connectors/github)) to see what is required."
-          },
-          "short_name": {
-            "type": "string",
-            "title": "Short Name",
-            "description": "Technical identifier of the source type that determines which connector to use for data synchronization.",
-            "examples": [
-              "stripe",
-              "postgresql",
-              "slack",
-              "notion"
-            ]
-          },
-          "collection": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Collection",
-            "description": "Readable ID of the collection where synced data will be stored. If not provided, a new collection will be automatically created.",
-            "examples": [
-              "finance-data-ab123",
-              "customer-support-xy789"
-            ]
-          },
-          "cron_schedule": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cron Schedule",
-            "description": "Cron expression for automatic data synchronization schedule. Uses standard cron format: minute hour day month weekday.",
-            "examples": [
-              "0 */6 * * *",
-              "0 9 * * 1-5"
-            ]
-          },
-          "auth_fields": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ConfigValues"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Authentication credentials for the data source. For white label OAuth flows, these are typically obtained automatically during the OAuth consent process."
-          },
-          "credential_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Credential Id",
-            "description": "ID of an existing integration credential to use instead of creating a new one. Useful when credentials have already been established through OAuth flows."
-          },
-          "sync_immediately": {
-            "type": "boolean",
-            "title": "Sync Immediately",
-            "description": "Whether to start an initial data synchronization immediately after creating the connection.",
-            "default": true
-          },
-          "white_label_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "White Label Id",
-            "description": "ID of the white label integration configuration. This is automatically set by the white label OAuth endpoint and links the connection to your custom OAuth application."
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "short_name"
-        ],
-        "title": "SourceConnectionCreateWithWhiteLabel",
-        "description": "Schema for creating a source connection through white label OAuth integrations.",
-        "examples": [
-          {
-            "collection": "team-communications",
-            "cron_schedule": "0 */2 * * *",
-            "description": "Main Slack workspace for team communications",
-            "name": "Company Slack Workspace",
-            "short_name": "slack",
-            "sync_immediately": true,
-            "white_label_id": "123e4567-e89b-12d3-a456-426614174000"
-          }
-        ]
-      },
-      "SourceConnectionJob": {
-        "properties": {
-          "source_connection_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Source Connection Id",
-            "description": "Unique identifier of the source connection for which this data refresh is running."
-          },
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id",
-            "description": "Unique identifier for this specific data refresh operation."
-          },
-          "organization_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Organization Id",
-            "description": "Identifier of the organization that owns this data refresh operation."
-          },
-          "created_by_email": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "email"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Created By Email",
-            "description": "Email address of the user who initiated this data refresh (for manually triggered operations)."
-          },
-          "modified_by_email": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "email"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Modified By Email",
-            "description": "Email address of the user who last modified this data refresh operation."
-          },
-          "created_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Created At",
-            "description": "Timestamp when this data refresh was created and queued (ISO 8601 format)."
-          },
-          "modified_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Modified At",
-            "description": "Timestamp when this data refresh was last modified (ISO 8601 format)."
-          },
-          "status": {
-            "$ref": "#/components/schemas/SyncJobStatus",
-            "description": "Current execution status of the data refresh:<br/>\u2022 **created**: Operation has been created but not yet queued<br/>\u2022 **pending**: Operation is queued and waiting to start<br/>\u2022 **in_progress**: Currently running and processing data<br/>\u2022 **completed**: Finished successfully with all data processed<br/>\u2022 **failed**: Encountered errors and could not complete<br/>\u2022 **cancelled**: Manually cancelled before completion",
-            "default": "pending"
-          },
-          "scheduled": {
-            "type": "boolean",
-            "title": "Scheduled",
-            "description": "Whether this data refresh was triggered by a schedule (true) or manually (false).",
-            "default": false
-          },
-          "entities_inserted": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Entities Inserted",
-            "description": "Number of new data entities that were added to the collection during this refresh.",
-            "default": 0
-          },
-          "entities_updated": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Entities Updated",
-            "description": "Number of existing entities that were modified and updated during this refresh.",
-            "default": 0
-          },
-          "entities_deleted": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Entities Deleted",
-            "description": "Number of entities that were removed from the collection because they no longer exist in the source.",
-            "default": 0
-          },
-          "entities_kept": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Entities Kept",
-            "description": "Number of entities that were checked but required no changes because they were already up-to-date.",
-            "default": 0
-          },
-          "entities_skipped": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Entities Skipped",
-            "description": "Number of entities that were intentionally skipped due to filtering rules or processing decisions.",
-            "default": 0
-          },
-          "entities_encountered": {
-            "anyOf": [
-              {
-                "additionalProperties": {
-                  "type": "integer"
-                },
+                "additionalProperties": true,
                 "type": "object"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Entities Encountered",
-            "description": "Detailed breakdown of entities processed by type or category.",
-            "default": {}
+            "title": "Config",
+            "description": "Source-specific configuration"
+          },
+          "schedule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScheduleConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sync_immediately": {
+            "type": "boolean",
+            "title": "Sync Immediately",
+            "description": "Run initial sync after creation",
+            "default": true
+          },
+          "authentication": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DirectAuthentication"
+              },
+              {
+                "$ref": "#/components/schemas/OAuthTokenAuthentication"
+              },
+              {
+                "$ref": "#/components/schemas/OAuthBrowserAuthentication"
+              },
+              {
+                "$ref": "#/components/schemas/AuthProviderAuthentication"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authentication",
+            "description": "Authentication config (defaults to OAuth browser flow for OAuth sources)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "short_name",
+          "readable_collection_id"
+        ],
+        "title": "SourceConnectionCreate",
+        "description": "Create source connection with nested authentication."
+      },
+      "SourceConnectionJob": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "source_connection_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Connection Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SyncJobStatus"
           },
           "started_at": {
             "anyOf": [
@@ -7443,8 +5872,7 @@
                 "type": "null"
               }
             ],
-            "title": "Started At",
-            "description": "Timestamp when the data refresh began active processing (ISO 8601 format)."
+            "title": "Started At"
           },
           "completed_at": {
             "anyOf": [
@@ -7456,21 +5884,43 @@
                 "type": "null"
               }
             ],
-            "title": "Completed At",
-            "description": "Timestamp when the data refresh finished successfully (ISO 8601 format)."
+            "title": "Completed At"
           },
-          "failed_at": {
+          "duration_seconds": {
             "anyOf": [
               {
-                "type": "string",
-                "format": "date-time"
+                "type": "number"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Failed At",
-            "description": "Timestamp when the data refresh failed (ISO 8601 format)."
+            "title": "Duration Seconds"
+          },
+          "entities_processed": {
+            "type": "integer",
+            "title": "Entities Processed",
+            "default": 0
+          },
+          "entities_inserted": {
+            "type": "integer",
+            "title": "Entities Inserted",
+            "default": 0
+          },
+          "entities_updated": {
+            "type": "integer",
+            "title": "Entities Updated",
+            "default": 0
+          },
+          "entities_deleted": {
+            "type": "integer",
+            "title": "Entities Deleted",
+            "default": 0
+          },
+          "entities_failed": {
+            "type": "integer",
+            "title": "Entities Failed",
+            "default": 0
           },
           "error": {
             "anyOf": [
@@ -7481,33 +5931,64 @@
                 "type": "null"
               }
             ],
-            "title": "Error",
-            "description": "Detailed error message if the data refresh failed."
+            "title": "Error"
+          },
+          "error_details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Details"
           }
         },
         "type": "object",
         "required": [
-          "source_connection_id",
           "id",
-          "organization_id"
+          "source_connection_id",
+          "status"
         ],
         "title": "SourceConnectionJob",
-        "description": "Data synchronization job for a specific source connection."
+        "description": "Individual sync job for a source connection."
       },
       "SourceConnectionListItem": {
         "properties": {
           "id": {
             "type": "string",
             "format": "uuid",
-            "title": "Id",
-            "description": "Unique identifier for the source connection."
+            "title": "Id"
           },
           "name": {
             "type": "string",
-            "title": "Name",
-            "description": "Human-readable name of the source connection."
+            "title": "Name"
           },
-          "description": {
+          "short_name": {
+            "type": "string",
+            "title": "Short Name"
+          },
+          "readable_collection_id": {
+            "type": "string",
+            "title": "Readable Collection Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "modified_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Modified At"
+          },
+          "is_authenticated": {
+            "type": "boolean",
+            "title": "Is Authenticated"
+          },
+          "readable_auth_provider_id": {
             "anyOf": [
               {
                 "type": "string"
@@ -7516,46 +5997,9 @@
                 "type": "null"
               }
             ],
-            "title": "Description",
-            "description": "Brief description of what data this connection provides."
+            "title": "Readable Auth Provider Id"
           },
-          "short_name": {
-            "type": "string",
-            "title": "Short Name",
-            "description": "Technical identifier of the source type (e.g., 'stripe', 'postgresql')."
-          },
-          "status": {
-            "$ref": "#/components/schemas/SourceConnectionStatus",
-            "description": "Current operational status: active, in_progress, or failing."
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At",
-            "description": "When the source connection was created (ISO 8601 format)."
-          },
-          "modified_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Modified At",
-            "description": "When the source connection was last modified (ISO 8601 format)."
-          },
-          "sync_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Sync Id",
-            "description": "Internal identifier for the sync configuration."
-          },
-          "collection": {
-            "type": "string",
-            "title": "Collection",
-            "description": "Readable ID of the collection where this connection syncs data.",
-            "examples": [
-              "finance-data-ab123",
-              "customer-support-xy789"
-            ]
-          },
-          "white_label_id": {
+          "connection_init_session_id": {
             "anyOf": [
               {
                 "type": "string",
@@ -7565,8 +6009,47 @@
                 "type": "null"
               }
             ],
-            "title": "White Label Id",
-            "description": "Identifier for custom OAuth integrations, if applicable."
+            "title": "Connection Init Session Id"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
+          "last_sync": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SyncSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "entity_count": {
+            "type": "integer",
+            "title": "Entity Count",
+            "default": 0
+          },
+          "last_job_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SyncJobStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "auth_method": {
+            "$ref": "#/components/schemas/AuthenticationMethod",
+            "description": "Compute authentication method from database fields.",
+            "readOnly": true
+          },
+          "status": {
+            "$ref": "#/components/schemas/SourceConnectionStatus",
+            "description": "Compute connection status from current state.",
+            "readOnly": true
           }
         },
         "type": "object",
@@ -7574,80 +6057,28 @@
           "id",
           "name",
           "short_name",
-          "status",
+          "readable_collection_id",
           "created_at",
           "modified_at",
-          "sync_id",
-          "collection"
+          "is_authenticated",
+          "auth_method",
+          "status"
         ],
         "title": "SourceConnectionListItem",
-        "description": "Simplified source connection representation for list operations.",
-        "examples": [
-          {
-            "collection": "engineering-docs-ab123",
-            "created_at": "2024-01-15T09:30:00Z",
-            "description": "Sync technical documentation and code from our engineering repos",
-            "id": "550e8400-e29b-41d4-a716-446655440000",
-            "modified_at": "2024-01-15T14:22:15Z",
-            "name": "GitHub - Engineering Documentation",
-            "short_name": "github",
-            "status": "active",
-            "sync_id": "123e4567-e89b-12d3-a456-426614174000"
-          }
-        ]
-      },
-      "SourceConnectionMakeContinuous": {
-        "properties": {
-          "cursor_field": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cursor Field",
-            "description": "Specify which field in the entity should be used as the cursor for incremental syncs. If omitted, the source's default cursor field will be used if available. Required for sources without a default (e.g., PostgreSQL).",
-            "examples": [
-              "updated_at",
-              "modified_timestamp",
-              "last_modified"
-            ]
-          },
-          "enable_daily_cleanup": {
-            "type": "boolean",
-            "title": "Enable Daily Cleanup",
-            "description": "Whether to create a daily forced full sync with entity cleanup. This helps remove orphaned entities that incremental syncs cannot detect.",
-            "default": true
-          },
-          "run_initial_sync": {
-            "type": "boolean",
-            "title": "Run Initial Sync",
-            "description": "Whether to immediately trigger a sync job after enabling continuous mode. If no cursor data exists yet, this initial run will perform a full sync.",
-            "default": true
-          }
-        },
-        "type": "object",
-        "title": "SourceConnectionMakeContinuous",
-        "description": "Schema for converting an existing source connection to continuous (BETA).",
-        "examples": [
-          {
-            "cursor_field": "updated_at",
-            "enable_daily_cleanup": true,
-            "run_initial_sync": true
-          }
-        ]
+        "description": "Minimal source connection for list views with computed fields."
       },
       "SourceConnectionStatus": {
         "type": "string",
         "enum": [
           "active",
-          "in_progress",
-          "failing"
+          "pending_auth",
+          "syncing",
+          "error",
+          "inactive",
+          "pending_sync"
         ],
         "title": "SourceConnectionStatus",
-        "description": "Source connection status enum."
+        "description": "Source connection status enum - represents overall connection state."
       },
       "SourceConnectionUpdate": {
         "properties": {
@@ -7662,109 +6093,21 @@
                 "type": "null"
               }
             ],
-            "title": "Name",
-            "description": "Updated name for the source connection. Must be between 4 and 42 characters.",
-            "examples": [
-              "Updated Stripe Connection",
-              "Main DB - Updated"
-            ]
+            "title": "Name"
           },
           "description": {
             "anyOf": [
               {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description",
-            "description": "Updated description of what this source connection provides.",
-            "examples": [
-              "Updated: Now includes subscription events and customer data"
-            ]
-          },
-          "auth_fields": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ConfigValues"
-              },
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Auth Fields",
-            "description": "Updated authentication credentials for the data source. Provide new credentials to refresh or update authentication."
-          },
-          "config_fields": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ConfigValues"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Source-specific configuration parameters required for data extraction. These vary by source type and control how data is retrieved (e.g., database queries, API filters, file paths). Check the documentation of a specific source (for example [Github](https://docs.airweave.ai/docs/connectors/github)) to see what is required."
-          },
-          "cron_schedule": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cron Schedule",
-            "description": "Updated cron expression for automatic synchronization schedule. Set to null to disable automatic syncing.",
-            "examples": [
-              "0 */4 * * *",
-              "0 9,17 * * 1-5"
-            ]
-          },
-          "connection_id": {
-            "anyOf": [
-              {
                 "type": "string",
-                "format": "uuid"
+                "maxLength": 255
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Connection Id",
-            "description": "Internal connection identifier. This is typically managed automatically and should not be modified manually."
+            "title": "Description"
           },
-          "white_label_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "White Label Id",
-            "description": "ID of the white label integration. Used for custom OAuth integrations with your own branding."
-          },
-          "auth_provider": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Auth Provider",
-            "description": "Updated auth provider readable ID. Only relevant if the connection uses an auth provider."
-          },
-          "auth_provider_config": {
+          "config": {
             "anyOf": [
               {
                 "additionalProperties": true,
@@ -7774,27 +6117,36 @@
                 "type": "null"
               }
             ],
-            "title": "Auth Provider Config",
-            "description": "Updated configuration for the auth provider. Only relevant if the connection uses an auth provider."
+            "title": "Config",
+            "description": "Source-specific configuration"
+          },
+          "schedule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScheduleConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "credentials": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credentials",
+            "description": "Update credentials (direct auth only)"
           }
         },
         "type": "object",
         "title": "SourceConnectionUpdate",
-        "description": "Schema for updating an existing source connection.",
-        "examples": [
-          {
-            "auth_fields": {
-              "personal_access_token": "ghp_yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
-              "repo_name": "airweave-ai/engineering-docs"
-            },
-            "config_fields": {
-              "branch": "develop"
-            },
-            "cron_schedule": "0 */4 * * *",
-            "description": "Updated: Now includes API documentation and code examples from multiple repositories",
-            "name": "GitHub - Updated Engineering Documentation"
-          }
-        ]
+        "description": "Update schema for source connections."
       },
       "SubscriptionInfo": {
         "properties": {
@@ -8463,6 +6815,38 @@
         "title": "SyncDagUpdate",
         "description": "Schema for updating a sync DAG definition."
       },
+      "SyncDetails": {
+        "properties": {
+          "total_runs": {
+            "type": "integer",
+            "title": "Total Runs",
+            "default": 0
+          },
+          "successful_runs": {
+            "type": "integer",
+            "title": "Successful Runs",
+            "default": 0
+          },
+          "failed_runs": {
+            "type": "integer",
+            "title": "Failed Runs",
+            "default": 0
+          },
+          "last_job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SyncJobDetails"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "SyncDetails",
+        "description": "Sync execution details."
+      },
       "SyncJob": {
         "properties": {
           "sync_id": {
@@ -8692,12 +7076,102 @@
         "title": "SyncJob",
         "description": "Schema for SyncJob."
       },
+      "SyncJobDetails": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SyncJobStatus"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "entities_processed": {
+            "type": "integer",
+            "title": "Entities Processed",
+            "default": 0
+          },
+          "entities_inserted": {
+            "type": "integer",
+            "title": "Entities Inserted",
+            "default": 0
+          },
+          "entities_updated": {
+            "type": "integer",
+            "title": "Entities Updated",
+            "default": 0
+          },
+          "entities_deleted": {
+            "type": "integer",
+            "title": "Entities Deleted",
+            "default": 0
+          },
+          "entities_failed": {
+            "type": "integer",
+            "title": "Entities Failed",
+            "default": 0
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status"
+        ],
+        "title": "SyncJobDetails",
+        "description": "Sync job details."
+      },
       "SyncJobStatus": {
         "type": "string",
         "enum": [
           "created",
           "pending",
-          "in_progress",
+          "running",
           "completed",
           "failed",
           "cancelled"
@@ -8714,6 +7188,48 @@
         ],
         "title": "SyncStatus",
         "description": "Sync status enum."
+      },
+      "SyncSummary": {
+        "properties": {
+          "last_run": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run"
+          },
+          "next_run": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Run"
+          },
+          "success_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Success Rate"
+          }
+        },
+        "type": "object",
+        "title": "SyncSummary",
+        "description": "Sync summary for list views."
       },
       "SyncUpdate": {
         "properties": {
@@ -9645,330 +8161,6 @@
         "type": "object",
         "title": "ValuesCount",
         "description": "Values count filter request"
-      },
-      "WhiteLabel": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "maxLength": 64,
-            "minLength": 1,
-            "title": "Name",
-            "description": "Human-readable name for the white label integration. This helps you identify the integration in the UI and should clearly describe its purpose (e.g., 'Customer Portal Slack Integration', 'Enterprise Google Drive Access').",
-            "examples": [
-              "Customer Portal Slack Integration",
-              "Enterprise Google Drive Access",
-              "Support Team GitHub Integration"
-            ]
-          },
-          "source_short_name": {
-            "type": "string",
-            "title": "Source Short Name",
-            "description": "Technical identifier of the source type that this integration supports (e.g., 'slack', 'google_drive', 'github'). This determines which service provider the OAuth integration connects to.",
-            "examples": [
-              "slack",
-              "google_drive",
-              "github"
-            ]
-          },
-          "redirect_url": {
-            "type": "string",
-            "title": "Redirect Url",
-            "description": "OAuth2 callback URL where users are redirected after completing authentication. This must be a valid HTTPS URL that your application can handle to receive the authorization code.",
-            "examples": [
-              "https://yourapp.com/auth/callback",
-              "https://api.company.com/oauth/complete"
-            ]
-          },
-          "client_id": {
-            "type": "string",
-            "title": "Client Id",
-            "description": "OAuth2 client identifier provided by the service provider. This identifies your application during the OAuth consent flow and must match the client ID configured in the service provider's developer console.",
-            "examples": [
-              "1234567890.1234567890987",
-              "GOCSPX-abcdef1234567890"
-            ]
-          },
-          "client_secret": {
-            "type": "string",
-            "title": "Client Secret",
-            "description": "OAuth2 client secret from your registered application. This is used to securely authenticate your application when exchanging authorization codes for access tokens. Keep this value secure and never expose it in client-side code.",
-            "examples": [
-              "abcdefghijklmnopqrstuvwxyz123456",
-              "GOCSPX-your-oauth-secret-here",
-              "1234567890abcdef1234567890abcdef12345678"
-            ]
-          },
-          "allowed_origins": {
-            "type": "string",
-            "title": "Allowed Origins",
-            "description": "Comma-separated list of allowed domains for OAuth flows and CORS. This prevents unauthorized websites from using your OAuth credentials and should include all domains where your application is hosted.",
-            "examples": [
-              "https://yourapp.com,https://api.yourapp.com",
-              "https://company.com"
-            ]
-          },
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id",
-            "description": "Unique system identifier for the white label integration. This UUID is generated automatically and used for API operations and OAuth flow tracking."
-          },
-          "organization_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Organization Id",
-            "description": "Identifier of the organization that owns this white label integration. White label integrations are isolated per organization for security and multi-tenancy."
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At",
-            "description": "Timestamp when the white label integration was created (ISO 8601 format)."
-          },
-          "modified_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Modified At",
-            "description": "Timestamp when the white label integration was last modified (ISO 8601 format)."
-          },
-          "created_by_email": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "email"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Created By Email",
-            "description": "Email address of the user who created this white label integration."
-          },
-          "modified_by_email": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "email"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Modified By Email",
-            "description": "Email address of the user who last modified this white label integration."
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "source_short_name",
-          "redirect_url",
-          "client_id",
-          "client_secret",
-          "allowed_origins",
-          "id",
-          "organization_id",
-          "created_at",
-          "modified_at"
-        ],
-        "title": "WhiteLabel",
-        "description": "Complete white label integration representation returned by the API.",
-        "examples": [
-          {
-            "allowed_origins": "https://yourapp.com,https://app.yourapp.com",
-            "client_id": "1234567890.1234567890123",
-            "client_secret": "abcdefghijklmnopqrstuvwxyz123456",
-            "created_at": "2024-01-10T08:15:00Z",
-            "created_by_email": "admin@company.com",
-            "id": "white123-4567-89ab-cdef-012345678901",
-            "modified_at": "2024-01-15T09:30:00Z",
-            "modified_by_email": "devops@company.com",
-            "name": "Customer Portal Slack Integration",
-            "organization_id": "org12345-6789-abcd-ef01-234567890abc",
-            "redirect_url": "https://yourapp.com/auth/slack/callback",
-            "source_short_name": "slack"
-          }
-        ]
-      },
-      "WhiteLabelCreate": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "maxLength": 64,
-            "minLength": 1,
-            "title": "Name",
-            "description": "Human-readable name for the white label integration. This helps you identify the integration in the UI and should clearly describe its purpose (e.g., 'Customer Portal Slack Integration', 'Enterprise Google Drive Access').",
-            "examples": [
-              "Customer Portal Slack Integration",
-              "Enterprise Google Drive Access",
-              "Support Team GitHub Integration"
-            ]
-          },
-          "source_short_name": {
-            "type": "string",
-            "title": "Source Short Name",
-            "description": "Technical identifier of the source type that this integration supports (e.g., 'slack', 'google_drive', 'github'). This determines which service provider the OAuth integration connects to.",
-            "examples": [
-              "slack",
-              "google_drive",
-              "github"
-            ]
-          },
-          "redirect_url": {
-            "type": "string",
-            "title": "Redirect Url",
-            "description": "OAuth2 callback URL where users are redirected after completing authentication. This must be a valid HTTPS URL that your application can handle to receive the authorization code.",
-            "examples": [
-              "https://yourapp.com/auth/callback",
-              "https://api.company.com/oauth/complete"
-            ]
-          },
-          "client_id": {
-            "type": "string",
-            "title": "Client Id",
-            "description": "OAuth2 client identifier provided by the service provider. This identifies your application during the OAuth consent flow and must match the client ID configured in the service provider's developer console.",
-            "examples": [
-              "1234567890.1234567890987",
-              "GOCSPX-abcdef1234567890"
-            ]
-          },
-          "client_secret": {
-            "type": "string",
-            "title": "Client Secret",
-            "description": "OAuth2 client secret from your registered application. This is used to securely authenticate your application when exchanging authorization codes for access tokens. Keep this value secure and never expose it in client-side code.",
-            "examples": [
-              "abcdefghijklmnopqrstuvwxyz123456",
-              "GOCSPX-your-oauth-secret-here",
-              "1234567890abcdef1234567890abcdef12345678"
-            ]
-          },
-          "allowed_origins": {
-            "type": "string",
-            "title": "Allowed Origins",
-            "description": "Comma-separated list of allowed domains for OAuth flows and CORS. This prevents unauthorized websites from using your OAuth credentials and should include all domains where your application is hosted.",
-            "examples": [
-              "https://yourapp.com,https://api.yourapp.com",
-              "https://company.com"
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "source_short_name",
-          "redirect_url",
-          "client_id",
-          "client_secret",
-          "allowed_origins"
-        ],
-        "title": "WhiteLabelCreate",
-        "description": "Schema for creating a WhiteLabel object.",
-        "examples": [
-          {
-            "allowed_origins": "https://yourapp.com,https://app.yourapp.com",
-            "client_id": "1234567890.1234567890123",
-            "client_secret": "abcdefghijklmnopqrstuvwxyz123456",
-            "name": "Customer Portal Slack Integration",
-            "redirect_url": "https://yourapp.com/auth/slack/callback",
-            "source_short_name": "slack"
-          }
-        ]
-      },
-      "WhiteLabelUpdate": {
-        "properties": {
-          "name": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 100,
-                "minLength": 4
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name",
-            "description": "Updated name for the white label integration.",
-            "examples": [
-              "Updated Customer Portal Integration",
-              "Revised Enterprise Access"
-            ]
-          },
-          "redirect_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Redirect Url",
-            "description": "Updated OAuth callback URL. Must be a valid HTTPS URL that matches your OAuth application configuration.",
-            "examples": [
-              "https://newdomain.com/auth/callback",
-              "https://v2.yourapp.com/oauth/complete"
-            ]
-          },
-          "client_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Client Id",
-            "description": "Updated OAuth2 client ID. Must match the client ID in your service provider's developer console.",
-            "examples": [
-              "9876543210.9876543210987",
-              "updated-client-id-here"
-            ]
-          },
-          "client_secret": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Client Secret",
-            "description": "Updated OAuth2 client secret. This will replace the existing secret and affect all future OAuth flows.",
-            "examples": [
-              "new-secret-key-abcdef123456",
-              "GOCSPX-updated-oauth-secret"
-            ]
-          },
-          "allowed_origins": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Allowed Origins",
-            "description": "Updated comma-separated list of allowed domains for OAuth flows.",
-            "examples": [
-              "https://newapp.com,https://api.newapp.com",
-              "https://updated-domain.com"
-            ]
-          }
-        },
-        "type": "object",
-        "title": "WhiteLabelUpdate",
-        "description": "Schema for updating a WhiteLabel object.",
-        "examples": [
-          {
-            "allowed_origins": "https://v2.yourapp.com,https://api.yourapp.com",
-            "name": "Updated Customer Portal Integration",
-            "redirect_url": "https://v2.yourapp.com/auth/slack/callback"
-          }
-        ]
       }
     },
     "securitySchemes": {
@@ -9995,11 +8187,6 @@
       "name": "sources",
       "x-display-name": "Sources",
       "description": "API endpoints for discovering available data source connectors and their configuration requirements"
-    },
-    {
-      "name": "white-labels",
-      "x-display-name": "White Labels",
-      "description": "API endpoints for managing custom OAuth2 integrations with your own branding and credentials"
     }
   ],
   "servers": [

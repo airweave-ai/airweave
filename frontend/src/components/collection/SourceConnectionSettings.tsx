@@ -48,16 +48,15 @@ interface SourceConnection {
   modified_at: string;
   connection_id?: string;
   collection: string;
-  white_label_id?: string;
   created_by_email: string;
   modified_by_email: string;
   auth_fields?: Record<string, any> | string;
   status?: string;
-  latest_sync_job_status?: string;
-  latest_sync_job_id?: string;
-  latest_sync_job_started_at?: string;
-  latest_sync_job_completed_at?: string;
-  latest_sync_job_error?: string;
+  last_sync_job_status?: string;
+  last_sync_job_id?: string;
+  last_sync_job_started_at?: string;
+  last_sync_job_completed_at?: string;
+  last_sync_job_error?: string;
   cron_schedule?: string;
   next_scheduled_run?: string;
   auth_provider?: string;
@@ -289,7 +288,7 @@ export const SourceConnectionSettings: React.FC<SourceConnectionSettingsProps> =
 
       emitCollectionEvent(SOURCE_CONNECTION_UPDATED, {
         id: updatedConnection.id,
-        collectionId: updatedConnection.collection,
+        collectionId: updatedConnection.readable_collection_id,
         updatedConnection
       });
 
@@ -334,7 +333,7 @@ export const SourceConnectionSettings: React.FC<SourceConnectionSettingsProps> =
 
       emitCollectionEvent(SOURCE_CONNECTION_UPDATED, {
         id: sourceConnection.id,
-        collectionId: sourceConnection.collection,
+        collectionId: sourceConnection.readable_collection_id,
         deleted: true
       });
 

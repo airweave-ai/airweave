@@ -6,7 +6,6 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from airweave.core.exceptions import TokenRefreshError
-from airweave.platform.auth.schemas import AuthType
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import Breadcrumb, ChunkEntity
 from airweave.platform.entities.asana import (
@@ -18,13 +17,19 @@ from airweave.platform.entities.asana import (
     AsanaWorkspaceEntity,
 )
 from airweave.platform.sources._base import BaseSource
+from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
 @source(
     name="Asana",
     short_name="asana",
-    auth_type=AuthType.oauth2_with_refresh,
-    auth_config_class="AsanaAuthConfig",
+    auth_methods=[
+        AuthenticationMethod.OAUTH_BROWSER,
+        AuthenticationMethod.OAUTH_TOKEN,
+        AuthenticationMethod.AUTH_PROVIDER,
+    ],
+    oauth_type=OAuthType.WITH_REFRESH,
+    auth_config_class=None,
     config_class="AsanaConfig",
     labels=["Project Management"],
 )
@@ -488,7 +493,7 @@ class AsanaSource(BaseSource):
 
     async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
         """Generate all entities from Asana."""
-        async with httpx.AsyncClient() as client:
+        async with self.http_client() as client:
             async for workspace_entity in self._generate_workspace_entities(client):
                 yield workspace_entity
 
@@ -569,3 +574,11 @@ class AsanaSource(BaseSource):
                             task_breadcrumbs,
                         ):
                             yield file_entity
+
+    async def validate(self) -> bool:
+        """Verify OAuth2 token by pinging Asana's /users/me endpoint."""
+        return await self._validate_oauth2(
+            ping_url="https://app.asana.com/api/1.0/users/me",
+            headers={"Accept": "application/json"},
+            timeout=10.0,
+        )

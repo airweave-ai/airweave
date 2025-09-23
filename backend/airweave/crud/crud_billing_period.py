@@ -80,6 +80,44 @@ class CRUDBillingPeriod(
         result = await db.execute(query)
         return result.scalar_one_or_none()
 
+    async def get_current_period_at(
+        self,
+        db: AsyncSession,
+        *,
+        organization_id: UUID,
+        at: datetime,
+    ) -> Optional[BillingPeriod]:
+        """Get the active billing period for an organization at a specific time.
+
+        This is useful for tests that simulate time (e.g., Stripe Test Clock),
+        allowing callers to evaluate the current period at a provided timestamp
+        rather than the wall-clock time.
+
+        Args:
+            db: Database session
+            organization_id: Organization ID
+            at: The timestamp to consider as "now"
+
+        Returns:
+            Billing period active at the provided time or None
+        """
+        query = select(self.model).where(
+            and_(
+                self.model.organization_id == organization_id,
+                self.model.period_start <= at,
+                self.model.period_end > at,
+                self.model.status.in_(
+                    [
+                        BillingPeriodStatus.ACTIVE,
+                        BillingPeriodStatus.TRIAL,
+                        BillingPeriodStatus.GRACE,
+                    ]
+                ),
+            )
+        )
+        result = await db.execute(query)
+        return result.scalar_one_or_none()
+
     async def get_by_stripe_subscription(
         self,
         db: AsyncSession,

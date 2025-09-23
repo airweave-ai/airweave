@@ -15,7 +15,6 @@ from httpx import HTTPStatusError, ReadTimeout, TimeoutException
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from airweave.core.logging import logger
-from airweave.platform.auth.schemas import AuthType
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import Breadcrumb, ChunkEntity
 from airweave.platform.entities.notion import (
@@ -26,13 +25,19 @@ from airweave.platform.entities.notion import (
 )
 from airweave.platform.file_handling.file_manager import file_manager
 from airweave.platform.sources._base import BaseSource
+from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
 @source(
     name="Notion",
     short_name="notion",
-    auth_type=AuthType.oauth2,
-    auth_config_class="NotionAuthConfig",
+    auth_methods=[
+        AuthenticationMethod.OAUTH_BROWSER,
+        AuthenticationMethod.OAUTH_TOKEN,
+        AuthenticationMethod.AUTH_PROVIDER,
+    ],
+    oauth_type=OAuthType.ACCESS_ONLY,
+    auth_config_class=None,
     config_class="NotionConfig",
     labels=["Knowledge Base", "Productivity"],
 )
@@ -72,13 +77,35 @@ class NotionSource(BaseSource):
             self.url = url
 
     @classmethod
-    async def create(cls, credentials, config: Optional[Dict[str, Any]] = None) -> "NotionSource":
+    async def create(cls, access_token, config: Optional[Dict[str, Any]] = None) -> "NotionSource":
         """Create a new Notion source."""
         logger.info("Creating new Notion source")
         instance = cls()
-        instance.access_token = credentials.access_token
+        instance.access_token = access_token
+
+        # ---- per-instance materialization controls (match Drive-style knobs) ----
+        config = config or {}
+        try:
+            instance.batch_generation = bool(
+                config.get("batch_generation", instance.batch_generation)
+            )
+        except Exception:
+            pass
+        try:
+            instance.batch_size = int(config.get("batch_size", 30))
+        except Exception:
+            pass
+        # Rebuild the gate in case batch_size changed
+        instance._materialize_semaphore = asyncio.Semaphore(instance.batch_size)
 
         return instance
+
+    async def validate(self) -> bool:
+        """Validate the Notion source."""
+        return await self._validate_oauth2(
+            ping_url="https://api.notion.com/v1/users/me",
+            headers={"Notion-Version": "2022-06-28"},
+        )
 
     def __init__(self):
         """Initialize rate limiting state and tracking."""
@@ -1124,7 +1151,7 @@ class NotionSource(BaseSource):
         }
 
         try:
-            async with httpx.AsyncClient() as client:
+            async with self.http_client() as client:
                 # Phase 1 & 2: Discover and yield databases with their schemas
                 self.logger.info("Phase 1 & 2: Streaming database discovery and schema analysis")
                 async for entity in self._stream_database_discovery(client):
@@ -1334,6 +1361,7 @@ class NotionSource(BaseSource):
 
         try:
             # Create stream without access token for pre-signed URLs
+            # Note: stream_file_from_url is an async generator function, not a coroutine
             file_stream = file_manager.stream_file_from_url(
                 file_entity.download_url, access_token=None, headers=None, logger=self.logger
             )

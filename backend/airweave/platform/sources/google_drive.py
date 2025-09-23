@@ -20,7 +20,6 @@ import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from airweave.core.exceptions import TokenRefreshError
-from airweave.platform.auth.schemas import AuthType
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import ChunkEntity
 from airweave.platform.entities.google_drive import (
@@ -28,13 +27,20 @@ from airweave.platform.entities.google_drive import (
     GoogleDriveFileEntity,
 )
 from airweave.platform.sources._base import BaseSource
+from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
 @source(
     name="Google Drive",
     short_name="google_drive",
-    auth_type=AuthType.oauth2_with_refresh,
-    auth_config_class="GoogleDriveAuthConfig",
+    auth_methods=[
+        AuthenticationMethod.OAUTH_BROWSER,
+        AuthenticationMethod.OAUTH_TOKEN,
+        AuthenticationMethod.AUTH_PROVIDER,
+    ],
+    oauth_type=OAuthType.WITH_REFRESH,
+    requires_byoc=True,
+    auth_config_class=None,
     config_class="GoogleDriveConfig",
     labels=["File Storage"],
 )
@@ -66,6 +72,14 @@ class GoogleDriveSource(BaseSource):
         instance.stop_on_error = bool(config.get("stop_on_error", False))
 
         return instance
+
+    async def validate(self) -> bool:
+        """Validate the Google Drive source connection."""
+        return await self._validate_oauth2(
+            ping_url="https://www.googleapis.com/drive/v3/drives?pageSize=1",
+            headers={"Accept": "application/json"},
+            timeout=10.0,
+        )
 
     # --- Incremental sync support (cursor field) ---
     def get_default_cursor_field(self) -> Optional[str]:
@@ -692,7 +706,7 @@ class GoogleDriveSource(BaseSource):
           deletion entities for removed files and upsert entities for changed files.
         """
         try:
-            async with httpx.AsyncClient() as client:
+            async with self.http_client() as client:
                 patterns: List[str] = getattr(self, "include_patterns", []) or []
                 self.logger.debug(f"Include patterns: {patterns}")
 

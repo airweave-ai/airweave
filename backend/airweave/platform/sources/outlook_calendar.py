@@ -16,7 +16,6 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from airweave.core.logging import logger
-from airweave.platform.auth.schemas import AuthType
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import Breadcrumb, ChunkEntity
 from airweave.platform.entities.outlook_calendar import (
@@ -25,13 +24,19 @@ from airweave.platform.entities.outlook_calendar import (
     OutlookCalendarEventEntity,
 )
 from airweave.platform.sources._base import BaseSource
+from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
 @source(
     name="Outlook Calendar",
     short_name="outlook_calendar",
-    auth_type=AuthType.oauth2_with_refresh_rotating,
-    auth_config_class="OutlookCalendarAuthConfig",
+    auth_methods=[
+        AuthenticationMethod.OAUTH_BROWSER,
+        AuthenticationMethod.OAUTH_TOKEN,
+        AuthenticationMethod.AUTH_PROVIDER,
+    ],
+    oauth_type=OAuthType.WITH_REFRESH,
+    auth_config_class=None,
     config_class="OutlookCalendarConfig",
     labels=["Productivity", "Calendar"],
 )
@@ -265,9 +270,9 @@ class OutlookCalendarSource(BaseSource):
             breadcrumbs=[cal_breadcrumb],
             subject=event_subject,
             body_preview=event_data.get("bodyPreview"),
-            body_content=event_data.get("body", {}).get("content")
-            if event_data.get("body")
-            else None,
+            body_content=(
+                event_data.get("body", {}).get("content") if event_data.get("body") else None
+            ),
             body_content_type=event_data.get("body", {}).get("contentType"),
             start_datetime=self._parse_datetime_field(start_info),
             start_timezone=start_info.get("timeZone"),
@@ -483,7 +488,7 @@ class OutlookCalendarSource(BaseSource):
         entity_count = 0
 
         try:
-            async with httpx.AsyncClient() as client:
+            async with self.http_client() as client:
                 self.logger.info("HTTP client created, starting entity generation")
 
                 # Generate calendar entities and their events
@@ -513,3 +518,11 @@ class OutlookCalendarSource(BaseSource):
             self.logger.info(
                 f"===== OUTLOOK CALENDAR ENTITY GENERATION COMPLETE: {entity_count} entities ====="
             )
+
+    async def validate(self) -> bool:
+        """Verify Outlook Calendar OAuth2 token by pinging the calendars endpoint."""
+        return await self._validate_oauth2(
+            ping_url=f"{self.GRAPH_BASE_URL}/me/calendars?$top=1",
+            headers={"Accept": "application/json"},
+            timeout=10.0,
+        )

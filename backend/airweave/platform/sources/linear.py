@@ -8,7 +8,6 @@ from uuid import uuid4
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from airweave.platform.auth.schemas import AuthType
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import Breadcrumb
 from airweave.platform.entities.linear import (
@@ -20,13 +19,19 @@ from airweave.platform.entities.linear import (
     LinearUserEntity,
 )
 from airweave.platform.sources._base import BaseSource
+from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
 @source(
     name="Linear",
     short_name="linear",
-    auth_type=AuthType.oauth2,
-    auth_config_class="LinearAuthConfig",
+    auth_methods=[
+        AuthenticationMethod.OAUTH_BROWSER,
+        AuthenticationMethod.OAUTH_TOKEN,
+        AuthenticationMethod.AUTH_PROVIDER,
+    ],
+    oauth_type=OAuthType.ACCESS_ONLY,
+    auth_config_class=None,
     config_class="LinearConfig",
     labels=["Project Management"],
 )
@@ -56,19 +61,20 @@ class LinearSource(BaseSource):
         }
 
     @classmethod
-    async def create(cls, credentials, config: Optional[Dict[str, Any]] = None) -> "LinearSource":
+    async def create(
+        cls, access_token: str, config: Optional[Dict[str, Any]] = None
+    ) -> "LinearSource":
         """Create instance of the Linear source with authentication token and config.
 
         Args:
             access_token: OAuth access token for Linear API
-            credentials: Credentials object containing access token
             config: Optional configuration parameters, like exclude_path
 
         Returns:
             Configured LinearSource instance
         """
         instance = cls()
-        instance.access_token = credentials.access_token
+        instance.access_token = access_token
 
         # Store config values as instance attributes
         if config:
@@ -863,7 +869,7 @@ class LinearSource(BaseSource):
         Yields:
             All Linear entities (teams, projects, users, issues, comments, attachments)
         """
-        async with httpx.AsyncClient() as client:
+        async with self.http_client() as client:
             # Generate team entities
             try:
                 self.logger.info("Starting team entity generation")
@@ -895,4 +901,55 @@ class LinearSource(BaseSource):
                 async for entity in self._generate_issue_entities(client):
                     yield entity
             except Exception as e:
-                self.logger.error(f"Failed to generate issue/comment/attachment entities: {str(e)}")
+                self.logger.error(f"Failed to generate issue/attachment entities: {str(e)}")
+
+    async def validate(self) -> bool:
+        """Verify Linear OAuth2 token by POSTing a minimal GraphQL query to /graphql."""
+        try:
+            token = await self.get_access_token()
+            if not token:
+                self.logger.error("Linear validation failed: no access token available.")
+                return False
+
+            query = {"query": "query { viewer { id } }"}
+
+            async with self.http_client(timeout=10.0) as client:
+                headers = {
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                }
+                resp = await client.post(
+                    "https://api.linear.app/graphql", headers=headers, json=query
+                )
+
+                # Handle 401 by attempting a one-time refresh
+                if resp.status_code == 401:
+                    self.logger.info("Linear validate: 401 Unauthorized; attempting token refresh.")
+                    new_token = await self.refresh_on_unauthorized()
+                    if new_token:
+                        headers["Authorization"] = f"Bearer {new_token}"
+                        resp = await client.post(
+                            "https://api.linear.app/graphql", headers=headers, json=query
+                        )
+
+                if not (200 <= resp.status_code < 300):
+                    self.logger.warning(
+                        f"Linear validate failed: HTTP {resp.status_code} - {resp.text[:200]}"
+                    )
+                    return False
+
+                body = resp.json()
+                if body.get("errors"):
+                    self.logger.warning(f"Linear validate GraphQL errors: {body['errors']}")
+                    return False
+
+                viewer = (body.get("data") or {}).get("viewer") or {}
+                return bool(viewer.get("id"))
+
+        except httpx.RequestError as e:
+            self.logger.error(f"Linear validation request error: {e}")
+            return False
+        except Exception as e:
+            self.logger.error(f"Unexpected error during Linear validation: {e}")
+            return False
