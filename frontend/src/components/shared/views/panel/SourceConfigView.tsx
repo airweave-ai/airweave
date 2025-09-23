@@ -7,7 +7,8 @@ import { getAppIconUrl } from "@/lib/utils/icons";
 import { Switch } from "@/components/ui/switch";
 import { useAuthProvidersStore } from "@/lib/stores/authProviders";
 import { getAuthProviderIconUrl } from "@/lib/utils/icons";
-import { ExternalLink, Loader2 } from "lucide-react";
+import { ExternalLink, Loader2, Info } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useSidePanelStore } from "@/lib/stores/sidePanelStore";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
@@ -202,18 +203,48 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ context }) =
                                 <label className="text-sm font-medium">{field.title || field.name}</label>
                                 {field.description && <p className="text-xs text-muted-foreground">{field.description}</p>}
                                 {field.type === 'boolean' ? (
-                                    <div className="flex items-center space-x-2 mt-1">
-                                        <input
-                                            type="checkbox"
-                                            id={field.name}
-                                            checked={configValues[field.name] === true || configValues[field.name] === 'true'}
-                                            onChange={(e) => handleFieldChange(setConfigValues)(field.name, e.target.checked)}
-                                            className="h-4 w-4 rounded border"
-                                        />
-                                        <label htmlFor={field.name} className="text-sm">
-                                            {field.title || field.name}
-                                        </label>
-                                    </div>
+                                    // Special handling for Zendesk exclude_closed_tickets field
+                                    sourceShortName === 'zendesk' && field.name === 'exclude_closed_tickets' ? (
+                                        <div className="flex items-center justify-between p-4 rounded-lg border bg-card mt-1">
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-2">
+                                                    <h4 className="text-sm font-medium">Exclude Closed Tickets</h4>
+                                                    <TooltipProvider>
+                                                        <Tooltip>
+                                                            <TooltipTrigger>
+                                                                <Info className="h-4 w-4 text-muted-foreground" />
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>
+                                                                <p className="max-w-xs">Skipping closed tickets significantly improves sync performance and reduces storage usage</p>
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                    </TooltipProvider>
+                                                </div>
+                                                <p className="text-xs text-muted-foreground mt-1">
+                                                    Skip closed tickets during sync (recommended for faster syncing)
+                                                </p>
+                                            </div>
+                                            <Switch
+                                                id={field.name}
+                                                checked={configValues[field.name] === true || configValues[field.name] === 'true'}
+                                                onCheckedChange={(checked) => handleFieldChange(setConfigValues)(field.name, checked)}
+                                            />
+                                        </div>
+                                    ) : (
+                                        // Default boolean field rendering for other sources
+                                        <div className="flex items-center space-x-2 mt-1">
+                                            <input
+                                                type="checkbox"
+                                                id={field.name}
+                                                checked={configValues[field.name] === true || configValues[field.name] === 'true'}
+                                                onChange={(e) => handleFieldChange(setConfigValues)(field.name, e.target.checked)}
+                                                className="h-4 w-4 rounded border"
+                                            />
+                                            <label htmlFor={field.name} className="text-sm">
+                                                {field.title || field.name}
+                                            </label>
+                                        </div>
+                                    )
                                 ) : (
                                     <input
                                         type="text"

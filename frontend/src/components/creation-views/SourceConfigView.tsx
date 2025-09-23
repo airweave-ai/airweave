@@ -549,21 +549,51 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
                             </p>
                           )}
                           {field.type === 'boolean' ? (
-                            <div className="flex items-center space-x-2">
-                              <input
-                                type="checkbox"
-                                id={field.name}
-                                checked={configData[field.name] === true || configData[field.name] === 'true'}
-                                onChange={(e) => setConfigData({ ...configData, [field.name]: e.target.checked })}
-                                className={cn(
-                                  "h-4 w-4 rounded border",
-                                  isDark ? "bg-gray-800 border-gray-700" : "bg-white border-gray-300"
-                                )}
-                              />
-                              <label htmlFor={field.name} className="text-sm">
-                                {field.title || field.name}
-                              </label>
-                            </div>
+                            // Special handling for Zendesk exclude_closed_tickets field
+                            sourceDetails.short_name === 'zendesk' && field.name === 'exclude_closed_tickets' ? (
+                              <div className="flex items-center justify-between p-4 rounded-lg border bg-card">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <h4 className="text-sm font-medium">Exclude Closed Tickets</h4>
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger>
+                                          <Info className="h-4 w-4 text-muted-foreground" />
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <p className="max-w-xs">Skipping closed tickets significantly improves sync performance and reduces storage usage</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  </div>
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    Skip closed tickets during sync (recommended for faster syncing)
+                                  </p>
+                                </div>
+                                <Switch
+                                  id={field.name}
+                                  checked={configData[field.name] === true || configData[field.name] === 'true'}
+                                  onCheckedChange={(checked) => setConfigData({ ...configData, [field.name]: checked })}
+                                />
+                              </div>
+                            ) : (
+                              // Default boolean field rendering for other sources
+                              <div className="flex items-center space-x-2">
+                                <input
+                                  type="checkbox"
+                                  id={field.name}
+                                  checked={configData[field.name] === true || configData[field.name] === 'true'}
+                                  onChange={(e) => setConfigData({ ...configData, [field.name]: e.target.checked })}
+                                  className={cn(
+                                    "h-4 w-4 rounded border",
+                                    isDark ? "bg-gray-800 border-gray-700" : "bg-white border-gray-300"
+                                  )}
+                                />
+                                <label htmlFor={field.name} className="text-sm">
+                                  {field.title || field.name}
+                                </label>
+                              </div>
+                            )
                           ) : (
                             <input
                               type="text"

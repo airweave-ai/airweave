@@ -5,7 +5,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Sun, Moon, Monitor, Check, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Sun, Moon, Monitor, Check, Loader2, Eye, EyeOff, Info } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useSourcesStore } from '@/lib/stores';
 import { SmallSourceButton } from '@/components/dashboard';
 import { useSearchParams } from 'react-router-dom';
@@ -1023,18 +1025,48 @@ const SemanticMcp = () => {
                                                 )}
                                                 <div className="relative">
                                                     {field.type === 'boolean' ? (
-                                                        <div className="flex items-center space-x-2">
-                                                            <input
-                                                                type="checkbox"
-                                                                id={`config_${field.name}`}
-                                                                checked={configValues[field.name] === true || configValues[field.name] === 'true'}
-                                                                onChange={(e) => handleConfigValueChange(field.name, e.target.checked)}
-                                                                className="h-4 w-4 rounded border"
-                                                            />
-                                                            <label htmlFor={`config_${field.name}`} className="text-sm">
-                                                                {field.title}
-                                                            </label>
-                                                        </div>
+                                                        // Special handling for Zendesk exclude_closed_tickets field
+                                                        detailedSource?.short_name === 'zendesk' && field.name === 'exclude_closed_tickets' ? (
+                                                            <div className="flex items-center justify-between p-4 rounded-lg border bg-card">
+                                                                <div className="flex-1">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <h4 className="text-sm font-medium">Exclude Closed Tickets</h4>
+                                                                        <TooltipProvider>
+                                                                            <Tooltip>
+                                                                                <TooltipTrigger>
+                                                                                    <Info className="h-4 w-4 text-muted-foreground" />
+                                                                                </TooltipTrigger>
+                                                                                <TooltipContent>
+                                                                                    <p className="max-w-xs">Skipping closed tickets significantly improves sync performance and reduces storage usage</p>
+                                                                                </TooltipContent>
+                                                                            </Tooltip>
+                                                                        </TooltipProvider>
+                                                                    </div>
+                                                                    <p className="text-xs text-muted-foreground mt-1">
+                                                                        Skip closed tickets during sync (recommended for faster syncing)
+                                                                    </p>
+                                                                </div>
+                                                                <Switch
+                                                                    id={`config_${field.name}`}
+                                                                    checked={configValues[field.name] === true || configValues[field.name] === 'true'}
+                                                                    onCheckedChange={(checked) => handleConfigValueChange(field.name, checked)}
+                                                                />
+                                                            </div>
+                                                        ) : (
+                                                            // Default boolean field rendering for other sources
+                                                            <div className="flex items-center space-x-2">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    id={`config_${field.name}`}
+                                                                    checked={configValues[field.name] === true || configValues[field.name] === 'true'}
+                                                                    onChange={(e) => handleConfigValueChange(field.name, e.target.checked)}
+                                                                    className="h-4 w-4 rounded border"
+                                                                />
+                                                                <label htmlFor={`config_${field.name}`} className="text-sm">
+                                                                    {field.title}
+                                                                </label>
+                                                            </div>
+                                                        )
                                                     ) : (
                                                         <Input
                                                             id={`config_${field.name}`}

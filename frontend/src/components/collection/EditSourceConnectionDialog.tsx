@@ -6,8 +6,10 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { getAppIconUrl } from '@/lib/utils/icons';
-import { Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react';
+import { Eye, EyeOff, Loader2, AlertCircle, Info } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Switch } from '@/components/ui/switch';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface EditSourceConnectionDialogProps {
     open: boolean;
@@ -207,24 +209,60 @@ export const EditSourceConnectionDialog: React.FC<EditSourceConnectionDialogProp
                                                         <p className="text-xs text-muted-foreground opacity-80">{field.description}</p>
                                                     )}
                                                     {field.type === 'boolean' ? (
-                                                        <div className="flex items-center space-x-2">
-                                                            <input
-                                                                type="checkbox"
-                                                                id={field.name}
-                                                                checked={editFormData.config_fields[field.name] === true || editFormData.config_fields[field.name] === 'true'}
-                                                                onChange={(e) => setEditFormData((prev: any) => ({
-                                                                    ...prev,
-                                                                    config_fields: {
-                                                                        ...prev.config_fields,
-                                                                        [field.name]: e.target.checked
-                                                                    }
-                                                                }))}
-                                                                className="h-4 w-4 rounded border"
-                                                            />
-                                                            <label htmlFor={field.name} className="text-sm">
-                                                                {field.title || field.name}
-                                                            </label>
-                                                        </div>
+                                                        // Special handling for Zendesk exclude_closed_tickets field
+                                                        sourceConnection?.short_name === 'zendesk' && field.name === 'exclude_closed_tickets' ? (
+                                                            <div className="flex items-center justify-between p-4 rounded-lg border bg-card">
+                                                                <div className="flex-1">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <h4 className="text-sm font-medium">Exclude Closed Tickets</h4>
+                                                                        <TooltipProvider>
+                                                                            <Tooltip>
+                                                                                <TooltipTrigger>
+                                                                                    <Info className="h-4 w-4 text-muted-foreground" />
+                                                                                </TooltipTrigger>
+                                                                                <TooltipContent>
+                                                                                    <p className="max-w-xs">Skipping closed tickets significantly improves sync performance and reduces storage usage</p>
+                                                                                </TooltipContent>
+                                                                            </Tooltip>
+                                                                        </TooltipProvider>
+                                                                    </div>
+                                                                    <p className="text-xs text-muted-foreground mt-1">
+                                                                        Skip closed tickets during sync (recommended for faster syncing)
+                                                                    </p>
+                                                                </div>
+                                                                <Switch
+                                                                    id={field.name}
+                                                                    checked={editFormData.config_fields[field.name] === true || editFormData.config_fields[field.name] === 'true'}
+                                                                    onCheckedChange={(checked) => setEditFormData((prev: any) => ({
+                                                                        ...prev,
+                                                                        config_fields: {
+                                                                            ...prev.config_fields,
+                                                                            [field.name]: checked
+                                                                        }
+                                                                    }))}
+                                                                />
+                                                            </div>
+                                                        ) : (
+                                                            // Default boolean field rendering for other sources
+                                                            <div className="flex items-center space-x-2">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    id={field.name}
+                                                                    checked={editFormData.config_fields[field.name] === true || editFormData.config_fields[field.name] === 'true'}
+                                                                    onChange={(e) => setEditFormData((prev: any) => ({
+                                                                        ...prev,
+                                                                        config_fields: {
+                                                                            ...prev.config_fields,
+                                                                            [field.name]: e.target.checked
+                                                                        }
+                                                                    }))}
+                                                                    className="h-4 w-4 rounded border"
+                                                                />
+                                                                <label htmlFor={field.name} className="text-sm">
+                                                                    {field.title || field.name}
+                                                                </label>
+                                                            </div>
+                                                        )
                                                     ) : (
                                                         <Input
                                                             type={field.type === 'integer' ? 'number' : 'text'}
