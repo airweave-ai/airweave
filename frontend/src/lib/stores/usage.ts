@@ -1,17 +1,6 @@
 import { create } from 'zustand';
 import { apiClient } from '../api';
-
-export interface SingleActionCheckResponse {
-  allowed: boolean;
-  action: string;
-  reason?: 'payment_required' | 'usage_limit_exceeded';
-  details?: {
-    message?: string;
-    payment_status?: string;
-    current_usage?: number;
-    limit?: number;
-  };
-}
+import type { SingleActionCheckResponse } from '@/types';
 
 interface ActionCheckResponse {
   results: Record<string, SingleActionCheckResponse>;
@@ -157,11 +146,10 @@ export const useCheckCommonActions = () => {
 
   const checkCommonActions = async () => {
     return checkActions({
-      collections: 1,
       source_connections: 1,
       entities: 1,
-      syncs: 1,
-      queries: 1
+      queries: 1,
+      team_members: 1
     });
   };
 

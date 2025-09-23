@@ -6,9 +6,8 @@ import {
   AlertCircle,
   Database,
   Search,
-  LayoutGrid,
   Link2,
-  RefreshCw,
+  Users,
 } from 'lucide-react';
 
 interface UsageDashboardData {
@@ -19,16 +18,14 @@ interface UsageDashboardData {
     status: string;
     plan: string;
     usage: {
-      syncs: number;
       entities: number;
       queries: number;
-      collections: number;
       source_connections: number;
-      max_syncs: number | null;
       max_entities: number | null;
       max_queries: number | null;
-      max_collections: number | null;
       max_source_connections: number | null;
+      team_members: number;
+      max_team_members: number | null;
     };
     days_remaining?: number | null;
     is_current: boolean;
@@ -41,9 +38,9 @@ interface UsageDashboardProps {
 
 const metricConfig = [
   {
-    key: 'entities',
-    label: 'Entities',
-    icon: Database,
+    key: 'source_connections',
+    label: 'Source connections',
+    icon: Link2,
   },
   {
     key: 'queries',
@@ -51,19 +48,14 @@ const metricConfig = [
     icon: Search,
   },
   {
-    key: 'collections',
-    label: 'Collections',
-    icon: LayoutGrid,
+    key: 'entities',
+    label: 'Entities synced',
+    icon: Database,
   },
   {
-    key: 'source_connections',
-    label: 'Connections',
-    icon: Link2,
-  },
-  {
-    key: 'syncs',
-    label: 'Syncs',
-    icon: RefreshCw,
+    key: 'team_members',
+    label: 'Team members',
+    icon: Users,
   },
 ];
 
@@ -78,6 +70,14 @@ const UsageMetric: React.FC<{
   const isAtLimit = limit && current >= limit;
   const isNearLimit = limit && percentage >= 80;
 
+  const hasUsage = current > 0;
+  const fillWidthPercentage = (() => {
+    if (isAtLimit) return 100;
+    if (!hasUsage) return 0; // show empty track with visible border when no usage
+    if (isUnlimited) return 2; // minimal indicator when unlimited plan and some usage
+    return Math.max(2, Math.min(100, percentage));
+  })();
+
   // Format numbers compactly
   const formatNumber = (num: number) => {
     if (num >= 1000000) return `${Math.floor(num / 1000000)}M`;
@@ -86,28 +86,34 @@ const UsageMetric: React.FC<{
   };
 
   return (
-    <div className="flex items-center justify-between py-2">
+    <div className="py-1.5">
       <div className="flex items-center gap-3">
         <Icon className="w-4 h-4 text-muted-foreground" />
-        <span className="text-sm font-medium">{label}</span>
-      </div>
-      <div className="flex items-center gap-2">
-        <span className={cn(
-          "text-sm font-medium",
-          isAtLimit && "text-red-600",
-          isNearLimit && !isAtLimit && "text-amber-600"
-        )}>
-          {current.toLocaleString()}
-        </span>
-        {!isUnlimited && (
-          <>
-            <span className="text-sm text-muted-foreground">/</span>
-            <span className="text-sm text-muted-foreground">{formatNumber(limit)}</span>
-          </>
-        )}
-        {isUnlimited && (
-          <span className="text-sm text-muted-foreground">Unlimited</span>
-        )}
+        <span className="text-sm font-medium whitespace-nowrap w-48 shrink-0">{label}</span>
+        <div className="h-4 w-full flex-1 max-w-[560px] rounded bg-muted overflow-hidden border-2 border-border">
+          <div
+            className={cn(
+              "h-full rounded",
+              isAtLimit ? "bg-red-500" : "bg-blue-500"
+            )}
+            style={{ width: `${fillWidthPercentage}%` }}
+          />
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className={cn(
+            "text-sm font-medium",
+            isAtLimit && "text-red-600",
+            isNearLimit && !isAtLimit && "text-amber-600"
+          )}>
+            {current.toLocaleString()}
+          </span>
+          {!isUnlimited && (
+            <span className="text-sm text-muted-foreground">/ {formatNumber(limit)}</span>
+          )}
+          {isUnlimited && (
+            <span className="text-sm text-muted-foreground">Unlimited</span>
+          )}
+        </div>
       </div>
     </div>
   );

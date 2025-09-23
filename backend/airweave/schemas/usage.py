@@ -18,30 +18,25 @@ class UsageBase(BaseModel):
         None,
         description="Billing period this usage belongs to.",
     )
-    syncs: int = Field(
-        0,
-        ge=0,
-        description="Number of syncs created by the organization.",
-    )
     entities: int = Field(
         0,
         ge=0,
-        description="Total number of entities processed across all syncs.",
+        description="Total number of entities processed.",
     )
     queries: int = Field(
         0,
         ge=0,
         description="Number of search queries executed.",
     )
-    collections: int = Field(
-        0,
-        ge=0,
-        description="Number of collections created.",
-    )
     source_connections: int = Field(
         0,
         ge=0,
         description="Number of source connections configured.",
+    )
+    team_members: Optional[int] = Field(
+        None,
+        ge=0,
+        description="Current number of team members in the organization.",
     )
 
     class Config:
@@ -67,11 +62,6 @@ class UsageUpdate(BaseModel):
     All fields are optional, allowing partial updates of specific counters.
     """
 
-    syncs: Optional[int] = Field(
-        None,
-        ge=0,
-        description="Updated sync count.",
-    )
     entities: Optional[int] = Field(
         None,
         ge=0,
@@ -81,11 +71,6 @@ class UsageUpdate(BaseModel):
         None,
         ge=0,
         description="Updated query count.",
-    )
-    collections: Optional[int] = Field(
-        None,
-        ge=0,
-        description="Updated collection count.",
     )
     source_connections: Optional[int] = Field(
         None,
@@ -127,11 +112,10 @@ class Usage(UsageInDBBase):
                     "id": "550e8400-e29b-41d4-a716-446655440000",
                     "organization_id": "org12345-6789-abcd-ef01-234567890abc",
                     "billing_period_id": "period123-4567-89ab-cdef-0123456789ab",
-                    "syncs": 5,
                     "entities": 10000,
                     "queries": 250,
-                    "collections": 3,
                     "source_connections": 8,
+                    "team_members": 5,
                     "created_at": "2024-01-01T00:00:00Z",
                     "modified_at": "2024-01-15T14:22:15Z",
                 }
@@ -143,11 +127,6 @@ class Usage(UsageInDBBase):
 class UsageLimit(BaseModel):
     """Schema for defining usage limits per subscription tier."""
 
-    max_syncs: Optional[int] = Field(
-        None,
-        ge=0,
-        description="Maximum number of syncs allowed. None means unlimited.",
-    )
     max_entities: Optional[int] = Field(
         None,
         ge=0,
@@ -158,26 +137,25 @@ class UsageLimit(BaseModel):
         ge=0,
         description="Maximum number of queries allowed. None means unlimited.",
     )
-    max_collections: Optional[int] = Field(
-        None,
-        ge=0,
-        description="Maximum number of collections allowed. None means unlimited.",
-    )
     max_source_connections: Optional[int] = Field(
         None,
         ge=0,
         description="Maximum number of source connections allowed. None means unlimited.",
+    )
+    max_team_members: Optional[int] = Field(
+        None,
+        ge=0,
+        description="Maximum number of team members allowed. None means unlimited.",
     )
 
     model_config = {
         "json_schema_extra": {
             "examples": [
                 {
-                    "max_syncs": 10,
                     "max_entities": 50000,
                     "max_queries": 1000,
-                    "max_collections": 5,
                     "max_source_connections": 20,
+                    "max_team_members": 10,
                 },
             ]
         }

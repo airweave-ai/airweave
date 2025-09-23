@@ -19,7 +19,7 @@ from airweave.models import Organization, User, UserOrganization
 from airweave.schemas.api_key import APIKeyCreate
 
 if settings.STRIPE_ENABLED:
-    from airweave.core.billing_service import billing_service
+    from airweave.billing.service import billing_service
     from airweave.integrations.stripe_client import stripe_client
 
 
@@ -35,7 +35,7 @@ class OrganizationService:
         small_uuid = str(uuid.uuid4())[:8]
         return f"airweave-{org_data.name.lower().replace(' ', '-')}-{small_uuid}"
 
-    async def create_organization_with_integrations(
+    async def create_organization_with_integrations(  # noqa: C901
         self, db: AsyncSession, org_data: schemas.OrganizationCreate, owner_user: User
     ) -> schemas.Organization:
         """Create organization with Auth0 and optionally Stripe integration.
@@ -59,38 +59,60 @@ class OrganizationService:
             Exception: If any step fails, all changes are rolled back
         """
         auth0_org_data = None
+        auth0_org_id = None
         stripe_customer = None
 
+        # Determine whether to use Auth0 in this environment
+        use_auth0 = bool(settings.AUTH_ENABLED and auth0_management_client)
+
         try:
-            # Step 1: Create Auth0 organization
-            logger.info(f"Creating Auth0 organization for: {org_data.name}")
-            auth0_org_data = await auth0_management_client.create_organization(
-                name=self._create_org_name(org_data),
-                display_name=org_data.name,
-            )
-            auth0_org_id = auth0_org_data["id"]
+            # Step 1: Create Auth0 organization (only when enabled and configured)
+            if use_auth0:
+                logger.info(f"Creating Auth0 organization for: {org_data.name}")
+                auth0_org_data = await auth0_management_client.create_organization(
+                    name=self._create_org_name(org_data),
+                    display_name=org_data.name,
+                )
+                auth0_org_id = auth0_org_data["id"]
 
-            # Add user to Auth0 organization as owner
-            await auth0_management_client.add_user_to_organization(
-                auth0_org_id, owner_user.auth0_id
-            )
+                # Add user to Auth0 organization as owner
+                await auth0_management_client.add_user_to_organization(
+                    auth0_org_id, owner_user.auth0_id
+                )
 
-            # Enable default connections for the new organization
-            await self._setup_auth0_connections(auth0_org_id)
+                # Enable default connections for the new organization
+                await self._setup_auth0_connections(auth0_org_id)
 
-            logger.info(f"Successfully created Auth0 organization: {auth0_org_id}")
+                logger.info(f"Successfully created Auth0 organization: {auth0_org_id}")
+            else:
+                logger.info(
+                    "AUTH disabled or Auth0 client not configured; skipping Auth0 org creation"
+                )
 
             # Step 2: Create Stripe customer if enabled
             if settings.STRIPE_ENABLED:
                 logger.info(f"Creating Stripe customer for: {org_data.name}")
+                # Optional test clock support for local/testing
+                test_clock_id = None
+                try:
+                    # Read from org_data.org_metadata.onboarding if present
+                    if hasattr(org_data, "org_metadata") and org_data.org_metadata:
+                        onboarding = org_data.org_metadata.get("onboarding", {})
+                        tc = onboarding.get("stripe_test_clock")
+                        if tc:
+                            test_clock_id = tc
+                except Exception:
+                    test_clock_id = None
+
                 stripe_customer = await stripe_client.create_customer(
                     email=owner_user.email,
                     name=org_data.name,
                     metadata={
-                        "auth0_org_id": auth0_org_id,
+                        "auth0_org_id": auth0_org_id or "",
                         "owner_user_id": str(owner_user.id),
                         "organization_name": org_data.name,
                     },
+                    test_clock=test_clock_id,
                 )
                 logger.info(f"Created Stripe customer: {stripe_customer.id}")
 
@@ -109,8 +131,12 @@ class OrganizationService:
                     owner_user=owner_user,
                     uow=uow,
                 )
+                # Capture primitives immediately to avoid lazy loads later
+                org_id = local_org.id
 
-                logger.info(f"Created organization with auth0_org_id: {local_org.auth0_org_id}")
+                logger.info(
+                    f"Created organization with auth0_org_id: {org_dict.get('auth0_org_id')}"
+                )
 
                 # Create billing record if Stripe is enabled
                 if settings.STRIPE_ENABLED and stripe_customer:
@@ -131,7 +157,7 @@ class OrganizationService:
                     )
 
                     # Create billing record
-                    _ = await billing_service.create_billing_record_with_transaction(
+                    _ = await billing_service.create_billing_record(
                         db=db,
                         organization=local_org_schema,
                         stripe_customer_id=stripe_customer.id,
@@ -140,17 +166,43 @@ class OrganizationService:
                         uow=uow,
                     )
 
-                # Create organization schema response
+                # Create organization schema response without triggering lazy ORM loads.
+                # Fetch concrete columns explicitly and build the Pydantic model from primitives.
+
+                row_result = await db.execute(
+                    select(
+                        Organization.id,
+                        Organization.name,
+                        Organization.description,
+                        Organization.auth0_org_id,
+                        Organization.created_at,
+                        Organization.modified_at,
+                        Organization.org_metadata,
+                    ).where(Organization.id == org_id)
+                )
+                (
+                    org_id,
+                    org_name,
+                    org_description,
+                    org_auth0_id,
+                    org_created_at,
+                    org_modified_at,
+                    org_metadata,
+                ) = row_result.one()
+
                 organization = schemas.Organization(
-                    **org_dict,
+                    id=org_id,
+                    name=org_name,
+                    description=org_description,
+                    auth0_org_id=org_auth0_id,
+                    created_at=org_created_at,
+                    modified_at=org_modified_at,
+                    org_metadata=org_metadata,
                     role="owner",
-                    created_at=local_org.created_at,
-                    modified_at=local_org.modified_at,
-                    id=local_org.id,
                 )
 
                 # Create API key for the organization
-                logger.info(f"Creating API key for organization {local_org.id}")
+                logger.info(f"Creating API key for organization {org_id}")
 
                 # Create system auth context for API key creation
                 # Generate a request ID for the API key creation context
@@ -159,7 +211,7 @@ class OrganizationService:
                 # Create logger with organization context
                 contextual_logger = logger.with_context(
                     request_id=request_id,
-                    organization_id=str(local_org.id),
+                    organization_id=str(org_id),
                     auth_method="system",
                     context_base="organization_service",
                     user_id=str(owner_user.id),
@@ -184,7 +236,7 @@ class OrganizationService:
                     uow=uow,
                 )
 
-                logger.info(f"Successfully created API key for organization {local_org.id}")
+                logger.info(f"Successfully created API key for organization {org_id}")
 
                 # Commit the transaction
                 await uow.commit()

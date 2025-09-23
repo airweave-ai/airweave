@@ -15,16 +15,13 @@ INCLUDED_ENDPOINTS = {
     "/source-connections/nested/": {"post": True},  # POC nested auth structure
     "/source-connections/{source_connection_id}/": {
         "get": True,
-        "put": True,
+        "patch": True,  # Update endpoint uses PATCH, not PUT
         "delete": True,
     },
     "/source-connections/{source_connection_id}/run/": {"post": True},
     "/source-connections/{source_connection_id}/jobs/": {"get": True},
     "/source-connections/{source_connection_id}/jobs/{job_id}/": {"get": True},
     "/source-connections/{source_connection_id}/jobs/{job_id}/cancel/": {"post": True},
-    # Auth Providers
-    "/auth-providers/connect/": {"put": True},
-    "/auth-providers/detail/{short_name}/": {"get": True},
 }
 
 # API group descriptions for documentation
@@ -32,7 +29,6 @@ API_GROUPS = {
     "Sources": "API endpoints for discovering available data source connectors and their configuration requirements",
     "Collections": "API endpoints for managing collections - logical groups of data sources that provide unified search capabilities",
     "Source Connections": "API endpoints for managing live connections to data sources. Source connections are the actual configured instances that Airweave uses to sync data from your apps and databases, transforming it into searchable, structured information within collections",
-    "Auth Providers": "API endpoints for managing authentication provider connections and credentials",
 }
 
 

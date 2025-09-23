@@ -175,8 +175,9 @@ class OAuthBrowserTest(SourceConnectionTestBase):
         response = self.create_connection(payload)
 
         if response.status_code != 200:
-            print(f"    ⚠️ OAuth browser test skipped: {response.status_code}")
-            return None
+            print(f"    ❌ OAuth browser test failed: {response.status_code}")
+            print(f"    Response: {response.text}")
+            raise AssertionError(f"Failed to create OAuth browser connection: {response.text}")
 
         conn = response.json()
         conn_id = conn["id"]
@@ -204,11 +205,14 @@ class AuthProviderTest(SourceConnectionTestBase):
         super().__init__(api_url, headers, collection_id)
         self.provider_readable_id = provider_readable_id
 
-    def create_payload(self, provider_name: str, provider_config: Optional[dict] = None) -> dict:
+    def create_payload(
+        self, provider_readable_id: str, provider_config: Optional[dict] = None
+    ) -> dict:
         """Create payload for auth provider connection"""
-        # Use provider_name for the auth provider connection (matches AuthProviderAuthentication schema)
+        # Use provider_readable_id for the auth provider connection (matches AuthProviderAuthentication schema)
         auth = {
-            "provider_name": self.provider_readable_id or f"composio-test-{int(time.time())}",
+            "provider_readable_id": self.provider_readable_id
+            or f"composio-test-{int(time.time())}",
         }
 
         # Add Composio-specific config if provided
@@ -216,7 +220,7 @@ class AuthProviderTest(SourceConnectionTestBase):
             auth["provider_config"] = provider_config
 
         return {
-            "name": f"Test {provider_name} Auth Provider Source",
+            "name": f"Test {provider_readable_id} Auth Provider Source",
             "short_name": "asana",  # Using Asana for auth provider test
             "readable_collection_id": self.collection_id,
             "description": "Testing auth provider authentication with Asana",
@@ -224,22 +228,26 @@ class AuthProviderTest(SourceConnectionTestBase):
             "sync_immediately": False,
         }
 
-    def run_test(self, provider_name: str, provider_config: Optional[dict] = None) -> Optional[str]:
+    def run_test(
+        self, provider_readable_id: str, provider_config: Optional[dict] = None
+    ) -> Optional[str]:
         """Run auth provider test"""
-        print(f"  Testing Auth Provider ({provider_name})...")
+        print(f"  Testing Auth Provider ({provider_readable_id})...")
 
         # Step 1: Create connection with auth provider
-        payload = self.create_payload(provider_name, provider_config)
+        payload = self.create_payload(provider_readable_id, provider_config)
         response = self.create_connection(payload)
 
         if response.status_code == 404:
-            print(f"    ⚠️ Auth provider '{provider_name}' not found in this environment")
-            return None
+            print(f"    ❌ Auth provider '{provider_readable_id}' not found")
+            raise AssertionError(
+                f"Auth provider '{provider_readable_id}' not found in this environment"
+            )
 
         if response.status_code != 200:
-            print(f"    ⚠️ Auth provider test failed: {response.status_code}")
+            print(f"    ❌ Auth provider test failed: {response.status_code}")
             print(f"    Response: {response.text}")
-            return None
+            raise AssertionError(f"Failed to create auth provider connection: {response.text}")
 
         conn = response.json()
         conn_id = conn["id"]
@@ -252,7 +260,7 @@ class AuthProviderTest(SourceConnectionTestBase):
         assert conn["status"] == "active", f"Expected active status, got {conn['status']}"
 
         print(f"    ✓ Connection created via auth provider: {conn_id}")
-        print(f"    ✓ Provider: {provider_name}")
+        print(f"    ✓ Provider: {provider_readable_id}")
 
         return conn_id
 
@@ -339,13 +347,14 @@ class OAuthTokenTest(SourceConnectionTestBase):
 
         if response.status_code == 400:
             # Token might be invalid or expired
-            print(f"    ⚠️ Token validation failed for {source_name}")
-            return None
+            print(f"    ❌ Token validation failed for {source_name}")
+            print(f"    Response: {response.text}")
+            raise AssertionError(f"Token validation failed for {source_name}: {response.text}")
 
         if response.status_code != 200:
-            print(f"    ⚠️ OAuth token test failed: {response.status_code}")
+            print(f"    ❌ OAuth token test failed: {response.status_code}")
             print(f"    Response: {response.text}")
-            return None
+            raise AssertionError(f"Failed to create OAuth token connection: {response.text}")
 
         conn = response.json()
         conn_id = conn["id"]
@@ -547,7 +556,8 @@ def test_source_connections(
             created_connections.append(conn_id)
             print("  ✅ OAuth browser shell creation test passed")
     except Exception as e:
-        print(f"  ⚠️ OAuth browser test skipped: {e}")
+        print(f"  ❌ OAuth browser test failed: {e}")
+        raise AssertionError(f"OAuth browser test failed: {e}")
 
     # =============================
     # Test 3.5: OAuth BYOC Flow (REQUIRED)
@@ -642,15 +652,15 @@ def test_source_connections(
     print("\n  📌 Test 5a: Composio Auth Provider")
 
     # Require auth provider configuration
-    auth_provider_name = os.environ.get("TEST_AUTH_PROVIDER_NAME")
-    if not auth_provider_name:
+    auth_provider_readable_id = os.environ.get("TEST_AUTH_PROVIDER_NAME")
+    if not auth_provider_readable_id:
         raise AssertionError(
             "TEST_AUTH_PROVIDER_NAME environment variable is required. Set it to 'composio' to run tests."
         )
 
-    if auth_provider_name != "composio":
+    if auth_provider_readable_id != "composio":
         raise AssertionError(
-            f"Only 'composio' auth provider is supported. Got: {auth_provider_name}"
+            f"Only 'composio' auth provider is supported. Got: {auth_provider_readable_id}"
         )
 
     # Require Composio API key
@@ -713,7 +723,7 @@ def test_source_connections(
     }
 
     try:
-        conn_id = auth_provider_test.run_test(auth_provider_name, provider_config)
+        conn_id = auth_provider_test.run_test(auth_provider_readable_id, provider_config)
         if not conn_id:
             raise AssertionError(f"Auth provider test returned None - failed to create connection")
         created_connections.append(conn_id)
@@ -799,7 +809,7 @@ def test_source_connections(
                 "readable_collection_id": collection_id,
                 "description": "Testing Google Drive with Pipedream proxy authentication",
                 "authentication": {
-                    "provider_name": actual_pipedream_id,
+                    "provider_readable_id": actual_pipedream_id,
                     "provider_config": {
                         "project_id": pipedream_project_id,
                         "account_id": pipedream_account_id,
@@ -912,9 +922,8 @@ def test_source_connections(
                 )
 
         except Exception as e:
-            print(f"    ⚠️ Pipedream test skipped: {e}")
-            # Don't fail the entire test suite if Pipedream test fails
-            print("    ℹ️ Continuing with other tests...")
+            print(f"    ❌ Pipedream test failed: {e}")
+            raise AssertionError(f"Pipedream proxy auth provider test failed: {e}")
 
     # =============================
     # Test 6: Error Handling
@@ -1007,7 +1016,8 @@ def test_source_connections(
                 else:
                     print("  ⚠️ PubSub test timed out (may be normal for quick jobs)")
         except Exception as e:
-            print(f"  ⚠️ PubSub test skipped: {e}")
+            print(f"  ❌ PubSub test failed: {e}")
+            raise AssertionError(f"PubSub/SSE test failed: {e}")
 
     # =============================
     # Summary

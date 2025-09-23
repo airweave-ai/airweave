@@ -10,8 +10,6 @@ on:
       - "backend/**"
       - "frontend/**"
       - "start.sh"
-  push:
-    branches: [main, feat/monke]
 
 concurrency:
   group: monke-${{ github.ref }}
@@ -21,6 +19,11 @@ jobs:
   all_connectors_one_runner:
     runs-on: ubuntu-latest
     environment: dev
+    # Add Azure permissions for OIDC authentication
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: read
 
     env:
       # Tags for locally built images (no registry)
@@ -30,19 +33,27 @@ jobs:
       BACKEND_CACHE_DIR: /tmp/.buildx-cache-backend
       FRONTEND_CACHE_DIR: /tmp/.buildx-cache-frontend
 
-      # Your existing env/secrets
+      # Core configuration
       AIRWEAVE_API_URL: http://localhost:8001
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+
+      # Azure Key Vault configuration
+      AZURE_KEY_VAULT_URL: ${{ secrets.AZURE_KEY_VAULT_URL }}
+
+      # Only essential secrets that might not be in Key Vault yet
+      # These will be overridden by Key Vault if present
       DM_AUTH_PROVIDER: composio
-      DM_AUTH_PROVIDER_API_KEY: ${{ secrets.COMPOSIO_API_KEY }}
-      GMAIL_AUTH_PROVIDER_ACCOUNT_ID: ${{ secrets.GMAIL_AUTH_PROVIDER_ACCOUNT_ID }}
-      GMAIL_AUTH_PROVIDER_AUTH_CONFIG_ID: ${{ secrets.GMAIL_AUTH_PROVIDER_AUTH_CONFIG_ID }}
-      GOOGLE_DRIVE_AUTH_PROVIDER_ACCOUNT_ID: ${{ secrets.GOOGLE_DRIVE_AUTH_PROVIDER_ACCOUNT_ID }}
-      GOOGLE_DRIVE_AUTH_PROVIDER_AUTH_CONFIG_ID: ${{ secrets.GOOGLE_DRIVE_AUTH_PROVIDER_AUTH_CONFIG_ID }}
 
     steps:
       - uses: actions/checkout@v5
+
+      # Login to Azure for Key Vault access (if configured)
+      - name: Azure Login
+        if: env.AZURE_KEY_VAULT_URL != ''
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       # Build images ONCE on this runner (with repo-scoped local layer caches)
       - name: Set up Docker Buildx
@@ -92,8 +103,8 @@ jobs:
           cache-from: type=local,src=${{ env.FRONTEND_CACHE_DIR }}
           cache-to: type=local,dest=${{ env.FRONTEND_CACHE_DIR }},mode=max
 
-      # Force Compose to use the prebuilt images (no rebuild) + pass secrets
-      - name: Compose override (use prebuilt images + env)
+      # Force Compose to use the prebuilt images (no rebuild)
+      - name: Compose override (use prebuilt images)
         run: |
           mkdir -p docker
           cat > docker/docker-compose.ci.yml <<'YAML'
@@ -102,26 +113,22 @@ jobs:
               image: ${BACKEND_TAG}
               pull_policy: never
               environment:
+                # Core dependencies
                 - OPENAI_API_KEY=${OPENAI_API_KEY}
                 - MISTRAL_API_KEY=${MISTRAL_API_KEY}
+                # Azure Key Vault for SaaS credentials
+                - AZURE_KEY_VAULT_URL=${AZURE_KEY_VAULT_URL}
                 - DM_AUTH_PROVIDER=${DM_AUTH_PROVIDER}
-                - DM_AUTH_PROVIDER_API_KEY=${DM_AUTH_PROVIDER_API_KEY}
-                - GMAIL_AUTH_PROVIDER_ACCOUNT_ID=${GMAIL_AUTH_PROVIDER_ACCOUNT_ID}
-                - GMAIL_AUTH_PROVIDER_AUTH_CONFIG_ID=${GMAIL_AUTH_PROVIDER_AUTH_CONFIG_ID}
-                - GOOGLE_DRIVE_AUTH_PROVIDER_ACCOUNT_ID=${GOOGLE_DRIVE_AUTH_PROVIDER_ACCOUNT_ID}
-                - GOOGLE_DRIVE_AUTH_PROVIDER_AUTH_CONFIG_ID=${GOOGLE_DRIVE_AUTH_PROVIDER_AUTH_CONFIG_ID}
             temporal-worker:
               image: ${TEMPORAL_WORKER_TAG}
               pull_policy: never
               environment:
+                # Core dependencies
                 - OPENAI_API_KEY=${OPENAI_API_KEY}
                 - MISTRAL_API_KEY=${MISTRAL_API_KEY}
+                # Azure Key Vault for SaaS credentials
+                - AZURE_KEY_VAULT_URL=${AZURE_KEY_VAULT_URL}
                 - DM_AUTH_PROVIDER=${DM_AUTH_PROVIDER}
-                - DM_AUTH_PROVIDER_API_KEY=${DM_AUTH_PROVIDER_API_KEY}
-                - GMAIL_AUTH_PROVIDER_ACCOUNT_ID=${GMAIL_AUTH_PROVIDER_ACCOUNT_ID}
-                - GMAIL_AUTH_PROVIDER_AUTH_CONFIG_ID=${GMAIL_AUTH_PROVIDER_AUTH_CONFIG_ID}
-                - GOOGLE_DRIVE_AUTH_PROVIDER_ACCOUNT_ID=${GOOGLE_DRIVE_AUTH_PROVIDER_ACCOUNT_ID}
-                - GOOGLE_DRIVE_AUTH_PROVIDER_AUTH_CONFIG_ID=${GOOGLE_DRIVE_AUTH_PROVIDER_AUTH_CONFIG_ID}
             frontend:
               image: ${FRONTEND_TAG}
               pull_policy: never
@@ -136,7 +143,12 @@ jobs:
           cache-dependency-path: monke/requirements.txt
 
       - name: Install Python deps
-        run: pip install -r monke/requirements.txt
+        run: |
+          pip install -r monke/requirements.txt
+          # Install Azure dependencies if Key Vault is configured
+          if [[ -n "$AZURE_KEY_VAULT_URL" ]]; then
+            pip install azure-keyvault-secrets azure-identity
+          fi
 
       # Start the stack ONCE on this runner (override merged with base compose)
       - name: Start Airweave (single stack)
@@ -156,50 +168,38 @@ jobs:
           done
           echo "❌ Backend not healthy in time"; exit 1
 
-      # Run tests using unified runner
+      # Run tests using monke.sh wrapper
       - name: Run acceptance tests
         env:
           CI: true # Tells runner to use simple output
+          MONKE_NO_VENV: 1 # Skip venv setup in CI
           MONKE_MAX_PARALLEL: 5
           AIRWEAVE_API_URL: http://localhost:8001
 
-          # Core dependencies
+          # Core dependencies (keep these as GitHub secrets)
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
 
-          # Composio auth provider
+          # Azure Key Vault for SaaS app credentials
+          AZURE_KEY_VAULT_URL: ${{ secrets.AZURE_KEY_VAULT_URL }}
+
+          # Auth provider configuration
           DM_AUTH_PROVIDER: composio
-          DM_AUTH_PROVIDER_API_KEY: ${{ secrets.COMPOSIO_API_KEY }}
 
-          # Connector-specific Composio configs
-          GITHUB_AUTH_PROVIDER_ACCOUNT_ID: ${{ secrets.GITHUB_AUTH_PROVIDER_ACCOUNT_ID }}
-          GITHUB_AUTH_PROVIDER_AUTH_CONFIG_ID: ${{ secrets.GITHUB_AUTH_PROVIDER_AUTH_CONFIG_ID }}
-          GMAIL_AUTH_PROVIDER_ACCOUNT_ID: ${{ secrets.GMAIL_AUTH_PROVIDER_ACCOUNT_ID }}
-          GMAIL_AUTH_PROVIDER_AUTH_CONFIG_ID: ${{ secrets.GMAIL_AUTH_PROVIDER_AUTH_CONFIG_ID }}
-          GOOGLE_DRIVE_AUTH_PROVIDER_ACCOUNT_ID: ${{ secrets.GOOGLE_DRIVE_AUTH_PROVIDER_ACCOUNT_ID }}
-          GOOGLE_DRIVE_AUTH_PROVIDER_AUTH_CONFIG_ID: ${{ secrets.GOOGLE_DRIVE_AUTH_PROVIDER_AUTH_CONFIG_ID }}
-          GOOGLE_CALENDAR_AUTH_PROVIDER_ACCOUNT_ID: ${{ secrets.GOOGLE_CALENDAR_AUTH_PROVIDER_ACCOUNT_ID }}
-          GOOGLE_CALENDAR_AUTH_PROVIDER_AUTH_CONFIG_ID: ${{ secrets.GOOGLE_CALENDAR_AUTH_PROVIDER_AUTH_CONFIG_ID }}
-
-          # Add other connector configs as needed...
+          # All SaaS app credentials (Composio configs, API tokens, etc.)
+          # will be fetched from Azure Key Vault at runtime
         run: |
-          cd monke
+          # Make script executable
+          chmod +x ./monke.sh
 
-          # The runner will automatically connect to Composio using DM_AUTH_PROVIDER_API_KEY
-          # and set DM_AUTH_PROVIDER_ID for use by all tests
-
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            # On PRs, run a subset of tests for speed
-            # TODO: Add change detection to run only affected connectors
-            python runner.py github gmail
-          else
-            # On main/feat branches, run all tests in parallel
-            python runner.py --all --max-concurrency 5
-          fi
+          # Let monke.sh handle change detection and test execution
+          # The --changed flag will automatically detect what to test based on git diff
+          echo "Running tests for changed connectors..."
+          ./monke.sh --changed
 
       - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: monke-logs
-          path: logs/**
+          path: monke/logs/**

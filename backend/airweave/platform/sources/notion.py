@@ -1361,6 +1361,7 @@ class NotionSource(BaseSource):
 
         try:
             # Create stream without access token for pre-signed URLs
+            # Note: stream_file_from_url is an async generator function, not a coroutine
             file_stream = file_manager.stream_file_from_url(
                 file_entity.download_url, access_token=None, headers=None, logger=self.logger
             )

@@ -57,6 +57,23 @@ class SyncJobService:
 
         return update_data
 
+    async def _update_status_in_database(self, db, sync_job_id: UUID, status_value: str) -> None:
+        """Update status field using raw SQL."""
+        from sqlalchemy import text
+
+        # Update status with string value directly
+        await db.execute(
+            text(
+                "UPDATE sync_job SET status = :status, "
+                "modified_at = :modified_at WHERE id = :sync_job_id"
+            ),
+            {
+                "status": status_value,
+                "modified_at": utc_now_naive(),
+                "sync_job_id": sync_job_id,
+            },
+        )
+
     async def update_status(
         self,
         sync_job_id: UUID,
@@ -78,6 +95,10 @@ class SyncJobService:
                     logger.error(f"Sync job {sync_job_id} not found")
                     return
 
+                # Use the enum value directly (it's already a string)
+                status_value = status.value
+                logger.info(f"Updating sync job {sync_job_id} status to {status_value}")
+
                 update_data = {"status": status}
 
                 if stats:
@@ -89,13 +110,19 @@ class SyncJobService:
                 )
                 update_data.update(timestamp_data)
 
-                # Update all fields using the ORM (custom type handles status mapping)
-                await crud.sync_job.update(
-                    db=db,
-                    db_obj=db_sync_job,
-                    obj_in=schemas.SyncJobUpdate(**update_data),
-                    ctx=ctx,
-                )
+                # Update status using raw SQL
+                await self._update_status_in_database(db, sync_job_id, status_value)
+
+                # Update other fields using the normal ORM
+                # (excluding status which we already updated)
+                update_data.pop("status")
+                if update_data:
+                    await crud.sync_job.update(
+                        db=db,
+                        db_obj=db_sync_job,
+                        obj_in=schemas.SyncJobUpdate(**update_data),
+                        ctx=ctx,
+                    )
 
                 # Capture sync_id before commit to avoid attribute expiration
                 try:
@@ -104,7 +131,7 @@ class SyncJobService:
                     sync_id_for_analytics = None
 
                 await db.commit()
-                logger.info(f"Successfully updated sync job {sync_job_id} status to {status.value}")
+                logger.info(f"Successfully updated sync job {sync_job_id} status to {status_value}")
 
         except Exception as e:
             logger.error(f"Failed to update sync job status: {e}")

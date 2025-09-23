@@ -128,7 +128,7 @@ export const BillingSuccess = () => {
               <div className="space-y-3">
                 <h1 className="text-2xl font-normal">Welcome to Airweave!</h1>
                 <p className="text-muted-foreground">
-                  Your subscription is active and your trial has begun
+                  Your subscription is now active
                 </p>
                 {invitesSent && (
                   <div className="flex items-center justify-center gap-2 mt-6 text-sm text-muted-foreground">

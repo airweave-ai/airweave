@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from airweave.models._base import Base
@@ -68,6 +68,18 @@ class OrganizationBilling(Base):
 
     # Metadata for additional billing info
     billing_metadata: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True, default={})
+
+    # Yearly prepay tracking (virtual annual subscription via monthly plan + coupon)
+    has_yearly_prepay: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    yearly_prepay_started_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
+    yearly_prepay_expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
+    yearly_prepay_amount_cents: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    yearly_prepay_coupon_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    yearly_prepay_payment_intent_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     # Relationship back to organization
     organization: Mapped["Organization"] = relationship("Organization", back_populates="billing")

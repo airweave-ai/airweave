@@ -1596,10 +1596,10 @@
       },
       "AuthProviderAuthentication": {
         "properties": {
-          "provider_name": {
+          "provider_readable_id": {
             "type": "string",
-            "title": "Provider Name",
-            "description": "Auth provider identifier"
+            "title": "Provider Readable Id",
+            "description": "Auth provider readable ID"
           },
           "provider_config": {
             "anyOf": [
@@ -1617,7 +1617,7 @@
         },
         "type": "object",
         "required": [
-          "provider_name"
+          "provider_readable_id"
         ],
         "title": "AuthProviderAuthentication",
         "description": "Authentication via external provider."
@@ -1895,7 +1895,7 @@
             ],
             "title": "Redirect Url"
           },
-          "provider_name": {
+          "provider_readable_id": {
             "anyOf": [
               {
                 "type": "string"
@@ -1904,7 +1904,7 @@
                 "type": "null"
               }
             ],
-            "title": "Provider Name"
+            "title": "Provider Readable Id"
           },
           "provider_id": {
             "anyOf": [

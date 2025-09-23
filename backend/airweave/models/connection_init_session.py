@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from airweave.models._base import OrganizationBase
 
 if TYPE_CHECKING:
+    from airweave.models.redirect_session import RedirectSession
     from airweave.models.source_connection import SourceConnection
 
 
@@ -58,9 +59,16 @@ class ConnectionInitSession(OrganizationBase):
         ForeignKey("connection.id", ondelete="SET NULL"), nullable=True
     )
 
+    # Link to the redirect session for auth URL
+    redirect_session_id: Mapped[Optional[UUID]] = mapped_column(
+        ForeignKey("redirect_session.id", ondelete="SET NULL"), nullable=True
+    )
+
     source_connection: Mapped[Optional["SourceConnection"]] = relationship(
         back_populates="connection_init_session"
     )
+
+    redirect_session: Mapped[Optional["RedirectSession"]] = relationship("RedirectSession")
 
     @staticmethod
     def default_expires_at(minutes: int = 30) -> datetime:

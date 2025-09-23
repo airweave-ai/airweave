@@ -527,26 +527,20 @@ class SyncFactory:
 
         # Return factory function
         def create_proxy_client(**httpx_kwargs) -> PipedreamProxyClient:
-            """Creates a Pipedream proxy client with httpx-compatible interface."""
-            # Get fresh token each time we create a client
-            try:
-                # Use sync-compatible token fetch
-                import asyncio
+            """Creates a Pipedream proxy client with httpx-compatible interface.
 
-                loop = asyncio.get_event_loop()
-                pipedream_token = loop.run_until_complete(
-                    auth_provider_instance._ensure_valid_token()
-                )
-            except Exception:
-                # Fallback to existing token
-                pipedream_token = auth_provider_instance._access_token
-
+            The client will call _ensure_valid_token() on each request, which:
+            - Returns cached token if still valid (with 5-minute buffer)
+            - Only refreshes when approaching expiry (not on every request)
+            - Handles the 3600-second token lifetime automatically
+            """
             return PipedreamProxyClient(
                 project_id=auth_provider_instance.project_id,
                 account_id=auth_provider_instance.account_id,
                 external_user_id=auth_provider_instance.external_user_id,
                 environment=auth_provider_instance.environment,
-                pipedream_token=pipedream_token,
+                pipedream_token=None,  # No static token
+                token_provider=auth_provider_instance._ensure_valid_token,  # Smart refresh method
                 app_info=app_info,
                 **httpx_kwargs,
             )

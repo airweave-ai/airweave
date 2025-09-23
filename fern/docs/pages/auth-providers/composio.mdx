@@ -62,11 +62,11 @@ from airweave import AirweaveSDK
 client = AirweaveSDK(api_key="YOUR_API_KEY")
 
 # Create a Google Drive connection using Composio credentials
-source_connection = client.source_connections.create_source_connection(
+source_connection = client.source_connections.create(
     name="Sales Team Google Drive",
     short_name="google_drive",
-    auth_provider="my-composio-connection-abc123",  # Your Composio auth provider id
-    auth_provider_config={
+    provider_readable_id="my-composio-connection-abc123",  # Your Composio auth provider id
+    provider_config={
         "auth_config_id": "config_xyz789",  # From Composio dashboard
         "account_id": "account_abc123"      # From Composio dashboard
     }
@@ -83,11 +83,11 @@ const client = new AirweaveSDKClient({
 });
 
 // Create a Google Drive connection using Composio credentials
-const sourceConnection = await client.sourceConnections.createSourceConnection({
+const sourceConnection = await client.sourceConnections.create({
   name: "Sales Team Google Drive",
   shortName: "google_drive",
-  authProvider: "my-composio-connection-abc123",  // Your Composio connection ID
-  authProviderConfig: {
+  providerReadableId: "my-composio-connection-abc123",  // Your Composio connection ID
+  providerConfig: {
     authConfigId: "config_xyz789",  // From Composio dashboard
     accountId: "account_abc123"      // From Composio dashboard
   }
@@ -103,8 +103,8 @@ curl -X POST 'https://app.airweave.ai/source-connections' \
   -d '{
   "name": "Sales Team Google Drive",
   "short_name": "google_drive",
-  "auth_provider": "my-composio-connection-abc123",
-  "auth_provider_config": {
+  "provider_readable_id": "my-composio-connection-abc123",
+  "provider_config": {
     "auth_config_id": "config_xyz789",
     "account_id": "account_abc123"
   }
@@ -129,7 +129,7 @@ sequenceDiagram
 
     Note over You,GoogleDrive: Create Source Connection
     You->>Airweave: POST /source-connections
-    Note over You,Airweave: auth_provider: "composio-prod-abc123"<br/>auth_config_id: "config_xyz789"<br/>account_id: "account_abc123"
+    Note over You,Airweave: provider_readable_id: "composio-prod-abc123"<br/>auth_config_id: "config_xyz789"<br/>account_id: "account_abc123"
 
     Note over You,GoogleDrive: Sync Data
     You->>Airweave: Trigger sync
@@ -182,11 +182,11 @@ from airweave import AirweaveSDK
 
 client = AirweaveSDK(api_key="YOUR_API_KEY")
 
-source_connection = client.source_connections.create_source_connection(
+source_connection = client.source_connections.create(
     name="Team Google Drive",
     short_name="google_drive",
-    auth_provider="composio-connection-id",
-    auth_provider_config={
+    provider_readable_id="composio-connection-id",
+    provider_config={
         "auth_config_id": "config_id",
         "account_id": "account_id"
     }
@@ -200,11 +200,11 @@ const client = new AirweaveSDKClient({
   apiKey: "YOUR_API_KEY"
 });
 
-const sourceConnection = await client.sourceConnections.createSourceConnection({
+const sourceConnection = await client.sourceConnections.create({
   name: "Team Google Drive",
   shortName: "google_drive",
-  authProvider: "composio-connection-id",
-  authProviderConfig: {
+  providerReadableId: "composio-connection-id",
+  providerConfig: {
     authConfigId: "config_id",
     accountId: "account_id"
   }
@@ -218,8 +218,8 @@ curl -X POST 'https://app.airweave.ai/source-connections' \
   -d '{
   "name": "Team Google Drive",
   "short_name": "google_drive",
-  "auth_provider": "composio-connection-id",
-  "auth_provider_config": {
+  "provider_readable_id": "composio-connection-id",
+  "provider_config": {
     "auth_config_id": "config_id",
     "account_id": "account_id"
   }

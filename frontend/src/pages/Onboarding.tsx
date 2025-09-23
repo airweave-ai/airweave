@@ -71,34 +71,71 @@ const SUBSCRIPTION_PLANS = [
   {
     value: 'developer',
     label: 'Developer',
-    price: '$89',
-    period: 'per month',
-    description: 'Perfect for small teams',
+    price: 'Free',
+    period: '',
+    description: 'Perfect for personal agents and side projects. No credit card required.',
     features: [
-      '14-day free trial',
       '10 source connections',
-      '100K entities/month',
-      'Hourly sync',
-      '5 team members',
+      '500 queries / mo',
+      '50K entities / mo',
+      '1 team member',
+      'Community support',
     ],
-    teamMemberLimit: 5,
-    recommended: true,
-    hasTrial: true,
+    teamMemberLimit: 1,
+    recommended: false,
+    hasTrial: false,
   },
   {
-    value: 'startup',
-    label: 'Startup',
-    price: '$299',
+    value: 'pro',
+    label: 'Pro',
+    price: '$20',
     period: 'per month',
-    description: 'For growing companies',
+    description: 'Take your agent to the next level',
     features: [
       '50 source connections',
-      '1M entities/month',
-      '15-min sync',
-      '20 team members',
-      'Priority support',
+      '2K queries / mo',
+      '100K entities / mo',
+      '2 team members',
+      'Email support',
     ],
-    teamMemberLimit: 20,
+    teamMemberLimit: 2,
+    recommended: true,
+    hasTrial: false,
+  },
+  {
+    value: 'team',
+    label: 'Team',
+    price: '$299',
+    period: 'per month',
+    description: 'For fast-moving teams that need scale and control',
+    features: [
+      '1000 source connections',
+      '10K queries / mo',
+      '1M entities synced / mo',
+      '10 team members',
+      'Dedicated Slack support',
+      'Dedicated onboarding',
+    ],
+    teamMemberLimit: 10,
+    recommended: false,
+    hasTrial: false,
+  },
+  {
+    value: 'enterprise',
+    label: 'Enterprise',
+    price: 'Custom',
+    period: '',
+    description: 'Tailored solutions for large organizations',
+    features: [
+      'Unlimited source connections',
+      'Custom usage limits',
+      'Tailored onboarding',
+      'Dedicated priority support',
+      'Custom integrations (Optional)',
+      'On-premise deployment (Optional)',
+      'SLAs (Optional)'
+    ],
+    teamMemberLimit: 1000,
     recommended: false,
     hasTrial: false,
   },
@@ -113,12 +150,13 @@ export const Onboarding = () => {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [hasOrganizations, setHasOrganizations] = useState(false);
+  const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
   const [formData, setFormData] = useState<OnboardingData>({
     organizationName: '',
     organizationSize: '',
     userRole: '',
     organizationType: '',
-    subscriptionPlan: 'developer', // Default to developer plan
+    subscriptionPlan: 'pro', // Default to pro plan
     teamEmails: [],
   });
 
@@ -279,9 +317,21 @@ export const Onboarding = () => {
         return;
       }
 
-      // Step 4: Try to create checkout session for production
+      // Step 4: Billing
       try {
-        const checkoutResponse = await apiClient.post('/billing/checkout-session', {
+        if (formData.subscriptionPlan === 'developer') {
+          // Free plan: backend already created $0 subscription; no checkout required
+          toast.success('Organization created successfully!');
+          navigate('/'); // TODO: is this redirection correct????
+          return;
+        }
+
+        const isEligibleForYearly = ['pro', 'team'].includes(formData.subscriptionPlan);
+        const endpoint = billingPeriod === 'yearly' && isEligibleForYearly
+          ? '/billing/yearly/checkout-session'
+          : '/billing/checkout-session';
+
+        const checkoutResponse = await apiClient.post(endpoint, {
           plan: formData.subscriptionPlan,
           success_url: `${window.location.origin}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${window.location.origin}/billing/cancel`,
@@ -668,11 +718,70 @@ export const Onboarding = () => {
               )}
             </div>
 
+            {/* Monthly/Yearly Toggle - Only show when auth is enabled */}
+            {authConfig.authEnabled && (
+              <div className="flex justify-center relative">
+                <div className="relative">
+                  <div className="relative inline-flex items-center p-1 bg-muted rounded-lg shadow-sm border">
+                    {/* Sliding background indicator - dynamically sized */}
+                    <div
+                      className={cn(
+                        'absolute top-1 h-[calc(100%-8px)] rounded-md bg-blue/20 shadow-sm transition-all duration-200',
+                        billingPeriod === 'monthly' ? 'left-1 w-[80px]' : 'left-[80px] w-[140px]'
+                      )}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setBillingPeriod('monthly')}
+                      className={cn(
+                        'relative z-10 px-4 py-2 text-sm rounded-md transition-all w-[80px]',
+                        billingPeriod === 'monthly'
+                          ? 'text-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      Monthly
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBillingPeriod('yearly')}
+                      className={cn(
+                        'relative z-10 px-4 py-2 text-sm rounded-md transition-all flex items-center gap-2 w-[140px] justify-center',
+                        billingPeriod === 'yearly'
+                          ? 'text-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      Yearly
+                      <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                        Save 20%
+                      </span>
+                    </button>
+                  </div>
+                  {/* Absolute positioned message - doesn't affect layout */}
+                  <div className={cn(
+                    "absolute top-full mt-1 left-1/2 -translate-x-1/2 transition-opacity duration-200",
+                    billingPeriod === 'yearly' ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                  )}>
+                    <p className="text-xs text-muted-foreground text-center whitespace-nowrap">
+                      After 12 months, your plan will renew at monthly rates. You can re-enable yearly billing anytime to keep the discount.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="grid gap-4">
               {SUBSCRIPTION_PLANS.map((plan) => (
                 <button
                   key={plan.value}
-                  onClick={() => handleSelection('subscriptionPlan', plan.value)}
+                  onClick={() => {
+                    if (plan.value === 'enterprise') {
+                      window.open('https://cal.com/lennert-airweave/airweave-demo', '_blank', 'noopener,noreferrer');
+                      return;
+                    }
+                    handleSelection('subscriptionPlan', plan.value);
+                  }}
                   className={cn(
                     "relative p-6 rounded-lg border text-left transition-all",
                     "hover:border-primary/50",
@@ -685,23 +794,27 @@ export const Onboarding = () => {
                     <div>
                       <div className="flex items-center gap-2 mb-1">
                         <h3 className="font-medium text-lg">{plan.label}</h3>
-                        {plan.hasTrial && (
-                          <span className="text-xs bg-green-500/10 text-green-600 dark:text-green-400 px-2 py-0.5 rounded-full">
-                            14-day free trial
-                          </span>
-                        )}
+                        {/* Trials disabled */}
                       </div>
                       <p className="text-sm text-muted-foreground">{plan.description}</p>
                     </div>
                     <div className="text-right">
                       <div className="text-2xl font-light">
-                        {!authConfig.authEnabled ? 'Free' : plan.price}
+                        {!authConfig.authEnabled ? 'Free' : (
+                          billingPeriod === 'yearly' && (plan.value === 'pro' || plan.value === 'team')
+                            ? (plan.value === 'pro' ? '$16' : '$239')
+                            : plan.price
+                        )}
                       </div>
                       {plan.period && !authConfig.authEnabled && (
                         <div className="text-xs text-muted-foreground">local dev</div>
                       )}
                       {plan.period && authConfig.authEnabled && (
-                        <div className="text-xs text-muted-foreground">{plan.period}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {billingPeriod === 'yearly' && (plan.value === 'pro' || plan.value === 'team')
+                            ? 'per month (billed yearly)'
+                            : plan.period}
+                        </div>
                       )}
                       {plan.recommended && (
                         <div className="text-xs text-primary mt-1">
@@ -722,6 +835,8 @@ export const Onboarding = () => {
                 </button>
               ))}
             </div>
+
+            {/* Enterprise now included as a plan card above */}
           </div>
         );
 

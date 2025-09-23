@@ -1,0 +1,422 @@
+globs: **/billing/**,**/integrations/stripe_client.py,**/api/**/endpoints/billing.py,**/schemas/**billing*.py,**/schemas/billing_period.py,**/schemas/usage.py,**/models/**billing*.py,**/frontend/src/pages/Onboarding.tsx,**/frontend/src/components/**/Billing*.tsx
+alwaysApply: false
+---
+## Airweave Stripe Billing Rules
+
+### Overview
+Airweave supports two ways to pay for subscription plans while always metering usage monthly:
+- Monthly subscription (normal Stripe subscription, monthly billing)
+- Yearly prepay with monthly usage (customer prepays a discounted annual amount, we apply a 20% coupon for 12 months, draw down from Stripe customer balance monthly; after 12 months, coupon expires and subscription defaults to standard monthly pricing of the same plan)
+
+Plans: `developer` (free, $0 subscription), `pro`, `team`, `enterprise` (handled outside Stripe). Only `pro` and `team` support yearly prepay.
+
+Key principles:
+- Upgrades apply immediately with proration (never wait), so customers can use higher limits right away
+- Downgrades are scheduled at the end of the billing period (monthly or yearly if on yearly prepay)
+- Yearly prepay is implemented via one-time payment → credit balance + 20% coupon for 12 months → normal monthly after expiry
+
+
+### Architecture
+- API endpoints: `airweave/api/v1/endpoints/billing.py`
+- Service orchestrator: `airweave/billing/service.py`
+- Business rules: `airweave/billing/plan_logic.py`
+- DB transactions (periods/usage/records): `airweave/billing/transactions.py`
+- Stripe client (SDK wrapper): `airweave/integrations/stripe_client.py`
+- Webhook processor: `airweave/billing/webhook_handler.py`
+- Frontend flows: `frontend/src/pages/Onboarding.tsx`, `frontend/src/components/settings/BillingSettings.tsx`
+
+Data model highlights:
+- Organization billing state stored in `OrganizationBilling` with fields like `billing_plan`, `stripe_customer_id`, `stripe_subscription_id`, `has_yearly_prepay`, `pending_plan_change`, `current_period_start/end`, etc.
+- Billing periods tracked in `BillingPeriod` with status transitions (ACTIVE → COMPLETED, GRACE, ENDED_UNPAID) and associated `Usage` rows.
+
+
+### Endpoints
+- POST `/billing/checkout-session` → Monthly subscription checkout (Stripe Subscription mode). Requires plan and success/cancel URLs.
+- POST `/billing/yearly/checkout-session` → Yearly prepay checkout (Stripe Payment mode). Creates a one-time checkout for the full-year prepaid amount, records intent, and a 12-month 20% coupon to be applied post-payment.
+- POST `/billing/update-plan` → Update plan and optionally the period (`monthly`|`yearly`). Business rules ensure upgrades are immediate and downgrades are scheduled.
+- GET `/billing/subscription` → Returns `SubscriptionInfo`: plan, status, period boundaries, limits, yearly flags, pending plan changes, etc.
+- POST `/billing/cancel` → Cancel at period end.
+- POST `/billing/reactivate` → Clear cancellation.
+- POST `/billing/cancel-plan-change` → Clear a scheduled plan change.
+- POST `/billing/portal-session` → Stripe Customer Portal session.
+- POST `/billing/webhook` → Stripe webhook receiver (signature-verified).
+
+Auth/Context: All endpoints use `ApiContext` (org-scoped, from `api/deps.py`).
+
+
+### Monthly vs Yearly Prepay
+Monthly:
+- Standard Stripe subscription with the plan’s monthly price
+- On upgrades: switch price immediately with proration; on downgrades: schedule price change for period end
+
+Yearly Prepay:
+- One-time payment for 12 months at 20% discount
+- We create/get a 20% coupon (12 months, repeating) and apply it to the subscription
+- We credit the customer balance by the prepaid amount; monthly invoices draw from this credit
+- After 12 months: coupon expires and plan continues as standard monthly at regular price (no coupon). DB yearly flags are cleared on/after renewal following expiry
+
+Amounts (cents):
+- PRO yearly prepay: `12 * $20.00 * 0.8 = 19200`
+- TEAM yearly prepay: `12 * $299.00 * 0.8 = 287040`
+
+
+### Core Business Rules
+Defined in `plan_logic.py` and enforced by `service.py`:
+
+- Change type: `UPGRADE` (immediate), `DOWNGRADE` (scheduled), `SAME`, `REACTIVATION`
+- Payment method required to move into paid plans; otherwise return a message instructing to use checkout
+- On monthly:
+  - Upgrade: immediate subscription update (proration on Stripe)
+  - Downgrade: schedule by setting `pending_plan_change` and effective date at current period end
+- On yearly prepay:
+  - Upgrades within yearly prepay: immediate price update; coupon retained or updated as needed, and additional credit may be added for plan upgrades to next yearly tier
+  - Downgrades while yearly prepay is active: schedule for yearly expiry (`pending_plan_change` at `yearly_prepay_expires_at`)
+  - Switching from yearly → monthly of same plan: automatic at yearly expiry (we surface as pending change for UI)
+  - Switching from yearly → higher monthly (e.g., pro yearly → team monthly): remove discount and update price immediately
+  - Disallowed: direct cross-year downgrades (e.g., team yearly → pro yearly). UX hints recommend first landing on monthly at expiry, then switching to yearly
+
+
+### Orchestration Flows
+
+Organization creation:
+- Backend creates `OrganizationBilling` and, for `developer`, a $0 Stripe subscription so that billing periods/usage can be driven by webhooks
+
+Monthly upgrade/downgrade (`/billing/update-plan`):
+- Build `PlanChangeContext` and compute `PlanChangeDecision`
+- If requires checkout (no payment method for paid plan), return error
+- If immediate: update subscription price (`proration_behavior=create_prorations`), clear cancellation/pending as needed; create a new BillingPeriod for upgrades
+- If scheduled: update subscription to target price without proration, set `pending_plan_change` and effective date at current period end
+
+Yearly prepay start (`/billing/yearly/checkout-session`):
+- Pre-compute amount and create/get 20% coupon (idempotent by org+plan)
+- Create a Payment-mode checkout session for the annual amount
+- Record prepay intent in DB (amount, expected expiry ≈ +365d, coupon id, payment_intent id)
+- Webhook (`checkout.session.completed`) finalizes: credit balance, create or update subscription, apply coupon, set default payment method, set `has_yearly_prepay=true`, set `yearly_prepay_expires_at`, and ensure BillingPeriod continuity
+
+Yearly updates (`/billing/update-plan` with `period=yearly`):
+- Only `pro` and `team` supported
+- Disallow direct yearly downgrades across plans (e.g., team → pro yearly)
+- Require payment method
+- Apply yearly helper to update price (if plan changed), ensure coupon, compute/credit differences, and set yearly window in DB; create a new BillingPeriod (upgrade)
+
+Yearly → Monthly in presence of yearly prepay:
+- Upgrade path (e.g., pro yearly → team monthly): remove discount, update price immediately, clear yearly flags, create a new monthly BillingPeriod
+- Downgrade path (e.g., team yearly → developer): schedule pending change at `yearly_prepay_expires_at`
+
+
+### Webhook Processing
+Handled by `BillingWebhookProcessor`:
+- `customer.subscription.created`: set subscription id, plan, payment method flags, current period boundaries, create initial BillingPeriod
+- `customer.subscription.updated`: infer plan at renewals or item changes; on renewal after yearly expiry, clear yearly flags; if pending change window reached, switch price (best-effort with Stripe, DB remains source of truth on known test-clock limitations) and create new BillingPeriod as needed
+- `customer.subscription.deleted`: if canceled immediately, complete the current period and clear subscription fields; if only scheduled, set `cancel_at_period_end`
+- `invoice.payment_succeeded|paid`: mark payment status; stamp invoice details on current BillingPeriod when applicable
+- `invoice.payment_failed`: move to grace period (`+7d`, create GRACE BillingPeriod), status `PAST_DUE`
+- `checkout.session.completed` (mode=payment): finalize yearly prepay (credit, coupon, create/update subscription, set payment method, set yearly fields)
+
+Signature Verification: Webhooks verified via `stripe_client.verify_webhook_signature` using `STRIPE_WEBHOOK_SECRET`.
+
+
+### Upgrade/Downgrade Decision Map
+General rules (front+back coordinated):
+- Upgrades: immediate
+- Downgrades: scheduled at period end (monthly or yearly expiry)
+- Direct “cross-year” downgrades like team yearly → pro yearly are disallowed; UI surfaces guidance
+
+Examples the system supports today:
+- developer → pro monthly: checkout if no PM; otherwise immediate update
+- developer → pro yearly: checkout if no PM; finalize yearly (credit+coupon)
+- developer → team monthly: checkout if no PM; immediate update
+- developer → team yearly: checkout if no PM; finalize yearly (credit+coupon)
+- pro monthly → pro yearly: keep subscription; add credit; apply 20% coupon
+- pro monthly → team monthly: immediate price update
+- pro monthly → team yearly: immediate update + add credit + apply coupon
+- pro yearly → team monthly: remove discount, immediate price update; yearly flags cleared
+- pro yearly → team yearly: add credit difference, immediate update; coupon remains active
+- team monthly → team yearly: keep subscription; add credit; apply coupon
+- team monthly → pro monthly/developer: schedule at month end
+- team yearly → team monthly: automatic at yearly expiry (we surface pending change for UX)
+- team yearly → pro monthly/developer: schedule for yearly expiry
+
+
+### Frontend Integration
+Onboarding (`Onboarding.tsx`):
+- After creating an organization, if plan is developer → go to dashboard (backend auto-creates $0 sub)
+- For paid plans: choose Monthly/Yearly; monthly calls `/billing/checkout-session`; yearly calls `/billing/yearly/checkout-session`; redirect to Stripe checkout
+
+Settings (`BillingSettings.tsx`):
+- Fetch `/billing/subscription` to render plan, status, period info, yearly flags, and pending changes
+- Upgrade flow:
+  - Paid plans without PM → create checkout session and redirect
+  - With PM → call `/billing/update-plan` with `period`
+  - Disallowed cross-year paths surface informative toasts (e.g., team monthly → pro yearly)
+- Manage billing → `/billing/portal-session`
+- Cancel/Reactivate → `/billing/cancel`, `/billing/reactivate`
+- Cancel pending change → `/billing/cancel-plan-change`
+
+
+### Limits by Plan (enforced server-side)
+From `plan_logic.PLAN_LIMITS`:
+- developer: 50K entities, 500 queries, 10 source connections, 1 team member
+- pro: 100K entities, 2K queries, 50 source connections, 2 team members
+- team: 1M entities, 10K queries, 1000 source connections, 10 team members
+- enterprise: unlimited (out of scope for Stripe integration)
+
+
+### Operational Notes
+- Environment flags/variables in `core/config.py` determine if Stripe is enabled and which Price IDs to use (`STRIPE_*_MONTHLY`). When `STRIPE_ENABLED=false`, billing endpoints return appropriate errors and UI gracefully bypasses checkout
+- Yearly coupon: repeating duration for 12 months, 20% off; created/searchable by idempotency metadata key
+- Customer credit is applied as a negative balance transaction equal to the yearly prepay amount (or delta for upgrades)
+- BillingPeriod creation ensures continuity, completing prior periods when overlaps would occur (especially under Stripe test clocks)
+- Known Stripe test clock limitations: Price updates during renewal can fail; we still update DB to reflect intended state, and the system converges on the next cycle
+
+
+### Extensibility Checklist
+To add or adjust plan transitions:
+1) Update `stripe_client.price_ids` and environment variables for new prices
+2) Adjust `plan_logic` if plan ranks/limits change
+3) Ensure `service.update_subscription_plan` covers the new transition rules (monthly vs yearly, checkout requirements, coupon/credit ops)
+4) Ensure webhooks infer plan correctly and create periods as needed
+5) Update frontend guards/messages in `BillingSettings.tsx` if a path should be disallowed or guided
+
+
+### Quick API Usage Examples
+Create monthly checkout session:
+```http
+POST /billing/checkout-session
+{
+  "plan": "pro",
+  "success_url": "https://app/organization/settings?tab=billing&success=true",
+  "cancel_url": "https://app/organization/settings?tab=billing"
+}
+```
+
+Create yearly prepay checkout session:
+```http
+POST /billing/yearly/checkout-session
+{
+  "plan": "pro",
+  "success_url": "https://app/organization/settings?tab=billing&success=true",
+  "cancel_url": "https://app/organization/settings?tab=billing"
+}
+```
+
+Update plan/period:
+```http
+POST /billing/update-plan
+{ "plan": "team", "period": "yearly" }
+```
+
+Get subscription:
+```http
+GET /billing/subscription
+```
+
+## Airweave Stripe Billing Rules
+
+### Overview
+Airweave supports two ways to pay for subscription plans while always metering usage monthly:
+- Monthly subscription (normal Stripe subscription, monthly billing)
+- Yearly prepay with monthly usage (customer prepays a discounted annual amount, we apply a 20% coupon for 12 months, draw down from Stripe customer balance monthly; after 12 months, coupon expires and subscription defaults to standard monthly pricing of the same plan)
+
+Plans: `developer` (free, $0 subscription), `pro`, `team`, `enterprise` (handled outside Stripe). Only `pro` and `team` support yearly prepay.
+
+Key principles:
+- Upgrades apply immediately with proration (never wait), so customers can use higher limits right away
+- Downgrades are scheduled at the end of the billing period (monthly or yearly if on yearly prepay)
+- Yearly prepay is implemented via one-time payment → credit balance + 20% coupon for 12 months → normal monthly after expiry
+
+
+### Architecture
+- API endpoints: `airweave/api/v1/endpoints/billing.py`
+- Service orchestrator: `airweave/billing/service.py`
+- Business rules: `airweave/billing/plan_logic.py`
+- DB transactions (periods/usage/records): `airweave/billing/transactions.py`
+- Stripe client (SDK wrapper): `airweave/integrations/stripe_client.py`
+- Webhook processor: `airweave/billing/webhook_handler.py`
+- Frontend flows: `frontend/src/pages/Onboarding.tsx`, `frontend/src/components/settings/BillingSettings.tsx`
+
+Data model highlights:
+- Organization billing state stored in `OrganizationBilling` with fields like `billing_plan`, `stripe_customer_id`, `stripe_subscription_id`, `has_yearly_prepay`, `pending_plan_change`, `current_period_start/end`, etc.
+- Billing periods tracked in `BillingPeriod` with status transitions (ACTIVE → COMPLETED, GRACE, ENDED_UNPAID) and associated `Usage` rows.
+
+
+### Endpoints
+- POST `/billing/checkout-session` → Monthly subscription checkout (Stripe Subscription mode). Requires plan and success/cancel URLs.
+- POST `/billing/yearly/checkout-session` → Yearly prepay checkout (Stripe Payment mode). Creates a one-time checkout for the full-year prepaid amount, records intent, and a 12-month 20% coupon to be applied post-payment.
+- POST `/billing/update-plan` → Update plan and optionally the period (`monthly`|`yearly`). Business rules ensure upgrades are immediate and downgrades are scheduled.
+- GET `/billing/subscription` → Returns `SubscriptionInfo`: plan, status, period boundaries, limits, yearly flags, pending plan changes, etc.
+- POST `/billing/cancel` → Cancel at period end.
+- POST `/billing/reactivate` → Clear cancellation.
+- POST `/billing/cancel-plan-change` → Clear a scheduled plan change.
+- POST `/billing/portal-session` → Stripe Customer Portal session.
+- POST `/billing/webhook` → Stripe webhook receiver (signature-verified).
+
+Auth/Context: All endpoints use `ApiContext` (org-scoped, from `api/deps.py`).
+
+
+### Monthly vs Yearly Prepay
+Monthly:
+- Standard Stripe subscription with the plan’s monthly price
+- On upgrades: switch price immediately with proration; on downgrades: schedule price change for period end
+
+Yearly Prepay:
+- One-time payment for 12 months at 20% discount
+- We create/get a 20% coupon (12 months, repeating) and apply it to the subscription
+- We credit the customer balance by the prepaid amount; monthly invoices draw from this credit
+- After 12 months: coupon expires and plan continues as standard monthly at regular price (no coupon). DB yearly flags are cleared on/after renewal following expiry
+
+Amounts (cents):
+- PRO yearly prepay: `12 * $20.00 * 0.8 = 19200`
+- TEAM yearly prepay: `12 * $299.00 * 0.8 = 287040`
+
+
+### Core Business Rules
+Defined in `plan_logic.py` and enforced by `service.py`:
+
+- Change type: `UPGRADE` (immediate), `DOWNGRADE` (scheduled), `SAME`, `REACTIVATION`
+- Payment method required to move into paid plans; otherwise return a message instructing to use checkout
+- On monthly:
+  - Upgrade: immediate subscription update (proration on Stripe)
+  - Downgrade: schedule by setting `pending_plan_change` and effective date at current period end
+- On yearly prepay:
+  - Upgrades within yearly prepay: immediate price update; coupon retained or updated as needed, and additional credit may be added for plan upgrades to next yearly tier
+  - Downgrades while yearly prepay is active: schedule for yearly expiry (`pending_plan_change` at `yearly_prepay_expires_at`)
+  - Switching from yearly → monthly of same plan: automatic at yearly expiry (we surface as pending change for UI)
+  - Switching from yearly → higher monthly (e.g., pro yearly → team monthly): remove discount and update price immediately
+  - Disallowed: direct cross-year downgrades (e.g., team yearly → pro yearly). UX hints recommend first landing on monthly at expiry, then switching to yearly
+
+
+### Orchestration Flows
+
+Organization creation:
+- Backend creates `OrganizationBilling` and, for `developer`, a $0 Stripe subscription so that billing periods/usage can be driven by webhooks
+
+Monthly upgrade/downgrade (`/billing/update-plan`):
+- Build `PlanChangeContext` and compute `PlanChangeDecision`
+- If requires checkout (no payment method for paid plan), return error
+- If immediate: update subscription price (`proration_behavior=create_prorations`), clear cancellation/pending as needed; create a new BillingPeriod for upgrades
+- If scheduled: update subscription to target price without proration, set `pending_plan_change` and effective date at current period end
+
+Yearly prepay start (`/billing/yearly/checkout-session`):
+- Pre-compute amount and create/get 20% coupon (idempotent by org+plan)
+- Create a Payment-mode checkout session for the annual amount
+- Record prepay intent in DB (amount, expected expiry ≈ +365d, coupon id, payment_intent id)
+- Webhook (`checkout.session.completed`) finalizes: credit balance, create or update subscription, apply coupon, set default payment method, set `has_yearly_prepay=true`, set `yearly_prepay_expires_at`, and ensure BillingPeriod continuity
+
+Yearly updates (`/billing/update-plan` with `period=yearly`):
+- Only `pro` and `team` supported
+- Disallow direct yearly downgrades across plans (e.g., team → pro yearly)
+- Require payment method
+- Apply yearly helper to update price (if plan changed), ensure coupon, compute/credit differences, and set yearly window in DB; create a new BillingPeriod (upgrade)
+
+Yearly → Monthly in presence of yearly prepay:
+- Upgrade path (e.g., pro yearly → team monthly): remove discount, update price immediately, clear yearly flags, create a new monthly BillingPeriod
+- Downgrade path (e.g., team yearly → developer): schedule pending change at `yearly_prepay_expires_at`
+
+
+### Webhook Processing
+Handled by `BillingWebhookProcessor`:
+- `customer.subscription.created`: set subscription id, plan, payment method flags, current period boundaries, create initial BillingPeriod
+- `customer.subscription.updated`: infer plan at renewals or item changes; on renewal after yearly expiry, clear yearly flags; if pending change window reached, switch price (best-effort with Stripe, DB remains source of truth on known test-clock limitations) and create new BillingPeriod as needed
+- `customer.subscription.deleted`: if canceled immediately, complete the current period and clear subscription fields; if only scheduled, set `cancel_at_period_end`
+- `invoice.payment_succeeded|paid`: mark payment status; stamp invoice details on current BillingPeriod when applicable
+- `invoice.payment_failed`: move to grace period (`+7d`, create GRACE BillingPeriod), status `PAST_DUE`
+- `checkout.session.completed` (mode=payment): finalize yearly prepay (credit, coupon, create/update subscription, set payment method, set yearly fields)
+
+Signature Verification: Webhooks verified via `stripe_client.verify_webhook_signature` using `STRIPE_WEBHOOK_SECRET`.
+
+
+### Upgrade/Downgrade Decision Map
+General rules (front+back coordinated):
+- Upgrades: immediate
+- Downgrades: scheduled at period end (monthly or yearly expiry)
+- Direct “cross-year” downgrades like team yearly → pro yearly are disallowed; UI surfaces guidance
+
+Examples the system supports today:
+- developer → pro monthly: checkout if no PM; otherwise immediate update
+- developer → pro yearly: checkout if no PM; finalize yearly (credit+coupon)
+- developer → team monthly: checkout if no PM; immediate update
+- developer → team yearly: checkout if no PM; finalize yearly (credit+coupon)
+- pro monthly → pro yearly: keep subscription; add credit; apply 20% coupon
+- pro monthly → team monthly: immediate price update
+- pro monthly → team yearly: immediate update + add credit + apply coupon
+- pro yearly → team monthly: remove discount, immediate price update; yearly flags cleared
+- pro yearly → team yearly: add credit difference, immediate update; coupon remains active
+- team monthly → team yearly: keep subscription; add credit; apply coupon
+- team monthly → pro monthly/developer: schedule at month end
+- team yearly → team monthly: automatic at yearly expiry (we surface pending change for UX)
+- team yearly → pro monthly/developer: schedule for yearly expiry
+
+
+### Frontend Integration
+Onboarding (`Onboarding.tsx`):
+- After creating an organization, if plan is developer → go to dashboard (backend auto-creates $0 sub)
+- For paid plans: choose Monthly/Yearly; monthly calls `/billing/checkout-session`; yearly calls `/billing/yearly/checkout-session`; redirect to Stripe checkout
+
+Settings (`BillingSettings.tsx`):
+- Fetch `/billing/subscription` to render plan, status, period info, yearly flags, and pending changes
+- Upgrade flow:
+  - Paid plans without PM → create checkout session and redirect
+  - With PM → call `/billing/update-plan` with `period`
+  - Disallowed cross-year paths surface informative toasts (e.g., team monthly → pro yearly)
+- Manage billing → `/billing/portal-session`
+- Cancel/Reactivate → `/billing/cancel`, `/billing/reactivate`
+- Cancel pending change → `/billing/cancel-plan-change`
+
+
+### Limits by Plan (enforced server-side)
+From `plan_logic.PLAN_LIMITS`:
+- developer: 50K entities, 500 queries, 10 source connections, 1 team member
+- pro: 100K entities, 2K queries, 50 source connections, 2 team members
+- team: 1M entities, 10K queries, 1000 source connections, 10 team members
+- enterprise: unlimited (out of scope for Stripe integration)
+
+
+### Operational Notes
+- Environment flags/variables in `core/config.py` determine if Stripe is enabled and which Price IDs to use (`STRIPE_*_MONTHLY`). When `STRIPE_ENABLED=false`, billing endpoints return appropriate errors and UI gracefully bypasses checkout
+- Yearly coupon: repeating duration for 12 months, 20% off; created/searchable by idempotency metadata key
+- Customer credit is applied as a negative balance transaction equal to the yearly prepay amount (or delta for upgrades)
+- BillingPeriod creation ensures continuity, completing prior periods when overlaps would occur (especially under Stripe test clocks)
+- Known Stripe test clock limitations: Price updates during renewal can fail; we still update DB to reflect intended state, and the system converges on the next cycle
+
+
+### Extensibility Checklist
+To add or adjust plan transitions:
+1) Update `stripe_client.price_ids` and environment variables for new prices
+2) Adjust `plan_logic` if plan ranks/limits change
+3) Ensure `service.update_subscription_plan` covers the new transition rules (monthly vs yearly, checkout requirements, coupon/credit ops)
+4) Ensure webhooks infer plan correctly and create periods as needed
+5) Update frontend guards/messages in `BillingSettings.tsx` if a path should be disallowed or guided
+
+
+### Quick API Usage Examples
+Create monthly checkout session:
+```http
+POST /billing/checkout-session
+{
+  "plan": "pro",
+  "success_url": "https://app/organization/settings?tab=billing&success=true",
+  "cancel_url": "https://app/organization/settings?tab=billing"
+}
+```
+
+Create yearly prepay checkout session:
+```http
+POST /billing/yearly/checkout-session
+{
+  "plan": "pro",
+  "success_url": "https://app/organization/settings?tab=billing&success=true",
+  "cancel_url": "https://app/organization/settings?tab=billing"
+}
+```
+
+Update plan/period:
+```http
+POST /billing/update-plan
+{ "plan": "team", "period": "yearly" }
+```
+
+Get subscription:
+```http
+GET /billing/subscription
+```

@@ -55,6 +55,10 @@ class Settings(BaseSettings):
         WEB_FETCHER_MAX_CONCURRENT (int): Max concurrent web scraping requests
         OPENAI_MAX_CONCURRENT (int): Max concurrent OpenAI API requests
         CTTI_MAX_CONCURRENT (int): Max concurrent CTTI (ClinicalTrials.gov) requests
+        STRIPE_DEVELOPER_MONTHLY: str = ""
+        STRIPE_PRO_MONTHLY: str = ""
+        STRIPE_TEAM_MONTHLY: str = ""
+        STRIPE_ENTERPRISE_MONTHLY: str = ""
 
         # Custom deployment URLs
         API_FULL_URL (Optional[str]): The full URL for the API.
@@ -133,8 +137,14 @@ class Settings(BaseSettings):
     STRIPE_ENABLED: bool = False
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
-    STRIPE_DEVELOPER_PRICE_ID: str = ""
-    STRIPE_STARTUP_PRICE_ID: str = ""
+
+    STRIPE_DEVELOPER_MONTHLY: str = ""
+    STRIPE_PRO_MONTHLY: str = ""
+    STRIPE_PRO_YEARLY: str = ""
+    STRIPE_TEAM_MONTHLY: str = ""
+    STRIPE_TEAM_YEARLY: str = ""
+    STRIPE_ENTERPRISE_MONTHLY: str = ""
+    STRIPE_YEARLY_DISCOUNT_COUPON_ID: str = ""
 
     # Email settings - only for production Airweave instance
     RESEND_API_KEY: Optional[str] = None
@@ -230,8 +240,9 @@ class Settings(BaseSettings):
     @field_validator(
         "STRIPE_SECRET_KEY",
         "STRIPE_WEBHOOK_SECRET",
-        "STRIPE_DEVELOPER_PRICE_ID",
-        "STRIPE_STARTUP_PRICE_ID",
+        "STRIPE_DEVELOPER_MONTHLY",
+        "STRIPE_PRO_MONTHLY",
+        "STRIPE_TEAM_MONTHLY",
         mode="before",
     )
     def validate_stripe_settings(cls, v: str, info: ValidationInfo) -> str:

@@ -38,7 +38,12 @@ import {
   Slack,
   CalendarDays,
   Receipt,
-  HelpCircle
+  HelpCircle,
+  Settings,
+  UserCheck,
+  Puzzle,
+  Server,
+  Shield
 } from 'lucide-react';
 import { apiClient } from '@/lib/api';
 import { toast } from 'sonner';
@@ -52,6 +57,10 @@ interface SubscriptionInfo {
   current_period_start?: string;
   current_period_end?: string;
   cancel_at_period_end: boolean;
+  payment_method_added?: boolean;
+  has_yearly_prepay?: boolean;
+  yearly_prepay_started_at?: string;
+  yearly_prepay_expires_at?: string;
   limits: {
     source_connections: number;
     entities_per_month: number;
@@ -72,38 +81,53 @@ interface BillingSettingsProps {
 const plans = {
   developer: {
     name: 'Developer',
-    price: 89,
-    description: 'Perfect for small teams and projects',
+    price: 'Free',
+    description: 'Perfect for personal agents and side projects.',
     features: [
       { icon: Database, label: '10 source connections' },
-      { icon: Zap, label: '100K entities/month' },
-      { icon: RefreshCw, label: 'Hourly sync' },
-      { icon: Users, label: '5 team members' },
+      { icon: Zap, label: '500 queries / month' },
+      { icon: Zap, label: '50K entities synced / month' },
+      { icon: Users, label: '1 team member' },
       { icon: MessageCircle, label: 'Community support' }
     ]
   },
-  startup: {
-    name: 'Startup',
-    price: 299,
-    description: 'For growing teams with higher demands',
+  pro: {
+    name: 'Pro',
+    price: 20,
+    description: 'Take your agent to the next level.',
     features: [
       { icon: Database, label: '50 source connections' },
-      { icon: Zap, label: '1M entities/month' },
-      { icon: RefreshCw, label: '15-min sync' },
-      { icon: Users, label: '20 team members' },
-      { icon: MessageCircle, label: 'Community support' }
+      { icon: Zap, label: '2K queries / month' },
+      { icon: Zap, label: '100K entities synced / month' },
+      { icon: Users, label: '2 team members' },
+      { icon: MessageCircle, label: 'Email support' }
+    ]
+  },
+  team: {
+    name: 'Team',
+    price: 299,
+    description: 'For fast-moving teams that need scale and control.',
+    features: [
+      { icon: Database, label: '1000 source connections' },
+      { icon: Zap, label: '10K queries / month' },
+      { icon: Zap, label: '1M entities synced / month' },
+      { icon: Users, label: '10 team members' },
+      { icon: MessageCircle, label: 'Dedicated Slack support' },
+      { icon: MessageCircle, label: 'Dedicated onboarding' }
     ]
   },
   enterprise: {
     name: 'Enterprise',
-    price: 'Custom',
-    description: 'Tailored solutions for large organizations',
+    price: 'Custom Pricing',
+    description: 'Tailored solutions for large organizations.',
     features: [
-      { icon: Database, label: 'Unlimited connections' },
-      { icon: Zap, label: 'Unlimited entities' },
-      { icon: RefreshCw, label: 'Instant sync' },
-      { icon: Users, label: 'Unlimited team' },
-      { icon: Slack, label: 'Slack channel support' }
+      { icon: Database, label: 'Unlimited source connections' },
+      { icon: Settings, label: 'Custom usage limits' },
+      { icon: UserCheck, label: 'Tailored onboarding' },
+      { icon: Headphones, label: 'Dedicated priority support' },
+      { icon: Puzzle, label: 'Custom integrations (Optional)' },
+      { icon: Server, label: 'On-premise deployment (Optional)' },
+      { icon: Shield, label: 'SLAs (Optional)' }
     ]
   }
 };
@@ -117,6 +141,7 @@ export const BillingSettings = ({ organizationId }: BillingSettingsProps) => {
   const [isCancelLoading, setIsCancelLoading] = useState(false);
   const [isReactivateLoading, setIsReactivateLoading] = useState(false);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
 
   useEffect(() => {
     fetchSubscription();
@@ -148,37 +173,114 @@ export const BillingSettings = ({ organizationId }: BillingSettingsProps) => {
     }
   };
 
-  const handleUpgrade = async (plan: 'developer' | 'startup') => {
+  const handleUpgrade = async (plan: 'developer' | 'pro' | 'team') => {
     try {
       setIsCheckoutLoading(true);
 
-      if (subscription?.has_active_subscription && subscription.plan !== 'trial') {
-        const response = await apiClient.post('/billing/update-plan', { plan });
+      const isTargetPaid = plan === 'pro' || plan === 'team';
+      const targetPeriod: 'monthly' | 'yearly' = isTargetPaid ? billingPeriod : 'monthly';
+      const isCurrentPlan = plan === subscription?.plan;
+      const isPeriodChangeOnly = isCurrentPlan && targetPeriod !== (subscription?.has_yearly_prepay ? 'yearly' : 'monthly');
+      const needsCheckoutForPaid = isTargetPaid && !subscription?.payment_method_added;
 
+      // Unsupported cross paths messaging (frontend UX only)
+      if (targetPeriod === 'yearly' && !isCurrentPlan) {
+        // team monthly -> pro yearly is not allowed directly
+        if (subscription?.plan === 'team' && plan === 'pro' && !subscription?.has_yearly_prepay) {
+          toast.info(
+            'To get Pro yearly: Switch to Pro monthly now. After your current Team billing period ends, you can upgrade to Pro yearly with the 20% discount.',
+            { duration: 7000 }
+          );
+          return;
+        }
+        // team yearly -> pro yearly: suggest the fair path
+        if (subscription?.plan === 'team' && subscription?.has_yearly_prepay && plan === 'pro') {
+          toast.info(
+            'To switch to Pro yearly: Schedule a downgrade to Pro monthly now. When your Team yearly ends, you can then upgrade to Pro yearly with the 20% discount.',
+            { duration: 7000 }
+          );
+          return;
+        }
+      }
+
+      if (!isTargetPaid) {
+        // Developer (always monthly)
+        const response = await apiClient.post('/billing/update-plan', { plan: 'developer', period: 'monthly' });
         if (response.ok) {
           const data = await response.json();
-          if (data.message && data.message.includes('checkout at:')) {
-            const urlMatch = data.message.match(/checkout at: (.+)$/);
-            if (urlMatch && urlMatch[1]) {
-              window.location.href = urlMatch[1];
-            } else {
-              throw new Error('Failed to get checkout URL');
-            }
-          } else {
-            toast.success(data.message);
+          toast.success(data.message || 'Switched to Developer plan');
+          await fetchSubscription();
+        } else {
+          const error = await response.json().catch(() => ({}));
+          throw new Error(error.detail || 'Failed to switch to Developer plan');
+        }
+        return;
+      }
+
+      if (targetPeriod === 'yearly') {
+        // For same-plan period changes (e.g., Team monthly → Team yearly), always use update-plan if payment method exists
+        // For plan changes to yearly, use checkout if no payment method
+        if (isPeriodChangeOnly && subscription?.payment_method_added) {
+          // Same plan, just changing period - use update endpoint
+          const response = await apiClient.post('/billing/update-plan', { plan, period: 'yearly' });
+          if (response.ok) {
+            const data = await response.json();
+            toast.success(data.message || 'Switched to yearly billing');
             await fetchSubscription();
+          } else {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.detail || 'Failed to switch to yearly billing');
           }
+          return;
+        }
+
+        // No payment method → use checkout
+        if (!subscription?.payment_method_added) {
+          const response = await apiClient.post('/billing/yearly/checkout-session', {
+            plan,
+            success_url: `${window.location.origin}/organization/settings?tab=billing&success=true`,
+            cancel_url: `${window.location.origin}/organization/settings?tab=billing`
+          });
+          if (response.ok) {
+            const { checkout_url } = await response.json();
+            window.location.href = checkout_url;
+          } else {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.detail || 'Failed to create yearly checkout session');
+          }
+          return;
+        }
+
+        // Has PM and upgrading to different yearly plan → backend handles coupon+credit
+        const response = await apiClient.post('/billing/update-plan', { plan, period: 'yearly' });
+        if (response.ok) {
+          const data = await response.json();
+          toast.success(data.message || 'Subscription updated');
+          await fetchSubscription();
+        } else {
+          const error = await response.json().catch(() => ({}));
+          throw new Error(error.detail || 'Failed to update to yearly plan');
+        }
+        return;
+      }
+
+      // Monthly path
+      if (isTargetPaid && !needsCheckoutForPaid) {
+        const response = await apiClient.post('/billing/update-plan', { plan, period: 'monthly' });
+        if (response.ok) {
+          const data = await response.json();
+          toast.success(data.message);
+          await fetchSubscription();
         } else {
           const error = await response.json();
           throw new Error(error.detail || 'Failed to update plan');
         }
-      } else {
+      } else if (isTargetPaid && needsCheckoutForPaid) {
         const response = await apiClient.post('/billing/checkout-session', {
           plan,
           success_url: `${window.location.origin}/organization/settings?tab=billing&success=true`,
           cancel_url: `${window.location.origin}/organization/settings?tab=billing`
         });
-
         if (response.ok) {
           const { checkout_url } = await response.json();
           window.location.href = checkout_url;
@@ -474,6 +576,21 @@ export const BillingSettings = ({ organizationId }: BillingSettingsProps) => {
         </div>
       </div>
 
+      {/* Yearly prepay indicator */}
+      {subscription.has_yearly_prepay && subscription.yearly_prepay_expires_at && (
+        <div className="flex items-center justify-between border border-border/50 rounded-lg p-3 bg-muted/40">
+          <div className="flex items-center gap-2 text-xs">
+            <CalendarDays className="w-3.5 h-3.5 text-muted-foreground" />
+            <span className="text-muted-foreground">
+              Yearly prepay active • Expires {format(new Date(subscription.yearly_prepay_expires_at), 'MMMM d, yyyy')}
+            </span>
+          </div>
+          <div className="text-[11px] text-muted-foreground">
+            Plan downgrades will take effect at yearly expiry
+          </div>
+        </div>
+      )}
+
       {/* Billing Information Card */}
       {billingInfo && subscription.has_active_subscription && !subscription.status.includes('trial') && (
         <div className="border border-border/50 rounded-lg p-4">
@@ -510,17 +627,8 @@ export const BillingSettings = ({ organizationId }: BillingSettingsProps) => {
         </div>
       )}
 
-      {/* Alerts for cancellation and plan changes */}
-      {subscription.cancel_at_period_end && subscription.current_period_end && (
-        <Alert className="border-amber-200 bg-amber-50">
-          <AlertCircle className="h-4 w-4 text-amber-600" />
-          <AlertDescription className="text-amber-800">
-            Subscription will cancel on {format(new Date(subscription.current_period_end), 'MMMM d, yyyy')}
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {subscription.pending_plan_change && subscription.pending_plan_change_at && !subscription.cancel_at_period_end && (
+      {/* Alerts for plan changes and cancellation */}
+      {subscription.pending_plan_change && subscription.pending_plan_change_at && (
         <Alert className="border-blue-200 bg-blue-50">
           <div className="flex items-start justify-between">
             <div className="flex items-start gap-2">
@@ -528,8 +636,17 @@ export const BillingSettings = ({ organizationId }: BillingSettingsProps) => {
               <AlertDescription className="text-blue-800">
                 <span className="font-medium">Plan change scheduled</span>
                 <br />
-                Changing to {getPlanDisplayName(subscription.pending_plan_change)} on{' '}
-                {format(new Date(subscription.pending_plan_change_at), 'MMMM d, yyyy')}
+                {subscription.has_yearly_prepay ? (
+                  <>
+                    Changing to {getPlanDisplayName(subscription.pending_plan_change)} at end of yearly prepay on{' '}
+                    {format(new Date(subscription.pending_plan_change_at), 'MMMM d, yyyy')}
+                  </>
+                ) : (
+                  <>
+                    Changing to {getPlanDisplayName(subscription.pending_plan_change)} on{' '}
+                    {format(new Date(subscription.pending_plan_change_at), 'MMMM d, yyyy')}
+                  </>
+                )}
               </AlertDescription>
             </div>
             <Button
@@ -545,26 +662,97 @@ export const BillingSettings = ({ organizationId }: BillingSettingsProps) => {
         </Alert>
       )}
 
-      {/* Available Plans */}
-      {!subscription.cancel_at_period_end && (
+      {!subscription.pending_plan_change && subscription.cancel_at_period_end && subscription.current_period_end && (
+        <Alert className="border-amber-200 bg-amber-50">
+          <AlertCircle className="h-4 w-4 text-amber-600" />
+          <AlertDescription className="text-amber-800">
+            Subscription will cancel on {format(new Date(subscription.current_period_end), 'MMMM d, yyyy')}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Available Plans & Period Toggle */}
+      {(!subscription.cancel_at_period_end || subscription.pending_plan_change) && (
         <div>
-          <h3 className="text-sm font-medium mb-4">Available Plans</h3>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="flex items-center justify-between mb-8">
+            <h3 className="text-sm font-medium">Available Plans</h3>
+            <div className="relative">
+              <div className="relative inline-flex items-center p-1 bg-muted rounded-lg shadow-sm border">
+                {/* Sliding background indicator - dynamically sized */}
+                <div
+                  className={cn(
+                    'absolute top-1 h-[calc(100%-8px)] rounded-md bg-blue/20 shadow-sm transition-all duration-200',
+                    billingPeriod === 'monthly' ? 'left-1 w-[80px]' : 'left-[80px] w-[140px]'
+                  )}
+                />
+                <button
+                  type="button"
+                  onClick={() => setBillingPeriod('monthly')}
+                  className={cn(
+                    'relative z-10 px-4 py-2 text-sm rounded-md transition-all w-[80px]',
+                    billingPeriod === 'monthly'
+                      ? 'text-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  Monthly
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBillingPeriod('yearly')}
+                  className={cn(
+                    'relative z-10 px-4 py-2 text-sm rounded-md transition-all flex items-center gap-2 w-[140px] justify-center',
+                    billingPeriod === 'yearly'
+                      ? 'text-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  Yearly
+                  <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                    Save 20%
+                  </span>
+                </button>
+              </div>
+              {/* Absolute positioned message - doesn't affect layout */}
+              <div className={cn(
+                "absolute top-full mt-1 right-0 max-w-sm transition-opacity duration-200",
+                billingPeriod === 'yearly' ? 'opacity-100' : 'opacity-0 pointer-events-none'
+              )}>
+                <p className="text-xs text-muted-foreground text-right whitespace-nowrap">
+                  {subscription.has_yearly_prepay && subscription.yearly_prepay_expires_at
+                    ? `Your yearly discount expires ${format(new Date(subscription.yearly_prepay_expires_at), 'MMM d, yyyy')}. Renew to keep saving 20%.`
+                    : 'Yearly plans renew at monthly rates after 12 months. Renew yearly anytime to keep the 20% discount.'}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="grid gap-4 md:grid-cols-4">
             {Object.entries(plans).map(([key, plan]) => {
+              // Check if this is the current plan AND period
               const isCurrentPlan = key === subscription.plan;
-              const isUpgrade = key === 'startup' && subscription.plan === 'developer';
-              const isDowngrade = key === 'developer' && subscription.plan === 'startup';
+              const isCurrentPeriod = subscription.has_yearly_prepay ? billingPeriod === 'yearly' : billingPeriod === 'monthly';
+              const isCurrentPlanAndPeriod = isCurrentPlan && isCurrentPeriod;
+
+              const planRank: Record<string, number> = { developer: 0, pro: 1, team: 2, enterprise: 3 };
+              const currentRank = planRank[subscription.plan] ?? -1;
+              const targetRank = planRank[key] ?? -1;
+              const isUpgrade = targetRank > currentRank;
+              const isDowngrade = targetRank < currentRank;
               const isEnterprise = key === 'enterprise';
+              const isEligibleYearly = key === 'pro' || key === 'team';
+
+              // Same plan but different period is also a valid change
+              const isPeriodChange = isCurrentPlan && !isCurrentPlanAndPeriod && isEligibleYearly;
 
               return (
                 <div
                   key={key}
                   className={cn(
-                    "relative border rounded-lg p-6 transition-all",
+                    "relative border rounded-lg p-6 transition-all h-full flex flex-col",
                     isCurrentPlan ? "border-primary/50 bg-primary/5" : "border-border hover:border-border/80"
                   )}
                 >
-                  {isCurrentPlan && (
+                  {isCurrentPlanAndPeriod && (
                     <span className="absolute -top-2.5 left-4 px-2 bg-background rounded-md text-xs font-medium text-primary">
                       Current Plan
                     </span>
@@ -578,13 +766,23 @@ export const BillingSettings = ({ organizationId }: BillingSettingsProps) => {
                   <div className="mb-6">
                     {typeof plan.price === 'number' ? (
                       <div className="flex items-baseline gap-1">
-                        <span className="text-2xl font-semibold">${plan.price}</span>
-                        <span className="text-sm text-muted-foreground">/month</span>
+                        <span className="text-2xl font-semibold">
+                          {billingPeriod === 'yearly' && isEligibleYearly
+                            ? (key === 'pro' ? '$16' : '$239')
+                            : `$${plan.price}`}
+                        </span>
+                        <span className="text-sm text-muted-foreground">
+                          {billingPeriod === 'yearly' && isEligibleYearly ? (
+                            <>
+                              /month<br />
+                              (billed yearly)
+                            </>
+                          ) : '/month'}
+                        </span>
                       </div>
                     ) : (
                       <div className="flex items-center gap-2">
-                        <Building2 className="w-4 h-4 text-muted-foreground" />
-                        <span className="text-lg font-semibold">Custom Pricing</span>
+                        <span className="text-lg font-semibold">{plan.price}</span>
                       </div>
                     )}
                   </div>
@@ -601,33 +799,43 @@ export const BillingSettings = ({ organizationId }: BillingSettingsProps) => {
                     })}
                   </ul>
 
-                  {isCurrentPlan ? (
-                    <Button variant="outline" disabled className="w-full h-9 text-sm border-border">
+                  {isCurrentPlanAndPeriod ? (
+                    <Button variant="outline" disabled className="w-full h-9 text-xs border-border mt-auto">
                       Current Plan
+                    </Button>
+                  ) : isPeriodChange ? (
+                    <Button
+                      onClick={() => handleUpgrade(key as 'developer' | 'pro' | 'team')}
+                      disabled={isCheckoutLoading}
+                      variant="outline"
+                      className="w-full h-9 text-xs mt-auto border-primary text-primary hover:border-primary/80 hover:bg-primary/10"
+                    >
+                      {isCheckoutLoading && <RefreshCw className="w-3 h-3 mr-1 animate-spin" />}
+                      {billingPeriod === 'yearly' ? 'Switch to Yearly' : 'Switch to Monthly'}
                     </Button>
                   ) : isEnterprise ? (
                     <Button
-                      onClick={() => window.open('https://cal.com/lennert-airweave/airweave-q-a-demo', '_blank')}
+                      onClick={() => window.open('https://cal.com/lennert-airweave/airweave-demo', '_blank')}
                       variant="outline"
-                      className="w-full h-9 text-sm border-border"
+                      className="w-full h-9 text-xs border-border mt-auto hover:border-primary/80 hover:bg-primary/10 hover:text-primary"
                     >
-                      <MessageSquare className="w-3.5 h-3.5 mr-1.5" />
-                      Talk to Founder
+                      <MessageSquare className="w-3 h-3 mr-1" />
+                      Book a Call
                     </Button>
                   ) : (
                     <Button
-                      onClick={() => handleUpgrade(key as 'developer' | 'startup')}
-                      disabled={isCheckoutLoading || (isDowngrade && subscription.pending_plan_change === 'developer')}
-                      variant={isUpgrade ? "default" : "outline"}
+                      onClick={() => handleUpgrade(key as 'developer' | 'pro' | 'team')}
+                      disabled={isCheckoutLoading}
+                      variant="outline"
                       className={cn(
-                        "w-full h-9 text-sm",
-                        isUpgrade ? "bg-primary hover:bg-primary/90 text-white border-0" : "border-border"
+                        "w-full h-9 text-xs mt-auto",
+                        isUpgrade ? "border-primary text-primary hover:border-primary/80 hover:bg-primary/10" : "border-border"
                       )}
                     >
-                      {isCheckoutLoading && <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
-                      {isUpgrade && <ArrowUpCircle className="w-3.5 h-3.5 mr-1.5" />}
-                      {isDowngrade && <ArrowDownCircle className="w-3.5 h-3.5 mr-1.5" />}
-                      {isUpgrade ? 'Upgrade' : isDowngrade ? 'Downgrade' : 'Switch'} to {plan.name}
+                      {isCheckoutLoading && <RefreshCw className="w-3 h-3 mr-1 animate-spin" />}
+                      {isUpgrade && <ArrowUpCircle className="w-3 h-3 mr-1" />}
+                      {isDowngrade && <ArrowDownCircle className="w-3 h-3 mr-1" />}
+                      {isUpgrade ? (billingPeriod === 'yearly' && isEligibleYearly ? 'Upgrade' : 'Upgrade') : isDowngrade ? 'Downgrade' : 'Switch'}
                     </Button>
                   )}
                 </div>
@@ -636,9 +844,6 @@ export const BillingSettings = ({ organizationId }: BillingSettingsProps) => {
           </div>
         </div>
       )}
-
-      {/* Usage Dashboard */}
-      <UsageDashboard organizationId={organizationId} />
 
       {/* Support Contact */}
       <div className="border-t border-border pt-6">

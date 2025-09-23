@@ -38,11 +38,12 @@ const CollectionsView = () => {
   const isCheckingUsage = useUsageStore(state => state.isLoading);
 
   // Derived states from usage store
-  const collectionsAllowed = actionChecks.collections?.allowed ?? true;
   const sourceConnectionsAllowed = actionChecks.source_connections?.allowed ?? true;
   const entitiesAllowed = actionChecks.entities?.allowed ?? true;
-  const syncsAllowed = actionChecks.syncs?.allowed ?? true;
-  const usageCheckDetails = actionChecks;
+  const usageCheckDetails = {
+    source_connections: actionChecks.source_connections,
+    entities: actionChecks.entities
+  };
 
   // Usage checking is now handled by UsageChecker component at app level
 
@@ -112,10 +113,10 @@ const CollectionsView = () => {
               <span tabIndex={0}>
                 <Button
                   onClick={handleCreateCollection}
-                  disabled={!collectionsAllowed || !sourceConnectionsAllowed || !entitiesAllowed || !syncsAllowed || isCheckingUsage}
+                  disabled={!sourceConnectionsAllowed || !entitiesAllowed || isCheckingUsage}
                   className={cn(
                     "bg-primary text-white rounded-lg h-9 px-4 transition-all duration-200",
-                    (!collectionsAllowed || !sourceConnectionsAllowed || !entitiesAllowed || !syncsAllowed || isCheckingUsage)
+                    (!sourceConnectionsAllowed || !entitiesAllowed || isCheckingUsage)
                       ? "opacity-50 cursor-not-allowed hover:bg-primary"
                       : "hover:bg-primary/90"
                   )}
@@ -125,22 +126,10 @@ const CollectionsView = () => {
                 </Button>
               </span>
             </TooltipTrigger>
-            {(!collectionsAllowed || !sourceConnectionsAllowed || !entitiesAllowed || !syncsAllowed) && (
+            {(!sourceConnectionsAllowed || !entitiesAllowed) && (
               <TooltipContent className="max-w-xs">
                 <p className="text-xs">
-                  {!collectionsAllowed && usageCheckDetails.collections?.reason === 'usage_limit_exceeded' ? (
-                    <>
-                      Collection limit reached.{' '}
-                      <a
-                        href="/organization/settings?tab=billing"
-                        className="underline"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        Upgrade your plan
-                      </a>
-                      {' '}to create more collections.
-                    </>
-                  ) : !sourceConnectionsAllowed && usageCheckDetails.source_connections?.reason === 'usage_limit_exceeded' ? (
+                  {!sourceConnectionsAllowed && usageCheckDetails.source_connections?.reason === 'usage_limit_exceeded' ? (
                     <>
                       Source connection limit reached.{' '}
                       <a
@@ -163,18 +152,6 @@ const CollectionsView = () => {
                         Upgrade your plan
                       </a>
                       {' '}to process more data.
-                    </>
-                  ) : !syncsAllowed && usageCheckDetails.syncs?.reason === 'usage_limit_exceeded' ? (
-                    <>
-                      Sync limit reached.{' '}
-                      <a
-                        href="/organization/settings?tab=billing"
-                        className="underline"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        Upgrade your plan
-                      </a>
-                      {' '}for more syncs.
                     </>
                   ) : (
                     'Unable to create collection at this time.'

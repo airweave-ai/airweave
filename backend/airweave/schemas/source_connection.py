@@ -99,7 +99,7 @@ class OAuthBrowserAuthentication(BaseModel):
 class AuthProviderAuthentication(BaseModel):
     """Authentication via external provider."""
 
-    provider_name: str = Field(..., description="Auth provider identifier")
+    provider_readable_id: str = Field(..., description="Auth provider readable ID")
     provider_config: Optional[Dict[str, Any]] = Field(
         None, description="Provider-specific configuration"
     )
@@ -174,9 +174,9 @@ class SyncSummary(BaseModel):
 
 
 class SourceConnectionListItem(BaseModel):
-    """Minimal source connection for list views with computed fields."""
+    """Clean source connection for list views."""
 
-    # Direct database fields
+    # Core fields
     id: UUID
     name: str
     short_name: str
@@ -184,37 +184,39 @@ class SourceConnectionListItem(BaseModel):
     created_at: datetime
     modified_at: datetime
 
-    # Fields needed for computing auth_method and status
+    # Authentication
     is_authenticated: bool
-    readable_auth_provider_id: Optional[str] = None
-    connection_init_session_id: Optional[UUID] = None
-    is_active: bool = True  # Default to active if not provided
 
-    # Summary fields
-    last_sync: Optional[SyncSummary] = None
+    # Stats
     entity_count: int = 0
-    last_job_status: Optional[SyncJobStatus] = None  # For computing status
+
+    # Internal fields for computation (excluded from API response)
+    authentication_method: Optional[str] = Field(None, exclude=True)
+    is_active: bool = Field(True, exclude=True)
+    last_job_status: Optional[str] = Field(None, exclude=True)
 
     @computed_field  # type: ignore[misc]
     @property
     def auth_method(self) -> AuthenticationMethod:
-        """Compute authentication method from database fields."""
-        # Auth provider takes precedence
-        if self.readable_auth_provider_id:
-            return AuthenticationMethod.AUTH_PROVIDER
+        """Get authentication method from database value."""
+        if self.authentication_method:
+            # Map database string to enum
+            if self.authentication_method == "oauth_token":
+                return AuthenticationMethod.OAUTH_TOKEN
+            elif self.authentication_method == "oauth_browser":
+                return AuthenticationMethod.OAUTH_BROWSER
+            elif self.authentication_method == "oauth_byoc":
+                return AuthenticationMethod.OAUTH_BYOC
+            elif self.authentication_method == "direct":
+                return AuthenticationMethod.DIRECT
+            elif self.authentication_method == "auth_provider":
+                return AuthenticationMethod.AUTH_PROVIDER
 
-        # Check for pending OAuth
-        if self.connection_init_session_id and not self.is_authenticated:
-            return AuthenticationMethod.OAUTH_BROWSER
-
-        # TODO: Distinguish between DIRECT, OAUTH_TOKEN, and OAUTH_BYOC
-        # This would require additional fields from the database
-        # For now, default to direct if authenticated
+        # Default fallback based on authentication status
         if self.is_authenticated:
             return AuthenticationMethod.DIRECT
-
-        # Default to OAuth browser for unauthenticated
-        return AuthenticationMethod.OAUTH_BROWSER
+        else:
+            return AuthenticationMethod.OAUTH_BROWSER
 
     @computed_field  # type: ignore[misc]
     @property
@@ -229,9 +231,15 @@ class SourceConnectionListItem(BaseModel):
 
         # Check last job status if provided
         if self.last_job_status:
-            if self.last_job_status == SyncJobStatus.RUNNING:
+            # Handle both string and enum values
+            job_status = (
+                self.last_job_status
+                if isinstance(self.last_job_status, str)
+                else self.last_job_status.value
+            )
+            if job_status == "running":
                 return SourceConnectionStatus.SYNCING
-            elif self.last_job_status == SyncJobStatus.FAILED:
+            elif job_status == "failed":
                 return SourceConnectionStatus.ERROR
 
         return SourceConnectionStatus.ACTIVE
@@ -251,7 +259,7 @@ class AuthenticationDetails(BaseModel):
     redirect_url: Optional[str] = None
 
     # Provider-specific
-    provider_name: Optional[str] = None
+    provider_readable_id: Optional[str] = None
     provider_id: Optional[str] = None
 
 
@@ -302,7 +310,6 @@ class EntitySummary(BaseModel):
 
     total_entities: int = 0
     by_type: Dict[str, EntityTypeStats] = Field(default_factory=dict)
-    last_updated: Optional[datetime] = None
 
 
 class SourceConnectionSimple(BaseModel):
@@ -314,9 +321,19 @@ class SourceConnectionSimple(BaseModel):
     short_name: str
     sync_id: Optional[UUID] = None
     readable_collection_id: str
-    status: SourceConnectionStatus
     created_at: datetime
     modified_at: datetime
+
+    # Fields needed for computing status
+    is_authenticated: bool = False
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def status(self) -> SourceConnectionStatus:
+        """Compute simple status based on authentication."""
+        if not self.is_authenticated:
+            return SourceConnectionStatus.PENDING_AUTH
+        return SourceConnectionStatus.ACTIVE
 
 
 class SourceConnection(BaseModel):

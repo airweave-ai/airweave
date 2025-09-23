@@ -1,6 +1,8 @@
 """Pipedream proxy HTTP client that mimics httpx.AsyncClient interface."""
 
 import base64
+import urllib
+from contextlib import asynccontextmanager
 from typing import Any, Dict, Optional
 
 import httpx
@@ -31,8 +33,9 @@ class PipedreamProxyClient:
         account_id: str,
         external_user_id: str,
         environment: str,
-        pipedream_token: str,
-        app_info: Dict[str, Any],
+        pipedream_token: Optional[str] = None,  # Can be None, will fetch dynamically
+        token_provider: Optional[Any] = None,  # Callable that returns fresh token
+        app_info: Dict[str, Any] = None,
         **httpx_kwargs,  # Accept standard httpx params for compatibility
     ):
         """Initialize Pipedream proxy client.
@@ -42,7 +45,8 @@ class PipedreamProxyClient:
             account_id: Pipedream account ID for the end user
             external_user_id: External user ID
             environment: Environment (production/development)
-            pipedream_token: Pipedream API access token
+            pipedream_token: Static Pipedream API access token (deprecated, use token_provider)
+            token_provider: Async callable that returns a fresh token
             app_info: App information from Pipedream API
             **httpx_kwargs: Additional kwargs to pass to underlying httpx client
         """
@@ -51,9 +55,10 @@ class PipedreamProxyClient:
             "account_id": account_id,
             "external_user_id": external_user_id,
             "environment": environment,
-            "pipedream_token": pipedream_token,
         }
-        self._app_info = app_info
+        self._static_token = pipedream_token  # Fallback static token
+        self._token_provider = token_provider  # Dynamic token provider
+        self._app_info = app_info or {}
         self._client = httpx.AsyncClient(**httpx_kwargs)
 
     async def __aenter__(self):
@@ -94,26 +99,29 @@ class PipedreamProxyClient:
         """Make OPTIONS request through proxy."""
         return await self.request("OPTIONS", url, **kwargs)
 
-    async def request(self, method: str, url: str, **kwargs) -> httpx.Response:
-        """Route request through Pipedream proxy.
+    async def _prepare_proxy_request(self, url: str, **kwargs) -> tuple[str, dict]:
+        """Prepare URL and kwargs for proxy request.
 
-        Args:
-            method: HTTP method
-            url: Target URL (can be relative or absolute)
-            **kwargs: Additional request parameters (headers, params, json, etc.)
+        Handles:
+        - Building full URL with query params
+        - Converting to proxy URL format
+        - Adding Pipedream required params
+        - Transforming headers
 
         Returns:
-            httpx.Response from the proxied request
+            Tuple of (proxy_url, modified_kwargs)
         """
         # Build full target URL with query params if provided
         if "params" in kwargs:
             # Build the full URL with query params for encoding
-            import urllib.parse
-
             params = kwargs.pop("params")
             parsed = urllib.parse.urlparse(url)
-            query = urllib.parse.urlencode(params)
-            full_url = f"{url}?{query}" if not parsed.query else f"{url}&{query}"
+            # Handle None params gracefully
+            if params:
+                query = urllib.parse.urlencode(params)
+                full_url = f"{url}?{query}" if not parsed.query else f"{url}&{query}"
+            else:
+                full_url = url
         else:
             full_url = url
 
@@ -128,20 +136,33 @@ class PipedreamProxyClient:
 
         # Transform headers
         if "headers" in kwargs:
-            kwargs["headers"] = self._transform_headers(kwargs["headers"])
+            kwargs["headers"] = await self._transform_headers(kwargs["headers"])
         else:
-            kwargs["headers"] = self._get_proxy_headers()
+            kwargs["headers"] = await self._get_proxy_headers()
 
-        # Make request through proxy
+        return proxy_url, kwargs
+
+    async def request(self, method: str, url: str, **kwargs) -> httpx.Response:
+        """Route request through Pipedream proxy.
+
+        Args:
+            method: HTTP method
+            url: Target URL (can be relative or absolute)
+            **kwargs: Additional request parameters (headers, params, json, etc.)
+
+        Returns:
+            httpx.Response from the proxied request
+        """
+        proxy_url, kwargs = await self._prepare_proxy_request(url, **kwargs)
         return await self._client.request(method, proxy_url, **kwargs)
 
-    def _transform_headers(self, source_headers: Optional[Dict[str, str]]) -> Dict[str, str]:
+    async def _transform_headers(self, source_headers: Optional[Dict[str, str]]) -> Dict[str, str]:
         """Transform source headers for proxy request.
 
         Strips auth headers (Pipedream will inject them) and forwards
         other headers with x-pd-proxy prefix.
         """
-        proxy_headers = self._get_proxy_headers()
+        proxy_headers = await self._get_proxy_headers()
 
         if source_headers:
             # Forward non-auth headers with x-pd-proxy prefix
@@ -152,10 +173,25 @@ class PipedreamProxyClient:
 
         return proxy_headers
 
-    def _get_proxy_headers(self) -> Dict[str, str]:
-        """Get base proxy headers for Pipedream."""
+    async def _get_proxy_headers(self) -> Dict[str, str]:
+        """Get base proxy headers for Pipedream with fresh token.
+
+        The token provider (_ensure_valid_token) already implements smart refresh:
+        - Checks if current token is still valid (with 5-minute buffer)
+        - Only refreshes when needed (not on every request)
+        - Returns cached token if still valid
+        """
+        # Get token - provider handles refresh logic internally
+        if self._token_provider:
+            token = await self._token_provider()
+        else:
+            token = self._static_token
+
+        if not token:
+            raise ValueError("No Pipedream token available")
+
         return {
-            "Authorization": f"Bearer {self._config['pipedream_token']}",
+            "Authorization": f"Bearer {token}",
             "x-pd-environment": self._config["environment"],
             "Content-Type": "application/json",  # Default content type
         }
@@ -169,9 +205,6 @@ class PipedreamProxyClient:
         Returns:
             Pipedream proxy URL with encoded target
         """
-        # For relative URLs, Pipedream will use the base_proxy_target_url
-        # For absolute URLs, use as-is
-
         # Base64 encode the URL for proxy
         encoded_url = base64.urlsafe_b64encode(url.encode()).decode().rstrip("=")
 
@@ -186,35 +219,22 @@ class PipedreamProxyClient:
         """Stream request through proxy (returns async context manager).
 
         This mimics httpx.AsyncClient.stream() for compatibility.
+        Note: This is not an async method because httpx.AsyncClient.stream()
+        returns a context manager directly, not a coroutine.
         """
-        # Build full target URL with query params if provided
-        if "params" in kwargs:
-            import urllib.parse
+        return self._stream_context_manager(method, url, **kwargs)
 
-            params = kwargs.pop("params")
-            parsed = urllib.parse.urlparse(url)
-            query = urllib.parse.urlencode(params)
-            full_url = f"{url}?{query}" if not parsed.query else f"{url}&{query}"
-        else:
-            full_url = url
+    @asynccontextmanager
+    async def _stream_context_manager(self, method: str, url: str, **kwargs):
+        """Internal async context manager for streaming requests.
 
-        # Transform to proxy URL
-        proxy_url = self._build_proxy_url(full_url)
-
-        # Add Pipedream required params
-        kwargs["params"] = {
-            "external_user_id": self._config["external_user_id"],
-            "account_id": self._config["account_id"],
-        }
-
-        # Transform headers
-        if "headers" in kwargs:
-            kwargs["headers"] = self._transform_headers(kwargs["headers"])
-        else:
-            kwargs["headers"] = self._get_proxy_headers()
-
-        # Return the stream context manager from underlying client
-        return self._client.stream(method, proxy_url, **kwargs)
+        This allows us to do async preparation (like getting fresh tokens)
+        before creating the actual stream.
+        """
+        proxy_url, prepared_kwargs = await self._prepare_proxy_request(url, **kwargs)
+        # Now delegate to the actual stream context manager
+        async with self._client.stream(method, proxy_url, **prepared_kwargs) as response:
+            yield response
 
     # Additional httpx compatibility methods
     async def aclose(self):

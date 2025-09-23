@@ -4,6 +4,7 @@ import { useOrganizationStore } from '@/lib/stores/organizations';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { AlertCircle, CreditCard } from 'lucide-react';
+import authConfig from '@/config/auth';
 
 interface BillingGuardProps {
   children: React.ReactNode;
@@ -17,6 +18,12 @@ export const BillingGuard = ({ children, requiresActiveBilling = true }: Billing
   const [isChecking, setIsChecking] = useState(true);
 
   useEffect(() => {
+    // If auth is disabled (local OSS/dev), do nothing
+    if (!authConfig.authEnabled) {
+      setIsChecking(false);
+      return;
+    }
+
     checkBilling();
   }, [currentOrganization?.id]);
 
@@ -36,13 +43,20 @@ export const BillingGuard = ({ children, requiresActiveBilling = true }: Billing
 
   // Redirect to billing setup immediately after checking
   useEffect(() => {
+    if (!authConfig.authEnabled) return;
+
     if (!isChecking && !billingLoading && billingInfo && !billingInfo.is_oss) {
-      // If no active subscription and not on a billing page, redirect to setup
+      // If there is no current billing period yet (e.g., webhooks not processed), gate access
       if (!billingInfo.has_active_subscription && !location.pathname.startsWith('/billing')) {
         navigate('/billing/setup');
       }
     }
   }, [isChecking, billingLoading, billingInfo, location.pathname, navigate]);
+
+  // In local OSS/dev with auth disabled, bypass billing guard entirely
+  if (!authConfig.authEnabled) {
+    return <>{children}</>;
+  }
 
   if (isChecking || billingLoading) {
     return <div className="flex items-center justify-center p-8">Loading billing status...</div>;
