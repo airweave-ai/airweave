@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useOrganizationStore } from '@/lib/stores/organizations';
 import { apiClient } from '@/lib/api';
@@ -14,12 +14,23 @@ export default function BillingSetup() {
   const [isLoading, setIsLoading] = useState(false);
   const [isCheckingStatus, setIsCheckingStatus] = useState(true);
   const [isPolling, setIsPolling] = useState(false);
+  const pollingTimeoutsRef = useRef<NodeJS.Timeout[]>([]);
 
   const isDark = resolvedTheme === 'dark';
+
+  const clearPollingTimeouts = () => {
+    pollingTimeoutsRef.current.forEach(timeout => clearTimeout(timeout));
+    pollingTimeoutsRef.current = [];
+  };
 
   useEffect(() => {
     // Check current billing status
     checkBillingStatus();
+    
+    // Cleanup function to clear any pending timeouts
+    return () => {
+      clearPollingTimeouts();
+    };
   }, []);
 
   const checkBillingStatus = async () => {
@@ -42,17 +53,21 @@ export default function BillingSetup() {
           const refreshed = await fetchBillingInfo();
           if (refreshed && refreshed.has_active_subscription && refreshed.status === 'active') {
             toast.success('Subscription activated');
+            clearPollingTimeouts();
             setIsPolling(false);
             navigate('/billing/success');
             return;
           }
           if (Date.now() - startedAt < 30000) {
-            setTimeout(poll, 2000);
+            const timeoutId = setTimeout(poll, 2000);
+            pollingTimeoutsRef.current.push(timeoutId);
           } else {
+            clearPollingTimeouts();
             setIsPolling(false);
           }
         };
-        setTimeout(poll, 1500);
+        const initialTimeoutId = setTimeout(poll, 1500);
+        pollingTimeoutsRef.current.push(initialTimeoutId);
       }
     } catch (error) {
       console.error('Failed to check billing status:', error);
