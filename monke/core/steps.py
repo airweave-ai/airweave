@@ -488,10 +488,8 @@ class VerifyStep(TestStep):
                             "🔁 Miss detected during verify; triggering an extra sync …"
                         )
                         
-                        # Force a full sync to ensure we don't miss newly created entities
-                        # bypasses incremental sync cursors that might skip recent changes
-                        self.logger.info("🔄 Forcing full sync to capture all recent changes")
-                        await SyncStep(self.config, force_full_sync=True).execute()
+                        # Reuse the same SyncStep logic to avoid duplication
+                        await SyncStep(self.config).execute()
                         
                 # Final check after resync
                 return await verify_one(e)
