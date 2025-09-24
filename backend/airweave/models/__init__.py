@@ -18,6 +18,7 @@ from .organization import Organization
 from .organization_billing import OrganizationBilling
 from .pg_field_catalog import PgFieldCatalogColumn, PgFieldCatalogTable
 from .redirect_session import RedirectSession
+from .search_query import SearchQuery
 from .source import Source
 from .source_connection import SourceConnection
 from .sync import Sync
@@ -50,6 +51,7 @@ __all__ = [
     "PgFieldCatalogColumn",
     "PgFieldCatalogTable",
     "RedirectSession",
+    "SearchQuery",
     "Source",
     "SourceConnection",
     "Sync",

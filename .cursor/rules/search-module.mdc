@@ -32,6 +32,7 @@ Each operation:
 4. **Executor.execute()** → Runs operations in dependency order
 5. **Qdrant destination** → Vector search execution
 6. **Response cleaning** → Remove internal fields, format results
+7. **Data Persistence** → Save search query to `search_queries` table via `CRUDSearchQuery`
 
 ### API Endpoints
 
@@ -231,6 +232,63 @@ HTTP status mapping in endpoints:
 4. **Source names**: Case-sensitive in filters (e.g., "GitHub" not "github")
 5. **Embedding model**: Auto-selects based on OPENAI_API_KEY presence
 
+## Search Persistence & Analytics
+
+### Data Persistence
+
+Every search operation is automatically persisted to the `search_queries` table for:
+- **Audit trails** and compliance
+- **Performance analytics** and optimization
+- **User behavior analysis** and insights
+- **Search evolution tracking** over time
+
+**SearchQuery Model** (`airweave.models.search_query`):
+```python
+class SearchQuery(OrganizationBase, UserMixin):
+    # Core search data
+    query_text: str                    # Full search query
+    query_length: int                  # Character count
+    search_type: str                   # "basic", "advanced", "streaming"
+    response_type: Optional[str]       # "raw", "completion"
+    
+    # Performance metrics
+    duration_ms: int                   # Execution time
+    results_count: int                 # Results returned
+    status: str                        # "success", "no_results", "error"
+    
+    # Feature usage tracking
+    query_expansion_enabled: bool      # Query expansion used
+    reranking_enabled: bool            # LLM reranking used
+    query_interpretation_enabled: bool # Query interpretation used
+    
+    # Relationships
+    collection_id: UUID                # Collection searched
+    user_id: Optional[UUID]            # User who searched (null for API)
+    api_key_id: Optional[UUID]         # API key used (null for users)
+```
+
+**CRUDSearchQuery** (`airweave.crud.crud_search_query`):
+- Inherits from `CRUDBaseOrganization` for organization scoping
+- Provides `get_user_search_history()` for user experience features
+- Supports analytics queries for collection performance
+
+### Analytics Integration
+
+**Database-First Analytics**: All search data is persisted to the `search_queries` table, providing a comprehensive analytics foundation:
+
+- **Search performance metrics** (duration, results count)
+- **Feature adoption tracking** (expansion, reranking, interpretation)
+- **User behavior analysis** (query patterns, search evolution)
+- **Collection analytics** (usage patterns, performance trends)
+
+**PostHog Integration**: For real-time dashboards, search data can be exported from the database to PostHog via batch jobs or streaming pipelines.
+
+### Error Handling
+
+Search persistence is **non-blocking**:
+- If persistence fails → Search continues, error logged
+- Core search functionality is never compromised
+
 ## Design Principles
 
 1. **Modularity**: Self-contained operations
@@ -239,3 +297,4 @@ HTTP status mapping in endpoints:
 4. **Performance**: Async, parallel, bulk operations
 5. **Quality-first**: Optimized defaults
 6. **Observability**: Comprehensive logging
+7. **Database-first analytics**: Every search is persisted for comprehensive analysis

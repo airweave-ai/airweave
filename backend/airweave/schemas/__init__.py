@@ -98,6 +98,13 @@ from .organization_billing import (
     UpdatePlanRequest,
 )
 from .search import SearchRequest, SearchResponse
+from .search_query import (
+    SearchQueryAnalytics,
+    SearchQueryCreate,
+    SearchQueryInsights,
+    SearchQueryResponse,
+    SearchQueryUpdate,
+)
 from .source import (
     Source,
     SourceCreate,

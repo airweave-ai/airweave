@@ -5,7 +5,9 @@ is broken down into composable operations that can be configured
 and executed in a flexible pipeline.
 """
 
+import time
 from typing import Optional
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +15,7 @@ from airweave import crud
 from airweave.api.context import ApiContext
 from airweave.core.exceptions import NotFoundException
 from airweave.schemas.search import SearchConfig, SearchRequest, SearchResponse, SearchStatus
+from airweave.schemas.search_query import SearchQueryCreate
 from airweave.search.config_builder import SearchConfigBuilder
 from airweave.search.executor import SearchExecutor
 
@@ -68,6 +71,7 @@ class SearchServiceV2:
         2. Builds a SearchConfig with execution plan from the request
         3. Executes the operations in dependency order
         4. Builds and returns the response
+        5. Persists search data for analytics
 
         Args:
             db: Database session
@@ -83,6 +87,8 @@ class SearchServiceV2:
         Raises:
             NotFoundException: If collection not found or no access
         """
+        start_time = time.monotonic()
+
         ctx.logger.info(
             f"[SearchServiceV2] Starting search for collection '{readable_id}', "
             f"query: '{search_request.query[:50]}...'"
@@ -115,9 +121,23 @@ class SearchServiceV2:
         # Build response from execution context
         response = self._build_response(context, search_request, config)
 
+        # Calculate search duration
+        duration_ms = (time.monotonic() - start_time) * 1000
+
         ctx.logger.info(
             f"[SearchServiceV2] Search completed with status: {response.status}, "
-            f"results: {len(response.results)}"
+            f"results: {len(response.results)}, duration: {duration_ms:.2f}ms"
+        )
+
+        # Persist search data for analytics
+        await self._persist_search_data(
+            db=db,
+            search_request=search_request,
+            search_response=response,
+            collection_id=collection.id,
+            ctx=ctx,
+            duration_ms=duration_ms,
+            collection_slug=readable_id,
         )
 
         return response
@@ -232,6 +252,128 @@ class SearchServiceV2:
             cleaned.append(clean_result)
 
         return cleaned
+
+    async def _persist_search_data(
+        self,
+        db: AsyncSession,
+        search_request: SearchRequest,
+        search_response: SearchResponse,
+        collection_id: str,
+        ctx: ApiContext,
+        duration_ms: float,
+        collection_slug: str,
+    ) -> None:
+        """Persist search data for analytics and user experience.
+
+        Args:
+            db: Database session
+            search_request: The search request object
+            search_response: The search response object
+            collection_id: ID of the collection that was searched
+            ctx: API context with user and organization info
+            duration_ms: Search execution time in milliseconds
+            collection_slug: Collection readable ID for analytics
+        """
+        try:
+            # Convert collection_id to UUID if it's a string
+
+            collection_uuid = (
+                UUID(collection_id) if isinstance(collection_id, str) else collection_id
+            )
+
+            # Determine search status
+            status = self._determine_search_status(search_response)
+
+            # Extract API key ID from auth metadata if available
+            api_key_id = None
+            if ctx.is_api_key_auth and ctx.auth_metadata:
+                api_key_id = ctx.auth_metadata.get("api_key_id")
+
+            # Create search query schema following the standard pattern
+            search_query_create = SearchQueryCreate(
+                collection_id=collection_uuid,
+                organization_id=ctx.organization.id,
+                user_id=ctx.user.id if ctx.user else None,
+                api_key_id=UUID(api_key_id) if api_key_id else None,
+                query_text=search_request.query,
+                query_length=len(search_request.query),
+                search_type=self._determine_search_type(search_request),
+                response_type=(
+                    search_request.response_type.value if search_request.response_type else None
+                ),
+                limit=search_request.limit,
+                offset=search_request.offset,
+                score_threshold=search_request.score_threshold,
+                recency_bias=search_request.recency_bias,
+                search_method=search_request.search_method,
+                filters=search_request.filter.model_dump() if search_request.filter else None,
+                duration_ms=int(duration_ms),
+                results_count=len(search_response.results),
+                status=status,
+                query_expansion_enabled=(
+                    search_request.expansion_strategy != "no_expansion"
+                    if search_request.expansion_strategy
+                    else None
+                ),
+                reranking_enabled=(
+                    search_request.enable_reranking
+                    if search_request.enable_reranking is not None
+                    else None
+                ),
+                query_interpretation_enabled=(
+                    search_request.enable_query_interpretation
+                    if search_request.enable_query_interpretation is not None
+                    else None
+                ),
+            )
+
+            # Create search query record using standard CRUD pattern
+            await crud.search_query.create(db=db, obj_in=search_query_create, ctx=ctx)
+
+            ctx.logger.debug(
+                f"[SearchServiceV2] Search data persisted successfully for query: "
+                f"'{search_request.query[:50]}...'"
+            )
+
+        except Exception as e:
+            # Don't fail the search if persistence fails
+            ctx.logger.error(
+                f"[SearchServiceV2] Failed to persist search data: {str(e)}. "
+                f"Search completed successfully but analytics data was not saved."
+            )
+
+    def _determine_search_status(self, search_response: SearchResponse) -> str:
+        """Determine search status from response.
+
+        Args:
+            search_response: The search response object
+
+        Returns:
+            Status string: 'success', 'no_results', 'no_relevant_results', 'error'
+        """
+        if search_response.status == SearchStatus.SUCCESS:
+            return "success"
+        elif search_response.status == SearchStatus.NO_RESULTS:
+            return "no_results"
+        elif search_response.status == SearchStatus.NO_RELEVANT_RESULTS:
+            return "no_relevant_results"
+        else:
+            return "error"
+
+    def _determine_search_type(self, search_request: SearchRequest) -> str:
+        """Determine search type based on request parameters.
+
+        Args:
+            search_request: The search request object
+
+        Returns:
+            Search type string
+        """
+        # Check if it's a streaming search (would need additional context)
+        # For now, we'll determine based on request complexity
+        if search_request.filter or search_request.score_threshold or search_request.recency_bias:
+            return "advanced"
+        return "basic"
 
 
 # Singleton instance
