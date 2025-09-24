@@ -32,7 +32,7 @@ class BitbucketConfig(SourceConfig):
         title="File Extensions",
         description=(
             "List of file extensions to include (e.g., '.py', '.js', '.md'). "
-            "If empty, includes all text files. Use '.*' to include all files."
+            "If empty, includes all text files."
         ),
     )
 

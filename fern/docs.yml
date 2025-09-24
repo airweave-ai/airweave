@@ -104,8 +104,6 @@ navigation:
     - GET /source-connections
     - GET /source-connections/{source_connection_id}
     - GET /source-connections/{source_connection_id}/jobs
-    - GET /source-connections/{source_connection_id}/jobs/{job_id}
-    - PUT /source-connections/{source_connection_id}
     - POST /source-connections
     - POST /source-connections/{source_connection_id}/run
     - POST /source-connections/{source_connection_id}/jobs/{job_id}/cancel

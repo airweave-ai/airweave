@@ -90,6 +90,17 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
         if not objs:
             return []
 
+        # HARD GUARANTEE: entity_definition_id must be present for every row
+        missing_def = [
+            o.entity_id for o in objs if getattr(o, "entity_definition_id", None) is None
+        ]
+        if missing_def:
+            preview = ", ".join(missing_def[:5])
+            more = f" (+{len(missing_def) - 5} more)" if len(missing_def) > 5 else ""
+            raise ValueError(
+                f"EntityCreate missing entity_definition_id for parent(s): {preview}{more}"
+            )
+
         org_id = self._get_org_id_from_context(ctx)
         if org_id is None:
             raise ValueError("ApiContext must contain valid organization information")
