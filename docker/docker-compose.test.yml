@@ -57,6 +57,30 @@ services:
       timeout: 5s
       retries: 5
 
+  temporal:
+    image: temporalio/auto-setup:1.24.2
+    ports:
+      - "7233:7233"
+      - "8233:8233"
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=airweave
+      - POSTGRES_PWD=airweave1234!
+      - POSTGRES_SEEDS=postgres
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+    volumes:
+      - ./temporal-config:/etc/temporal/config/dynamicconfig
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "tctl", "--address", "temporal:7233", "workflow", "list" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: on-failure
+
   backend:
     build:
       context: ../backend
@@ -67,6 +91,8 @@ services:
       redis:
         condition: service_healthy
       qdrant:
+        condition: service_healthy
+      temporal:
         condition: service_healthy
 
     # Override specific variables for container-specific settings
@@ -86,7 +112,12 @@ services:
       - ENCRYPTION_KEY="SpgLrrEEgJ/7QdhSMSvagL1juEY5eoyCG0tZN7OSQV0="
       - TEXT2VEC_INFERENCE_URL=http://text2vec-transformers:8080
       - AUTH_ENABLED=false
-
+      - STATE_SECRET=6XnZeqbKQH-jbNnVG9c2Y7qv8y9E4RTJ2WpR9eCKzzY
+      - TEMPORAL_ENABLED=true
+      - TEMPORAL_HOST=temporal
+      - TEMPORAL_PORT=7233
+      - TEMPORAL_NAMESPACE=default
+      - TEMPORAL_TASK_QUEUE=airweave-sync-queue
     ports:
       - "8001:8001"
     volumes:
