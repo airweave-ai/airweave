@@ -23,14 +23,14 @@ class StripeBongo(BaseBongo):
 
         Args:
             credentials: Stripe credentials with api_key
-            **kwargs: Additional configuration (e.g., entity_count)
+            **kwargs: Configuration from config file
         """
         super().__init__(credentials)
         self.api_key = credentials["api_key"]
 
-        # Configuration from kwargs
-        self.entity_count = kwargs.get('entity_count', 10)
-        self.openai_model = kwargs.get('openai_model', 'gpt-5')
+        # Configuration from config file
+        self.entity_count = int(kwargs.get("entity_count", 3))
+        self.openai_model = kwargs.get("openai_model", "gpt-4.1-mini")
 
         # Test data tracking
         self.test_customers = []
@@ -57,21 +57,18 @@ class StripeBongo(BaseBongo):
             name, email, description = await generate_stripe_artifact(self.openai_model, token)
 
             # Create customer
-            customer_data = await self._create_test_customer(
-                name,
-                email,
-                description,
-                token
-            )
+            customer_data = await self._create_test_customer(name, email, description, token)
 
-            entities.append({
-                "type": "customer",
-                "id": customer_data["id"],
-                "name": name,
-                "email": email,
-                "token": token,
-                "expected_content": token,
-            })
+            entities.append(
+                {
+                    "type": "customer",
+                    "id": customer_data["id"],
+                    "name": name,
+                    "email": email,
+                    "token": token,
+                    "expected_content": token,
+                }
+            )
 
             self.logger.info(f"💳 Created test customer: {customer_data['id']}")
 
@@ -89,6 +86,7 @@ class StripeBongo(BaseBongo):
 
         # Update a subset of customers based on configuration
         from monke.generation.stripe import generate_stripe_artifact
+
         customers_to_update = min(3, self.entity_count)  # Update max 3 customers for any test size
 
         for i in range(customers_to_update):
@@ -102,21 +100,19 @@ class StripeBongo(BaseBongo):
                 )
 
                 # Update customer
-                await self._update_test_customer(
-                    customer_info["id"],
-                    name,
-                    description
-                )
+                await self._update_test_customer(customer_info["id"], name, description)
 
-                updated_entities.append({
-                    "type": "customer",
-                    "id": customer_info["id"],
-                    "name": name,
-                    "email": customer_info["email"],  # Email can't be changed
-                    "token": token,
-                    "expected_content": token,
-                    "updated": True,
-                })
+                updated_entities.append(
+                    {
+                        "type": "customer",
+                        "id": customer_info["id"],
+                        "name": name,
+                        "email": customer_info["email"],  # Email can't be changed
+                        "token": token,
+                        "expected_content": token,
+                        "updated": True,
+                    }
+                )
 
                 self.logger.info(f"📝 Updated test customer: {customer_info['id']}")
 
@@ -142,14 +138,18 @@ class StripeBongo(BaseBongo):
         for entity in entities:
             try:
                 # Find the corresponding test customer
-                test_customer = next((tc for tc in self.test_customers if tc["id"] == entity["id"]), None)
+                test_customer = next(
+                    (tc for tc in self.test_customers if tc["id"] == entity["id"]), None
+                )
 
                 if test_customer:
                     await self._delete_test_customer(test_customer["id"])
                     deleted_ids.append(test_customer["id"])
                     self.logger.info(f"🗑️ Deleted test customer: {test_customer['id']}")
                 else:
-                    self.logger.warning(f"⚠️ Could not find test customer for entity: {entity.get('id')}")
+                    self.logger.warning(
+                        f"⚠️ Could not find test customer for entity: {entity.get('id')}"
+                    )
 
                 # Rate limiting
                 if len(entities) > 10:
@@ -184,11 +184,7 @@ class StripeBongo(BaseBongo):
 
     # Helper methods for Stripe API calls
     async def _create_test_customer(
-        self,
-        name: str,
-        email: str,
-        description: str,
-        token: str
+        self, name: str, email: str, description: str, token: str
     ) -> Dict[str, Any]:
         """Create a test customer via Stripe API."""
         await self._rate_limit()
@@ -198,36 +194,30 @@ class StripeBongo(BaseBongo):
                 "https://api.stripe.com/v1/customers",
                 headers={
                     "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/x-www-form-urlencoded"
+                    "Content-Type": "application/x-www-form-urlencoded",
                 },
                 data={
                     "name": name,
                     "email": email,
                     "description": description,
                     "metadata[monke_token]": token,
-                    "metadata[test]": "true"
-                }
+                    "metadata[test]": "true",
+                },
             )
 
             if response.status_code != 200:
-                raise Exception(f"Failed to create customer: {response.status_code} - {response.text}")
+                raise Exception(
+                    f"Failed to create customer: {response.status_code} - {response.text}"
+                )
 
             result = response.json()
 
             # Track created customer
-            self.created_entities.append({
-                "id": result["id"],
-                "email": result["email"]
-            })
+            self.created_entities.append({"id": result["id"], "email": result["email"]})
 
             return result
 
-    async def _update_test_customer(
-        self,
-        customer_id: str,
-        name: str,
-        description: str
-    ):
+    async def _update_test_customer(self, customer_id: str, name: str, description: str):
         """Update a test customer via Stripe API."""
         await self._rate_limit()
 
@@ -236,16 +226,15 @@ class StripeBongo(BaseBongo):
                 f"https://api.stripe.com/v1/customers/{customer_id}",
                 headers={
                     "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/x-www-form-urlencoded"
+                    "Content-Type": "application/x-www-form-urlencoded",
                 },
-                data={
-                    "name": name,
-                    "description": description
-                }
+                data={"name": name, "description": description},
             )
 
             if response.status_code != 200:
-                raise Exception(f"Failed to update customer: {response.status_code} - {response.text}")
+                raise Exception(
+                    f"Failed to update customer: {response.status_code} - {response.text}"
+                )
 
     async def _delete_test_customer(self, customer_id: str):
         """Delete a test customer via Stripe API."""
@@ -254,13 +243,13 @@ class StripeBongo(BaseBongo):
         async with httpx.AsyncClient() as client:
             response = await client.delete(
                 f"https://api.stripe.com/v1/customers/{customer_id}",
-                headers={
-                    "Authorization": f"Bearer {self.api_key}"
-                }
+                headers={"Authorization": f"Bearer {self.api_key}"},
             )
 
             if response.status_code != 200:
-                raise Exception(f"Failed to delete customer: {response.status_code} - {response.text}")
+                raise Exception(
+                    f"Failed to delete customer: {response.status_code} - {response.text}"
+                )
 
     async def _verify_customer_deleted(self, customer_id: str) -> bool:
         """Verify if a customer is actually deleted from Stripe."""
@@ -268,9 +257,7 @@ class StripeBongo(BaseBongo):
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     f"https://api.stripe.com/v1/customers/{customer_id}",
-                    headers={
-                        "Authorization": f"Bearer {self.api_key}"
-                    }
+                    headers={"Authorization": f"Bearer {self.api_key}"},
                 )
 
                 if response.status_code == 404:
@@ -282,7 +269,9 @@ class StripeBongo(BaseBongo):
                     return data.get("deleted", False)
                 else:
                     # Unexpected response
-                    self.logger.warning(f"⚠️ Unexpected response checking {customer_id}: {response.status_code}")
+                    self.logger.warning(
+                        f"⚠️ Unexpected response checking {customer_id}: {response.status_code}"
+                    )
                     return False
 
         except Exception as e:

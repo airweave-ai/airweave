@@ -14,6 +14,7 @@ from monke.utils.logging import get_logger
 
 
 class ModelName(str, Enum):
+    GPT_41_MINI = "gpt-4.1-mini"
     GPT_41 = "gpt-4.1"
     GPT_4O = "gpt-4o"
     GPT_5 = "gpt-5"
@@ -34,8 +35,7 @@ class LLMClient:
         if not os.getenv("OPENAI_API_KEY"):
             raise RuntimeError("OPENAI_API_KEY is required in environment")
 
-        base_url = os.getenv("OPENAI_BASE_URL")
-        self.client = AsyncOpenAI(base_url=base_url) if base_url else AsyncOpenAI()
+        self.client = AsyncOpenAI()
 
         self.model = self._resolve_model(model_override)
         self.logger = get_logger("llm_client")
@@ -43,19 +43,15 @@ class LLMClient:
     def _resolve_model(self, model_override: Optional[Union["ModelName", str]]) -> str:
         """Normalize provided model or fall back to environment default (no hard validation)."""
         override_str = (
-            model_override.value
-            if isinstance(model_override, ModelName)
-            else model_override
+            model_override.value if isinstance(model_override, ModelName) else model_override
         )
-        candidate = override_str or os.getenv("OPENAI_MODEL") or ModelName.GPT_41.value
+        candidate = override_str or os.getenv("OPENAI_MODEL") or "gpt-4.1-mini"
         return candidate
 
     def _sampling_kwargs(self, temperature: float) -> dict:
         """Build sampling kwargs, omitting temperature for models that don't accept it."""
         models_without_temp_prefixes = (ModelName.GPT_5.value,)
-        if any(
-            self.model.startswith(prefix) for prefix in models_without_temp_prefixes
-        ):
+        if any(self.model.startswith(prefix) for prefix in models_without_temp_prefixes):
             return {}
         return {"temperature": temperature}
 
@@ -69,9 +65,7 @@ class LLMClient:
         )
         return getattr(resp, "output_text", "") or ""
 
-    async def generate_structured(
-        self, schema: Type[BaseModel], instruction: str
-    ) -> BaseModel:
+    async def generate_structured(self, schema: Type[BaseModel], instruction: str) -> BaseModel:
         """
         Generate an object that matches the given Pydantic schema using Structured Outputs.
 
@@ -97,9 +91,7 @@ class LLMClient:
             )
         except Exception as e:
             # Common causes: older SDK version, transient parsing issues, or unsupported model.
-            self.logger.exception(
-                "Structured parse failed; attempting JSON Schema fallback: %s", e
-            )
+            self.logger.exception("Structured parse failed; attempting JSON Schema fallback: %s", e)
 
         # --- Defensive fallback: strict JSON Schema response_format ---
         # Convert the Pydantic model to a JSON Schema and enforce strict adherence server-side.

@@ -5,10 +5,13 @@ description: "End-to-end test of Google Drive connector sync functionality with 
 connector:
   name: "google_drive_test"
   type: "google_drive"
-  auth_fields: {}
+  auth_mode: composio
+  composio_config:
+    account_id: ca_cRw13StovRqg
+    auth_config_id: ac_srGygYXj9LBq
     # access_token: "${GOOGLE_DRIVE_ACCESS_TOKEN}"
   config_fields:
-    openai_model: "gpt-4.1"
+    openai_model: "gpt-4.1-mini"
     # post_create_sleep_seconds: 7  # Optional: wait N seconds after creation before first sync
 
 test_flow:

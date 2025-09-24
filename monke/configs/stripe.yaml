@@ -5,9 +5,11 @@ description: "End-to-end test of Stripe connector sync functionality with increm
 connector:
   name: "stripe_test"
   type: "stripe"
-  auth_fields: {}
+  auth_mode: direct
+  auth_fields:
+    api_key: MONKE_STRIPE_API_KEY
   config_fields:
-    openai_model: "gpt-5"
+    openai_model: "gpt-4.1-mini"
 
 test_flow:
   steps:
@@ -33,6 +35,7 @@ deletion:
   partial_delete_count: 1  # Number of entities to delete during partial deletion
 
   # Verification settings
+  # Stripe does full sync (not incremental), so deletions should be detected
   verify_partial_deletion: true
   verify_remaining_entities: true
   verify_complete_deletion: true

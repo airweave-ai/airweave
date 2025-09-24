@@ -23,7 +23,6 @@ except ImportError:
 from monke.core import events
 from monke.core.runner import TestRunner
 from monke.utils.logging import get_logger
-from monke.auth.keyvault_adapter import load_secrets_from_keyvault
 
 # Check if we're in CI environment
 IS_CI = os.getenv("CI") == "true" or os.getenv("GITHUB_ACTIONS") == "true"
@@ -94,9 +93,7 @@ async def run_single_test(config_path: str, run_id: str) -> bool:
         return False
 
 
-async def event_listener(
-    q: asyncio.Queue, progress: Any, runs: Dict[str, RunState]
-) -> None:
+async def event_listener(q: asyncio.Queue, progress: Any, runs: Dict[str, RunState]) -> None:
     """Listen to events and update progress bars (Rich UI only)."""
     while True:
         ev = await q.get()
@@ -144,9 +141,7 @@ async def event_listener(
             q.task_done()
 
 
-async def run_parallel_with_ui(
-    runs: Dict[str, RunState], max_concurrency: int
-) -> List[RunState]:
+async def run_parallel_with_ui(runs: Dict[str, RunState], max_concurrency: int) -> List[RunState]:
     """Run tests in parallel with Rich progress UI."""
     console = Console()
     progress = Progress(
@@ -167,8 +162,7 @@ async def run_parallel_with_ui(
     run_list = list(runs.values())
     if max_concurrency > 0:
         chunks = [
-            run_list[i : i + max_concurrency]
-            for i in range(0, len(run_list), max_concurrency)
+            run_list[i : i + max_concurrency] for i in range(0, len(run_list), max_concurrency)
         ]
     else:
         chunks = [run_list]
@@ -192,9 +186,7 @@ async def run_parallel_with_ui(
             for cohort in chunks:
                 tasks = []
                 for rs in cohort:
-                    task = asyncio.create_task(
-                        run_single_test(str(rs.config_path), rs.run_id)
-                    )
+                    task = asyncio.create_task(run_single_test(str(rs.config_path), rs.run_id))
                     tasks.append((rs, task))
 
                 # Wait for completion
@@ -236,17 +228,14 @@ async def run_parallel_with_ui(
     return all_results
 
 
-async def run_parallel_simple(
-    runs: Dict[str, RunState], max_concurrency: int
-) -> List[RunState]:
+async def run_parallel_simple(runs: Dict[str, RunState], max_concurrency: int) -> List[RunState]:
     """Run tests in parallel with simple console output (for CI)."""
     logger = get_logger("monke_runner")
 
     run_list = list(runs.values())
     if max_concurrency > 0:
         chunks = [
-            run_list[i : i + max_concurrency]
-            for i in range(0, len(run_list), max_concurrency)
+            run_list[i : i + max_concurrency] for i in range(0, len(run_list), max_concurrency)
         ]
     else:
         chunks = [run_list]
@@ -306,9 +295,7 @@ Examples:
         nargs="*",
         help="Connector names to test (e.g., github asana notion)",
     )
-    parser.add_argument(
-        "--all", "-a", action="store_true", help="Run all available tests"
-    )
+    parser.add_argument("--all", "-a", action="store_true", help="Run all available tests")
     parser.add_argument(
         "--changed",
         "-c",
@@ -321,30 +308,16 @@ Examples:
         default=int(os.getenv("MONKE_MAX_PARALLEL", "5")),
         help="Maximum parallel tests (default: 5)",
     )
-    parser.add_argument(
-        "--env", default=".env", help="Environment file (default: .env)"
-    )
+    parser.add_argument("--env", default=".env", help="Environment file (default: .env)")
     parser.add_argument(
         "--run-id-prefix", default="test-", help="Prefix for run IDs (default: test-)"
     )
-    parser.add_argument(
-        "--no-ui", action="store_true", help="Disable Rich UI even if available"
-    )
+    parser.add_argument("--no-ui", action="store_true", help="Disable Rich UI even if available")
 
     args = parser.parse_args()
 
-    # Load secrets from Azure Key Vault first (if configured)
-    if os.getenv("AZURE_KEY_VAULT_URL"):
-        print("🔐 Azure Key Vault URL detected, loading secrets...")
-        if load_secrets_from_keyvault():
-            print("✅ Successfully loaded secrets from Azure Key Vault")
-        else:
-            print(
-                "⚠️  Failed to load secrets from Key Vault, falling back to environment"
-            )
-
-    # Load environment variables (if not in CI and not using Key Vault)
-    if load_dotenv and not IS_CI and not os.getenv("AZURE_KEY_VAULT_URL"):
+    # Load environment variables (if not in CI)
+    if load_dotenv and not IS_CI:
         env_path = Path(__file__).parent / args.env
         if env_path.exists():
             load_dotenv(env_path, override=True)
@@ -380,16 +353,12 @@ Examples:
         print("❌ No configs to run")
         sys.exit(1)
 
-    # Handle Composio auth if needed
-    if os.getenv("DM_AUTH_PROVIDER") == "composio" and os.getenv(
-        "DM_AUTH_PROVIDER_API_KEY"
-    ):
+    # Handle Composio auth if API key is provided
+    if os.getenv("COMPOSIO_API_KEY"):
         from monke.utils.composio_polyfill import connect_composio_provider_polyfill
 
-        response = await connect_composio_provider_polyfill(
-            os.getenv("DM_AUTH_PROVIDER_API_KEY")
-        )
-        os.environ["DM_AUTH_PROVIDER_ID"] = response["readable_id"]
+        response = await connect_composio_provider_polyfill(os.getenv("COMPOSIO_API_KEY"))
+        os.environ["COMPOSIO_PROVIDER_ID"] = response["readable_id"]
 
     # Build run states
     runs = {}

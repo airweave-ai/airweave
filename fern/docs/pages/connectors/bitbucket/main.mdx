@@ -40,24 +40,35 @@ This connector uses a custom authentication configuration.
 >
 
 Bitbucket authentication credentials schema.
+
+Supports either:
+- access_token (Bearer) + workspace/repo_slug, or
+- username + app_password (legacy Basic) + workspace/repo_slug
+<ParamField
+  path="access_token"
+  type="Optional[str]"
+  required={false}
+>
+  Bitbucket API token used as a Bearer token. Provide this to use token-based auth.
+</ParamField>
 <ParamField
   path="username"
-  type="str"
-  required={true}
+  type="Optional[str]"
+  required={false}
 >
-  Your Bitbucket username
+  Your Bitbucket username (deprecated when using API token)
 </ParamField>
 <ParamField
   path="app_password"
-  type="str"
-  required={true}
+  type="Optional[str]"
+  required={false}
 >
-  Bitbucket app password with repository read permissions
+  Bitbucket app password (deprecated). Prefer API tokens where available.
 </ParamField>
 <ParamField
   path="workspace"
   type="str"
-  required={true}
+  required={false}
 >
   Bitbucket workspace slug (e.g., 'my-workspace')
 </ParamField>
@@ -96,7 +107,7 @@ Bitbucket configuration schema.
   required={false}
   default="[]"
 >
-  List of file extensions to include (e.g., '.py', '.js', '.md'). If empty, includes all text files. Use '.*' to include all files.
+  List of file extensions to include (e.g., '.py', '.js', '.md'). If empty, includes all text files.
 </ParamField>
 </Card>
 

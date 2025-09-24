@@ -5,7 +5,10 @@ description: "End-to-end test of Jira connector sync functionality with incremen
 connector:
   name: "jira_test"
   type: "jira"
-  auth_fields: {}
+  auth_mode: composio
+  composio_config:
+    account_id: ca_example_jira
+    auth_config_id: ac_BCboB-rIS5fe
     # access_token: "${JIRA_ACCESS_TOKEN}"
   config_fields:
     cloud_id: "${JIRA_CLOUD_ID}"  # Optional, will be auto-discovered if not provided

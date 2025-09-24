@@ -1,4 +1,6 @@
-import asyncio, time, uuid
+import asyncio
+import time
+import uuid
 from typing import Any, Dict, List
 
 import httpx
@@ -16,7 +18,7 @@ class OutlookCalendarBongo(BaseBongo):
         super().__init__(credentials)
         self.access_token: str = credentials["access_token"]
         self.entity_count: int = int(kwargs.get("entity_count", 3))
-        self.openai_model: str = kwargs.get("openai_model", "gpt-4.1")
+        self.openai_model: str = kwargs.get("openai_model", "gpt-4.1-mini")
         self.rate_limit_delay = float(kwargs.get("rate_limit_delay_ms", 500)) / 1000.0
         self.logger = get_logger("outlook_calendar_bongo")
         self._events: List[Dict[str, Any]] = []

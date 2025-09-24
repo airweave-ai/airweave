@@ -25,8 +25,8 @@ class NotionBongo(BaseBongo):
         """Initialize the Notion bongo."""
         super().__init__(credentials)
         self.access_token: str = credentials["access_token"]
-        self.entity_count: int = int(kwargs.get("entity_count", 5))
-        self.openai_model: str = kwargs.get("openai_model", "gpt-4o-mini")
+        self.entity_count: int = int(kwargs.get("entity_count", 3))
+        self.openai_model: str = kwargs.get("openai_model", "gpt-4.1-mini")
 
         # Rate limiting: ~3 requests per second
         rate_limit_ms = int(kwargs.get("rate_limit_delay_ms", 334))
@@ -47,10 +47,7 @@ class NotionBongo(BaseBongo):
         self.logger = get_logger("notion_bongo")
 
     async def _make_request(
-        self,
-        method: str,
-        endpoint: str,
-        json_data: Optional[Dict[str, Any]] = None
+        self, method: str, endpoint: str, json_data: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Make a rate-limited request to the Notion API."""
         # Simple rate limiting
@@ -63,7 +60,7 @@ class NotionBongo(BaseBongo):
         headers = {
             "Authorization": f"Bearer {self.access_token}",
             "Notion-Version": self.API_VERSION,
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
 
         async with httpx.AsyncClient() as client:
@@ -146,22 +143,22 @@ class NotionBongo(BaseBongo):
             page_data = {
                 "parent": {"type": "page_id", "page_id": parent_page_id},
                 # For pages under a page, the title property key is 'title'
-                "properties": {
-                    "title": [{"type": "text", "text": {"content": title_with_token}}]
-                },
-                "children": content_blocks
+                "properties": {"title": [{"type": "text", "text": {"content": title_with_token}}]},
+                "children": content_blocks,
             }
 
             page = await self._make_request("POST", "pages", page_data)
 
-            created_pages.append({
-                "id": page["id"],
-                "title": title_with_token,
-                "token": token,
-                "url": page["url"],
-                # Use a natural phrase to aid vector search while still validating token presence
-                "expected_content": f"Monke verification token {token}"
-            })
+            created_pages.append(
+                {
+                    "id": page["id"],
+                    "title": title_with_token,
+                    "token": token,
+                    "url": page["url"],
+                    # Use a natural phrase to aid vector search while still validating token presence
+                    "expected_content": f"Monke verification token {token}",
+                }
+            )
 
             self.logger.info(f"📄 Created page: {title} (token: {token})")
 
@@ -188,9 +185,7 @@ class NotionBongo(BaseBongo):
 
             # Generate new content
             title, content_blocks = await generate_notion_page(
-                self.openai_model,
-                token,
-                update=True
+                self.openai_model, token, update=True
             )
 
             # Update the page
@@ -203,13 +198,15 @@ class NotionBongo(BaseBongo):
 
             updated_page = await self._make_request("PATCH", f"pages/{page['id']}", page_update)
 
-            updated_pages.append({
-                "id": updated_page["id"],
-                "title": f"{token} {title} (Updated)",
-                "token": token,
-                "url": updated_page["url"],
-                "expected_content": f"Monke verification token {token}"
-            })
+            updated_pages.append(
+                {
+                    "id": updated_page["id"],
+                    "title": f"{token} {title} (Updated)",
+                    "token": token,
+                    "url": updated_page["url"],
+                    "expected_content": f"Monke verification token {token}",
+                }
+            )
 
             self.logger.info(f"📝 Updated page: {page['title']}")
 

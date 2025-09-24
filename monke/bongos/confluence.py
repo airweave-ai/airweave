@@ -23,15 +23,15 @@ class ConfluenceBongo(BaseBongo):
 
         Args:
             credentials: Confluence credentials with access_token and cloud_id
-            **kwargs: Additional configuration (e.g., entity_count)
+            **kwargs: Configuration from config file
         """
         super().__init__(credentials)
         self.access_token = credentials["access_token"]
         self.cloud_id = credentials.get("cloud_id", "")
 
-        # Configuration from kwargs
-        self.entity_count = kwargs.get('entity_count', 10)
-        self.openai_model = kwargs.get('openai_model', 'gpt-5')
+        # Configuration from config file
+        self.entity_count = int(kwargs.get("entity_count", 3))
+        self.openai_model = kwargs.get("openai_model", "gpt-4.1-mini")
 
         # Test data tracking
         self.test_pages = []
@@ -47,7 +47,6 @@ class ConfluenceBongo(BaseBongo):
     async def create_entities(self) -> List[Dict[str, Any]]:
         """Create test pages in Confluence."""
         self.logger.info(f"🥁 Creating {self.entity_count} test pages in Confluence")
-        entities = []
 
         # Get cloud ID if not provided
         if not self.cloud_id:
@@ -56,36 +55,33 @@ class ConfluenceBongo(BaseBongo):
         # Get or create a test space
         await self._ensure_test_space()
 
-        # Create pages based on configuration
+        # Import generation function
         from monke.generation.confluence import generate_confluence_artifact
 
-        for i in range(self.entity_count):
+        async def create_single_page(index: int) -> Dict[str, Any]:
+            """Create a single Confluence page."""
             # Short unique token used in title and content for verification
             token = str(uuid.uuid4())[:8]
 
             title, content = await generate_confluence_artifact(self.openai_model, token)
 
             # Create page
-            page_data = await self._create_test_page(
-                self.test_space_key,
-                title,
-                content
-            )
+            page_data = await self._create_test_page(self.test_space_key, title, content)
 
-            entities.append({
+            self.logger.info(f"📄 Created test page: {page_data['title']}")
+
+            return {
                 "type": "page",
                 "id": page_data["id"],
                 "title": title,
                 "space_key": self.test_space_key,
                 "token": token,
                 "expected_content": token,
-            })
+            }
 
-            self.logger.info(f"📄 Created test page: {page_data['title']}")
-
-            # Rate limiting
-            if self.entity_count > 10:
-                await asyncio.sleep(0.5)
+        # Create all pages in parallel
+        tasks = [create_single_page(i) for i in range(self.entity_count)]
+        entities = await asyncio.gather(*tasks)
 
         self.test_pages = entities  # Store for later operations
         return entities
@@ -93,44 +89,40 @@ class ConfluenceBongo(BaseBongo):
     async def update_entities(self) -> List[Dict[str, Any]]:
         """Update test entities in Confluence."""
         self.logger.info("🥁 Updating test pages in Confluence")
-        updated_entities = []
 
-        # Update a subset of pages based on configuration
+        # Import generation function
         from monke.generation.confluence import generate_confluence_artifact
+
         pages_to_update = min(3, self.entity_count)  # Update max 3 pages for any test size
 
-        for i in range(pages_to_update):
-            if i < len(self.test_pages):
-                page_info = self.test_pages[i]
-                token = page_info.get("token") or str(uuid.uuid4())[:8]
+        async def update_single_page(page_info: Dict[str, Any]) -> Dict[str, Any]:
+            """Update a single Confluence page."""
+            token = page_info.get("token") or str(uuid.uuid4())[:8]
 
-                # Generate new content with same token
-                title, content = await generate_confluence_artifact(
-                    self.openai_model, token, is_update=True
-                )
+            # Generate new content with same token
+            title, content = await generate_confluence_artifact(
+                self.openai_model, token, is_update=True
+            )
 
-                # Update page
-                await self._update_test_page(
-                    page_info["id"],
-                    title,
-                    content
-                )
+            # Update page
+            await self._update_test_page(page_info["id"], title, content)
 
-                updated_entities.append({
-                    "type": "page",
-                    "id": page_info["id"],
-                    "title": title,
-                    "space_key": self.test_space_key,
-                    "token": token,
-                    "expected_content": token,
-                    "updated": True,
-                })
+            self.logger.info(f"📝 Updated test page: {title}")
 
-                self.logger.info(f"📝 Updated test page: {title}")
+            return {
+                "type": "page",
+                "id": page_info["id"],
+                "title": title,
+                "space_key": self.test_space_key,
+                "token": token,
+                "expected_content": token,
+                "updated": True,
+            }
 
-                # Rate limiting
-                if self.entity_count > 10:
-                    await asyncio.sleep(0.5)
+        # Update pages in parallel
+        pages_to_process = self.test_pages[:pages_to_update]
+        tasks = [update_single_page(page_info) for page_info in pages_to_process]
+        updated_entities = await asyncio.gather(*tasks)
 
         return updated_entities
 
@@ -157,7 +149,9 @@ class ConfluenceBongo(BaseBongo):
                     deleted_ids.append(test_page["id"])
                     self.logger.info(f"🗑️ Deleted test page: {test_page['title']}")
                 else:
-                    self.logger.warning(f"⚠️ Could not find test page for entity: {entity.get('id')}")
+                    self.logger.warning(
+                        f"⚠️ Could not find test page for entity: {entity.get('id')}"
+                    )
 
                 # Rate limiting
                 if len(entities) > 10:
@@ -200,8 +194,8 @@ class ConfluenceBongo(BaseBongo):
                 "https://api.atlassian.com/oauth/token/accessible-resources",
                 headers={
                     "Authorization": f"Bearer {self.access_token}",
-                    "Accept": "application/json"
-                }
+                    "Accept": "application/json",
+                },
             )
 
             if response.status_code != 200:
@@ -223,9 +217,9 @@ class ConfluenceBongo(BaseBongo):
                 f"https://api.atlassian.com/ex/confluence/{self.cloud_id}/wiki/api/v2/spaces",
                 headers={
                     "Authorization": f"Bearer {self.access_token}",
-                    "Accept": "application/json"
+                    "Accept": "application/json",
                 },
-                params={"limit": 10}
+                params={"limit": 10},
             )
 
             if response.status_code != 200:
@@ -241,12 +235,7 @@ class ConfluenceBongo(BaseBongo):
             self.test_space_id = spaces[0]["id"]
             self.logger.info(f"📁 Using space: {self.test_space_key}")
 
-    async def _create_test_page(
-        self,
-        space_key: str,
-        title: str,
-        content: str
-    ) -> Dict[str, Any]:
+    async def _create_test_page(self, space_key: str, title: str, content: str) -> Dict[str, Any]:
         """Create a test page via Confluence API."""
         await self._rate_limit()
 
@@ -254,10 +243,7 @@ class ConfluenceBongo(BaseBongo):
             "spaceId": self.test_space_id,
             "status": "current",
             "title": title,
-            "body": {
-                "representation": "storage",
-                "value": f"<p>{content}</p>"
-            }
+            "body": {"representation": "storage", "value": f"<p>{content}</p>"},
         }
 
         async with httpx.AsyncClient() as client:
@@ -266,9 +252,9 @@ class ConfluenceBongo(BaseBongo):
                 headers={
                     "Authorization": f"Bearer {self.access_token}",
                     "Accept": "application/json",
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
                 },
-                json=page_data
+                json=page_data,
             )
 
             if response.status_code != 200:
@@ -277,19 +263,11 @@ class ConfluenceBongo(BaseBongo):
             result = response.json()
 
             # Track created page
-            self.created_entities.append({
-                "id": result["id"],
-                "title": result["title"]
-            })
+            self.created_entities.append({"id": result["id"], "title": result["title"]})
 
             return result
 
-    async def _update_test_page(
-        self,
-        page_id: str,
-        title: str,
-        content: str
-    ) -> Dict[str, Any]:
+    async def _update_test_page(self, page_id: str, title: str, content: str) -> Dict[str, Any]:
         """Update a test page via Confluence API."""
         await self._rate_limit()
 
@@ -299,8 +277,8 @@ class ConfluenceBongo(BaseBongo):
                 f"https://api.atlassian.com/ex/confluence/{self.cloud_id}/wiki/api/v2/pages/{page_id}",
                 headers={
                     "Authorization": f"Bearer {self.access_token}",
-                    "Accept": "application/json"
-                }
+                    "Accept": "application/json",
+                },
             )
 
             if response.status_code != 200:
@@ -314,14 +292,8 @@ class ConfluenceBongo(BaseBongo):
                 "id": page_id,
                 "status": "current",
                 "title": title,
-                "body": {
-                    "representation": "storage",
-                    "value": f"<p>{content}</p>"
-                },
-                "version": {
-                    "number": current_version + 1,
-                    "message": "Updated by Monke test"
-                }
+                "body": {"representation": "storage", "value": f"<p>{content}</p>"},
+                "version": {"number": current_version + 1, "message": "Updated by Monke test"},
             }
 
             response = await client.put(
@@ -329,9 +301,9 @@ class ConfluenceBongo(BaseBongo):
                 headers={
                     "Authorization": f"Bearer {self.access_token}",
                     "Accept": "application/json",
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
                 },
-                json=update_data
+                json=update_data,
             )
 
             if response.status_code != 200:
@@ -346,9 +318,7 @@ class ConfluenceBongo(BaseBongo):
         async with httpx.AsyncClient() as client:
             response = await client.delete(
                 f"https://api.atlassian.com/ex/confluence/{self.cloud_id}/wiki/api/v2/pages/{page_id}",
-                headers={
-                    "Authorization": f"Bearer {self.access_token}"
-                }
+                headers={"Authorization": f"Bearer {self.access_token}"},
             )
 
             if response.status_code != 204:
@@ -360,9 +330,7 @@ class ConfluenceBongo(BaseBongo):
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     f"https://api.atlassian.com/ex/confluence/{self.cloud_id}/wiki/api/v2/pages/{page_id}",
-                    headers={
-                        "Authorization": f"Bearer {self.access_token}"
-                    }
+                    headers={"Authorization": f"Bearer {self.access_token}"},
                 )
 
                 if response.status_code == 404:
@@ -374,7 +342,9 @@ class ConfluenceBongo(BaseBongo):
                     return page.get("status") == "trashed"
                 else:
                     # Unexpected response
-                    self.logger.warning(f"⚠️ Unexpected response checking {page_id}: {response.status_code}")
+                    self.logger.warning(
+                        f"⚠️ Unexpected response checking {page_id}: {response.status_code}"
+                    )
                     return False
 
         except Exception as e:

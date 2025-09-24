@@ -5,9 +5,12 @@ description: "End-to-end test of Todoist connector sync functionality with incre
 connector:
   name: "todoist_test"
   type: "todoist"
-  auth_fields: {}
+  auth_mode: composio
+  composio_config:
+    account_id: ca_KMeEsHFsKSYh
+    auth_config_id: ac_8qw3bu1q2-tr
   config_fields:
-    openai_model: "gpt-5"
+    openai_model: "gpt-4.1-mini"
     post_create_sleep_seconds: 15
 
 test_flow:

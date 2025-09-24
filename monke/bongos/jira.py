@@ -29,9 +29,9 @@ class JiraBongo(BaseBongo):
         self.access_token = credentials["access_token"]
         self.cloud_id = credentials.get("cloud_id", "")
 
-        # Configuration from kwargs
-        self.entity_count = kwargs.get('entity_count', 10)
-        self.openai_model = kwargs.get('openai_model', 'gpt-5')
+        # Configuration from config file
+        self.entity_count = int(kwargs.get("entity_count", 3))
+        self.openai_model = kwargs.get("openai_model", "gpt-4.1-mini")
 
         # Test data tracking
         self.test_issues = []
@@ -63,25 +63,26 @@ class JiraBongo(BaseBongo):
             # Short unique token used in summary and description for verification
             token = str(uuid.uuid4())[:8]
 
-            summary, description, issue_type = await generate_jira_artifact(self.openai_model, token)
+            summary, description, issue_type = await generate_jira_artifact(
+                self.openai_model, token
+            )
 
             # Create issue
             issue_data = await self._create_test_issue(
-                self.test_project_key,
-                summary,
-                description,
-                issue_type
+                self.test_project_key, summary, description, issue_type
             )
 
-            entities.append({
-                "type": "issue",
-                "id": issue_data["id"],
-                "key": issue_data["key"],
-                "project_key": self.test_project_key,
-                "summary": summary,
-                "token": token,
-                "expected_content": token,
-            })
+            entities.append(
+                {
+                    "type": "issue",
+                    "id": issue_data["id"],
+                    "key": issue_data["key"],
+                    "project_key": self.test_project_key,
+                    "summary": summary,
+                    "token": token,
+                    "expected_content": token,
+                }
+            )
 
             self.logger.info(f"🎫 Created test issue: {issue_data['key']}")
 
@@ -99,6 +100,7 @@ class JiraBongo(BaseBongo):
 
         # Update a subset of issues based on configuration
         from monke.generation.jira import generate_jira_artifact
+
         issues_to_update = min(3, self.entity_count)  # Update max 3 issues for any test size
 
         for i in range(issues_to_update):
@@ -112,22 +114,20 @@ class JiraBongo(BaseBongo):
                 )
 
                 # Update issue
-                await self._update_test_issue(
-                    issue_info["id"],
-                    summary,
-                    description
-                )
+                await self._update_test_issue(issue_info["id"], summary, description)
 
-                updated_entities.append({
-                    "type": "issue",
-                    "id": issue_info["id"],
-                    "key": issue_info["key"],
-                    "project_key": self.test_project_key,
-                    "summary": summary,
-                    "token": token,
-                    "expected_content": token,
-                    "updated": True,
-                })
+                updated_entities.append(
+                    {
+                        "type": "issue",
+                        "id": issue_info["id"],
+                        "key": issue_info["key"],
+                        "project_key": self.test_project_key,
+                        "summary": summary,
+                        "token": token,
+                        "expected_content": token,
+                        "updated": True,
+                    }
+                )
 
                 self.logger.info(f"📝 Updated test issue: {issue_info['key']}")
 
@@ -160,7 +160,9 @@ class JiraBongo(BaseBongo):
                     deleted_keys.append(test_issue["key"])
                     self.logger.info(f"🗑️ Deleted test issue: {test_issue['key']}")
                 else:
-                    self.logger.warning(f"⚠️ Could not find test issue for entity: {entity.get('id')}")
+                    self.logger.warning(
+                        f"⚠️ Could not find test issue for entity: {entity.get('id')}"
+                    )
 
                 # Rate limiting
                 if len(entities) > 10:
@@ -203,8 +205,8 @@ class JiraBongo(BaseBongo):
                 "https://api.atlassian.com/oauth/token/accessible-resources",
                 headers={
                     "Authorization": f"Bearer {self.access_token}",
-                    "Accept": "application/json"
-                }
+                    "Accept": "application/json",
+                },
             )
 
             if response.status_code != 200:
@@ -226,8 +228,8 @@ class JiraBongo(BaseBongo):
                 f"https://api.atlassian.com/ex/jira/{self.cloud_id}/rest/api/3/project",
                 headers={
                     "Authorization": f"Bearer {self.access_token}",
-                    "Accept": "application/json"
-                }
+                    "Accept": "application/json",
+                },
             )
 
             if response.status_code != 200:
@@ -242,39 +244,23 @@ class JiraBongo(BaseBongo):
             self.logger.info(f"📁 Using project: {self.test_project_key}")
 
     async def _create_test_issue(
-        self,
-        project_key: str,
-        summary: str,
-        description: str,
-        issue_type: str = "Task"
+        self, project_key: str, summary: str, description: str, issue_type: str = "Task"
     ) -> Dict[str, Any]:
         """Create a test issue via Jira API."""
         await self._rate_limit()
 
         issue_data = {
             "fields": {
-                "project": {
-                    "key": project_key
-                },
+                "project": {"key": project_key},
                 "summary": summary,
                 "description": {
                     "type": "doc",
                     "version": 1,
                     "content": [
-                        {
-                            "type": "paragraph",
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": description
-                                }
-                            ]
-                        }
-                    ]
+                        {"type": "paragraph", "content": [{"type": "text", "text": description}]}
+                    ],
                 },
-                "issuetype": {
-                    "name": issue_type
-                }
+                "issuetype": {"name": issue_type},
             }
         }
 
@@ -284,9 +270,9 @@ class JiraBongo(BaseBongo):
                 headers={
                     "Authorization": f"Bearer {self.access_token}",
                     "Accept": "application/json",
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
                 },
-                json=issue_data
+                json=issue_data,
             )
 
             if response.status_code != 201:
@@ -295,18 +281,12 @@ class JiraBongo(BaseBongo):
             result = response.json()
 
             # Track created issue
-            self.created_entities.append({
-                "id": result["id"],
-                "key": result["key"]
-            })
+            self.created_entities.append({"id": result["id"], "key": result["key"]})
 
             return result
 
     async def _update_test_issue(
-        self,
-        issue_id: str,
-        summary: str,
-        description: str
+        self, issue_id: str, summary: str, description: str
     ) -> Dict[str, Any]:
         """Update a test issue via Jira API."""
         await self._rate_limit()
@@ -318,17 +298,9 @@ class JiraBongo(BaseBongo):
                     "type": "doc",
                     "version": 1,
                     "content": [
-                        {
-                            "type": "paragraph",
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": description
-                                }
-                            ]
-                        }
-                    ]
-                }
+                        {"type": "paragraph", "content": [{"type": "text", "text": description}]}
+                    ],
+                },
             }
         }
 
@@ -338,9 +310,9 @@ class JiraBongo(BaseBongo):
                 headers={
                     "Authorization": f"Bearer {self.access_token}",
                     "Accept": "application/json",
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
                 },
-                json=update_data
+                json=update_data,
             )
 
             if response.status_code != 204:
@@ -355,9 +327,7 @@ class JiraBongo(BaseBongo):
         async with httpx.AsyncClient() as client:
             response = await client.delete(
                 f"https://api.atlassian.com/ex/jira/{self.cloud_id}/rest/api/3/issue/{issue_id}",
-                headers={
-                    "Authorization": f"Bearer {self.access_token}"
-                }
+                headers={"Authorization": f"Bearer {self.access_token}"},
             )
 
             if response.status_code != 204:
@@ -369,9 +339,7 @@ class JiraBongo(BaseBongo):
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     f"https://api.atlassian.com/ex/jira/{self.cloud_id}/rest/api/3/issue/{issue_id}",
-                    headers={
-                        "Authorization": f"Bearer {self.access_token}"
-                    }
+                    headers={"Authorization": f"Bearer {self.access_token}"},
                 )
 
                 if response.status_code == 404:
@@ -382,7 +350,9 @@ class JiraBongo(BaseBongo):
                     return False
                 else:
                     # Unexpected response
-                    self.logger.warning(f"⚠️ Unexpected response checking {issue_id}: {response.status_code}")
+                    self.logger.warning(
+                        f"⚠️ Unexpected response checking {issue_id}: {response.status_code}"
+                    )
                     return False
 
         except Exception as e:

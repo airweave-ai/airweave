@@ -1,8 +1,8 @@
 """Centralized credential resolution for connectors.
 
 Priority:
-1) Explicit auth_fields provided in test config
-2) Auth broker (e.g., Composio) if configured
+1) Explicit auth_fields provided in test config (direct auth)
+2) Composio auth broker if API key is configured
 """
 
 from __future__ import annotations
@@ -13,22 +13,15 @@ from typing import Any, Dict, Optional
 from monke.auth.broker import BaseAuthBroker, ComposioBroker
 
 
-def _make_broker(source_short_name: str) -> Optional[BaseAuthBroker]:
-    provider = os.getenv("DM_AUTH_PROVIDER")  # e.g., "composio"
-    if not provider:
+def _make_broker() -> Optional[BaseAuthBroker]:
+    """Create a Composio broker if API key is available."""
+    # Check if Composio API key exists
+    if not os.getenv("COMPOSIO_API_KEY"):
         return None
-    if provider == "composio":
-        # Check for source-specific account/config IDs
-        source_upper = source_short_name.upper()
-        account_id = os.getenv(f"{source_upper}_AUTH_PROVIDER_ACCOUNT_ID")
-        auth_config_id = os.getenv(f"{source_upper}_AUTH_PROVIDER_AUTH_CONFIG_ID")
 
-        # If source-specific IDs exist, use them
-        if account_id and auth_config_id:
-            return ComposioBroker(account_id=account_id, auth_config_id=auth_config_id)
-        # Otherwise use default broker
-        return ComposioBroker()
-    raise ValueError(f"Unsupported auth provider: {provider}")
+    # Return a broker without specific account/auth config
+    # These will be provided from the YAML config when needed
+    return ComposioBroker()
 
 
 async def resolve_credentials(
@@ -46,11 +39,11 @@ async def resolve_credentials(
     if provided_auth_fields:
         return provided_auth_fields
 
-    broker = _make_broker(connector_short_name)
+    broker = _make_broker()
 
     if broker:
         return await broker.get_credentials(connector_short_name)
 
     raise ValueError(
-        f"No credentials provided and no DM_AUTH_PROVIDER configured for {connector_short_name}"
+        f"No credentials provided and no Composio API key configured for {connector_short_name}"
     )

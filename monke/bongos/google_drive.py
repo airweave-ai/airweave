@@ -30,9 +30,9 @@ class GoogleDriveBongo(BaseBongo):
         self.access_token = credentials["access_token"]
 
         # Configuration from kwargs
-        self.entity_count = kwargs.get("entity_count", 10)
+        self.entity_count = int(kwargs.get("entity_count", 3))
         self.file_types = kwargs.get("file_types", ["document", "spreadsheet", "pdf"])
-        self.openai_model = kwargs.get("openai_model", "gpt-5")
+        self.openai_model = kwargs.get("openai_model", "gpt-4.1-mini")
 
         # Test data tracking
         self.test_files = []

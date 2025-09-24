@@ -58,9 +58,7 @@ class TestFlow:
                 await self.cleanup()
                 pass
             except Exception as cleanup_error:
-                self.logger.error(
-                    f"❌ Cleanup failed after test failure: {cleanup_error}"
-                )
+                self.logger.error(f"❌ Cleanup failed after test failure: {cleanup_error}")
             raise
 
     async def _execute_step(self, step_name: str):
@@ -114,11 +112,25 @@ class TestFlow:
 
         from monke.bongos.registry import BongoRegistry
         from monke.auth.credentials_resolver import resolve_credentials
+        from monke.auth.broker import ComposioBroker
 
         try:
-            resolved_creds = await resolve_credentials(
-                self.config.connector.type, self.config.connector.auth_fields
-            )
+            # Resolve credentials based on auth mode
+            if self.config.connector.auth_mode == "composio":
+                broker = ComposioBroker(
+                    account_id=self.config.connector.composio_config.account_id,
+                    auth_config_id=self.config.connector.composio_config.auth_config_id,
+                )
+                resolved_creds = await broker.get_credentials(self.config.connector.type)
+            else:
+                # For direct mode, resolve auth fields from environment variables
+                if self.config.connector.auth_fields:
+                    # Resolve the environment variables to actual values
+                    resolved_creds = self.config.connector.resolve_auth_fields()
+                else:
+                    # No auth fields provided, let resolve_credentials handle it
+                    resolved_creds = await resolve_credentials(self.config.connector.type, None)
+
             bongo = BongoRegistry.create(
                 self.config.connector.type,
                 resolved_creds,
@@ -150,20 +162,26 @@ class TestFlow:
         def _create_source_connection_via_http(
             payload: Dict[str, Any],
         ) -> SimpleNamespace:
-            base_url = os.getenv("AIRWEAVE_API_URL", "http://localhost:8001").rstrip(
-                "/"
-            )
+            base_url = os.getenv("AIRWEAVE_API_URL", "http://localhost:8001").rstrip("/")
             headers = {"Content-Type": "application/json"}
             api_key = os.getenv("AIRWEAVE_API_KEY")
             if api_key:
                 headers["x-api-key"] = api_key
-            response = httpx.post(
-                f"{base_url}/source-connections",
-                json=payload,
-                headers=headers,
-                timeout=30.0,
-            )
-            response.raise_for_status()
+
+            try:
+                response = httpx.post(
+                    f"{base_url}/source-connections",
+                    json=payload,
+                    headers=headers,
+                    timeout=30.0,
+                )
+                response.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                # Log the error details for debugging
+                self.logger.error(f"Failed to create source connection: {e}")
+                self.logger.error(f"Response body: {e.response.text}")
+                raise
+
             data = response.json()
             return SimpleNamespace(id=data.get("id"))
 
@@ -172,110 +190,98 @@ class TestFlow:
         self.config._collection_id = collection.id
         self.config._collection_readable_id = collection.readable_id
 
-        has_explicit_auth = bool(self.config.connector.auth_fields)
-        use_provider = (
-            os.getenv("DM_AUTH_PROVIDER") is not None and not has_explicit_auth
-        )
-
-        if has_explicit_auth:
+        # Check auth mode from config
+        if self.config.connector.auth_mode == "direct":
             self.logger.info(
-                f"🔑 Using explicit auth fields from config for {self.config.connector.type}"
+                f"🔑 Using direct auth (explicit auth fields) for {self.config.connector.type}"
             )
-        elif use_provider:
-            self.logger.info(f"🔐 Using auth provider: {os.getenv('DM_AUTH_PROVIDER')}")
-        else:
-            self.logger.info(
-                "⚠️  No auth configured - will attempt with empty auth_fields"
+            # Direct auth - use credentials from bongo or auth_fields
+            # The schema expects just "credentials" field for DirectAuthentication
+            credentials = (
+                bongo.credentials
+                if hasattr(bongo, "credentials")
+                else self.config.connector.resolve_auth_fields()
             )
 
-        if use_provider:
-            auth_provider_id = os.getenv("DM_AUTH_PROVIDER_ID")
-            if not auth_provider_id:
-                self.logger.warning(
-                    "Auth provider requested but DM_AUTH_PROVIDER_ID not set; falling back to explicit auth_fields if provided"
+            # Log what we're sending (hide sensitive values)
+            self.logger.info(f"📋 Sending auth with {len(credentials)} credential fields")
+            self.logger.info(f"Credential keys: {list(credentials.keys())}")
+            # Debug: Show first few chars of api_key to verify it's loaded
+            if "api_key" in credentials and credentials["api_key"]:
+                key_preview = (
+                    credentials["api_key"][:10] + "..."
+                    if len(credentials["api_key"]) > 10
+                    else "SHORT_KEY"
                 )
-                # New API (v0.6) via HTTP: nested authentication + readable_collection_id + config
-                source_connection = _create_source_connection_via_http(
-                    {
-                        "name": f"{self.config.connector.type.title()} Test Connection {int(time.time())}",
-                        "short_name": self.config.connector.type,
-                        "readable_collection_id": self.config._collection_readable_id,
-                        "authentication": {
-                            "credentials": (
-                                bongo.credentials
-                                if hasattr(bongo, "credentials")
-                                else self.config.connector.auth_fields
-                            )
-                        },
-                        "config": self.config.connector.config_fields,
-                    }
+                self.logger.info(f"API key preview: {key_preview}")
+
+            payload = {
+                "name": f"{self.config.connector.type.title()} Test Connection {int(time.time())}",
+                "short_name": self.config.connector.type,
+                "readable_collection_id": self.config._collection_readable_id,
+                "authentication": {"credentials": credentials},
+                "config": self.config.connector.config_fields,
+            }
+
+            source_connection = _create_source_connection_via_http(payload)
+        elif self.config.connector.auth_mode == "composio":
+            self.logger.info("🔐 Using Composio auth provider")
+
+            # Get Composio provider ID from environment
+            composio_provider_id = os.getenv("COMPOSIO_PROVIDER_ID")
+            if not composio_provider_id:
+                raise RuntimeError(
+                    "Composio auth mode configured but COMPOSIO_PROVIDER_ID not set. "
+                    "Ensure COMPOSIO_API_KEY is configured."
                 )
-            else:
-                src_upper = self.config.connector.type.upper()
-                auth_config_id = os.getenv(f"{src_upper}_AUTH_PROVIDER_AUTH_CONFIG_ID")
-                account_id = os.getenv(f"{src_upper}_AUTH_PROVIDER_ACCOUNT_ID")
 
-                # Fallback to global identifiers if source-specific ones are not provided
-                if not auth_config_id:
-                    auth_config_id = os.getenv("DM_AUTH_PROVIDER_AUTH_CONFIG_ID")
-                if not account_id:
-                    account_id = os.getenv("DM_AUTH_PROVIDER_ACCOUNT_ID")
+            # Get auth config from the YAML config
+            if not self.config.connector.composio_config:
+                raise RuntimeError(
+                    f"Composio auth mode configured for {self.config.connector.type} "
+                    "but composio_config not provided in YAML"
+                )
 
-                auth_provider_config = None
-                if auth_config_id and account_id:
-                    auth_provider_config = {
-                        "auth_config_id": auth_config_id,
-                        "account_id": account_id,
-                    }
+            auth_provider_config = {
+                "auth_config_id": self.config.connector.composio_config.auth_config_id,
+                "account_id": self.config.connector.composio_config.account_id,
+            }
 
-                if not auth_provider_config:
-                    missing = []
-                    if not os.getenv(
-                        f"{src_upper}_AUTH_PROVIDER_AUTH_CONFIG_ID"
-                    ) and not os.getenv("DM_AUTH_PROVIDER_AUTH_CONFIG_ID"):
-                        missing.append(
-                            f"{src_upper}_AUTH_PROVIDER_AUTH_CONFIG_ID or DM_AUTH_PROVIDER_AUTH_CONFIG_ID"
-                        )
-                    if not os.getenv(
-                        f"{src_upper}_AUTH_PROVIDER_ACCOUNT_ID"
-                    ) and not os.getenv("DM_AUTH_PROVIDER_ACCOUNT_ID"):
-                        missing.append(
-                            f"{src_upper}_AUTH_PROVIDER_ACCOUNT_ID or DM_AUTH_PROVIDER_ACCOUNT_ID"
-                        )
-                    msg = (
-                        "Auth provider is configured but required auth_provider_config is missing. "
-                        "Please set: " + ", ".join(missing)
-                    )
-                    self.logger.error(msg)
-                    raise RuntimeError(msg)
+            # New API (v0.6) via HTTP: pass auth provider via nested authentication
+            payload = {
+                "name": f"{self.config.connector.type.title()} Test Connection {int(time.time())}",
+                "short_name": self.config.connector.type,
+                "readable_collection_id": self.config._collection_readable_id,
+                "authentication": {
+                    "provider_readable_id": composio_provider_id,
+                    "provider_config": auth_provider_config,
+                },
+                "config": self.config.connector.config_fields,
+            }
 
-                # New API (v0.6) via HTTP: pass auth provider via nested authentication
-                payload = {
-                    "name": f"{self.config.connector.type.title()} Test Connection {int(time.time())}",
-                    "short_name": self.config.connector.type,
-                    "readable_collection_id": self.config._collection_readable_id,
-                    "authentication": {
-                        "provider_readable_id": auth_provider_id,
-                        **(
-                            {"provider_config": auth_provider_config}
-                            if auth_provider_config
-                            else {}
-                        ),
-                    },
-                    "config": self.config.connector.config_fields,
-                }
-
-                source_connection = _create_source_connection_via_http(payload)
+            source_connection = _create_source_connection_via_http(payload)
         else:
-            # New API (v0.6) via HTTP: nested authentication + readable_collection_id + config
+            # Fallback - no auth mode specified, use empty credentials or what's available
+            self.logger.info(
+                f"⚠️ No auth mode specified for {self.config.connector.type}, using fallback"
+            )
+
+            # Try to get credentials from bongo or config
+            credentials = {}
+            if hasattr(bongo, "credentials"):
+                credentials = bongo.credentials
+            elif self.config.connector.auth_fields:
+                try:
+                    credentials = self.config.connector.resolve_auth_fields()
+                except Exception:
+                    credentials = {}
+
             source_connection = _create_source_connection_via_http(
                 {
                     "name": f"{self.config.connector.type.title()} Test Connection {int(time.time())}",
                     "short_name": self.config.connector.type,
                     "readable_collection_id": self.config._collection_readable_id,
-                    "authentication": {
-                        "credentials": self.config.connector.auth_fields
-                    },
+                    "authentication": {"credentials": credentials},
                     "config": self.config.connector.config_fields,
                 }
             )
@@ -332,9 +338,7 @@ class TestFlow:
             await self._emit_event("cleanup_failed", extra={"error": str(e)})
             return False
 
-    async def _emit_event(
-        self, event_type: str, extra: Optional[Dict[str, Any]] = None
-    ) -> None:
+    async def _emit_event(self, event_type: str, extra: Optional[Dict[str, Any]] = None) -> None:
         payload: Dict[str, Any] = {
             "type": event_type,
             "run_id": self.run_id,

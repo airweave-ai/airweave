@@ -4,7 +4,10 @@ description: End-to-end test for Asana source using Monke
 connector:
   name: Asana
   type: asana
-  auth_fields: {}  # Will be resolved by credentials_resolver (either from env or provider)
+  auth_mode: composio
+  composio_config:
+    account_id: ca_-v_9I3Ig098s
+    auth_config_id: ac_mPRmEEGQygEV
   config_fields:
     openai_model: "gpt-4.1-mini"  # Model for content generation
     rate_limit_delay_ms: 1000  # Increased delay between API calls for Asana

@@ -39,11 +39,11 @@ class BitbucketBongo(BaseBongo):
         )
 
         # Configuration from kwargs
-        self.entity_count = kwargs.get("entity_count", 10)
+        self.entity_count = int(kwargs.get("entity_count", 3))
         self.workspace = kwargs.get("workspace", self.username)  # Default to username
         self.repo_slug = kwargs.get("repo_slug", "monke-test-repo")
         self.branch = kwargs.get("branch", "main")
-        self.openai_model = kwargs.get("openai_model", "gpt-5")
+        self.openai_model = kwargs.get("openai_model", "gpt-4.1-mini")
 
         if not self.workspace:
             raise ValueError(
@@ -68,9 +68,7 @@ class BitbucketBongo(BaseBongo):
             print(f"access_token: {self.access_token}")
             headers["Authorization"] = f"Bearer {self.access_token}"
         elif self.username and self.app_password:
-            basic = base64.b64encode(
-                f"{self.username}:{self.app_password}".encode()
-            ).decode()
+            basic = base64.b64encode(f"{self.username}:{self.app_password}".encode()).decode()
             headers["Authorization"] = f"Basic {basic}"
         if extra:
             headers.update(extra)
@@ -128,9 +126,7 @@ class BitbucketBongo(BaseBongo):
         # Update a subset of files based on configuration
         from monke.generation.bitbucket import generate_bitbucket_artifact
 
-        files_to_update = min(
-            3, self.entity_count
-        )  # Update max 3 files for any test size
+        files_to_update = min(3, self.entity_count)  # Update max 3 files for any test size
 
         for i in range(files_to_update):
             if i < len(self.test_files):
@@ -174,9 +170,7 @@ class BitbucketBongo(BaseBongo):
         # Use the specific deletion method to delete all entities
         return await self.delete_specific_entities(self.created_entities)
 
-    async def delete_specific_entities(
-        self, entities: List[Dict[str, Any]]
-    ) -> List[str]:
+    async def delete_specific_entities(self, entities: List[Dict[str, Any]]) -> List[str]:
         """Delete specific entities from Bitbucket."""
         self.logger.info(f"🥁 Deleting {len(entities)} specific files from Bitbucket")
 
@@ -204,14 +198,10 @@ class BitbucketBongo(BaseBongo):
                     await asyncio.sleep(0.5)
 
             except Exception as e:
-                self.logger.warning(
-                    f"⚠️ Could not delete entity {entity.get('path')}: {e}"
-                )
+                self.logger.warning(f"⚠️ Could not delete entity {entity.get('path')}: {e}")
 
         # VERIFICATION: Check if files are actually deleted
-        self.logger.info(
-            "🔍 VERIFYING: Checking if files are actually deleted from Bitbucket"
-        )
+        self.logger.info("🔍 VERIFYING: Checking if files are actually deleted from Bitbucket")
         for entity in entities:
             path = entity.get("path")
             if path and path in deleted_paths:
@@ -287,9 +277,7 @@ class BitbucketBongo(BaseBongo):
             )
 
             if response.status_code not in [200, 201]:
-                raise Exception(
-                    f"Failed to create file: {response.status_code} - {response.text}"
-                )
+                raise Exception(f"Failed to create file: {response.status_code} - {response.text}")
 
             # Track created file
             self.created_entities.append({"path": filepath})
@@ -310,9 +298,7 @@ class BitbucketBongo(BaseBongo):
             )
 
             if response.status_code not in [200, 201]:
-                raise Exception(
-                    f"Failed to update file: {response.status_code} - {response.text}"
-                )
+                raise Exception(f"Failed to update file: {response.status_code} - {response.text}")
 
     async def _delete_test_file(self, filepath: str):
         """Delete a test file via Bitbucket API."""
@@ -334,9 +320,7 @@ class BitbucketBongo(BaseBongo):
             )
 
             if response.status_code not in [200, 201, 204]:
-                self.logger.warning(
-                    f"Could not delete file via API: {response.status_code}"
-                )
+                self.logger.warning(f"Could not delete file via API: {response.status_code}")
 
     async def _verify_file_deleted(self, filepath: str) -> bool:
         """Verify if a file is actually deleted from Bitbucket."""

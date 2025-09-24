@@ -4,12 +4,11 @@ import asyncio
 import base64
 import time
 import uuid
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import httpx
 from monke.bongos.base_bongo import BaseBongo
 from monke.utils.logging import get_logger
-from monke.auth.keyvault_adapter import get_keyvault_adapter
 
 
 class GitHubBongo(BaseBongo):
@@ -24,25 +23,18 @@ class GitHubBongo(BaseBongo):
         """Initialize the GitHub bongo.
 
         Args:
-            credentials: GitHub credentials with personal_access_token, repo_name
-            **kwargs: Additional configuration (e.g., entity_count, file_types)
+            credentials: GitHub credentials with personal_access_token
+            **kwargs: Additional configuration including repo_name (required), entity_count, file_types
         """
         super().__init__(credentials)
-        # Resolve GitHub PAT from env or Azure Key Vault (fallback to provided credential)
-        adapter = get_keyvault_adapter()
-        self.personal_access_token = adapter.get_env_or_secret(
-            "GITHUB_PERSONAL_ACCESS_TOKEN", credentials.get("personal_access_token")
-        )
-        if not self.personal_access_token:
-            raise RuntimeError(
-                "GitHub PAT not found. Set GITHUB_PERSONAL_ACCESS_TOKEN in env or Key Vault."
-            )
+        # GitHub expects personal_access_token specifically
+        self.personal_access_token = credentials["personal_access_token"]
         self.repo_name = credentials["repo_name"]
 
-        # Configuration from kwargs
-        self.entity_count = kwargs.get("entity_count", 10)
+        # Configuration from config file
+        self.entity_count = int(kwargs.get("entity_count", 3))
         self.file_types = kwargs.get("file_types", ["markdown", "python", "json"])
-        self.openai_model = kwargs.get("openai_model", "gpt-5")
+        self.openai_model = kwargs.get("openai_model", "gpt-4.1-mini")
         self.branch = kwargs.get("branch", "main")
 
         # Test data tracking
@@ -65,40 +57,44 @@ class GitHubBongo(BaseBongo):
     async def create_entities(self) -> List[Dict[str, Any]]:
         """Create test files in GitHub repository."""
         self.logger.info(f"🥁 Creating {self.entity_count} test entities in GitHub")
-        entities = []
 
-        # Create files based on configuration
+        # Import generation functions
         from monke.generation.github import generate_github_artifact, slugify
 
-        for i in range(self.entity_count):
-            file_type = self.file_types[i % len(self.file_types)]
+        # Prepare all creation tasks
+        async def create_single_entity(index: int) -> Dict[str, Any]:
+            """Create a single GitHub file entity."""
+            file_type = self.file_types[index % len(self.file_types)]
             # Short unique token used in filename and body for verification
             token = str(uuid.uuid4())[:8]
 
-            title, content = await generate_github_artifact(
-                file_type, self.openai_model, token
-            )
+            # Generate content
+            title, content = await generate_github_artifact(file_type, self.openai_model, token)
             slug = slugify(title)[:40] or f"monke-{token}"
             filename = f"{slug}-{token}.{self._get_file_extension(file_type)}"
 
+            # Minimal rate limiting to avoid hitting GitHub API limits
+            if index > 0 and self.entity_count > 20:
+                await asyncio.sleep(0.1)  # Only rate limit for large batches
+
+            # Create the file
             test_file = await self._create_test_file(filename, content)
-            entities.append(
-                {
-                    "type": "file",
-                    "path": test_file["content"]["path"],
-                    "sha": test_file["content"]["sha"],
-                    "file_type": file_type,
-                    "title": title,
-                    "token": token,
-                    "expected_content": token,
-                }
-            )
 
             self.logger.info(f"📄 Created test file: {test_file['content']['path']}")
 
-            # Rate limiting for larger test sizes
-            if self.entity_count > 10:
-                await asyncio.sleep(0.5)
+            return {
+                "type": "file",
+                "path": test_file["content"]["path"],
+                "sha": test_file["content"]["sha"],
+                "file_type": file_type,
+                "title": title,
+                "token": token,
+                "expected_content": token,
+            }
+
+        # Create all entities in parallel - runtime can handle the concurrency
+        tasks = [create_single_entity(i) for i in range(self.entity_count)]
+        entities = await asyncio.gather(*tasks)
 
         self.test_files = entities  # Store for later operations
         return entities
@@ -106,47 +102,43 @@ class GitHubBongo(BaseBongo):
     async def update_entities(self) -> List[Dict[str, Any]]:
         """Update test entities in GitHub."""
         self.logger.info("🥁 Updating test entities in GitHub")
-        updated_entities = []
 
         # Update a subset of files based on configuration
         from monke.generation.github import generate_github_artifact
 
-        files_to_update = min(
-            3, self.entity_count
-        )  # Update max 3 files for any test size
+        files_to_update = min(3, self.entity_count)  # Update max 3 files for any test size
 
-        for i in range(files_to_update):
-            if i < len(self.test_files):
-                file_info = self.test_files[i]
-                file_type = file_info.get("file_type", "markdown")
-                token = file_info.get("token") or str(uuid.uuid4())[:8]
-                # Regenerate content with same token to indicate continuity
-                title, updated_content = await generate_github_artifact(
-                    file_type, self.openai_model, token
-                )
+        async def update_single_entity(file_info: Dict[str, Any]) -> Dict[str, Any]:
+            """Update a single GitHub file entity."""
+            file_type = file_info.get("file_type", "markdown")
+            token = file_info.get("token") or str(uuid.uuid4())[:8]
 
-                updated_file = await self._update_test_file(
-                    file_info["path"], file_info["sha"], updated_content
-                )
-                updated_entities.append(
-                    {
-                        "type": "file",
-                        "path": updated_file["content"]["path"],
-                        "sha": updated_file["content"]["sha"],
-                        "file_type": file_type,
-                        "title": title,
-                        "token": token,
-                        "expected_content": token,
-                    }
-                )
+            # Regenerate content with same token to indicate continuity
+            title, updated_content = await generate_github_artifact(
+                file_type, self.openai_model, token
+            )
 
-                self.logger.info(
-                    f"📝 Updated test file: {updated_file['content']['path']}"
-                )
+            # Update the file
+            updated_file = await self._update_test_file(
+                file_info["path"], file_info["sha"], updated_content
+            )
 
-                # Rate limiting for larger test sizes
-                if self.entity_count > 10:
-                    await asyncio.sleep(0.5)
+            self.logger.info(f"📝 Updated test file: {updated_file['content']['path']}")
+
+            return {
+                "type": "file",
+                "path": updated_file["content"]["path"],
+                "sha": updated_file["content"]["sha"],
+                "file_type": file_type,
+                "title": title,
+                "token": token,
+                "expected_content": token,
+            }
+
+        # Update entities in parallel
+        files_to_process = self.test_files[:files_to_update]
+        tasks = [update_single_entity(file_info) for file_info in files_to_process]
+        updated_entities = await asyncio.gather(*tasks)
 
         return updated_entities
 
@@ -157,15 +149,12 @@ class GitHubBongo(BaseBongo):
         # Use the specific deletion method to delete all entities
         return await self.delete_specific_entities(self.created_entities)
 
-    async def delete_specific_entities(
-        self, entities: List[Dict[str, Any]]
-    ) -> List[str]:
+    async def delete_specific_entities(self, entities: List[Dict[str, Any]]) -> List[str]:
         """Delete specific entities from GitHub."""
         self.logger.info(f"🥁 Deleting {len(entities)} specific entities from GitHub")
 
-        deleted_paths = []
-
-        for entity in entities:
+        async def delete_single_entity(entity: Dict[str, Any]) -> Optional[str]:
+            """Delete a single GitHub file entity."""
             try:
                 # Find the corresponding test file
                 test_file = next(
@@ -174,35 +163,36 @@ class GitHubBongo(BaseBongo):
 
                 if test_file:
                     await self._delete_test_file(test_file["path"], test_file["sha"])
-                    deleted_paths.append(test_file["path"])
                     self.logger.info(f"🗑️ Deleted test file: {test_file['path']}")
+                    return test_file["path"]
                 else:
-                    self.logger.warning(
-                        f"⚠️ Could not find test file for entity: {entity['path']}"
-                    )
-
-                # Rate limiting for larger test sizes
-                if len(entities) > 10:
-                    await asyncio.sleep(0.5)
+                    self.logger.warning(f"⚠️ Could not find test file for entity: {entity['path']}")
+                    return None
 
             except Exception as e:
                 self.logger.warning(f"⚠️ Could not delete entity {entity['path']}: {e}")
+                return None
 
-        # VERIFICATION: Check if files are actually deleted from GitHub
-        self.logger.info(
-            "🔍 VERIFYING: Checking if files are actually deleted from GitHub"
-        )
-        for entity in entities:
+        # Delete all entities in parallel
+        tasks = [delete_single_entity(entity) for entity in entities]
+        results = await asyncio.gather(*tasks)
+        deleted_paths = [path for path in results if path is not None]
+
+        # VERIFICATION: Check if files are actually deleted from GitHub (in parallel)
+        self.logger.info("🔍 VERIFYING: Checking if files are actually deleted from GitHub")
+
+        async def verify_deletion(entity: Dict[str, Any]) -> None:
+            """Verify a single file deletion."""
             if entity["path"] in deleted_paths:
                 is_deleted = await self._verify_file_deleted(entity["path"])
                 if is_deleted:
-                    self.logger.info(
-                        f"✅ File {entity['path']} confirmed deleted from GitHub"
-                    )
+                    self.logger.info(f"✅ File {entity['path']} confirmed deleted from GitHub")
                 else:
-                    self.logger.warning(
-                        f"⚠️ File {entity['path']} still exists in GitHub!"
-                    )
+                    self.logger.warning(f"⚠️ File {entity['path']} still exists in GitHub!")
+
+        # Verify all deletions in parallel
+        verify_tasks = [verify_deletion(entity) for entity in entities]
+        await asyncio.gather(*verify_tasks)
 
         return deleted_paths
 
@@ -216,9 +206,7 @@ class GitHubBongo(BaseBongo):
                 await self._force_delete_file(test_file["path"])
                 self.logger.info(f"🧹 Force deleted file: {test_file['path']}")
             except Exception as e:
-                self.logger.warning(
-                    f"⚠️ Could not force delete file {test_file['path']}: {e}"
-                )
+                self.logger.warning(f"⚠️ Could not force delete file {test_file['path']}: {e}")
 
     # Helper methods for GitHub API calls
     async def _create_test_file(self, filename: str, content: str) -> Dict[str, Any]:
@@ -242,9 +230,7 @@ class GitHubBongo(BaseBongo):
                     params={"ref": self.branch},
                 )
 
-                self.logger.info(
-                    f"   Check response status: {check_response.status_code}"
-                )
+                self.logger.info(f"   Check response status: {check_response.status_code}")
 
                 if check_response.status_code == 200:
                     # File exists, get current SHA for update
@@ -326,9 +312,7 @@ class GitHubBongo(BaseBongo):
             )
 
             if response.status_code != 200:
-                raise Exception(
-                    f"Failed to update file: {response.status_code} - {response.text}"
-                )
+                raise Exception(f"Failed to update file: {response.status_code} - {response.text}")
 
             result = response.json()
 
@@ -366,9 +350,7 @@ class GitHubBongo(BaseBongo):
             )
 
             if response.status_code != 200:
-                raise Exception(
-                    f"Failed to delete file: {response.status_code} - {response.text}"
-                )
+                raise Exception(f"Failed to delete file: {response.status_code} - {response.text}")
 
     async def _verify_file_deleted(self, filename: str) -> bool:
         """Verify if a file is actually deleted from GitHub."""
@@ -513,7 +495,7 @@ if __name__ == "__main__":
     print(test_obj.get_info())
 '''
         elif file_ext == "json":
-            return f'''{{
+            return f"""{{
   "test_file": "monke_test_{file_num}.json",
   "purpose": "Testing GitHub sync with UPDATED JSON content",
   "status": "UPDATED",
@@ -538,7 +520,7 @@ if __name__ == "__main__":
       "status": "UPDATED"
     }}
   }}
-}}'''
+}}"""
         else:  # yaml, txt, etc.
             return f"""Monke Test File {file_num} - UPDATED
 
@@ -582,9 +564,7 @@ This is an updated plain text file for testing various content types and ensurin
         }
         return extensions.get(file_type, "txt")
 
-    def _generate_file_content(
-        self, file_type: str, file_num: int, random_suffix: str
-    ) -> str:
+    def _generate_file_content(self, file_type: str, file_num: int, random_suffix: str) -> str:
         """Generate content for a test file based on type."""
         timestamp = str(int(time.time()))
 
@@ -641,7 +621,7 @@ if __name__ == "__main__":
     print(test_obj.get_info())
 '''
         elif file_type == "json":
-            return f'''{{
+            return f"""{{
   "test_file": "monke_test_{file_num}.json",
   "purpose": "Testing GitHub sync with JSON content",
   "content": {{
@@ -662,7 +642,7 @@ if __name__ == "__main__":
       "timestamp": "{timestamp}"
     }}
   }}
-}}'''
+}}"""
         elif file_type == "yaml":
             return f"""# Monke Test File {file_num}
 test_file: monke_test_{file_num}.yml

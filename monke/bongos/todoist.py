@@ -28,9 +28,9 @@ class TodoistBongo(BaseBongo):
         super().__init__(credentials)
         self.access_token = credentials["access_token"]
 
-        # Configuration from kwargs
-        self.entity_count = kwargs.get('entity_count', 10)
-        self.openai_model = kwargs.get('openai_model', 'gpt-5')
+        # Configuration from config file
+        self.entity_count = int(kwargs.get("entity_count", 3))
+        self.openai_model = kwargs.get("openai_model", "gpt-4.1-mini")
 
         # Test data tracking
         self.test_tasks = []
@@ -58,24 +58,25 @@ class TodoistBongo(BaseBongo):
             # Short unique token used in content for verification
             token = str(uuid.uuid4())[:8]
 
-            content, description, priority = await generate_todoist_artifact(self.openai_model, token)
+            content, description, priority = await generate_todoist_artifact(
+                self.openai_model, token
+            )
 
             # Create task
             task_data = await self._create_test_task(
-                self.test_project_id,
-                content,
-                description,
-                priority
+                self.test_project_id, content, description, priority
             )
 
-            entities.append({
-                "type": "task",
-                "id": task_data["id"],
-                "project_id": self.test_project_id,
-                "content": content,
-                "token": token,
-                "expected_content": token,
-            })
+            entities.append(
+                {
+                    "type": "task",
+                    "id": task_data["id"],
+                    "project_id": self.test_project_id,
+                    "content": content,
+                    "token": token,
+                    "expected_content": token,
+                }
+            )
 
             self.logger.info(f"✅ Created test task: {task_data['content']}")
 
@@ -93,6 +94,7 @@ class TodoistBongo(BaseBongo):
 
         # Update a subset of tasks based on configuration
         from monke.generation.todoist import generate_todoist_artifact
+
         tasks_to_update = min(3, self.entity_count)  # Update max 3 tasks for any test size
 
         for i in range(tasks_to_update):
@@ -106,21 +108,19 @@ class TodoistBongo(BaseBongo):
                 )
 
                 # Update task
-                await self._update_test_task(
-                    task_info["id"],
-                    content,
-                    description
-                )
+                await self._update_test_task(task_info["id"], content, description)
 
-                updated_entities.append({
-                    "type": "task",
-                    "id": task_info["id"],
-                    "project_id": self.test_project_id,
-                    "content": content,
-                    "token": token,
-                    "expected_content": token,
-                    "updated": True,
-                })
+                updated_entities.append(
+                    {
+                        "type": "task",
+                        "id": task_info["id"],
+                        "project_id": self.test_project_id,
+                        "content": content,
+                        "token": token,
+                        "expected_content": token,
+                        "updated": True,
+                    }
+                )
 
                 self.logger.info(f"📝 Updated test task: {content}")
 
@@ -153,7 +153,9 @@ class TodoistBongo(BaseBongo):
                     deleted_ids.append(test_task["id"])
                     self.logger.info(f"🗑️ Deleted test task: {test_task['content']}")
                 else:
-                    self.logger.warning(f"⚠️ Could not find test task for entity: {entity.get('id')}")
+                    self.logger.warning(
+                        f"⚠️ Could not find test task for entity: {entity.get('id')}"
+                    )
 
                 # Rate limiting
                 if len(entities) > 10:
@@ -199,27 +201,22 @@ class TodoistBongo(BaseBongo):
                 "https://api.todoist.com/rest/v2/projects",
                 headers={
                     "Authorization": f"Bearer {self.access_token}",
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
                 },
-                json={
-                    "name": project_name,
-                    "color": "red"
-                }
+                json={"name": project_name, "color": "red"},
             )
 
             if response.status_code != 200:
-                raise Exception(f"Failed to create project: {response.status_code} - {response.text}")
+                raise Exception(
+                    f"Failed to create project: {response.status_code} - {response.text}"
+                )
 
             result = response.json()
             self.test_project_id = result["id"]
             self.logger.info(f"📁 Created test project: {project_name}")
 
     async def _create_test_task(
-        self,
-        project_id: str,
-        content: str,
-        description: str,
-        priority: int = 1
+        self, project_id: str, content: str, description: str, priority: int = 1
     ) -> Dict[str, Any]:
         """Create a test task via Todoist API."""
         await self._rate_limit()
@@ -228,7 +225,7 @@ class TodoistBongo(BaseBongo):
             "content": content,
             "description": description,
             "project_id": project_id,
-            "priority": priority
+            "priority": priority,
         }
 
         async with httpx.AsyncClient() as client:
@@ -236,9 +233,9 @@ class TodoistBongo(BaseBongo):
                 "https://api.todoist.com/rest/v2/tasks",
                 headers={
                     "Authorization": f"Bearer {self.access_token}",
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
                 },
-                json=task_data
+                json=task_data,
             )
 
             if response.status_code != 200:
@@ -247,35 +244,24 @@ class TodoistBongo(BaseBongo):
             result = response.json()
 
             # Track created task
-            self.created_entities.append({
-                "id": result["id"],
-                "content": result["content"]
-            })
+            self.created_entities.append({"id": result["id"], "content": result["content"]})
 
             return result
 
-    async def _update_test_task(
-        self,
-        task_id: str,
-        content: str,
-        description: str
-    ):
+    async def _update_test_task(self, task_id: str, content: str, description: str):
         """Update a test task via Todoist API."""
         await self._rate_limit()
 
-        update_data = {
-            "content": content,
-            "description": description
-        }
+        update_data = {"content": content, "description": description}
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"https://api.todoist.com/rest/v2/tasks/{task_id}",
                 headers={
                     "Authorization": f"Bearer {self.access_token}",
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
                 },
-                json=update_data
+                json=update_data,
             )
 
             if response.status_code != 200:
@@ -288,9 +274,7 @@ class TodoistBongo(BaseBongo):
         async with httpx.AsyncClient() as client:
             response = await client.delete(
                 f"https://api.todoist.com/rest/v2/tasks/{task_id}",
-                headers={
-                    "Authorization": f"Bearer {self.access_token}"
-                }
+                headers={"Authorization": f"Bearer {self.access_token}"},
             )
 
             if response.status_code != 204:
@@ -302,9 +286,7 @@ class TodoistBongo(BaseBongo):
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     f"https://api.todoist.com/rest/v2/tasks/{task_id}",
-                    headers={
-                        "Authorization": f"Bearer {self.access_token}"
-                    }
+                    headers={"Authorization": f"Bearer {self.access_token}"},
                 )
 
                 if response.status_code == 404:
@@ -315,7 +297,9 @@ class TodoistBongo(BaseBongo):
                     return False
                 else:
                     # Unexpected response
-                    self.logger.warning(f"⚠️ Unexpected response checking {task_id}: {response.status_code}")
+                    self.logger.warning(
+                        f"⚠️ Unexpected response checking {task_id}: {response.status_code}"
+                    )
                     return False
 
         except Exception as e:
@@ -329,13 +313,13 @@ class TodoistBongo(BaseBongo):
         async with httpx.AsyncClient() as client:
             response = await client.delete(
                 f"https://api.todoist.com/rest/v2/projects/{project_id}",
-                headers={
-                    "Authorization": f"Bearer {self.access_token}"
-                }
+                headers={"Authorization": f"Bearer {self.access_token}"},
             )
 
             if response.status_code != 204:
-                raise Exception(f"Failed to delete project: {response.status_code} - {response.text}")
+                raise Exception(
+                    f"Failed to delete project: {response.status_code} - {response.text}"
+                )
 
     async def _rate_limit(self):
         """Implement rate limiting for Todoist API."""

@@ -49,18 +49,14 @@ class ComposioBroker(BaseAuthBroker):
         account_id: Optional[str] = None,
     ) -> None:
         self.logger = get_logger("composio_broker")
-        self.api_key = api_key or os.getenv("DM_AUTH_PROVIDER_API_KEY")
-        self.auth_config_id = auth_config_id or os.getenv(
-            "DM_AUTH_PROVIDER_AUTH_CONFIG_ID"
-        )
-        self.account_id = account_id or os.getenv("DM_AUTH_PROVIDER_ACCOUNT_ID")
+        self.api_key = api_key or os.getenv("COMPOSIO_API_KEY")
+        self.auth_config_id = auth_config_id
+        self.account_id = account_id
 
         if not self.api_key:
-            raise ValueError("Missing Composio api key (DM_AUTH_PROVIDER_API_KEY)")
+            raise ValueError("Missing Composio API key (COMPOSIO_API_KEY)")
 
-    async def _get(
-        self, path: str, params: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+    async def _get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         async with httpx.AsyncClient() as client:
             r = await client.get(
                 f"{self.BASE_URL}{path}",
@@ -112,10 +108,7 @@ class ComposioBroker(BaseAuthBroker):
         sensitive_fields = [
             k
             for k in creds.keys()
-            if any(
-                sensitive in k.lower()
-                for sensitive in ["token", "key", "secret", "password"]
-            )
+            if any(sensitive in k.lower() for sensitive in ["token", "key", "secret", "password"])
         ]
         non_sensitive_fields = [k for k in creds.keys() if k not in sensitive_fields]
 

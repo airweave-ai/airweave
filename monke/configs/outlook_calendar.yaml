@@ -3,9 +3,12 @@ description: "End-to-end test for Outlook Calendar via Monke"
 connector:
   name: "Outlook Calendar"
   type: "outlook_calendar"
-  auth_fields: {}   # expects access_token (Graph)
+  auth_mode: composio
+  composio_config:
+    account_id: ca_example_outlook_calendar
+    auth_config_id: ac_example_outlook_calendar
   config_fields:
-    openai_model: "gpt-4.1"
+    openai_model: "gpt-4.1-mini"
     rate_limit_delay_ms: 500
 test_flow:
   steps: [create, sync, verify, update, sync, verify, partial_delete, sync, verify_partial_deletion, verify_remaining_entities, complete_delete, sync, verify_complete_deletion]

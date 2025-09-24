@@ -35,8 +35,8 @@ class GoogleCalendarBongo(BaseBongo):
         self.access_token = credentials["access_token"]
 
         # Config from kwargs
-        self.entity_count = kwargs.get("entity_count", 10)
-        self.openai_model = kwargs.get("openai_model", "gpt-5")
+        self.entity_count = int(kwargs.get("entity_count", 3))
+        self.openai_model = kwargs.get("openai_model", "gpt-4.1-mini")
 
         # Test data tracking
         self.test_events: List[Dict[str, Any]] = []

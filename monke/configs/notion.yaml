@@ -4,7 +4,10 @@ description: End-to-end test for Notion source using Monke
 connector:
   name: Notion
   type: notion
-  auth_fields: {}  # Resolved by credentials_resolver
+  auth_mode: composio
+  composio_config:
+    account_id: ca_1r92u-koLifQ
+    auth_config_id: ac_oh6wodsWoVWB
   config_fields:
     openai_model: "gpt-4.1-mini"
   rate_limit_delay_ms: 334  # ~3 requests per second

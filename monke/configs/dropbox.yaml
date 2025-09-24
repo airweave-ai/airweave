@@ -5,10 +5,12 @@ description: "End-to-end test of Dropbox connector sync functionality with incre
 connector:
   name: "dropbox_test"
   type: "dropbox"
-  auth_fields:
-    access_token: "${DROPBOX_ACCESS_TOKEN}"
+  auth_mode: composio
+  composio_config:
+    account_id: ca_example_dropbox
+    auth_config_id: ac_example_dropbox
   config_fields:
-    openai_model: "gpt-5"
+    openai_model: "gpt-4.1-mini"
     # post_create_sleep_seconds: 7  # Optional: wait N seconds after creation before first sync
 
 test_flow:

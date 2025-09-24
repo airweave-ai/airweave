@@ -29,9 +29,9 @@ class DropboxBongo(BaseBongo):
         self.access_token = credentials["access_token"]
 
         # Configuration from kwargs
-        self.entity_count = kwargs.get('entity_count', 10)
-        self.file_types = kwargs.get('file_types', ["markdown", "text", "json"])
-        self.openai_model = kwargs.get('openai_model', 'gpt-5')
+        self.entity_count = int(kwargs.get("entity_count", 3))
+        self.file_types = kwargs.get("file_types", ["markdown", "text", "json"])
+        self.openai_model = kwargs.get("openai_model", "gpt-4.1-mini")
 
         # Test data tracking
         self.test_files = []
@@ -67,15 +67,17 @@ class DropboxBongo(BaseBongo):
             # Create file
             file_data = await self._create_test_file(file_path, content)
 
-            entities.append({
-                "type": "file",
-                "path": file_data["path_display"],
-                "id": file_data["id"],
-                "name": file_data["name"],
-                "file_type": file_type,
-                "token": token,
-                "expected_content": token,
-            })
+            entities.append(
+                {
+                    "type": "file",
+                    "path": file_data["path_display"],
+                    "id": file_data["id"],
+                    "name": file_data["name"],
+                    "file_type": file_type,
+                    "token": token,
+                    "expected_content": token,
+                }
+            )
 
             self.logger.info(f"📄 Created test file: {file_data['path_display']}")
 
@@ -93,6 +95,7 @@ class DropboxBongo(BaseBongo):
 
         # Update a subset of files based on configuration
         from monke.generation.dropbox import generate_dropbox_artifact
+
         files_to_update = min(3, self.entity_count)  # Update max 3 files for any test size
 
         for i in range(files_to_update):
@@ -109,16 +112,18 @@ class DropboxBongo(BaseBongo):
                 # Update file content
                 updated_file = await self._update_test_file(file_info["path"], content)
 
-                updated_entities.append({
-                    "type": "file",
-                    "path": updated_file["path_display"],
-                    "id": updated_file["id"],
-                    "name": updated_file["name"],
-                    "file_type": file_type,
-                    "token": token,
-                    "expected_content": token,
-                    "updated": True,
-                })
+                updated_entities.append(
+                    {
+                        "type": "file",
+                        "path": updated_file["path_display"],
+                        "id": updated_file["id"],
+                        "name": updated_file["name"],
+                        "file_type": file_type,
+                        "token": token,
+                        "expected_content": token,
+                        "updated": True,
+                    }
+                )
 
                 self.logger.info(f"📝 Updated test file: {updated_file['path_display']}")
 
@@ -151,7 +156,9 @@ class DropboxBongo(BaseBongo):
                     deleted_paths.append(test_file["path"])
                     self.logger.info(f"🗑️ Deleted test file: {test_file['path']}")
                 else:
-                    self.logger.warning(f"⚠️ Could not find test file for entity: {entity.get('id')}")
+                    self.logger.warning(
+                        f"⚠️ Could not find test file for entity: {entity.get('id')}"
+                    )
 
                 # Rate limiting
                 if len(entities) > 10:
@@ -198,16 +205,15 @@ class DropboxBongo(BaseBongo):
                 "https://api.dropboxapi.com/2/files/create_folder_v2",
                 headers={
                     "Authorization": f"Bearer {self.access_token}",
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
                 },
-                json={
-                    "path": self.test_folder_path,
-                    "autorename": False
-                }
+                json={"path": self.test_folder_path, "autorename": False},
             )
 
             if response.status_code != 200:
-                raise Exception(f"Failed to create folder: {response.status_code} - {response.text}")
+                raise Exception(
+                    f"Failed to create folder: {response.status_code} - {response.text}"
+                )
 
             self.logger.info(f"📁 Created test folder: {self.test_folder_path}")
 
@@ -215,7 +221,7 @@ class DropboxBongo(BaseBongo):
         """Create a test file via Dropbox API."""
         await self._rate_limit()
 
-        content_bytes = content.encode('utf-8')
+        content_bytes = content.encode("utf-8")
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -223,9 +229,9 @@ class DropboxBongo(BaseBongo):
                 headers={
                     "Authorization": f"Bearer {self.access_token}",
                     "Dropbox-API-Arg": f'{{"path": "{file_path}", "mode": "add", "autorename": true}}',
-                    "Content-Type": "application/octet-stream"
+                    "Content-Type": "application/octet-stream",
                 },
-                content=content_bytes
+                content=content_bytes,
             )
 
             if response.status_code != 200:
@@ -234,10 +240,7 @@ class DropboxBongo(BaseBongo):
             result = response.json()
 
             # Track created file
-            self.created_entities.append({
-                "id": result["id"],
-                "path": result["path_display"]
-            })
+            self.created_entities.append({"id": result["id"], "path": result["path_display"]})
 
             return result
 
@@ -245,7 +248,7 @@ class DropboxBongo(BaseBongo):
         """Update a test file via Dropbox API."""
         await self._rate_limit()
 
-        content_bytes = new_content.encode('utf-8')
+        content_bytes = new_content.encode("utf-8")
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -253,9 +256,9 @@ class DropboxBongo(BaseBongo):
                 headers={
                     "Authorization": f"Bearer {self.access_token}",
                     "Dropbox-API-Arg": f'{{"path": "{file_path}", "mode": "overwrite"}}',
-                    "Content-Type": "application/octet-stream"
+                    "Content-Type": "application/octet-stream",
                 },
-                content=content_bytes
+                content=content_bytes,
             )
 
             if response.status_code != 200:
@@ -272,11 +275,9 @@ class DropboxBongo(BaseBongo):
                 "https://api.dropboxapi.com/2/files/delete_v2",
                 headers={
                     "Authorization": f"Bearer {self.access_token}",
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
                 },
-                json={
-                    "path": file_path
-                }
+                json={"path": file_path},
             )
 
             if response.status_code != 200:
@@ -290,12 +291,9 @@ class DropboxBongo(BaseBongo):
                     "https://api.dropboxapi.com/2/files/get_metadata",
                     headers={
                         "Authorization": f"Bearer {self.access_token}",
-                        "Content-Type": "application/json"
+                        "Content-Type": "application/json",
                     },
-                    json={
-                        "path": file_path,
-                        "include_deleted": True
-                    }
+                    json={"path": file_path, "include_deleted": True},
                 )
 
                 if response.status_code == 409:  # Path not found
@@ -307,7 +305,9 @@ class DropboxBongo(BaseBongo):
                     return data.get("is_deleted", False)
                 else:
                     # Unexpected response
-                    self.logger.warning(f"⚠️ Unexpected response checking {file_path}: {response.status_code}")
+                    self.logger.warning(
+                        f"⚠️ Unexpected response checking {file_path}: {response.status_code}"
+                    )
                     return False
 
         except Exception as e:
@@ -322,29 +322,23 @@ class DropboxBongo(BaseBongo):
                     "https://api.dropboxapi.com/2/files/delete_v2",
                     headers={
                         "Authorization": f"Bearer {self.access_token}",
-                        "Content-Type": "application/json"
+                        "Content-Type": "application/json",
                     },
-                    json={
-                        "path": folder_path
-                    }
+                    json={"path": folder_path},
                 )
 
                 if response.status_code == 200:
                     self.logger.info(f"🧹 Force deleted folder: {folder_path}")
                 else:
-                    self.logger.warning(f"⚠️ Force delete failed for {folder_path}: {response.status_code}")
+                    self.logger.warning(
+                        f"⚠️ Force delete failed for {folder_path}: {response.status_code}"
+                    )
         except Exception as e:
             self.logger.warning(f"Could not force delete {folder_path}: {e}")
 
     def _get_file_extension(self, file_type: str) -> str:
         """Get file extension for a given file type."""
-        extensions = {
-            "markdown": "md",
-            "text": "txt",
-            "json": "json",
-            "csv": "csv",
-            "yaml": "yml"
-        }
+        extensions = {"markdown": "md", "text": "txt", "json": "json", "csv": "csv", "yaml": "yml"}
         return extensions.get(file_type, "txt")
 
     async def _rate_limit(self):

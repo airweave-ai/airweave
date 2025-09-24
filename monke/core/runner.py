@@ -85,22 +85,3 @@ class TestRunner:
 
         except Exception as e:
             raise e
-            self.logger.error(f"❌ Test execution failed: {e}")
-
-            # Ensure cleanup happens even on failure
-            if test_flow:
-                try:
-                    self.logger.info("🧹 Attempting emergency cleanup after test failure...")
-                    await test_flow.cleanup()
-                    self.logger.info("✅ Emergency cleanup completed")
-                except Exception as cleanup_error:
-                    self.logger.error(f"❌ Emergency cleanup failed: {cleanup_error}")
-
-            result = TestResult(
-                success=False,
-                duration=0.0,
-                metrics={},
-                errors=[str(e)],
-                warnings=[],
-            )
-            return [result]

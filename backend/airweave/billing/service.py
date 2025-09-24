@@ -24,7 +24,6 @@ from airweave.billing.plan_logic import (
     is_paid_plan,
 )
 from airweave.billing.transactions import billing_transactions
-from airweave.core.config import settings
 from airweave.core.exceptions import InvalidStateError, NotFoundException
 from airweave.core.logging import ContextualLogger, logger
 from airweave.db.unit_of_work import UnitOfWork
@@ -898,4 +897,4 @@ class BillingService:
 
 
 # Singleton instance
-billing_service = BillingService() if settings.STRIPE_ENABLED else None
+billing_service = BillingService()
