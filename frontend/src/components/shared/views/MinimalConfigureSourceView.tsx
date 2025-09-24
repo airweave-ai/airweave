@@ -135,12 +135,17 @@ export const MinimalConfigureSourceView: React.FC<MinimalConfigureSourceViewProp
                         setAuthValues(initialAuthValues);
                     }
 
-                    // Initialize config values
+                    // Initialize config values with proper default values based on type
                     if (data.config_fields?.fields) {
                         const initialConfigValues: Record<string, any> = {};
                         data.config_fields.fields.forEach((field: any) => {
                             if (field.name) {
-                                initialConfigValues[field.name] = '';
+                                if (field.type === 'boolean') {
+                                    // Use backend-provided default value when available
+                                    initialConfigValues[field.name] = field.default !== undefined ? field.default : false;
+                                } else {
+                                    initialConfigValues[field.name] = '';
+                                }
                             }
                         });
                         console.log('🔧 [MinimalConfigureSourceView] Initialized config values:', initialConfigValues);

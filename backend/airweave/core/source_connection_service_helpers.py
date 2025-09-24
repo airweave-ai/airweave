@@ -33,7 +33,6 @@ from airweave.models.source_connection import SourceConnection
 from airweave.models.sync import Sync
 from airweave.models.sync_job import SyncJob
 from airweave.platform.auth.services import oauth2_service
-from airweave.platform.configs._base import ConfigValues
 from airweave.platform.configs.auth import AuthConfig
 from airweave.platform.locator import resource_locator
 from airweave.platform.temporal.schedule_service import temporal_schedule_service
@@ -233,12 +232,13 @@ class SourceConnectionHelpers:
         db: AsyncSession,
         source: schemas.Source,
         auth_fields: AuthConfig,
-        config_fields: Optional[ConfigValues],
+        config_fields: Optional[Dict[str, Any]],
         ctx: ApiContext,
     ) -> Dict[str, Any]:
         """Validate direct authentication credentials."""
         try:
             source_cls = resource_locator.get_source(source)
+            # Pass the AuthConfig model instance directly to avoid AttributeError
             source_instance = await source_cls.create(auth_fields, config=config_fields)
             source_instance.set_logger(ctx.logger)
 
@@ -264,15 +264,13 @@ class SourceConnectionHelpers:
         db: AsyncSession,
         source: schemas.Source,
         access_token: str,
-        config_fields: Optional[ConfigValues],
+        config_fields: Optional[Dict[str, Any]],
         ctx: ApiContext,
     ) -> Dict[str, Any]:
         """Validate OAuth access token."""
         try:
             source_cls = resource_locator.get_source(source)
-            source_instance = await source_cls.create(
-                access_token=access_token, config=config_fields
-            )
+            source_instance = await source_cls.create(access_token, config=config_fields)
             source_instance.set_logger(ctx.logger)
 
             if hasattr(source_instance, "validate"):
@@ -926,10 +924,21 @@ class SourceConnectionHelpers:
             exclude_none=True,
         )
 
-        # Get client credentials from either custom_client or direct fields
+        # Get client credentials from authentication object (for BYOC OAuth)
         client_id = None
         client_secret = None
-        if hasattr(obj_in, "custom_client") and obj_in.custom_client:
+
+        # Check if we have BYOC credentials in the authentication object
+        if (
+            hasattr(obj_in, "authentication")
+            and obj_in.authentication
+            and hasattr(obj_in.authentication, "client_id")
+            and hasattr(obj_in.authentication, "client_secret")
+        ):
+            client_id = obj_in.authentication.client_id
+            client_secret = obj_in.authentication.client_secret
+        # Legacy support for direct fields (for backward compatibility)
+        elif hasattr(obj_in, "custom_client") and obj_in.custom_client:
             client_id = obj_in.custom_client.client_id
             client_secret = obj_in.custom_client.client_secret
         elif hasattr(obj_in, "client_id"):
@@ -992,6 +1001,7 @@ class SourceConnectionHelpers:
         code: str,
         overrides: Dict[str, Any],
         ctx: ApiContext,
+        config_values: Optional[Dict[str, Any]] = None,
     ) -> Any:
         """Exchange OAuth code for token."""
         return await oauth2_service.exchange_authorization_code_for_token_with_redirect(
@@ -1001,6 +1011,7 @@ class SourceConnectionHelpers:
             redirect_uri=overrides.get("oauth_redirect_uri"),
             client_id=overrides.get("client_id"),
             client_secret=overrides.get("client_secret"),
+            config_values=config_values,
         )
 
     async def _regenerate_oauth_url(
@@ -1094,9 +1105,10 @@ class SourceConnectionHelpers:
         # The token response is already validated by the OAuth exchange
         validated_auth = auth_fields
 
-        # Validate config fields if provided
+        # Validate config fields if provided (check both field names for compatibility)
+        config_data = payload.get("config") or payload.get("config_fields")
         validated_config = await self.validate_config_fields(
-            db, init_session.short_name, payload.get("config_fields"), ctx
+            db, init_session.short_name, config_data, ctx
         )
 
         async with UnitOfWork(db) as uow:

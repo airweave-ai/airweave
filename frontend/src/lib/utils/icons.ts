@@ -17,6 +17,10 @@ export function getAppIconUrl(shortName: string, theme?: string): string {
     if (shortName === "linear" && theme === "dark") {
       return new URL(`/src/components/icons/apps/linear-light.svg`, import.meta.url).href;
     }
+    // Special handling for Zendesk icon in dark mode
+    if (shortName === "zendesk" && theme === "dark") {
+      return new URL(`/src/components/icons/apps/zendesk-light.svg`, import.meta.url).href;
+    }
     return new URL(`/src/components/icons/apps/${shortName}.svg`, import.meta.url).href;
   } catch {
     return new URL(`/src/components/icons/apps/default-icon.svg`, import.meta.url).href;

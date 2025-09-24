@@ -6,8 +6,10 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { getAppIconUrl } from '@/lib/utils/icons';
-import { Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react';
+import { Eye, EyeOff, Loader2, AlertCircle, Info } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Switch } from '@/components/ui/switch';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface EditSourceConnectionDialogProps {
     open: boolean;
@@ -200,31 +202,108 @@ export const EditSourceConnectionDialog: React.FC<EditSourceConnectionDialogProp
                                             <h3 className="text-sm font-semibold text-foreground border-b pb-2 mb-3">Configuration</h3>
                                             {sourceDetails.config_fields.fields.map((field: any) => (
                                                 <div key={field.name} className="space-y-1">
-                                                    <Label className="text-xs text-muted-foreground font-normal">
-                                                        {field.title || field.name}
-                                                    </Label>
-                                                    {field.description && (
-                                                        <p className="text-xs text-muted-foreground opacity-80">{field.description}</p>
+                                                    {!(sourceConnection?.short_name === 'zendesk' && field.name === 'exclude_closed_tickets') && (
+                                                        <>
+                                                            <Label className="text-xs text-muted-foreground font-normal">
+                                                                {field.title || field.name}
+                                                            </Label>
+                                                            {field.description && (
+                                                                <p className="text-xs text-muted-foreground opacity-80">{field.description}</p>
+                                                            )}
+                                                        </>
                                                     )}
-                                                    <Input
-                                                        type={field.type === 'integer' ? 'number' : 'text'}
-                                                        className={cn(
-                                                            "w-full h-8 px-3 text-xs rounded-md border bg-transparent",
-                                                            isDark
-                                                                ? "border-gray-700 focus:border-blue-500"
-                                                                : "border-gray-300 focus:border-blue-500",
-                                                            "focus:outline-none"
-                                                        )}
-                                                        value={editFormData.config_fields[field.name] || ''}
-                                                        onChange={(e) => setEditFormData((prev: any) => ({
-                                                            ...prev,
-                                                            config_fields: {
-                                                                ...prev.config_fields,
-                                                                [field.name]: e.target.value
-                                                            }
-                                                        }))}
-                                                        placeholder={`Enter ${field.title || field.name}`}
-                                                    />
+                                                    {field.type === 'boolean' ? (
+                                                        // Special handling for Zendesk exclude_closed_tickets field
+                                                        sourceConnection?.short_name === 'zendesk' && field.name === 'exclude_closed_tickets' ? (
+                                                            <div className="flex items-center justify-between p-4 rounded-lg border bg-card">
+                                                                <div className="flex-1">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <h4 className="text-sm font-medium">Exclude Closed Tickets</h4>
+                                                                        <TooltipProvider>
+                                                                            <Tooltip>
+                                                                                <TooltipTrigger>
+                                                                                    <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                                                                                </TooltipTrigger>
+                                                                                <TooltipContent className="max-w-sm p-4">
+                                                                                    <div className="space-y-3">
+                                                                                        <p className="text-sm font-medium">Why exclude closed tickets?</p>
+                                                                                        <p className="text-xs leading-relaxed">
+                                                                                            Closed tickets are typically resolved and don't change frequently. Excluding them from sync can significantly improve performance and reduce storage usage, especially for organizations with large ticket volumes.
+                                                                                        </p>
+                                                                                        <div className="text-xs space-y-1 pt-2 border-t border-border">
+                                                                                            <p><span className="font-medium">✓ Faster sync:</span> Less data to process</p>
+                                                                                            <p><span className="font-medium">✓ Lower storage:</span> Reduced database size</p>
+                                                                                            <p><span className="font-medium">✓ Better performance:</span> Queries run faster</p>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </TooltipContent>
+                                                                            </Tooltip>
+                                                                        </TooltipProvider>
+                                                                    </div>
+                                                                    <p className="text-xs text-muted-foreground mt-1">
+                                                                        Skip closed tickets during sync (recommended for faster syncing)
+                                                                    </p>
+                                                                </div>
+                                                                <Switch
+                                                                    id={field.name}
+                                                                    checked={editFormData.config_fields[field.name] === true || editFormData.config_fields[field.name] === 'true'}
+                                                                    onCheckedChange={(checked) => setEditFormData((prev: any) => ({
+                                                                        ...prev,
+                                                                        config_fields: {
+                                                                            ...prev.config_fields,
+                                                                            [field.name]: checked
+                                                                        }
+                                                                    }))}
+                                                                    className={cn(
+                                                                        "data-[state=unchecked]:bg-gray-300 dark:data-[state=unchecked]:bg-gray-600",
+                                                                        "data-[state=checked]:bg-primary",
+                                                                        "border-2 border-gray-200 dark:border-gray-700",
+                                                                        "data-[state=unchecked]:border-gray-300 dark:data-[state=unchecked]:border-gray-500"
+                                                                    )}
+                                                                />
+                                                            </div>
+                                                        ) : (
+                                                            // Default boolean field rendering for other sources
+                                                            <div className="flex items-center space-x-2">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    id={field.name}
+                                                                    checked={editFormData.config_fields[field.name] === true || editFormData.config_fields[field.name] === 'true'}
+                                                                    onChange={(e) => setEditFormData((prev: any) => ({
+                                                                        ...prev,
+                                                                        config_fields: {
+                                                                            ...prev.config_fields,
+                                                                            [field.name]: e.target.checked
+                                                                        }
+                                                                    }))}
+                                                                    className="h-4 w-4 rounded border"
+                                                                />
+                                                                <label htmlFor={field.name} className="text-sm">
+                                                                    {field.title || field.name}
+                                                                </label>
+                                                            </div>
+                                                        )
+                                                    ) : (
+                                                        <Input
+                                                            type={field.type === 'integer' ? 'number' : 'text'}
+                                                            className={cn(
+                                                                "w-full h-8 px-3 text-xs rounded-md border bg-transparent",
+                                                                isDark
+                                                                    ? "border-gray-700 focus:border-blue-500"
+                                                                    : "border-gray-300 focus:border-blue-500",
+                                                                "focus:outline-none"
+                                                            )}
+                                                            value={editFormData.config_fields[field.name] || ''}
+                                                            onChange={(e) => setEditFormData((prev: any) => ({
+                                                                ...prev,
+                                                                config_fields: {
+                                                                    ...prev.config_fields,
+                                                                    [field.name]: e.target.value
+                                                                }
+                                                            }))}
+                                                            placeholder={`Enter ${field.title || field.name}`}
+                                                        />
+                                                    )}
                                                 </div>
                                             ))}
                                         </div>

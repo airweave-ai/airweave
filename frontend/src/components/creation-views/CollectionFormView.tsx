@@ -127,7 +127,7 @@ export const CollectionFormView: React.FC<CollectionFormViewProps> = ({ humanRea
 
                 {/* Hover tooltip */}
                 <div className={cn(
-                  "absolute left-0 top-6 z-50 w-80 p-4 rounded-lg shadow-xl",
+                  "absolute left-1/2 transform -translate-x-1/2 top-6 z-50 w-80 p-4 rounded-lg shadow-xl",
                   "opacity-0 invisible group-hover:opacity-100 group-hover:visible",
                   "transition-all duration-200 transform group-hover:translate-y-0 translate-y-1",
                   isDark

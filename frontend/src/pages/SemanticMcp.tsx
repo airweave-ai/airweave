@@ -5,7 +5,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Sun, Moon, Monitor, Check, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Sun, Moon, Monitor, Check, Loader2, Eye, EyeOff, Info } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useSourcesStore } from '@/lib/stores';
 import { SmallSourceButton } from '@/components/dashboard';
 import { useSearchParams } from 'react-router-dom';
@@ -1013,23 +1015,88 @@ const SemanticMcp = () => {
                                     <div className="space-y-3">
                                         {detailedSource.config_fields.fields.map((field, index) => (
                                             <div key={index} className="space-y-2">
-                                                <Label htmlFor={`config_${field.name}`} className="text-sm font-medium">
-                                                    {field.title}
-                                                </Label>
-                                                {field.description && (
-                                                    <p className="text-xs text-muted-foreground">
-                                                        {field.description}
-                                                    </p>
+                                                {!(detailedSource?.short_name === 'zendesk' && field.name === 'exclude_closed_tickets') && (
+                                                    <>
+                                                        <Label htmlFor={`config_${field.name}`} className="text-sm font-medium">
+                                                            {field.title}
+                                                        </Label>
+                                                        {field.description && (
+                                                            <p className="text-xs text-muted-foreground">
+                                                                {field.description}
+                                                            </p>
+                                                        )}
+                                                    </>
                                                 )}
                                                 <div className="relative">
-                                                    <Input
-                                                        id={`config_${field.name}`}
-                                                        type={getInputType(field.name, field.type, `config_${field.name}`)}
-                                                        placeholder={`Enter ${field.title.toLowerCase()}`}
-                                                        value={configValues[field.name] || ''}
-                                                        onChange={(e) => handleConfigValueChange(field.name, e.target.value)}
-                                                        className={`w-full ${isPasswordField(field.name) ? 'pr-10' : ''}`}
-                                                    />
+                                                    {field.type === 'boolean' ? (
+                                                        // Special handling for Zendesk exclude_closed_tickets field
+                                                        detailedSource?.short_name === 'zendesk' && field.name === 'exclude_closed_tickets' ? (
+                                                            <div className="flex items-center justify-between p-4 rounded-lg border bg-card">
+                                                                <div className="flex-1">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <h4 className="text-sm font-medium">Exclude Closed Tickets</h4>
+                                                                        <TooltipProvider>
+                                                                            <Tooltip>
+                                                                                <TooltipTrigger>
+                                                                                    <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                                                                                </TooltipTrigger>
+                                                                                <TooltipContent className="max-w-sm p-4">
+                                                                                    <div className="space-y-3">
+                                                                                        <p className="text-sm font-medium">Why exclude closed tickets?</p>
+                                                                                        <p className="text-xs leading-relaxed">
+                                                                                            Closed tickets are typically resolved and don't change frequently. Excluding them from sync can significantly improve performance and reduce storage usage, especially for organizations with large ticket volumes.
+                                                                                        </p>
+                                                                                        <div className="text-xs space-y-1 pt-2 border-t border-border">
+                                                                                            <p><span className="font-medium">✓ Faster sync:</span> Less data to process</p>
+                                                                                            <p><span className="font-medium">✓ Lower storage:</span> Reduced database size</p>
+                                                                                            <p><span className="font-medium">✓ Better performance:</span> Queries run faster</p>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </TooltipContent>
+                                                                            </Tooltip>
+                                                                        </TooltipProvider>
+                                                                    </div>
+                                                                    <p className="text-xs text-muted-foreground mt-1">
+                                                                        Skip closed tickets during sync (recommended for faster syncing)
+                                                                    </p>
+                                                                </div>
+                                                                <Switch
+                                                                    id={`config_${field.name}`}
+                                                                    checked={configValues[field.name] === true || configValues[field.name] === 'true'}
+                                                                    onCheckedChange={(checked) => handleConfigValueChange(field.name, checked)}
+                                                                    className={cn(
+                                                                        "data-[state=unchecked]:bg-gray-300 dark:data-[state=unchecked]:bg-gray-600",
+                                                                        "data-[state=checked]:bg-primary",
+                                                                        "border-2 border-gray-200 dark:border-gray-700",
+                                                                        "data-[state=unchecked]:border-gray-300 dark:data-[state=unchecked]:border-gray-500"
+                                                                    )}
+                                                                />
+                                                            </div>
+                                                        ) : (
+                                                            // Default boolean field rendering for other sources
+                                                            <div className="flex items-center space-x-2">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    id={`config_${field.name}`}
+                                                                    checked={configValues[field.name] === true || configValues[field.name] === 'true'}
+                                                                    onChange={(e) => handleConfigValueChange(field.name, e.target.checked)}
+                                                                    className="h-4 w-4 rounded border"
+                                                                />
+                                                                <label htmlFor={`config_${field.name}`} className="text-sm">
+                                                                    {field.title}
+                                                                </label>
+                                                            </div>
+                                                        )
+                                                    ) : (
+                                                        <Input
+                                                            id={`config_${field.name}`}
+                                                            type={getInputType(field.name, field.type, `config_${field.name}`)}
+                                                            placeholder={`Enter ${field.title.toLowerCase()}`}
+                                                            value={configValues[field.name] || ''}
+                                                            onChange={(e) => handleConfigValueChange(field.name, e.target.value)}
+                                                            className={`w-full ${isPasswordField(field.name) ? 'pr-10' : ''}`}
+                                                        />
+                                                    )}
                                                     {isPasswordField(field.name) && (
                                                         <Button
                                                             type="button"
