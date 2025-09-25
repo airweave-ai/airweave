@@ -158,6 +158,66 @@ class SyncCursorService:
             logger.error(f"Failed to delete cursor for sync {sync_id}: {e}")
             return False
 
+    async def get_cursor_summary(
+        self, db: AsyncSession, sync_id: UUID, ctx: ApiContext
+    ) -> dict:
+        """Get a summary of cursor data including dual cursor information.
+        
+        This is useful for debugging and monitoring dual cursor state.
+        
+        Args:
+            db: Database session
+            sync_id: The sync ID
+            ctx: API context
+            
+        Returns:
+            Dictionary with cursor summary information
+        """
+        try:
+            cursor = await crud.sync_cursor.get_by_sync_id(db, sync_id=sync_id, ctx=ctx)
+            if not cursor:
+                return {"status": "no_cursor", "cursor_field": None, "data": {}}
+                
+            cursor_data = cursor.cursor_data or {}
+            cursor_field = cursor.cursor_field
+            
+            # Analyze cursor data structure
+            summary = {
+                "status": "active",
+                "cursor_field": cursor_field,
+                "last_updated": cursor.last_updated.isoformat() if cursor.last_updated else None,
+                "data_keys": list(cursor_data.keys()),
+                "has_dual_cursor": False,
+                "overlap_keys": [],
+                "original_values": {},
+                "overlap_values": {}
+            }
+            
+            # Check for dual cursor structure
+            if cursor_field and cursor_field in cursor_data:
+                summary["original_values"][cursor_field] = cursor_data[cursor_field]
+                
+                # Check for overlap cursor
+                overlap_key = f"{cursor_field}_overlap"
+                if overlap_key in cursor_data:
+                    summary["has_dual_cursor"] = True
+                    summary["overlap_keys"].append(overlap_key)
+                    summary["overlap_values"][overlap_key] = cursor_data[overlap_key]
+            
+            # Find all overlap keys in data
+            for key in cursor_data.keys():
+                if key.endswith("_overlap"):
+                    if key not in summary["overlap_keys"]:
+                        summary["overlap_keys"].append(key)
+                        summary["overlap_values"][key] = cursor_data[key]
+                        summary["has_dual_cursor"] = True
+            
+            return summary
+            
+        except Exception as e:
+            logger.error(f"Failed to get cursor summary for sync {sync_id}: {e}")
+            return {"status": "error", "error": str(e)}
+
 
 # Singleton instance
 sync_cursor_service = SyncCursorService()

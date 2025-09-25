@@ -216,6 +216,120 @@ class BaseSource:
         # Sources with specific requirements should override this
         pass
 
+    def get_overlap_buffer_minutes(self) -> int:
+        """Get the overlap buffer in minutes for dual cursor strategy.
+        
+        This buffer is applied to the previous cursor position to ensure
+        no data is missed due to race conditions during incremental syncs.
+        
+        Returns:
+            Number of minutes to overlap with previous sync
+        """
+        return 15  # Global default
+
+    def _get_cursor_data(self) -> Dict[str, Any]:
+        """Get cursor data from the current cursor.
+        
+        Returns:
+            Dictionary containing cursor data, empty dict if no cursor
+        """
+        if self.cursor and self.cursor.cursor_data:
+            return self.cursor.cursor_data
+        return {}
+
+    def _get_overlap_cursor_value(self, cursor_field: str) -> Optional[str]:
+        """Get the cursor value with overlap buffer applied.
+        
+        For incremental syncs, this returns a cursor value that's shifted back
+        by the overlap buffer to ensure no data is missed.
+        
+        Args:
+            cursor_field: The cursor field name
+            
+        Returns:
+            Overlap cursor value if available, None for first sync or force_full_sync
+        """
+        cursor_data = self._get_cursor_data()
+        
+        # If no cursor data at all, this is first sync or force_full_sync
+        if not cursor_data:
+            self.logger.debug(f"No cursor data available for field '{cursor_field}' - will perform full sync")
+            return None
+            
+        overlap_key = f"{cursor_field}_overlap"
+        
+        # Return overlap cursor if available
+        if overlap_key in cursor_data:
+            overlap_value = cursor_data[overlap_key]
+            self.logger.debug(f"Using overlap cursor for field '{cursor_field}': {overlap_value}")
+            return overlap_value
+            
+        # For backward compatibility, try original cursor
+        original_value = cursor_data.get(cursor_field)
+        if not original_value:
+            return None
+            
+        # Apply overlap buffer to existing cursor
+        return self._apply_overlap_buffer(original_value)
+
+    def _apply_overlap_buffer(self, cursor_value: str) -> Optional[str]:
+        """Apply overlap buffer to a cursor value.
+        
+        Args:
+            cursor_value: Original cursor value (timestamp or string)
+            
+        Returns:
+            Cursor value with overlap buffer applied
+        """
+        try:
+            from datetime import datetime, timedelta, timezone
+            
+            # Try to parse as ISO timestamp
+            if cursor_value and isinstance(cursor_value, str):
+                if cursor_value.endswith('Z'):
+                    dt = datetime.fromisoformat(cursor_value.replace('Z', '+00:00'))
+                elif '+' in cursor_value or cursor_value.endswith('+00:00'):
+                    dt = datetime.fromisoformat(cursor_value)
+                else:
+                    dt = datetime.fromisoformat(cursor_value).replace(tzinfo=timezone.utc)
+                
+                # Apply overlap buffer
+                overlap_dt = dt - timedelta(minutes=self.get_overlap_buffer_minutes())
+                return overlap_dt.isoformat().replace('+00:00', 'Z')
+                
+        except (ValueError, AttributeError) as e:
+            self.logger.debug(f"Could not apply overlap buffer to '{cursor_value}': {e}")
+            
+        return cursor_value
+
+    def _update_cursor_with_overlap(self, cursor_field: str, new_value: str) -> None:
+        """Update cursor data with both current value and overlap value.
+        
+        This stores both the current cursor position and the overlap position
+        for the next incremental sync.
+        
+        Args:
+            cursor_field: The cursor field name
+            new_value: The new cursor value
+        """
+        if not self.cursor:
+            return
+            
+        if not self.cursor.cursor_data:
+            self.cursor.cursor_data = {}
+            
+        # Store current value
+        self.cursor.cursor_data[cursor_field] = new_value
+        
+        # Calculate and store overlap value for next sync
+        overlap_value = self._apply_overlap_buffer(new_value)
+        if overlap_value != new_value: 
+            self.cursor.cursor_data[f"{cursor_field}_overlap"] = overlap_value
+            
+        # Update last_updated timestamp
+        from datetime import datetime, timezone
+        self.cursor.cursor_data["last_sync_timestamp"] = datetime.now(timezone.utc).isoformat()
+
     async def get_access_token(self) -> Optional[str]:
         """Get a valid access token using the token manager.
 
