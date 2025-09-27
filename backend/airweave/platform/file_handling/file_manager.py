@@ -292,7 +292,22 @@ class FileManager:
         """Create a safe version of a filename."""
         # Replace potentially problematic characters
         safe_name = "".join(c for c in filename if c.isalnum() or c in "._- ")
-        return safe_name.strip()
+        safe_name = safe_name.strip()
+        
+        # Limit filename length to prevent "File name too long" errors
+        # Account for UUID (36) + dash (1) + extension, leaving room for filesystem limits
+        # Using conservative limit for UTF-8 multibyte characters (like Cyrillic)
+        max_filename_length = 80
+        if len(safe_name) > max_filename_length:
+            # Keep the file extension if present
+            if "." in safe_name:
+                name, ext = safe_name.rsplit(".", 1)
+                max_name_length = max_filename_length - len(ext) - 1  # -1 for the dot
+                safe_name = name[:max_name_length] + "." + ext
+            else:
+                safe_name = safe_name[:max_filename_length]
+        
+        return safe_name
 
     async def stream_file_from_url(
         self,
