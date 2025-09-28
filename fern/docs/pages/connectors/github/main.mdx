@@ -48,13 +48,6 @@ GitHub authentication credentials schema.
 >
   GitHub PAT with read rights (code, contents, metadata) to the repository
 </ParamField>
-<ParamField
-  path="repo_name"
-  type="str"
-  required={true}
->
-  Repository to sync in owner/repo format (e.g., 'airweave-ai/airweave')
-</ParamField>
 </Card>
 
 ### Configuration Options
@@ -68,6 +61,13 @@ The following configuration options are available for this connector:
 >
 
 Github configuration schema.
+<ParamField
+  path="repo_name"
+  type="str"
+  required={true}
+>
+  Repository to sync in owner/repo format (e.g., 'airweave-ai/airweave')
+</ParamField>
 <ParamField
   path="branch"
   type="str"
@@ -241,7 +241,7 @@ After configuring the permissions, scroll to the bottom of the page and click "G
 ### Step 6: Add Your Token to Airweave
 
 When setting up the GitHub connector in Airweave:
-1. Paste your personal access token in the "Personal Access Token" field
-2. Enter the repository name in the format `owner/repo` (e.g., `airweave-ai/airweave`)
+1. **Authentication**: Paste your personal access token in the "Personal Access Token" field
+2. **Configuration**: Enter the repository name in the format `owner/repo` (e.g., `airweave-ai/airweave`) in the "Repository Name" configuration field
 
 Your GitHub repository is now connected to Airweave and ready for synchronization.

@@ -100,6 +100,10 @@ class ElasticsearchConfig(SourceConfig):
 class GitHubConfig(SourceConfig):
     """Github configuration schema."""
 
+    repo_name: str = Field(
+        title="Repository Name",
+        description="Repository to sync in owner/repo format (e.g., 'airweave-ai/airweave')",
+    )
     branch: str = Field(
         default="",
         title="Branch name",

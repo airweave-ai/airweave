@@ -59,7 +59,6 @@ class PipedreamAuthProvider(BaseAuthProvider):
         "confluence",
         "jira",
         "bitbucket",
-        "github",
         "ctti",
     ]
 
@@ -71,6 +70,7 @@ class PipedreamAuthProvider(BaseAuthProvider):
         "refresh_token": "oauth_refresh_token",
         "client_id": "oauth_client_id",
         "client_secret": "oauth_client_secret",
+        "personal_access_token": "access_token",  # GitHub PAT mapping
         # Add more mappings as discovered
     }
 
