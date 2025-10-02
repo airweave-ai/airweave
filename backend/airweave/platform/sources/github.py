@@ -96,7 +96,12 @@ class GitHubSource(BaseSource):
         instance = cls()
 
         instance.personal_access_token = credentials.personal_access_token
-        instance.repo_name = credentials.repo_name
+
+        # Repository name is always read from config (source configuration)
+        if not config or "repo_name" not in config:
+            raise ValueError("Repository name must be specified in source configuration")
+
+        instance.repo_name = config["repo_name"]
 
         instance.branch = config.get("branch", None)
 

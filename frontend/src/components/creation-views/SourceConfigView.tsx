@@ -499,7 +499,7 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
                   {authMode === 'direct_auth' && sourceDetails?.auth_fields?.fields && (
                     <div className="space-y-3">
                       <label className="block text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Configuration
+                        Direct Credentials Configuration
                       </label>
                       {sourceDetails.auth_fields.fields.map((field) => (
                         <div key={field.name}>
@@ -530,16 +530,20 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
                     </div>
                   )}
 
-                  {/* Config fields (optional additional configuration) */}
+                  {/* Config fields (additional configuration) */}
                   {sourceDetails?.config_fields?.fields && sourceDetails.config_fields.fields.length > 0 && (
                     <div className="space-y-3">
                       <label className="block text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Additional Configuration (optional)
+                        {(() => {
+                          const hasRequiredFields = sourceDetails.config_fields.fields.some((field: any) => field.required);
+                          return hasRequiredFields ? "Additional Configuration" : "Additional Configuration (optional)";
+                        })()}
                       </label>
                       {sourceDetails.config_fields.fields.map((field) => (
                         <div key={field.name}>
                           <label className="block text-sm font-medium mb-1">
                             {field.title || field.name}
+                            {field.required && <span className="text-red-500 ml-1">*</span>}
                           </label>
                           {field.description && (
                             <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">

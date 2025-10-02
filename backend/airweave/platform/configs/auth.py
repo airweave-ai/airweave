@@ -272,10 +272,6 @@ class GitHubAuthConfig(AuthConfig):
         title="Personal Access Token",
         description="GitHub PAT with read rights (code, contents, metadata) to the repository",
     )
-    repo_name: str = Field(
-        title="Repository Name",
-        description="Repository to sync in owner/repo format (e.g., 'airweave-ai/airweave')",
-    )
 
 
 class GmailAuthConfig(OAuth2BYOCAuthConfig):
