@@ -4,11 +4,23 @@ This module provides PostHog analytics integration for Airweave, enabling compre
 
 ## 🏗️ Architecture
 
-The analytics module is organized into several components:
+The analytics module uses a **dual-pattern approach** for maximum flexibility:
 
-- **`service.py`**: Core PostHog integration service
-- **`contextual_service.py`**: Context-aware analytics service for dependency injection
-- **`events/`**: Business event tracking classes for high-level metrics
+### **API Layer (Dependency Injection)**
+- **`contextual_service.py`**: Context-aware analytics service with automatic header capture
+- **`deps.py`**: FastAPI dependency resolver for analytics service
+- **Usage**: API endpoints with request context and headers
+
+### **Service Layer (Global Singleton)**  
+- **`service.py`**: Core PostHog integration service (global singleton)
+- **`events/business_events.py`**: Business event tracking for service layers
+- **Usage**: Background jobs, sync operations, service layers without request context
+
+### **Key Features**
+- **Automatic Header Capture**: SDK, client, framework, and session headers
+- **User Identification**: Complete PostHog user journey tracking
+- **Group Properties**: Organization-level segmentation and targeting
+- **Context Injection**: Automatic user/org context in all events
 
 ## 🚀 Quick Start
 
@@ -28,18 +40,24 @@ ANALYTICS_ENABLED=true
 ```python
 from airweave.analytics import analytics, business_events
 
-# Track a custom event
+# Track a custom event using global analytics service
 analytics.track_event(
     event_name="custom_event",
     distinct_id="user_123",
     properties={"key": "value"}
 )
 
-# Track business events
-business_events.track_organization_created(
+# Track business events (used in service layers)
+business_events.track_source_connection_created(
+    ctx=api_context,
+    connection_id=conn_id,
+    source_short_name="slack"
+)
+
+# Set organization group properties
+business_events.set_organization_properties(
     organization_id=org_id,
-    user_id=user_id,
-    properties={"plan": "trial"}
+    properties={"plan": "trial", "industry": "technology"}
 )
 ```
 
@@ -67,6 +85,28 @@ async def create_collection(
     
     return collection_obj
 
+@router.post("/", response_model=schemas.Organization)
+async def create_organization(
+    organization_data: schemas.OrganizationCreate,
+    analytics: ContextualAnalyticsService = Depends(deps.get_analytics_service),
+):
+    # Your endpoint logic
+    organization = await organization_service.create_organization_with_integrations(...)
+    
+    # Identify user for complete PostHog user journey tracking
+    analytics.identify_user({
+        "organization_id": str(organization.id),
+        "organization_name": organization.name,
+        "organization_plan": "trial",
+        "user_role": "owner",
+    })
+    
+    # Track API call and business event
+    analytics.track_api_call("create_organization")
+    analytics.track_event("organization_created", {...})
+    
+    return organization
+
 @router.post("/{readable_id}/search")
 async def search_collection(
     readable_id: str,
@@ -89,6 +129,67 @@ async def search_collection(
     
     return result
 ```
+
+## 🔍 Automatic Header Capture & User Identification
+
+### **Request Headers Automatically Captured**
+
+The `ContextualAnalyticsService` automatically extracts and includes these headers in all events:
+
+```python
+# SDK Headers
+X-SDK-Name: airweave-python
+X-SDK-Version: 1.2.3
+
+# Client Headers  
+X-Client-Name: airweave-frontend
+X-Client-Version: 2.1.0
+
+# Framework Headers (future)
+X-Framework-Name: langchain
+X-Framework-Version: 0.1.0
+
+# Session Headers
+X-Session-ID: session_123
+X-Request-ID: req_456
+User-Agent: CustomAgent/1.0
+```
+
+### **User Identification**
+
+```python
+# Automatically called during user registration and organization creation
+analytics.identify_user({
+    "email": "user@example.com",
+    "full_name": "John Doe", 
+    "auth0_id": "auth0|507f1f77bcf86cd799439011",
+    "created_at": "2025-01-01T00:00:00Z",
+    "plan": "trial",
+    "signup_source": "auth0"
+})
+```
+
+### **Group Properties (Organization-Level)**
+
+```python
+# Sets organization properties for PostHog segmentation
+business_events.set_organization_properties(
+    organization_id=org_id,
+    properties={
+        "organization_name": "Acme Corp",
+        "organization_plan": "enterprise", 
+        "organization_created_at": "2025-01-01T00:00:00Z",
+        "organization_source": "signup",
+        "organization_industry": "technology"
+    }
+)
+```
+
+### **Benefits**
+- **Complete User Journey**: Link all events to identified user profiles
+- **SDK Tracking**: Identify which SDKs/clients are being used
+- **Organization Segmentation**: Filter analytics by organization properties
+- **Feature Flag Targeting**: Enable features based on organization type/plan
 
 ## 📊 Complete Analytics Events Overview
 
@@ -121,114 +222,22 @@ async def search_collection(
 - `response_type`: Response type (for regular searches)
 
 ### Business Events
-- **`organization_created`**: New organization signup
-- **`collection_created`**: New collection creation
 - **`source_connection_created`**: New source integration
-
-### Sync Events
+- **`sync_started`**: Sync operation initiation
 - **`sync_completed`**: Successful sync job completion with entity counts
-- **`entities_synced_by_type`**: Granular entity tracking per sync and entity type
+- **`sync_failed`**: Failed sync operations with error details
+- **`sync_cancelled`**: Cancelled sync operations
 
-## 🎯 Dashboard Strategy
+### User Identification
+- **`identify_user`**: Links all future events to identified user profiles
+- **User Properties**: email, full_name, auth0_id, created_at, plan, signup_source
+- **Organization Properties**: organization_id, organization_name, organization_plan, user_role
 
-### Dashboard 1: Airweave Overview
-**Purpose:** High-level business metrics and system health
-**Key Metrics:**
-- Query volume over time (weekly/monthly)
-- Query response times
-- Popular data sources
-- Error rates by endpoint
-- Total entities in sync
-- Query volume per organization
+### Group Properties (PostHog Organizations)
+- **`set_organization_properties`**: Sets organization-level properties for segmentation
+- **Organization Properties**: organization_name, organization_plan, organization_created_at, organization_source
+- **Benefits**: Organization segmentation, feature flag targeting, cohort analysis
 
-### Dashboard 2: User Journey
-**Purpose:** Track user progression and identify drop-off points
-**Key Metrics:**
-- User funnel: org created → collection created → source added → first search
-- Time to first search ("time to wow")
-- Feature adoption rates
-- User retention metrics
-
-### Dashboard 3: Syncing & Storage
-**Purpose:** Monitor sync performance and storage usage
-**Key Metrics:**
-- Sync success/error rates
-- Entities synced per sync configuration
-- Storage usage by organization
-- Sync performance trends
-- Entity type distribution
-
-### Dashboard 4: Performance & Errors
-**Purpose:** System reliability and performance monitoring
-**Key Metrics:**
-- API error rates by endpoint
-- Search error rates
-- Sync error rates
-- Performance trends
-- Error patterns and troubleshooting
-
-### Dashboard 5: Advanced Analytics
-**Purpose:** Deep insights and custom analysis
-**Key Metrics:**
-- Query patterns and complexity
-- User behavior analysis
-- Integration health scores
-- Custom business metrics
-
-## 📈 PostHog Widget Configurations
-
-### Overview Dashboard Widgets
-1. **Query Volume Over Time**
-   - Event: `search_query`
-   - Type: Line Chart
-   - Property: Count
-   - Time Range: Last 30 days
-
-2. **Query Response Times**
-   - Event: `search_query`
-   - Type: Line Chart
-   - Property: `duration_ms` (Average)
-   - Time Range: Last 7 days
-
-3. **Error Rate by Endpoint**
-   - Event: `api_call_error`
-   - Type: Bar Chart
-   - Property: Count
-   - Breakdown: `endpoint`
-   - Time Range: Last 7 days
-
-### User Journey Dashboard Widgets
-1. **User Funnel**
-   - Events: `organization_created` → `collection_created` → `source_connection_created` → `search_query`
-   - Type: Funnel
-   - Time Range: Last 30 days
-
-2. **Time to First Search**
-   - Event: `search_query`
-   - Type: Histogram (if supported) or Line Chart
-   - Property: Event timestamp (PostHog default)
-   - Time Range: Last 30 days
-
-### Syncing Dashboard Widgets
-1. **Sync Success Rate**
-   - Event: `sync_completed`
-   - Type: Line Chart
-   - Property: Count
-   - Time Range: Last 30 days
-
-2. **Entities Synced per Sync**
-   - Event: `sync_completed`
-   - Type: Bar Chart
-   - Property: `entities_processed` (Sum)
-   - Breakdown: `sync_id`
-   - Time Range: Last 7 days
-
-3. **Storage Usage by Organization**
-   - Event: `entities_synced_by_type`
-   - Type: Bar Chart
-   - Property: `entity_count` (Sum)
-   - Breakdown: `organization_name`
-   - Time Range: Last 7 days
 
 ## 🔧 Configuration
 
@@ -247,18 +256,6 @@ The analytics module respects these configuration options:
 # Production environment (.env.prod)
 ANALYTICS_ENABLED=true
 ENVIRONMENT=prd
-
-# Development environment (.env.dev)
-ANALYTICS_ENABLED=true
-ENVIRONMENT=dev
-
-# Local development (.env.local)
-ANALYTICS_ENABLED=false
-ENVIRONMENT=local
-
-# Testing (.env.test)
-ANALYTICS_ENABLED=false
-ENVIRONMENT=test
 ```
 
 ### PostHog Dashboard Filtering
@@ -270,43 +267,35 @@ ENVIRONMENT=test
 
 ## 💡 Best Practices
 
-### 1. Use Decorators for Automatic Tracking
+### 1. Use Dependency Injection for API Endpoints
 ```python
-@track_api_endpoint("endpoint_name")
-async def my_endpoint(ctx: ApiContext, ...):
-    # Automatically tracks timing, errors, and context
-    pass
-
-@track_search_operation()
-async def search_endpoint(ctx: ApiContext, query: str, ...):
-    # Automatically tracks search analytics with unified properties
-    pass
+async def my_endpoint(
+    ctx: ApiContext = Depends(deps.get_context),
+    analytics: ContextualAnalyticsService = Depends(deps.get_analytics_service),
+):
+    # Track API call with automatic context and headers
+    analytics.track_api_call("endpoint_name")
+    
+    # Track custom events
+    analytics.track_event("custom_event", {"key": "value"})
 ```
 
-### 2. Use Shared Search Analytics Utilities
+### 2. Use Global Analytics for Service Layers
 ```python
-from airweave.analytics.search_analytics import build_search_properties, track_search_event
+from airweave.analytics import business_events
 
-# Build unified search properties
-properties = build_search_properties(
-    ctx=ctx,
-    query=query,
-    collection_slug=collection_slug,
-    duration_ms=duration_ms,
-    search_type="streaming",  # or "regular"
-    results=search_results,  # optional
-    response_type="raw",  # optional
-    status="success",
-)
-
-# Track the event
-track_search_event(ctx, properties, "search_query")
+# In sync operations, service layers, etc.
+business_events.track_sync_completed(ctx, sync_id, entities_processed, duration_ms)
 ```
 
 ### 3. Track Business Events at Key Milestones
 ```python
-# Track when user completes onboarding
-business_events.track_first_sync_completed(ctx, sync_id, entities_count)
+# Track sync operations
+business_events.track_sync_started(ctx, sync_id, source_type, collection_id)
+business_events.track_sync_completed(ctx, sync_id, entities_processed, duration_ms)
+
+# Set organization properties
+business_events.set_organization_properties(org_id, {"plan": "enterprise"})
 ```
 
 ### 4. Include Rich Context
@@ -329,11 +318,11 @@ The analytics service automatically handles PostHog errors and logs them without
 ### 6. Unified Search Analytics
 All search operations (regular and streaming) now use unified analytics tracking:
 
-- **Regular search endpoints**: Use `@track_search_operation()` decorator
+- **API endpoints**: Use `analytics.track_search_query()` with dependency injection
 - **Streaming search endpoints**: Use manual tracking after permission checks
 - **Search completion**: Automatically tracked by SearchExecutor for both types
 - **Unified events**: `search_stream_start` and `search_query` with consistent properties
-- **Shared utilities**: Use `search_analytics.py` for consistent property building
+- **Consistent properties**: All search events include query_length, collection_slug, duration_ms, etc.
 
 **Important**: For streaming endpoints, always track analytics AFTER permission checks to avoid counting blocked requests.
 

@@ -173,14 +173,16 @@ async def create_or_update_user(
         logger.info(f"Created new user {user.email}.")
 
         # Identify user in PostHog for complete user journey tracking
-        analytics.identify_user({
-            "email": user.email,
-            "full_name": user.full_name,
-            "auth0_id": user.auth0_id,
-            "created_at": user.created_at.isoformat() if user.created_at else None,
-            "plan": "trial",  # Default plan for new users
-            "signup_source": "auth0",
-        })
+        analytics.identify_user(
+            {
+                "email": user.email,
+                "full_name": user.full_name,
+                "auth0_id": user.auth0_id,
+                "created_at": user.created_at.isoformat() if user.created_at else None,
+                "plan": "trial",  # Default plan for new users
+                "signup_source": "auth0",
+            }
+        )
 
         # Send welcome email in background to avoid blocking the response
         background_tasks.add_task(send_welcome_email, user.email, user.full_name or user.email)
@@ -208,14 +210,16 @@ async def create_or_update_user(
         logger.info(f"Created user {user.email} with fallback method")
 
         # Identify user in PostHog for complete user journey tracking
-        analytics.identify_user({
-            "email": user.email,
-            "full_name": user.full_name,
-            "auth0_id": user.auth0_id,
-            "created_at": user.created_at.isoformat() if user.created_at else None,
-            "plan": "trial",  # Default plan for new users
-            "signup_source": "fallback",
-        })
+        analytics.identify_user(
+            {
+                "email": user.email,
+                "full_name": user.full_name,
+                "auth0_id": user.auth0_id,
+                "created_at": user.created_at.isoformat() if user.created_at else None,
+                "plan": "trial",  # Default plan for new users
+                "signup_source": "fallback",
+            }
+        )
 
         # Send welcome email in background to avoid blocking the response
         background_tasks.add_task(send_welcome_email, user.email, user.full_name or user.email)
