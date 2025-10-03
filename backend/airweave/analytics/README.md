@@ -7,10 +7,8 @@ This module provides PostHog analytics integration for Airweave, enabling compre
 The analytics module is organized into several components:
 
 - **`service.py`**: Core PostHog integration service
-- **`decorators/`**: Decorators for automatic tracking of API endpoints and operations
+- **`contextual_service.py`**: Context-aware analytics service for dependency injection
 - **`events/`**: Business event tracking classes for high-level metrics
-- **`search_analytics.py`**: Shared utilities for unified search analytics tracking
-- **`config.py`**: Analytics configuration (integrated into core config)
 
 ## 🚀 Quick Start
 
@@ -45,38 +43,51 @@ business_events.track_organization_created(
 )
 ```
 
-### 3. Using Decorators
+### 3. Using Dependency Injection
 
 ```python
-from airweave.analytics import track_api_endpoint, track_search_operation, track_streaming_search_initiation
+from airweave.analytics import ContextualAnalyticsService
+from airweave.api import deps
 
-@track_api_endpoint("create_collection")
-async def create_collection(ctx: ApiContext, ...):
+@router.post("/", response_model=schemas.Collection)
+async def create_collection(
+    collection: schemas.CollectionCreate,
+    ctx: ApiContext = Depends(deps.get_context),
+    analytics: ContextualAnalyticsService = Depends(deps.get_analytics_service),
+):
     # Your endpoint logic
-    pass
-
-@track_search_operation()
-async def search_collection(ctx: ApiContext, query: str, ...):
-    # Your search logic
-    pass
-
-# For streaming search endpoints, use manual tracking after permission checks
-@router.post("/{readable_id}/search/stream")
-async def stream_search_collection_advanced(...):
-    # Ensure permissions first
-    await guard_rail.is_allowed(ActionType.QUERIES)
+    collection_obj = await collection_service.create(db, collection_in=collection, ctx=ctx)
     
-    # Track stream initiation after permission check
-    from airweave.analytics.search_analytics import build_search_properties, track_search_event
-    if ctx and search_request.query:
-        properties = build_search_properties(
-            ctx=ctx,
-            query=search_request.query,
-            collection_slug=readable_id,
-            duration_ms=0,
-            search_type="streaming",
-        )
-        track_search_event(ctx, properties, "search_stream_start")
+    # Track with dependency injection - automatic context and headers
+    analytics.track_api_call("create_collection")
+    analytics.track_event("collection_created", {
+        "collection_id": str(collection_obj.id),
+        "collection_name": collection_obj.name,
+    })
+    
+    return collection_obj
+
+@router.post("/{readable_id}/search")
+async def search_collection(
+    readable_id: str,
+    search_request: SearchRequest,
+    ctx: ApiContext = Depends(deps.get_context),
+    analytics: ContextualAnalyticsService = Depends(deps.get_analytics_service),
+):
+    # Your search logic
+    result = await search_service.search_with_request(...)
+    
+    # Track search with dependency injection
+    analytics.track_search_query(
+        query=search_request.query,
+        collection_slug=readable_id,
+        duration_ms=duration_ms,
+        search_type="advanced",
+        results_count=len(result.results) if result.results else 0,
+        status="success"
+    )
+    
+    return result
 ```
 
 ## 📊 Complete Analytics Events Overview

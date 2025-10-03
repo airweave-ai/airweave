@@ -8,6 +8,8 @@ from fastapi_auth0 import Auth0User
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
+from airweave.analytics.contextual_service import ContextualAnalyticsService, RequestHeaders
+from airweave.analytics.service import analytics
 from airweave.api.auth import auth0
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
@@ -319,3 +321,55 @@ async def get_user_from_token(token: str, db: AsyncSession) -> Optional[schemas.
     except Exception as e:
         logger.error(f"Error in get_user_from_token: {e}")
         return None
+
+
+def _extract_headers_from_request(request: Request) -> RequestHeaders:
+    """Extract tracking-relevant headers from the request.
+
+    Easily extensible - just add new header mappings here when introducing new headers.
+    """
+    headers = request.headers
+
+    return RequestHeaders(
+        # Standard headers
+        user_agent=headers.get("user-agent"),
+        # Client/Frontend headers
+        client_name=headers.get("x-client-name"),
+        client_version=headers.get("x-client-version"),
+        session_id=headers.get("x-session-id"),
+        # SDK headers
+        sdk_name=headers.get("x-sdk-name"),
+        sdk_version=headers.get("x-sdk-version"),
+        # Agent framework headers
+        framework_name=headers.get("x-framework-name"),
+        framework_version=headers.get("x-framework-version"),
+        # Request tracking
+        request_id=headers.get("x-request-id"),
+    )
+
+
+async def get_analytics_service(
+    request: Request,
+    ctx: ApiContext = Depends(get_context),
+) -> ContextualAnalyticsService:
+    """Get an analytics service instance configured for the current context and headers.
+
+    This resolves PostHog via FastAPI dependency injection rather than using decorators.
+    Automatically captures SDK/client headers and injects user/org context.
+
+    Args:
+        request: The FastAPI request object for header extraction
+        ctx: The current API context containing user and organization info
+
+    Returns:
+        ContextualAnalyticsService: Pre-configured analytics service instance
+    """
+    # Extract headers for enhanced tracking
+    headers = _extract_headers_from_request(request)
+
+    # Return context-aware analytics service
+    return ContextualAnalyticsService(
+        base_service=analytics,  # Global PostHog service instance
+        context=ctx,  # Inject context via DI
+        headers=headers,  # Capture request headers
+    )

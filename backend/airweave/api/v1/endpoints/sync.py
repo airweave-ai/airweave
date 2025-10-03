@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
-from airweave.analytics import track_api_endpoint
+from airweave.analytics import ContextualAnalyticsService
 from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.router import TrailingSlashRouter
@@ -171,13 +171,13 @@ async def delete_sync(
 
 
 @router.post("/{sync_id}/run", response_model=schemas.SyncJob)
-@track_api_endpoint("run_sync")
 async def run_sync(
     *,
     db: AsyncSession = Depends(deps.get_db),
     sync_id: UUID,
     ctx: ApiContext = Depends(deps.get_context),
     background_tasks: BackgroundTasks,
+    analytics: ContextualAnalyticsService = Depends(deps.get_analytics_service),
 ) -> schemas.SyncJob:
     """Trigger a sync run.
 
@@ -197,6 +197,9 @@ async def run_sync(
 
     # Start the sync job in the background - this is where the sync actually runs
     background_tasks.add_task(sync_service.run, sync, sync_job, sync_dag, ctx)
+
+    # Track API call with dependency injection
+    analytics.track_api_call("run_sync")
 
     return sync_job
 

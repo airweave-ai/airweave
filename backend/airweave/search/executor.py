@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Set
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave.analytics.search_analytics import build_search_properties, track_search_event
+from airweave.analytics.service import analytics
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
 from airweave.core.pubsub import core_pubsub
@@ -251,18 +251,28 @@ class SearchExecutor:
                 # Determine search type
                 search_type = "streaming" if request_id else "regular"
 
-                # Build analytics properties using shared utility
-                properties = build_search_properties(
-                    ctx=ctx,
-                    query=query,
-                    collection_slug=collection_slug,
-                    duration_ms=search_duration_ms,
-                    search_type=search_type,
-                    results=context.get("final_results"),
-                )
+                # Track search completion directly with global analytics service
+                properties = {
+                    "query_length": len(query),
+                    "collection_slug": collection_slug,
+                    "duration_ms": search_duration_ms,
+                    "search_type": search_type,
+                    "organization_name": getattr(ctx.organization, "name", "unknown"),
+                    "status": "success",
+                }
 
-                # Track unified search event
-                track_search_event(ctx, properties, "search_query")
+                # Add results count if available
+                final_results = context.get("final_results")
+                if final_results:
+                    properties["results_count"] = len(final_results)
+
+                # Track the event using global analytics service
+                analytics.track_event(
+                    event_name="search_query",
+                    distinct_id=str(ctx.user.id) if ctx.user else f"api_key_{ctx.organization.id}",
+                    properties=properties,
+                    groups={"organization": str(ctx.organization.id)},
+                )
 
             # Always emit done so clients can close streams reliably
             await emit("done", {"request_id": request_id})
