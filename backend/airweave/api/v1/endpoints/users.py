@@ -12,6 +12,7 @@ from fastapi_auth0 import Auth0User
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
+from airweave.analytics import ContextualAnalyticsService
 from airweave.api import deps
 from airweave.api.auth import auth0
 from airweave.api.context import ApiContext
@@ -84,6 +85,7 @@ async def create_or_update_user(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(deps.get_db),
     auth0_user: Optional[Auth0User] = Depends(auth0.get_user),
+    analytics: ContextualAnalyticsService = Depends(deps.get_analytics_service),
 ) -> schemas.User:
     """Create new user in database if it does not exist, with Auth0 organization sync.
 
@@ -95,6 +97,7 @@ async def create_or_update_user(
         background_tasks (BackgroundTasks): FastAPI background tasks for non-blocking operations.
         db (AsyncSession): Database session dependency to handle database operations.
         auth0_user (Auth0User): Authenticated auth0 user.
+        analytics (ContextualAnalyticsService): Analytics service for user identification.
 
     Returns:
         schemas.User: The created user object with organization relationships.
@@ -169,6 +172,16 @@ async def create_or_update_user(
 
         logger.info(f"Created new user {user.email}.")
 
+        # Identify user in PostHog for complete user journey tracking
+        analytics.identify_user({
+            "email": user.email,
+            "full_name": user.full_name,
+            "auth0_id": user.auth0_id,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+            "plan": "trial",  # Default plan for new users
+            "signup_source": "auth0",
+        })
+
         # Send welcome email in background to avoid blocking the response
         background_tasks.add_task(send_welcome_email, user.email, user.full_name or user.email)
 
@@ -193,6 +206,16 @@ async def create_or_update_user(
                 uow=uow,
             )
         logger.info(f"Created user {user.email} with fallback method")
+
+        # Identify user in PostHog for complete user journey tracking
+        analytics.identify_user({
+            "email": user.email,
+            "full_name": user.full_name,
+            "auth0_id": user.auth0_id,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+            "plan": "trial",  # Default plan for new users
+            "signup_source": "fallback",
+        })
 
         # Send welcome email in background to avoid blocking the response
         background_tasks.add_task(send_welcome_email, user.email, user.full_name or user.email)

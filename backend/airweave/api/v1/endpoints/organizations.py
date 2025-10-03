@@ -36,6 +36,7 @@ async def create_organization(
         organization_data: The organization data to create
         db: Database session
         user: The authenticated user creating the organization
+        analytics: Analytics service for user identification and tracking
 
     Returns:
         The created organization with user's role
@@ -48,6 +49,17 @@ async def create_organization(
         organization = await organization_service.create_organization_with_integrations(
             db=db, org_data=organization_data, owner_user=user
         )
+
+        # Identify user with organization context for enhanced PostHog tracking
+        analytics.identify_user({
+            "organization_id": str(organization.id),
+            "organization_name": organization.name,
+            "organization_plan": "trial",  # Default plan for new organizations
+            "user_role": "owner",
+            "organization_created_at": (
+                organization.created_at.isoformat() if organization.created_at else None
+            ),
+        })
 
         # Track API call and business event with dependency injection
         analytics.track_api_call("create_organization")
