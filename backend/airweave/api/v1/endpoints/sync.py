@@ -10,7 +10,6 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
-from airweave.analytics import track_api_endpoint
 from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.router import TrailingSlashRouter
@@ -171,7 +170,6 @@ async def delete_sync(
 
 
 @router.post("/{sync_id}/run", response_model=schemas.SyncJob)
-@track_api_endpoint("run_sync")
 async def run_sync(
     *,
     db: AsyncSession = Depends(deps.get_db),

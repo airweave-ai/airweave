@@ -5,7 +5,6 @@ from typing import Any, Dict, Optional
 from uuid import UUID
 
 from airweave import crud, schemas
-from airweave.analytics.service import analytics
 from airweave.api.context import ApiContext
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.logging import logger
@@ -87,7 +86,6 @@ class SyncJobService:
     ) -> None:
         """Update sync job status with provided details."""
         try:
-            sync_id_for_analytics = None
             async with get_db_context() as db:
                 db_sync_job = await crud.sync_job.get(db=db, id=sync_job_id, ctx=ctx)
 
@@ -124,59 +122,12 @@ class SyncJobService:
                         ctx=ctx,
                     )
 
-                # Capture sync_id before commit to avoid attribute expiration
-                try:
-                    sync_id_for_analytics = db_sync_job.sync_id
-                except Exception:
-                    sync_id_for_analytics = None
-
                 await db.commit()
                 logger.info(f"Successfully updated sync job {sync_job_id} status to {status_value}")
 
         except Exception as e:
             logger.error(f"Failed to update sync job status: {e}")
             return
-
-        # Track analytics for sync completion outside DB context to avoid session issues
-        if status == SyncJobStatus.COMPLETED and stats and sync_id_for_analytics is not None:
-            try:
-                await self._track_sync_completion(sync_job_id, sync_id_for_analytics, stats, ctx)
-            except Exception as e:
-                # Analytics failure should not be treated as status update failure
-                logger.warning(
-                    f"Failed to track sync completion analytics for job {sync_job_id}: {e}"
-                )
-
-    async def _track_sync_completion(
-        self, sync_job_id: UUID, sync_id: UUID, stats: SyncProgressUpdate, ctx: ApiContext
-    ) -> None:
-        """Track detailed analytics for sync completion with entity counts per type.
-
-        Note: High-level sync completion is tracked by the orchestrator using business_events.
-        This method only tracks detailed entity-type breakdowns for analysis.
-        """
-        try:
-            # Track individual entity type counts for detailed analysis
-            if hasattr(stats, "entities_encountered") and stats.entities_encountered:
-                for entity_type, entity_count in stats.entities_encountered.items():
-                    user_id = str(ctx.user.id) if ctx.user else f"api_key_{ctx.organization.id}"
-                    analytics.track_event(
-                        event_name="entities_synced_by_type",
-                        distinct_id=user_id,
-                        properties={
-                            "sync_job_id": str(sync_job_id),
-                            "sync_id": str(sync_id),
-                            "entity_type": entity_type,
-                            "entity_count": entity_count,
-                            "organization_name": getattr(ctx.organization, "name", "unknown"),
-                        },
-                        groups={"organization": str(ctx.organization.id)},
-                    )
-
-            logger.info(f"Tracked sync completion analytics for job {sync_job_id} (sync {sync_id})")
-
-        except Exception as e:
-            logger.exception(f"Failed to track sync completion analytics: {e}")
 
 
 # Singleton instance

@@ -7,7 +7,7 @@ from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
-from airweave.analytics import business_events, track_api_endpoint
+from airweave.analytics import business_events
 from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.router import TrailingSlashRouter
@@ -22,11 +22,10 @@ router = TrailingSlashRouter()
 
 
 @router.post("/", response_model=schemas.Organization)
-@track_api_endpoint("create_organization")
 async def create_organization(
     organization_data: schemas.OrganizationCreate,
     db: AsyncSession = Depends(deps.get_db),
-    user: User = Depends(deps.get_user),
+    ctx: ApiContext = Depends(deps.get_context),
 ) -> schemas.Organization:
     """Create a new organization with current user as owner.
 
@@ -35,7 +34,7 @@ async def create_organization(
     Args:
         organization_data: The organization data to create
         db: Database session
-        user: The authenticated user creating the organization
+        ctx: API context containing user and analytics service
 
     Returns:
         The created organization with user's role
@@ -46,14 +45,26 @@ async def create_organization(
     # Create the organization with Auth0 integration
     try:
         organization = await organization_service.create_organization_with_integrations(
-            db=db, org_data=organization_data, owner_user=user
+            db=db, org_data=organization_data, owner_user=ctx.user
         )
 
-        # Track business event
-        business_events.track_organization_created(
+        # Set organization group properties for PostHog analytics
+        business_events.set_organization_properties(
             organization_id=organization.id,
-            user_id=user.id,
             properties={
+                "organization_name": organization.name,
+                "organization_plan": "trial",  # Default plan for new organizations
+                "organization_created_at": (
+                    organization.created_at.isoformat() if organization.created_at else None
+                ),
+                "organization_source": "signup",
+            },
+        )
+
+        ctx.analytics.track_event(
+            "organization_created",
+            {
+                "organization_id": str(organization.id),
                 "plan": "trial",  # Default plan for new organizations
                 "source": "signup",
                 "organization_name": organization.name,
@@ -61,7 +72,7 @@ async def create_organization(
         )
 
         # Notify Donke about new sign-up
-        await _notify_donke_signup(organization, user, db)
+        await _notify_donke_signup(organization, ctx.user, db)
 
         return organization
     except Exception as e:

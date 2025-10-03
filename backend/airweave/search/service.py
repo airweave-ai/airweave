@@ -58,6 +58,38 @@ class SearchService:
             duration_ms=duration_ms,
         )
 
+        # Track search completion to PostHog
+        from airweave.analytics.search_analytics import track_search_completion
+
+        # Extract search configuration for analytics
+        search_config = {
+            "retrieval_strategy": search_context.retrieval.strategy.value,
+            "temporal_relevance": (
+                search_context.temporal_relevance.weight
+                if search_context.temporal_relevance
+                else 0.0
+            ),
+            "expand_query": search_context.query_expansion is not None,
+            "interpret_filters": search_context.query_interpretation is not None,
+            "rerank": search_context.reranking is not None,
+            "generate_answer": search_context.generate_answer is not None,
+            "limit": search_context.retrieval.limit,
+            "offset": search_context.retrieval.offset,
+        }
+
+        # Track the search event
+        track_search_completion(
+            ctx=ctx,
+            query=search_context.query,
+            collection_slug=readable_collection_id,
+            duration_ms=duration_ms,
+            results=response.results,
+            completion=response.completion,  # Include AI-generated completion
+            search_type="streaming" if stream else "regular",
+            status="success",
+            **search_config,
+        )
+
         return response
 
 

@@ -8,7 +8,6 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
-from airweave.analytics import track_api_endpoint
 from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.router import TrailingSlashRouter
@@ -212,7 +211,6 @@ async def list_all_organizations(
     "/organizations/{organization_id}/add-self",
     response_model=schemas.OrganizationWithRole,
 )
-@track_api_endpoint("admin_add_self_to_org")
 async def add_self_to_organization(
     organization_id: UUID,
     role: str = "owner",  # Default to owner for admins

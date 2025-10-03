@@ -34,6 +34,11 @@ class ApiContext(BaseModel):
     # Contextual logger with all dimensions pre-configured
     logger: ContextualLogger
 
+    # Analytics service with context and headers pre-configured
+    analytics: Optional[Any] = (
+        None  # ContextualAnalyticsService - using Any to avoid circular imports
+    )
+
     class Config:
         """Pydantic configuration."""
 

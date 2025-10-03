@@ -12,6 +12,7 @@ from fastapi_auth0 import Auth0User
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
+from airweave.analytics import business_events
 from airweave.api import deps
 from airweave.api.auth import auth0
 from airweave.api.context import ApiContext
@@ -156,6 +157,18 @@ async def create_or_update_user(
         user = await organization_service.handle_new_user_signup(db, user_dict, create_org=False)
 
         logger.info(f"Created new user {user.email}.")
+
+        # Track user creation with business events
+        try:
+            business_events.track_user_created(
+                user_id=user.id,
+                email=user.email,
+                full_name=user.full_name,
+                auth0_id=user.auth0_id,
+                signup_source="auth0",
+            )
+        except Exception as e:
+            logger.warning(f"Failed to track user creation analytics: {e}")
 
         # Send welcome email in background to avoid blocking the response
         background_tasks.add_task(send_welcome_email, user.email, user.full_name or user.email)

@@ -14,7 +14,6 @@ from fastapi.responses import StreamingResponse
 from qdrant_client.http.models import Filter as QdrantFilter
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave.analytics import track_search_operation
 from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.router import TrailingSlashRouter
@@ -38,7 +37,6 @@ router = TrailingSlashRouter()
     response_model=LegacySearchResponse,
     deprecated=True,
 )
-@track_search_operation()
 async def search_get_legacy(
     response: Response,
     readable_id: str = Path(
@@ -117,7 +115,6 @@ async def search_get_legacy(
     "/{readable_id}/search",
     response_model=Union[SearchResponse, LegacySearchResponse],
 )
-@track_search_operation()
 async def search(
     http_response: Response,
     readable_id: str = Path(
@@ -198,18 +195,6 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
     if isinstance(search_request, LegacySearchRequest):
         ctx.logger.debug("Processing legacy streaming search request")
         search_request = convert_legacy_request_to_new(search_request)
-
-    from airweave.analytics.search_analytics import build_search_properties, track_search_event
-
-    if ctx and search_request.query:
-        properties = build_search_properties(
-            ctx=ctx,
-            query=search_request.query,
-            collection_slug=readable_id,
-            duration_ms=0,
-            search_type="streaming",
-        )
-        track_search_event(ctx, properties, "search_stream_start")
 
     pubsub = await core_pubsub.subscribe("search", request_id)
 

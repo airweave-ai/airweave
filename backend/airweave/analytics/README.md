@@ -7,7 +7,7 @@ This module provides PostHog analytics integration for Airweave, enabling compre
 The analytics module is organized into several components:
 
 - **`service.py`**: Core PostHog integration service
-- **`decorators/`**: Decorators for automatic tracking of API endpoints and operations
+- **`contextual_service.py`**: Context-aware analytics service with dependency injection
 - **`events/`**: Business event tracking classes for high-level metrics
 - **`search_analytics.py`**: Shared utilities for unified search analytics tracking
 - **`config.py`**: Analytics configuration (integrated into core config)
@@ -43,61 +43,58 @@ business_events.track_organization_created(
     user_id=user_id,
     properties={"plan": "trial"}
 )
+
+# Track events with context (recommended for API endpoints)
+async def my_endpoint(ctx: ApiContext, ...):
+    ctx.analytics.track_event("custom_event", {"key": "value"})
 ```
 
-### 3. Using Decorators
+### 3. Dependency Injection Architecture
 
 ```python
-from airweave.analytics import track_api_endpoint, track_search_operation, track_streaming_search_initiation
+# Analytics service is automatically injected via ApiContext
+async def my_endpoint(ctx: ApiContext, ...):
+    # Track custom events with automatic context
+    ctx.analytics.track_event("custom_event", {"key": "value"})
+    
+    # Search operations are automatically tracked
+    # No manual tracking needed in endpoints
+```
 
-@track_api_endpoint("create_collection")
-async def create_collection(ctx: ApiContext, ...):
-    # Your endpoint logic
-    pass
+### 4. Search Analytics
 
-@track_search_operation()
-async def search_collection(ctx: ApiContext, query: str, ...):
-    # Your search logic
-    pass
+```python
+# Search operations are automatically tracked via SearchService
+# No manual tracking required in endpoints
 
-# For streaming search endpoints, use manual tracking after permission checks
-@router.post("/{readable_id}/search/stream")
-async def stream_search_collection_advanced(...):
-    # Ensure permissions first
-    await guard_rail.is_allowed(ActionType.QUERIES)
+# For custom search analytics, use the utilities:
+from airweave.analytics.search_analytics import track_search_completion
 
-    # Track stream initiation after permission check
-    from airweave.analytics.search_analytics import build_search_properties, track_search_event
-    if ctx and search_request.query:
-        properties = build_search_properties(
-            ctx=ctx,
-            query=search_request.query,
-            collection_slug=readable_id,
-            duration_ms=0,
-            search_type="streaming",
-        )
-        track_search_event(ctx, properties, "search_stream_start")
+# This is already done automatically in SearchService.search()
+track_search_completion(
+    ctx=ctx,
+    query="search query",
+    collection_slug="my-collection",
+    duration_ms=150.0,
+    results=search_results,
+    completion=ai_response,  # Optional AI completion
+    search_type="regular",   # or "streaming"
+)
 ```
 
 ## 📊 Complete Analytics Events Overview
 
 ### API Events
-- **`api_call`**: Successful API calls with timing and context
-- **`api_call_error`**: Failed API calls with error details and status codes
+- **Custom Events**: Tracked via `ctx.analytics.track_event()` in API endpoints
+- **Business Events**: Tracked via `business_events.track_*()` methods
 
 **Covered Endpoints:**
-- `create_organization` - Organization creation
-- `list_collections` - Collection listing
-- `create_collection` - Collection creation
-- `create_source_connection` - Source connection setup
-- `run_sync` - Sync execution
-- `search` - Basic search queries
-- `search_advanced` - Advanced search queries
+- All API endpoints can track custom events using `ctx.analytics.track_event()`
+- Business events tracked for key milestones (organization creation, sync completion, etc.)
 
 ### Search Events
-- **`search_stream_start`**: Streaming search initiation (after permission check)
-- **`search_query`**: Successful search operations with unified analytics (regular and streaming)
-- **`search_query_error`**: Failed search operations with error details
+- **`search_query`**: Automatically tracked for all search operations (regular and streaming)
+- **Search completion**: Tracked via `SearchService.search()` with comprehensive analytics
 
 **Search Event Properties:**
 - `query_length`: Length of search query
@@ -105,9 +102,13 @@ async def stream_search_collection_advanced(...):
 - `duration_ms`: Search execution time
 - `search_type`: "regular" or "streaming"
 - `results_count`: Number of results returned
-- `organization_name`: Organization name
-- `status`: "success" or error status
-- `response_type`: Response type (for regular searches)
+- `has_completion`: Whether AI generated a response
+- `completion_length`: Length of AI-generated completion
+- `retrieval_strategy`: "hybrid", "neural", or "keyword"
+- `temporal_relevance`: Recency weight (0-1)
+- `expand_query`, `interpret_filters`, `rerank`, `generate_answer`: Feature flags
+- `organization_name`: Organization name (auto-included)
+- `auth_method`: Authentication method (auto-included)
 
 ### Business Events
 - **`organization_created`**: New organization signup
@@ -272,37 +273,26 @@ ENVIRONMENT=test
 
 ## 💡 Best Practices
 
-### 1. Use Decorators for Automatic Tracking
+### 1. Use Dependency Injection for Analytics
 ```python
-@track_api_endpoint("endpoint_name")
 async def my_endpoint(ctx: ApiContext, ...):
-    # Automatically tracks timing, errors, and context
-    pass
-
-@track_search_operation()
-async def search_endpoint(ctx: ApiContext, query: str, ...):
-    # Automatically tracks search analytics with unified properties
+    # Analytics service is pre-configured with user/org context
+    ctx.analytics.track_event("custom_event", {"key": "value"})
+    
+    # Search operations are automatically tracked - no manual work needed
     pass
 ```
 
-### 2. Use Shared Search Analytics Utilities
+### 2. Search Analytics (Automatic)
 ```python
-from airweave.analytics.search_analytics import build_search_properties, track_search_event
+# Search analytics are automatically handled by SearchService
+# No manual tracking required in endpoints
 
-# Build unified search properties
-properties = build_search_properties(
-    ctx=ctx,
-    query=query,
-    collection_slug=collection_slug,
-    duration_ms=duration_ms,
-    search_type="streaming",  # or "regular"
-    results=search_results,  # optional
-    response_type="raw",  # optional
-    status="success",
-)
-
-# Track the event
-track_search_event(ctx, properties, "search_query")
+# The service automatically tracks:
+# - Query details and performance metrics
+# - AI completion data (if generated)
+# - Search configuration and feature usage
+# - User and organization context
 ```
 
 ### 3. Track Business Events at Key Milestones
@@ -329,15 +319,15 @@ analytics.track_event(
 The analytics service automatically handles PostHog errors and logs them without affecting your application.
 
 ### 6. Unified Search Analytics
-All search operations (regular and streaming) now use unified analytics tracking:
+All search operations (regular and streaming) use unified analytics tracking:
 
-- **Regular search endpoints**: Use `@track_search_operation()` decorator
-- **Streaming search endpoints**: Use manual tracking after permission checks
-- **Search completion**: Automatically tracked by SearchExecutor for both types
-- **Unified events**: `search_stream_start` and `search_query` with consistent properties
-- **Shared utilities**: Use `search_analytics.py` for consistent property building
+- **All search endpoints**: Analytics automatically handled by `SearchService.search()`
+- **No manual tracking**: No decorators or manual tracking needed in endpoints
+- **Comprehensive data**: Tracks query details, performance, AI completion, and configuration
+- **Unified events**: Single `search_query` event with consistent properties across all search types
+- **Dependency injection**: Analytics service pre-configured with user/org context
 
-**Important**: For streaming endpoints, always track analytics AFTER permission checks to avoid counting blocked requests.
+**Important**: Search analytics are completely automatic - no manual tracking required in endpoints.
 
 ## 🔒 Privacy & Compliance
 

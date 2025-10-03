@@ -6,7 +6,6 @@ from fastapi import BackgroundTasks, Depends, HTTPException, Path, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
-from airweave.analytics import business_events, track_api_endpoint
 from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.examples import (
@@ -34,7 +33,6 @@ router = TrailingSlashRouter()
         "Finance data collection",
     ),
 )
-@track_api_endpoint("list_collections")
 async def list(
     skip: int = Query(0, description="Number of collections to skip for pagination"),
     limit: int = Query(
@@ -50,12 +48,10 @@ async def list(
         skip=skip,
         limit=limit,
     )
-
     return collections
 
 
 @router.post("/", response_model=schemas.Collection)
-@track_api_endpoint("create_collection")
 async def create(
     collection: schemas.CollectionCreate,
     db: AsyncSession = Depends(deps.get_db),
@@ -69,9 +65,12 @@ async def create(
     # Create the collection
     collection_obj = await collection_service.create(db, collection_in=collection, ctx=ctx)
 
-    # Track business event
-    business_events.track_collection_created(
-        ctx=ctx, collection_id=collection_obj.id, collection_name=collection_obj.name
+    ctx.analytics.track_event(
+        "collection_created",
+        {
+            "collection_id": str(collection_obj.id),
+            "collection_name": collection_obj.name,
+        },
     )
 
     return collection_obj
