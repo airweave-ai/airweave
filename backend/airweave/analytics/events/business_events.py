@@ -149,6 +149,63 @@ class BusinessEventTracker:
             group_type="organization", group_key=str(organization_id), properties=org_properties
         )
 
+    @staticmethod
+    def track_search_query(
+        ctx, query: str, collection_slug: str, duration_ms: float, search_type: str = "regular"
+    ):
+        """Track search query execution.
+
+        Args:
+        ----
+            ctx: API context containing user and organization info
+            query: Search query text
+            collection_slug: Collection identifier
+            duration_ms: Search duration in milliseconds
+            search_type: Type of search (regular/streaming)
+        """
+        properties = {
+            "query_length": len(query),
+            "collection_slug": collection_slug,
+            "duration_ms": duration_ms,
+            "search_type": search_type,
+            "organization_name": getattr(ctx.organization, "name", "unknown"),
+        }
+
+        analytics.track_event(
+            event_name="search_query",
+            distinct_id=str(ctx.user.id) if ctx.user else f"api_key_{ctx.organization.id}",
+            properties=properties,
+            groups={"organization": str(ctx.organization.id)},
+        )
+
+    @staticmethod
+    def track_sync_entity_counts(ctx, sync_job_id: UUID, sync_id: UUID, entity_counts: dict):
+        """Track detailed entity counts for sync completion.
+
+        Args:
+        ----
+            ctx: API context containing user and organization info
+            sync_job_id: ID of the sync job
+            sync_id: ID of the sync operation
+            entity_counts: Dictionary of entity type to count
+        """
+        for entity_type, entity_count in entity_counts.items():
+            if entity_count > 0:
+                properties = {
+                    "sync_job_id": str(sync_job_id),
+                    "sync_id": str(sync_id),
+                    "entity_type": entity_type,
+                    "entity_count": entity_count,
+                    "organization_name": getattr(ctx.organization, "name", "unknown"),
+                }
+
+                analytics.track_event(
+                    event_name="entities_synced_by_type",
+                    distinct_id=str(ctx.user.id) if ctx.user else f"api_key_{ctx.organization.id}",
+                    properties=properties,
+                    groups={"organization": str(ctx.organization.id)},
+                )
+
 
 # Global instance
 business_events = BusinessEventTracker()

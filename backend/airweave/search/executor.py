@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Set
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave.analytics.service import analytics
+from airweave.analytics import business_events
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
 from airweave.core.pubsub import core_pubsub
@@ -251,27 +251,13 @@ class SearchExecutor:
                 # Determine search type
                 search_type = "streaming" if request_id else "regular"
 
-                # Track search completion directly with global analytics service
-                properties = {
-                    "query_length": len(query),
-                    "collection_slug": collection_slug,
-                    "duration_ms": search_duration_ms,
-                    "search_type": search_type,
-                    "organization_name": getattr(ctx.organization, "name", "unknown"),
-                    "status": "success",
-                }
-
-                # Add results count if available
-                final_results = context.get("final_results")
-                if final_results:
-                    properties["results_count"] = len(final_results)
-
-                # Track the event using global analytics service
-                analytics.track_event(
-                    event_name="search_query",
-                    distinct_id=str(ctx.user.id) if ctx.user else f"api_key_{ctx.organization.id}",
-                    properties=properties,
-                    groups={"organization": str(ctx.organization.id)},
+                # Track search completion using business events
+                business_events.track_search_query(
+                    ctx=ctx,
+                    query=query,
+                    collection_slug=collection_slug,
+                    duration_ms=search_duration_ms,
+                    search_type=search_type,
                 )
 
             # Always emit done so clients can close streams reliably

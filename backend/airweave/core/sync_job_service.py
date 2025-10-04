@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional
 from uuid import UUID
 
 from airweave import crud, schemas
-from airweave.analytics.service import analytics
+from airweave.analytics import business_events
 from airweave.api.context import ApiContext
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.logging import logger
@@ -158,20 +158,12 @@ class SyncJobService:
         try:
             # Track individual entity type counts for detailed analysis
             if hasattr(stats, "entities_encountered") and stats.entities_encountered:
-                for entity_type, entity_count in stats.entities_encountered.items():
-                    user_id = str(ctx.user.id) if ctx.user else f"api_key_{ctx.organization.id}"
-                    analytics.track_event(
-                        event_name="entities_synced_by_type",
-                        distinct_id=user_id,
-                        properties={
-                            "sync_job_id": str(sync_job_id),
-                            "sync_id": str(sync_id),
-                            "entity_type": entity_type,
-                            "entity_count": entity_count,
-                            "organization_name": getattr(ctx.organization, "name", "unknown"),
-                        },
-                        groups={"organization": str(ctx.organization.id)},
-                    )
+                business_events.track_sync_entity_counts(
+                    ctx=ctx,
+                    sync_job_id=sync_job_id,
+                    sync_id=sync_id,
+                    entity_counts=stats.entities_encountered,
+                )
 
             logger.info(f"Tracked sync completion analytics for job {sync_job_id} (sync {sync_id})")
 
