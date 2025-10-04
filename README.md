@@ -72,8 +72,8 @@ cd airweave
 chmod +x start.sh
 ./start.sh
 
-# 2. Build and run #Option 2
-cd 'folderpath\airweave'; docker compose version; docker info; docker compose -f docker/docker-compose.yml up -d; docker ps -a --filter "name=airweave" --format "{{.Names}}\t{{.Status}}"; docker logs airweave-backend --tail 200
+# 2. Build and run #Option 2(if option 1 gives any error)
+docker compose -f docker\docker-compose.yml up -d
 ```
 
 That's it! Access the dashboard at http://localhost:8080
