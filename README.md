@@ -68,9 +68,12 @@ Make sure docker and docker-compose are installed, then...
 git clone https://github.com/airweave-ai/airweave.git
 cd airweave
 
-# 2. Build and run
+# 2. Build and run #Option 1
 chmod +x start.sh
 ./start.sh
+
+# 2. Build and run #Option 2(if option 1 gives any error)
+docker compose -f docker\docker-compose.yml up -d
 ```
 
 That's it! Access the dashboard at http://localhost:8080
