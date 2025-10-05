@@ -25,7 +25,6 @@ class ComposioAuthProvider(BaseAuthProvider):
     # Sources that Composio does not support
     BLOCKED_SOURCES = [
         "postgresql",
-        "jira",
         "bitbucket",
         "ctti",
     ]

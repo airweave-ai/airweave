@@ -56,7 +56,6 @@ class PipedreamAuthProvider(BaseAuthProvider):
 
     # Sources that Pipedream does not support
     BLOCKED_SOURCES = [
-        "jira",
         "bitbucket",
         "ctti",
     ]
