@@ -84,8 +84,7 @@ async def create_or_update_user(
     user_data: schemas.UserCreate,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(deps.get_db),
-    auth0_user: Optional[Auth0User] = Depends(auth0.get_user),
-    analytics: ContextualAnalyticsService = Depends(deps.get_analytics_service),
+    ctx: ApiContext = Depends(deps.get_context),
 ) -> schemas.User:
     """Create new user in database if it does not exist, with Auth0 organization sync.
 
@@ -96,8 +95,7 @@ async def create_or_update_user(
         user_data (schemas.UserCreate): The user object to be created.
         background_tasks (BackgroundTasks): FastAPI background tasks for non-blocking operations.
         db (AsyncSession): Database session dependency to handle database operations.
-        auth0_user (Auth0User): Authenticated auth0 user.
-        analytics (ContextualAnalyticsService): Analytics service for user identification.
+        ctx (ApiContext): API context containing user and analytics service.
 
     Returns:
         schemas.User: The created user object with organization relationships.
@@ -106,8 +104,8 @@ async def create_or_update_user(
         HTTPException: If the user is not authorized to create this user.
         HTTPException: If a user with the same email but different auth0_id already exists.
     """
-    if user_data.email != auth0_user.email:
-        logger.error(f"User {user_data.email} is not authorized to create user {auth0_user.email}")
+    if user_data.email != ctx.user.email:
+        logger.error(f"User {user_data.email} is not authorized to create user {ctx.user.email}")
         raise HTTPException(
             status_code=403,
             detail="You are not authorized to create this user.",
@@ -123,7 +121,7 @@ async def create_or_update_user(
 
     if existing_user:
         # Check for Auth0 ID conflicts
-        incoming_auth0_id = auth0_user.id if auth0_user else user_data.auth0_id
+        incoming_auth0_id = ctx.user.auth0_id if ctx.user else user_data.auth0_id
 
         if (
             existing_user.auth0_id
@@ -164,8 +162,8 @@ async def create_or_update_user(
     try:
         # Add auth0_id to user data if available
         user_dict = user_data.model_dump()
-        if auth0_user:
-            user_dict["auth0_id"] = auth0_user.id
+        if ctx.user:
+            user_dict["auth0_id"] = ctx.user.auth0_id
 
         # Handle new user signup with Auth0 integration
         user = await organization_service.handle_new_user_signup(db, user_dict, create_org=False)
@@ -173,7 +171,7 @@ async def create_or_update_user(
         logger.info(f"Created new user {user.email}.")
 
         # Identify user in PostHog for complete user journey tracking
-        analytics.identify_user(
+        ctx.analytics.identify_user(
             {
                 "email": user.email,
                 "full_name": user.full_name,
@@ -210,7 +208,7 @@ async def create_or_update_user(
         logger.info(f"Created user {user.email} with fallback method")
 
         # Identify user in PostHog for complete user journey tracking
-        analytics.identify_user(
+        ctx.analytics.identify_user(
             {
                 "email": user.email,
                 "full_name": user.full_name,

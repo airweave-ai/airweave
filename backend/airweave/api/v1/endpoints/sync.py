@@ -177,7 +177,6 @@ async def run_sync(
     sync_id: UUID,
     ctx: ApiContext = Depends(deps.get_context),
     background_tasks: BackgroundTasks,
-    analytics: ContextualAnalyticsService = Depends(deps.get_analytics_service),
 ) -> schemas.SyncJob:
     """Trigger a sync run.
 
@@ -199,7 +198,7 @@ async def run_sync(
     background_tasks.add_task(sync_service.run, sync, sync_job, sync_dag, ctx)
 
     # Track API call with dependency injection
-    analytics.track_api_call("run_sync")
+    ctx.analytics.track_api_call("run_sync")
 
     return sync_job
 

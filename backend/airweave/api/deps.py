@@ -8,7 +8,11 @@ from fastapi_auth0 import Auth0User
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
-from airweave.analytics.contextual_service import ContextualAnalyticsService, RequestHeaders
+from airweave.analytics.contextual_service import (
+    AnalyticsContext,
+    ContextualAnalyticsService,
+    RequestHeaders,
+)
 from airweave.analytics.service import analytics
 from airweave.api.auth import auth0
 from airweave.api.context import ApiContext
@@ -189,14 +193,35 @@ async def get_context(
             user_id=str(user_context.id), user_email=user_context.email
         )
 
-    return ApiContext(
+    # Create analytics context with only the fields we need
+    analytics_context = AnalyticsContext(
+        auth_method=auth_method,
+        organization_id=str(organization_schema.id),
+        organization_name=organization_schema.name,
+        request_id=request_id,
+        user_id=str(user_context.id) if user_context else None,
+    )
+
+    # Create analytics service with context and headers
+    headers = _extract_headers_from_request(request)
+    analytics_service = ContextualAnalyticsService(
+        base_service=analytics,
+        context=analytics_context,  # No circular dependency!
+        headers=headers,
+    )
+
+    # Create the context
+    context = ApiContext(
         request_id=request_id,
         organization=organization_schema,
         user=user_context,
         auth_method=auth_method,
         auth_metadata=auth_metadata,
         logger=base_logger,
+        analytics=analytics_service,
     )
+
+    return context
 
 
 async def get_logger(
@@ -338,38 +363,15 @@ def _extract_headers_from_request(request: Request) -> RequestHeaders:
         client_version=headers.get("x-client-version"),
         session_id=headers.get("x-session-id"),
         # SDK headers
-        sdk_name=headers.get("x-sdk-name"),
-        sdk_version=headers.get("x-sdk-version"),
+        sdk_name=headers.get("x-sdk-name") or headers.get("x-fern-sdk-name"),
+        sdk_version=headers.get("x-sdk-version") or headers.get("x-fern-sdk-version"),
+        # Fern-specific headers
+        fern_language=headers.get("x-fern-language"),
+        fern_runtime=headers.get("x-fern-runtime"),
+        fern_runtime_version=headers.get("x-fern-runtime-version"),
         # Agent framework headers
         framework_name=headers.get("x-framework-name"),
         framework_version=headers.get("x-framework-version"),
         # Request tracking
         request_id=headers.get("x-request-id"),
-    )
-
-
-async def get_analytics_service(
-    request: Request,
-    ctx: ApiContext = Depends(get_context),
-) -> ContextualAnalyticsService:
-    """Get an analytics service instance configured for the current context and headers.
-
-    This resolves PostHog via FastAPI dependency injection rather than using decorators.
-    Automatically captures SDK/client headers and injects user/org context.
-
-    Args:
-        request: The FastAPI request object for header extraction
-        ctx: The current API context containing user and organization info
-
-    Returns:
-        ContextualAnalyticsService: Pre-configured analytics service instance
-    """
-    # Extract headers for enhanced tracking
-    headers = _extract_headers_from_request(request)
-
-    # Return context-aware analytics service
-    return ContextualAnalyticsService(
-        base_service=analytics,  # Global PostHog service instance
-        context=ctx,  # Inject context via DI
-        headers=headers,  # Capture request headers
     )

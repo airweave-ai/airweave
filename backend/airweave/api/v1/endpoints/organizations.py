@@ -25,8 +25,7 @@ router = TrailingSlashRouter()
 async def create_organization(
     organization_data: schemas.OrganizationCreate,
     db: AsyncSession = Depends(deps.get_db),
-    user: User = Depends(deps.get_user),
-    analytics: ContextualAnalyticsService = Depends(deps.get_analytics_service),
+    ctx: ApiContext = Depends(deps.get_context),
 ) -> schemas.Organization:
     """Create a new organization with current user as owner.
 
@@ -35,8 +34,7 @@ async def create_organization(
     Args:
         organization_data: The organization data to create
         db: Database session
-        user: The authenticated user creating the organization
-        analytics: Analytics service for user identification and tracking
+        ctx: API context containing user and analytics service
 
     Returns:
         The created organization with user's role
@@ -47,11 +45,11 @@ async def create_organization(
     # Create the organization with Auth0 integration
     try:
         organization = await organization_service.create_organization_with_integrations(
-            db=db, org_data=organization_data, owner_user=user
+            db=db, org_data=organization_data, owner_user=ctx.user
         )
 
         # Identify user with organization context for enhanced PostHog tracking
-        analytics.identify_user(
+        ctx.analytics.identify_user(
             {
                 "organization_id": str(organization.id),
                 "organization_name": organization.name,
@@ -77,8 +75,8 @@ async def create_organization(
         )
 
         # Track API call and business event with dependency injection
-        analytics.track_api_call("create_organization")
-        analytics.track_event(
+        ctx.analytics.track_api_call("create_organization")
+        ctx.analytics.track_event(
             "organization_created",
             {
                 "organization_id": str(organization.id),

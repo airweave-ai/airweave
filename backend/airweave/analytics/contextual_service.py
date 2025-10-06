@@ -4,7 +4,6 @@ from dataclasses import asdict, dataclass
 from typing import Any, Dict, Optional
 
 from airweave.analytics.service import AnalyticsService
-from airweave.api.context import ApiContext
 
 
 @dataclass
@@ -26,7 +25,12 @@ class RequestHeaders:
     sdk_name: Optional[str] = None
     sdk_version: Optional[str] = None
 
-    # Agent framework headers (langchain, pydantic-ai, vercel, etc.)
+    # Fern-specific headers
+    fern_language: Optional[str] = None
+    fern_runtime: Optional[str] = None
+    fern_runtime_version: Optional[str] = None
+
+    # Agent framework headers
     framework_name: Optional[str] = None
     framework_version: Optional[str] = None
 
@@ -38,13 +42,27 @@ class RequestHeaders:
         return {k: v for k, v in asdict(self).items() if v is not None}
 
 
+@dataclass
+class AnalyticsContext:
+    """Minimal context for analytics - no circular imports!
+
+    Contains only the specific fields needed for analytics tracking.
+    """
+
+    auth_method: str
+    organization_id: str
+    organization_name: str
+    request_id: str
+    user_id: Optional[str] = None
+
+
 class ContextualAnalyticsService:
     """Context-aware analytics service that automatically includes user/org/header info."""
 
     def __init__(
         self,
         base_service: AnalyticsService,
-        context: ApiContext,
+        context: AnalyticsContext,
         headers: Optional[RequestHeaders] = None,
     ):
         self.base_service = base_service
@@ -55,7 +73,7 @@ class ContextualAnalyticsService:
         """Build base properties with context and headers."""
         properties = {
             "auth_method": self.context.auth_method,
-            "organization_name": self.context.organization.name,
+            "organization_name": self.context.organization_name,
             "request_id": self.context.request_id,
         }
 
@@ -66,14 +84,14 @@ class ContextualAnalyticsService:
 
     def _get_distinct_id(self) -> str:
         """Get distinct ID for PostHog tracking."""
-        if self.context.user:
-            return str(self.context.user.id)
+        if self.context.user_id:
+            return self.context.user_id
         else:
-            return f"api_key_{self.context.organization.id}"
+            return f"api_key_{self.context.organization_id}"
 
     def _get_groups(self) -> Dict[str, str]:
         """Get groups for PostHog tracking."""
-        return {"organization": str(self.context.organization.id)}
+        return {"organization": self.context.organization_id}
 
     def track_event(
         self,
@@ -142,14 +160,14 @@ class ContextualAnalyticsService:
     # Delegate other methods to base service for completeness
     def identify_user(self, properties: Optional[Dict[str, Any]] = None) -> None:
         """Identify user with enhanced context."""
-        if not self.context.user:
+        if not self.context.user_id:
             return  # Can't identify without user context
 
         user_properties = self._build_base_properties()
         if properties:
             user_properties.update(properties)
 
-        self.base_service.identify_user(str(self.context.user.id), user_properties)
+        self.base_service.identify_user(self.context.user_id, user_properties)
 
     def set_group_properties(
         self, group_type: str, group_key: str, properties: Dict[str, Any]
