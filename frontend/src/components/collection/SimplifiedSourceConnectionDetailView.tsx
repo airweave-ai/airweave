@@ -748,9 +748,6 @@ const SimplifiedSourceConnectionDetailView = ({
                 {syncJob?.error ? (
                     <SyncErrorCard
                         error={syncJob.error}
-                        onRunSync={handleRunSync}
-                        isInitiatingSyncJob={isInitiatingSyncJob}
-                        isSyncJobRunning={false}
                         isDark={isDark}
                     />
                 ) : (
@@ -812,23 +809,27 @@ const SimplifiedSourceConnectionDetailView = ({
 
                             {/* Schedule Card - FROM SOURCE CONNECTION */}
                             <div className={cn(
-                                "rounded-lg p-2 flex items-center gap-2 shadow-sm transition-all duration-200 h-8 min-w-[100px]",
+                                "group relative rounded-lg p-2 flex items-center gap-2 transition-all duration-200 h-8 min-w-[100px] hover:shadow-md",
                                 isDark
-                                    ? "bg-gray-800/60 border border-gray-700/50"
-                                    : "bg-white border border-gray-100"
+                                    ? "bg-gradient-to-r from-slate-800/80 to-slate-900/80 border border-slate-700/50 hover:border-slate-600/50"
+                                    : "bg-gradient-to-r from-slate-50 to-white border border-slate-200/60 hover:border-slate-300/60"
                             )}>
-                                <div className="text-[10px] uppercase tracking-wider font-medium opacity-60">
+                                <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/70">
                                     Schedule
                                 </div>
-                                <div className="flex items-center gap-1">
+                                <div className="flex items-center gap-1.5">
                                     <Clock className={cn(
                                         "w-3 h-3",
-                                        isDark ? "text-gray-400" : "text-gray-500"
+                                        isDark ? "text-blue-400" : "text-blue-500"
                                     )} />
                                     <div className="text-sm font-medium">
                                         {sourceConnection.cron_schedule ? 'Scheduled' : 'Manual'}
                                     </div>
                                 </div>
+                                {/* Live sync indicator */}
+                                {sourceConnection.cron_schedule && sourceConnection.cron_schedule.includes('*/') && (
+                                    <div className="absolute -top-1 -right-1 w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
+                                )}
                             </div>
                         </div>
 

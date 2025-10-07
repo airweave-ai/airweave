@@ -35,6 +35,7 @@ import { SyncSchedule, SyncScheduleConfig, buildCronExpression, isValidCronExpre
 import { EditSourceConnectionDialog } from './EditSourceConnectionDialog';
 import { emitCollectionEvent, SOURCE_CONNECTION_UPDATED } from '@/lib/events';
 import { DESIGN_SYSTEM } from '@/lib/design-system';
+import { useSourcesStore } from '@/lib/stores/sources';
 
 interface Schedule {
   cron?: string;
@@ -113,6 +114,10 @@ export const SourceConnectionSettings: React.FC<SourceConnectionSettingsProps> =
   const [isUpdating, setIsUpdating] = useState(false);
   const [showPasswordFields, setShowPasswordFields] = useState<Record<string, boolean>>({});
 
+  // Fetch source details to get supports_continuous flag
+  const { getSourceDetails } = useSourcesStore();
+  const [sourceMetadata, setSourceMetadata] = useState<any>(null);
+
   // Initialize schedule config when sourceConnection changes
   useEffect(() => {
     if (sourceConnection?.schedule?.cron) {
@@ -134,6 +139,17 @@ export const SourceConnectionSettings: React.FC<SourceConnectionSettingsProps> =
       });
     }
   }, [sourceConnection]);
+
+  // Fetch source metadata when component mounts
+  useEffect(() => {
+    const fetchSourceMetadata = async () => {
+      if (sourceConnection?.short_name) {
+        const details = await getSourceDetails(sourceConnection.short_name);
+        setSourceMetadata(details);
+      }
+    };
+    fetchSourceMetadata();
+  }, [sourceConnection?.short_name, getSourceDetails]);
 
   // Fetch source details when edit dialog opens
   const fetchSourceDetailsForEdit = async () => {
@@ -216,7 +232,21 @@ export const SourceConnectionSettings: React.FC<SourceConnectionSettingsProps> =
       }
 
       const updatedConnection = await response.json();
-      onUpdate(updatedConnection);
+
+      // Refetch the full connection data to get complete schedule info including next_run
+      try {
+        const fullResponse = await apiClient.get(`/source-connections/${sourceConnection.id}`);
+        if (fullResponse.ok) {
+          const fullConnectionData = await fullResponse.json();
+          onUpdate(fullConnectionData);
+        } else {
+          onUpdate(updatedConnection);
+        }
+      } catch (error) {
+        console.error('Error fetching updated connection data:', error);
+        onUpdate(updatedConnection);
+      }
+
       setShowScheduleDialog(false);
 
       toast({
@@ -430,23 +460,30 @@ export const SourceConnectionSettings: React.FC<SourceConnectionSettingsProps> =
       {/* Schedule Edit Dialog */}
       {showScheduleDialog && (
         <Dialog open={showScheduleDialog} onOpenChange={setShowScheduleDialog}>
-          <DialogContent className={cn("max-w-3xl", isDark ? "bg-card-solid border-border" : "")}>
-            <DialogHeader>
-              <DialogTitle className={isDark ? "text-foreground" : ""}>Edit Sync Schedule</DialogTitle>
+          <DialogContent className={cn("max-w-4xl max-h-[90vh] overflow-y-auto", isDark ? "bg-card-solid border-border" : "")}>
+            <DialogHeader className="pb-4">
+              <DialogTitle className={cn("text-lg font-semibold", isDark ? "text-foreground" : "")}>
+                Sync Schedule
+              </DialogTitle>
+              <DialogDescription className="text-muted-foreground text-sm">
+                Choose how often to sync your data
+              </DialogDescription>
             </DialogHeader>
 
-            <div className="py-4">
+            <div className="px-1">
               <SyncSchedule
                 value={scheduleConfig}
                 onChange={setScheduleConfig}
+                supportsContinuous={sourceMetadata?.supports_continuous || false}
+                sourceName={sourceConnection?.name}
               />
             </div>
 
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowScheduleDialog(false)}>
+            <DialogFooter className="pt-3 border-t">
+              <Button variant="outline" onClick={() => setShowScheduleDialog(false)} className="h-8">
                 Cancel
               </Button>
-              <Button onClick={handleScheduleSave}>
+              <Button onClick={handleScheduleSave} className="h-8">
                 Save
               </Button>
             </DialogFooter>

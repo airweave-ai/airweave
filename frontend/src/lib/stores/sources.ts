@@ -16,6 +16,7 @@ export interface SourceDetail {
   name: string;
   short_name: string;
   auth_type?: string;
+  supports_continuous?: boolean;  // Whether source supports minute-level continuous syncing
   auth_fields?: {
     fields: any[];
   };

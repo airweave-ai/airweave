@@ -50,6 +50,45 @@ export class EntityStateMediator {
     return await dbFetchPromise;
   }
 
+  private async fetchCompleteSyncJobData(jobId: string): Promise<void> {
+    try {
+      // Get the source connection ID from the current connection
+      const currentConnection = this.stateStore.getConnection(this.connectionId);
+      if (!currentConnection) {
+        return;
+      }
+
+      // Fetch the complete sync job data from the API
+      const response = await apiClient.get(`/source-connections/${this.connectionId}/jobs/${jobId}`);
+      if (response.ok) {
+        const jobData = await response.json();
+
+        // Update the connection with the complete job data
+        const updatedConnection = {
+          ...currentConnection,
+          last_sync_job: {
+            ...currentConnection.last_sync_job,
+            ...jobData,
+            id: jobData.id,
+            status: jobData.status,
+            started_at: jobData.started_at,
+            completed_at: jobData.completed_at,
+            entities_inserted: jobData.entities_inserted || 0,
+            entities_updated: jobData.entities_updated || 0,
+            entities_deleted: jobData.entities_deleted || 0,
+            duration_seconds: jobData.duration_seconds,
+            error: jobData.error
+          },
+          lastUpdated: new Date()
+        };
+
+        this.stateStore.setSourceConnection(updatedConnection);
+      }
+    } catch (error) {
+      console.error('[EntityStateMediator] Error fetching complete sync job data:', error);
+    }
+  }
+
   private async fetchDatabaseState(): Promise<SourceConnectionState | undefined> {
     try {
       // Fetch source connection details with entity_states included
@@ -162,7 +201,6 @@ export class EntityStateMediator {
             if (data.type === 'entity_state') {
               // Handle entity state updates from backend
               // The backend sends entity_counts as a map of entity_type -> count
-              console.log('[EntityStateMediator] Entity state update received:', data);
 
               // Update the store's entity_states array
               const currentConnection = this.stateStore.getConnection(this.connectionId);
@@ -193,8 +231,6 @@ export class EntityStateMediator {
               const progressUpdate: SyncProgressUpdate = data as SyncProgressUpdate;
               this.stateStore.updateFromProgress(progressUpdate);
             } else if (data.type === 'sync_complete') {
-              console.log('[EntityStateMediator] Sync completion message received:', data);
-
               // Update the store with final entity states
               const currentConnection = this.stateStore.getConnection(this.connectionId);
               if (currentConnection) {
@@ -226,6 +262,11 @@ export class EntityStateMediator {
               // Close the SSE connection
               controller.abort();
               this.eventSource = undefined;
+
+              // Fetch complete sync job data from API to get detailed statistics
+              this.fetchCompleteSyncJobData(data.job_id).catch(error => {
+                console.error('[EntityStateMediator] Error fetching complete sync job data:', error);
+              });
 
               // Fetch DB state after a short delay to ensure it's updated
               setTimeout(() => {

@@ -47,6 +47,7 @@ import {
 import { EditSourceConnectionDialog } from "./EditSourceConnectionDialog";
 import { emitCollectionEvent, SOURCE_CONNECTION_UPDATED } from "@/lib/events";
 import { SingleActionCheckResponse } from "@/types";
+import { useSourcesStore } from "@/lib/stores/sources";
 
 const nodeTypes = {
     sourceNode: SourceNode,
@@ -525,6 +526,10 @@ const SourceConnectionDetailView = ({
     });
     const [nextRunTime, setNextRunTime] = useState<string | null>(null);
 
+    // Fetch source details to get supports_continuous flag
+    const { getSourceDetails } = useSourcesStore();
+    const [sourceMetadata, setSourceMetadata] = useState<any>(null);
+
     // Usage check from store
     const checkActions = useUsageStore(state => state.checkActions);
     const actionChecks = useUsageStore(state => state.actionChecks);
@@ -718,6 +723,12 @@ const SourceConnectionDetailView = ({
 
             // Step 1: Fetch source connection
             const connection = await fetchSourceConnection();
+
+            // Step 1.5: Fetch source metadata for continuous sync support
+            if (connection?.short_name) {
+                const details = await getSourceDetails(connection.short_name);
+                setSourceMetadata(details);
+            }
 
             // Step 2: If successful, fetch sync job
             if (connection) {
@@ -916,11 +927,28 @@ const SourceConnectionDetailView = ({
 
             // Update local state with new schedule
             const updatedConnection = await response.json();
-            setSourceConnection(updatedConnection);
 
-            // Update next run time
-            const nextRun = calculateNextRunTime(updatedConnection.cron_schedule);
-            setNextRunTime(nextRun);
+            // Refetch the full connection data to get complete schedule info including next_run
+            try {
+                const fullResponse = await apiClient.get(`/source-connections/${sourceConnection.id}`);
+                if (fullResponse.ok) {
+                    const fullConnectionData = await fullResponse.json();
+                    setSourceConnection(fullConnectionData);
+
+                    // Update next run time
+                    const nextRun = calculateNextRunTime(fullConnectionData.cron_schedule);
+                    setNextRunTime(nextRun);
+                } else {
+                    setSourceConnection(updatedConnection);
+                    const nextRun = calculateNextRunTime(updatedConnection.cron_schedule);
+                    setNextRunTime(nextRun);
+                }
+            } catch (error) {
+                console.error('Error fetching updated connection data:', error);
+                setSourceConnection(updatedConnection);
+                const nextRun = calculateNextRunTime(updatedConnection.cron_schedule);
+                setNextRunTime(nextRun);
+            }
 
             setShowScheduleDialog(false);
 
@@ -1663,31 +1691,30 @@ const SourceConnectionDetailView = ({
 
                         {/* Status Card - FROM SYNC JOB */}
                         <div className={cn(
-                            "rounded-lg p-3 flex items-center gap-2 shadow-sm transition-all duration-200 h-10 min-w-[110px]",
+                            "group relative rounded-lg p-3 flex items-center gap-2 transition-all duration-200 h-10 min-w-[110px] hover:shadow-md",
                             isDark
-                                ? "bg-gray-800/60 border border-gray-700/50"
-                                : "bg-white border border-gray-100"
+                                ? "bg-gradient-to-r from-slate-800/80 to-slate-900/80 border border-slate-700/50 hover:border-slate-600/50"
+                                : "bg-gradient-to-r from-slate-50 to-white border border-slate-200/60 hover:border-slate-300/60"
                         )}>
-                            <div className="text-xs uppercase tracking-wider font-medium opacity-60">
+                            <div className="text-xs uppercase tracking-wider font-semibold text-muted-foreground/70">
                                 Status
                             </div>
-                            <div className="text-base font-medium flex items-center gap-1">
+                            <div className="text-base font-medium flex items-center gap-1.5">
                                 <span className={`inline-flex h-2 w-2 rounded-full ${getSyncStatusColorClass(derivedSyncStatus)}`} />
-                                <span className="capitalize text-xs">
+                                <span className="capitalize text-xs font-medium">
                                     {getSyncStatusDisplayText(derivedSyncStatus)}
                                 </span>
-
                             </div>
                         </div>
 
                         {/* Runtime Card - FROM SYNC JOB */}
                         <div className={cn(
-                            "rounded-lg p-3 flex items-center gap-2 shadow-sm transition-all duration-200 h-10 min-w-[100px]",
+                            "group rounded-lg p-3 flex items-center gap-2 transition-all duration-200 h-10 min-w-[100px] hover:shadow-md",
                             isDark
-                                ? "bg-gray-800/60 border border-gray-700/50"
-                                : "bg-white border border-gray-100"
+                                ? "bg-gradient-to-r from-slate-800/80 to-slate-900/80 border border-slate-700/50 hover:border-slate-600/50"
+                                : "bg-gradient-to-r from-slate-50 to-white border border-slate-200/60 hover:border-slate-300/60"
                         )}>
-                            <div className="text-xs uppercase tracking-wider font-medium opacity-60">
+                            <div className="text-xs uppercase tracking-wider font-semibold text-muted-foreground/70">
                                 Runtime
                             </div>
                             <div className="text-base font-medium">
@@ -1697,159 +1724,163 @@ const SourceConnectionDetailView = ({
 
                         {/* Schedule Card - FROM SOURCE CONNECTION */}
                         <div className={cn(
-                            "rounded-lg p-3 flex items-center gap-2 shadow-sm transition-all duration-200 h-10 min-w-[120px]",
+                            "group relative rounded-lg p-3 flex items-center gap-2 transition-all duration-200 h-10 min-w-[120px] hover:shadow-md",
                             isDark
-                                ? "bg-gray-800/60 border border-gray-700/50"
-                                : "bg-white border border-gray-100"
+                                ? "bg-gradient-to-r from-slate-800/80 to-slate-900/80 border border-slate-700/50 hover:border-slate-600/50"
+                                : "bg-gradient-to-r from-slate-50 to-white border border-slate-200/60 hover:border-slate-300/60"
                         )}>
-                            <div className="text-xs uppercase tracking-wider font-medium opacity-60">
+                            <div className="text-xs uppercase tracking-wider font-semibold text-muted-foreground/70">
                                 Schedule
                             </div>
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-1.5">
                                 <Clock className={cn(
                                     "w-4 h-4",
-                                    isDark ? "text-gray-400" : "text-gray-500"
+                                    isDark ? "text-blue-400" : "text-blue-500"
                                 )} />
                                 <div className="text-base font-medium pl-1">
                                     {sourceConnection.cron_schedule ?
                                         (nextRunTime ? `In ${nextRunTime}` : 'Scheduled') :
                                         'Manual'}
                                 </div>
-                                <TooltipProvider delayDuration={100}>
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <span tabIndex={0}>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className={cn(
-                                                        "h-6 w-6 p-0",
-                                                        (!entitiesAllowed || !entitiesAllowed || isCheckingUsage) && "opacity-50 cursor-not-allowed"
-                                                    )}
-                                                    onClick={() => setShowScheduleDialog(true)}
-                                                    disabled={!entitiesAllowed || !entitiesAllowed || isCheckingUsage}
-                                                >
-                                                    <Pencil className="h-3 w-3" />
-                                                </Button>
-                                            </span>
-                                        </TooltipTrigger>
-                                        {(!entitiesAllowed || !entitiesAllowed) && (
-                                            <TooltipContent className="max-w-xs">
-                                                <p className="text-xs">
-                                                    {!entitiesAllowed && entitiesCheckDetails?.reason === 'usage_limit_exceeded' ? (
-                                                        <>
-                                                            Entity processing limit reached.{' '}
-                                                            <a
-                                                                href="/organization/settings?tab=billing"
-                                                                className="underline"
-                                                                onClick={(e) => e.stopPropagation()}
-                                                            >
-                                                                Upgrade your plan
-                                                            </a>
-                                                            {' '}to schedule syncs.
-                                                        </>
-                                                    ) : !entitiesAllowed && entitiesCheckDetails?.reason === 'usage_limit_exceeded' ? (
-                                                        <>
-                                                            Sync limit reached.{' '}
-                                                            <a
-                                                                href="/organization/settings?tab=billing"
-                                                                className="underline"
-                                                                onClick={(e) => e.stopPropagation()}
-                                                            >
-                                                                Upgrade your plan
-                                                            </a>
-                                                            {' '}to schedule syncs.
-                                                        </>
-                                                    ) : (
-                                                        'Unable to schedule syncs at this time.'
-                                                    )}
-                                                </p>
-                                            </TooltipContent>
-                                        )}
-                                    </Tooltip>
-                                </TooltipProvider>
+                                {/* Live sync indicator */}
+                                {sourceConnection.cron_schedule && sourceConnection.cron_schedule.includes('*/') && (
+                                    <div className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+                                )}
                             </div>
+                            <TooltipProvider delayDuration={100}>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <span tabIndex={0}>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className={cn(
+                                                    "h-6 w-6 p-0",
+                                                    (!entitiesAllowed || !entitiesAllowed || isCheckingUsage) && "opacity-50 cursor-not-allowed"
+                                                )}
+                                                onClick={() => setShowScheduleDialog(true)}
+                                                disabled={!entitiesAllowed || !entitiesAllowed || isCheckingUsage}
+                                            >
+                                                <Pencil className="h-3 w-3" />
+                                            </Button>
+                                        </span>
+                                    </TooltipTrigger>
+                                    {(!entitiesAllowed || !entitiesAllowed) && (
+                                        <TooltipContent className="max-w-xs">
+                                            <p className="text-xs">
+                                                {!entitiesAllowed && entitiesCheckDetails?.reason === 'usage_limit_exceeded' ? (
+                                                    <>
+                                                        Entity processing limit reached.{' '}
+                                                        <a
+                                                            href="/organization/settings?tab=billing"
+                                                            className="underline"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        >
+                                                            Upgrade your plan
+                                                        </a>
+                                                        {' '}to schedule syncs.
+                                                    </>
+                                                ) : !entitiesAllowed && entitiesCheckDetails?.reason === 'usage_limit_exceeded' ? (
+                                                    <>
+                                                        Sync limit reached.{' '}
+                                                        <a
+                                                            href="/organization/settings?tab=billing"
+                                                            className="underline"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        >
+                                                            Upgrade your plan
+                                                        </a>
+                                                        {' '}to schedule syncs.
+                                                    </>
+                                                ) : (
+                                                    'Unable to schedule syncs at this time.'
+                                                )}
+                                            </p>
+                                        </TooltipContent>
+                                    )}
+                                </Tooltip>
+                            </TooltipProvider>
                         </div>
-                    </div>
-
-                    {/* Right side - Three-dot menu */}
-                    <div className={cn(
-                        "rounded-lg p-1 shadow-sm transition-all duration-200 h-10 flex items-center justify-center",
-                        isDark
-                            ? "bg-gray-800/60 border border-gray-700/50"
-                            : "bg-white border border-gray-100"
-                    )}>
-                        <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
-                            <DropdownMenuTrigger asChild>
-                                <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
-                                    <MoreVertical className="h-4 w-4" />
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-48">
-                                <DropdownMenuItem onClick={() => {
-                                    setDropdownOpen(false);
-                                    setShowEditDetailsDialog(true);
-                                }}>
-                                    <Edit className="h-4 w-4 mr-2" />
-                                    Edit Details
-                                </DropdownMenuItem>
-
-                                <DropdownMenuItem onClick={() => {
-                                    setDropdownOpen(false);
-                                    setShowScheduleDialog(true);
-                                }}>
-                                    <Clock className="h-4 w-4 mr-2" />
-                                    Edit Schedule
-                                </DropdownMenuItem>
-
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                    className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-900/20"
-                                    onClick={() => {
-                                        setDropdownOpen(false);
-                                        setShowDeleteDialog(true);
-                                    }}
-                                >
-                                    <Trash className="h-4 w-4 mr-2" />
-                                    Delete
-                                </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
                     </div>
                 </div>
 
-                {/* Display appropriate content based on error status */}
-                {syncJob?.error && syncJob?.status !== 'cancelled' ? (
-                    <SyncErrorCard
-                        error={syncJob.error}
-                        isDark={isDark}
-                    />
-                ) : (
-                    <SyncDagCard
-                        sourceConnection={sourceConnection}
-                        entityDict={entityDict}
-                        selectedEntity={selectedEntity}
-                        setSelectedEntity={setSelectedEntity}
-                        nodes={nodes}
-                        edges={edges}
-                        onNodesChange={onNodesChange}
-                        onEdgesChange={onEdgesChange}
-                        reactFlowInstance={reactFlowInstance}
-                        setReactFlowInstance={setReactFlowInstance}
-                        flowContainerRef={flowContainerRef}
-                        syncJobData={syncJobData}
-                        onRunSync={handleRunSync}
-                        isInitiatingSyncJob={isInitiatingSyncJob}
-                        isDark={isDark}
-                        syncJob={syncJob}
-                        onCancelSync={handleCancelSync}
-                        isCancelling={isCancelling}
-                        entitiesAllowed={entitiesAllowed}
-                        entitiesCheckDetails={entitiesCheckDetails}
-                        isCheckingUsage={isCheckingUsage}
-                    />
-                )}
+                {/* Right side - Three-dot menu */}
+                <div className={cn(
+                    "rounded-lg p-1 shadow-sm transition-all duration-200 h-10 flex items-center justify-center",
+                    isDark
+                        ? "bg-gray-800/60 border border-gray-700/50"
+                        : "bg-white border border-gray-100"
+                )}>
+                    <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
+                        <DropdownMenuTrigger asChild>
+                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                                <MoreVertical className="h-4 w-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                            <DropdownMenuItem onClick={() => {
+                                setDropdownOpen(false);
+                                setShowEditDetailsDialog(true);
+                            }}>
+                                <Edit className="h-4 w-4 mr-2" />
+                                Edit Details
+                            </DropdownMenuItem>
+
+                            <DropdownMenuItem onClick={() => {
+                                setDropdownOpen(false);
+                                setShowScheduleDialog(true);
+                            }}>
+                                <Clock className="h-4 w-4 mr-2" />
+                                Edit Schedule
+                            </DropdownMenuItem>
+
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                                className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-900/20"
+                                onClick={() => {
+                                    setDropdownOpen(false);
+                                    setShowDeleteDialog(true);
+                                }}
+                            >
+                                <Trash className="h-4 w-4 mr-2" />
+                                Delete
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                </div>
             </div>
+
+            {/* Display appropriate content based on error status */}
+            {syncJob?.error && syncJob?.status !== 'cancelled' ? (
+                <SyncErrorCard
+                    error={syncJob.error}
+                    isDark={isDark}
+                />
+            ) : (
+                <SyncDagCard
+                    sourceConnection={sourceConnection}
+                    entityDict={entityDict}
+                    selectedEntity={selectedEntity}
+                    setSelectedEntity={setSelectedEntity}
+                    nodes={nodes}
+                    edges={edges}
+                    onNodesChange={onNodesChange}
+                    onEdgesChange={onEdgesChange}
+                    reactFlowInstance={reactFlowInstance}
+                    setReactFlowInstance={setReactFlowInstance}
+                    flowContainerRef={flowContainerRef}
+                    syncJobData={syncJobData}
+                    onRunSync={handleRunSync}
+                    isInitiatingSyncJob={isInitiatingSyncJob}
+                    isDark={isDark}
+                    syncJob={syncJob}
+                    onCancelSync={handleCancelSync}
+                    isCancelling={isCancelling}
+                    entitiesAllowed={entitiesAllowed}
+                    entitiesCheckDetails={entitiesCheckDetails}
+                    isCheckingUsage={isCheckingUsage}
+                />
+            )}
 
             {/* Schedule Edit Dialog */}
             {showScheduleDialog && (
@@ -1857,38 +1888,48 @@ const SourceConnectionDetailView = ({
                     open={showScheduleDialog}
                     onOpenChange={setShowScheduleDialog}
                 >
-                    <DialogContent className={cn("max-w-3xl", isDark ? "bg-card-solid border-border" : "")}>
-                        <DialogHeader>
-                            <DialogTitle className={isDark ? "text-foreground" : ""}>Edit Sync Schedule</DialogTitle>
+                    <DialogContent className={cn("max-w-4xl max-h-[90vh] overflow-y-auto", isDark ? "bg-card-solid border-border" : "")}>
+                        <DialogHeader className="pb-4">
+                            <DialogTitle className={cn("text-lg font-semibold", isDark ? "text-foreground" : "")}>
+                                Sync Schedule
+                            </DialogTitle>
+                            <DialogDescription className="text-muted-foreground text-sm">
+                                Choose how often to sync your data
+                            </DialogDescription>
                         </DialogHeader>
 
-                        <div className="py-4">
+                        <div className="px-1">
                             {sourceConnection?.id && (
                                 <SyncSchedule
                                     value={scheduleConfig}
                                     onChange={(newConfig) => {
                                         setScheduleConfig(newConfig);
                                     }}
+                                    supportsContinuous={sourceMetadata?.supports_continuous || false}
+                                    sourceName={sourceConnection?.name}
                                 />
                             )}
                         </div>
 
-                        <DialogFooter>
+                        <DialogFooter className="pt-3 border-t">
                             <Button
                                 variant="outline"
                                 onClick={() => setShowScheduleDialog(false)}
+                                className="h-8"
                             >
                                 Cancel
                             </Button>
                             <Button
                                 onClick={handleScheduleDone}
+                                className="h-8"
                             >
                                 Save
                             </Button>
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
-            )}
+            )
+            }
 
             {/* Edit Source Connection Dialog */}
             <EditSourceConnectionDialog
@@ -1914,107 +1955,108 @@ const SourceConnectionDetailView = ({
 
 
             {/* Delete Confirmation Dialog */}
-            {showDeleteDialog && sourceConnection && (
-                <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-                    <AlertDialogContent className={cn(
-                        "border-border",
-                        isDark ? "bg-card-solid text-foreground" : "bg-white"
-                    )}>
-                        <AlertDialogHeader>
-                            <AlertDialogTitle>Delete Source Connection</AlertDialogTitle>
-                            <AlertDialogDescription>
-                                <div className="space-y-4">
-                                    <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4 space-y-3">
-                                        <ul className="space-y-2 ml-4">
-                                            <li className="flex items-start">
-                                                <span className="mr-2">•</span>
-                                                <div>
-                                                    <p className="text-sm text-muted-foreground">
-                                                        You will need to re-authenticate and reconfigure the connection to sync data from this source again.
-                                                    </p>
-                                                </div>
-                                            </li>
-                                            <li className="flex items-start">
-                                                <span className="mr-2">•</span>
-                                                <div>
-                                                    <p className="text-sm text-muted-foreground">
-                                                        All data that was synced from this source will be permanently removed from the knowledge base and cannot be recovered.
-                                                    </p>
-                                                </div>
-                                            </li>
-                                        </ul>
+            {
+                showDeleteDialog && sourceConnection && (
+                    <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+                        <AlertDialogContent className={cn(
+                            "border-border",
+                            isDark ? "bg-card-solid text-foreground" : "bg-white"
+                        )}>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>Delete Source Connection</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    <div className="space-y-4">
+                                        <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4 space-y-3">
+                                            <ul className="space-y-2 ml-4">
+                                                <li className="flex items-start">
+                                                    <span className="mr-2">•</span>
+                                                    <div>
+                                                        <p className="text-sm text-muted-foreground">
+                                                            You will need to re-authenticate and reconfigure the connection to sync data from this source again.
+                                                        </p>
+                                                    </div>
+                                                </li>
+                                                <li className="flex items-start">
+                                                    <span className="mr-2">•</span>
+                                                    <div>
+                                                        <p className="text-sm text-muted-foreground">
+                                                            All data that was synced from this source will be permanently removed from the knowledge base and cannot be recovered.
+                                                        </p>
+                                                    </div>
+                                                </li>
+                                            </ul>
+                                        </div>
                                     </div>
-                                </div>
 
-                                <div className="mt-4">
-                                    <Label htmlFor="confirm-delete" className="text-sm font-medium block mb-2">
-                                        Type <span className="font-bold">{sourceConnection.name}</span> to confirm deletion
-                                    </Label>
-                                    <Input
-                                        id="confirm-delete"
-                                        value={deleteConfirmText}
-                                        onChange={(e) => setDeleteConfirmText(e.target.value)}
-                                        className="w-full"
-                                        placeholder={sourceConnection.name}
-                                    />
-                                </div>
-                            </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                            <AlertDialogCancel onClick={() => {
-                                setShowDeleteDialog(false);
-                                setDeleteConfirmText('');
-                            }}>
-                                Cancel
-                            </AlertDialogCancel>
-                            <AlertDialogAction
-                                onClick={async () => {
-                                    try {
-                                        // Delete the source connection (data is always deleted)
-                                        const response = await apiClient.delete(`/source-connections/${sourceConnection.id}`);
+                                    <div className="mt-4">
+                                        <Label htmlFor="confirm-delete" className="text-sm font-medium block mb-2">
+                                            Type <span className="font-bold">{sourceConnection.name}</span> to confirm deletion
+                                        </Label>
+                                        <Input
+                                            id="confirm-delete"
+                                            value={deleteConfirmText}
+                                            onChange={(e) => setDeleteConfirmText(e.target.value)}
+                                            className="w-full"
+                                            placeholder={sourceConnection.name}
+                                        />
+                                    </div>
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel onClick={() => {
+                                    setShowDeleteDialog(false);
+                                    setDeleteConfirmText('');
+                                }}>
+                                    Cancel
+                                </AlertDialogCancel>
+                                <AlertDialogAction
+                                    onClick={async () => {
+                                        try {
+                                            // Delete the source connection (data is always deleted)
+                                            const response = await apiClient.delete(`/source-connections/${sourceConnection.id}`);
 
-                                        if (!response.ok) {
-                                            const error = await response.text();
-                                            throw new Error(error || 'Failed to delete source connection');
+                                            if (!response.ok) {
+                                                const error = await response.text();
+                                                throw new Error(error || 'Failed to delete source connection');
+                                            }
+
+                                            // Close dialog and clear confirm text
+                                            setShowDeleteDialog(false);
+                                            setDeleteConfirmText('');
+
+                                            // Show success toast
+                                            toast({
+                                                title: "Source connection deleted",
+                                                description: "The source connection and all synced data have been permanently deleted from the knowledge base."
+                                            });
+
+                                            // Emit event to notify parent components
+                                            emitCollectionEvent(SOURCE_CONNECTION_UPDATED, {
+                                                id: sourceConnection.id,
+                                                collectionId: (sourceConnection as any).readable_collection_id || (sourceConnection as any).collection,
+                                                deleted: true
+                                            });
+
+                                            // Navigate back to collection view or reload the page
+                                            // The parent component should handle the removal
+                                        } catch (error) {
+                                            console.error('Error deleting source connection:', error);
+                                            toast({
+                                                title: "Error",
+                                                description: error instanceof Error ? error.message : "Failed to delete source connection",
+                                                variant: "destructive"
+                                            });
                                         }
-
-                                        // Close dialog and clear confirm text
-                                        setShowDeleteDialog(false);
-                                        setDeleteConfirmText('');
-
-                                        // Show success toast
-                                        toast({
-                                            title: "Source connection deleted",
-                                            description: "The source connection and all synced data have been permanently deleted from the knowledge base."
-                                        });
-
-                                        // Emit event to notify parent components
-                                        emitCollectionEvent(SOURCE_CONNECTION_UPDATED, {
-                                            id: sourceConnection.id,
-                                            collectionId: (sourceConnection as any).readable_collection_id || (sourceConnection as any).collection,
-                                            deleted: true
-                                        });
-
-                                        // Navigate back to collection view or reload the page
-                                        // The parent component should handle the removal
-                                    } catch (error) {
-                                        console.error('Error deleting source connection:', error);
-                                        toast({
-                                            title: "Error",
-                                            description: error instanceof Error ? error.message : "Failed to delete source connection",
-                                            variant: "destructive"
-                                        });
-                                    }
-                                }}
-                                disabled={deleteConfirmText !== sourceConnection.name}
-                                className="bg-red-600 text-white hover:bg-red-700 dark:bg-red-500 dark:text-white dark:hover:bg-red-600 disabled:opacity-50"
-                            >
-                                Delete Connection
-                            </AlertDialogAction>
-                        </AlertDialogFooter>
-                    </AlertDialogContent>
-                </AlertDialog>
-            )}
+                                    }}
+                                    disabled={deleteConfirmText !== sourceConnection.name}
+                                    className="bg-red-600 text-white hover:bg-red-700 dark:bg-red-500 dark:text-white dark:hover:bg-red-600 disabled:opacity-50"
+                                >
+                                    Delete Connection
+                                </AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
+                )}
         </div>
     );
 };

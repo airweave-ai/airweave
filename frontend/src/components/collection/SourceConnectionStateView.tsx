@@ -86,7 +86,12 @@ interface SourceConnection {
   auth?: AuthenticationInfo;  // Contains authenticated, method, etc.
   config?: Record<string, any>;  // Changed from config_fields
   schedule?: Schedule;
-  last_sync_job?: LastSyncJob;
+  sync?: {
+    last_job?: LastSyncJob;
+    total_runs?: number;
+    successful_runs?: number;
+    failed_runs?: number;
+  };
   entities?: EntitySummary;  // Changed from entity_states array to entities object
   // Legacy fields that may still exist
   sync_id?: string;
@@ -221,12 +226,6 @@ const SourceConnectionStateView: React.FC<Props> = ({
 
   // Fetch source connection details (only when not provided as prop)
   const fetchSourceConnection = useCallback(async (regenerateAuthUrl = false) => {
-    // If data is provided as prop, use it instead of fetching
-    if (sourceConnectionData) {
-      setSourceConnection(sourceConnectionData);
-      return;
-    }
-
     try {
       const url = regenerateAuthUrl
         ? `/source-connections/${sourceConnectionId}?regenerate_auth_url=true`
@@ -236,12 +235,36 @@ const SourceConnectionStateView: React.FC<Props> = ({
         const data = await response.json();
         setSourceConnection(data);
 
-        // No need for separate auth URL fetch, it's handled by the regenerateAuthUrl parameter
+        // Update the store with fresh data
+        if (data.sync?.last_job?.id) {
+          const storeState = {
+            id: data.id,
+            name: data.name,
+            short_name: data.short_name,
+            collection: data.readable_collection_id,
+            status: (data.status as any) || 'active',
+            is_authenticated: data.auth?.authenticated ?? true,
+            last_sync_job: {
+              ...data.sync.last_job,
+              id: data.sync.last_job.id!
+            },
+            schedule: data.schedule,
+            entity_states: data.entities ?
+              Object.entries(data.entities.by_type).map(([type, stats]) => ({
+                entity_type: type,
+                total_count: (stats as any).count,
+                last_updated_at: (stats as any).last_updated,
+                sync_status: (stats as any).sync_status
+              })) : [],
+            lastUpdated: new Date()
+          };
+          useEntityStateStore.getState().setSourceConnection(storeState as any);
+        }
       }
     } catch (error) {
       console.error('Failed to fetch source connection:', error);
     }
-  }, [sourceConnectionId, sourceConnectionData]);
+  }, [sourceConnectionId]);
 
   // Handler for refreshing authentication URL
   const handleRefreshAuthUrl = useCallback(async () => {
@@ -271,7 +294,7 @@ const SourceConnectionStateView: React.FC<Props> = ({
       mediator.current = new EntityStateMediator(sourceConnectionId);
 
       // If we have source connection data, update the store immediately
-      if (sourceConnectionData && sourceConnectionData.last_sync_job?.id) {
+      if (sourceConnectionData && sourceConnectionData.sync?.last_job?.id) {
         const storeState = {
           id: sourceConnectionData.id,
           name: sourceConnectionData.name,
@@ -279,9 +302,9 @@ const SourceConnectionStateView: React.FC<Props> = ({
           collection: sourceConnectionData.readable_collection_id,
           status: (sourceConnectionData.status as any) || 'active',  // Cast to bypass type check
           is_authenticated: sourceConnectionData.auth?.authenticated ?? true,
-          last_sync_job: sourceConnectionData.last_sync_job ? {
-            ...sourceConnectionData.last_sync_job,
-            id: sourceConnectionData.last_sync_job.id!  // Ensure id is not undefined
+          last_sync_job: sourceConnectionData.sync.last_job ? {
+            ...sourceConnectionData.sync.last_job,
+            id: sourceConnectionData.sync.last_job.id!  // Ensure id is not undefined
           } : undefined,
           schedule: sourceConnectionData.schedule,
           entity_states: sourceConnectionData.entities ?
@@ -310,7 +333,6 @@ const SourceConnectionStateView: React.FC<Props> = ({
             currentState.last_sync_job.status === 'pending' ||
             currentState.last_sync_job.status === 'created' ||
             currentState.last_sync_job.status === 'cancelling')) {
-          console.log('Subscribing to active sync job:', currentState.last_sync_job.id);
           await mediator.current.subscribeToJobUpdates(currentState.last_sync_job.id);
         }
       }).catch(error => {
@@ -349,7 +371,7 @@ const SourceConnectionStateView: React.FC<Props> = ({
   useEffect(() => {
     const updateLastRan = () => {
       // Don't show "Running now" - let the status badge handle that
-      const startedAt = storeConnection?.last_sync_job?.started_at || sourceConnection?.last_sync_job?.started_at;
+      const startedAt = storeConnection?.last_sync_job?.started_at || sourceConnection?.sync?.last_job?.started_at;
       setLastRanDisplay(formatTimeAgo(startedAt));
     };
 
@@ -358,7 +380,7 @@ const SourceConnectionStateView: React.FC<Props> = ({
     const interval = setInterval(updateLastRan, 60000);
 
     return () => clearInterval(interval);
-  }, [storeConnection?.last_sync_job?.started_at, sourceConnection?.last_sync_job?.started_at, formatTimeAgo]);
+  }, [storeConnection?.last_sync_job?.started_at, sourceConnection?.sync?.last_job?.started_at, formatTimeAgo]);
 
 
   // Clear local cancelling state when appropriate
@@ -375,7 +397,6 @@ const SourceConnectionStateView: React.FC<Props> = ({
         syncStatus === 'completed' ||
         syncStatus === 'failed' ||
         (!syncStatus || (syncStatus !== 'running' && syncStatus !== 'in_progress' && syncStatus !== 'pending' && syncStatus !== 'created'))) {
-        console.log('Clearing isLocalCancelling due to status:', syncStatus);
         setIsLocalCancelling(false);
         if (cancelTimeoutRef.current) {
           clearTimeout(cancelTimeoutRef.current);
@@ -450,13 +471,12 @@ const SourceConnectionStateView: React.FC<Props> = ({
   };
 
   const handleCancelSync = async () => {
-    const jobId = storeConnection?.last_sync_job?.id || sourceConnection?.last_sync_job?.id;
+    const jobId = storeConnection?.last_sync_job?.id || sourceConnection?.sync?.last_job?.id;
 
     if (!jobId) {
       return;
     }
 
-    console.log('CANCEL CLICKED - Setting isLocalCancelling to true');
     // Set cancelling state immediately for instant UI feedback
     setIsLocalCancelling(true);
 
@@ -557,7 +577,7 @@ const SourceConnectionStateView: React.FC<Props> = ({
   }
 
   // Derive sync state from job status - single source of truth
-  const currentSyncJob = storeConnection?.last_sync_job || sourceConnection?.last_sync_job;
+  const currentSyncJob = storeConnection?.last_sync_job || sourceConnection?.sync?.last_job;
   const jobStatus = currentSyncJob?.status as unknown as string | undefined;
 
   // Simple state machine: IDLE | SYNCING | CANCELLING
@@ -571,8 +591,6 @@ const SourceConnectionStateView: React.FC<Props> = ({
   } else if (jobStatus === 'running' || jobStatus === 'in_progress' || jobStatus === 'pending' || jobStatus === 'created') {
     syncState = 'SYNCING';
   }
-
-  console.log('SYNC STATE:', { syncState, isLocalCancelling, jobStatus });
 
   // Legacy flags for compatibility
   const isRunning = jobStatus === 'running' || jobStatus === 'in_progress';
@@ -632,18 +650,18 @@ const SourceConnectionStateView: React.FC<Props> = ({
 
             {/* Status Card */}
             <div className={cn(
-              "h-8 px-3 py-1.5 rounded-md shadow-sm flex items-center gap-2 min-w-[90px]",
+              "group relative h-8 px-3 py-1.5 rounded-lg border transition-all duration-200 flex items-center gap-2 min-w-[90px] hover:shadow-md",
               // Highlight when sync is running
               (isRunning || isPending || isCancellingStatus)
                 ? isDark
-                  ? "bg-blue-900/30 border border-blue-700/50"
-                  : "bg-blue-50 border border-blue-200"
+                  ? "bg-gradient-to-r from-blue-900/40 to-blue-800/30 border-blue-700/60 hover:border-blue-600/60"
+                  : "bg-gradient-to-r from-blue-50 to-blue-100/50 border-blue-200/60 hover:border-blue-300/60"
                 : isDark
-                  ? "bg-gray-900 border border-border"
-                  : "bg-white border border-border"
+                  ? "bg-gradient-to-r from-slate-800/80 to-slate-900/80 border-slate-700/50 hover:border-slate-600/50"
+                  : "bg-gradient-to-r from-slate-50 to-white border-slate-200/60 hover:border-slate-300/60"
             )}>
-              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">STATUS</span>
-              <div className="flex items-center gap-1">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">STATUS</span>
+              <div className="flex items-center gap-1.5">
                 {syncStatus.icon === 'loader' ? (
                   <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
                 ) : (
@@ -657,20 +675,19 @@ const SourceConnectionStateView: React.FC<Props> = ({
             </div>
 
             {/* Schedule Card */}
-            <TooltipProvider delayDuration={100}>
+            <TooltipProvider delayDuration={200}>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <div className={cn("h-8 px-3 py-1.5 border border-border rounded-md shadow-sm flex items-center gap-2 min-w-[100px] cursor-help", isDark ? "bg-gray-900" : "bg-white")}>
-                    <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">SCHEDULE</span>
-                    <div className="flex items-center gap-1">
-                      <Clock className="h-3 w-3 text-muted-foreground" />
-                      <span
-                        className="text-xs font-medium text-foreground"
-                        title={(() => {
-                          const parsed = parseCronExpression(sourceConnection?.schedule?.cron);
-                          return parsed ? `${parsed.shortDescription} UTC` : 'Manual sync only';
-                        })()}
-                      >
+                  <div className={cn(
+                    "group relative h-8 px-3 py-1.5 rounded-lg border transition-all duration-200 flex items-center gap-2 min-w-[100px] cursor-help hover:shadow-md",
+                    isDark
+                      ? "bg-gradient-to-r from-slate-800/80 to-slate-900/80 border-slate-700/50 hover:border-slate-600/50"
+                      : "bg-gradient-to-r from-slate-50 to-white border-slate-200/60 hover:border-slate-300/60"
+                  )}>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">SCHEDULE</span>
+                    <div className="flex items-center gap-1.5">
+                      <Clock className="h-3 w-3 text-blue-500 dark:text-blue-400" />
+                      <span className="text-xs font-medium text-foreground">
                         {(() => {
                           const parsed = parseCronExpression(sourceConnection?.schedule?.cron);
                           if (parsed) {
@@ -681,61 +698,137 @@ const SourceConnectionStateView: React.FC<Props> = ({
                         })()}
                       </span>
                     </div>
+                    {/* Subtle indicator for live sync */}
+                    {(() => {
+                      const parsed = parseCronExpression(sourceConnection?.schedule?.cron);
+                      return parsed && parsed.shortDescriptionLocal.includes('minute') ? (
+                        <div className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+                      ) : null;
+                    })()}
                   </div>
                 </TooltipTrigger>
-                <TooltipContent>
-                  <div className="text-xs space-y-1">
-                    <p className="font-medium">
-                      {(() => {
-                        const parsed = parseCronExpression(sourceConnection?.schedule?.cron);
-                        return parsed ? parsed.descriptionLocal : 'Manual sync only';
-                      })()}
-                    </p>
+                <TooltipContent className="max-w-xs p-3">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-blue-500" />
+                      <p className="font-semibold text-sm">
+                        {(() => {
+                          const parsed = parseCronExpression(sourceConnection?.schedule?.cron);
+                          return parsed ? parsed.descriptionLocal : 'Manual sync only';
+                        })()}
+                      </p>
+                    </div>
+
                     {(() => {
                       const parsed = parseCronExpression(sourceConnection?.schedule?.cron);
                       return parsed && parsed.description !== parsed.descriptionLocal ? (
-                        <p className="text-muted-foreground text-[10px]">
-                          ({parsed.description})
+                        <p className="text-xs text-muted-foreground bg-muted/50 px-2 py-1 rounded">
+                          UTC: {parsed.description}
                         </p>
                       ) : null;
                     })()}
+
                     {sourceConnection?.schedule?.next_run && (
-                      <p className="text-muted-foreground">
-                        Next run: {new Date(sourceConnection.schedule.next_run).toISOString().replace('T', ', ').replace('.000Z', '')} UTC
-                      </p>
+                      <div className="pt-1 border-t border-border/50">
+                        <p className="text-xs font-medium text-muted-foreground mb-1">Next sync:</p>
+                        <p className="text-xs text-foreground">
+                          {new Date(sourceConnection.schedule.next_run).toLocaleString()} UTC
+                        </p>
+                      </div>
                     )}
+
                     {sourceConnection?.schedule?.cron && (
-                      <p className="text-muted-foreground font-mono text-[10px]">
-                        {sourceConnection.schedule.cron}
-                      </p>
+                      <div className="pt-1 border-t border-border/50">
+                        <p className="text-xs font-medium text-muted-foreground mb-1">Cron expression:</p>
+                        <code className="text-xs font-mono bg-muted/50 px-2 py-1 rounded block">
+                          {sourceConnection.schedule.cron}
+                        </code>
+                      </div>
                     )}
                   </div>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
 
-            {/* Last Sync Card - Only show when not actively syncing AND there's sync history */}
+            {/* Last Sync Card - Enhanced with entity stats */}
             {!(isRunning || isPending || isCancellingStatus) && lastRanDisplay && (
-              <TooltipProvider delayDuration={100}>
+              <TooltipProvider delayDuration={200}>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <div className={cn(
-                      "h-8 px-3 py-1.5 rounded-md shadow-sm flex items-center gap-2 min-w-[100px] cursor-help",
-                      isDark ? "bg-gray-900 border border-border" : "bg-white border border-border"
+                      "group relative h-8 px-3 py-1.5 rounded-lg border transition-all duration-200 flex items-center gap-2 min-w-[100px] cursor-help hover:shadow-md",
+                      isDark
+                        ? "bg-gradient-to-r from-slate-800/80 to-slate-900/80 border-slate-700/50 hover:border-slate-600/50"
+                        : "bg-gradient-to-r from-slate-50 to-white border-slate-200/60 hover:border-slate-300/60"
                     )}>
-                      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">LAST SYNC</span>
-                      <div className="flex items-center gap-1">
-                        <History className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">LAST SYNC</span>
+                      <div className="flex items-center gap-1.5">
+                        <History className="h-3 w-3 text-green-500 dark:text-green-400" />
                         <span className="text-xs font-medium text-foreground">
                           {lastRanDisplay}
                         </span>
                       </div>
                     </div>
                   </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="text-xs">
-                      {formatExactTime(sourceConnection?.last_sync_job?.started_at)}
-                    </p>
+                  <TooltipContent className="max-w-xs p-3">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <History className="h-4 w-4 text-green-500" />
+                        <p className="font-semibold text-sm">
+                          {formatExactTime(sourceConnection?.sync?.last_job?.started_at) ||
+                            formatExactTime(sourceConnection?.sync?.last_job?.completed_at) ||
+                            'Last sync time unavailable'}
+                        </p>
+                      </div>
+
+                      {sourceConnection?.sync?.last_job ? (
+                        <div className="pt-1 border-t border-border/50">
+                          <p className="text-xs font-medium text-muted-foreground mb-1">Sync results:</p>
+                          <div className="text-xs space-y-1">
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Inserted:</span>
+                              <span className="font-medium text-green-600 dark:text-green-400">
+                                {sourceConnection.sync.last_job.entities_inserted || 0}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Updated:</span>
+                              <span className="font-medium text-blue-600 dark:text-blue-400">
+                                {sourceConnection.sync.last_job.entities_updated || 0}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Deleted:</span>
+                              <span className="font-medium text-red-600 dark:text-red-400">
+                                {sourceConnection.sync.last_job.entities_deleted || 0}
+                              </span>
+                            </div>
+                            {sourceConnection.sync.last_job.duration_seconds && (
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">Duration:</span>
+                                <span className="font-medium">
+                                  {sourceConnection.sync.last_job.duration_seconds}s
+                                </span>
+                              </div>
+                            )}
+                            {sourceConnection.sync.last_job.status && (
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">Status:</span>
+                                <span className="font-medium capitalize">
+                                  {sourceConnection.sync.last_job.status}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="pt-1 border-t border-border/50">
+                          <p className="text-xs text-muted-foreground">
+                            No sync job data available
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -751,12 +844,10 @@ const SourceConnectionStateView: React.FC<Props> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      console.log('BUTTON CLICKED, syncState:', syncState);
                       if (syncState === 'IDLE') {
                         if (!entitiesAllowed || isCheckingUsage) return;
                         handleRunSync();
                       } else if (syncState === 'SYNCING') {
-                        console.log('Calling handleCancelSync');
                         handleCancelSync();
                       }
                       // Do nothing if CANCELLING
@@ -834,7 +925,7 @@ const SourceConnectionStateView: React.FC<Props> = ({
           {/* Show error card if sync failed or there's an error */}
           {(currentSyncJob?.status === 'failed') && (
             <SyncErrorCard
-              error={currentSyncJob?.error || sourceConnection?.last_sync_job?.error || "The last sync failed. Check the logs for more details."}
+              error={currentSyncJob?.error || sourceConnection?.sync?.last_job?.error || "The last sync failed. Check the logs for more details."}
               isDark={isDark}
             />
           )}
