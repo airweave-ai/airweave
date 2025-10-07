@@ -7,11 +7,17 @@ database, as it contains the endpoints for user creation and retrieval.
 from typing import List, Optional
 from uuid import uuid4
 
-from fastapi import BackgroundTasks, Depends, HTTPException
+from fastapi import BackgroundTasks, Depends, HTTPException, Request
 from fastapi_auth0 import Auth0User
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
+from airweave.analytics.contextual_service import (
+    AnalyticsContext,
+    ContextualAnalyticsService,
+    RequestHeaders,
+)
+from airweave.analytics.service import analytics
 from airweave.api import deps
 from airweave.api.auth import auth0
 from airweave.api.context import ApiContext
@@ -84,6 +90,7 @@ async def create_or_update_user(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(deps.get_db),
     auth0_user: Optional[Auth0User] = Depends(auth0.get_user),
+    request: Request = None,
 ) -> schemas.User:
     """Create new user in database if it does not exist, with Auth0 organization sync.
 
@@ -95,6 +102,7 @@ async def create_or_update_user(
         background_tasks (BackgroundTasks): FastAPI background tasks for non-blocking operations.
         db (AsyncSession): Database session dependency to handle database operations.
         auth0_user (Auth0User): Authenticated auth0 user.
+        request (Request): FastAPI request object for analytics context.
 
     Returns:
         schemas.User: The created user object with organization relationships.
@@ -103,6 +111,12 @@ async def create_or_update_user(
         HTTPException: If the user is not authorized to create this user.
         HTTPException: If a user with the same email but different auth0_id already exists.
     """
+    if not auth0_user:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required to create user.",
+        )
+
     if user_data.email != auth0_user.email:
         logger.error(f"User {user_data.email} is not authorized to create user {auth0_user.email}")
         raise HTTPException(
@@ -168,6 +182,33 @@ async def create_or_update_user(
         user = await organization_service.handle_new_user_signup(db, user_dict, create_org=False)
 
         logger.info(f"Created new user {user.email}.")
+
+        # Track user creation with analytics (manual context since user doesn't exist in DB yet)
+        if request:
+            try:
+                # Create minimal analytics context for user creation tracking
+                analytics_context = AnalyticsContext(
+                    user_id=str(user.id),
+                    organization_id=None,  # No org yet
+                    auth_method="auth0",
+                    auth_metadata={"auth0_id": auth0_user.id if auth0_user else None},
+                    request_headers=RequestHeaders.from_request(request),
+                )
+                analytics_service = ContextualAnalyticsService(analytics, analytics_context)
+
+                # Track user creation event
+                analytics_service.track_event(
+                    "user_created",
+                    {
+                        "email": user.email,
+                        "full_name": user.full_name,
+                        "auth0_id": user.auth0_id,
+                        "created_at": user.created_at.isoformat() if user.created_at else None,
+                        "signup_source": "auth0",
+                    },
+                )
+            except Exception as e:
+                logger.warning(f"Failed to track user creation analytics: {e}")
 
         # Send welcome email in background to avoid blocking the response
         background_tasks.add_task(send_welcome_email, user.email, user.full_name or user.email)

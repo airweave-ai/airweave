@@ -1,6 +1,5 @@
 """High-level business metrics tracking."""
 
-from typing import Any, Dict, Optional
 from uuid import UUID
 
 from airweave.analytics.service import analytics
@@ -8,53 +7,6 @@ from airweave.analytics.service import analytics
 
 class BusinessEventTracker:
     """Tracks high-level business metrics and organizational events."""
-
-    @staticmethod
-    def track_organization_created(
-        organization_id: UUID, user_id: UUID, properties: Optional[Dict[str, Any]] = None
-    ):
-        """Track when a new organization is created.
-
-        Args:
-        ----
-            organization_id: ID of the created organization
-            user_id: ID of the user who created it
-            properties: Additional properties
-        """
-        event_properties = {
-            **(properties or {}),
-            "organization_id": str(organization_id),  # Ensure this can't be overridden
-        }
-
-        analytics.track_event(
-            event_name="organization_created",
-            distinct_id=str(user_id),
-            properties=event_properties,
-            groups={"organization": str(organization_id)},
-        )
-
-    @staticmethod
-    def track_collection_created(ctx, collection_id: UUID, collection_name: str):
-        """Track when a new collection is created.
-
-        Args:
-        ----
-            ctx: API context containing user and organization info
-            collection_id: ID of the created collection
-            collection_name: Name of the collection
-        """
-        properties = {
-            "collection_id": str(collection_id),
-            "collection_name": collection_name,
-            "organization_name": getattr(ctx.organization, "name", "unknown"),
-        }
-
-        analytics.track_event(
-            event_name="collection_created",
-            distinct_id=str(ctx.user.id) if ctx.user else f"api_key_{ctx.organization.id}",
-            properties=properties,
-            groups={"organization": str(ctx.organization.id)},
-        )
 
     @staticmethod
     def track_source_connection_created(ctx, connection_id: UUID, source_short_name: str):
@@ -74,29 +26,6 @@ class BusinessEventTracker:
 
         analytics.track_event(
             event_name="source_connection_created",
-            distinct_id=str(ctx.user.id) if ctx.user else f"api_key_{ctx.organization.id}",
-            properties=properties,
-            groups={"organization": str(ctx.organization.id)},
-        )
-
-    @staticmethod
-    def track_first_sync_completed(ctx, sync_id: UUID, entities_processed: int):
-        """Track when an organization completes their first sync.
-
-        Args:
-        ----
-            ctx: API context containing user and organization info
-            sync_id: ID of the sync operation
-            entities_processed: Number of entities processed
-        """
-        properties = {
-            "sync_id": str(sync_id),
-            "entities_processed": entities_processed,
-            "organization_name": getattr(ctx.organization, "name", "unknown"),
-        }
-
-        analytics.track_event(
-            event_name="first_sync_completed",
             distinct_id=str(ctx.user.id) if ctx.user else f"api_key_{ctx.organization.id}",
             properties=properties,
             groups={"organization": str(ctx.organization.id)},
@@ -203,6 +132,79 @@ class BusinessEventTracker:
             properties=properties,
             groups={"organization": str(ctx.organization.id)},
         )
+
+    @staticmethod
+    def set_organization_properties(organization_id: UUID, properties: dict):
+        """Set properties for an organization group in PostHog.
+
+        Args:
+        ----
+            organization_id: ID of the organization
+            properties: Properties to set for the organization
+        """
+        # Add standard organization metadata (ensure organization_id cannot be overridden)
+        org_properties = {**properties, "organization_id": str(organization_id)}
+
+        analytics.set_group_properties(
+            group_type="organization", group_key=str(organization_id), properties=org_properties
+        )
+
+    @staticmethod
+    def track_search_query(
+        ctx, query: str, collection_slug: str, duration_ms: float, search_type: str = "regular"
+    ):
+        """Track search query execution.
+
+        Args:
+        ----
+            ctx: API context containing user and organization info
+            query: Search query text
+            collection_slug: Collection identifier
+            duration_ms: Search duration in milliseconds
+            search_type: Type of search (regular/streaming)
+        """
+        properties = {
+            "query_length": len(query),
+            "collection_slug": collection_slug,
+            "duration_ms": duration_ms,
+            "search_type": search_type,
+            "organization_name": getattr(ctx.organization, "name", "unknown"),
+        }
+
+        analytics.track_event(
+            event_name="search_query",
+            distinct_id=str(ctx.user.id) if ctx.user else f"api_key_{ctx.organization.id}",
+            properties=properties,
+            groups={"organization": str(ctx.organization.id)},
+        )
+
+    @staticmethod
+    def track_sync_entity_counts(ctx, sync_job_id: UUID, sync_id: UUID, entity_counts: dict):
+        """Track detailed entity counts for sync completion.
+
+        Args:
+        ----
+            ctx: API context containing user and organization info
+            sync_job_id: ID of the sync job
+            sync_id: ID of the sync operation
+            entity_counts: Dictionary of entity type to count
+        """
+        for entity_type, entity_count in entity_counts.items():
+            if entity_count > 0:
+                properties = {
+                    "sync_job_id": str(sync_job_id),
+                    "sync_id": str(sync_id),
+                    "entity_type": entity_type,
+                    "entity_count": entity_count,
+                    "organization_name": getattr(ctx.organization, "name", "unknown"),
+                }
+
+                analytics.track_event(
+                    event_name="entities_synced_by_type",
+                    distinct_id=str(ctx.user.id) if ctx.user else f"api_key_{ctx.organization.id}",
+                    properties=properties,
+                    groups={"organization": str(ctx.organization.id)},
+                )
 
 
 # Global instance
