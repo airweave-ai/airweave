@@ -142,8 +142,8 @@ class BusinessEventTracker:
             organization_id: ID of the organization
             properties: Properties to set for the organization
         """
-        # Add standard organization metadata
-        org_properties = {"organization_id": str(organization_id), **properties}
+        # Add standard organization metadata (ensure organization_id cannot be overridden)
+        org_properties = {**properties, "organization_id": str(organization_id)}
 
         analytics.set_group_properties(
             group_type="organization", group_key=str(organization_id), properties=org_properties

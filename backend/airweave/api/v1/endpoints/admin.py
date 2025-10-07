@@ -291,7 +291,6 @@ async def add_self_to_organization(
         ctx.logger.warning(f"Failed to add admin to Auth0 organization: {e}")
         # Don't fail the request if Auth0 fails
 
-    # Track API call with dependency injection
     ctx.analytics.track_api_call("admin_add_self_to_org")
 
     return schemas.OrganizationWithRole(

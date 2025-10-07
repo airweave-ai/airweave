@@ -92,14 +92,18 @@ If necessary (like editing ), refer [sync-architecture.mdc](mdc:.cursor/rules/sy
 - **Module Path**: `airweave.analytics.service` for core analytics and user behavior tracking
 - **Environment Variables**: `POSTHOG_API_KEY`, `POSTHOG_HOST`, `ANALYTICS_ENABLED`, `ENVIRONMENT` in `core/config.py`
 - **Event Tagging**: All events automatically include an `environment` property from `ENVIRONMENT` variable for filtering by deployment environment
+- **Dependency Injection Pattern**: Analytics is now injected via FastAPI DI through `ApiContext`
 - **Usage Patterns**:
-  - **API Endpoints**: Use `@track_api_endpoint("endpoint_name")` decorator on all API endpoints
-  - **Search Operations**: Use `@track_search_operation()` decorator on search functions
-  - **Custom Events**: Use `analytics.track_event()` for custom tracking
-- **Context Requirements**: Prefer `ApiContext` for API endpoints; some analytics helpers accept explicit IDs—do not use legacy `get_user`.
+  - **API Endpoints**: Use `ctx.analytics.track_api_call("endpoint_name")` in endpoint handlers
+  - **Search Operations**: Use `ctx.analytics.track_search_query()` for search tracking
+  - **Custom Events**: Use `ctx.analytics.track_event()` for custom tracking
+  - **User Identification**: Use `ctx.analytics.identify_user()` for user profile updates
+  - **Group Properties**: Use `ctx.analytics.set_group_properties()` for organization-level data
+- **Context Requirements**: Always use `ctx.analytics` from `ApiContext` dependency injection
 - **Error Handling**: Analytics errors are logged but never crash the application
 - **Property Guidelines**: Use `.value` for enums, avoid mutating caller's properties dict
 - **Timing**: Use `time.monotonic()` for duration measurements, not `time.time()`
+- **Request Headers**: Analytics automatically captures SDK, client, and session information from request headers
 
 ### Search Persistence & Analytics
 - **Database-First Approach**: Every search is persisted to `search_queries` table via `CRUDSearchQuery`

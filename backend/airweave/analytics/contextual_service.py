@@ -1,13 +1,13 @@
 """Context-aware analytics service for dependency injection."""
 
-from dataclasses import asdict, dataclass
 from typing import Any, Dict, Optional
+
+from pydantic import BaseModel
 
 from airweave.analytics.service import AnalyticsService
 
 
-@dataclass
-class RequestHeaders:
+class RequestHeaders(BaseModel):
     """Structured representation of tracking-relevant headers.
 
     Easily extensible - just add new fields here when introducing new headers.
@@ -35,15 +35,14 @@ class RequestHeaders:
     framework_version: Optional[str] = None
 
     # Request tracking
-    request_id: Optional[str] = None
+    request_id: str
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for PostHog properties, excluding None values."""
-        return {k: v for k, v in asdict(self).items() if v is not None}
+        return {k: v for k, v in self.model_dump().items() if v is not None}
 
 
-@dataclass
-class AnalyticsContext:
+class AnalyticsContext(BaseModel):
     """Minimal context for analytics - no circular imports!
 
     Contains only the specific fields needed for analytics tracking.
@@ -65,6 +64,13 @@ class ContextualAnalyticsService:
         context: AnalyticsContext,
         headers: Optional[RequestHeaders] = None,
     ):
+        """Initialize the contextual analytics service.
+
+        Args:
+            base_service: The base analytics service for PostHog operations
+            context: Analytics context with user/org information
+            headers: Request headers for enhanced tracking (optional)
+        """
         self.base_service = base_service
         self.context = context
         self.headers = headers or RequestHeaders()
@@ -163,7 +169,14 @@ class ContextualAnalyticsService:
         if not self.context.user_id:
             return  # Can't identify without user context
 
-        user_properties = self._build_base_properties()
+        # Build user properties without transient request_id
+        user_properties = {
+            "auth_method": self.context.auth_method,
+            "organization_name": self.context.organization_name,
+            "client_name": self.headers.client_name,
+            "sdk_name": self.headers.sdk_name,
+            "session_id": self.headers.session_id,
+        }
         if properties:
             user_properties.update(properties)
 

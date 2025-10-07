@@ -58,10 +58,6 @@ async def list(
         skip=skip,
         limit=limit,
     )
-
-    # Track API call with dependency injection
-    ctx.analytics.track_api_call("list_collections")
-
     return collections
 
 
@@ -79,8 +75,6 @@ async def create(
     # Create the collection
     collection_obj = await collection_service.create(db, collection_in=collection, ctx=ctx)
 
-    # Track API call and business event with dependency injection
-    ctx.analytics.track_api_call("create_collection")
     ctx.analytics.track_event(
         "collection_created",
         {
@@ -333,7 +327,6 @@ async def search_advanced(
         # Increment usage after successful search
         await guard_rail.increment(ActionType.QUERIES)
 
-        # Track search with dependency injection
         ctx.analytics.track_search_query(
             query=search_request.query,
             collection_slug=readable_id,

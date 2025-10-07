@@ -10,7 +10,6 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
-from airweave.analytics import ContextualAnalyticsService
 from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.router import TrailingSlashRouter
@@ -197,7 +196,6 @@ async def run_sync(
     # Start the sync job in the background - this is where the sync actually runs
     background_tasks.add_task(sync_service.run, sync, sync_job, sync_dag, ctx)
 
-    # Track API call with dependency injection
     ctx.analytics.track_api_call("run_sync")
 
     return sync_job

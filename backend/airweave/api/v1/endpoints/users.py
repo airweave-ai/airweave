@@ -7,12 +7,17 @@ database, as it contains the endpoints for user creation and retrieval.
 from typing import List, Optional
 from uuid import uuid4
 
-from fastapi import BackgroundTasks, Depends, HTTPException
+from fastapi import BackgroundTasks, Depends, HTTPException, Request
 from fastapi_auth0 import Auth0User
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
-from airweave.analytics import ContextualAnalyticsService
+from airweave.analytics.contextual_service import (
+    AnalyticsContext,
+    ContextualAnalyticsService,
+    RequestHeaders,
+)
+from airweave.analytics.service import analytics
 from airweave.api import deps
 from airweave.api.auth import auth0
 from airweave.api.context import ApiContext
@@ -84,7 +89,8 @@ async def create_or_update_user(
     user_data: schemas.UserCreate,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(deps.get_db),
-    ctx: ApiContext = Depends(deps.get_context),
+    auth0_user: Optional[Auth0User] = Depends(auth0.get_user),
+    request: Request = None,
 ) -> schemas.User:
     """Create new user in database if it does not exist, with Auth0 organization sync.
 
@@ -95,7 +101,8 @@ async def create_or_update_user(
         user_data (schemas.UserCreate): The user object to be created.
         background_tasks (BackgroundTasks): FastAPI background tasks for non-blocking operations.
         db (AsyncSession): Database session dependency to handle database operations.
-        ctx (ApiContext): API context containing user and analytics service.
+        auth0_user (Auth0User): Authenticated auth0 user.
+        request (Request): FastAPI request object for analytics context.
 
     Returns:
         schemas.User: The created user object with organization relationships.
@@ -104,8 +111,14 @@ async def create_or_update_user(
         HTTPException: If the user is not authorized to create this user.
         HTTPException: If a user with the same email but different auth0_id already exists.
     """
-    if user_data.email != ctx.user.email:
-        logger.error(f"User {user_data.email} is not authorized to create user {ctx.user.email}")
+    if not auth0_user:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required to create user.",
+        )
+
+    if user_data.email != auth0_user.email:
+        logger.error(f"User {user_data.email} is not authorized to create user {auth0_user.email}")
         raise HTTPException(
             status_code=403,
             detail="You are not authorized to create this user.",
@@ -121,7 +134,7 @@ async def create_or_update_user(
 
     if existing_user:
         # Check for Auth0 ID conflicts
-        incoming_auth0_id = ctx.user.auth0_id if ctx.user else user_data.auth0_id
+        incoming_auth0_id = auth0_user.id if auth0_user else user_data.auth0_id
 
         if (
             existing_user.auth0_id
@@ -162,25 +175,40 @@ async def create_or_update_user(
     try:
         # Add auth0_id to user data if available
         user_dict = user_data.model_dump()
-        if ctx.user:
-            user_dict["auth0_id"] = ctx.user.auth0_id
+        if auth0_user:
+            user_dict["auth0_id"] = auth0_user.id
 
         # Handle new user signup with Auth0 integration
         user = await organization_service.handle_new_user_signup(db, user_dict, create_org=False)
 
         logger.info(f"Created new user {user.email}.")
 
-        # Identify user in PostHog for complete user journey tracking
-        ctx.analytics.identify_user(
-            {
-                "email": user.email,
-                "full_name": user.full_name,
-                "auth0_id": user.auth0_id,
-                "created_at": user.created_at.isoformat() if user.created_at else None,
-                "plan": "trial",  # Default plan for new users
-                "signup_source": "auth0",
-            }
-        )
+        # Track user creation with analytics (manual context since user doesn't exist in DB yet)
+        if request:
+            try:
+                # Create minimal analytics context for user creation tracking
+                analytics_context = AnalyticsContext(
+                    user_id=str(user.id),
+                    organization_id=None,  # No org yet
+                    auth_method="auth0",
+                    auth_metadata={"auth0_id": auth0_user.id if auth0_user else None},
+                    request_headers=RequestHeaders.from_request(request),
+                )
+                analytics_service = ContextualAnalyticsService(analytics, analytics_context)
+
+                # Track user creation event
+                analytics_service.track_event(
+                    "user_created",
+                    {
+                        "email": user.email,
+                        "full_name": user.full_name,
+                        "auth0_id": user.auth0_id,
+                        "created_at": user.created_at.isoformat() if user.created_at else None,
+                        "signup_source": "auth0",
+                    },
+                )
+            except Exception as e:
+                logger.warning(f"Failed to track user creation analytics: {e}")
 
         # Send welcome email in background to avoid blocking the response
         background_tasks.add_task(send_welcome_email, user.email, user.full_name or user.email)
@@ -206,18 +234,6 @@ async def create_or_update_user(
                 uow=uow,
             )
         logger.info(f"Created user {user.email} with fallback method")
-
-        # Identify user in PostHog for complete user journey tracking
-        ctx.analytics.identify_user(
-            {
-                "email": user.email,
-                "full_name": user.full_name,
-                "auth0_id": user.auth0_id,
-                "created_at": user.created_at.isoformat() if user.created_at else None,
-                "plan": "trial",  # Default plan for new users
-                "signup_source": "fallback",
-            }
-        )
 
         # Send welcome email in background to avoid blocking the response
         background_tasks.add_task(send_welcome_email, user.email, user.full_name or user.email)

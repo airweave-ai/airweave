@@ -221,6 +221,9 @@ async def get_context(
         analytics=analytics_service,
     )
 
+    if user_context:
+        analytics_service.identify_user()
+
     return context
 
 

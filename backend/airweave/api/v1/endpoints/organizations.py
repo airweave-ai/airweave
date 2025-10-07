@@ -7,7 +7,7 @@ from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
-from airweave.analytics import ContextualAnalyticsService, business_events
+from airweave.analytics import business_events
 from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.router import TrailingSlashRouter
@@ -48,19 +48,6 @@ async def create_organization(
             db=db, org_data=organization_data, owner_user=ctx.user
         )
 
-        # Identify user with organization context for enhanced PostHog tracking
-        ctx.analytics.identify_user(
-            {
-                "organization_id": str(organization.id),
-                "organization_name": organization.name,
-                "organization_plan": "trial",  # Default plan for new organizations
-                "user_role": "owner",
-                "organization_created_at": (
-                    organization.created_at.isoformat() if organization.created_at else None
-                ),
-            }
-        )
-
         # Set organization group properties for PostHog analytics
         business_events.set_organization_properties(
             organization_id=organization.id,
@@ -74,8 +61,6 @@ async def create_organization(
             },
         )
 
-        # Track API call and business event with dependency injection
-        ctx.analytics.track_api_call("create_organization")
         ctx.analytics.track_event(
             "organization_created",
             {
