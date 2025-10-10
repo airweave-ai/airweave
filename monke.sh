@@ -24,7 +24,7 @@ ${BOLD}🐒 Monke Test Runner${NC}
 
 ${BOLD}Usage:${NC}
     ./monke.sh [connector...]           Run specific connector(s)
-    ./monke.sh --changed                Run only changed connectors (vs main branch)
+    ./monke.sh --changed                Run core connectors + any changed connectors
     ./monke.sh --all                    Run all connectors in parallel
     ./monke.sh --list                   List available connectors
     ./monke.sh --help                   Show this help
@@ -32,7 +32,7 @@ ${BOLD}Usage:${NC}
 ${BOLD}Examples:${NC}
     ./monke.sh github                   Run GitHub connector test
     ./monke.sh github asana notion      Run multiple specific connectors
-    ./monke.sh --changed                Run tests for changed connectors only
+    ./monke.sh --changed                Run core + changed connectors
     ./monke.sh --all                    Run all connector tests in parallel
 
 ${BOLD}Environment:${NC}
@@ -46,7 +46,7 @@ ${BOLD}Environment:${NC}
 ${BOLD}Notes:${NC}
     - Automatically sets up Python venv if needed
     - Runs tests in parallel for better performance
-    - Detects changed connectors when on a feature branch
+    - Runs core connectors + detects additional changed connectors
     - Logs are saved to monke/logs/
 EOF
 }
@@ -138,6 +138,26 @@ list_connectors() {
     done
 }
 
+# Get core connectors that always run
+get_core_connectors() {
+    local core_connectors=(
+        "github"      # Most popular, good API coverage
+        "notion"      # Document-based, complex data structures
+        "asana"       # Task management, different data patterns
+        "linear"      # Modern API, good for testing
+    )
+    
+    # Filter to only include connectors that have configs
+    local available_connectors=()
+    for connector in "${core_connectors[@]}"; do
+        if [[ -f "${MONKE_DIR}/configs/${connector}.yaml" ]]; then
+            available_connectors+=("$connector")
+        fi
+    done
+    
+    echo "${available_connectors[@]}"
+}
+
 # Detect changed connectors (vs base branch)
 detect_changed_connectors() {
     # Use environment variable if set, otherwise default to main
@@ -145,18 +165,18 @@ detect_changed_connectors() {
     local changed_files
     local changed_connectors=()
 
-    log_step "Detecting changed connectors vs ${base_branch}..."
+    log_step "Detecting changed connectors vs ${base_branch}..." >&2
 
     # Get list of changed files
     if ! git diff --name-only "${base_branch}...HEAD" &>/dev/null; then
-        log_warning "Cannot detect changes (not a git repo or ${base_branch} not found)"
+        log_warning "Cannot detect changes (not a git repo or ${base_branch} not found)" >&2
         return 1
     fi
 
     changed_files=$(git diff --name-only "${base_branch}...HEAD" | grep -E "(monke/bongos/|monke/configs/|monke/generation/|backend/airweave/platform/sources/|backend/airweave/platform/entities/)" || true)
 
     if [[ -z "$changed_files" ]]; then
-        log_info "No connector-related changes detected"
+        log_info "No connector-related changes detected" >&2
         return 1
     fi
 
@@ -179,12 +199,42 @@ detect_changed_connectors() {
     done <<< "$changed_files"
 
     if [[ ${#changed_connectors[@]} -eq 0 ]]; then
-        log_info "No testable connector changes detected"
+        log_info "No testable connector changes detected" >&2
         return 1
     fi
 
-    log_success "Detected changed connectors: ${changed_connectors[*]}"
+    log_success "Detected changed connectors: ${changed_connectors[*]}" >&2
     echo "${changed_connectors[@]}"
+}
+
+# Get hybrid connector list: core + changed
+get_hybrid_connectors() {
+    # Core connectors that always run
+    local core_connectors=("github" "notion" "asana" "linear" "hubspot")
+    local changed_connectors=()
+    
+    # Try to detect changed connectors
+    local changed_output
+    if changed_output=$(detect_changed_connectors 2>/dev/null); then
+        changed_connectors=($changed_output)
+        log_info "Found changed connectors: ${changed_connectors[*]}" >&2
+    else
+        changed_connectors=()
+        log_info "No changed connectors detected" >&2
+    fi
+    
+    # Combine core + changed, removing duplicates
+    local all_connectors=("${core_connectors[@]}")
+    if [[ ${#changed_connectors[@]} -gt 0 ]]; then
+        for changed in "${changed_connectors[@]}"; do
+            # Check if not already in core connectors
+            if [[ ! " ${core_connectors[@]} " =~ " ${changed} " ]]; then
+                all_connectors+=("$changed")
+            fi
+        done
+    fi
+    
+    echo "${all_connectors[@]}"
 }
 
 # Check if Airweave backend is running
@@ -316,23 +366,21 @@ main() {
             connectors=($(get_available_connectors))
             ;;
         changed)
-            local changed
-            if changed=$(detect_changed_connectors); then
-                connectors=($changed)
-            else
-                log_info "No tests to run"
-                exit 0
+            log_step "Running hybrid connector tests (core + changed)..."
+            connectors=($(get_hybrid_connectors))
+            if [[ ${#connectors[@]} -eq 0 ]]; then
+                log_error "No connectors available for testing"
+                exit 1
             fi
             ;;
         specific)
             if [[ ${#connectors[@]} -eq 0 ]]; then
-                # No arguments provided - try to detect changes
-                log_info "No connectors specified, checking for changes..."
-                if changed=$(detect_changed_connectors); then
-                    connectors=($changed)
-                else
-                    log_info "No changes detected. Use --list to see available connectors"
-                    exit 0
+                # No arguments provided - run hybrid approach
+                log_info "No connectors specified, running hybrid connector tests..."
+                connectors=($(get_hybrid_connectors))
+                if [[ ${#connectors[@]} -eq 0 ]]; then
+                    log_error "No connectors available for testing"
+                    exit 1
                 fi
             fi
             ;;

@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   all_connectors_one_runner:
-    if: false # Temporarily disabled
+    if: true # Enabled with space optimizations
     runs-on: ubuntu-latest
     environment: dev
     # Add Azure permissions for OIDC authentication
@@ -27,13 +27,10 @@ jobs:
       pull-requests: read
 
     env:
-      # Tags for locally built images (no registry)
-      BACKEND_TAG: airweave-backend:ci-${{ github.sha }}
-      FRONTEND_TAG: airweave-frontend:ci-${{ github.sha }}
-      TEMPORAL_WORKER_TAG: airweave-temporal-worker:ci-${{ github.sha }}
-      BACKEND_CACHE_DIR: /tmp/.buildx-cache-backend
-      FRONTEND_CACHE_DIR: /tmp/.buildx-cache-frontend
-
+      # Use locally built test images (like public API tests)
+      BACKEND_IMAGE: test-backend:latest
+      FRONTEND_IMAGE: test-frontend:latest
+      
       # Core configuration
       AIRWEAVE_API_URL: http://localhost:8001
 
@@ -49,62 +46,35 @@ jobs:
         with:
           fetch-depth: 0 # Fetch all history for change detection
 
-      # Build images ONCE on this runner (with repo-scoped local layer caches)
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Restore frontend build cache
+      # Setup Docker layer caching (like public API tests)
+      - name: Setup Docker layer caching
         uses: actions/cache@v4
         with:
-          path: ${{ env.FRONTEND_CACHE_DIR }}
-          key: buildx-frontend-${{ runner.os }}-${{ hashFiles('frontend/**','frontend/Dockerfile') }}
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-docker-${{ hashFiles('docker/docker-compose.yml') }}
           restore-keys: |
-            buildx-frontend-${{ runner.os }}-
+            ${{ runner.os }}-docker-
 
-      - name: Build frontend (cached, load into daemon)
-        uses: docker/build-push-action@v6
-        with:
-          context: ./frontend
-          file: ./frontend/Dockerfile
-          platforms: linux/amd64
-          load: true
-          push: false
-          tags: ${{ env.FRONTEND_TAG }}
-          cache-from: type=local,src=${{ env.FRONTEND_CACHE_DIR }}
-          cache-to: type=local,dest=${{ env.FRONTEND_CACHE_DIR }},mode=max
-
-      # Force Compose to use the prebuilt images (no rebuild)
-      - name: Compose override (use prebuilt images)
+      # Pre-pull heavy Docker images in parallel (like public API tests)
+      - name: Pre-pull heavy Docker images
         run: |
-          mkdir -p docker
-          cat > docker/docker-compose.ci.yml <<'YAML'
-          services:
-            backend:
-              pull_policy: never
-              environment:
-                # Core dependencies
-                - OPENAI_API_KEY=${OPENAI_API_KEY}
-                - MISTRAL_API_KEY=${MISTRAL_API_KEY}
-                - COHERE_API_KEY=${COHERE_API_KEY}
-                - GROQ_API_KEY=${GROQ_API_KEY}
-                - CEREBRAS_API_KEY=${CEREBRAS_API_KEY}
-                # Azure Key Vault for SaaS credentials
-                - AZURE_KEY_VAULT_URL=${AZURE_KEY_VAULT_URL}
-            temporal-worker:
-              pull_policy: never
-              environment:
-                # Core dependencies
-                - OPENAI_API_KEY=${OPENAI_API_KEY}
-                - MISTRAL_API_KEY=${MISTRAL_API_KEY}
-                - COHERE_API_KEY=${COHERE_API_KEY}
-                - GROQ_API_KEY=${GROQ_API_KEY}
-                - CEREBRAS_API_KEY=${CEREBRAS_API_KEY}
-                # Azure Key Vault for SaaS credentials
-                - AZURE_KEY_VAULT_URL=${AZURE_KEY_VAULT_URL}
-            frontend:
-              image: ${FRONTEND_TAG}
-              pull_policy: never
-          YAML
+          echo "Pre-pulling Docker images in parallel..."
+          docker pull postgres:16 &
+          docker pull redis:7-alpine &
+          docker pull semitechnologies/transformers-inference:sentence-transformers-all-MiniLM-L6-v2 &
+          docker pull qdrant/qdrant:latest &
+          docker pull temporalio/auto-setup:1.24.2 &
+          docker pull temporalio/ui:2.26.2 &
+          wait
+          echo "All images pre-pulled successfully"
+
+      # Build test images locally (like public API tests)
+      - name: Build test images locally
+        run: |
+          echo "Building backend image for testing..."
+          docker build -t test-backend:latest ./backend
+          echo "Building frontend image for testing..."
+          docker build -t test-frontend:latest ./frontend
 
       # Python deps (cached)
       - name: Set up Python 3.11
@@ -122,23 +92,59 @@ jobs:
             pip install azure-keyvault-secrets azure-identity
           fi
 
-      # Start the stack ONCE on this runner (override merged with base compose)
-      - name: Start Airweave (single stack)
+      # Setup environment and start services (like public API tests)
+      - name: Setup environment and start services
         env:
-          CI_COMPOSE_OVERRIDE: docker/docker-compose.ci.yml
+          # Required for start.sh to skip interactive prompts
+          NONINTERACTIVE: "1"
+          # Set required environment variables for the containers
+          AUTH0_ENABLED: "false"
+          DEV_MODE: "true"
         run: |
-          # your script is interactive by default; feed "no" answers:
-          printf 'n\nn\n' | ./start.sh
+          echo "Starting services using start.sh..."
+          # Prepare a Compose override to inject AI keys into containers without touching .env
+          cat > docker/compose.monke.env.yml <<'YAML'
+          services:
+            backend:
+              environment:
+                OPENAI_API_KEY: ${OPENAI_API_KEY}
+                MISTRAL_API_KEY: ${MISTRAL_API_KEY}
+                COHERE_API_KEY: ${COHERE_API_KEY}
+                GROQ_API_KEY: ${GROQ_API_KEY}
+                CEREBRAS_API_KEY: ${CEREBRAS_API_KEY}
+                # Azure Key Vault for SaaS credentials
+                AZURE_KEY_VAULT_URL: ${AZURE_KEY_VAULT_URL}
+            temporal-worker:
+              environment:
+                OPENAI_API_KEY: ${OPENAI_API_KEY}
+                MISTRAL_API_KEY: ${MISTRAL_API_KEY}
+                COHERE_API_KEY: ${COHERE_API_KEY}
+                GROQ_API_KEY: ${GROQ_API_KEY}
+                CEREBRAS_API_KEY: ${CEREBRAS_API_KEY}
+                # Azure Key Vault for SaaS credentials
+                AZURE_KEY_VAULT_URL: ${AZURE_KEY_VAULT_URL}
+          YAML
 
-      - name: Wait for backend health
-        run: |
-          for i in {1..60}; do
-            if curl -fsS http://localhost:8001/health >/dev/null; then
-              echo "✅ Airweave backend is healthy"; exit 0
-            fi
-            echo "Waiting for backend... ($i/60)"; sleep 2
-          done
-          echo "❌ Backend not healthy in time"; exit 1
+          # start.sh will create .env from .env.example and generate keys if missing
+          # We pass the override so containers receive secrets from the runner env
+          ./start.sh --noninteractive --compose-override docker/compose.monke.env.yml
+
+          # The script already does health checks, but let's verify
+          echo ""
+          echo "Verifying we're using the correct test images:"
+          docker ps --format "table {{.Names}}\t{{.Image}}" | grep airweave
+          echo ""
+          echo "Final verification of services:"
+          docker ps
+
+          # Backend runs on port 8001 according to start.sh
+          echo "Testing backend on port 8001..."
+          curl -f http://localhost:8001/health || (echo "Backend not healthy"; docker logs airweave-backend; exit 1)
+
+          # Frontend runs on port 8080 according to start.sh
+          echo "Testing frontend on port 8080..."
+          curl -f http://localhost:8080 || (echo "Frontend not healthy"; docker logs airweave-frontend; exit 1)
+
 
       # Run tests using monke.sh wrapper
       - name: Run acceptance tests
@@ -171,18 +177,23 @@ jobs:
           # Make script executable
           chmod +x ./monke.sh
 
-          # Fetch base branch for change detection in PRs
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git fetch origin ${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}
-            export BASE_BRANCH="origin/${{ github.base_ref }}"
-          else
-            export BASE_BRANCH="origin/main"
-          fi
-
-          # Let monke.sh handle change detection and test execution
-          # The --changed flag will automatically detect what to test based on git diff
-          echo "Running tests for changed connectors vs $BASE_BRANCH..."
+          # Create .env file first (like public API tests do)
+          echo "Creating .env file from .env.example..."
+          cp .env.example .env
+          cp .env.example monke/.env
+          
+          # Run hybrid connector tests (core + changed)
+          # This ensures we test the sync pipeline regardless of what changed
+          echo "Running hybrid connector tests for comprehensive coverage..."
           ./monke.sh --changed
+
+      # Cleanup Docker containers (like public API tests)
+      - name: Cleanup Docker containers
+        if: always()
+        run: |
+          echo "Cleaning up Docker containers..."
+          docker compose down -v || true
+          docker system prune -f || true
 
       - name: Upload logs
         if: always()

@@ -1,5 +1,5 @@
 name: airtable_test
-description: End-to-end test for Airtable source using Monke
+description: End-to-end test for Airtable source using Monke (updated for testing)
 
 connector:
   name: Airtable

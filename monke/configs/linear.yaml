@@ -5,8 +5,8 @@ connector:
   type: "linear"
   auth_mode: composio
   composio_config:
-    account_id: ca_wWJZBwasY9HP
-    auth_config_id: ac_H9661JM0EZmL
+    account_id: ca_9OsnZj9pOZFt
+    auth_config_id: ac_jEn2S9EXTtCe
   config_fields:
     openai_model: "gpt-4.1-mini"
     rate_limit_delay_ms: 500

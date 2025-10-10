@@ -1006,6 +1006,11 @@ class EntityProcessor:
                     else:
                         for pid in parent_ids_to_clear:
                             await dest.bulk_delete_by_parent_id(pid, sync_context.sync.id)
+
+                # Also delete main entities by their entity_id
+                if deletes:
+                    entity_ids_to_delete = [d.entity_id for d in deletes]
+                    await dest.bulk_delete(entity_ids_to_delete, sync_context.sync.id)
                 if to_insert:
                     await dest.bulk_insert(to_insert)
             except NotImplementedError:
