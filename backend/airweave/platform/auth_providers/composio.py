@@ -26,6 +26,7 @@ class ComposioAuthProvider(BaseAuthProvider):
     BLOCKED_SOURCES = [
         "postgresql",
         "ctti",
+        "sharepoint",
     ]
 
     # Mapping of Airweave field names to Composio field names
@@ -353,10 +354,12 @@ class ComposioAuthProvider(BaseAuthProvider):
                     found_credentials[airweave_field] = source_creds_dict[field_to_check]
                     if airweave_field != field_to_check:
                         self.logger.info(
-                            f"\n  🔄 Mapped field '{airweave_field}' to Composio field '{field_to_check}'\n"
+                            f"\n  🔄 Mapped field '{airweave_field}' to Composio field "
+                            f"'{field_to_check}'\n"
                         )
                     self.logger.info(
-                        f"\n  ✅ Found field: '{airweave_field}' (as '{field_to_check}' in Composio)\n"
+                        f"\n  ✅ Found field: '{airweave_field}' (as '{field_to_check}' "
+                        f"in Composio)\n"
                     )
                     found = True
                     break

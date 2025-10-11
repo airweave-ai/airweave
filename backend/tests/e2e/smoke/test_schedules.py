@@ -675,6 +675,16 @@ class TestTemporalSchedules:
         if not config.is_local:
             pytest.skip("Temporal tests only run locally")
 
+        # Calculate optimal timing to ensure we catch an execution
+        now = datetime.datetime.now(timezone.utc)
+        seconds_into_minute = now.second
+        seconds_to_next_minute = 60 - seconds_into_minute
+
+        # Strategy: Wait until we're past the next minute boundary, then wait for
+        # the NEXT minute boundary to ensure schedule has time to register and fire
+        # Total wait: time to next minute + one full minute cycle + 30s buffer
+        calculated_wait_time = seconds_to_next_minute + 60 + 30
+
         # Create connection with schedule that runs EVERY MINUTE
         payload = {
             "name": f"Minute Schedule Execution Test {int(time.time())}",
@@ -700,15 +710,16 @@ class TestTemporalSchedules:
         sync_id = await self._get_sync_id(api_client, conn_id)
         assert sync_id is not None
 
-        # Wait a bit for schedule to be created in Temporal (async operation)
-        await asyncio.sleep(2)
+        # Wait longer for schedule to be created in Temporal (CI environments can be slow)
+        await asyncio.sleep(5)
 
         # Check schedule was created in Temporal
         has_schedule, _ = await self._check_temporal_schedules(sync_id, "* * * * *")
         assert has_schedule, "Schedule should be created in Temporal"
 
-        # Wait for at least one minute plus buffer for the schedule to trigger
-        await asyncio.sleep(105)  # 60s for one minute + 45s margin
+        # Wait calculated time to guarantee catching at least one schedule execution
+        # This accounts for current time position and ensures we wait through a full minute cycle
+        await asyncio.sleep(calculated_wait_time)
 
         # Check if sync job was created
         response = await api_client.get(f"/source-connections/{conn_id}/jobs")
@@ -716,7 +727,10 @@ class TestTemporalSchedules:
         jobs = response.json()
 
         # Should have at least one job from the schedule
-        assert len(jobs) > 0, "Schedule should have triggered a sync job"
+        assert len(jobs) > 0, (
+            f"Schedule should have triggered a sync job. "
+            f"Waited {calculated_wait_time}s (started at {seconds_into_minute}s into minute)"
+        )
 
         # Verify job is running or completed
         latest_job = jobs[0]
