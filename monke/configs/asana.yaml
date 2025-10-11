@@ -6,8 +6,8 @@ connector:
   type: asana
   auth_mode: composio
   composio_config:
-    account_id: ca_An5RWk5b0TpK
-    auth_config_id: ac_Rj03m2nNtePm
+    account_id: ca_yAtTQo-cdVxm
+    auth_config_id: ac_U0dDU1kATmkW
   config_fields:
     openai_model: "gpt-4.1-mini"  # Model for content generation
     rate_limit_delay_ms: 1000  # Increased delay between API calls for Asana

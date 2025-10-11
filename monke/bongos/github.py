@@ -27,8 +27,19 @@ class GitHubBongo(BaseBongo):
             **kwargs: Additional configuration including repo_name (required), entity_count, file_types
         """
         super().__init__(credentials)
-        # GitHub expects personal_access_token specifically
-        self.personal_access_token = credentials["personal_access_token"]
+        # GitHub authentication - support both direct and Composio auth
+        self.personal_access_token = (
+            credentials.get("personal_access_token")  # Direct auth
+            or credentials.get("access_token")  # Composio OAuth
+            or credentials.get("token")  # Alternative token field
+        )
+
+        if not self.personal_access_token:
+            available_fields = list(credentials.keys())
+            raise ValueError(
+                f"Missing GitHub authentication. Expected 'personal_access_token' (direct) or "
+                f"'access_token' (Composio). Available fields: {available_fields}"
+            )
 
         # repo_name is now in config_fields (kwargs) after migration
         self.repo_name = kwargs.get("repo_name")
@@ -98,9 +109,11 @@ class GitHubBongo(BaseBongo):
                 "expected_content": token,
             }
 
-        # Create all entities in parallel - runtime can handle the concurrency
-        tasks = [create_single_entity(i) for i in range(self.entity_count)]
-        entities = await asyncio.gather(*tasks)
+        # Create entities sequentially to avoid Git reference conflicts
+        entities = []
+        for i in range(self.entity_count):
+            entity = await create_single_entity(i)
+            entities.append(entity)
 
         self.test_files = entities  # Store for later operations
         return entities

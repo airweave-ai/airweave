@@ -5,11 +5,12 @@ description: "End-to-end test of GitHub connector sync functionality with increm
 connector:
   name: "github_test"
   type: "github"
-  auth_mode: direct
-  auth_fields:
-    personal_access_token: MONKE_GITHUB_PERSONAL_ACCESS_TOKEN
+  auth_mode: composio
+  composio_config:
+    account_id: ca_-27g9slfXmfa
+    auth_config_id: ac_0LHIJCwPS0Qk
   config_fields:
-    repo_name: MONKE_GITHUB_REPO_NAME  # Moved from auth_fields after migration
+    repo_name: fsm-secondary-test/datamonkey_test_repo
     branch: "main"
     openai_model: "gpt-4.1-mini"
     post_create_sleep_seconds: 15

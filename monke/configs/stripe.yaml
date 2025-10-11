@@ -1,6 +1,6 @@
 # Stripe connector test configuration
 name: "Stripe Connector Test"
-description: "End-to-end test of Stripe connector sync functionality with incremental deletion testing"
+description: "End-to-end test of Stripe connector sync functionality with incremental deletion testing (updated for testing)"
 
 connector:
   name: "stripe_test"

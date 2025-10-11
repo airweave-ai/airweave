@@ -5,12 +5,10 @@ description: "End-to-end test of Bitbucket connector sync functionality with inc
 connector:
   name: "bitbucket_test"
   type: "bitbucket"
-  auth_mode: direct
-  auth_fields:
-    username: MONKE_BITBUCKET_USERNAME  # Your Atlassian account email
-    app_password: MONKE_BITBUCKET_API_TOKEN  # Your API token (used as password)
-    workspace: MONKE_BITBUCKET_WORKSPACE
-    repo_slug: MONKE_BITBUCKET_REPO_SLUG
+  auth_mode: composio
+  composio_config:
+    account_id: ca_example_bitbucket
+    auth_config_id: ac_example_bitbucket
   config_fields:
     openai_model: "gpt-4.1-mini"
     branch: "main"
