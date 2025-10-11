@@ -1,10 +1,18 @@
-# Environment files
+########################################
+# 🛡 1. Environment & Secrets
+########################################
+# Ignore all .env files except example templates
 .env
 .env.*
+../.env
 !.env.example
+
+# Cursor (local dev config)
 .cursor/mcp.json
 
-# Python
+########################################
+# 🐍 2. Python
+########################################
 __pycache__/
 *.py[cod]
 *$py.class
@@ -16,8 +24,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-/lib/
-/lib64/
+lib/
+lib64/
 !frontend/src/lib/
 parts/
 sdist/
@@ -28,16 +36,28 @@ wheels/
 *.egg
 backend/venv/
 backend/.venv/
-venv
+venv/
 
-# Node
+# Python tooling & test
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+backend/coverage.xml
+
+########################################
+# 🪄 3. Node.js
+########################################
 node_modules/
 npm-debug.log
 yarn-debug.log
 yarn-error.log
 frontend/node_modules/
 
-# VS Code
+########################################
+# 🧰 4. IDEs & Editor Config
+########################################
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
@@ -45,7 +65,12 @@ frontend/node_modules/
 !.vscode/extensions.json
 !.vscode/run_worker_reload.py
 
-# OS specific
+.idea/
+.vs/
+
+########################################
+# 🧹 5. OS-specific Junk
+########################################
 .DS_Store
 .DS_Store?
 ._*
@@ -54,29 +79,97 @@ frontend/node_modules/
 ehthumbs.db
 Thumbs.db
 
-# Local development
-.idea/
-.pytest_cache/
-.coverage
-htmlcov/
-.env.local
+########################################
+# 🧪 6. Test & Temp
+########################################
+test_sync_stream.py
 local_storage/
+monke/venv/
+monke/.runs/
+logs/
+*.log
+*.tmp
 
-.DS_Store
+########################################
+# 🔐 7. SSL, Certificates & Keys
+########################################
+# Generic SSL/cert files
+*.pem
+*.key
+*.csr
+
+# Recursive protection for nested SSL files
+**/*.pem
+**/*.key
+**/*.csr
+
+# Allow example cert files
+!*.example.pem
+!*.example.key
+!*.example.csr
+
+# SSL directories
+ssl/
+!ssl/example/
+
+docker/ssl/
+!docker/ssl/example/
+docker/*.pem
+docker/*.key
+docker/*.csr
+!docker/*.example.pem
+!docker/*.example.key
+!docker/*.example.csr
+
+nginx/*.pem
+nginx/*.key
+nginx/*.csr
+
+########################################
+# 🧭 8. Nginx
+########################################
+# Ignore actual config, keep example
+nginx/nginx.conf
+!nginx/nginx.example.conf
+
+docker/nginx/nginx.conf
+!docker/nginx/nginx.example.conf
+
+########################################
+# 🐳 9. Docker
+########################################
+# Ignore Dockerfile backups and temp
+**/.dockerignore
+**/Dockerfile.*~
+**/Dockerfile.bak
+
+########################################
+# 🔐 10. Certbot
+########################################
+certbot/example/
+certbot/www/
+certbot/conf/
+certbot/logs/
+
+# Scripts
+certbot/scripts/
+!certbot/scripts/example_renew.sh
+!certbot/scripts/example_setup.sh
+
+# Env files
+certbot/.env
+certbot/.env.*
+!certbot/.env.example
+
+# Virtual environments
+certbot/venv/
+certbot/.venv/
+
+########################################
+# ✅ 11. Misc
+########################################
+# Python cache again (safety)
 __pycache__
 
-test_sync_stream.py
-
-.vs/
-backend/coverage.xml
-
-.coverage
-
-coverage.xml
-
-# Local storage folder
+# Local storage again (safety)
 local_storage/
-
-monke/venv/
-logs/
-monke/.runs/
