@@ -3,17 +3,59 @@
 set -x  # Enable debug mode to see what's happening
 set -euo pipefail
 
+# ---- Help function -----------------------------------------------------------
+show_help() {
+  cat << EOF
+Usage: ./start.sh [OPTIONS]
+
+Start Airweave services using Docker Compose with profile support.
+
+OPTIONS:
+  -h, --help              Show this help message and exit
+  --profile PROFILE       Set Docker Compose profile (production, development, openai, local)
+                          Default: local
+  --noninteractive        Run in non-interactive mode (skip prompts)
+  --compose-override FILE Use additional Docker Compose override file
+
+PROFILES:
+  production              Production deployment with proxy (nginx)
+  development             Development environment with all services
+  openai                  OpenAI-specific configuration
+  local                   Local development (default) - includes embeddings service
+
+EXAMPLES:
+  ./start.sh                           # Start with local profile
+  ./start.sh --profile production      # Start with production profile
+  ./start.sh --noninteractive          # Start without interactive prompts
+  ./start.sh -h                        # Show this help message
+
+For more information, visit: https://github.com/airweave-ai/airweave
+EOF
+  exit 0
+}
+
 # ---- Optional flags/env (do not change default behavior) ---------------------
 NONINTERACTIVE="${NONINTERACTIVE:-}"
 CI_COMPOSE_OVERRIDE="${CI_COMPOSE_OVERRIDE:-}"
+PROFILE="${PROFILE:-local}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    -h|--help) show_help ;;
+    --profile) PROFILE="$2"; shift 2 ;;
     --noninteractive) NONINTERACTIVE=1; shift ;;
     --compose-override) CI_COMPOSE_OVERRIDE="$2"; shift 2 ;;
-    *) echo "Unknown arg: $1"; exit 2 ;;
+    *) echo "Unknown arg: $1"; echo "Use --help for usage information."; exit 2 ;;
   esac
 done
+
+# Validate profile
+case "$PROFILE" in
+  production|development|openai|local) ;;
+  *) echo "Error: Invalid profile '$PROFILE'. Valid profiles: production, development, openai, local"; exit 1 ;;
+esac
+
+echo "Using profile: $PROFILE"
 
 # ---- Helpers -----------------------------------------------------------------
 have_cmd() { command -v "$1" >/dev/null 2>&1; }
@@ -188,8 +230,8 @@ if [ -n "${BACKEND_IMAGE:-}" ] || [ -n "${FRONTEND_IMAGE:-}" ]; then
     echo ""
 fi
 
-echo "Starting Docker services..."
-if ! $COMPOSE_CMD $COMPOSE_FILES up -d; then
+echo "Starting Docker services with profile: $PROFILE..."
+if ! $COMPOSE_CMD $COMPOSE_FILES --env-file .env --profile $PROFILE up -d; then
     echo "❌ Failed to start Docker services"
     echo "Check the error messages above and try running:"
     echo "  docker logs airweave-backend"
@@ -266,7 +308,7 @@ echo "🗄️  PostgreSQL:    localhost:5432"
 echo "🔍 Qdrant:        http://localhost:6333"
 echo ""
 echo "To view logs: docker logs <container-name>"
-echo "To stop all services: docker compose -f docker/docker-compose.yml down"
+echo "To stop all services: docker compose -f docker/docker-compose.yml --profile $PROFILE down"
 echo ""
 
 if [ "$SERVICES_HEALTHY" = true ]; then
