@@ -227,15 +227,16 @@ def generate_mdx_content(
                             # Properly format default value for JSX
                             default_value = field["default"]
 
-                            if isinstance(default_value, str):
+                            # Check bool before int/float because bool is a subclass of int in Python
+                            if isinstance(default_value, bool):
+                                # Booleans need curly braces and proper JS boolean values
+                                default_attr = f"  default={{{str(default_value).lower()}}}\n"
+                            elif isinstance(default_value, str):
                                 # String values need quotes
                                 default_attr = f'  default="{default_value}"\n'
                             elif isinstance(default_value, (int, float)):
                                 # Numbers need curly braces
                                 default_attr = f"  default={{{default_value}}}\n"
-                            elif isinstance(default_value, bool):
-                                # Booleans need curly braces and proper JS boolean values
-                                default_attr = f"  default={{{str(default_value).lower()}}}\n"
                             elif isinstance(default_value, list):
                                 # Arrays need curly braces and proper formatting
                                 default_attr = f"  default={{{str(default_value)}}}\n"

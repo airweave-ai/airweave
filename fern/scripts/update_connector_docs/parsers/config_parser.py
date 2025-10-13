@@ -94,8 +94,16 @@ def parse_config_file():
                                     elif isinstance(keyword.value, ast.Constant):
                                         default_value = keyword.value.value
                                     elif isinstance(keyword.value, ast.Name):
-                                        # For constants like True, False, None
-                                        default_value = keyword.value.id
+                                        # For constants like True, False, None - convert to actual Python values
+                                        name = keyword.value.id
+                                        if name == "True":
+                                            default_value = True
+                                        elif name == "False":
+                                            default_value = False
+                                        elif name == "None":
+                                            default_value = None
+                                        else:
+                                            default_value = name  # For other named constants
                                     elif isinstance(keyword.value, ast.List):
                                         default_value = "[]"  # Simplified for lists
                                     elif isinstance(keyword.value, ast.Dict):
