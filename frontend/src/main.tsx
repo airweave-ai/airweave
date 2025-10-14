@@ -38,6 +38,9 @@ function ApiAuthConnector({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// Initialize PostHog analytics (CASA-6: using npm package instead of CDN)
+initPostHog();
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <PostHogProvider>

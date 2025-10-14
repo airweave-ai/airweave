@@ -27,6 +27,7 @@ RUN npm install -g serve
 # Copy built app from builder stage
 COPY --from=builder /app/dist /app/dist
 COPY docker-entrypoint.sh /usr/local/bin/
+COPY serve.json /app/serve.json
 
 # Make entrypoint executable
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
