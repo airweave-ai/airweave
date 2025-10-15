@@ -23,10 +23,11 @@ _NUMBER_OF_EXPANSIONS = 4
 class QueryExpansions(BaseModel):
     """Structured output schema for LLM-generated query expansions."""
 
-    # Use a fixed-size tuple to generate Cerebras-compatible prefixItems schema
     model_config = {"extra": "forbid"}
 
-    alternatives: Tuple[str, str, str, str] = Field(
+    alternatives: List[str] = Field(
+        min_length=_NUMBER_OF_EXPANSIONS,
+        max_length=_NUMBER_OF_EXPANSIONS,
         description=(
             f"Exactly {_NUMBER_OF_EXPANSIONS} UNIQUE and DISTINCT alternative query "
             f"phrasings. Each alternative MUST be different from all others AND "
