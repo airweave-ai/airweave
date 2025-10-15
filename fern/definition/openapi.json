@@ -1770,6 +1770,149 @@
         "title": "AuthenticationMethod",
         "description": "Authentication methods for source connections."
       },
+      "BillingPeriod": {
+        "properties": {
+          "organization_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Organization Id",
+            "description": "Organization this period belongs to"
+          },
+          "period_start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Period Start",
+            "description": "Period start (inclusive)"
+          },
+          "period_end": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Period End",
+            "description": "Period end (exclusive)"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/BillingPlan",
+            "description": "Plan for this period"
+          },
+          "status": {
+            "$ref": "#/components/schemas/BillingPeriodStatus",
+            "description": "Period status"
+          },
+          "created_from": {
+            "$ref": "#/components/schemas/BillingTransition",
+            "description": "How this period was created"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "stripe_subscription_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stripe Subscription Id"
+          },
+          "stripe_invoice_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stripe Invoice Id"
+          },
+          "amount_cents": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Cents"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "paid_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid At"
+          },
+          "previous_period_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Period Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "modified_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Modified At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "organization_id",
+          "period_start",
+          "period_end",
+          "plan",
+          "status",
+          "created_from",
+          "id",
+          "created_at",
+          "modified_at"
+        ],
+        "title": "BillingPeriod",
+        "description": "Complete billing period representation."
+      },
+      "BillingPeriodStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "completed",
+          "ended_unpaid",
+          "trial",
+          "grace"
+        ],
+        "title": "BillingPeriodStatus",
+        "description": "Status of a billing period."
+      },
       "BillingPeriodUsage": {
         "properties": {
           "period_id": {
@@ -1843,6 +1986,45 @@
         ],
         "title": "BillingPeriodUsage",
         "description": "Complete usage data for a billing period."
+      },
+      "BillingPlan": {
+        "type": "string",
+        "enum": [
+          "trial",
+          "developer",
+          "pro",
+          "team",
+          "enterprise"
+        ],
+        "title": "BillingPlan",
+        "description": "Billing plan tiers."
+      },
+      "BillingStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "past_due",
+          "canceled",
+          "paused",
+          "trialing",
+          "trial_expired",
+          "grace_period"
+        ],
+        "title": "BillingStatus",
+        "description": "Billing subscription status."
+      },
+      "BillingTransition": {
+        "type": "string",
+        "enum": [
+          "initial_signup",
+          "renewal",
+          "upgrade",
+          "downgrade",
+          "reactivation",
+          "trial_conversion"
+        ],
+        "title": "BillingTransition",
+        "description": "How this billing period was created."
       },
       "Body_connect_slack_with_token_connections_direct_token_slack_post": {
         "properties": {
@@ -4752,6 +4934,17 @@
             "type": "array",
             "title": "Enabled Features",
             "description": "List of enabled feature flags for this organization"
+          },
+          "billing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrganizationBilling"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Complete billing information including current period"
           }
         },
         "type": "object",
@@ -4762,7 +4955,271 @@
           "modified_at"
         ],
         "title": "Organization",
-        "description": "Organization schema."
+        "description": "Organization schema with billing and feature information.\n\nThis is the primary organization schema used in API contexts, enriched with\nbilling (including current period) and feature flags for efficient access\nwithout additional database queries.\n\nAccess billing info compositionally:\n- organization.billing.plan\n- organization.billing.status\n- organization.billing.current_period"
+      },
+      "OrganizationBilling": {
+        "properties": {
+          "billing_plan": {
+            "$ref": "#/components/schemas/BillingPlan",
+            "description": "Current billing plan",
+            "default": "trial"
+          },
+          "billing_status": {
+            "$ref": "#/components/schemas/BillingStatus",
+            "description": "Current billing status",
+            "default": "active"
+          },
+          "billing_email": {
+            "type": "string",
+            "title": "Billing Email",
+            "description": "Billing contact email"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "organization_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Organization Id"
+          },
+          "stripe_customer_id": {
+            "type": "string",
+            "title": "Stripe Customer Id"
+          },
+          "stripe_subscription_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stripe Subscription Id"
+          },
+          "trial_ends_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trial Ends At"
+          },
+          "grace_period_ends_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grace Period Ends At"
+          },
+          "payment_method_added": {
+            "type": "boolean",
+            "title": "Payment Method Added",
+            "default": false
+          },
+          "current_period_start": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Period Start"
+          },
+          "current_period_end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Period End"
+          },
+          "cancel_at_period_end": {
+            "type": "boolean",
+            "title": "Cancel At Period End",
+            "default": false
+          },
+          "pending_plan_change": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BillingPlan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pending_plan_change_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Plan Change At"
+          },
+          "payment_method_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Method Id"
+          },
+          "last_payment_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Payment Status"
+          },
+          "last_payment_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Payment At"
+          },
+          "billing_metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Metadata"
+          },
+          "has_yearly_prepay": {
+            "type": "boolean",
+            "title": "Has Yearly Prepay",
+            "default": false
+          },
+          "yearly_prepay_started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Yearly Prepay Started At"
+          },
+          "yearly_prepay_expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Yearly Prepay Expires At"
+          },
+          "yearly_prepay_amount_cents": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Yearly Prepay Amount Cents"
+          },
+          "yearly_prepay_coupon_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Yearly Prepay Coupon Id"
+          },
+          "yearly_prepay_payment_intent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Yearly Prepay Payment Intent Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "modified_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Modified At"
+          },
+          "current_period": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BillingPeriod"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Current active billing period"
+          }
+        },
+        "type": "object",
+        "required": [
+          "billing_email",
+          "id",
+          "organization_id",
+          "stripe_customer_id",
+          "created_at",
+          "modified_at"
+        ],
+        "title": "OrganizationBilling",
+        "description": "Organization billing schema with current period information.\n\nThis schema is enriched with the current active billing period for\nefficient access to rate limits and billing status without additional queries."
       },
       "OrganizationCreate": {
         "properties": {
@@ -5048,6 +5505,17 @@
             "type": "array",
             "title": "Enabled Features",
             "description": "List of enabled feature flags for this organization"
+          },
+          "billing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrganizationBilling"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Complete billing information including current period"
           }
         },
         "type": "object",
