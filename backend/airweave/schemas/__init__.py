@@ -168,3 +168,11 @@ from .user import (
     UserUpdate,
     UserWithOrganizations,
 )
+
+# Rebuild models to resolve forward references
+# This is necessary because OrganizationBilling references BillingPeriod as a string
+OrganizationBilling.model_rebuild()
+Organization.model_rebuild()
+OrganizationWithRole.model_rebuild()
+UserOrganization.model_rebuild()
+User.model_rebuild()

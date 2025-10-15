@@ -1,4 +1,13 @@
-"""Tests for rate limiter service."""
+"""Tests for rate limiter service.
+
+Tests the minute-based rate limiting system with Redis-backed sliding window.
+
+Rate limits:
+- Developer: 10 requests/minute
+- Pro: 100 requests/minute
+- Team: 250 requests/minute
+- Enterprise: Unlimited
+"""
 
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -7,8 +16,9 @@ from uuid import uuid4
 import pytest
 
 from airweave.core.exceptions import RateLimitExceededException
-from airweave.core.rate_limiter_service import RateLimiterService
+from airweave.core.rate_limiter_service import RateLimiter
 from airweave.schemas.organization_billing import BillingPlan
+from airweave.schemas.rate_limit import RateLimitResult
 
 
 @pytest.fixture
@@ -18,9 +28,19 @@ def organization_id():
 
 
 @pytest.fixture
+def mock_ctx(organization_id):
+    """Create a mock API context with organization and billing."""
+    mock = MagicMock()
+    mock.organization.id = organization_id
+    mock.organization.billing = None  # Default to no billing
+    mock.logger = MagicMock()
+    return mock
+
+
+@pytest.fixture
 def mock_settings():
     """Mock settings to enable rate limiting."""
-    with patch("airweave.core.rate_limiter_service.settings") as mock:
+    with patch("airweave.core.config.settings") as mock:
         mock.LOCAL_DEVELOPMENT = False
         mock.RATE_LIMIT_ENABLED = True
         yield mock
@@ -40,69 +60,47 @@ def mock_redis():
         yield mock
 
 
-@pytest.fixture
-def mock_db_context():
-    """Mock database context for billing checks."""
-    with patch("airweave.core.rate_limiter_service.get_db_context") as mock_ctx:
-        mock_db = AsyncMock()
-        mock_ctx.return_value.__aenter__.return_value = mock_db
-        yield mock_db
-
-
-@pytest.fixture
-def mock_crud():
-    """Mock CRUD operations."""
-    with patch("airweave.core.rate_limiter_service.crud") as mock:
-        yield mock
-
-
 @pytest.mark.asyncio
 async def test_rate_limiter_allows_request_under_limit(
-    organization_id, mock_settings, mock_redis, mock_db_context, mock_crud
+    mock_ctx, mock_settings, mock_redis
 ):
     """Test that requests under the limit are allowed."""
-    # Setup billing with Pro plan (25 req/s)
+    # Setup billing with Pro plan (100 req/min)
     mock_billing = MagicMock()
-    mock_crud.organization_billing.get_by_organization = AsyncMock(return_value=mock_billing)
-
     mock_period = MagicMock()
     mock_period.plan = BillingPlan.PRO
-    mock_crud.billing_period.get_current_period = AsyncMock(return_value=mock_period)
+    mock_billing.current_period = mock_period
+    mock_ctx.organization.billing = mock_billing
 
-    # Current count is 10, limit is 25
-    mock_redis.client.pipeline().execute = AsyncMock(return_value=[None, 10])
+    # Current count is 50, limit is 100
+    mock_redis.client.pipeline().execute = AsyncMock(return_value=[None, 50])
 
-    limiter = RateLimiterService(organization_id=organization_id)
+    result = await RateLimiter.check_rate_limit(ctx=mock_ctx)
 
-    allowed, retry_after, limit, remaining = await limiter.check_rate_limit()
-
-    assert allowed is True
-    assert retry_after == 0.0
-    assert limit == 25
-    assert remaining == 14  # 25 - 10 - 1 = 14
+    assert result.allowed is True
+    assert result.retry_after == 0.0
+    assert result.limit == 100
+    assert result.remaining == 49  # 100 - 50 - 1 = 49
 
 
 @pytest.mark.asyncio
 async def test_rate_limiter_blocks_request_over_limit(
-    organization_id, mock_settings, mock_redis, mock_db_context, mock_crud
+    mock_ctx, mock_settings, mock_redis
 ):
     """Test that requests over the limit are blocked."""
-    # Setup billing with Developer plan (10 req/s)
+    # Setup billing with Developer plan (10 req/min)
     mock_billing = MagicMock()
-    mock_crud.organization_billing.get_by_organization = AsyncMock(return_value=mock_billing)
-
     mock_period = MagicMock()
     mock_period.plan = BillingPlan.DEVELOPER
-    mock_crud.billing_period.get_current_period = AsyncMock(return_value=mock_period)
+    mock_billing.current_period = mock_period
+    mock_ctx.organization.billing = mock_billing
 
     # Current count is 10, limit is 10 (at limit)
     mock_redis.client.pipeline().execute = AsyncMock(return_value=[None, 10])
     mock_redis.client.zrange = AsyncMock(return_value=[(b"1234567890.0", 1234567890.0)])
 
-    limiter = RateLimiterService(organization_id=organization_id)
-
     with pytest.raises(RateLimitExceededException) as exc_info:
-        await limiter.check_rate_limit()
+        await RateLimiter.check_rate_limit(ctx=mock_ctx)
 
     assert exc_info.value.limit == 10
     assert exc_info.value.remaining == 0
@@ -111,82 +109,71 @@ async def test_rate_limiter_blocks_request_over_limit(
 
 @pytest.mark.asyncio
 async def test_rate_limiter_unlimited_for_enterprise(
-    organization_id, mock_settings, mock_redis, mock_db_context, mock_crud
+    mock_ctx, mock_settings, mock_redis
 ):
     """Test that Enterprise plan has unlimited rate limit."""
     # Setup billing with Enterprise plan (None = unlimited)
     mock_billing = MagicMock()
-    mock_crud.organization_billing.get_by_organization = AsyncMock(return_value=mock_billing)
-
     mock_period = MagicMock()
     mock_period.plan = BillingPlan.ENTERPRISE
-    mock_crud.billing_period.get_current_period = AsyncMock(return_value=mock_period)
+    mock_billing.current_period = mock_period
+    mock_ctx.organization.billing = mock_billing
 
-    limiter = RateLimiterService(organization_id=organization_id)
+    result = await RateLimiter.check_rate_limit(ctx=mock_ctx)
 
-    allowed, retry_after, limit, remaining = await limiter.check_rate_limit()
-
-    assert allowed is True
-    assert retry_after == 0.0
-    assert limit == 0  # 0 indicates unlimited
-    assert remaining == 0
+    assert result.allowed is True
+    assert result.retry_after == 0.0
+    assert result.limit == 0  # 0 indicates unlimited
+    assert result.remaining == 0
 
 
 @pytest.mark.asyncio
 async def test_rate_limiter_legacy_org_without_billing(
-    organization_id, mock_settings, mock_redis, mock_db_context, mock_crud
+    mock_ctx, mock_settings, mock_redis
 ):
     """Test that legacy organizations without billing get Pro tier limits."""
-    # No billing record
-    mock_crud.organization_billing.get_by_organization = AsyncMock(return_value=None)
-
+    # No billing record - ctx.organization.billing is None (set in fixture)
     # Current count is 5
     mock_redis.client.pipeline().execute = AsyncMock(return_value=[None, 5])
 
-    limiter = RateLimiterService(organization_id=organization_id)
+    result = await RateLimiter.check_rate_limit(ctx=mock_ctx)
 
-    allowed, retry_after, limit, remaining = await limiter.check_rate_limit()
-
-    assert allowed is True
-    assert limit == 25  # Pro tier limit
+    assert result.allowed is True
+    assert result.limit == 100  # Pro tier limit (100 req/min)
 
 
 @pytest.mark.asyncio
 async def test_rate_limiter_redis_failure_allows_request(
-    organization_id, mock_settings, mock_redis, mock_db_context, mock_crud
+    mock_ctx, mock_settings, mock_redis
 ):
     """Test that Redis failures allow requests through (fail-open)."""
-    # Setup billing
+    # Setup billing with Pro plan (100 req/min)
     mock_billing = MagicMock()
-    mock_crud.organization_billing.get_by_organization = AsyncMock(return_value=mock_billing)
-
     mock_period = MagicMock()
     mock_period.plan = BillingPlan.PRO
-    mock_crud.billing_period.get_current_period = AsyncMock(return_value=mock_period)
+    mock_billing.current_period = mock_period
+    mock_ctx.organization.billing = mock_billing
 
     # Simulate Redis error
     mock_redis.client.pipeline().execute = AsyncMock(side_effect=Exception("Redis error"))
 
-    limiter = RateLimiterService(organization_id=organization_id)
-
     # Should not raise exception, should allow through
-    allowed, retry_after, limit, remaining = await limiter.check_rate_limit()
+    result = await RateLimiter.check_rate_limit(ctx=mock_ctx)
 
-    assert allowed is True
+    assert result.allowed is True
 
 
 @pytest.mark.asyncio
 async def test_rate_limiter_concurrent_requests(
-    organization_id, mock_settings, mock_redis, mock_db_context, mock_crud
+    mock_ctx, mock_settings, mock_redis
 ):
     """Test rate limiter handles concurrent requests correctly."""
-    # Setup billing with Developer plan (10 req/s)
+    # Setup billing with Developer plan (10 req/min)
     mock_billing = MagicMock()
-    mock_crud.organization_billing.get_by_organization = AsyncMock(return_value=mock_billing)
-
     mock_period = MagicMock()
     mock_period.plan = BillingPlan.DEVELOPER
-    mock_crud.billing_period.get_current_period = AsyncMock(return_value=mock_period)
+    mock_billing.current_period = mock_period
+    mock_ctx.organization.billing = mock_billing
 
     # Simulate increasing count for each call
     call_count = 0
@@ -198,103 +185,69 @@ async def test_rate_limiter_concurrent_requests(
 
     mock_redis.client.pipeline().execute = mock_execute
 
-    limiter = RateLimiterService(organization_id=organization_id)
-
     # Make 5 concurrent requests
-    tasks = [limiter.check_rate_limit() for _ in range(5)]
+    tasks = [RateLimiter.check_rate_limit(ctx=mock_ctx) for _ in range(5)]
     results = await asyncio.gather(*tasks, return_exceptions=False)
 
-    # All should succeed since we're under the limit of 10
+    # All should succeed since we're under the limit of 10 req/min
     assert len(results) == 5
     for result in results:
-        allowed, retry_after, limit, remaining = result
-        assert allowed is True
-        assert limit == 10
-
-
-@pytest.mark.asyncio
-async def test_rate_limiter_caches_limit(
-    organization_id, mock_settings, mock_redis, mock_db_context, mock_crud
-):
-    """Test that rate limiter caches the limit to avoid repeated DB queries."""
-    # Setup billing
-    mock_billing = MagicMock()
-    mock_crud.organization_billing.get_by_organization = AsyncMock(return_value=mock_billing)
-
-    mock_period = MagicMock()
-    mock_period.plan = BillingPlan.TEAM
-    mock_crud.billing_period.get_current_period = AsyncMock(return_value=mock_period)
-
-    mock_redis.client.pipeline().execute = AsyncMock(return_value=[None, 0])
-
-    limiter = RateLimiterService(organization_id=organization_id)
-
-    # First call
-    await limiter.check_rate_limit()
-    assert mock_crud.billing_period.get_current_period.call_count == 1
-
-    # Second call should use cached limit
-    await limiter.check_rate_limit()
-    assert mock_crud.billing_period.get_current_period.call_count == 1  # Still 1
+        assert result.allowed is True
+        assert result.limit == 10
 
 
 @pytest.mark.asyncio
 async def test_rate_limiter_plan_limits():
-    """Test that different plans have correct rate limits."""
-    assert RateLimiterService.PLAN_LIMITS[BillingPlan.DEVELOPER] == 10
-    assert RateLimiterService.PLAN_LIMITS[BillingPlan.PRO] == 25
-    assert RateLimiterService.PLAN_LIMITS[BillingPlan.TEAM] == 50
-    assert RateLimiterService.PLAN_LIMITS[BillingPlan.ENTERPRISE] is None
+    """Test that different plans have correct rate limits (requests per minute)."""
+    assert RateLimiter.PLAN_LIMITS[BillingPlan.DEVELOPER] == 10  # 10 req/min
+    assert RateLimiter.PLAN_LIMITS[BillingPlan.PRO] == 100  # 100 req/min
+    assert RateLimiter.PLAN_LIMITS[BillingPlan.TEAM] == 250  # 250 req/min
+    assert RateLimiter.PLAN_LIMITS[BillingPlan.ENTERPRISE] is None  # Unlimited
 
 
 @pytest.mark.asyncio
 async def test_rate_limiter_redis_key_format(organization_id):
     """Test that Redis keys are formatted correctly."""
-    limiter = RateLimiterService(organization_id=organization_id)
-    key = limiter._get_redis_key()
+    key = RateLimiter._get_redis_key(organization_id)
 
     expected_key = f"rate_limit:org:{organization_id}"
     assert key == expected_key
 
 
 @pytest.mark.asyncio
-@patch("airweave.core.rate_limiter_service.settings")
+@patch("airweave.core.config.settings")
 async def test_rate_limiter_bypassed_in_local_dev(
-    mock_settings, organization_id, mock_redis, mock_db_context, mock_crud
+    mock_settings, mock_ctx, mock_redis
 ):
     """Test that rate limiting is bypassed in local development."""
     mock_settings.LOCAL_DEVELOPMENT = True
     mock_settings.RATE_LIMIT_ENABLED = True
 
-    limiter = RateLimiterService(organization_id=organization_id)
-
-    allowed, retry_after, limit, remaining = await limiter.check_rate_limit()
+    result = await RateLimiter.check_rate_limit(ctx=mock_ctx)
 
     # Should bypass all checks
-    assert allowed is True
-    assert limit == 9999
-    assert remaining == 9999
+    assert result.allowed is True
+    assert result.limit == 9999
+    assert result.remaining == 9999
 
     # Redis should not be called
     mock_redis.client.pipeline.assert_not_called()
 
 
 @pytest.mark.asyncio
-@patch("airweave.core.rate_limiter_service.settings")
+@patch("airweave.core.config.settings")
 async def test_rate_limiter_disabled_via_config(
-    mock_settings, organization_id, mock_redis, mock_db_context, mock_crud
+    mock_settings, mock_ctx, mock_redis
 ):
     """Test that rate limiting can be disabled via config."""
     mock_settings.LOCAL_DEVELOPMENT = False
     mock_settings.RATE_LIMIT_ENABLED = False
 
-    limiter = RateLimiterService(organization_id=organization_id)
-
-    allowed, retry_after, limit, remaining = await limiter.check_rate_limit()
+    result = await RateLimiter.check_rate_limit(ctx=mock_ctx)
 
     # Should bypass all checks
-    assert allowed is True
-    assert limit == 9999
+    assert result.allowed is True
+    assert result.limit == 9999
 
     # Redis should not be called
     mock_redis.client.pipeline.assert_not_called()

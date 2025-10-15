@@ -1,11 +1,16 @@
 """Organization billing schemas."""
 
+from __future__ import annotations
+
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:
+    from airweave.schemas.billing_period import BillingPeriod
 
 
 class BillingPlan(str, Enum):
@@ -118,9 +123,16 @@ class OrganizationBillingInDBBase(OrganizationBillingBase):
 
 
 class OrganizationBilling(OrganizationBillingInDBBase):
-    """Organization billing schema."""
+    """Organization billing schema with current period information.
 
-    pass
+    This schema is enriched with the current active billing period for
+    efficient access to rate limits and billing status without additional queries.
+    """
+
+    current_period: Optional["BillingPeriod"] = Field(
+        None,
+        description="Current active billing period",
+    )
 
 
 class PlanLimits(BaseModel):

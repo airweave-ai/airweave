@@ -9,7 +9,7 @@ from typing import Optional
 from uuid import UUID
 
 from airweave import schemas
-from airweave.core.config import settings
+from airweave.core import credentials
 from airweave.core.logging import ContextualLogger
 from airweave.core.logging import logger as default_logger
 from airweave.core.redis_client import redis_client
@@ -18,17 +18,19 @@ from airweave.core.redis_client import redis_client
 class ContextCacheService:
     """Redis-backed cache for API context data.
 
-    Caches organization and user data to reduce database queries on every request.
-    Implements cache-aside pattern with automatic TTL-based expiration.
+    Caches organization, user, and API key mapping data to reduce database queries
+    on every request. Implements cache-aside pattern with automatic TTL-based expiration.
     """
 
     # Cache key prefixes
     ORG_KEY_PREFIX = "context:org"
     USER_KEY_PREFIX = "context:user"
+    API_KEY_PREFIX = "context:apikey"
 
     # Cache TTLs (in seconds)
-    ORG_TTL = 300  # 5 minutes - orgs change infrequently
-    USER_TTL = 180  # 3 minutes - users change less frequently than sessions
+    ORG_TTL = 300
+    USER_TTL = 180
+    API_KEY_TTL = 600
 
     def __init__(self, logger: Optional[ContextualLogger] = None):
         """Initialize the context cache service.
@@ -61,6 +63,17 @@ class ContextCacheService:
         # Use email as key since that's how we look up users
         return f"{self.USER_KEY_PREFIX}:{user_email}"
 
+    def _api_key_cache_key(self, api_key_hash: str) -> str:
+        """Get Redis cache key for API key mapping.
+
+        Args:
+            api_key_hash: Hash or partial hash of the API key (for security)
+
+        Returns:
+            Redis key string
+        """
+        return f"{self.API_KEY_PREFIX}:{api_key_hash}"
+
     async def get_organization(self, org_id: UUID) -> Optional[schemas.Organization]:
         """Get organization from cache.
 
@@ -70,10 +83,6 @@ class ContextCacheService:
         Returns:
             Organization schema if cached, None otherwise
         """
-        # Skip cache in local development
-        if settings.LOCAL_DEVELOPMENT:
-            return None
-
         try:
             cache_key = self._org_cache_key(org_id)
             cached_data = await redis_client.client.get(cache_key)
@@ -88,7 +97,7 @@ class ContextCacheService:
 
         except Exception as e:
             # Log error but don't fail - just return None to fall back to DB
-            self.logger.warning(f"Error reading organization from cache: {e}. Falling back to DB.")
+            self.logger.error(f"Error reading organization from cache: {e}. Falling back to DB.")
             return None
 
     async def set_organization(self, organization: schemas.Organization) -> bool:
@@ -100,10 +109,6 @@ class ContextCacheService:
         Returns:
             True if cached successfully, False otherwise
         """
-        # Skip cache in local development
-        if settings.LOCAL_DEVELOPMENT:
-            return False
-
         try:
             cache_key = self._org_cache_key(organization.id)
             # Serialize to JSON
@@ -130,10 +135,6 @@ class ContextCacheService:
         Returns:
             User schema if cached, None otherwise
         """
-        # Skip cache in local development
-        if settings.LOCAL_DEVELOPMENT:
-            return None
-
         try:
             cache_key = self._user_cache_key(user_email)
             cached_data = await redis_client.client.get(cache_key)
@@ -147,7 +148,7 @@ class ContextCacheService:
             return None
 
         except Exception as e:
-            self.logger.warning(f"Error reading user from cache: {e}. Falling back to DB.")
+            self.logger.error(f"Error reading user from cache: {e}. Falling back to DB.")
             return None
 
     async def set_user(self, user: schemas.User) -> bool:
@@ -159,10 +160,6 @@ class ContextCacheService:
         Returns:
             True if cached successfully, False otherwise
         """
-        # Skip cache in local development
-        if settings.LOCAL_DEVELOPMENT:
-            return False
-
         try:
             cache_key = self._user_cache_key(user.email)
             # Serialize to JSON
@@ -179,80 +176,89 @@ class ContextCacheService:
             self.logger.warning(f"Error caching user: {e}. Request will continue.")
             return False
 
-    async def invalidate_organization(self, org_id: UUID) -> bool:
-        """Invalidate (delete) organization from cache.
+    async def get_api_key_org_id(self, api_key: str) -> Optional[UUID]:
+        """Get organization ID for an API key from cache.
 
-        Call this when organization data changes (e.g., after update).
+        The API key is encrypted before being used as a cache key for security,
+        so the raw API key is never stored in Redis.
 
         Args:
+            api_key: The API key string
+
+        Returns:
+            Organization UUID if cached, None otherwise
+        """
+        try:
+            # Encrypt the API key for secure cache key
+            encrypted_key = credentials.encrypt({"key": api_key})
+            cache_key = self._api_key_cache_key(encrypted_key)
+            cached_data = await redis_client.client.get(cache_key)
+
+            if cached_data:
+                self.logger.debug("Cache HIT: API key organization mapping")
+                # Value is just the UUID string
+                return UUID(cached_data.decode("utf-8"))
+
+            self.logger.debug("Cache MISS: API key organization mapping")
+            return None
+
+        except Exception as e:
+            self.logger.error(f"Error reading API key mapping from cache: {e}. Falling back to DB.")
+            return None
+
+    async def set_api_key_org_id(self, api_key: str, org_id: UUID) -> bool:
+        """Store API key → organization ID mapping in cache.
+
+        The API key is encrypted for the cache key (so raw key is never in Redis),
+        but the org_id value is stored as plain text since it's not sensitive.
+
+        Args:
+            api_key: The API key string
             org_id: Organization UUID
 
         Returns:
-            True if invalidated successfully, False otherwise
+            True if cached successfully, False otherwise
         """
         try:
-            cache_key = self._org_cache_key(org_id)
-            await redis_client.client.delete(cache_key)
-            self.logger.debug(f"Invalidated organization cache: {org_id}")
+            # Encrypt the API key for secure cache key
+            encrypted_key = credentials.encrypt({"key": api_key})
+            cache_key = self._api_key_cache_key(encrypted_key)
+
+            # Store org_id as plain string
+            org_id_str = str(org_id)
+
+            # Store with TTL
+            await redis_client.client.setex(cache_key, self.API_KEY_TTL, org_id_str)
+
+            self.logger.debug(f"Cached API key mapping for {self.API_KEY_TTL}s")
             return True
 
         except Exception as e:
-            self.logger.warning(f"Error invalidating organization cache: {e}")
+            self.logger.warning(f"Error caching API key mapping: {e}. Request will continue.")
             return False
 
-    async def invalidate_user(self, user_email: str) -> bool:
-        """Invalidate (delete) user from cache.
+    async def invalidate_api_key(self, api_key: str) -> bool:
+        """Invalidate cached API key mapping.
 
-        Call this when user data changes (e.g., after update).
+        Call this when an API key is deleted or modified.
 
         Args:
-            user_email: User email address
+            api_key: The API key string
 
         Returns:
             True if invalidated successfully, False otherwise
         """
         try:
-            cache_key = self._user_cache_key(user_email)
+            # Encrypt the API key to get the cache key
+            encrypted_key = credentials.encrypt({"key": api_key})
+            cache_key = self._api_key_cache_key(encrypted_key)
             await redis_client.client.delete(cache_key)
-            self.logger.debug(f"Invalidated user cache: {user_email}")
+            self.logger.debug("Invalidated API key cache")
             return True
 
         except Exception as e:
-            self.logger.warning(f"Error invalidating user cache: {e}")
+            self.logger.warning(f"Error invalidating API key cache: {e}")
             return False
 
-    async def get_cache_stats(self) -> dict:
-        """Get cache statistics for monitoring.
 
-        Returns:
-            Dict with cache statistics
-        """
-        try:
-            # Count cached organizations
-            org_keys = []
-            async for key in redis_client.client.scan_iter(match=f"{self.ORG_KEY_PREFIX}:*"):
-                org_keys.append(key)
-
-            # Count cached users
-            user_keys = []
-            async for key in redis_client.client.scan_iter(match=f"{self.USER_KEY_PREFIX}:*"):
-                user_keys.append(key)
-
-            return {
-                "organizations_cached": len(org_keys),
-                "users_cached": len(user_keys),
-                "org_ttl": self.ORG_TTL,
-                "user_ttl": self.USER_TTL,
-            }
-
-        except Exception as e:
-            self.logger.error(f"Error getting cache stats: {e}")
-            return {
-                "error": str(e),
-                "organizations_cached": 0,
-                "users_cached": 0,
-            }
-
-
-# Global instance for convenience
 context_cache = ContextCacheService()

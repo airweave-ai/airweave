@@ -31,6 +31,8 @@ navigation:
     path: docs/pages/mcp-server.mdx
   - page: Add New Connector
     path: docs/pages/add-new-source.mdx
+  - page: Rate Limits
+    path: docs/pages/rate-limits.mdx
   - section: Authentication
     contents:
     - section: Auth Providers

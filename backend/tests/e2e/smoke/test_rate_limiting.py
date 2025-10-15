@@ -1,8 +1,20 @@
 """
 Smoke tests for rate limiting functionality.
 
-Tests the rate limiting system by making multiple concurrent requests
-to verify that rate limits are enforced correctly across the API.
+Tests the rate limiting system with minute-based windows by making multiple
+concurrent requests to verify that rate limits are enforced correctly across the API.
+
+Rate limit configuration:
+- Window: 60 seconds (1 minute)
+- Developer plan: 10 requests/minute
+- Pro plan: 100 requests/minute
+- Team plan: 250 requests/minute
+- Enterprise plan: Unlimited
+
+NOTE: These tests only run in local development environments to avoid
+interfering with CI/CD pipelines and production systems.
+Run with: pytest -m rate_limit
+Skip with: pytest -m "not rate_limit" (default behavior in CI)
 """
 
 import asyncio
@@ -12,221 +24,86 @@ from typing import Dict, List, Tuple
 import httpx
 import pytest
 
+from config import settings
+
+# Module-level marker - applies to all tests in this file
+pytestmark = [
+    pytest.mark.rate_limit,
+    pytest.mark.asyncio,
+]
+
+
+@pytest.fixture(scope="module", autouse=True)
+def skip_if_not_local():
+    """Skip all rate limit tests if not in local development."""
+    if not settings.is_local:
+        pytest.skip("Rate limit tests only run in local development environment", allow_module_level=True)
+
 
 class TestRateLimiting:
-    """Test suite for API rate limiting."""
+    """Test suite for API rate limiting with minute-based windows."""
 
-    @pytest.mark.asyncio
     async def test_rate_limit_headers_present(self, api_client: httpx.AsyncClient):
         """Test that rate limit headers are present in successful responses."""
-        response = await api_client.get("/collections/")
+        response = await api_client.get("/sources/github")
 
         assert response.status_code == 200
 
-        # Check for RFC 6585 compliant rate limit headers
-        assert "RateLimit-Limit" in response.headers, "Missing RateLimit-Limit header"
+        # Check for RFC 6585 compliant rate limit headers (case-insensitive)
+        assert "ratelimit-limit" in response.headers, "Missing RateLimit-Limit header"
         assert (
-            "RateLimit-Remaining" in response.headers
+            "ratelimit-remaining" in response.headers
         ), "Missing RateLimit-Remaining header"
-        assert "RateLimit-Reset" in response.headers, "Missing RateLimit-Reset header"
+        assert "ratelimit-reset" in response.headers, "Missing RateLimit-Reset header"
 
         # Verify header values are valid
-        limit = int(response.headers["RateLimit-Limit"])
-        remaining = int(response.headers["RateLimit-Remaining"])
-        reset = int(response.headers["RateLimit-Reset"])
+        limit = int(response.headers["ratelimit-limit"])
+        remaining = int(response.headers["ratelimit-remaining"])
+        reset = int(response.headers["ratelimit-reset"])
 
         assert limit > 0, "Rate limit should be positive"
         assert remaining >= 0, "Remaining requests should be non-negative"
         assert reset > 0, "Reset timestamp should be positive"
 
-    @pytest.mark.asyncio
+        print(f"\n📊 Rate Limit Info: {limit} requests/minute, {remaining} remaining")
+
     async def test_concurrent_requests_under_limit(self, api_client: httpx.AsyncClient):
         """Test that concurrent requests under the limit all succeed."""
 
         async def make_request(index: int) -> Tuple[int, Dict[str, str]]:
             """Make a single request and return status code and headers."""
-            response = await api_client.get("/collections/")
+            response = await api_client.get("/sources/github")
             return (response.status_code, dict(response.headers))
 
-        # Make 5 concurrent requests (should be under most rate limits)
+        # Make 5 concurrent requests (should be under all plan rate limits)
+        print("\n🚀 Sending 5 concurrent requests...")
         results = await asyncio.gather(*[make_request(i) for i in range(5)])
 
         # All requests should succeed
+        successful = 0
         for status_code, headers in results:
             assert status_code == 200, f"Expected 200, got {status_code}"
-            assert "RateLimit-Limit" in headers
+            assert "ratelimit-limit" in headers
+            successful += 1
 
-    @pytest.mark.asyncio
-    async def test_burst_requests_trigger_rate_limit(
-        self, api_client: httpx.AsyncClient, collection: Dict
-    ):
-        """Test that a burst of requests triggers rate limiting."""
-        # Get the rate limit from first request
-        initial_response = await api_client.get(f"/collections/{collection['readable_id']}")
-        rate_limit = int(initial_response.headers.get("RateLimit-Limit", 25))
+        print(f"✅ All {successful} requests succeeded")
 
-        print(f"\n📊 Rate Limit: {rate_limit} requests/second")
-
-        # Make many concurrent requests to exceed the limit
-        # We'll make 3x the rate limit to ensure we trigger it
-        num_requests = rate_limit * 3
-
-        async def make_request(index: int) -> Dict:
-            """Make a request and capture the response details."""
-            try:
-                response = await api_client.get(f"/collections/{collection['readable_id']}")
-                return {
-                    "index": index,
-                    "status_code": response.status_code,
-                    "headers": dict(response.headers),
-                    "success": response.status_code == 200,
-                    "rate_limited": response.status_code == 429,
-                }
-            except Exception as e:
-                return {
-                    "index": index,
-                    "status_code": None,
-                    "error": str(e),
-                    "success": False,
-                    "rate_limited": False,
-                }
-
-        # Fire all requests simultaneously
-        print(f"🚀 Sending {num_requests} concurrent requests...")
-        start_time = time.time()
-        results = await asyncio.gather(*[make_request(i) for i in range(num_requests)])
-        duration = time.time() - start_time
-
-        # Analyze results
-        successful = [r for r in results if r.get("success")]
-        rate_limited = [r for r in results if r.get("rate_limited")]
-        errors = [r for r in results if r.get("error")]
-
-        print(f"⏱️  Duration: {duration:.2f}s")
-        print(f"✅ Successful: {len(successful)}")
-        print(f"🛑 Rate Limited (429): {len(rate_limited)}")
-        print(f"❌ Errors: {len(errors)}")
-
-        # Assertions
-        assert len(rate_limited) > 0, (
-            f"Expected some requests to be rate limited, but all {len(successful)} succeeded. "
-            f"Rate limit: {rate_limit} req/s"
-        )
-
-        # Verify 429 responses have proper headers
-        for result in rate_limited[:5]:  # Check first 5 rate limited responses
-            headers = result.get("headers", {})
-            assert "Retry-After" in headers, "Missing Retry-After header in 429 response"
-            assert (
-                "RateLimit-Limit" in headers
-            ), "Missing RateLimit-Limit header in 429 response"
-            assert (
-                "RateLimit-Remaining" in headers
-            ), "Missing RateLimit-Remaining header in 429 response"
-
-            # Verify remaining is 0 when rate limited
-            remaining = headers.get("RateLimit-Remaining", "")
-            assert remaining == "0", f"Expected remaining=0, got {remaining}"
-
-    @pytest.mark.asyncio
-    async def test_rate_limit_reset_after_window(self, api_client: httpx.AsyncClient):
-        """Test that rate limit resets after the time window."""
-        # Make a request to get current rate limit
-        response = await api_client.get("/collections/")
-        rate_limit = int(response.headers.get("RateLimit-Limit", 25))
-
-        print(f"\n📊 Rate Limit: {rate_limit} requests/second")
-
-        # Make requests up to the limit
-        async def make_burst_request(index: int) -> int:
-            response = await api_client.get("/collections/")
-            return response.status_code
-
-        # First burst - should succeed or get rate limited
-        print(f"🚀 First burst: {rate_limit + 5} requests...")
-        first_burst = await asyncio.gather(
-            *[make_burst_request(i) for i in range(rate_limit + 5)]
-        )
-
-        rate_limited_count = sum(1 for status in first_burst if status == 429)
-        print(f"🛑 Rate limited: {rate_limited_count}")
-
-        if rate_limited_count > 0:
-            # Wait for rate limit window to reset (1 second + buffer)
-            print("⏳ Waiting for rate limit window to reset (1.5s)...")
-            await asyncio.sleep(1.5)
-
-            # Second burst - should succeed again
-            print(f"🚀 Second burst after reset: 5 requests...")
-            second_burst = await asyncio.gather(*[make_burst_request(i) for i in range(5)])
-
-            # At least some requests should succeed after reset
-            successful_after_reset = sum(1 for status in second_burst if status == 200)
-            print(f"✅ Successful after reset: {successful_after_reset}")
-
-            assert successful_after_reset > 0, (
-                "Expected some requests to succeed after rate limit window reset"
-            )
-
-    @pytest.mark.asyncio
-    async def test_different_endpoints_share_rate_limit(
-        self, api_client: httpx.AsyncClient, collection: Dict
-    ):
-        """Test that rate limits are applied per organization across all endpoints."""
-        # Get rate limit
-        response = await api_client.get("/collections/")
-        rate_limit = int(response.headers.get("RateLimit-Limit", 25))
-
-        print(f"\n📊 Rate Limit: {rate_limit} requests/second")
-
-        # Make requests to different endpoints
-        async def make_mixed_request(index: int) -> int:
-            """Make requests to various endpoints."""
-            endpoints = [
-                "/collections/",
-                f"/collections/{collection['readable_id']}",
-                "/sources/",
-            ]
-            endpoint = endpoints[index % len(endpoints)]
-            try:
-                response = await api_client.get(endpoint)
-                return response.status_code
-            except:
-                return 0
-
-        # Make many requests across different endpoints
-        num_requests = rate_limit * 2
-        print(f"🚀 Sending {num_requests} requests across multiple endpoints...")
-
-        results = await asyncio.gather(*[make_mixed_request(i) for i in range(num_requests)])
-
-        rate_limited_count = sum(1 for status in results if status == 429)
-        successful_count = sum(1 for status in results if status == 200)
-
-        print(f"✅ Successful: {successful_count}")
-        print(f"🛑 Rate Limited: {rate_limited_count}")
-
-        # Should have some rate limited responses
-        assert rate_limited_count > 0, (
-            "Expected rate limiting across different endpoints, "
-            f"but all {successful_count} requests succeeded"
-        )
-
-    @pytest.mark.asyncio
     async def test_rate_limit_headers_decrement(self, api_client: httpx.AsyncClient):
         """Test that RateLimit-Remaining decreases with each request."""
+        print("\n🔍 Testing rate limit header decrement...")
+
         # Make sequential requests and track remaining count
         remaining_values = []
 
         for i in range(5):
             response = await api_client.get("/collections/")
             if response.status_code == 200:
-                remaining = int(response.headers.get("RateLimit-Remaining", 0))
+                remaining = int(response.headers.get("ratelimit-remaining", 0))
                 remaining_values.append(remaining)
                 print(f"Request {i + 1}: Remaining = {remaining}")
 
-            # Small delay to avoid triggering rate limit
-            await asyncio.sleep(0.1)
+            # Small delay to avoid overwhelming the system
+            await asyncio.sleep(0.05)
 
         # Verify we got some remaining values
         assert len(remaining_values) >= 3, "Should have captured at least 3 remaining values"
@@ -237,22 +114,25 @@ class TestRateLimiting:
         print(f"\n📊 Remaining values: {remaining_values}")
         print(f"First remaining: {first_remaining}")
 
-        # At least verify all values are non-negative
+        # At least verify all values are non-negative and reasonable
         for remaining in remaining_values:
             assert remaining >= 0, f"Remaining should be non-negative, got {remaining}"
 
-    @pytest.mark.asyncio
+        # In a minute-based window, remaining should not increase during sequential requests
+        # (unless the first request from the previous window expires)
+        print("✅ All remaining values are valid")
+
     async def test_retry_after_header_accuracy(
         self, api_client: httpx.AsyncClient, collection: Dict
     ):
         """Test that Retry-After header provides accurate timing."""
         # Get rate limit
-        response = await api_client.get("/collections/")
-        rate_limit = int(response.headers.get("RateLimit-Limit", 25))
+        response = await api_client.get("/sources/github")
+        rate_limit = int(response.headers.get("ratelimit-limit", 100))
 
         # Trigger rate limiting
         async def make_request() -> httpx.Response:
-            return await api_client.get(f"/collections/{collection['readable_id']}")
+            return await api_client.get(f"/sources/github")
 
         print(f"\n🚀 Triggering rate limit with {rate_limit + 10} requests...")
         responses = await asyncio.gather(*[make_request() for _ in range(rate_limit + 10)])
@@ -265,33 +145,32 @@ class TestRateLimiting:
                 break
 
         if rate_limited_response:
-            retry_after = int(rate_limited_response.headers.get("Retry-After", 0))
+            retry_after = int(rate_limited_response.headers.get("retry-after", 0))
             print(f"⏰ Retry-After: {retry_after} seconds")
 
             assert retry_after > 0, "Retry-After should be positive"
-            assert retry_after <= 2, (
-                f"Retry-After should be reasonable (≤2s for 1s window), got {retry_after}s"
+            assert retry_after <= 60, (
+                f"Retry-After should be reasonable (≤60s for 60s window), got {retry_after}s"
             )
         else:
             print("ℹ️  No rate limiting triggered (rate limit might be very high)")
 
-    @pytest.mark.asyncio
     async def test_post_requests_also_rate_limited(
         self, api_client: httpx.AsyncClient
     ):
         """Test that POST requests are also subject to rate limiting."""
         # Get rate limit
         response = await api_client.get("/collections/")
-        rate_limit = int(response.headers.get("RateLimit-Limit", 25))
+        rate_limit = int(response.headers.get("ratelimit-limit", 100))
 
-        print(f"\n📊 Rate Limit: {rate_limit} requests/second")
+        print(f"\n📊 Rate Limit: {rate_limit} requests/minute")
 
         # Make many POST requests to trigger rate limiting
         async def create_collection(index: int) -> int:
             """Attempt to create a collection."""
             collection_data = {"name": f"Rate Limit Test {index} {int(time.time())}"}
             try:
-                response = await api_client.post("/collections/", json=collection_data)
+                response = await api_client.post("/sources/github", json=collection_data)
 
                 # Clean up if successful
                 if response.status_code == 200:
@@ -328,3 +207,45 @@ class TestRateLimiting:
 
         # Give a moment for cleanup tasks to complete
         await asyncio.sleep(0.5)
+
+    async def test_different_endpoints_share_rate_limit(
+        self, api_client: httpx.AsyncClient
+    ):
+        """Test that rate limits are applied per organization across all endpoints."""
+        # Get rate limit
+        response = await api_client.get("/sources/github")
+        rate_limit = int(response.headers.get("ratelimit-limit", 100))
+
+        print(f"\n📊 Rate Limit: {rate_limit} requests/minute")
+
+        # Make requests to different endpoints
+        async def make_mixed_request(index: int) -> int:
+            """Make requests to various endpoints."""
+            endpoints = [
+                "/sources/github",
+                "/sources/",
+            ]
+            endpoint = endpoints[index % len(endpoints)]
+            try:
+                response = await api_client.get(endpoint)
+                return response.status_code
+            except:
+                return 0
+
+        # Make many requests across different endpoints
+        num_requests = min(rate_limit * 2, 200)  # Cap for test performance
+        print(f"🚀 Sending {num_requests} requests across multiple endpoints...")
+
+        results = await asyncio.gather(*[make_mixed_request(i) for i in range(num_requests)])
+
+        rate_limited_count = sum(1 for status in results if status == 429)
+        successful_count = sum(1 for status in results if status == 200)
+
+        print(f"✅ Successful: {successful_count}")
+        print(f"🛑 Rate Limited: {rate_limited_count}")
+
+        # Should have some rate limited responses
+        assert rate_limited_count > 0, (
+            "Expected rate limiting across different endpoints, "
+            f"but all {successful_count} requests succeeded"
+        )

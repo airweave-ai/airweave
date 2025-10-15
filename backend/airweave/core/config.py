@@ -170,10 +170,8 @@ class Settings(BaseSettings):
     OPENAI_MAX_CONCURRENT: int = 20  # Max concurrent OpenAI API requests
     CTTI_MAX_CONCURRENT: int = 3  # Max concurrent CTTI (ClinicalTrials.gov) requests
 
-    # Rate limiting configuration
-    RATE_LIMIT_ENABLED: bool = True
-    REQUEST_BODY_SIZE_LIMIT: int = 10 * 1024 * 1024  # 10MB default
-    REQUEST_TIMEOUT_SECONDS: int = 60
+    API_REQUEST_BODY_SIZE_LIMIT: int = 10 * 1024 * 1024  # 10MB default
+    API_REQUEST_TIMEOUT_SECONDS: int = 60
 
     # Custom deployment URLs - these are used to override the default URLs to allow
     # for custom domains in custom deployments

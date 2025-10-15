@@ -109,6 +109,12 @@ async def my_endpoint(
 - `permission_exception_handler`: 403 for access violations
 - `not_found_exception_handler`: 404 for missing resources
 
+### 5. Context Cache Service (core/context_cache_service.py)
+Redis-backed cache implementing cache-aside pattern to reduce database load on high-traffic endpoints. Caches organizations (5min TTL), users (3min TTL), and API key mappings (10min TTL). API keys are encrypted before use as cache keys for security. All cache operations fail gracefully—errors are logged but never block requests. Integrated into `deps.py` to serve cached data during `ApiContext` resolution.
+
+### 6. Rate Limiter Service (core/rate_limiter_service.py)
+Distributed rate limiter using Redis sorted sets with sliding window algorithm for accurate per-minute limiting across horizontally scaled instances. Limits are plan-based: Developer (10/min), Pro (100/min), Team (250/min), Enterprise (unlimited). Automatically reads billing plan from cached organization data in `ApiContext` (populated via cache service). On limit exceeded, raises `RateLimitExceededException` with `retry_after` calculated from oldest request timestamp. Integrated via middleware for all API requests.
+
 ## Key Patterns
 
 ### Standard Endpoint Structure

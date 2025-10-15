@@ -7,6 +7,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.exceptions import NotFoundException, PermissionException
 from airweave.core.logging import logger
@@ -49,15 +50,79 @@ class CRUDOrganization:
             return [FeatureFlagEnum(ff.flag) for ff in org.__dict__["feature_flags"] if ff.enabled]
         return []
 
-    async def get_by_auth0_id(self, db: AsyncSession, auth0_org_id: str) -> Organization | None:
-        """Get an organization by its Auth0 organization ID."""
+    async def _enrich_with_billing_and_period(
+        self, db: AsyncSession, org: Organization
+    ) -> schemas.Organization:
+        """Enrich organization with billing info and current period.
+
+        This method loads the billing relationship and current period, then returns
+        a fully enriched schemas.Organization object suitable for caching.
+
+        Args:
+            db: Database session
+            org: Organization model (with feature_flags already loaded)
+
+        Returns:
+            Enriched Organization schema with billing and current period
+        """
+        from airweave import crud
+
+        # Convert to schema first (this handles feature flags via model_validator)
+        org_schema = schemas.Organization.model_validate(org, from_attributes=True)
+
+        # Load billing if present (OSS installs may not have billing)
+        if "billing" in org.__dict__ and org.__dict__["billing"]:
+            billing_model = org.__dict__["billing"]
+
+            # Get current billing period
+            current_period = await crud.billing_period.get_current_period(
+                db, organization_id=org.id
+            )
+
+            # Create billing schema with current period
+            billing_schema = schemas.OrganizationBilling.model_validate(
+                billing_model, from_attributes=True
+            )
+
+            # Attach current period if found
+            if current_period:
+                billing_schema.current_period = schemas.BillingPeriod.model_validate(
+                    current_period, from_attributes=True
+                )
+
+            # Attach enriched billing to organization
+            org_schema.billing = billing_schema
+
+        return org_schema
+
+    async def get_by_auth0_id(
+        self, db: AsyncSession, auth0_org_id: str, enrich: bool = True
+    ) -> Union[Organization, schemas.Organization, None]:
+        """Get an organization by its Auth0 organization ID.
+
+        Args:
+            db: Database session
+            auth0_org_id: Auth0 organization ID
+            enrich: If True, return enriched schemas.Organization with billing and period
+
+        Returns:
+            Organization model, enriched schema, or None
+        """
         stmt = (
             select(Organization)
             .where(Organization.auth0_org_id == auth0_org_id)
-            .options(selectinload(Organization.feature_flags))
+            .options(
+                selectinload(Organization.feature_flags),
+                selectinload(Organization.billing),
+            )
         )
         result = await db.execute(stmt)
-        return result.scalar_one_or_none()
+        db_obj = result.scalar_one_or_none()
+
+        if db_obj and enrich:
+            return await self._enrich_with_billing_and_period(db, db_obj)
+
+        return db_obj
 
     async def _set_primary_organization(
         self, db: AsyncSession, user_id: UUID, organization_id: UUID
@@ -195,10 +260,21 @@ class CRUDOrganization:
         id: UUID,
         ctx: Optional[ApiContext] = None,
         skip_access_validation: bool = False,
-    ) -> Optional[Organization]:
+        enrich: bool = True,
+    ) -> Optional[Union[Organization, schemas.Organization]]:
         """Get organization by ID with access validation.
 
         Organizations don't have organization_id field, so we override the base method.
+
+        Args:
+            db: Database session
+            id: Organization ID
+            ctx: API context for access validation
+            skip_access_validation: Skip access check (internal use)
+            enrich: If True, return enriched schemas.Organization with billing and period
+
+        Returns:
+            Organization model or enriched schema depending on enrich parameter
         """
         # Check if the user has access to this organization
         if not skip_access_validation:
@@ -209,12 +285,20 @@ class CRUDOrganization:
         query = (
             select(self.model)
             .where(self.model.id == id)
-            .options(selectinload(Organization.feature_flags))
+            .options(
+                selectinload(Organization.feature_flags),
+                selectinload(Organization.billing),
+            )
         )
         result = await db.execute(query)
         db_obj = result.unique().scalar_one_or_none()
         if not db_obj:
             raise NotFoundException(f"Organization with ID {id} not found")
+
+        # Return enriched schema with billing and current period if requested
+        if enrich:
+            return await self._enrich_with_billing_and_period(db, db_obj)
+
         return db_obj
 
     async def get_multi(

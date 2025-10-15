@@ -391,3 +391,26 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "requires_composio: tests that require Composio auth provider"
     )
+
+
+def pytest_collection_modifyitems(config, items):
+    """Reorder tests to ensure rate_limit tests run last.
+
+    This prevents rate limiting tests from interfering with other tests
+    by consuming the rate limit quota.
+    """
+    # Separate rate_limit tests from others
+    rate_limit_tests = []
+    other_tests = []
+
+    for item in items:
+        if item.get_closest_marker("rate_limit"):
+            rate_limit_tests.append(item)
+        else:
+            other_tests.append(item)
+
+    # Reorder: run all other tests first, then rate_limit tests
+    items[:] = other_tests + rate_limit_tests
+
+    if rate_limit_tests:
+        print(f"\n📊 Test order modified: {len(rate_limit_tests)} rate_limit tests will run last")

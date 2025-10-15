@@ -1,0 +1,40 @@
+---
+title: Rate Limits
+edit-this-page-url: https://github.com/airweave-ai/airweave/blob/main/fern/docs/pages/rate-limits.mdx
+slug: rate-limits
+---
+
+API requests are rate-limited per organization based on your billing plan. Limits are enforced per minute using a sliding window.
+
+## Limits by Plan
+
+| Plan | Requests per Minute |
+|------|---------------------|
+| Developer | 10 |
+| Pro | 100 |
+| Team | 250 |
+| Enterprise | Unlimited |
+
+## Rate Limit Headers
+
+All API responses include rate limit information:
+
+```
+RateLimit-Limit: 100
+RateLimit-Remaining: 95
+RateLimit-Reset: 1729012345
+```
+
+- `RateLimit-Limit`: Maximum requests per minute
+- `RateLimit-Remaining`: Requests left in current window
+- `RateLimit-Reset`: Unix timestamp when limit resets
+
+## Rate Limit Exceeded
+
+When you exceed your limit, you'll receive a `429 Too Many Requests` response with a `Retry-After` header indicating seconds until you can retry.
+
+```json
+{
+  "detail": "Rate limit exceeded. Try again in 42 seconds."
+}
+```

@@ -26,6 +26,7 @@ from airweave.api.middleware import (
     permission_exception_handler,
     rate_limit_exception_handler,
     rate_limit_headers_middleware,
+    request_body_size_middleware,
     request_timeout_middleware,
     usage_limit_exceeded_exception_handler,
     validation_exception_handler,
@@ -103,6 +104,7 @@ app.include_router(api_router)
 # Register middleware directly in the correct order
 # Order matters: first registered = outermost middleware (processes request first)
 app.middleware("http")(add_request_id)
+app.middleware("http")(request_body_size_middleware)
 app.middleware("http")(request_timeout_middleware)
 app.middleware("http")(rate_limit_headers_middleware)
 app.middleware("http")(log_requests)

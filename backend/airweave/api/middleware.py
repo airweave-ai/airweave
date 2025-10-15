@@ -134,25 +134,69 @@ async def request_timeout_middleware(request: Request, call_next: callable) -> R
     """
     try:
         response = await asyncio.wait_for(
-            call_next(request), timeout=settings.REQUEST_TIMEOUT_SECONDS
+            call_next(request), timeout=settings.API_REQUEST_TIMEOUT_SECONDS
         )
         return response
     except asyncio.TimeoutError:
         logger.warning(
-            f"Request timeout after {settings.REQUEST_TIMEOUT_SECONDS}s: "
+            f"Request timeout after {settings.API_REQUEST_TIMEOUT_SECONDS}s: "
             f"{request.method} {request.url}"
         )
         return JSONResponse(
             status_code=504,
-            content={"detail": f"Request timeout after {settings.REQUEST_TIMEOUT_SECONDS} seconds"},
+            content={
+                "detail": f"Request timeout after {settings.API_REQUEST_TIMEOUT_SECONDS} seconds"
+            },
         )
+
+
+async def request_body_size_middleware(request: Request, call_next: callable) -> Response:
+    """Middleware to enforce request body size limit.
+
+    Checks the Content-Length header and rejects requests exceeding the configured limit.
+    This prevents large payloads from consuming excessive server resources.
+
+    Args:
+    ----
+        request (Request): The incoming request.
+        call_next (callable): The next middleware in the chain.
+
+    Returns:
+    -------
+        Response: The response to the incoming request or 413 if body is too large.
+
+    """
+    # Check Content-Length header if present
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            content_length_bytes = int(content_length)
+            if content_length_bytes > settings.API_REQUEST_BODY_SIZE_LIMIT:
+                max_size_mb = settings.API_REQUEST_BODY_SIZE_LIMIT / (1024 * 1024)
+                actual_size_mb = content_length_bytes / (1024 * 1024)
+                logger.warning(
+                    f"Request body too large: {actual_size_mb:.2f}MB exceeds limit "
+                    f"of {max_size_mb:.2f}MB for {request.method} {request.url}"
+                )
+                return JSONResponse(
+                    status_code=413,
+                    content={
+                        "detail": (
+                            f"Request body too large. Maximum size is {max_size_mb:.2f}MB, "
+                            f"but request is {actual_size_mb:.2f}MB"
+                        )
+                    },
+                )
+        except ValueError:
+            logger.warning(f"Invalid Content-Length header: {content_length}")
+
+    return await call_next(request)
 
 
 async def rate_limit_headers_middleware(request: Request, call_next: callable) -> Response:
     """Middleware to add rate limit headers to responses.
 
-    Rate limiting is performed in deps.py and stored in request.state.
-    This middleware just adds the headers to the response.
+    Follows standards defined in RFC 6585.
 
     Args:
     ----
@@ -167,13 +211,11 @@ async def rate_limit_headers_middleware(request: Request, call_next: callable) -
     response = await call_next(request)
 
     # Add rate limit headers if available from request state
-    rate_limit_info = getattr(request.state, "rate_limit_info", None)
-    if rate_limit_info:
-        response.headers["RateLimit-Limit"] = str(rate_limit_info.get("limit", 0))
-        response.headers["RateLimit-Remaining"] = str(rate_limit_info.get("remaining", 0))
-        response.headers["RateLimit-Reset"] = str(
-            rate_limit_info.get("reset", int(time.time() + 1))
-        )
+    rate_limit_result = getattr(request.state, "rate_limit_result", None)
+    if rate_limit_result:
+        response.headers["RateLimit-Limit"] = str(rate_limit_result.limit)
+        response.headers["RateLimit-Remaining"] = str(rate_limit_result.remaining)
+        response.headers["RateLimit-Reset"] = str(int(time.time() + rate_limit_result.retry_after))
 
     return response
 
@@ -473,6 +515,8 @@ async def rate_limit_exception_handler(
         JSONResponse: A 429 Too Many Requests status response with rate limit headers.
 
     """
+    reset_timestamp = int(time.time() + exc.retry_after)
+
     return JSONResponse(
         status_code=429,
         content={"detail": str(exc)},
@@ -480,6 +524,6 @@ async def rate_limit_exception_handler(
             "Retry-After": str(int(exc.retry_after) + 1),
             "RateLimit-Limit": str(exc.limit),
             "RateLimit-Remaining": str(exc.remaining),
-            "RateLimit-Reset": str(int(time.time() + exc.retry_after)),
+            "RateLimit-Reset": str(reset_timestamp),
         },
     )
