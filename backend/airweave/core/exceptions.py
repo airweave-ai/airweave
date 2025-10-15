@@ -242,6 +242,39 @@ class InvalidStateError(Exception):
         super().__init__(self.message)
 
 
+class RateLimitExceededException(AirweaveException):
+    """Exception raised when API rate limit is exceeded."""
+
+    def __init__(
+        self,
+        retry_after: float,
+        limit: int,
+        remaining: int,
+        message: Optional[str] = None,
+    ):
+        """Create a new RateLimitExceededException instance.
+
+        Args:
+        ----
+            retry_after (float): Seconds until rate limit resets.
+            limit (int): Maximum requests allowed in the window.
+            remaining (int): Requests remaining in current window.
+            message (str, optional): Custom error message.
+
+        """
+        if message is None:
+            message = (
+                f"Rate limit exceeded. Please retry after {retry_after:.2f} seconds. "
+                f"Limit: {limit} requests per second."
+            )
+
+        self.retry_after = retry_after
+        self.limit = limit
+        self.remaining = remaining
+        self.message = message
+        super().__init__(self.message)
+
+
 def unpack_validation_error(exc: ValidationError) -> dict:
     """Unpack a Pydantic validation error into a dictionary.
 

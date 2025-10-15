@@ -24,6 +24,9 @@ from airweave.api.middleware import (
     not_found_exception_handler,
     payment_required_exception_handler,
     permission_exception_handler,
+    rate_limit_exception_handler,
+    rate_limit_headers_middleware,
+    request_timeout_middleware,
     usage_limit_exceeded_exception_handler,
     validation_exception_handler,
 )
@@ -36,6 +39,7 @@ from airweave.core.exceptions import (
     NotFoundException,
     PaymentRequiredException,
     PermissionException,
+    RateLimitExceededException,
     UsageLimitExceededException,
 )
 from airweave.core.logging import logger
@@ -96,8 +100,11 @@ app = FastAPI(
 
 app.include_router(api_router)
 
-# Register middleware directly
+# Register middleware directly in the correct order
+# Order matters: first registered = outermost middleware (processes request first)
 app.middleware("http")(add_request_id)
+app.middleware("http")(request_timeout_middleware)
+app.middleware("http")(rate_limit_headers_middleware)
 app.middleware("http")(log_requests)
 app.middleware("http")(exception_logging_middleware)
 
@@ -108,6 +115,7 @@ app.exception_handler(PermissionException)(permission_exception_handler)
 app.exception_handler(NotFoundException)(not_found_exception_handler)
 app.exception_handler(PaymentRequiredException)(payment_required_exception_handler)
 app.exception_handler(UsageLimitExceededException)(usage_limit_exceeded_exception_handler)
+app.exception_handler(RateLimitExceededException)(rate_limit_exception_handler)
 app.exception_handler(InvalidStateError)(invalid_state_exception_handler)
 
 # Register custom Airweave exception handlers

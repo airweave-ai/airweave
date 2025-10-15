@@ -3,6 +3,8 @@
 This module contains middleware that process requests and responses.
 """
 
+import asyncio
+import time
 import traceback
 import uuid
 from typing import List, Union
@@ -24,6 +26,7 @@ from airweave.core.exceptions import (
     NotFoundException,
     PaymentRequiredException,
     PermissionException,
+    RateLimitExceededException,
     ScheduleNotExistsException,
     ScheduleOperationException,
     SyncDagNotFoundException,
@@ -111,6 +114,68 @@ async def exception_logging_middleware(request: Request, call_next: callable) ->
             response_content["trace"] = traceback.format_exc()
 
         return JSONResponse(status_code=500, content=response_content)
+
+
+async def request_timeout_middleware(request: Request, call_next: callable) -> Response:
+    """Middleware to enforce request timeout.
+
+    Wraps request processing in asyncio.wait_for() to prevent long-running requests
+    from tying up resources.
+
+    Args:
+    ----
+        request (Request): The incoming request.
+        call_next (callable): The next middleware in the chain.
+
+    Returns:
+    -------
+        Response: The response to the incoming request or 504 on timeout.
+
+    """
+    try:
+        response = await asyncio.wait_for(
+            call_next(request), timeout=settings.REQUEST_TIMEOUT_SECONDS
+        )
+        return response
+    except asyncio.TimeoutError:
+        logger.warning(
+            f"Request timeout after {settings.REQUEST_TIMEOUT_SECONDS}s: "
+            f"{request.method} {request.url}"
+        )
+        return JSONResponse(
+            status_code=504,
+            content={"detail": f"Request timeout after {settings.REQUEST_TIMEOUT_SECONDS} seconds"},
+        )
+
+
+async def rate_limit_headers_middleware(request: Request, call_next: callable) -> Response:
+    """Middleware to add rate limit headers to responses.
+
+    Rate limiting is performed in deps.py and stored in request.state.
+    This middleware just adds the headers to the response.
+
+    Args:
+    ----
+        request (Request): The incoming request.
+        call_next (callable): The next middleware in the chain.
+
+    Returns:
+    -------
+        Response: The response with rate limit headers added.
+
+    """
+    response = await call_next(request)
+
+    # Add rate limit headers if available from request state
+    rate_limit_info = getattr(request.state, "rate_limit_info", None)
+    if rate_limit_info:
+        response.headers["RateLimit-Limit"] = str(rate_limit_info.get("limit", 0))
+        response.headers["RateLimit-Remaining"] = str(rate_limit_info.get("remaining", 0))
+        response.headers["RateLimit-Reset"] = str(
+            rate_limit_info.get("reset", int(time.time() + 1))
+        )
+
+    return response
 
 
 class DynamicCORSMiddleware(BaseHTTPMiddleware):
@@ -391,3 +456,30 @@ async def invalid_state_exception_handler(request: Request, exc: InvalidStateErr
 
     """
     return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+
+async def rate_limit_exception_handler(
+    request: Request, exc: RateLimitExceededException
+) -> JSONResponse:
+    """Exception handler for RateLimitExceededException.
+
+    Args:
+    ----
+        request (Request): The incoming request that triggered the exception.
+        exc (RateLimitExceededException): The exception object that was raised.
+
+    Returns:
+    -------
+        JSONResponse: A 429 Too Many Requests status response with rate limit headers.
+
+    """
+    return JSONResponse(
+        status_code=429,
+        content={"detail": str(exc)},
+        headers={
+            "Retry-After": str(int(exc.retry_after) + 1),
+            "RateLimit-Limit": str(exc.limit),
+            "RateLimit-Remaining": str(exc.remaining),
+            "RateLimit-Reset": str(int(time.time() + exc.retry_after)),
+        },
+    )

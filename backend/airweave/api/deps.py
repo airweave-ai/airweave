@@ -1,5 +1,6 @@
 """Dependencies that are used in the API endpoints."""
 
+import time
 import uuid
 from typing import Optional, Tuple
 
@@ -11,9 +12,11 @@ from airweave import crud, schemas
 from airweave.api.auth import auth0
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
-from airweave.core.exceptions import NotFoundException
+from airweave.core.context_cache_service import context_cache
+from airweave.core.exceptions import NotFoundException, RateLimitExceededException
 from airweave.core.guard_rail_service import GuardRailService
 from airweave.core.logging import ContextualLogger, logger
+from airweave.core.rate_limiter_service import RateLimiterService
 from airweave.db.session import get_db
 
 
@@ -153,7 +156,20 @@ async def get_context(
     if not settings.AUTH_ENABLED:
         user_context, auth_method, auth_metadata = await _authenticate_system_user(db)
     elif auth0_user:
-        user_context, auth_method, auth_metadata = await _authenticate_auth0_user(db, auth0_user)
+        # Try cache first for user
+        user_context = await context_cache.get_user(auth0_user.email)
+        if not user_context:
+            # Cache miss - fetch from DB
+            user_context, auth_method, auth_metadata = await _authenticate_auth0_user(
+                db, auth0_user
+            )
+            # Cache for next time
+            if user_context:
+                await context_cache.set_user(user_context)
+        else:
+            # Cache hit - still need auth metadata
+            auth_method = "auth0"
+            auth_metadata = {"auth0_id": auth0_user.id}
     elif x_api_key:
         user_context, auth_method, auth_metadata = await _authenticate_api_key(db, x_api_key)
 
@@ -165,11 +181,59 @@ async def get_context(
         x_organization_id, user_context, auth_method, auth_metadata
     )
 
-    organization = await crud.organization.get(db, id=organization_id, skip_access_validation=True)
-    organization_schema = schemas.Organization.model_validate(organization, from_attributes=True)
+    # Try cache first for organization
+    organization_schema = await context_cache.get_organization(uuid.UUID(organization_id))
+    if not organization_schema:
+        # Cache miss - fetch from DB
+        organization = await crud.organization.get(
+            db, id=organization_id, skip_access_validation=True
+        )
+        organization_schema = schemas.Organization.model_validate(
+            organization, from_attributes=True
+        )
+        # Cache for next time
+        await context_cache.set_organization(organization_schema)
 
     # Validate organization access
     await _validate_organization_access(db, organization_id, user_context, auth_method, x_api_key)
+
+    # Always check rate limit (after auth validation) - even in local development
+    # This ensures headers are always present for consistent API behavior
+    try:
+        rate_limiter = RateLimiterService(
+            organization_id=organization_schema.id,
+            logger=logger.with_context(component="rate_limiter"),
+        )
+        allowed, retry_after, limit, remaining = await rate_limiter.check_rate_limit()
+
+        # Always store rate limit info in request state for response headers
+        request.state.rate_limit_info = {
+            "limit": limit,
+            "remaining": remaining,
+            "reset": int(time.time() + 1),
+        }
+
+        # Only enforce limits if enabled (not in local dev)
+        if settings.RATE_LIMIT_ENABLED and not settings.LOCAL_DEVELOPMENT:
+            if not allowed:
+                raise RateLimitExceededException(
+                    retry_after=retry_after,
+                    limit=limit,
+                    remaining=remaining,
+                )
+
+    except RateLimitExceededException:
+        # Re-raise rate limit exceptions to be handled by exception handler
+        raise
+    except Exception as e:
+        # Log but don't block request on other rate limit errors
+        logger.warning(f"Rate limit check failed: {e}. Allowing request.")
+        # Set default headers on error
+        request.state.rate_limit_info = {
+            "limit": 0,
+            "remaining": 9999,
+            "reset": int(time.time() + 1),
+        }
 
     # Create logger with full context
 
@@ -236,6 +300,28 @@ async def get_guard_rail_service(
     return GuardRailService(
         organization_id=ctx.organization.id,
         logger=contextual_logger.with_context(component="guardrail"),
+    )
+
+
+async def get_rate_limiter_service(
+    ctx: ApiContext = Depends(get_context),
+) -> RateLimiterService:
+    """Get a RateLimiterService instance for the current organization.
+
+    This dependency creates a RateLimiterService instance that can be used for
+    additional rate limit checks at the endpoint level if needed.
+
+    Args:
+    ----
+        ctx (ApiContext): The authentication context containing organization_id.
+
+    Returns:
+    -------
+        RateLimiterService: An instance configured for the current organization.
+    """
+    return RateLimiterService(
+        organization_id=ctx.organization.id,
+        logger=ctx.logger.with_context(component="rate_limiter"),
     )
 
 
