@@ -65,7 +65,7 @@ async def search_collection(ctx: ApiContext, query: str, ...):
 async def stream_search_collection_advanced(...):
     # Ensure permissions first
     await guard_rail.is_allowed(ActionType.QUERIES)
-    
+
     # Track stream initiation after permission check
     from airweave.analytics.search_analytics import build_search_properties, track_search_event
     if ctx and search_request.query:
@@ -87,7 +87,7 @@ async def stream_search_collection_advanced(...):
 
 **Covered Endpoints:**
 - `create_organization` - Organization creation
-- `list_collections` - Collection listing  
+- `list_collections` - Collection listing
 - `create_collection` - Collection creation
 - `create_source_connection` - Source connection setup
 - `run_sync` - Sync execution
@@ -116,6 +116,18 @@ async def stream_search_collection_advanced(...):
 
 ### Sync Events
 - **`sync_completed`**: Successful sync job completion with entity counts
+
+**Key Properties for PostHog Dashboards:**
+- `entities_synced` ✅ **USE FOR BILLING** - Only INSERT + UPDATE (actual work done)
+- `entities_processed` - Total operations including KEPT/SKIPPED (operational metric)
+- `entities_inserted` - New entities added
+- `entities_updated` - Existing entities modified
+- `entities_deleted` - Entities removed
+- `entities_kept` - Unchanged entities (hash match, no work done)
+- `entities_skipped` - Failed/errored entities
+
+**Important:** For billing dashboards and usage tracking, always use `entities_synced` which accurately reflects resource consumption (embeddings computed, vector writes performed, storage used). The `entities_processed` metric includes entities that were checked but required no work (KEPT) or failed (SKIPPED).
+
 - **`entities_synced_by_type`**: Granular entity tracking per sync and entity type
 
 ## 🎯 Dashboard Strategy
@@ -208,9 +220,10 @@ async def stream_search_collection_advanced(...):
 2. **Entities Synced per Sync**
    - Event: `sync_completed`
    - Type: Bar Chart
-   - Property: `entities_processed` (Sum)
+   - Property: `entities_synced` (Sum) - **Use this for billing metrics**
    - Breakdown: `sync_id`
    - Time Range: Last 7 days
+   - Alternative: Use `entities_processed` for operational metrics (includes kept/skipped)
 
 3. **Storage Usage by Organization**
    - Event: `entities_synced_by_type`

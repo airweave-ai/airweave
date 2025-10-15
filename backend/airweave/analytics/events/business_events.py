@@ -128,19 +128,38 @@ class BusinessEventTracker:
         )
 
     @staticmethod
-    def track_sync_completed(ctx, sync_id: UUID, entities_processed: int, duration_ms: int):
+    def track_sync_completed(
+        ctx,
+        sync_id: UUID,
+        entities_processed: int,
+        entities_synced: int,
+        stats,
+        duration_ms: int,
+    ):
         """Track when a sync operation completes successfully.
 
         Args:
         ----
             ctx: API context containing user and organization info
             sync_id: ID of the sync operation
-            entities_processed: Number of entities processed
+            entities_processed: Total operations (includes kept/skipped)
+            entities_synced: Actual entities synced (inserted + updated) - for billing
+            stats: Full sync statistics breakdown (SyncProgressUpdate)
             duration_ms: Duration of sync in milliseconds
         """
         properties = {
             "sync_id": str(sync_id),
+            # Operational metrics
             "entities_processed": entities_processed,
+            # Billing metrics (NEW - use this for billing dashboards)
+            "entities_synced": entities_synced,
+            # Detailed breakdown (NEW)
+            "entities_inserted": stats.inserted if stats else 0,
+            "entities_updated": stats.updated if stats else 0,
+            "entities_deleted": stats.deleted if stats else 0,
+            "entities_kept": stats.kept if stats else 0,
+            "entities_skipped": stats.skipped if stats else 0,
+            # Other
             "duration_ms": duration_ms,
             "organization_name": getattr(ctx.organization, "name", "unknown"),
         }
