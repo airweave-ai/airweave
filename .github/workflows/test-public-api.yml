@@ -109,6 +109,7 @@ jobs:
       - name: Run E2E Smoke Tests
         env:
           TEST_ENV: local
+          DISABLE_RATE_LIMIT: true
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           TEST_STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
           # Required test environment variables
@@ -142,6 +143,34 @@ jobs:
           pytest tests/e2e/smoke -m "not rate_limit" -n 3 -v --tb=short
 
       - name: Run Rate Limit Tests
+        env:
+          TEST_ENV: local
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TEST_STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
+          # Required test environment variables
+          TEST_NOTION_TOKEN: ${{ secrets.TEST_NOTION_TOKEN }}
+          TEST_GOOGLE_CLIENT_ID: ${{ secrets.TEST_GOOGLE_CLIENT_ID }}
+          TEST_GOOGLE_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_CLIENT_SECRET }}
+          # OAuth1 (Trello) credentials
+          TEST_TRELLO_CONSUMER_KEY: ${{ secrets.TEST_TRELLO_CONSUMER_KEY }}
+          TEST_TRELLO_CONSUMER_SECRET: ${{ secrets.TEST_TRELLO_CONSUMER_SECRET }}
+          TEST_AUTH_PROVIDER_NAME: composio
+          TEST_COMPOSIO_API_KEY: ${{ secrets.TEST_COMPOSIO_API_KEY }}
+          # Composio service-specific configurations
+          TEST_COMPOSIO_TODOIST_AUTH_CONFIG_ID: ac_wcspYMD22UDD
+          TEST_COMPOSIO_TODOIST_ACCOUNT_ID: ca_h1xDM7cdVzeI
+          TEST_COMPOSIO_ASANA_AUTH_CONFIG_ID: ac_hBi29B_-iU3B
+          TEST_COMPOSIO_ASANA_ACCOUNT_ID: ca_ooqwRcKOwHmo
+          TEST_COMPOSIO_GMAIL_AUTH_CONFIG_ID: ac_HocwjtTv-dqb
+          TEST_COMPOSIO_GMAIL_ACCOUNT_ID: ca_jEA4l17nSPzN
+          # Pipedream configurations
+          TEST_PIPEDREAM_CLIENT_ID: ${{ secrets.TEST_PIPEDREAM_CLIENT_ID }}
+          TEST_PIPEDREAM_CLIENT_SECRET: ${{ secrets.TEST_PIPEDREAM_CLIENT_SECRET }}
+          TEST_PIPEDREAM_PROJECT_ID: ${{ secrets.TEST_PIPEDREAM_PROJECT_ID }}
+          TEST_PIPEDREAM_ACCOUNT_ID: ${{ secrets.TEST_PIPEDREAM_ACCOUNT_ID }}
+          TEST_PIPEDREAM_EXTERNAL_USER_ID: ${{ secrets.TEST_PIPEDREAM_EXTERNAL_USER_ID }}
+          # Override images to use locally built test images
+          BACKEND_IMAGE: test-backend:latest
         run: |
           cd backend
           pytest tests/e2e/smoke -m rate_limit -n 3 -v --tb=short

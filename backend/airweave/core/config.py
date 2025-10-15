@@ -72,6 +72,8 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "local"
     FRONTEND_LOCAL_DEVELOPMENT_PORT: int = 8080
 
+    # Rate limiting
+    DISABLE_RATE_LIMIT: bool = False  # For testing purposes - disables rate limiting completely
     FIRST_SUPERUSER: str
     FIRST_SUPERUSER_PASSWORD: str
 

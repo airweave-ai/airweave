@@ -13,6 +13,11 @@ Rate limit configuration:
 
 NOTE: These tests only run in local development environments to avoid
 interfering with CI/CD pipelines and production systems.
+
+IMPORTANT: Rate limiting must be enabled for these tests to work.
+- Set DISABLE_RATE_LIMIT=false (or omit it) when running these tests
+- Other test suites should set DISABLE_RATE_LIMIT=true to avoid quota issues
+
 Run with: pytest -m rate_limit
 Skip with: pytest -m "not rate_limit" (default behavior in CI)
 """

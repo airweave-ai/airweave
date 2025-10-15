@@ -5,6 +5,7 @@ from typing import Optional
 from uuid import UUID
 
 from airweave.api.context import ApiContext
+from airweave.core.config import settings
 from airweave.core.exceptions import RateLimitExceededException
 from airweave.core.redis_client import redis_client
 from airweave.schemas.organization_billing import BillingPlan
@@ -115,6 +116,16 @@ class RateLimiter:
         Raises:
             RateLimitExceededException: If rate limit is exceeded
         """
+        # Bypass rate limiting if disabled (for testing)
+        if settings.DISABLE_RATE_LIMIT:
+            ctx.logger.debug("Rate limiting disabled via DISABLE_RATE_LIMIT flag")
+            return RateLimitResult(
+                allowed=True,
+                retry_after=0.0,
+                limit=9999,
+                remaining=9999,
+            )
+
         # Get rate limit for this organization
         rate_limit = await RateLimiter._get_rate_limit(ctx)
 
