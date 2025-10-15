@@ -89,6 +89,9 @@ jobs:
           echo "GROQ_API_KEY=$GROQ_API_KEY" >> .env
           echo "CEREBRAS_API_KEY=$CEREBRAS_API_KEY" >> .env
 
+          # Disable rate limiting for regular tests
+          echo "DISABLE_RATE_LIMIT=true" >> .env
+
           echo "Starting services using start.sh..."
           ./start.sh --noninteractive
 
@@ -109,7 +112,6 @@ jobs:
       - name: Run E2E Smoke Tests
         env:
           TEST_ENV: local
-          DISABLE_RATE_LIMIT: true
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           TEST_STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
           # Required test environment variables
@@ -141,6 +143,34 @@ jobs:
           # Exclude rate_limit tests from CI/CD - they consume quota and should run separately
           # To run rate limit tests locally: pytest tests/e2e/smoke -m rate_limit
           pytest tests/e2e/smoke -m "not rate_limit" -n 3 -v --tb=short
+
+      - name: Restart Backend for Rate Limit Tests
+        run: |
+          echo "Restarting backend with rate limiting enabled..."
+
+          # Remove DISABLE_RATE_LIMIT from .env
+          grep -v "DISABLE_RATE_LIMIT" .env > .env.tmp && mv .env.tmp .env
+
+          # Restart backend service
+          cd docker
+          docker compose restart backend
+
+          # Wait for backend to be healthy
+          echo "Waiting for backend to restart..."
+          sleep 5
+
+          for i in {1..30}; do
+            if curl -f http://localhost:8001/health 2>/dev/null; then
+              echo "✅ Backend is healthy and ready for rate limit tests"
+              exit 0
+            fi
+            echo "Attempt $i/30: Backend not ready yet..."
+            sleep 2
+          done
+
+          echo "❌ Backend failed to become healthy after restart"
+          docker logs airweave-backend
+          exit 1
 
       - name: Run Rate Limit Tests
         env:
