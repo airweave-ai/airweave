@@ -137,7 +137,14 @@ jobs:
           BACKEND_IMAGE: test-backend:latest
         run: |
           cd backend
-          pytest tests/e2e/smoke -n 3 -v --tb=short
+          # Exclude rate_limit tests from CI/CD - they consume quota and should run separately
+          # To run rate limit tests locally: pytest tests/e2e/smoke -m rate_limit
+          pytest tests/e2e/smoke -m "not rate_limit" -n 3 -v --tb=short
+
+      - name: Run Rate Limit Tests
+        run: |
+          cd backend
+          pytest tests/e2e/smoke -m rate_limit -n 3 -v --tb=short
 
       - name: Cleanup Docker containers
         if: always()
