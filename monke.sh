@@ -144,7 +144,6 @@ list_connectors() {
 get_core_connectors() {
     local core_connectors=(
         "github"      # Most popular, good API coverage
-        "notion"      # Document-based, complex data structures
         "asana"       # Task management, different data patterns
         "linear"      # Modern API, good for testing
     )
@@ -227,7 +226,7 @@ detect_changed_connectors() {
 # Get hybrid connector list: core + changed
 get_hybrid_connectors() {
     # Core connectors that always run
-    local core_connectors=("github" "notion" "asana" "linear")
+    local core_connectors=("github" "asana" "linear")
     local changed_connectors=()
 
     # Try to detect changed connectors
