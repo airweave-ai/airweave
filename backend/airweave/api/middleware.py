@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from airweave.api.context import ApiContext
 from airweave.core.config import settings
 from airweave.core.exceptions import (
     AirweaveException,
@@ -527,3 +528,98 @@ async def rate_limit_exception_handler(
             "RateLimit-Reset": str(reset_timestamp),
         },
     )
+
+
+async def analytics_middleware(request: Request, call_next):
+    """Track API calls automatically via middleware.
+
+    Extracts context from request.state.api_context (set by deps.py) and tracks
+    API calls with PostHog analytics including user_id, org_id, and request_id.
+    """
+    start_time = time.monotonic()
+
+    if _should_skip_analytics(request):
+        return await call_next(request)
+
+    response = await call_next(request)
+
+    duration_ms = (time.monotonic() - start_time) * 1000
+
+    context = getattr(request.state, "api_context", None)
+    if context:
+        try:
+            await _track_api_call_async(context, response, duration_ms, request)
+        except Exception as e:
+            logger.warning(f"Failed to track API analytics: {e}")
+
+    return response
+
+
+def _build_endpoint_name(request: Request) -> str:
+    """Build endpoint name using FastAPI's route information.
+
+    Uses the matched route path template from FastAPI, which already contains
+    parameter placeholders like {uuid}, {readable_id}, etc.
+
+    Returns:
+        str: endpoint_path_template like "/collections/{readable_id}/search"
+    """
+    # Get the matched route from FastAPI
+    route = request.scope.get("route")
+
+    if route and hasattr(route, "path"):
+        # FastAPI provides the path template with {param} placeholders
+        # e.g., "/collections/{readable_id}/sources/{source_short_name}"
+        return route.path
+
+    # Fallback to raw path if route not available (shouldn't happen in normal operation)
+    return request.url.path.rstrip("/")
+
+
+def _should_skip_analytics(request: Request) -> bool:
+    """Skip analytics for certain paths."""
+    skip_paths = {
+        "/health",
+        "/metrics",
+        "/docs",
+        "/openapi.json",
+        "/favicon.ico",
+        "/redoc",
+    }
+    return request.url.path in skip_paths
+
+
+async def _track_api_call_async(
+    context: ApiContext, response: Response, duration_ms: float, request: Request
+):
+    """Track API call asynchronously.
+
+    Uses the contextual analytics service from ApiContext which already has
+    user/org/headers configured. This avoids duplication and ensures consistency.
+    """
+    # Build endpoint identifier from FastAPI route template
+    endpoint = _build_endpoint_name(request)
+
+    # Build properties specific to API calls
+    # Note: auth_method, organization_name, and headers are automatically added
+    # by the contextual analytics service
+    properties = {
+        "endpoint": endpoint,
+        "request_method": request.method,
+        "request_path": request.url.path,
+        "status_code": response.status_code,
+        "duration_ms": duration_ms,
+    }
+
+    # Flatten all path parameters directly into properties
+    # Convert all values to strings to ensure JSON serialization works
+    if request.path_params:
+        properties.update({k: str(v) for k, v in request.path_params.items()})
+
+    # Determine event name
+    event_name = "api_call_error" if response.status_code >= 400 else "api_call"
+
+    # Track event using contextual analytics service
+    # This automatically adds: auth_method, organization_name, request_id,
+    # user_agent, client_name, sdk_name, session_id, and other headers
+    context.analytics.track_event(event_name, properties)

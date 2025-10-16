@@ -18,6 +18,7 @@ from airweave.api.middleware import (
     DynamicCORSMiddleware,
     add_request_id,
     airweave_exception_handler,
+    analytics_middleware,
     exception_logging_middleware,
     invalid_state_exception_handler,
     log_requests,
@@ -108,6 +109,7 @@ app.middleware("http")(request_body_size_middleware)
 app.middleware("http")(request_timeout_middleware)
 app.middleware("http")(rate_limit_headers_middleware)
 app.middleware("http")(log_requests)
+app.middleware("http")(analytics_middleware)
 app.middleware("http")(exception_logging_middleware)
 
 # Register exception handlers

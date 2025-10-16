@@ -359,6 +359,9 @@ async def get_context(
     if user_context:
         analytics_service.identify_user()
 
+    # Store context in request state for middleware access
+    request.state.api_context = ctx
+
     await _check_and_enforce_rate_limit(request, ctx)
     return ctx
 
