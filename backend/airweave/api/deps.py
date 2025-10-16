@@ -500,7 +500,7 @@ def _extract_headers_from_request(request: Request) -> RequestHeaders:
         # Client/Frontend headers
         client_name=headers.get("x-client-name"),
         client_version=headers.get("x-client-version"),
-        session_id=headers.get("x-session-id"),
+        session_id=headers.get("x-airweave-session-id"),
         # SDK headers
         sdk_name=headers.get("x-sdk-name") or headers.get("x-fern-sdk-name"),
         sdk_version=headers.get("x-sdk-version") or headers.get("x-fern-sdk-version"),

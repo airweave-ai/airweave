@@ -84,7 +84,14 @@ class ContextualAnalyticsService:
         }
 
         # Add header information
-        properties.update(self.headers.to_dict())
+        header_dict = self.headers.to_dict()
+        properties.update(header_dict)
+
+        # Add session_id as $session_id for PostHog session replay linking
+        # PostHog requires the special $session_id property to link backend
+        # events to session replays
+        if self.headers.session_id:
+            properties["$session_id"] = self.headers.session_id
 
         return properties
 

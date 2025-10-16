@@ -4,6 +4,7 @@ import { useCollectionsStore } from '@/lib/stores/collections';
 import { useAPIKeysStore } from '@/lib/stores/apiKeys';
 import { useAuthProvidersStore } from '@/lib/stores/authProviders';
 import { toast } from 'sonner';
+import { posthog } from '@/lib/posthog-provider';
 
 // Define a token provider interface
 interface TokenProvider {
@@ -116,6 +117,18 @@ export const API_CONFIG = {
 type ApiResponse<T = any> = Promise<Response>;
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
+// Helper function to get PostHog session ID safely
+const getPostHogSessionId = (): string | undefined => {
+  try {
+    if (posthog && typeof posthog.get_session_id === 'function') {
+      return posthog.get_session_id();
+    }
+  } catch (error) {
+    console.debug('PostHog session ID error:', error);
+  }
+  return undefined;
+};
+
 // Get headers with optional organization context
 const getHeaders = async (): Promise<Record<string, string>> => {
   const token = await tokenProvider.getToken();
@@ -129,6 +142,12 @@ const getHeaders = async (): Promise<Record<string, string>> => {
   // Add organization context header if available
   if (currentOrganization) {
     headers['X-Organization-ID'] = currentOrganization.id;
+  }
+
+  // Add PostHog session ID if available
+  const sessionId = getPostHogSessionId();
+  if (sessionId) {
+    headers['X-Airweave-Session-ID'] = sessionId;
   }
 
   return headers;
