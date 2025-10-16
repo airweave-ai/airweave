@@ -112,11 +112,11 @@ operation_preferences:
         embedding: null
         rerank: rerank
       - provider: groq
-        llm: null
+        llm: llm_small
         embedding: null
         rerank: rerank
       - provider: openai
-        llm: null
+        llm: llm_small
         embedding: null
         rerank: rerank
 
