@@ -150,10 +150,18 @@ Airweave will access Dropbox on behalf of your users. You'll need to have each
 Dropbox provides [documentation](https://developers.dropbox.com/oauth-guide) on how to implement OAuth 2.0.
 This guide will walk you through connecting Dropbox APIs to Airweave when running locally.
 1. Go [here](https://www.dropbox.com/developers/apps/create) to create the "Airweave integration" application
-2. Under `Settings`, add the following Redirect URI:
-  ```
-  http://localhost:8080/auth/callback/dropbox
-  ```
+2. Under `Settings`, add the Redirect URI. Use the appropriate URL for your environment:
+
+    **Production (Airweave Cloud):**
+        ```
+        https://api.airweave.ai/source-connections/callback
+        ```
+
+    **Local:**
+        ```
+        http://localhost:8001/source-connections/callback
+        ```
+
 3.Under `Permissions`, select the following scopes:
   ```
   account_info.read

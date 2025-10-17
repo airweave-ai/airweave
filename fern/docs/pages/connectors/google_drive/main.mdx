@@ -162,14 +162,14 @@ https://www.googleapis.com/auth/calendar.events.owned.readonly
 https://www.googleapis.com/auth/calendar.events.readonly
 ```
 6. [Create OAuth client ID credentials](https://developers.google.com/workspace/guides/create-credentials#oauth-client-id)
-7. Under "Authorized redirect URIs," click "+ Add URI" and add the following URIs:
-   ```
-   http://localhost:8080/auth/callback/gmail
-   ```
-   ```
-   http://localhost:8080/auth/callback/google_calendar
-   ```
-   ```
-   http://localhost:8080/auth/callback/google_drive
-   ```
+7. Under "Authorized redirect URIs," click "+ Add URI" and add the Redirect URI. Use the appropriate URL for your environment:
+    **Production (Airweave Cloud):**
+        ```
+        https://api.airweave.ai/source-connections/callback
+        ```
+
+    **Local:**
+        ```
+        http://localhost:8001/source-connections/callback
+        ```
 8. Locate the client ID and client secret from your newly created OAuth client. Add these credentials to the `dev.integrations.yml` file to enable Google API integration.
