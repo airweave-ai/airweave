@@ -189,6 +189,21 @@ def generate_openapi():
         else:
             filtered_schema["info"]["description"] = api_groups_desc
 
+    # Add Fern global headers extension for framework tracking
+    print("Adding Fern global headers for framework tracking...")
+    filtered_schema["x-fern-global-headers"] = [
+        {
+            "header": "X-Framework-Name",
+            "name": "framework_name",
+            "optional": True
+        },
+        {
+            "header": "X-Framework-Version",
+            "name": "framework_version",
+            "optional": True
+        }
+    ]
+
     # Path to fern/definition directory from project root
     fern_dir = project_root / "fern" / "definition"
     fern_dir.mkdir(parents=True, exist_ok=True)
