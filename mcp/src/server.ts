@@ -62,3 +62,16 @@ export function validateEnvironment(): AirweaveConfig {
 
     return { apiKey, collection, baseUrl };
 }
+
+// Validate environment for HTTP/SSE server (API key comes from client, not environment)
+export function validateHttpEnvironment(): Omit<AirweaveConfig, 'apiKey'> {
+    const collection = process.env.AIRWEAVE_COLLECTION;
+    const baseUrl = process.env.AIRWEAVE_BASE_URL || DEFAULT_BASE_URL;
+
+    if (!collection) {
+        console.error(ERROR_MESSAGES.MISSING_COLLECTION);
+        process.exit(1);
+    }
+
+    return { collection, baseUrl };
+}

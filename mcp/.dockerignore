@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs (will be generated in container)
+build/
+dist/
+
+# Tests
+tests/
+*.test.ts
+*.spec.ts
+vitest.config.ts
+coverage/
+
+# Development files
+.git/
+.gitignore
+.cursor/
+.vscode/
+
+# Documentation
+README.md
+*.md
+docs/
+
+# Local configuration
+local-config-example.json
+config-example.json
+.env
+.env.*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Lock files (we copy package-lock.json explicitly)
+# yarn.lock
+# pnpm-lock.yaml
+

@@ -14,23 +14,43 @@ An MCP (Model Context Protocol) server that provides comprehensive search capabi
 - 🧪 **Comprehensive Testing**: Full test suite with LLM testing strategy
 - 🏗️ **Simple Architecture**: Clean, maintainable code structure without over-engineering
 
-## Quick Start
+## Deployment Modes
+
+This MCP server supports two deployment modes:
+
+### 1. Local Mode (Desktop AI Clients)
+
+For **Claude Desktop, Cursor, and other desktop AI assistants**:
+- Uses stdio transport (standard input/output)
+- Runs as a subprocess on the user's machine
+- Installed via npm package
+
+### 2. Hosted Mode (Cloud AI Platforms)
+
+For **OpenAI AgentBuilder and cloud-based AI platforms**:
+- Uses HTTP/SSE transport (Server-Sent Events)
+- Deployed to Azure Kubernetes Service
+- Accessible via `https://mcp.airweave.ai`
+
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed hosting instructions.
+
+## Quick Start (Local Mode)
 
 ### Installation from npm
 
-The easiest way to use this server is via npx:
+The easiest way to use this server locally is via npx:
 
 ```bash
 npx airweave-mcp-search
 ```
 
-### Installation from GitHub
-THIS IS NOT CORRECT, THE MCP IS NOT A SEPARATE REPO YET
-
-You can also install directly from the GitHub repository:
+### Installation from Source
 
 ```bash
-npm install -g https://github.com/your-org/airweave-mcp-search.git
+cd mcp
+npm install
+npm run build
+npm run start
 ```
 
 ## Configuration
@@ -251,25 +271,49 @@ npm install
 npm run build
 ```
 
-4. Run locally:
+4. Run locally (stdio mode):
 ```bash
 AIRWEAVE_API_KEY=your-key AIRWEAVE_COLLECTION=your-collection npm run start
+```
+
+5. Run locally (HTTP mode):
+```bash
+AIRWEAVE_API_KEY=your-key AIRWEAVE_COLLECTION=your-collection npm run start:http
 ```
 
 ### Development Workflow
 
 ```bash
-# Build and run
+# Build and run (stdio mode for desktop clients)
 npm run dev
+
+# Build and run (HTTP mode for testing cloud deployment)
+npm run dev:http
 
 # Build only
 npm run build
 
-# Run built version
+# Run stdio version
 npm run start
+
+# Run HTTP version
+npm run start:http
 
 # Run tests
 npm test
+```
+
+### Testing HTTP Mode Locally
+
+```bash
+# Start HTTP server
+AIRWEAVE_API_KEY=your-key AIRWEAVE_COLLECTION=your-collection npm run start:http
+
+# In another terminal, test health endpoint
+curl http://localhost:8080/health
+
+# Test SSE endpoint
+curl http://localhost:8080/sse
 ```
 
 ## Error Handling
@@ -319,6 +363,31 @@ For debugging, you can check the stderr output where the server logs its startup
 # "Base URL: https://api.airweave.ai"
 ```
 
+## Deployment to Production
+
+For hosting the MCP server for cloud-based AI platforms:
+
+1. **See [DEPLOYMENT.md](./DEPLOYMENT.md)** for comprehensive deployment guide
+2. **Docker**: Uses provided Dockerfile for containerization
+3. **Kubernetes**: Helm charts available in `/infra-core/helm/airweave/`
+4. **Hosted URLs**:
+   - Development: `https://mcp.dev-airweave.com`
+   - Production: `https://mcp.airweave.ai`
+
+Quick deployment:
+```bash
+# Build Docker image
+docker build -t airweavecoreacr.azurecr.io/mcp:v1.0.0 .
+
+# Push to Azure Container Registry
+az acr login --name airweavecoreacr
+docker push airweavecoreacr.azurecr.io/mcp:v1.0.0
+
+# Deploy with Helm
+cd /infra-core
+./helm-upgrade.sh prd v1.0.0 airweave true
+```
+
 ## License
 
 MIT License - see LICENSE file for details.
@@ -327,5 +396,6 @@ MIT License - see LICENSE file for details.
 
 For issues and questions:
 - Check the [Airweave documentation](https://docs.airweave.ai)
+- See [DEPLOYMENT.md](./DEPLOYMENT.md) for deployment issues
 - Open an issue on GitHub
 - Contact your Airweave administrator for API key and access issues
