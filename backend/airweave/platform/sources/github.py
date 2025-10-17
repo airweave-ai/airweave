@@ -4,7 +4,7 @@ import base64
 import mimetypes
 from datetime import datetime
 from pathlib import Path
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, Union
 
 import httpx
 import tenacity
@@ -82,12 +82,13 @@ class GitHubSource(BaseSource):
 
     @classmethod
     async def create(
-        cls, credentials: GitHubAuthConfig, config: Optional[Dict[str, Any]] = None
+        cls, credentials: Union[GitHubAuthConfig, str], config: Optional[Dict[str, Any]] = None
     ) -> "GitHubSource":
         """Create a new source instance with authentication.
 
         Args:
-            credentials: GitHubAuthConfig instance containing authentication details
+            credentials: GitHubAuthConfig instance containing authentication details,
+                        or "PROXY_MODE" string for proxy authentication
             config: Optional source configuration parameters
 
         Returns:
@@ -95,7 +96,14 @@ class GitHubSource(BaseSource):
         """
         instance = cls()
 
-        instance.personal_access_token = credentials.personal_access_token
+        # Handle proxy mode (credentials is "PROXY_MODE" string)
+        if isinstance(credentials, str) and credentials == "PROXY_MODE":
+            instance.personal_access_token = None  # Will use proxy authentication
+            instance._is_proxy_mode = True
+        else:
+            # Handle direct authentication (credentials is GitHubAuthConfig)
+            instance.personal_access_token = credentials.personal_access_token
+            instance._is_proxy_mode = False
 
         # Repository name is always read from config (source configuration)
         if not config or "repo_name" not in config:
@@ -118,10 +126,10 @@ class GitHubSource(BaseSource):
     async def _get_with_auth(
         self, client: httpx.AsyncClient, url: str, params: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Make authenticated API request using Personal Access Token.
+        """Make authenticated API request using Personal Access Token or proxy.
 
         Args:
-            client: HTTP client
+            client: HTTP client (may be a proxy client in proxy mode)
             url: API endpoint URL
             params: Optional query parameters
 
@@ -129,10 +137,14 @@ class GitHubSource(BaseSource):
             JSON response
         """
         headers = {
-            "Authorization": f"token {self.personal_access_token}",
             "Accept": "application/vnd.github.v3+json",
             "X-GitHub-Api-Version": "2022-11-28",
         }
+
+        # Only add Authorization header if not in proxy mode
+        if not getattr(self, "_is_proxy_mode", False):
+            headers["Authorization"] = f"token {self.personal_access_token}"
+
         response = await client.get(url, headers=headers, params=params)
         response.raise_for_status()
         return response.json()

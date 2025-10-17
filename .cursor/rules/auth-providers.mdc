@@ -39,7 +39,7 @@ Providers have several configuration mechanisms:
 Map between Airweave and external service naming:
 ```python
 # Map Airweave field names to provider field names
-FIELD_NAME_MAPPING = {"api_key": "generic_api_key", "personal_access_token": "access_token"}
+FIELD_NAME_MAPPING = {"api_key": "generic_api_key", "personal_access_token": "oauth_access_token"}
 
 # Map Airweave source names to provider source names (only needed when names differ)
 SLUG_NAME_MAPPING = {"google_drive": "googledrive", "outlook_mail": "outlook"}
