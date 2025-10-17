@@ -57,6 +57,15 @@ class PipedreamAuthProvider(BaseAuthProvider):
     # Sources that Pipedream does not support
     BLOCKED_SOURCES = [
         "ctti",
+        # Pipedream enforces "proxy mode" where all GitHub API requests must route through
+        # their proxy endpoint, creating heavy bottlenecks
+        "github",
+        # Attlassian constructs the URL using a cloud ID which pipedream does not provide
+        "jira",
+        # Attlassian constructs the URL using a cloud ID which pipedream doesn't provide
+        "confluence",
+        # Workspace needs to be moved to the regular config, which will conflict with composio
+        "bitbucket",
     ]
 
     # Mapping of Airweave field names to Pipedream field names
