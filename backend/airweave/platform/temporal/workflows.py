@@ -138,7 +138,16 @@ class RunSourceConnectionWorkflow:
 
         except Exception as e:
             # Check if this is an orphaned sync error (source connection deleted mid-execution)
-            if "ORPHANED_SYNC" in str(e):
+            # Check both str(e) and the exception's cause chain for the ORPHANED_SYNC marker
+            error_str = str(e)
+            if hasattr(e, "__cause__") and e.__cause__:
+                error_str += f" {str(e.__cause__)}"
+
+            # Log the full error for debugging
+            workflow.logger.debug(f"Activity exception - str: {error_str}")
+            workflow.logger.debug(f"Activity exception type: {type(e).__name__}")
+
+            if "ORPHANED_SYNC" in error_str:
                 workflow.logger.info(
                     f"🧹 Sync {sync_dict['id']} became orphaned during execution. "
                     f"Source connection was deleted. Initiating self-destruct cleanup..."

@@ -16,6 +16,7 @@ from airweave.platform.temporal.activities import (
     mark_sync_job_cancelled_activity,
     run_sync_activity,
 )
+from airweave.platform.temporal.cleanup import self_destruct_orphaned_sync_activity
 from airweave.platform.temporal.client import temporal_client
 from airweave.platform.temporal.workflows import (
     CleanupStuckSyncJobsWorkflow,
@@ -53,6 +54,7 @@ class TemporalWorker:
                     mark_sync_job_cancelled_activity,
                     create_sync_job_activity,
                     cleanup_stuck_sync_jobs_activity,
+                    self_destruct_orphaned_sync_activity,
                 ],
                 workflow_runner=sandbox_config,
                 max_concurrent_workflow_task_polls=8,
