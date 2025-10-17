@@ -3,7 +3,7 @@
 import mimetypes
 from datetime import datetime
 from pathlib import Path
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, Union
 
 import httpx
 import tenacity
@@ -49,12 +49,13 @@ class BitbucketSource(BaseSource):
 
     @classmethod
     async def create(
-        cls, credentials: BitbucketAuthConfig, config: Optional[Dict[str, Any]] = None
+        cls, credentials: Union[BitbucketAuthConfig, str], config: Optional[Dict[str, Any]] = None
     ) -> "BitbucketSource":
         """Create a new source instance with authentication.
 
         Args:
-            credentials: BitbucketAuthConfig instance containing authentication details
+            credentials: BitbucketAuthConfig instance containing authentication details,
+                        or "PROXY_MODE" string for proxy authentication
             config: Optional source configuration parameters
 
         Returns:
@@ -62,27 +63,42 @@ class BitbucketSource(BaseSource):
         """
         instance = cls()
 
-        instance.access_token = credentials.access_token
-        instance.email = credentials.email
-        instance.workspace = credentials.workspace
-        instance.repo_slug = credentials.repo_slug
+        # Handle proxy mode (credentials is "PROXY_MODE" string)
+        if isinstance(credentials, str) and credentials == "PROXY_MODE":
+            instance.access_token = None  # Will use proxy authentication
+            instance.email = None
+            instance.workspace = None
+            instance.repo_slug = None
+            instance._is_proxy_mode = True
+        else:
+            # Handle direct authentication (credentials is BitbucketAuthConfig)
+            instance.access_token = credentials.access_token
+            instance.email = credentials.email
+            instance.workspace = credentials.workspace
+            instance.repo_slug = credentials.repo_slug
+            instance._is_proxy_mode = False
 
         instance.branch = config.get("branch", "") if config else ""
         instance.file_extensions = config.get("file_extensions", []) if config else []
 
         return instance
 
-    def _get_auth(self) -> httpx.BasicAuth:
+    def _get_auth(self) -> Optional[httpx.BasicAuth]:
         """Get Basic authentication object for Bitbucket API requests.
 
         Bitbucket API uses Basic authentication with email and API token.
+        In proxy mode, returns None to let the proxy handle authentication.
 
         Returns:
-            httpx.BasicAuth object configured for the request
+            httpx.BasicAuth object configured for the request, or None for proxy mode
 
         Raises:
-            ValueError: If authentication credentials are missing
+            ValueError: If authentication credentials are missing (in direct mode)
         """
+        # Skip authentication in proxy mode
+        if getattr(self, "_is_proxy_mode", False):
+            return None
+
         access_token = getattr(self, "access_token", None)
         email = getattr(self, "email", None)
 
@@ -103,10 +119,10 @@ class BitbucketSource(BaseSource):
     async def _get_with_auth(
         self, client: httpx.AsyncClient, url: str, params: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Make authenticated API request using Basic authentication.
+        """Make authenticated API request using Basic authentication or proxy.
 
         Args:
-            client: HTTP client
+            client: HTTP client (may be a proxy client in proxy mode)
             url: API endpoint URL
             params: Optional query parameters
 
@@ -115,7 +131,13 @@ class BitbucketSource(BaseSource):
         """
         auth = self._get_auth()
         headers = {"Accept": "application/json"}
-        response = await client.get(url, auth=auth, headers=headers, params=params)
+
+        # Only pass auth if not in proxy mode
+        if auth is not None:
+            response = await client.get(url, auth=auth, headers=headers, params=params)
+        else:
+            response = await client.get(url, headers=headers, params=params)
+
         response.raise_for_status()
         return response.json()
 
