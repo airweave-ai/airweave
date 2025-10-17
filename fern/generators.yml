@@ -2,13 +2,6 @@ api:
   specs:
     - openapi: ./definition/openapi.json
       overrides: ./definition/openapi-overrides.yml
-      headers:
-        X-Framework-Name:
-          name: framework_name
-          type: optional<string>
-        X-Framework-Version:
-          name: framework_version
-          type: optional<string>
 
 groups:
   public:

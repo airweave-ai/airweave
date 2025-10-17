@@ -5,6 +5,18 @@
     "version": "0.1.0",
     "description": "\n\n## API Groups\nThis API spec only includes the following API groups:\n- **Sources**: API endpoints for discovering available data source connectors and their configuration requirements\n- **Collections**: API endpoints for managing collections - logical groups of data sources that provide unified search capabilities\n- **Source Connections**: API endpoints for managing live connections to data sources. Source connections are the actual configured instances that Airweave uses to sync data from your apps and databases, transforming it into searchable, structured information within collections\n"
   },
+  "x-fern-global-headers": [
+    {
+      "header": "X-Framework-Name",
+      "name": "framework_name",
+      "optional": true
+    },
+    {
+      "header": "X-Framework-Version",
+      "name": "framework_version",
+      "optional": true
+    }
+  ],
   "paths": {
     "/sources": {
       "get": {
