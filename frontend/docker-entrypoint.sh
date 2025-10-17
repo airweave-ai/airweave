@@ -2,12 +2,14 @@
 set -e
 
 # CASA-6: Input validation for environment variables
-validate_url_path() {
-  local path="$1"
-  # Allow paths starting with / containing only safe characters
-  if ! echo "$path" | grep -qE '^/[a-zA-Z0-9/_-]*$'; then
-    echo "ERROR: Invalid URL path format: $path"
-    echo "URL path must start with / and contain only alphanumeric, -, _, / characters"
+validate_url_or_path() {
+  local value="$1"
+  # Allow either:
+  # 1. Full URLs: http://... or https://...
+  # 2. Paths: starting with / containing only safe characters
+  if ! echo "$value" | grep -qE '^(https?://[a-zA-Z0-9][a-zA-Z0-9.-]*(:[0-9]+)?(/[a-zA-Z0-9/_-]*)?|/[a-zA-Z0-9/_-]*)$'; then
+    echo "ERROR: Invalid API_URL format: $value"
+    echo "API_URL must be either a full URL (http://... or https://...) or a path starting with /"
     exit 1
   fi
 }
@@ -41,7 +43,7 @@ validate_audience() {
 
 # Validate API_URL if provided
 if [ -n "$API_URL" ]; then
-  validate_url_path "$API_URL"
+  validate_url_or_path "$API_URL"
 fi
 
 # Validate Auth0 variables if provided
