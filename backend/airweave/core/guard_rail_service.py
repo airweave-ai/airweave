@@ -108,12 +108,20 @@ class GuardRailService:
         self._lock = asyncio.Lock()
 
     async def _check_has_billing(self) -> bool:
-        """Check if the organization has billing enabled.
+        """Check if the organization has billing records.
+
+        This is a pure check that only determines if billing exists,
+        without considering environment or enforcement policy.
 
         Returns:
-            True if organization has billing records, False for legacy organizations
+            True if organization has billing records, False otherwise
         """
         if self._has_billing is not None:
+            return self._has_billing
+
+        # If Stripe is disabled, no organizations have billing
+        if not settings.STRIPE_ENABLED:
+            self._has_billing = False
             return self._has_billing
 
         async with get_db_context() as db:
@@ -123,12 +131,18 @@ class GuardRailService:
             )
             self._has_billing = billing_record is not None
 
-            if not self._has_billing:
-                self.logger.info(
-                    f"Organization {self.organization_id} is a legacy organization without billing"
-                )
-
         return self._has_billing
+
+    def _should_enforce_usage_limits(self) -> bool:
+        """Determine if usage limits should be enforced.
+
+        Returns:
+            False if local development mode, True otherwise
+        """
+        if settings.LOCAL_DEVELOPMENT:
+            self.logger.debug("Local development mode - usage limits disabled")
+            return False
+        return True
 
     async def is_allowed(self, action_type: ActionType, amount: int = 1) -> bool:
         """Check if the action is allowed.
@@ -146,16 +160,15 @@ class GuardRailService:
         """
         # Use lock to ensure thread-safe access to usage data
         async with self._lock:
-            # Bypass all checks for local development
-            if settings.LOCAL_DEVELOPMENT:
+            # Check if we should enforce limits (local dev bypass)
+            if not self._should_enforce_usage_limits():
                 return True
 
             # Check if organization has billing - legacy orgs are exempt
             has_billing = await self._check_has_billing()
             if not has_billing:
                 self.logger.debug(
-                    f"Legacy organization {self.organization_id} - allowing "
-                    f"action {action_type.value} without billing checks"
+                    f"No billing for organization {self.organization_id} - allowing action"
                 )
                 return True
 
@@ -243,11 +256,15 @@ class GuardRailService:
 
         # Use lock to ensure thread-safe increment and flush
         async with self._lock:
-            # Skip incrementing for legacy organizations
+            # Check if we should track usage
+            if not self._should_enforce_usage_limits():
+                return
+
+            # Skip incrementing if no billing records exist
             has_billing = await self._check_has_billing()
             if not has_billing:
                 self.logger.debug(
-                    f"Skipping usage increment for legacy organization {self.organization_id}"
+                    f"No billing for organization {self.organization_id} - skipping usage tracking"
                 )
                 return
 
@@ -292,11 +309,15 @@ class GuardRailService:
         Args:
             action_type: If specified, only flush this action type. Otherwise flush all.
         """
-        # Skip flushing for legacy organizations
+        # Check if we should track usage
+        if not self._should_enforce_usage_limits():
+            return
+
+        # Skip flushing if no billing records exist
         has_billing = await self._check_has_billing()
         if not has_billing:
             self.logger.debug(
-                f"Skipping usage flush for legacy organization {self.organization_id}"
+                f"No billing for organization {self.organization_id} - skipping usage flush"
             )
             return
 
