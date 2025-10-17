@@ -7,7 +7,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 if TYPE_CHECKING:
     from airweave.schemas.billing_period import BillingPeriod
@@ -22,6 +22,28 @@ class BillingPlan(str, Enum):
     TEAM = "team"
     ENTERPRISE = "enterprise"
 
+    @classmethod
+    def normalize(cls, value: str) -> "BillingPlan":
+        """Normalize billing plan values from database to enum.
+
+        Handles legacy uppercase values and STARTUP -> PRO mapping.
+        """
+        if not value:
+            return cls.TRIAL
+
+        # Map old database values to new enum values
+        value_lower = value.lower()
+        mapping = {
+            "trial": cls.TRIAL,
+            "developer": cls.DEVELOPER,
+            "pro": cls.PRO,
+            "startup": cls.PRO,  # Legacy mapping
+            "team": cls.TEAM,
+            "enterprise": cls.ENTERPRISE,
+        }
+
+        return mapping.get(value_lower, cls.TRIAL)
+
 
 class BillingStatus(str, Enum):
     """Billing subscription status."""
@@ -34,6 +56,29 @@ class BillingStatus(str, Enum):
     TRIAL_EXPIRED = "trial_expired"
     GRACE_PERIOD = "grace_period"
 
+    @classmethod
+    def normalize(cls, value: str) -> "BillingStatus":
+        """Normalize billing status values from database to enum.
+
+        Handles legacy uppercase values.
+        """
+        if not value:
+            return cls.ACTIVE
+
+        # Map old database values to new enum values
+        value_lower = value.lower()
+        mapping = {
+            "active": cls.ACTIVE,
+            "past_due": cls.PAST_DUE,
+            "canceled": cls.CANCELED,
+            "paused": cls.PAUSED,
+            "trialing": cls.TRIALING,
+            "trial_expired": cls.TRIAL_EXPIRED,
+            "grace_period": cls.GRACE_PERIOD,
+        }
+
+        return mapping.get(value_lower, cls.ACTIVE)
+
 
 class PaymentStatus(str, Enum):
     """Payment status."""
@@ -41,6 +86,25 @@ class PaymentStatus(str, Enum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     PENDING = "pending"
+
+    @classmethod
+    def normalize(cls, value: str) -> "PaymentStatus":
+        """Normalize payment status values from database to enum.
+
+        Handles legacy uppercase values.
+        """
+        if not value:
+            return cls.PENDING
+
+        # Map old database values to new enum values
+        value_lower = value.lower()
+        mapping = {
+            "succeeded": cls.SUCCEEDED,
+            "failed": cls.FAILED,
+            "pending": cls.PENDING,
+        }
+
+        return mapping.get(value_lower, cls.PENDING)
 
 
 class OrganizationBillingBase(BaseModel):
@@ -51,6 +115,26 @@ class OrganizationBillingBase(BaseModel):
         default=BillingStatus.ACTIVE, description="Current billing status"
     )
     billing_email: str = Field(..., description="Billing contact email")
+
+    @field_validator("billing_plan", mode="before")
+    @classmethod
+    def normalize_billing_plan(cls, v: Any) -> BillingPlan:
+        """Normalize billing plan from database format."""
+        if isinstance(v, BillingPlan):
+            return v
+        if isinstance(v, str):
+            return BillingPlan.normalize(v)
+        return BillingPlan.TRIAL
+
+    @field_validator("billing_status", mode="before")
+    @classmethod
+    def normalize_billing_status(cls, v: Any) -> BillingStatus:
+        """Normalize billing status from database format."""
+        if isinstance(v, BillingStatus):
+            return v
+        if isinstance(v, str):
+            return BillingStatus.normalize(v)
+        return BillingStatus.ACTIVE
 
 
 class OrganizationBillingCreate(OrganizationBillingBase):
@@ -120,6 +204,28 @@ class OrganizationBillingInDBBase(OrganizationBillingBase):
     yearly_prepay_payment_intent_id: Optional[str] = None
     created_at: datetime
     modified_at: datetime
+
+    @field_validator("pending_plan_change", mode="before")
+    @classmethod
+    def normalize_pending_plan(cls, v: Any) -> Optional[BillingPlan]:
+        """Normalize pending plan change from database format."""
+        if v is None:
+            return None
+        if isinstance(v, BillingPlan):
+            return v
+        if isinstance(v, str):
+            return BillingPlan.normalize(v)
+        return None
+
+    @field_validator("last_payment_status", mode="before")
+    @classmethod
+    def normalize_payment_status(cls, v: Any) -> Optional[str]:
+        """Normalize payment status from database format to lowercase."""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            return v.lower()
+        return None
 
 
 class OrganizationBilling(OrganizationBillingInDBBase):
