@@ -101,6 +101,12 @@ If necessary (like editing ), refer [sync-architecture.mdc](mdc:.cursor/rules/sy
 - **Error Handling**: Analytics errors are logged but never crash the application
 - **Property Guidelines**: Use `.value` for enums, avoid mutating caller's properties dict
 - **Timing**: Use `time.monotonic()` for duration measurements, not `time.time()`
+- **Session Replay Integration**:
+  - **Header Flow**: Frontend sends PostHog session ID via `X-Airweave-Session-ID` header
+  - **Header Extraction**: `deps._extract_headers_from_request()` extracts session ID into `RequestHeaders.session_id`
+  - **PostHog Property**: `ContextualAnalyticsService` automatically adds `$session_id` property to all events
+  - **Purpose**: Links backend events to frontend session replays for debugging and user journey analysis
+  - **Implementation**: Session ID flows through `RequestHeaders` → `ContextualAnalyticsService` → `_build_base_properties()` → `$session_id` property
 
 ### Search Persistence & Analytics
 - **Database-First Approach**: Every search is persisted to `search_queries` table via `CRUDSearchQuery`

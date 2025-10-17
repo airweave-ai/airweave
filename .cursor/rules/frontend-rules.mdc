@@ -43,6 +43,7 @@ The API client is the central hub for all backend communication with sophisticat
 - **Token Management**: Automatic token injection via provider pattern
 - **Request Queuing**: Queues requests while auth initializes
 - **Organization Context**: Auto-injects `X-Organization-ID` header
+- **Session Tracking**: Auto-injects `X-Airweave-Session-ID` header with PostHog session ID for session replay linking
 - **Auto-Retry**: Refreshes token on 401/403 and retries
 - **Organization Auto-Switching**: Detects resource org mismatches and switches context
 - **Type-Safe Responses**: Returns typed Response objects
@@ -98,8 +99,14 @@ setTokenProvider({
 ### Auth0 Integration
 1. **Provider Hierarchy**:
    ```
-   Auth0Provider → AuthProvider → ApiAuthConnector → App
+   PostHogProvider → ThemeProvider → BrowserRouter → Auth0Provider → AuthProvider → ApiAuthConnector → App
    ```
+   - **PostHogProvider**: Initializes PostHog analytics and session tracking (outermost)
+   - **ThemeProvider**: Manages dark/light theme persistence
+   - **BrowserRouter**: React Router client-side routing
+   - **Auth0Provider**: Handles user authentication
+   - **AuthProvider**: Manages token lifecycle and auth state
+   - **ApiAuthConnector**: Connects auth to API client
 
 2. **Auth Context** (`lib/auth-context.tsx`):
    - Manages Auth0 token lifecycle
