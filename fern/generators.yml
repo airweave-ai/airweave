@@ -2,6 +2,13 @@ api:
   specs:
     - openapi: ./definition/openapi.json
       overrides: ./definition/openapi-overrides.yml
+      headers:
+        X-Framework-Name:
+          name: framework_name
+          type: optional<string>
+        X-Framework-Version:
+          name: framework_version
+          type: optional<string>
 
 groups:
   public:
@@ -16,18 +23,6 @@ groups:
           repository: airweave-ai/python-sdk
         config:
           client_class_name: AirweaveSDK
-          extra_client_options:
-            - name: framework_name
-              type: Optional[str]
-              description: "Name of the agent framework using this SDK (e.g., 'crewai', 'langchain', 'llamaindex'). This helps Airweave provide better analytics and support for your framework."
-            - name: framework_version
-              type: Optional[str]
-              description: "Version of the agent framework."
-          custom_headers:
-            - header: X-Framework-Name
-              value: framework_name
-            - header: X-Framework-Version
-              value: framework_version
 
       - name: fernapi/fern-typescript-node-sdk
         version: 3.3.3
@@ -39,15 +34,3 @@ groups:
           repository: airweave-ai/typescript-sdk
         config:
           namespaceExport: AirweaveSDK
-          extraClientOptions:
-            - name: frameworkName
-              type: string | undefined
-              description: "Name of the agent framework using this SDK (e.g., 'crewai', 'langchain', 'llamaindex'). This helps Airweave provide better analytics and support for your framework."
-            - name: frameworkVersion
-              type: string | undefined
-              description: "Version of the agent framework."
-          customHeaders:
-            - header: X-Framework-Name
-              value: frameworkName
-            - header: X-Framework-Version
-              value: frameworkVersion
