@@ -17,6 +17,9 @@ const PORT = process.env.PORT || 8080;
 // Create Express app
 const app = express();
 
+// Store active transport for message handling
+let activeTransport: SSEServerTransport | null = null;
+
 // Health check endpoint
 app.get("/health", (_req: Request, res: Response) => {
     res.json({
@@ -89,6 +92,9 @@ app.get("/sse", async (req: Request, res: Response) => {
     // Create SSE transport
     const transport = new SSEServerTransport("/message", res);
 
+    // Store the active transport for message handling
+    activeTransport = transport;
+
     // Connect server to transport
     await server.connect(transport);
 
@@ -97,14 +103,25 @@ app.get("/sse", async (req: Request, res: Response) => {
     // Handle connection close
     req.on("close", () => {
         console.error(`[${new Date().toISOString()}] SSE connection closed`);
+        activeTransport = null;
     });
 });
 
 // POST endpoint for client messages (required by SSE transport)
 app.post("/message", express.json(), async (req: Request, res: Response) => {
-    // The SSE transport handles this internally
-    // This endpoint is registered but the actual handling is done by the transport
-    res.status(200).send();
+    if (!activeTransport) {
+        console.error(`[${new Date().toISOString()}] No active transport for POST /message`);
+        res.status(400).json({ error: "No active SSE connection" });
+        return;
+    }
+
+    try {
+        // Forward the message to the SSE transport
+        await activeTransport.handlePostMessage(req, res);
+    } catch (error) {
+        console.error(`[${new Date().toISOString()}] Error handling POST message:`, error);
+        res.status(500).json({ error: "Failed to process message" });
+    }
 });
 
 // Error handling middleware
