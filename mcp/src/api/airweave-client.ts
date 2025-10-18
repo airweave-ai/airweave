@@ -14,49 +14,30 @@ export class AirweaveClient {
     }
 
     async search(searchRequest: any): Promise<SearchResponse> {
+        console.log(`[${new Date().toISOString()}] AirweaveClient.search called with:`, JSON.stringify(searchRequest, null, 2));
+
         // Mock mode for testing
         if (this.config.apiKey === 'test-key' && this.config.baseUrl.includes('localhost')) {
             return this.getMockResponse(searchRequest);
         }
 
         try {
-            // Check if this should use advanced search (POST endpoint)
-            const hasAdvancedParams = this.hasAdvancedParameters(searchRequest);
-
-            if (hasAdvancedParams) {
-                // Use the official SDK for advanced search
-                const response = await this.client.collections.searchAdvanced(this.config.collection, searchRequest);
-                return response;
-            } else {
-                // Use the official SDK for basic search
-                const { query, response_type, limit, offset, recency_bias } = searchRequest;
-                const response = await this.client.collections.search(this.config.collection, {
-                    query,
-                    response_type,
-                    limit,
-                    offset,
-                    recency_bias
-                });
-                return response;
-            }
+            // Use the SDK's search method - it handles both basic and advanced parameters
+            // The SDK will automatically use GET for basic params and POST for advanced
+            console.log(`[${new Date().toISOString()}] Calling SDK search with all params`);
+            const response = await this.client.collections.search(this.config.collection, searchRequest);
+            console.log(`[${new Date().toISOString()}] Search successful, got ${response.results?.length || 0} results`);
+            return response;
         } catch (error: any) {
             // Handle SDK errors and convert to our error format
+            console.error(`[${new Date().toISOString()}] Search error:`, error);
             if (error.statusCode) {
-                throw new Error(`Airweave API error (${error.statusCode}): ${error.message}`);
+                const errorBody = typeof error.body === 'string' ? error.body : JSON.stringify(error.body);
+                throw new Error(`Airweave API error (${error.statusCode}): ${error.message}\nStatus code: ${error.statusCode}\nBody: ${errorBody}`);
             } else {
-                throw new Error(`Airweave API error: ${error.message}`);
+                throw new Error(`Airweave API error: ${error.message || 'Unknown error'}`);
             }
         }
-    }
-
-    private hasAdvancedParameters(params: any): boolean {
-        return !!(
-            params.score_threshold !== undefined ||
-            params.search_method !== undefined ||
-            params.expansion_strategy !== undefined ||
-            params.enable_reranking !== undefined ||
-            params.enable_query_interpretation !== undefined
-        );
     }
 
     private getMockResponse(request: any): SearchResponse {
@@ -65,7 +46,6 @@ export class AirweaveClient {
         // Generate mock results based on the query
         const mockResults = [];
         const resultCount = Math.min(limit || 100, 5); // Limit to 5 for testing
-        const hasAdvancedParams = this.hasAdvancedParameters(request);
 
         for (let i = 0; i < resultCount; i++) {
             const score = 0.95 - (i * 0.1);
@@ -93,8 +73,7 @@ export class AirweaveClient {
                         search_method: search_method,
                         expansion_strategy: expansion_strategy,
                         enable_reranking: enable_reranking,
-                        enable_query_interpretation: enable_query_interpretation,
-                        used_advanced_search: hasAdvancedParams
+                        enable_query_interpretation: enable_query_interpretation
                     }
                 }
             });
@@ -102,8 +81,6 @@ export class AirweaveClient {
 
         return {
             results: mockResults,
-            response_type: response_type || "raw",
-            status: "success",
             completion: response_type === "completion"
                 ? `Based on the search results for "${query}", here's a comprehensive summary of the findings...`
                 : undefined

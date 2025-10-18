@@ -1,0 +1,118 @@
+---
+description: MCP (Model Context Protocol) server architecture and implementation
+globs: **/mcp/**
+alwaysApply: false
+---
+# Airweave MCP Server Architecture
+
+## Overview
+
+The Airweave MCP Server provides search capabilities for AI assistants through the Model Context Protocol (MCP). It supports both local desktop clients and cloud-based AI platforms.
+
+## Deployment Modes
+
+### 1. Local Mode (Desktop AI Clients)
+- **Transport**: stdio (standard input/output)
+- **Target**: Claude Desktop, Cursor, and other desktop AI assistants
+- **Entry Point**: `src/index.ts`
+- **Installation**: npm package or npx
+
+### 2. Hosted Mode (Cloud AI Platforms)
+- **Transport**: HTTP/SSE (Server-Sent Events)
+- **Target**: OpenAI Agent Builder and cloud-based AI platforms
+- **Entry Point**: `src/index-http.ts`
+- **Deployment**: Azure Kubernetes Service
+- **URL**: `https://mcp.airweave.ai`
+
+## Architecture Components
+
+### Core Server (`src/server.ts`)
+- **McpServer**: Main MCP server instance
+- **Tool Registration**: Dynamic tool creation based on collection
+- **Airweave Client**: API client for search operations
+- **Environment Validation**: Configuration validation for both modes
+
+### HTTP/SSE Server (`src/index-http.ts`)
+- **Express App**: HTTP server with health checks and info endpoints
+- **SSE Transport**: Server-Sent Events for real-time communication
+- **Message Handling**: POST `/message` endpoint for client messages
+- **Authentication**: API key validation via headers or query parameters
+
+### Tools
+- **Search Tool**: `search-{collection}` - Main search functionality
+- **Config Tool**: `config-{collection}` - Server configuration display
+
+## Key Features
+
+### Search Capabilities
+- Natural language queries with full parameter control
+- AI completion responses
+- Pagination control (limit/offset)
+- Recency bias configuration
+- Score thresholds and filtering
+
+### Authentication
+- Multiple API key methods:
+  - `Authorization: Bearer <key>`
+  - `X-API-Key: <key>`
+  - Query parameters: `?apiKey=<key>` or `?api_key=<key>`
+
+### Error Handling
+- Comprehensive error responses
+- Structured logging with timestamps
+- Graceful connection handling
+
+## Configuration
+
+### Environment Variables
+- `AIRWEAVE_COLLECTION`: Target collection name
+- `AIRWEAVE_BASE_URL`: API base URL (default: production)
+- `PORT`: Server port (default: 8080)
+
+### Client Configuration
+- API key provided by client (not server environment)
+- Collection-specific tool naming
+- Dynamic configuration per connection
+
+## Implementation Details
+
+### SSE Transport Pattern
+```typescript
+// Create transport with message endpoint
+const transport = new SSEServerTransport("/message", res);
+
+// Store active transport for message handling
+activeTransport = transport;
+
+// Connect server to transport
+await server.connect(transport);
+
+// Handle POST messages
+app.post("/message", async (req, res) => {
+    await activeTransport.handlePostMessage(req, res);
+});
+```
+
+### Tool Registration
+- Dynamic tool names based on collection
+- Schema validation with Pydantic-like structure
+- Async handlers for all operations
+
+## Development Guidelines
+
+### Code Structure
+- TypeScript with strict typing
+- Async/await for all I/O operations
+- Comprehensive error handling
+- Structured logging
+
+### Testing
+- Unit tests for tools and utilities
+- Integration tests for HTTP endpoints
+- LLM-based testing strategy
+
+### Deployment
+- Docker containerization
+- Kubernetes deployment manifests
+- Health check endpoints
+- Graceful shutdown handling
