@@ -16,9 +16,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:integration": "vitest run tests/integration-live.test.ts --reporter=verbose",
-    "test:llm": "node tests/run-llm-tests.js",
-    "test:ci": "npm run test && npm run test:integration && npm run test:llm",
+    "test:mcp": "vitest run tests/mcp-server.test.ts",
+    "test:http": "vitest run tests/http-transport.test.ts",
+    "test:all": "npm run test:mcp && npm run test:http",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
@@ -54,7 +54,9 @@
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/node": "^22.10.7",
+    "@types/supertest": "^6.0.2",
     "@vitest/coverage-v8": "^2.0.0",
+    "supertest": "^7.0.0",
     "typescript": "^5.7.3",
     "vitest": "^2.0.0"
   },

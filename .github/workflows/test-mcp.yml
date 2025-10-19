@@ -29,15 +29,15 @@ jobs:
           cd mcp
           npm ci
 
-      - name: Run MCP unit tests
+      - name: Run MCP Server Tests
         run: |
           cd mcp
-          npm test
+          npm run test:mcp
 
-      - name: Run MCP LLM simulation tests
+      - name: Run HTTP Transport Tests
         run: |
           cd mcp
-          npm run test:llm
+          npm run test:http
 
       - name: Test MCP server build
         run: |
