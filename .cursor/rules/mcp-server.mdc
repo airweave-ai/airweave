@@ -45,10 +45,13 @@ The Airweave MCP Server provides search capabilities for AI assistants through t
 - **Session Management**: Redis-backed distributed sessions with local caching for performance
 - **Authentication**: API key extraction from headers or query parameters per request
 - **Security**: API key hashing, session binding (IP/User-Agent), rate limiting, audit logging
+- **Multi-Collection Discovery**: Dynamically fetches and registers tools for all collections accessible via the API key
 
 ### Tools
-- **Search Tool**: `search-{collection}` - Main search functionality with natural language queries
+- **Search Tools**: `search-{readable_id}` - One search tool per collection (e.g., `search-github-test-r9xdw7`, `search-linear-o0yvkc`)
 - **Config Tool**: `get-config` - Server configuration display
+
+**Collection Discovery**: On session initialization, the server fetches all collections accessible via the provided API key from `/collections` endpoint and registers a dedicated search tool for each collection. Tool descriptions include collection name, status, and last update time to help LLMs choose the appropriate collection.
 
 ## Key Features
 
@@ -104,6 +107,41 @@ const sessionManager = new RedisSessionManager({
 // Handle all MCP requests with Redis-backed session persistence
 app.post('/mcp', async (req, res) => {
     // Extract API key and client metadata
+### Streamable HTTP Transport Pattern with Multi-Collection Discovery
+```typescript
+// Fetch collections from Airweave API
+async function fetchCollections(apiKey: string, baseUrl: string): Promise<any[]> {
+    const response = await fetch(`${baseUrl}/collections?limit=100`, {
+        headers: { 'X-API-Key': apiKey }
+    });
+    return await response.json();
+}
+
+// Create server with dynamic tool registration based on collections
+async function createMcpServer(apiKey: string) {
+    const collections = await fetchCollections(apiKey, baseUrl);
+    const server = new McpServer({...});
+    
+    // Register one search tool per collection
+    for (const collection of collections) {
+        const airweaveClient = new AirweaveClient({ collection: collection.readable_id, baseUrl, apiKey });
+        const searchTool = createSearchTool(`search-${collection.readable_id}`, collection.readable_id, airweaveClient);
+        
+        // Enhanced description with metadata
+        const description = `Search within '${collection.name}' collection.
+Status: ${collection.status}
+Last updated: ${collection.modified_at}
+${searchTool.description}`;
+        
+        server.tool(searchTool.name, description, searchTool.schema, searchTool.handler);
+    }
+    return server;
+}
+
+// Session management with async server creation
+const sessions = new Map<string, { server: McpServer, transport: StreamableHTTPServerTransport, apiKey: string }>();
+
+app.post('/mcp', async (req, res) => {
     const apiKey = req.headers['x-api-key'] || req.headers['authorization']?.replace('Bearer ', '');
     const sessionId = req.headers['mcp-session-id'] || generateSessionId();
     const clientIP = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress;
@@ -134,9 +172,15 @@ app.post('/mcp', async (req, res) => {
             session = await createSessionObjects(newSessionData, apiKey);
             localSessionCache.set(sessionId, session);
         }
+    if (!session || session.apiKey !== apiKey) {
+        // Async: Fetch collections and create server with all tools
+        const server = await createMcpServer(apiKey);
+        const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => sessionId });
+        await server.connect(transport);
+        session = { server, transport, apiKey };
+        sessions.set(sessionId, session);
     }
     
-    // Handle request with session's transport
     await session.transport.handleRequest(req, res, req.body);
 });
 ```

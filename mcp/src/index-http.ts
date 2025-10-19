@@ -6,8 +6,13 @@
  * This is the production HTTP server for cloud-based AI platforms like OpenAI Agent Builder.
  * Uses the modern Streamable HTTP transport (MCP 2025-03-26) instead of deprecated SSE.
  * 
+ * Features:
+ * - Redis-based distributed session storage (stateless, horizontally scalable)
+ * - Dynamic multi-collection discovery (auto-registers tools per API key)
+ * - Session security (IP binding, API key hashing, rate limiting)
+ * 
  * Session Management:
- * - Redis stores session metadata (API key, collection, timestamps)
+ * - Redis stores session metadata (API key hash, collection, timestamps, client metadata)
  * - Each pod maintains an in-memory cache of McpServer/Transport instances
  * - Sessions can be served by any pod (stateless, horizontally scalable)
  * 
@@ -22,7 +27,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { AirweaveClient } from './api/airweave-client.js';
 import { createSearchTool } from './tools/search-tool.js';
 import { createConfigTool } from './tools/config-tool.js';
-import { RedisSessionManager, SessionData, SessionWithTransport, SessionMetadata } from './session/redis-session-manager.js';
+import { RedisSessionManager, SessionData, SessionWithTransport } from './session/redis-session-manager.js';
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
@@ -30,16 +35,36 @@ app.use(express.json({ limit: '10mb' }));
 // Initialize Redis session manager
 const sessionManager = new RedisSessionManager();
 
-// Create MCP server instance with tools
-const createMcpServer = (apiKey: string) => {
-    const collection = process.env.AIRWEAVE_COLLECTION || 'default';
-    const baseUrl = process.env.AIRWEAVE_BASE_URL || 'https://api.airweave.ai';
+// Local cache: Map session IDs to { server, transport, data }
+// This cache is per-pod and reconstructed from Redis as needed
+const localSessionCache = new Map<string, SessionWithTransport>();
 
-    const config = {
-        collection,
-        baseUrl,
-        apiKey // Use the provided API key from the request
-    };
+// Fetch collections from Airweave API
+async function fetchCollections(apiKey: string, baseUrl: string): Promise<any[]> {
+    try {
+        const response = await fetch(`${baseUrl}/collections?limit=100`, {
+            headers: {
+                'X-API-Key': apiKey
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const collections = await response.json();
+        console.log(`[${new Date().toISOString()}] Fetched ${collections.length} collections for API key`);
+        return collections;
+    } catch (error) {
+        console.error(`[${new Date().toISOString()}] Failed to fetch collections:`, error);
+        throw error;
+    }
+}
+
+// Create MCP server instance with tools dynamically based on available collections
+async function createMcpServer(apiKey: string): Promise<McpServer> {
+    const baseUrl = process.env.AIRWEAVE_BASE_URL || 'https://api.airweave.ai';
+    const fallbackCollection = process.env.AIRWEAVE_COLLECTION || 'default';
 
     const server = new McpServer({
         name: 'airweave-search',
@@ -51,96 +76,85 @@ const createMcpServer = (apiKey: string) => {
         }
     });
 
-    // Create dynamic tool name based on collection
-    const toolName = `search-${collection}`;
+    try {
+        // Fetch all collections for this API key
+        const collections = await fetchCollections(apiKey, baseUrl);
+        const searchToolNames: string[] = [];
 
-    // Initialize Airweave client with the request's API key
-    const airweaveClient = new AirweaveClient(config);
+        if (collections.length === 0) {
+            console.warn(`[${new Date().toISOString()}] No collections found, using fallback collection: ${fallbackCollection}`);
+            // Fallback: create single tool with default collection
+            const config = { collection: fallbackCollection, baseUrl, apiKey };
+            const airweaveClient = new AirweaveClient(config);
+            const searchTool = createSearchTool(`search-${fallbackCollection}`, fallbackCollection, airweaveClient);
+            server.tool(searchTool.name, searchTool.description, searchTool.schema, searchTool.handler);
+            searchToolNames.push(searchTool.name);
+        } else {
+            // Register one search tool per collection
+            console.log(`[${new Date().toISOString()}] Registering tools for ${collections.length} collections`);
 
-    // Create tools using shared tool creation functions
-    const searchTool = createSearchTool(toolName, collection, airweaveClient);
-    const configTool = createConfigTool(toolName, collection, baseUrl, apiKey);
+            for (const collection of collections) {
+                const config = {
+                    collection: collection.readable_id,
+                    baseUrl,
+                    apiKey
+                };
 
-    // Register tools
-    server.tool(
-        searchTool.name,
-        searchTool.description,
-        searchTool.schema,
-        searchTool.handler
-    );
+                const airweaveClient = new AirweaveClient(config);
+                const toolName = `search-${collection.readable_id}`;
 
-    server.tool(
-        configTool.name,
-        configTool.description,
-        configTool.schema,
-        configTool.handler
-    );
+                // Create enhanced tool description with collection metadata
+                const searchTool = createSearchTool(toolName, collection.readable_id, airweaveClient);
 
-    return server;
-};
+                // Enhance the description with collection name and status
+                const enhancedDescription = `Search within the '${collection.name}' collection (${collection.readable_id}).
 
-// Health check endpoint
-app.get('/health', async (req, res) => {
-    const redisConnected = sessionManager.isConnected();
+Status: ${collection.status || 'unknown'}
+Last updated: ${collection.modified_at ? new Date(collection.modified_at).toLocaleString() : 'unknown'}
 
-    res.json({
-        status: redisConnected ? 'healthy' : 'degraded',
-        transport: 'streamable-http',
-        protocol: 'MCP 2025-03-26',
-        collection: process.env.AIRWEAVE_COLLECTION || 'unknown',
-        redis: {
-            connected: redisConnected
-        },
-        timestamp: new Date().toISOString()
-    });
-});
+${searchTool.description}`;
 
-// Root endpoint with server info
-app.get('/', (req, res) => {
-    const collection = process.env.AIRWEAVE_COLLECTION || 'default';
-    const baseUrl = process.env.AIRWEAVE_BASE_URL || 'https://api.airweave.ai';
+                server.tool(
+                    searchTool.name,
+                    enhancedDescription,
+                    searchTool.schema,
+                    searchTool.handler
+                );
 
-    res.json({
-        name: "Airweave MCP Search Server",
-        version: "2.1.0",
-        transport: "Streamable HTTP",
-        protocol: "MCP 2025-03-26",
-        collection: collection,
-        endpoints: {
-            health: "/health",
-            mcp: "/mcp"
-        },
-        authentication: {
-            required: true,
-            methods: [
-                "Authorization: Bearer <your-api-key> (recommended for OpenAI Agent Builder)",
-                "X-API-Key: <your-api-key>",
-                "Query parameter: ?apiKey=your-key",
-                "Query parameter: ?api_key=your-key"
-            ],
-            openai_agent_builder: {
-                url: "https://mcp.airweave.ai/mcp",
-                headers: {
-                    Authorization: "Bearer <your-airweave-api-key>"
-                }
+                searchToolNames.push(searchTool.name);
+                console.log(`[${new Date().toISOString()}] Registered tool: ${toolName} for collection: ${collection.name}`);
             }
         }
-    });
-});
 
-// Local cache: Map session IDs to { server, transport, data }
-// This cache is per-pod and reconstructed from Redis as needed
-const localSessionCache = new Map<string, SessionWithTransport>();
+        // Register the config tool (shows all collections) - pass actual search tool names
+        const configTool = createConfigTool(searchToolNames, fallbackCollection, baseUrl, apiKey);
+        server.tool(configTool.name, configTool.description, configTool.schema, configTool.handler);
+
+    } catch (error) {
+        console.error(`[${new Date().toISOString()}] Failed to fetch collections, using fallback:`, error);
+
+        // Fallback: create single tool with default collection
+        const config = { collection: fallbackCollection, baseUrl, apiKey };
+        const airweaveClient = new AirweaveClient(config);
+        const searchTool = createSearchTool(`search-${fallbackCollection}`, fallbackCollection, airweaveClient);
+        const configTool = createConfigTool([searchTool.name], fallbackCollection, baseUrl, apiKey);
+
+        server.tool(searchTool.name, searchTool.description, searchTool.schema, searchTool.handler);
+        server.tool(configTool.name, configTool.description, configTool.schema, configTool.handler);
+    }
+
+    return server;
+}
 
 /**
  * Helper function to create or recreate session objects (server + transport)
- * Note: apiKey parameter is the PLAINTEXT key needed for API calls
+ * Note: apiKey parameter is the PLAINTEXT key needed for API calls and collection discovery
  */
 async function createSessionObjects(sessionData: SessionData, apiKey: string): Promise<SessionWithTransport> {
-    const { sessionId, collection, baseUrl } = sessionData;
+    const { sessionId } = sessionData;
 
-    // Create a new server with the API key
-    const server = createMcpServer(apiKey);
+    // Create a new server with the API key (async - fetches collections)
+    const server = await createMcpServer(apiKey);
 
     // Create a new transport for this session
     const transport = new StreamableHTTPServerTransport({
@@ -164,6 +178,61 @@ async function createSessionObjects(sessionData: SessionData, apiKey: string): P
 
     return { server, transport, data: sessionData };
 }
+
+// Health check endpoint
+app.get('/health', async (req, res) => {
+    const redisConnected = sessionManager.isConnected();
+
+    res.json({
+        status: redisConnected ? 'healthy' : 'degraded',
+        transport: 'streamable-http',
+        protocol: 'MCP 2025-03-26',
+        mode: 'multi-collection',
+        active_sessions: localSessionCache.size,
+        redis: {
+            connected: redisConnected
+        },
+        timestamp: new Date().toISOString()
+    });
+});
+
+// Root endpoint with server info
+app.get('/', (req, res) => {
+    const baseUrl = process.env.AIRWEAVE_BASE_URL || 'https://api.airweave.ai';
+
+    res.json({
+        name: "Airweave MCP Search Server",
+        version: "2.1.0",
+        transport: "Streamable HTTP",
+        protocol: "MCP 2025-03-26",
+        mode: "multi-collection",
+        description: "Dynamically discovers and provides search tools for all collections accessible via your API key",
+        endpoints: {
+            health: "/health",
+            mcp: "/mcp"
+        },
+        authentication: {
+            required: true,
+            methods: [
+                "Authorization: Bearer <your-api-key> (recommended for OpenAI Agent Builder)",
+                "X-API-Key: <your-api-key>",
+                "Query parameter: ?apiKey=your-key",
+                "Query parameter: ?api_key=your-key"
+            ],
+            openai_agent_builder: {
+                url: "https://mcp.airweave.ai/mcp",
+                headers: {
+                    Authorization: "Bearer <your-airweave-api-key>"
+                }
+            },
+            notes: "Each API key gets access to its organization's collections. Tools are dynamically registered per session."
+        },
+        session_storage: {
+            type: "redis",
+            features: ["distributed", "stateless", "horizontally-scalable", "session-binding", "rate-limiting"]
+        }
+    });
+});
 
 // Main MCP endpoint (Streamable HTTP) with Redis session management
 app.post('/mcp', async (req, res) => {
@@ -235,7 +304,7 @@ app.post('/mcp', async (req, res) => {
                 // Store in Redis
                 await sessionManager.setSession(newSessionData, true);
 
-                // Create new session objects
+                // Create new session objects (async - discovers collections)
                 session = await createSessionObjects(newSessionData, apiKey as string);
                 localSessionCache.set(sessionId, session);
             } else {
@@ -292,7 +361,7 @@ app.post('/mcp', async (req, res) => {
                     return;
                 }
 
-                // Recreate server and transport from session data
+                // Recreate server and transport from session data (async - discovers collections)
                 session = await createSessionObjects(sessionData, apiKey as string);
                 localSessionCache.set(sessionId, session);
             } else {
@@ -333,7 +402,7 @@ app.post('/mcp', async (req, res) => {
                 // Store in Redis
                 await sessionManager.setSession(newSessionData, true);
 
-                // Create session objects
+                // Create session objects (async - discovers collections)
                 session = await createSessionObjects(newSessionData, apiKey as string);
                 localSessionCache.set(sessionId, session);
             }
@@ -411,7 +480,6 @@ app.use((error: Error, req: express.Request, res: express.Response, next: expres
 // Initialize and start server
 async function startServer() {
     const PORT = process.env.PORT || 8080;
-    const collection = process.env.AIRWEAVE_COLLECTION || 'default';
     const baseUrl = process.env.AIRWEAVE_BASE_URL || 'https://api.airweave.ai';
 
     try {
@@ -427,13 +495,14 @@ async function startServer() {
             console.log(`🔗 Endpoint: http://localhost:${PORT}/mcp`);
             console.log(`🏥 Health: http://localhost:${PORT}/health`);
             console.log(`📋 Info: http://localhost:${PORT}/`);
-            console.log(`📚 Collection: ${collection}`);
+            console.log(`🔄 Mode: Multi-collection (dynamically discovers collections per API key)`);
             console.log(`🌐 Base URL: ${baseUrl}`);
             console.log(`💾 Session Storage: Redis (stateless, horizontally scalable)`);
             console.log(`\n🔑 Authentication required: Provide your Airweave API key via:`);
             console.log(`   - Authorization: Bearer <your-api-key>`);
             console.log(`   - X-API-Key: <your-api-key>`);
             console.log(`   - Query parameter: ?apiKey=your-key`);
+            console.log(`\n✨ Each API key gets search tools for all accessible collections`);
         });
 
         // Graceful shutdown
