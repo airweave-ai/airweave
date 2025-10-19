@@ -14,7 +14,7 @@ Airweave is an open-source platform that makes **any app searchable for your age
 ## Architecture
 - Monorepo: Python FastAPI backend + React/TypeScript frontend + Python Temporal workers + Node.js MCP server
 - Data Flow: Sources → Processing → Vector/Graph DBs → Agent Queries
-- MCP Integration: Express/SSE server for cloud-based AI assistants (OpenAI Agent Builder, etc.)
+- MCP Integration: Streamable HTTP transport (MCP 2025-03-26) for cloud-based AI assistants (OpenAI Agent Builder, etc.)
 - Tested with Monke (internal E2E testing framework)
 
 ## Technical Capabilities
@@ -36,7 +36,7 @@ Airweave can extract and process data from:
 ## Technology Implementation
 - Backend: FastAPI with PostgreSQL metadata store
 - Frontend: React/TypeScript with ShadCN components
-- MCP Server: Node.js/Express with SSE transport for AI assistant integration
+- MCP Server: Node.js with stdio (local) and Streamable HTTP (hosted) transports for AI assistant integration
 - Storage: Qdrant (will add more, DWH-type storage later)
 - Deployment: Docker Compose (dev), Kubernetes (prod)
 - Processing: Async workers with Temporal

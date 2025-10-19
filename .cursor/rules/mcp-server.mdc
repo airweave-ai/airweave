@@ -16,13 +16,19 @@ The Airweave MCP Server provides search capabilities for AI assistants through t
 - **Target**: Claude Desktop, Cursor, and other desktop AI assistants
 - **Entry Point**: `src/index.ts`
 - **Installation**: npm package or npx
+- **Architecture**: Single-tenant, one server instance per user's local environment
+- **Authentication**: API key from environment variables
 
 ### 2. Hosted Mode (Cloud AI Platforms)
-- **Transport**: HTTP/SSE (Server-Sent Events)
+- **Transport**: Streamable HTTP (MCP 2025-03-26)
 - **Target**: OpenAI Agent Builder and cloud-based AI platforms
 - **Entry Point**: `src/index-http.ts`
 - **Deployment**: Azure Kubernetes Service
 - **URL**: `https://mcp.airweave.ai`
+- **Architecture**: Multi-tenant, per-session server instances with isolated API keys
+- **Authentication**: API key per request via headers or query parameters
+
+**Key Difference**: Hosted mode creates separate `McpServer` instances for each session/API key combination, ensuring complete isolation between different users and allowing API key changes without server restart.
 
 ## Architecture Components
 
@@ -32,15 +38,16 @@ The Airweave MCP Server provides search capabilities for AI assistants through t
 - **Airweave Client**: API client for search operations
 - **Environment Validation**: Configuration validation for both modes
 
-### HTTP/SSE Server (`src/index-http.ts`)
+### Streamable HTTP Server (`src/index-http.ts`)
 - **Express App**: HTTP server with health checks and info endpoints
-- **SSE Transport**: Server-Sent Events for real-time communication
-- **Message Handling**: POST `/message` endpoint for client messages
-- **Authentication**: API key validation via headers or query parameters
+- **Streamable HTTP Transport**: Modern MCP 2025-03-26 transport for bidirectional communication
+- **Request Handling**: POST `/mcp` endpoint for all MCP requests
+- **Session Management**: Per-session server instances with independent API keys
+- **Authentication**: API key extraction from headers or query parameters per request
 
 ### Tools
-- **Search Tool**: `search-{collection}` - Main search functionality
-- **Config Tool**: `config-{collection}` - Server configuration display
+- **Search Tool**: `search-{collection}` - Main search functionality with natural language queries
+- **Config Tool**: `get-config` - Server configuration display
 
 ## Key Features
 
@@ -76,20 +83,31 @@ The Airweave MCP Server provides search capabilities for AI assistants through t
 
 ## Implementation Details
 
-### SSE Transport Pattern
+### Streamable HTTP Transport Pattern
 ```typescript
-// Create transport with message endpoint
-const transport = new SSEServerTransport("/message", res);
+// Session management: Map session IDs to { server, transport, apiKey }
+const sessions = new Map<string, { server: McpServer, transport: StreamableHTTPServerTransport, apiKey: string }>();
 
-// Store active transport for message handling
-activeTransport = transport;
-
-// Connect server to transport
-await server.connect(transport);
-
-// Handle POST messages
-app.post("/message", async (req, res) => {
-    await activeTransport.handlePostMessage(req, res);
+// Handle all MCP requests with per-session isolation
+app.post('/mcp', async (req, res) => {
+    // Extract API key from request
+    const apiKey = req.headers['x-api-key'] || req.headers['authorization']?.replace('Bearer ', '');
+    
+    // Get or create session
+    const sessionId = req.headers['mcp-session-id'] || generateSessionId();
+    let session = sessions.get(sessionId);
+    
+    if (!session || session.apiKey !== apiKey) {
+        // Create new server instance with API key
+        const server = createMcpServer(apiKey);
+        const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => sessionId });
+        await server.connect(transport);
+        session = { server, transport, apiKey };
+        sessions.set(sessionId, session);
+    }
+    
+    // Handle request with session's transport
+    await session.transport.handleRequest(req, res, req.body);
 });
 ```
 
@@ -107,9 +125,9 @@ app.post("/message", async (req, res) => {
 - Structured logging
 
 ### Testing
-- Unit tests for tools and utilities
-- Integration tests for HTTP endpoints
-- LLM-based testing strategy
+- **MCP Server Tests** (`tests/mcp-server.test.ts`): Core functionality tests including tool registration, parameter passing, response formatting, and error handling
+- **HTTP Transport Tests** (`tests/http-transport.test.ts`): Session management, API key authentication, and multi-tenant behavior
+- **Test Commands**: `npm run test:mcp`, `npm run test:http`, `npm run test:all`
 
 ### Deployment
 - Docker containerization
