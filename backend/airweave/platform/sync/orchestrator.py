@@ -108,13 +108,6 @@ class SyncOrchestrator:
 
         self.sync_context.sync_job.started_at = started_at
 
-        business_events.track_sync_started(
-            ctx=self.sync_context.ctx,
-            sync_id=self.sync_context.sync.id,
-            source_type=self.sync_context.connection.short_name,
-            collection_id=self.sync_context.collection.id,
-        )
-
     async def _process_entities(self) -> None:
         """Dispatch to batched or unbatched processing depending on the context flag."""
         if self.should_batch:
