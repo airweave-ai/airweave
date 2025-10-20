@@ -14,6 +14,7 @@ References:
     https://developers.google.com/drive/api/v3/reference/files  (Files)
 """
 
+import os
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
@@ -65,6 +66,22 @@ class GoogleDriveSource(BaseSource):
 
         config = config or {}
         instance.include_patterns = config.get("include_patterns", [])
+
+        # Filtering configuration to avoid downloading large/unsupported files
+        instance.blocked_mime_types = config.get(
+            "blocked_mime_types",
+            [
+                "video/mp4",
+                "video/quicktime",  # .mov
+                "video/x-matroska",  # .mkv
+                "video/x-msvideo",  # .avi
+            ],
+        )
+        instance.blocked_extensions = [
+            ext.lower()
+            for ext in config.get("blocked_extensions", [".mp4", ".mov", ".mkv", ".avi"])
+        ]
+        instance.max_file_size_bytes = int(config.get("max_file_size_bytes", 200 * 1024 * 1024))
 
         # Concurrency configuration
         instance.batch_size = int(config.get("batch_size", 30))
@@ -318,12 +335,17 @@ class GoogleDriveSource(BaseSource):
             "modifiedTime, size, md5Checksum, webContentLink)",
         }
 
+        # Coarse server-side filtering for specific blocked mime types (no wildcards supported)
+        for mt in getattr(self, "blocked_mime_types", []) or []:
+            if "*" not in mt:
+                params["q"] += f" and mimeType != '{mt}'"
+
         if drive_id:
             params["driveId"] = drive_id
 
         self.logger.debug(
-            f"List files start: corpora={corpora}, include_all_drives={include_all_drives}, "
-            f"drive_id={drive_id}, base_q={params['q']}, context={context}"
+            "List files start: corpora=%s, include_all_drives=%s, drive_id=%s, base_q=%s, context=%s"
+            % (corpora, include_all_drives, drive_id, params["q"], context)
         )
 
         total_files_from_api = 0  # Track total files returned by API
@@ -343,11 +365,44 @@ class GoogleDriveSource(BaseSource):
 
             # Log how many files the API returned in this page
             self.logger.debug(
-                f"\n\nGoogle Drive API returned {files_count} files in page {page_count} "
-                f"({context})\n\n"
+                "\n\nGoogle Drive API returned %s files in page %s (%s)\n\n"
+                % (files_count, page_count, context)
             )
 
             for file_obj in files_in_page:
+                # Client-side filtering before yielding to downstream processing
+                mime = (file_obj.get("mimeType") or "").lower()
+                name = file_obj.get("name") or ""
+                size_val = file_obj.get("size")
+                try:
+                    size = int(size_val) if size_val is not None else 0
+                except Exception:
+                    size = 0
+
+                name_lower = name.lower()
+                _, ext = os.path.splitext(name_lower)
+
+                blocked_by_mime = mime in getattr(self, "blocked_mime_types", [])
+                blocked_by_ext = ext in getattr(self, "blocked_extensions", [])
+                blocked_by_size = bool(self.max_file_size_bytes) and size > self.max_file_size_bytes
+
+                if blocked_by_mime or blocked_by_ext or blocked_by_size:
+                    reason = []
+                    if blocked_by_mime:
+                        reason.append(f"mime={mime}")
+                    if blocked_by_ext:
+                        reason.append(f"ext={ext}")
+                    if blocked_by_size:
+                        reason.append(f"size={size}B>")
+                    try:
+                        self.logger.info(
+                            "Skipping Google Drive file '%s' (id=%s) due to: %s"
+                            % (name, file_obj.get("id"), ", ".join(reason))
+                        )
+                    except Exception:
+                        pass
+                    continue
+
                 yield file_obj
 
             # Handle pagination
