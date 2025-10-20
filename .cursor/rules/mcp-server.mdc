@@ -91,25 +91,19 @@ The Airweave MCP Server provides search capabilities for AI assistants through t
 
 ## Implementation Details
 
-### Redis-Backed Session Management Pattern
+### Combined Redis Session Management + Multi-Collection Discovery
+
+The MCP server uses a sophisticated architecture that combines distributed session storage with dynamic collection discovery:
+
 ```typescript
+// Initialize Redis session manager for distributed storage
+const sessionManager = new RedisSessionManager();
+
 // Local cache: Map session IDs to { server, transport, data }
 // This cache is per-pod and reconstructed from Redis as needed
 const localSessionCache = new Map<string, SessionWithTransport>();
 
-// Redis session manager for distributed storage
-const sessionManager = new RedisSessionManager({
-    host: process.env.REDIS_HOST || 'redis',
-    port: parseInt(process.env.REDIS_PORT || '6379'),
-    password: process.env.REDIS_PASSWORD
-});
-
-// Handle all MCP requests with Redis-backed session persistence
-app.post('/mcp', async (req, res) => {
-    // Extract API key and client metadata
-### Streamable HTTP Transport Pattern with Multi-Collection Discovery
-```typescript
-// Fetch collections from Airweave API
+// Fetch collections from Airweave API (called per session)
 async function fetchCollections(apiKey: string, baseUrl: string): Promise<any[]> {
     const response = await fetch(`${baseUrl}/collections?limit=100`, {
         headers: { 'X-API-Key': apiKey }
@@ -118,72 +112,118 @@ async function fetchCollections(apiKey: string, baseUrl: string): Promise<any[]>
 }
 
 // Create server with dynamic tool registration based on collections
-async function createMcpServer(apiKey: string) {
+async function createMcpServer(apiKey: string): Promise<McpServer> {
     const collections = await fetchCollections(apiKey, baseUrl);
     const server = new McpServer({...});
+    const searchToolNames: string[] = [];
     
     // Register one search tool per collection
     for (const collection of collections) {
-        const airweaveClient = new AirweaveClient({ collection: collection.readable_id, baseUrl, apiKey });
-        const searchTool = createSearchTool(`search-${collection.readable_id}`, collection.readable_id, airweaveClient);
+        const airweaveClient = new AirweaveClient({ 
+            collection: collection.readable_id, 
+            baseUrl, 
+            apiKey 
+        });
+        const toolName = `search-${collection.readable_id}`;
+        const searchTool = createSearchTool(toolName, collection.readable_id, airweaveClient);
         
         // Enhanced description with metadata
-        const description = `Search within '${collection.name}' collection.
+        const enhancedDescription = `Search within '${collection.name}' collection (${collection.readable_id}).
 Status: ${collection.status}
-Last updated: ${collection.modified_at}
+Last updated: ${new Date(collection.modified_at).toLocaleString()}
 ${searchTool.description}`;
         
-        server.tool(searchTool.name, description, searchTool.schema, searchTool.handler);
+        server.tool(searchTool.name, enhancedDescription, searchTool.schema, searchTool.handler);
+        searchToolNames.push(toolName);
     }
+    
+    // Register config tool with actual search tool names
+    const configTool = createConfigTool(searchToolNames, fallbackCollection, baseUrl, apiKey);
+    server.tool(configTool.name, configTool.description, configTool.schema, configTool.handler);
+    
     return server;
 }
 
-// Session management with async server creation
-const sessions = new Map<string, { server: McpServer, transport: StreamableHTTPServerTransport, apiKey: string }>();
+// Helper to create session objects (called when session is new or restored)
+async function createSessionObjects(sessionData: SessionData, apiKey: string): Promise<SessionWithTransport> {
+    // Async: Fetch collections and create server with all tools
+    const server = await createMcpServer(apiKey);
+    const transport = new StreamableHTTPServerTransport({ 
+        sessionIdGenerator: () => sessionData.sessionId 
+    });
+    await server.connect(transport);
+    return { server, transport, data: sessionData };
+}
 
+// Main request handler with Redis + multi-collection support
 app.post('/mcp', async (req, res) => {
-    const apiKey = req.headers['x-api-key'] || req.headers['authorization']?.replace('Bearer ', '');
+    const apiKey = req.headers['x-api-key'] || 
+                   req.headers['authorization']?.replace('Bearer ', '');
     const sessionId = req.headers['mcp-session-id'] || generateSessionId();
     const clientIP = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress;
     
-    // Check local cache first (fastest path)
-    let session = localSessionCache.get(sessionId);
+    let session: SessionWithTransport | undefined;
     
-    if (!session) {
-        // Retrieve from Redis and recreate server instance
-        const sessionData = await sessionManager.getSession(sessionId);
-        if (sessionData) {
-            session = await createSessionObjects(sessionData, apiKey);
-            localSessionCache.set(sessionId, session);
-        } else {
-            // Create new session with rate limiting and security checks
-            const rateLimit = await sessionManager.checkRateLimit(apiKey);
-            if (!rateLimit.allowed) throw new Error('Rate limit exceeded');
+    // Step 1: Check local cache (fastest - same pod)
+    session = localSessionCache.get(sessionId);
+    
+    if (session) {
+        // Validate API key hasn't changed
+        if (!RedisSessionManager.validateApiKey(apiKey, session.data.apiKeyHash)) {
+            // API key changed - recreate session with new collections
+            session.transport.close();
+            localSessionCache.delete(sessionId);
             
             const newSessionData = {
                 sessionId,
                 apiKeyHash: RedisSessionManager.hashApiKey(apiKey),
-                collection: process.env.AIRWEAVE_COLLECTION,
-                baseUrl: process.env.AIRWEAVE_BASE_URL,
-                clientIP,
+                collection, baseUrl, createdAt: Date.now(),
+                lastAccessedAt: Date.now(), clientIP,
                 userAgent: req.headers['user-agent']
             };
-            await sessionManager.setSession(newSessionData);
+            await sessionManager.setSession(newSessionData, true);
             session = await createSessionObjects(newSessionData, apiKey);
             localSessionCache.set(sessionId, session);
         }
-    if (!session || session.apiKey !== apiKey) {
-        // Async: Fetch collections and create server with all tools
-        const server = await createMcpServer(apiKey);
-        const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => sessionId });
-        await server.connect(transport);
-        session = { server, transport, apiKey };
-        sessions.set(sessionId, session);
+    } else {
+        // Step 2: Check Redis (different pod or first request)
+        const sessionData = await sessionManager.getSession(sessionId);
+        
+        if (sessionData) {
+            // Restore from Redis - recreate server with collections
+            session = await createSessionObjects(sessionData, apiKey);
+            localSessionCache.set(sessionId, session);
+        } else {
+            // Step 3: New session - create with rate limiting
+            const rateLimit = await sessionManager.checkRateLimit(apiKey);
+            if (!rateLimit.allowed) {
+                return res.status(429).json({ error: 'Rate limit exceeded' });
+            }
+            
+            const newSessionData = {
+                sessionId,
+                apiKeyHash: RedisSessionManager.hashApiKey(apiKey),
+                collection, baseUrl, createdAt: Date.now(),
+                lastAccessedAt: Date.now(), clientIP,
+                userAgent: req.headers['user-agent']
+            };
+            await sessionManager.setSession(newSessionData, true);
+            session = await createSessionObjects(newSessionData, apiKey);
+            localSessionCache.set(sessionId, session);
+        }
     }
     
+    // Handle request with session's transport
     await session.transport.handleRequest(req, res, req.body);
 });
 ```
+
+**Key Features:**
+- **Redis-backed sessions**: Distributed storage, works across multiple pods
+- **Local cache**: Fast access for repeated requests to same pod
+- **Dynamic collection discovery**: Fetches collections per API key on session creation
+- **Security**: API key hashing, session binding, rate limiting
+- **Multi-tenant**: Complete isolation between API keys/organizations
 
 ### Tool Registration
 - Dynamic tool names based on collection
