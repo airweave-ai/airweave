@@ -1,6 +1,8 @@
 """Module for data synchronization with TRUE batching + toggleable batching."""
 
 import asyncio
+import os
+import shutil
 from typing import Optional
 
 from airweave import schemas
@@ -79,6 +81,14 @@ class SyncOrchestrator:
             final_status = SyncJobStatus.FAILED
             raise
         finally:
+            # Best-effort cleanup of per-sync temporary processing directory to avoid DiskPressure
+            try:
+                await self._cleanup_tmp_processing_dir()
+            except Exception as cleanup_error:
+                self.sync_context.logger.warning(
+                    f"Failed to cleanup tmp processing dir: {cleanup_error}", exc_info=True
+                )
+
             # Always finalize progress and trackers with error message if available
             await self._finalize_progress_and_trackers(final_status, error_message)
 
@@ -97,6 +107,12 @@ class SyncOrchestrator:
 
         # Start the stream (worker pool doesn't need starting)
         await self.stream.start()
+
+        # Prepare a per-sync tmp processing directory, expose it, and export env
+        await self._prepare_tmp_processing_dir()
+        # Also set an env var so downstream utilities honor the per-sync folder
+        if getattr(self.sync_context, "tmp_processing_dir", None):
+            os.environ["AIRWEAVE_TMP_DIR"] = self.sync_context.tmp_processing_dir
 
         started_at = utc_now_naive()
         await sync_job_service.update_status(
@@ -549,3 +565,46 @@ class SyncOrchestrator:
             source_connection_id=self.sync_context.connection.id,
             duration_ms=duration_ms,
         )
+
+    async def _prepare_tmp_processing_dir(self) -> None:
+        """Create a per-sync tmp processing directory and attach to context.
+
+        Directory layout: /tmp/airweave/processing/<sync_id>
+        """
+        try:
+            sync_id = str(self.sync_context.sync.id)
+            base_dir = "/tmp/airweave/processing"
+            target_dir = os.path.join(base_dir, sync_id)
+            os.makedirs(target_dir, exist_ok=True)
+
+            # Expose path to downstream components if they choose to use it
+            self.sync_context.tmp_processing_dir = target_dir
+            # Trace for operators
+            self.sync_context.logger.info(f"Prepared tmp processing directory: {target_dir}")
+        except Exception as e:
+            # Non-fatal: continue sync even if directory preparation fails
+            self.sync_context.logger.warning(
+                f"Could not prepare tmp processing directory: {e}", exc_info=True
+            )
+
+    async def _cleanup_tmp_processing_dir(self) -> None:
+        """Best-effort cleanup of the per-sync tmp processing directory.
+
+        This removes the directory created in `_prepare_tmp_processing_dir` if present.
+        """
+        target_dir = getattr(self.sync_context, "tmp_processing_dir", None)
+        if not target_dir:
+            # Attempt to infer from sync id if attribute not set
+            try:
+                sync_id = str(self.sync_context.sync.id)
+                candidate = os.path.join("/tmp/airweave/processing", sync_id)
+                if os.path.isdir(candidate):
+                    target_dir = candidate
+            except Exception:
+                target_dir = None
+
+        if target_dir and os.path.isdir(target_dir):
+            self.sync_context.logger.info(f"🧹 Cleaning tmp processing directory: {target_dir}")
+            # Use shutil.rmtree for recursive delete; ignore_errors
+            # ensures cleanup never fails the job
+            shutil.rmtree(target_dir, ignore_errors=True)

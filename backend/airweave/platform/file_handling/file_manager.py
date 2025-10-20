@@ -18,12 +18,17 @@ class FileManager:
 
     def __init__(self):
         """Initialize the file manager."""
-        self.base_temp_dir = "/tmp/airweave/processing"
-        self._ensure_base_dir()
+        # Default base temp dir; can be overridden via AIRWEAVE_TMP_DIR env var per sync
+        self.default_base_temp_dir = "/tmp/airweave/processing"
+        self._ensure_base_dir(self._get_base_temp_dir())
 
-    def _ensure_base_dir(self):
+    def _ensure_base_dir(self, base_dir: str):
         """Ensure the base temporary directory exists."""
-        os.makedirs(self.base_temp_dir, exist_ok=True)
+        os.makedirs(base_dir, exist_ok=True)
+
+    def _get_base_temp_dir(self) -> str:
+        """Resolve the effective base temp dir, honoring env override if present."""
+        return os.environ.get("AIRWEAVE_TMP_DIR", self.default_base_temp_dir)
 
     async def handle_file_entity(
         self,
@@ -125,7 +130,9 @@ class FileManager:
         """Download entity from source and store in persistent storage."""
         file_uuid = uuid4()
         safe_filename = self._safe_filename(entity.name)
-        temp_path = os.path.join(self.base_temp_dir, f"{file_uuid}-{safe_filename}")
+        base_dir = self._get_base_temp_dir()
+        self._ensure_base_dir(base_dir)
+        temp_path = os.path.join(base_dir, f"{file_uuid}-{safe_filename}")
 
         try:
             downloaded_size = await self._download_file_stream(

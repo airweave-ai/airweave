@@ -544,8 +544,8 @@ async def _create_and_store_file_entity(
     safe_title = title.replace("/", "_").replace("\\", "_")[:100]  # Limit title length
     safe_filename = f"{file_uuid}-{safe_title}.md"
 
-    # Use storage manager's temp directory
-    base_temp_dir = "/tmp/airweave/processing"
+    # Use per-sync temp dir if provided via env; fallback to default
+    base_temp_dir = os.environ.get("AIRWEAVE_TMP_DIR", "/tmp/airweave/processing")
     os.makedirs(base_temp_dir, exist_ok=True)
     temp_file_path = os.path.join(base_temp_dir, safe_filename)
 
