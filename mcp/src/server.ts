@@ -25,7 +25,7 @@ export function createMcpServer(config: AirweaveConfig) {
 
     // Create tools
     const searchTool = createSearchTool(toolName, config.collection, airweaveClient);
-    const configTool = createConfigTool(toolName, config.collection, config.baseUrl, config.apiKey);
+    const configTool = createConfigTool([toolName], config.collection, config.baseUrl, config.apiKey);
 
     // Register tools
     server.tool(

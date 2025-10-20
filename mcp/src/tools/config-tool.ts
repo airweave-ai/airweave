@@ -1,11 +1,15 @@
 // Configuration tool implementation
 
-export function createConfigTool(toolName: string, collection: string, baseUrl: string, apiKey: string) {
+export function createConfigTool(searchToolNames: string[], collection: string, baseUrl: string, apiKey: string) {
     return {
         name: "get-config",
         description: "Get the current Airweave MCP server configuration",
         schema: {}, // Empty schema for no parameters
         handler: async () => {
+            const searchToolsList = searchToolNames.length > 0
+                ? searchToolNames.map(name => `- \`${name}\`: Search within the corresponding Airweave collection`).join("\n")
+                : "- No search tools available";
+
             return {
                 content: [
                     {
@@ -13,12 +17,14 @@ export function createConfigTool(toolName: string, collection: string, baseUrl: 
                         text: [
                             "**Airweave MCP Server Configuration:**",
                             "",
-                            `- **Collection ID:** ${collection}`,
+                            `- **Fallback Collection ID:** ${collection}`,
                             `- **Base URL:** ${baseUrl}`,
                             `- **API Key:** ${apiKey ? "✓ Configured" : "✗ Missing"}`,
                             "",
-                            "**Available Commands:**",
-                            `- \`${toolName}\`: Search within the configured Airweave collection`,
+                            "**Available Search Commands:**",
+                            searchToolsList,
+                            "",
+                            "**Other Commands:**",
                             "- `get-config`: Show this configuration information",
                         ].join("\n"),
                     },

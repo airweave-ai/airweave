@@ -284,7 +284,7 @@ describe('MCP Server - Tool Registration and Execution', () => {
         });
 
         it('should return correct configuration', async () => {
-            const tool = createConfigTool('search-test', 'my-collection', 'https://api.airweave.ai', 'test-key-123');
+            const tool = createConfigTool(['search-test'], 'my-collection', 'https://api.airweave.ai', 'test-key-123');
 
             const result = await tool.handler({});
 
@@ -304,7 +304,7 @@ describe('MCP Server - Tool Registration and Execution', () => {
             });
 
             const searchTool = createSearchTool('search-test', 'test', airweaveClient);
-            const configTool = createConfigTool('search-test', 'test', 'https://api.airweave.ai', 'key');
+            const configTool = createConfigTool(['search-test'], 'test', 'https://api.airweave.ai', 'key');
 
             // Register tools
             server.tool(searchTool.name, searchTool.description, searchTool.schema, searchTool.handler);
