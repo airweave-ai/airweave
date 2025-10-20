@@ -22,7 +22,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U airweave"]
+      test: [ "CMD-SHELL", "pg_isready -U airweave" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -34,7 +34,7 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -47,7 +47,7 @@ services:
       ENABLE_CUDA: 0
       WORKERS_PER_NODE: 1
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:8080/health" ]
       interval: 5s
       timeout: 10s
       retries: 3
@@ -61,7 +61,7 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:6333/healthz"]
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:6333/healthz" ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -85,7 +85,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "tctl", "--address", "temporal:7233", "workflow", "list"]
+      test: [ "CMD", "tctl", "--address", "temporal:7233", "workflow", "list" ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -115,7 +115,24 @@ services:
     volumes:
       - minio_data:/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: on-failure
+  mcp:
+    container_name: airweave-mcp
+    build:
+      context: ../mcp
+      dockerfile: Dockerfile
+    ports:
+      - "8090:8080"
+    environment:
+      - PORT=8080
+      - AIRWEAVE_BASE_URL=http://backend:8001
+      - NODE_ENV=development
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:8080/health" ]
       interval: 10s
       timeout: 5s
       retries: 3

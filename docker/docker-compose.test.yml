@@ -97,6 +97,25 @@ services:
       timeout: 10s
       retries: 3
 
+  mcp:
+    build:
+      context: ../mcp
+      dockerfile: Dockerfile
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      - PORT=8080
+      - AIRWEAVE_BASE_URL=http://backend:8001
+      - NODE_ENV=test
+    ports:
+      - "9090:8080"
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:8080/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
 volumes:
   postgres_data:
   redis_data:

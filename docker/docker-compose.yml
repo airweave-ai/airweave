@@ -214,6 +214,32 @@ services:
         condition: service_healthy
     restart: on-failure
 
+  mcp:
+    container_name: airweave-mcp
+    # Use pre-built image or build from source
+    image: ${MCP_IMAGE:-ghcr.io/airweave-ai/airweave-mcp:latest}
+    build:
+      context: ../mcp
+      dockerfile: Dockerfile
+    # Profile: optional MCP server for AI assistant integrations
+    profiles:
+      - mcp
+    ports:
+      - "${MCP_PORT:-8090}:8080"
+    environment:
+      - PORT=8080
+      - AIRWEAVE_BASE_URL=http://backend:8001
+      - NODE_ENV=${ENVIRONMENT:-production}
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:8080/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: on-failure
+
 volumes:
   postgres_data:
   redis_data:
