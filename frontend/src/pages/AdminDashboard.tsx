@@ -700,18 +700,21 @@ export function AdminDashboard() {
                             <Flag className="h-3 w-3" />
                             Features
                           </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setSelectedOrg(org);
-                              setActionType('upgrade');
-                            }}
-                            className="h-7 gap-1.5 text-xs"
-                          >
-                            <ArrowUpCircle className="h-3 w-3" />
-                            Upgrade
-                          </Button>
+                          {/* Only show Upgrade for non-enterprise plans */}
+                          {org.billing_plan !== 'enterprise' && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedOrg(org);
+                                setActionType('upgrade');
+                              }}
+                              className="h-7 gap-1.5 text-xs"
+                            >
+                              <ArrowUpCircle className="h-3 w-3" />
+                              Upgrade
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>

@@ -4,6 +4,7 @@ from typing import List, Optional
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Query
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +26,16 @@ from airweave.models.user_organization import UserOrganization
 from airweave.schemas.organization_billing import BillingPlan, BillingStatus
 
 router = TrailingSlashRouter()
+
+
+class CreateEnterpriseOrganizationRequest(BaseModel):
+    """Request schema for creating an enterprise organization."""
+
+    name: str = Field(..., min_length=4, max_length=100, description="Organization name")
+    description: Optional[str] = Field(None, description="Organization description")
+    owner_email: EmailStr = Field(
+        ..., description="Email of the user who will own this organization"
+    )
 
 
 @router.get("/feature-flags", response_model=List[dict])
@@ -542,20 +553,18 @@ async def upgrade_organization_to_enterprise(  # noqa: C901
     return schemas.Organization.model_validate(org)
 
 
-@router.post("/organizations/create-enterprise", response_model=schemas.Organization)
+@router.post("/organizations/create-enterprise")
 async def create_enterprise_organization(
-    organization_data: schemas.OrganizationCreate,
-    owner_email: str,
+    request: CreateEnterpriseOrganizationRequest,
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
-) -> schemas.Organization:
+):
     """Create a new enterprise organization (admin only).
 
     This creates an organization directly on the enterprise plan.
 
     Args:
-        organization_data: The organization data
-        owner_email: Email of the user who will own this organization
+        request: The request containing organization data and owner email
         db: Database session
         ctx: API context
 
@@ -569,39 +578,45 @@ async def create_enterprise_organization(
 
     # Find the owner user
     try:
-        owner_user = await crud.user.get_by_email(db, email=owner_email)
+        owner_user = await crud.user.get_by_email(db, email=request.owner_email)
     except NotFoundException:
-        raise HTTPException(status_code=404, detail=f"User with email {owner_email} not found")
+        raise HTTPException(
+            status_code=404, detail=f"User with email {request.owner_email} not found"
+        )
+
+    # Extract user data before entering UnitOfWork to avoid detached instance issues
+    is_primary_org = len(owner_user.user_organizations) == 0
+    owner_user_id = owner_user.id
+    owner_auth0_id = owner_user.auth0_id
+
+    # Import at function level
+    from airweave.core.datetime_utils import utc_now_naive
 
     # Create organization with enterprise billing
     async with UnitOfWork(db) as uow:
-        # Create the organization (without Auth0/Stripe integration to avoid automatic trial setup)
-        from airweave.core.datetime_utils import utc_now_naive
-        from airweave.models.organization import Organization
-        from airweave.models.organization_billing import OrganizationBilling
-
         org = Organization(
-            name=organization_data.name,
-            description=organization_data.description,
-            created_by_email=ctx.user.email,
-            modified_by_email=ctx.user.email,
+            name=request.name,
+            description=request.description,
         )
         uow.session.add(org)
         await uow.session.flush()
 
         # Add owner to organization
         user_org = UserOrganization(
-            user_id=owner_user.id,
+            user_id=owner_user_id,
             organization_id=org.id,
             role="owner",
-            is_primary=len(owner_user.user_organizations) == 0,  # Primary if first org
+            is_primary=is_primary_org,
         )
         uow.session.add(user_org)
 
-        # Create Stripe customer
+        # Create Stripe customer and billing record
+        if not stripe_client:
+            raise InvalidStateError("Stripe is not enabled")
+
         try:
             customer = await stripe_client.create_customer(
-                email=owner_email,
+                email=request.owner_email,
                 name=org.name,
                 metadata={"organization_id": str(org.id), "plan": "enterprise"},
             )
@@ -613,24 +628,32 @@ async def create_enterprise_organization(
                 stripe_subscription_id=None,
                 billing_plan="enterprise",
                 billing_status=BillingStatus.ACTIVE,
-                billing_email=owner_email,
+                billing_email=request.owner_email,
                 payment_method_added=True,
                 current_period_start=utc_now_naive(),
                 current_period_end=None,
             )
             uow.session.add(billing)
+            ctx.logger.info(f"Created Stripe customer and billing for org {org.id}")
         except Exception as e:
             ctx.logger.error(f"Failed to create Stripe customer for enterprise org: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to create billing: {str(e)}")
 
-        await uow.session.commit()
-        await uow.session.refresh(org)
+        # Capture org_id before UnitOfWork exits (to avoid detached instance issues)
+        org_id = org.id
 
-        ctx.logger.info(f"Created enterprise organization {org.id} for {owner_email}")
+        await uow.commit()
+
+        ctx.logger.info(f"Created enterprise organization {org_id} for {request.owner_email}")
+
+    # Fetch the organization with billing info
+    org = await crud.organization.get(
+        db, id=org_id, ctx=ctx, skip_access_validation=True, enrich=True
+    )
 
     # Try to create Auth0 organization (best effort)
     try:
-        if owner_user.auth0_id and auth0_management_client:
+        if owner_auth0_id and auth0_management_client:
             # Create Auth0 org name (lowercase, URL-safe)
             auth0_org_name = organization_service._create_org_name(
                 schemas.OrganizationCreate(name=org.name, description=org.description)
@@ -641,15 +664,20 @@ async def create_enterprise_organization(
                 display_name=org.name,
             )
 
-            # Update org with Auth0 ID
-            org.auth0_org_id = auth0_org["id"]
+            # Update the database organization with Auth0 ID
+            stmt = select(Organization).where(Organization.id == org_id)
+            result = await db.execute(stmt)
+            org_model = result.scalar_one()
+            org_model.auth0_org_id = auth0_org["id"]
             await db.commit()
-            await db.refresh(org)
+
+            # Note: Not updating the returned schema object to avoid Pydantic immutability issues
+            # The Auth0 ID will be included in subsequent requests
 
             # Add owner to Auth0 org
             await auth0_management_client.add_user_to_organization(
                 org_id=auth0_org["id"],
-                user_id=owner_user.auth0_id,
+                user_id=owner_auth0_id,
             )
 
             ctx.logger.info(f"Created Auth0 organization for {org.id}")
@@ -657,7 +685,10 @@ async def create_enterprise_organization(
         ctx.logger.warning(f"Failed to create Auth0 organization: {e}")
         # Don't fail the request if Auth0 fails
 
-    return schemas.Organization.model_validate(org)
+    # Return organization as dict to avoid SQLAlchemy lazy-loading issues
+    # org is a schemas.Organization from CRUD layer (enrich=True)
+    org_dict = org.model_dump() if hasattr(org, "model_dump") else org.dict()
+    return org_dict
 
 
 @router.post("/organizations/{organization_id}/feature-flags/{flag}/enable")
