@@ -350,6 +350,12 @@ class OutlookMailConfig(SourceConfig):
         return value.replace("-", "/")
 
 
+class ExcelConfig(SourceConfig):
+    """Microsoft Excel configuration schema."""
+
+    pass
+
+
 class OneNoteConfig(SourceConfig):
     """Microsoft OneNote configuration schema."""
 

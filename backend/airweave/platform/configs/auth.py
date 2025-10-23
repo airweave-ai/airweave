@@ -495,6 +495,12 @@ class OutlookMailAuthConfig(OAuth2WithRefreshAuthConfig):
     # Inherits refresh_token and access_token from OAuth2WithRefreshAuthConfig
 
 
+class ExcelAuthConfig(OAuth2WithRefreshAuthConfig):
+    """Microsoft Excel authentication credentials schema."""
+
+    # Inherits refresh_token and access_token from OAuth2WithRefreshAuthConfig
+
+
 class OneNoteAuthConfig(OAuth2WithRefreshAuthConfig):
     """Microsoft OneNote authentication credentials schema."""
 
