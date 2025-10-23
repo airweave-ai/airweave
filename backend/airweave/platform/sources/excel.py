@@ -12,6 +12,7 @@ Reference:
   https://learn.microsoft.com/en-us/graph/api/worksheet-list-tables
 """
 
+import asyncio
 from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, Optional
 
@@ -53,6 +54,15 @@ class ExcelSource(BaseSource):
     """
 
     GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
+
+    # Configuration constants for optimization
+    MAX_WORKSHEET_ROWS = 200  # Limit rows per worksheet to prevent huge entities
+    MAX_TABLE_ROWS = 100  # Limit rows per table
+    PAGE_SIZE_DRIVE = 250  # Optimal page size for drive items
+    PAGE_SIZE_WORKSHEETS = 250  # Optimal page size for worksheets
+    PAGE_SIZE_TABLES = 100  # Optimal page size for tables
+    MAX_FOLDER_DEPTH = 5  # Limit recursive folder traversal depth
+    CONCURRENT_WORKSHEET_FETCH = 5  # Concurrent worksheet content fetches
 
     @classmethod
     async def create(
@@ -199,13 +209,72 @@ class ExcelSource(BaseSource):
             self.logger.warning(f"Error parsing datetime {dt_str}: {str(e)}")
             return None
 
+    async def _discover_excel_files_recursive(
+        self, client: httpx.AsyncClient, folder_id: Optional[str] = None, depth: int = 0
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """Recursively discover Excel files in drive folders.
+
+        Args:
+            client: HTTP client for API requests
+            folder_id: ID of folder to search (None for root)
+            depth: Current recursion depth
+
+        Yields:
+            DriveItem dictionaries for Excel files
+        """
+        if depth > self.MAX_FOLDER_DEPTH:
+            self.logger.debug(f"Max folder depth {self.MAX_FOLDER_DEPTH} reached, skipping")
+            return
+
+        # Build URL for folder or root
+        if folder_id:
+            url = f"{self.GRAPH_BASE_URL}/me/drive/items/{folder_id}/children"
+        else:
+            url = f"{self.GRAPH_BASE_URL}/me/drive/root/children"
+
+        params = {"$top": self.PAGE_SIZE_DRIVE}
+
+        try:
+            # Process all pages in this folder
+            while url:
+                data = await self._get_with_auth(client, url, params=params)
+                items = data.get("value", [])
+
+                folders_to_traverse = []
+
+                for item in items:
+                    file_name = item.get("name", "")
+
+                    # Check if it's an Excel file
+                    if file_name.endswith((".xlsx", ".xlsm", ".xlsb")):
+                        yield item
+
+                    # Collect folders for recursive traversal
+                    elif "folder" in item:
+                        folders_to_traverse.append(item.get("id"))
+
+                # Recursively process subfolders
+                for subfolder_id in folders_to_traverse:
+                    async for excel_file in self._discover_excel_files_recursive(
+                        client, subfolder_id, depth + 1
+                    ):
+                        yield excel_file
+
+                # Handle pagination
+                url = data.get("@odata.nextLink")
+                if url:
+                    params = None  # nextLink includes params
+
+        except Exception as e:
+            self.logger.warning(f"Error discovering files in folder (depth={depth}): {str(e)}")
+
     async def _generate_workbook_entities(
         self, client: httpx.AsyncClient
     ) -> AsyncGenerator[ExcelWorkbookEntity, None]:
         """Generate ExcelWorkbookEntity objects for Excel files in user's drive.
 
-        Lists all files from the user's OneDrive and filters for Excel files.
-        Uses list API (more reliable) as primary method, with search as fallback.
+        Recursively searches OneDrive for Excel files and yields workbook entities.
+        Uses optimized pagination and reduced logging for production scale.
 
         Args:
             client: HTTP client for API requests
@@ -213,117 +282,45 @@ class ExcelSource(BaseSource):
         Yields:
             ExcelWorkbookEntity objects
         """
-        self.logger.info("Starting workbook entity generation")
-
-        # Use list API as primary method (more reliable than search)
-        # This lists all items in the root drive
-        url = f"{self.GRAPH_BASE_URL}/me/drive/root/children"
-        params = {"$top": 100}
+        self.logger.info("Starting workbook discovery")
+        workbook_count = 0
 
         try:
-            workbook_count = 0
+            # Recursively discover all Excel files
+            async for item_data in self._discover_excel_files_recursive(client):
+                workbook_count += 1
+                workbook_id = item_data.get("id")
+                file_name = item_data.get("name", "Unknown")
+                display_name = file_name.rsplit(".", 1)[0]  # Remove extension
 
-            # Try listing root children first (most reliable)
-            try:
-                self.logger.info(f"Listing files from OneDrive root: {url}")
-                data = await self._get_with_auth(client, url, params=params)
-                self.logger.info(f"List API returned data with keys: {data.keys()}")
-                items_from_list = data.get("value", [])
-                self.logger.info(f"List found {len(items_from_list)} items in root")
-            except Exception as list_error:
-                # If list fails, fall back to search
-                self.logger.warning(
-                    f"List API failed with error: {list_error}, falling back to search"
+                if workbook_count <= 10 or workbook_count % 50 == 0:
+                    # Log first 10 and then every 50th workbook to reduce noise
+                    self.logger.info(f"Found workbook #{workbook_count}: {display_name}")
+
+                yield ExcelWorkbookEntity(
+                    entity_id=workbook_id,
+                    breadcrumbs=[],
+                    name=display_name,
+                    file_name=file_name,
+                    web_url=item_data.get("webUrl"),
+                    size=item_data.get("size"),
+                    created_datetime=self._parse_datetime(item_data.get("createdDateTime")),
+                    last_modified_datetime=self._parse_datetime(
+                        item_data.get("lastModifiedDateTime")
+                    ),
+                    created_by=item_data.get("createdBy"),
+                    last_modified_by=item_data.get("lastModifiedBy"),
+                    parent_reference=item_data.get("parentReference"),
+                    drive_id=item_data.get("parentReference", {}).get("driveId"),
+                    description=item_data.get("description"),
                 )
-                url = f"{self.GRAPH_BASE_URL}/me/drive/root/search(q='.xlsx')"
-                self.logger.info(f"Trying fallback search: {url}")
-                data = await self._get_with_auth(client, url, params=params)
-                self.logger.info(f"Search API returned data with keys: {data.keys()}")
-
-            # Process results
-            page_num = 0
-            while url:
-                page_num += 1
-                if "value" not in data:
-                    self.logger.error(
-                        f"Page {page_num}: No 'value' in response! Keys: {list(data.keys())}"
-                    )
-                    self.logger.error(f"Full response: {data}")
-                    break
-
-                items = data.get("value", [])
-                self.logger.info(
-                    f"Page {page_num}: Retrieved {len(items)} items from drive "
-                    f"(total workbooks so far: {workbook_count})"
-                )
-
-                for idx, item_data in enumerate(items):
-                    file_name = item_data.get("name", "UNNAMED")
-                    item_id = item_data.get("id", "NO_ID")
-
-                    self.logger.info(
-                        f"Page {page_num}, Item {idx + 1}/{len(items)}: "
-                        f"name='{file_name}', id='{item_id[:20]}...', "
-                        f"has_folder={'folder' in item_data}, "
-                        f"keys={list(item_data.keys())[:5]}"
-                    )
-
-                    # Skip folders
-                    if "folder" in item_data:
-                        self.logger.info(f"  → Skipping FOLDER: {file_name}")
-                        continue
-
-                    # Only process Excel files
-                    if not file_name.endswith((".xlsx", ".xlsm", ".xlsb")):
-                        self.logger.info(f"  → Skipping NON-EXCEL: {file_name}")
-                        continue
-
-                    # This is an Excel file!
-                    workbook_count += 1
-                    workbook_id = item_data.get("id")
-                    self.logger.info(f"  ✓ FOUND EXCEL FILE #{workbook_count}: {file_name}")
-                    display_name = file_name.rsplit(".", 1)[0]  # Remove extension
-
-                    self.logger.debug(f"Processing workbook #{workbook_count}: {display_name}")
-
-                    yield ExcelWorkbookEntity(
-                        entity_id=workbook_id,
-                        breadcrumbs=[],
-                        name=display_name,
-                        file_name=file_name,
-                        web_url=item_data.get("webUrl"),
-                        size=item_data.get("size"),
-                        created_datetime=self._parse_datetime(item_data.get("createdDateTime")),
-                        last_modified_datetime=self._parse_datetime(
-                            item_data.get("lastModifiedDateTime")
-                        ),
-                        created_by=item_data.get("createdBy"),
-                        last_modified_by=item_data.get("lastModifiedBy"),
-                        parent_reference=item_data.get("parentReference"),
-                        drive_id=item_data.get("parentReference", {}).get("driveId"),
-                        description=item_data.get("description"),
-                    )
-
-                # Handle pagination
-                url = data.get("@odata.nextLink")
-                if url:
-                    self.logger.debug("Following pagination to next page")
-                    params = None  # params are included in the nextLink
-                    # Fetch next page
-                    data = await self._get_with_auth(client, url, params=params)
-                else:
-                    break
 
             if workbook_count == 0:
                 self.logger.warning(
-                    "⚠️  NO EXCEL FILES FOUND! "
-                    "Check that you have .xlsx/.xlsm/.xlsb files in your OneDrive. "
-                    "Files may need to be in the root folder or properly indexed for search."
+                    "No Excel files found in OneDrive (searched root and subfolders)"
                 )
             else:
-                self.logger.info(
-                    f"✓ Completed workbook generation. Total workbooks found: {workbook_count}"
-                )
+                self.logger.info(f"Discovered {workbook_count} workbooks")
 
         except Exception as e:
             self.logger.error(f"Error generating workbook entities: {str(e)}", exc_info=True)
@@ -338,6 +335,8 @@ class ExcelSource(BaseSource):
     ) -> AsyncGenerator[ExcelWorksheetEntity, None]:
         """Generate ExcelWorksheetEntity objects for worksheets in a workbook.
 
+        Optimized with larger page sizes and concurrent content fetching.
+
         Args:
             client: HTTP client for API requests
             workbook_id: ID of the workbook
@@ -347,31 +346,51 @@ class ExcelSource(BaseSource):
         Yields:
             ExcelWorksheetEntity objects
         """
-        self.logger.info(f"Starting worksheet entity generation for workbook: {workbook_name}")
         url = f"{self.GRAPH_BASE_URL}/me/drive/items/{workbook_id}/workbook/worksheets"
-        params = {"$top": 100}
+        params = {"$top": self.PAGE_SIZE_WORKSHEETS}
 
         try:
             worksheet_count = 0
+            worksheet_batch = []
+
             while url:
-                self.logger.debug(f"Fetching worksheets from: {url}")
                 data = await self._get_with_auth(client, url, params=params)
                 worksheets = data.get("value", [])
-                self.logger.info(
-                    f"Retrieved {len(worksheets)} worksheets for workbook {workbook_name}"
-                )
 
+                # Collect worksheets for batch processing
                 for worksheet_data in worksheets:
+                    worksheet_batch.append(worksheet_data)
                     worksheet_count += 1
+
+                # Handle pagination
+                url = data.get("@odata.nextLink")
+                if url:
+                    params = None
+
+            # Fetch worksheet content concurrently (in batches)
+            for i in range(0, len(worksheet_batch), self.CONCURRENT_WORKSHEET_FETCH):
+                batch = worksheet_batch[i : i + self.CONCURRENT_WORKSHEET_FETCH]
+
+                # Fetch content for this batch concurrently
+                content_tasks = [
+                    self._fetch_worksheet_content(
+                        client, workbook_id, ws.get("id"), ws.get("name", "Unknown")
+                    )
+                    for ws in batch
+                ]
+                content_results = await asyncio.gather(*content_tasks, return_exceptions=True)
+
+                # Yield entities
+                for worksheet_data, cell_data in zip(batch, content_results, strict=True):
                     worksheet_id = worksheet_data.get("id")
                     worksheet_name = worksheet_data.get("name", "Unknown Worksheet")
 
-                    self.logger.debug(f"Processing worksheet #{worksheet_count}: {worksheet_name}")
-
-                    # Fetch cell content from the worksheet's used range
-                    cell_data = await self._fetch_worksheet_content(
-                        client, workbook_id, worksheet_id, worksheet_name
-                    )
+                    # Handle exceptions from content fetch
+                    if isinstance(cell_data, Exception):
+                        self.logger.warning(
+                            f"Failed to fetch content for worksheet {worksheet_name}: {cell_data}"
+                        )
+                        cell_data = None
 
                     yield ExcelWorksheetEntity(
                         entity_id=worksheet_id,
@@ -390,15 +409,8 @@ class ExcelSource(BaseSource):
                         ),
                     )
 
-                # Handle pagination
-                url = data.get("@odata.nextLink")
-                if url:
-                    self.logger.debug("Following pagination to next page")
-                    params = None
-
-            self.logger.info(
-                f"Completed worksheet generation for workbook {workbook_name}. "
-                f"Total worksheets: {worksheet_count}"
+            self.logger.debug(
+                f"Processed {worksheet_count} worksheets for workbook {workbook_name}"
             )
 
         except Exception as e:
@@ -418,6 +430,8 @@ class ExcelSource(BaseSource):
     ) -> AsyncGenerator[ChunkEntity, None]:
         """Generate table entities for tables in a worksheet.
 
+        Optimized with larger page size and concurrent fetching.
+
         Args:
             client: HTTP client for API requests
             workbook_id: ID of the workbook
@@ -429,46 +443,44 @@ class ExcelSource(BaseSource):
         Yields:
             ExcelTableEntity objects
         """
-        self.logger.info(f"Starting table generation for worksheet: {worksheet_name}")
         url = (
             f"{self.GRAPH_BASE_URL}/me/drive/items/{workbook_id}"
             f"/workbook/worksheets/{worksheet_id}/tables"
         )
-        params = {"$top": 50}
+        params = {"$top": self.PAGE_SIZE_TABLES}
 
         try:
             table_count = 0
             while url:
-                self.logger.debug(f"Fetching tables from: {url}")
                 data = await self._get_with_auth(client, url, params=params)
                 tables = data.get("value", [])
-                self.logger.info(f"Retrieved {len(tables)} tables for worksheet {worksheet_name}")
 
                 for table_data in tables:
                     table_count += 1
                     table_id = table_data.get("id")
                     table_name = table_data.get("name", "Unknown Table")
 
-                    self.logger.debug(f"Processing table #{table_count}: {table_name}")
-
-                    # Fetch table data (rows)
-                    table_content = await self._fetch_table_data(
-                        client, workbook_id, table_id, table_name
-                    )
-
-                    # Get column information
+                    # Fetch table data and columns concurrently
+                    content_task = self._fetch_table_data(client, workbook_id, table_id, table_name)
                     columns_url = (
                         f"{self.GRAPH_BASE_URL}/me/drive/items/{workbook_id}"
                         f"/workbook/tables/{table_id}/columns"
                     )
-                    try:
-                        columns_data = await self._get_with_auth(client, columns_url)
+                    columns_task = self._get_with_auth(client, columns_url)
+
+                    # Fetch both concurrently
+                    results = await asyncio.gather(
+                        content_task, columns_task, return_exceptions=True
+                    )
+                    table_content = results[0] if not isinstance(results[0], Exception) else None
+                    columns_data = results[1] if not isinstance(results[1], Exception) else None
+
+                    # Extract column names
+                    column_names = []
+                    if columns_data:
                         column_names = [
                             col.get("name", "") for col in columns_data.get("value", [])
                         ]
-                    except Exception as e:
-                        self.logger.warning(f"Failed to fetch columns for table {table_name}: {e}")
-                        column_names = []
 
                     yield ExcelTableEntity(
                         entity_id=table_id,
@@ -496,16 +508,13 @@ class ExcelSource(BaseSource):
                 # Handle pagination
                 url = data.get("@odata.nextLink")
                 if url:
-                    self.logger.debug("Following pagination to next page")
                     params = None
 
-            self.logger.info(
-                f"Completed table generation for worksheet {worksheet_name}. "
-                f"Total tables: {table_count}"
-            )
+            if table_count > 0:
+                self.logger.debug(f"Processed {table_count} tables for worksheet {worksheet_name}")
 
         except Exception as e:
-            self.logger.error(f"Error generating tables for worksheet {worksheet_name}: {str(e)}")
+            self.logger.warning(f"Error generating tables for worksheet {worksheet_name}: {str(e)}")
             # Don't raise - continue with other worksheets
 
     async def _fetch_table_data(
@@ -528,14 +537,19 @@ class ExcelSource(BaseSource):
                 f"{self.GRAPH_BASE_URL}/me/drive/items/{workbook_id}"
                 f"/workbook/tables/{table_id}/rows"
             )
-            rows_data = await self._get_with_auth(client, rows_url, params={"$top": 100})
+            rows_data = await self._get_with_auth(
+                client, rows_url, params={"$top": self.MAX_TABLE_ROWS}
+            )
 
             rows = rows_data.get("value", [])
 
-            # Format data as text for embedding
+            # Limit rows for entity size
+            limited_rows = rows[: self.MAX_TABLE_ROWS]
+
+            # Format data as text for embedding (optimized string building)
             formatted_lines = []
-            for idx, row in enumerate(rows[:100]):  # Limit to first 100 rows
-                values = row.get("values", [[]])[0]  # Get first array of values
+            for idx, row in enumerate(limited_rows):
+                values = row.get("values", [[]])[0]
                 row_text = " | ".join(str(v) if v is not None else "" for v in values)
                 formatted_lines.append(f"Row {idx + 1}: {row_text}")
 
@@ -574,17 +588,16 @@ class ExcelSource(BaseSource):
             row_count = range_data.get("rowCount", 0)
             column_count = range_data.get("columnCount", 0)
 
-            # Limit the data we extract (max 200 rows to prevent huge entities)
-            max_rows = min(200, len(values))
+            # Limit the data we extract to prevent huge entities
+            max_rows = min(self.MAX_WORKSHEET_ROWS, len(values))
             limited_values = values[:max_rows]
 
-            # Format data as text for embedding
+            # Format data as text for embedding (optimized string building)
             formatted_lines = []
             for row_idx, row in enumerate(limited_values):
-                # Convert each cell value to string
-                row_text = " | ".join(str(cell) if cell is not None else "" for cell in row)
-                # Only add non-empty rows
-                if row_text.strip().replace("|", "").strip():
+                # Only include rows with at least one non-empty cell
+                if any(cell for cell in row):
+                    row_text = " | ".join(str(cell) if cell is not None else "" for cell in row)
                     formatted_lines.append(f"Row {row_idx + 1}: {row_text}")
 
             formatted_text = "\n".join(formatted_lines)
@@ -598,13 +611,11 @@ class ExcelSource(BaseSource):
                     "column_count": column_count,
                 }
             else:
-                self.logger.debug(f"Worksheet {worksheet_name} has no content in used range")
                 return None
 
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 # Worksheet might be empty
-                self.logger.debug(f"Worksheet {worksheet_name} has no used range (empty sheet)")
                 return None
             else:
                 self.logger.warning(
