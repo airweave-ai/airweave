@@ -89,6 +89,7 @@ That's it! Access the dashboard at http://localhost:8080
 <img src="frontend/src/components/icons/apps/confluence.svg" alt="Confluence" width="50" height="50" style="margin: 8px;" />
 <img src="frontend/src/components/icons/apps/ctti.svg" alt="CTTI" width="50" height="50" style="margin: 8px;" />
 <img src="frontend/src/components/icons/apps/dropbox.svg" alt="Dropbox" width="50" height="50" style="margin: 8px;" />
+<img src="frontend/src/components/icons/apps/excel.svg" alt="Dropbox" width="50" height="50" style="margin: 8px;" />
 <img src="frontend/src/components/icons/apps/github.svg" alt="Github" width="50" height="50" style="margin: 8px;" />
 <img src="frontend/src/components/icons/apps/gitlab.svg" alt="Gitlab" width="50" height="50" style="margin: 8px;" />
 <img src="frontend/src/components/icons/apps/gmail.svg" alt="Gmail" width="50" height="50" style="margin: 8px;" />
