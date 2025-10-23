@@ -72,7 +72,7 @@ integrations:
     url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
     backend_url: "https://login.microsoftonline.com/common/oauth2/v2.0/token"
     grant_type: "authorization_code"
-    client_id: "5206b081-28cd-4db2-b0cb-154c2448dfad"
+    client_id: "466350dc-4dbb-4100-bea9-fb4f0d763f32"
     client_secret: "excel-client-secret-key"
     content_type: "application/x-www-form-urlencoded"
     client_credential_location: "body"
