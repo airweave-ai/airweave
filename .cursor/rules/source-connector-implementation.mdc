@@ -1088,8 +1088,9 @@ async def _generate_projects(self, client, workspace):
 
 ---
 
-## Complete Example
+## Complete Examples
 
+### Asana Connector
 See the Asana connector for a complete, production-ready example:
 - Source: `backend/airweave/platform/sources/asana.py`
 - Entities: `backend/airweave/platform/entities/asana.py`
@@ -1104,6 +1105,21 @@ The Asana connector demonstrates:
 - ✅ Breadcrumb tracking
 - ✅ Rate limiting
 - ✅ Error handling
+
+### OneNote Connector
+See the OneNote connector for Microsoft Graph API integration:
+- Source: `backend/airweave/platform/sources/onenote.py`
+- Entities: `backend/airweave/platform/entities/onenote.py`
+- OAuth: `backend/airweave/platform/auth/yaml/dev.integrations.yaml` (onenote section)
+
+The OneNote connector demonstrates:
+- ✅ Microsoft Graph API integration with OAuth2
+- ✅ Hierarchical entity generation (notebooks → sections → pages)
+- ✅ HTML content processing via FileEntity pipeline
+- ✅ Performance optimizations ($select, $expand, concurrent processing)
+- ✅ Descriptive error messages for OAuth scope issues
+- ✅ Composio auth provider integration
+- ✅ FileEntity processing for HTML-to-Markdown conversion
 
 ---
 

@@ -806,7 +806,33 @@ Make sure to:
 - Process file entities if the API supports them
 
 Reference the Asana source as an example: @asana.py
-```
+
+### OneNote Connector Example
+For Microsoft Graph API connectors like OneNote:
+
+**Key Considerations:**
+- Uses Microsoft Graph API with OAuth2 rotating refresh tokens
+- Hierarchical structure: notebooks → sections → pages
+- HTML content processing via FileEntity pipeline
+- Performance optimizations with $select and $expand
+- Composio auth provider integration
+
+**Entity Structure:**
+- `OneNoteNotebookEntity` - Top-level containers
+- `OneNoteSectionEntity` - Organizational units within notebooks  
+- `OneNotePageFileEntity` - Individual pages processed as HTML files
+
+**Authentication:**
+- Requires Microsoft Graph API scopes: Notes.Read, User.Read, offline_access
+- Uses Composio with OneDrive integration (same Graph API)
+- Slug mapping: "onenote" → "one_drive"
+
+**Performance Features:**
+- API optimizations with $select and $expand parameters
+- Concurrent processing for sections
+- FileEntity processing for HTML-to-Markdown conversion
+
+Reference: `backend/airweave/platform/sources/onenote.py`
 
 ```
 Now implement the Monke tests.
@@ -821,6 +847,23 @@ Start with:
 
 Reference the Asana tests but NOTE that they have a bug: they create comments
 but don't verify them. You must verify ALL entity types.
+
+### OneNote Monke Testing
+For OneNote connector testing:
+
+**Test Structure:**
+- Creates test notebooks, sections, and pages
+- Uses Microsoft Graph API for CRUD operations
+- Embeds tracking tokens in page content
+- Verifies all entity types in vector database
+
+**Key Features:**
+- HTML content generation for realistic pages
+- Proper entity ID tracking for deletions
+- Microsoft Graph API rate limiting
+- Composio credential resolution
+
+Reference: `monke/bongos/onenote.py` and `monke/configs/onenote.yaml`
 ```
 
 ---

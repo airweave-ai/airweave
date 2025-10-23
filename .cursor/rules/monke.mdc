@@ -169,6 +169,31 @@ async def generate_github_content(token: str) -> str:
 
 Pydantic schemas in `generation/schemas/{connector}.py` define entity structures.
 
+### OneNote Generator Schema
+For OneNote connector testing, the generator schema includes:
+
+```python
+# generation/schemas/onenote.py
+from pydantic import BaseModel
+
+class OneNotePageData(BaseModel):
+    """Schema for OneNote page generation."""
+    title: str
+    content: str
+    token: str
+```
+
+The OneNote generator creates realistic test pages with:
+- **Title**: Descriptive page titles for testing
+- **Content**: Rich HTML content with embedded tracking tokens
+- **Token**: Unique identifier for verification during testing
+
+**Key Features:**
+- HTML content generation for realistic OneNote pages
+- Token embedding for test verification
+- Microsoft Graph API compatible structure
+- Support for hierarchical content (notebooks → sections → pages)
+
 ---
 
 ## Verification

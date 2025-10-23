@@ -42,7 +42,11 @@ Map between Airweave and external service naming:
 FIELD_NAME_MAPPING = {"api_key": "generic_api_key", "personal_access_token": "access_token"}
 
 # Map Airweave source names to provider source names (only needed when names differ)
-SLUG_NAME_MAPPING = {"google_drive": "googledrive", "outlook_mail": "outlook"}
+SLUG_NAME_MAPPING = {
+    "google_drive": "googledrive", 
+    "outlook_mail": "outlook",
+    "onenote": "one_drive"  # OneNote uses OneDrive integration (same Graph API)
+}
 ```
 
 
@@ -129,3 +133,40 @@ The system automatically detects which mode to use:
 - Proxy URL: `https://api.pipedream.com/v1/connect/{project_id}/proxy/{encoded_url}`
 - Auth headers stripped and injected by Pipedream
 - Non-auth headers forwarded with `x-pd-proxy-` prefix
+
+**Blocked Sources:**
+The following sources are blocked from using Pipedream due to technical limitations:
+- `github` - Pipedream enforces proxy mode creating heavy bottlenecks
+- `jira` - Atlassian constructs URLs using cloud ID which Pipedream doesn't provide
+- `confluence` - Atlassian constructs URLs using cloud ID which Pipedream doesn't provide
+- `bitbucket` - Workspace configuration conflicts with Composio
+- `onenote` - Microsoft Graph API integration not supported via Pipedream proxy
+
+## OneNote Authentication Configuration
+
+### Auth Config Class
+OneNote uses `OneNoteAuthConfig` which extends `OAuth2WithRotatingRefreshAuthConfig`:
+
+```python
+# backend/airweave/platform/configs/auth.py
+class OneNoteAuthConfig(OAuth2WithRotatingRefreshAuthConfig):
+    """OneNote authentication credentials schema."""
+    
+    # Inherits access_token, refresh_token from OAuth2WithRotatingRefreshAuthConfig
+    # Uses Microsoft Graph API OAuth2 with rotating refresh tokens
+```
+
+### Required OAuth Scopes
+OneNote requires specific Microsoft Graph API scopes:
+- `offline_access` - Enables refresh tokens for long-term access
+- `https://graph.microsoft.com/User.Read` - Read user profile information
+- `https://graph.microsoft.com/Notes.Read` - Read OneNote notebooks, sections, and pages
+- `https://graph.microsoft.com/Notes.Create` - Create new OneNote content (for testing)
+- `https://graph.microsoft.com/Notes.ReadWrite` - Update and delete OneNote content (for testing)
+
+### Composio Integration
+OneNote uses Composio auth provider with OneDrive integration:
+- **Slug Mapping**: `"onenote": "one_drive"` (uses OneDrive integration for Graph API)
+- **Account ID**: Composio account identifier
+- **Auth Config ID**: Composio auth configuration identifier
+- **Scopes**: Must include Notes.Read, Notes.Create, Notes.ReadWrite for full functionality

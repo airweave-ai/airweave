@@ -85,6 +85,30 @@ teams:
   scope: "offline_access User.Read Team.ReadBasic.All Channel.ReadBasic.All ChannelMessage.Read.All Chat.Read ChatMessage.Read Files.Read.All"
 ```
 
+**Microsoft OneNote (Microsoft Graph API):**
+```yaml
+onenote:
+  oauth_type: "with_rotating_refresh"
+  url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
+  backend_url: "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+  grant_type: "authorization_code"
+  client_id: "your-client-id"
+  client_secret: "your-client-secret"
+  content_type: "application/x-www-form-urlencoded"
+  client_credential_location: "body"
+  scope: "offline_access https://graph.microsoft.com/User.Read https://graph.microsoft.com/Notes.Read"
+  additional_frontend_params:
+    response_type: "code"
+    response_mode: "query"
+```
+
+**OneNote Scopes:**
+- `offline_access` - Enables refresh tokens for long-term access
+- `https://graph.microsoft.com/User.Read` - Read user profile information
+- `https://graph.microsoft.com/Notes.Read` - Read OneNote notebooks, sections, and pages
+- `https://graph.microsoft.com/Notes.Create` - Create new OneNote content (for testing)
+- `https://graph.microsoft.com/Notes.ReadWrite` - Update and delete OneNote content (for testing)
+
 ## Folder Structure
 The files appear to be part of a structured monorepo with:
 

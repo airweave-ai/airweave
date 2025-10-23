@@ -1111,6 +1111,52 @@ See the Asana tests for a complete example:
 
 ---
 
+## OneNote Connector Testing
+
+### Special Considerations for OneNote
+
+OneNote connector testing requires specific handling due to Microsoft Graph API integration:
+
+**Entity Types to Test:**
+- `OneNoteNotebookEntity` - Top-level containers
+- `OneNoteSectionEntity` - Organizational units within notebooks
+- `OneNotePageFileEntity` - Individual pages processed as HTML files
+
+**Authentication Setup:**
+- Uses Composio auth provider with OneDrive integration
+- Requires Microsoft Graph API scopes: Notes.Read, Notes.Create, Notes.ReadWrite
+- Slug mapping: "onenote" → "one_drive"
+
+**Test Configuration:**
+```yaml
+# monke/configs/onenote.yaml
+connector:
+  name: "onenote_test"
+  type: "onenote"
+  auth_mode: composio
+  composio_config:
+    account_id: ${ONENOTE_AUTH_PROVIDER_ACCOUNT_ID}
+    auth_config_id: ${ONENOTE_AUTH_PROVIDER_AUTH_CONFIG_ID}
+```
+
+**Bongo Implementation:**
+- Creates test notebooks, sections, and pages via Microsoft Graph API
+- Embeds tracking tokens in HTML content
+- Handles Microsoft Graph API rate limiting
+- Properly tracks entity IDs for deletion verification
+
+**Key Features:**
+- HTML content generation for realistic OneNote pages
+- Microsoft Graph API CRUD operations
+- Composio credential resolution
+- Proper entity ID tracking for deletions
+
+**Reference Files:**
+- Bongo: `monke/bongos/onenote.py`
+- Schema: `monke/generation/schemas/onenote.py`
+- Generator: `monke/generation/onenote.py`
+- Config: `monke/configs/onenote.yaml`
+
 ## Next Steps
 
 1. Implement the bongo, schemas, generation, and config
