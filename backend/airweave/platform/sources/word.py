@@ -103,15 +103,21 @@ class WordSource(MicrosoftGraphFilesSource):
                     drive_id = file_data.get("parentReference", {}).get("driveId")
                     item_id = file_data["id"]
                     if drive_id:
-                        content_url = f"{self.GRAPH_BASE_URL}/drives/{drive_id}/items/{item_id}/content"
+                        content_url = (
+                            f"{self.GRAPH_BASE_URL}/drives/{drive_id}/items/{item_id}/content"
+                        )
                     else:
                         content_url = f"{self.GRAPH_BASE_URL}/me/drive/items/{item_id}/content"
-                    
+
+                    # Extract filename and mime type from Graph API response
+                    filename = file_data.get("name", "Untitled Document")
+                    mime_type = file_data.get("file", {}).get("mimeType")
+
                     document_entity = WordDocumentEntity(
                         entity_id=file_data["id"],
-                        title=(
-                            file_data.get("name", "Untitled Document").rsplit(".", 1)[0].strip()
-                        ),
+                        title=filename.rsplit(".", 1)[0].strip() if "." in filename else filename,
+                        name=filename,  # Pass actual filename with extension
+                        mime_type=mime_type,  # Pass actual MIME type from Graph API
                         content_download_url=content_url,
                         web_url=file_data.get("webUrl"),
                         size=file_data.get("size"),

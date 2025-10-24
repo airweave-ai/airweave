@@ -103,7 +103,7 @@ class ExcelBongo(MicrosoftGraphBongo):
                 "type": "worksheet",
                 "workbook_id": self._test_workbook_id,
                 "workbook_name": safe_filename,
-                "sheet_name": sheet_data["name"],
+                "sheet_name": sheet_data.name,  # Use attribute access for Pydantic model
                 "token": token,
                 "expected_content": token,
             }
@@ -180,21 +180,45 @@ class ExcelBongo(MicrosoftGraphBongo):
                 )
                 return []
 
-            # Load existing workbook
-            wb = Workbook()
-            wb = Workbook()  # Load from r.content in actual implementation
-            # For simplicity, just note that the workbook would be loaded here
+            # Load existing workbook from downloaded content
+            wb = load_workbook(io.BytesIO(r.content))
 
             # Add a new row to each worksheet with updated data
             for ent in self._worksheets[: min(2, len(self._worksheets))]:
-                # In a real implementation, we'd update the worksheet
-                # For now, just mark as updated
-                updated.append({**ent, "updated": True})
-                self.logger.info(
-                    f"📝 Updated worksheet '{ent['sheet_name']}' with token: {ent['token']}"
-                )
+                sheet_name = ent['sheet_name']
+                if sheet_name in wb.sheetnames:
+                    ws = wb[sheet_name]
+                    # Append a new row with updated marker
+                    next_row = ws.max_row + 1
+                    ws.cell(row=next_row, column=1, value=f"Updated: {ent['token']}")
+                    ws.cell(row=next_row, column=2, value="Modified by Monke test")
+                    
+                    updated.append({**ent, "updated": True})
+                    self.logger.info(
+                        f"📝 Added update row to worksheet '{sheet_name}' with token: {ent['token']}"
+                    )
 
-            await asyncio.sleep(0.5)
+            # Save updated workbook
+            buffer = io.BytesIO()
+            wb.save(buffer)
+            buffer.seek(0)
+
+            # Upload updated workbook back to OneDrive
+            await self._pace()
+            upload_url = f"/me/drive/items/{self._test_workbook_id}/content"
+            r = await client.put(
+                upload_url,
+                headers={
+                    "Authorization": f"Bearer {self.access_token}",
+                    "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                },
+                content=buffer.getvalue(),
+            )
+
+            if r.status_code in (200, 201):
+                self.logger.info(f"✅ Successfully uploaded updated workbook")
+            else:
+                self.logger.warning(f"Failed to upload updated workbook: {r.status_code}")
 
         return updated
 

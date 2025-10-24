@@ -86,3 +86,31 @@ class PowerPointPresentationEntity(FileEntity):
     shared: Optional[Dict[str, Any]] = AirweaveField(
         None, description="Sharing information for the presentation.", embeddable=True
     )
+
+    def __init__(self, **data):
+        """Initialize the entity and set file_type and mime_type for PPTX processing."""
+        # Set PowerPoint-specific values
+        if "mime_type" not in data or not data["mime_type"]:
+            # Default MIME type for .pptx files
+            data["mime_type"] = (
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            )
+
+        # Set file_type for categorization
+        data.setdefault("file_type", "pptx")
+
+        # Ensure download_url is set from content_download_url
+        data.setdefault("download_url", data.get("content_download_url", ""))
+
+        # Ensure file_id matches entity_id
+        data.setdefault("file_id", data.get("entity_id", ""))
+
+        # Ensure name includes the title with .pptx extension
+        if "title" in data and "name" not in data:
+            title = data["title"]
+            # Ensure .pptx extension
+            if not title.endswith((".pptx", ".ppt", ".pptm")):
+                title = f"{title}.pptx"
+            data["name"] = title
+
+        super().__init__(**data)

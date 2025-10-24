@@ -137,30 +137,35 @@ class OneNoteSource(MicrosoftGraphSource):
     async def _generate_notebook_entities(
         self, client: httpx.AsyncClient
     ) -> AsyncGenerator[OneNoteNotebookEntity, None]:
-        """Generate notebook entities."""
+        """Generate notebook entities with pagination support."""
         try:
             url = f"{self.GRAPH_BASE_URL}/me/onenote/notebooks"
-            data = await self._get_with_auth(client, url)
 
-            for notebook_data in data.get("value", []):
-                display_name = notebook_data.get("displayName", "Untitled Notebook")
-                notebook_entity = OneNoteNotebookEntity(
-                    entity_id=notebook_data["id"],
-                    display_name=display_name,
-                    name=display_name,  # Required field, same as display_name
-                    created_datetime=self._parse_datetime(notebook_data.get("createdDateTime")),
-                    last_modified_datetime=self._parse_datetime(
-                        notebook_data.get("lastModifiedDateTime")
-                    ),
-                    is_default=notebook_data.get("isDefault", False),
-                    is_shared=notebook_data.get("isShared", False),
-                    sections_url=notebook_data.get("sectionsUrl"),
-                    section_groups_url=notebook_data.get("sectionGroupsUrl"),
-                    links=notebook_data.get("links"),
-                    self_link=notebook_data.get("self"),
-                )
+            while url:
+                data = await self._get_with_auth(client, url)
 
-                yield notebook_entity
+                for notebook_data in data.get("value", []):
+                    display_name = notebook_data.get("displayName", "Untitled Notebook")
+                    notebook_entity = OneNoteNotebookEntity(
+                        entity_id=notebook_data["id"],
+                        display_name=display_name,
+                        name=display_name,  # Required field, same as display_name
+                        created_datetime=self._parse_datetime(notebook_data.get("createdDateTime")),
+                        last_modified_datetime=self._parse_datetime(
+                            notebook_data.get("lastModifiedDateTime")
+                        ),
+                        is_default=notebook_data.get("isDefault", False),
+                        is_shared=notebook_data.get("isShared", False),
+                        sections_url=notebook_data.get("sectionsUrl"),
+                        section_groups_url=notebook_data.get("sectionGroupsUrl"),
+                        links=notebook_data.get("links"),
+                        self_link=notebook_data.get("self"),
+                    )
+
+                    yield notebook_entity
+
+                # Follow pagination
+                url = data.get("@odata.nextLink")
 
         except Exception as e:
             self.logger.error(f"Error generating notebook entities: {str(e)}")
@@ -169,30 +174,35 @@ class OneNoteSource(MicrosoftGraphSource):
     async def _generate_section_entities(
         self, client: httpx.AsyncClient, notebook_id: str, breadcrumbs: list
     ) -> AsyncGenerator[OneNoteSectionEntity, None]:
-        """Generate section entities for a notebook."""
+        """Generate section entities for a notebook with pagination support."""
         try:
             url = f"{self.GRAPH_BASE_URL}/me/onenote/notebooks/{notebook_id}/sections"
-            data = await self._get_with_auth(client, url)
 
-            for section_data in data.get("value", []):
-                display_name = section_data.get("displayName", "Untitled Section")
-                section_entity = OneNoteSectionEntity(
-                    entity_id=section_data["id"],
-                    breadcrumbs=breadcrumbs,
-                    display_name=display_name,
-                    name=display_name,  # Required field, same as display_name
-                    created_datetime=self._parse_datetime(section_data.get("createdDateTime")),
-                    last_modified_datetime=self._parse_datetime(
-                        section_data.get("lastModifiedDateTime")
-                    ),
-                    pages_url=section_data.get("pagesUrl"),
-                    is_default=section_data.get("isDefault", False),
-                    links=section_data.get("links"),
-                    self_link=section_data.get("self"),
-                    notebook_id=notebook_id,
-                )
+            while url:
+                data = await self._get_with_auth(client, url)
 
-                yield section_entity
+                for section_data in data.get("value", []):
+                    display_name = section_data.get("displayName", "Untitled Section")
+                    section_entity = OneNoteSectionEntity(
+                        entity_id=section_data["id"],
+                        breadcrumbs=breadcrumbs,
+                        display_name=display_name,
+                        name=display_name,  # Required field, same as display_name
+                        created_datetime=self._parse_datetime(section_data.get("createdDateTime")),
+                        last_modified_datetime=self._parse_datetime(
+                            section_data.get("lastModifiedDateTime")
+                        ),
+                        pages_url=section_data.get("pagesUrl"),
+                        is_default=section_data.get("isDefault", False),
+                        links=section_data.get("links"),
+                        self_link=section_data.get("self"),
+                        notebook_id=notebook_id,
+                    )
+
+                    yield section_entity
+
+                # Follow pagination
+                url = data.get("@odata.nextLink")
 
         except Exception as e:
             self.logger.warning(f"Error generating sections for notebook {notebook_id}: {str(e)}")
@@ -200,46 +210,54 @@ class OneNoteSource(MicrosoftGraphSource):
     async def _generate_page_entities(
         self, client: httpx.AsyncClient, section_id: str, notebook_id: str, breadcrumbs: list
     ) -> AsyncGenerator[OneNotePageFileEntity, None]:
-        """Generate page file entities for a section."""
+        """Generate page file entities for a section with pagination support."""
         try:
             url = f"{self.GRAPH_BASE_URL}/me/onenote/sections/{section_id}/pages"
             params = {"$select": "id,title,createdDateTime,lastModifiedDateTime,contentUrl,links"}
-            data = await self._get_with_auth(client, url, params)
 
-            for page_data in data.get("value", []):
-                # Get page content URL
-                content_url = page_data.get("contentUrl")
-                if not content_url:
-                    self.logger.warning(f"Page {page_data.get('id')} has no content URL, skipping")
-                    continue
+            while url:
+                data = await self._get_with_auth(client, url, params)
 
-                # Extract page title
-                title = page_data.get("title", "Untitled Page")
+                for page_data in data.get("value", []):
+                    # Get page content URL
+                    content_url = page_data.get("contentUrl")
+                    if not content_url:
+                        self.logger.warning(
+                            f"Page {page_data.get('id')} has no content URL, skipping"
+                        )
+                        continue
 
-                # Create page file entity
-                page_entity = OneNotePageFileEntity(
-                    entity_id=page_data["id"],
-                    breadcrumbs=breadcrumbs,
-                    title=title,
-                    name=f"{title}.html",  # OneNote pages are HTML
-                    download_url=content_url,
-                    content_url=content_url,
-                    mime_type="text/html",
-                    file_type="html",
-                    created_datetime=self._parse_datetime(page_data.get("createdDateTime")),
-                    last_modified_datetime=self._parse_datetime(
-                        page_data.get("lastModifiedDateTime")
-                    ),
-                    links=page_data.get("links"),
-                    self_link=page_data.get("self"),
-                    section_id=section_id,
-                    notebook_id=notebook_id,
-                )
+                    # Extract page title
+                    title = page_data.get("title", "Untitled Page")
 
-                # Process the file entity (downloads and processes HTML content)
-                processed_entity = await self.process_file_entity(page_entity)
-                if processed_entity:
-                    yield processed_entity
+                    # Create page file entity
+                    page_entity = OneNotePageFileEntity(
+                        entity_id=page_data["id"],
+                        breadcrumbs=breadcrumbs,
+                        title=title,
+                        name=f"{title}.html",  # OneNote pages are HTML
+                        download_url=content_url,
+                        content_url=content_url,
+                        mime_type="text/html",
+                        file_type="html",
+                        created_datetime=self._parse_datetime(page_data.get("createdDateTime")),
+                        last_modified_datetime=self._parse_datetime(
+                            page_data.get("lastModifiedDateTime")
+                        ),
+                        links=page_data.get("links"),
+                        self_link=page_data.get("self"),
+                        section_id=section_id,
+                        notebook_id=notebook_id,
+                    )
+
+                    # Process the file entity (downloads and processes HTML content)
+                    processed_entity = await self.process_file_entity(page_entity)
+                    if processed_entity:
+                        yield processed_entity
+
+                # Follow pagination (params only needed for first request)
+                url = data.get("@odata.nextLink")
+                params = None  # nextLink includes all params
 
         except Exception as e:
             self.logger.warning(f"Error generating pages for section {section_id}: {str(e)}")

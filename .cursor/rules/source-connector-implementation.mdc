@@ -379,6 +379,49 @@ class MyConnectorSource(BaseSource):
         )
 ```
 
+### Microsoft Graph Sources
+
+For Microsoft Graph API connectors (Word, Excel, PowerPoint, OneNote), inherit from `MicrosoftGraphSource` or `MicrosoftGraphFilesSource` instead of `BaseSource`:
+
+```python
+from airweave.platform.sources._microsoft_graph_base import MicrosoftGraphSource
+from airweave.platform.sources._microsoft_graph_files_base import MicrosoftGraphFilesSource
+
+# For file-based connectors (Word, Excel, PowerPoint)
+class WordSource(MicrosoftGraphFilesSource):
+    SUPPORTED_EXTENSIONS = (".docx", ".doc", ".docm")
+    
+    def _create_file_entity(self, file_data: Dict[str, Any]) -> Optional[FileEntity]:
+        """Convert Graph API file metadata to FileEntity."""
+        # Implement file entity creation
+        pass
+
+# For non-file connectors (OneNote)
+class OneNoteSource(MicrosoftGraphSource):
+    async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
+        # Use self._get_with_auth() for authenticated requests
+        pass
+```
+
+**`MicrosoftGraphSource` provides:**
+- Authenticated Graph API requests (`_get_with_auth()`)
+- Automatic token refresh with retry logic
+- Rate limiting and error handling
+- DateTime parsing (`_parse_datetime()`)
+- Validation helper (`validate()`)
+
+**`MicrosoftGraphFilesSource` adds:**
+- Recursive file discovery (`_discover_files_recursive()`)
+- Extension filtering (set `SUPPORTED_EXTENSIONS`)
+- File entity processing pipeline
+- 0-byte file validation
+
+**Key differences from standard sources:**
+- Use Microsoft Graph `/content` endpoint for downloads (not temporary `@microsoft.graph.downloadUrl`)
+- Download URL format: `/drives/{drive_id}/items/{item_id}/content`
+- No manual pagination - base class handles `@odata.nextLink`
+- Rate limiting built-in (250 items/page)
+
 ### Critical Methods
 
 #### 1. The `create()` Classmethod
