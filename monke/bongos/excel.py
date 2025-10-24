@@ -93,7 +93,9 @@ class ExcelBongo(MicrosoftGraphBongo):
             wb_file = r.json()
             self._test_workbook_id = wb_file["id"]
 
-            self.logger.info(f"✅ Uploaded workbook: {self._test_workbook_id} - {safe_filename}")
+            self.logger.info(
+                f"✅ Uploaded workbook: {self._test_workbook_id} - {safe_filename}"
+            )
 
         # Build entity list for verification
         for i, (sheet_data, token) in enumerate(zip(worksheet_data, tokens)):
@@ -137,7 +139,9 @@ class ExcelBongo(MicrosoftGraphBongo):
 
         # Create worksheets
         for i, (sheet_data, token) in enumerate(zip(worksheet_data, tokens)):
-            ws = wb.create_sheet(title=sheet_data.name)  # Use attribute access for Pydantic model
+            ws = wb.create_sheet(
+                title=sheet_data.name
+            )  # Use attribute access for Pydantic model
 
             # Write headers
             headers = sheet_data.headers  # Use attribute access for Pydantic model
@@ -145,7 +149,9 @@ class ExcelBongo(MicrosoftGraphBongo):
                 ws.cell(row=1, column=col_idx, value=header)
 
             # Write data rows with token
-            for row_idx, row_data in enumerate(sheet_data.rows, start=2):  # Use attribute access for Pydantic model
+            for row_idx, row_data in enumerate(
+                sheet_data.rows, start=2
+            ):  # Use attribute access for Pydantic model
                 for col_idx, value in enumerate(row_data, start=1):
                     # Include token in first data row
                     if row_idx == 2 and col_idx == 1:
@@ -183,14 +189,14 @@ class ExcelBongo(MicrosoftGraphBongo):
 
             # Add a new row to each worksheet with updated data
             for ent in self._worksheets[: min(2, len(self._worksheets))]:
-                sheet_name = ent['sheet_name']
+                sheet_name = ent["sheet_name"]
                 if sheet_name in wb.sheetnames:
                     ws = wb[sheet_name]
                     # Append a new row with updated marker
                     next_row = ws.max_row + 1
                     ws.cell(row=next_row, column=1, value=f"Updated: {ent['token']}")
                     ws.cell(row=next_row, column=2, value="Modified by Monke test")
-                    
+
                     updated.append({**ent, "updated": True})
                     self.logger.info(
                         f"📝 Added update row to worksheet '{sheet_name}' with token: {ent['token']}"
@@ -216,7 +222,9 @@ class ExcelBongo(MicrosoftGraphBongo):
             if r.status_code in (200, 201):
                 self.logger.info("✅ Successfully uploaded updated workbook")
             else:
-                self.logger.warning(f"Failed to upload updated workbook: {r.status_code}")
+                self.logger.warning(
+                    f"Failed to upload updated workbook: {r.status_code}"
+                )
 
         return updated
 
@@ -230,7 +238,9 @@ class ExcelBongo(MicrosoftGraphBongo):
 
         async with httpx.AsyncClient(base_url=GRAPH, timeout=30) as client:
             success = await self._delete_with_retry(
-                client, self._test_workbook_id, self._test_workbook_name or "TestWorkbook"
+                client,
+                self._test_workbook_id,
+                self._test_workbook_name or "TestWorkbook",
             )
 
             if success:
@@ -244,7 +254,9 @@ class ExcelBongo(MicrosoftGraphBongo):
 
         return deleted
 
-    async def delete_specific_entities(self, entities: List[Dict[str, Any]]) -> List[str]:
+    async def delete_specific_entities(
+        self, entities: List[Dict[str, Any]]
+    ) -> List[str]:
         """Delete specific worksheets (not implemented - deletes entire workbook)."""
         # Excel bongo deletes the entire workbook, not individual worksheets
         return await self.delete_entities()
@@ -268,7 +280,9 @@ class ExcelBongo(MicrosoftGraphBongo):
                     cleanup_stats["workbooks_deleted"] += len(deleted)
 
                 # Search for and cleanup any orphaned test workbooks
-                await self._cleanup_orphaned_files(client, cleanup_stats, "Monke_", [".xlsx"])
+                await self._cleanup_orphaned_files(
+                    client, cleanup_stats, "Monke_", [".xlsx"]
+                )
 
             self.logger.info(
                 f"🧹 Cleanup completed: {cleanup_stats['workbooks_deleted']} "
