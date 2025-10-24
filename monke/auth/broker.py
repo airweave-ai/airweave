@@ -116,6 +116,8 @@ class ComposioBroker(BaseAuthBroker):
             "sharepoint": "one_drive",  # this is not a bug, we are using the one drive token for sharepoint given overlapping scopes
             "teams": "microsoft_teams",
             "onenote": "one_drive",  # OneNote uses OneDrive integration (same Graph API)
+            "excel": "one_drive",  # Excel uses OneDrive integration (same Graph API)
+            "word": "one_drive",  # Word uses OneDrive integration (same Graph API)
         }
 
         # Check if we have an explicit mapping
