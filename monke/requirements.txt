@@ -16,3 +16,6 @@ websockets>=12.0
 
 # Excel file manipulation
 openpyxl>=3.1.0
+
+# Word document manipulation
+python-docx>=1.2.0

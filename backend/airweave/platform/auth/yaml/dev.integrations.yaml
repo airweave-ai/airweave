@@ -364,4 +364,18 @@ integrations:
     additional_frontend_params:
       response_type: "code"
 
+  word:
+    oauth_type: "with_rotating_refresh"
+    url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
+    backend_url: "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+    grant_type: "authorization_code"
+    client_id: "ef278996-5ac2-4cab-98a3-17c6b942dc45"
+    client_secret: "OPf8Q~lM2ZZDAvmP1gq8zQBM2CJTHLgxT9C8Ea_W"
+    content_type: "application/x-www-form-urlencoded"
+    client_credential_location: "body"
+    scope: "offline_access https://graph.microsoft.com/User.Read https://graph.microsoft.com/Files.Read.All"
+    additional_frontend_params:
+      response_type: "code"
+      response_mode: "query"
+
   qdrant:

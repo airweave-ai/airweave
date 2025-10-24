@@ -1,0 +1,62 @@
+# Word connector test configuration
+name: "Word Connector Test"
+description: "End-to-end test of Word connector sync functionality with incremental deletion testing"
+
+connector:
+  name: "word_test"
+  type: "word"
+  auth_mode: composio
+  composio_config:
+    # Please ensure to add the following scopes to your OneDrive integration:
+    # - Files.ReadWrite.All (for monke testing - creates/updates/deletes test documents)
+    # - User.Read
+    # - offline_access
+    # Note: Production syncs only need Files.Read.All
+    account_id: ca_WIOsV2kX2PzH
+    auth_config_id: ac_qwZe7KS8pdYT
+  config_fields:
+    openai_model: "gpt-4.1-mini"
+
+    # Timing: Allow OneDrive to index newly created documents
+    # OneDrive needs time to process new files before they appear in search results
+    post_create_sleep_seconds: 15
+
+test_flow:
+  steps:
+    - cleanup
+    - create
+    - sync
+    - verify
+    - update
+    - sync
+    - verify
+    - partial_delete
+    - sync
+    - verify_partial_deletion
+    - verify_remaining_entities
+    - complete_delete
+    - sync
+    - verify_complete_deletion
+    - cleanup
+
+# Entity configuration
+entity_count: 3  # Number of Word documents to create for testing
+
+deletion:
+  # Phase 1: Partial deletion
+  partial_delete_count: 1  # Number of documents to delete during partial deletion
+
+  # Verification settings
+  verify_partial_deletion: true
+  verify_remaining_entities: true
+  verify_complete_deletion: true
+
+collection:
+  name_template: "monke-{connector_type}-test-{timestamp}"
+  description: "Test collection for {connector_type} connector"
+
+verification:
+  score_threshold: 0.1
+  max_retries: 3
+  retry_delay_seconds: 5
+
