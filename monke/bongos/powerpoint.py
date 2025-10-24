@@ -5,14 +5,12 @@ Creates, updates, and deletes test PowerPoint presentations via the Microsoft Gr
 
 import asyncio
 import io
-import time
 import uuid
 from typing import Any, Dict, List
 
 import httpx
-from monke.bongos.base_bongo import BaseBongo
+from monke.bongos._microsoft_graph_base import GRAPH, MicrosoftGraphBongo
 from monke.generation.powerpoint import generate_presentations_content
-from monke.utils.logging import get_logger
 
 # Try to import python-pptx for PowerPoint presentation creation
 try:
@@ -23,10 +21,8 @@ try:
 except ImportError:
     HAS_PYTHON_PPTX = False
 
-GRAPH = "https://graph.microsoft.com/v1.0"
 
-
-class PowerPointBongo(BaseBongo):
+class PowerPointBongo(MicrosoftGraphBongo):
     """Bongo for PowerPoint that creates test entities for E2E testing.
 
     Key responsibilities:
@@ -40,16 +36,10 @@ class PowerPointBongo(BaseBongo):
     connector_type = "powerpoint"
 
     def __init__(self, credentials: Dict[str, Any], **kwargs):
-        super().__init__(credentials)
-        self.access_token: str = credentials["access_token"]
-        self.entity_count: int = int(kwargs.get("entity_count", 3))
-        self.openai_model: str = kwargs.get("openai_model", "gpt-4.1-mini")
-        self.rate_limit_delay = float(kwargs.get("rate_limit_delay_ms", 500)) / 1000.0
-        self.logger = get_logger("powerpoint_bongo")
+        super().__init__(credentials, **kwargs)
 
         # Track created resources for cleanup
         self._test_presentations: List[Dict[str, Any]] = []
-        self._last_req = 0.0
 
         if not HAS_PYTHON_PPTX:
             raise ImportError(
@@ -135,34 +125,6 @@ class PowerPointBongo(BaseBongo):
             f"✅ Created {len(self._test_presentations)} PowerPoint presentations"
         )
         return out
-
-    def _sanitize_filename(self, filename: str) -> str:
-        """Sanitize filename by removing illegal characters for OneDrive.
-
-        Args:
-            filename: Original filename
-
-        Returns:
-            Sanitized filename safe for OneDrive
-        """
-        # Replace illegal characters: \ / : * ? " < > |
-        illegal_chars = ["\\", "/", ":", "*", "?", '"', "<", ">", "|"]
-        safe_name = filename
-        for char in illegal_chars:
-            safe_name = safe_name.replace(char, "_")
-
-        # Remove leading/trailing spaces and dots
-        safe_name = safe_name.strip(". ")
-
-        # Limit length to 200 characters (OneDrive has a 400 char limit for full path)
-        if len(safe_name) > 200:
-            # Keep the extension
-            name, ext = (
-                safe_name.rsplit(".", 1) if "." in safe_name else (safe_name, "")
-            )
-            safe_name = name[:195] + "." + ext if ext else name[:200]
-
-        return safe_name
 
     def _create_powerpoint_file(self, pres_content: Any) -> bytes:
         """Create a PowerPoint presentation file with the given content.
@@ -327,52 +289,19 @@ class PowerPointBongo(BaseBongo):
         async with httpx.AsyncClient(base_url=GRAPH, timeout=30) as client:
             # Iterate over a copy to avoid mutation issues when entities == self._test_presentations
             for ent in list(entities):
-                try:
-                    await self._pace()
+                success = await self._delete_with_retry(
+                    client, ent["id"], ent.get("filename", ent["id"])
+                )
 
-                    # Try to delete the presentation with retry for locked files (423)
-                    max_retries = 3
-                    retry_delay = 2.0  # seconds
-
-                    for attempt in range(max_retries):
-                        r = await client.delete(
-                            f"/me/drive/items/{ent['id']}", headers=self._hdrs()
-                        )
-
-                        if r.status_code == 204:
-                            deleted.append(ent["id"])
-                            self.logger.info(
-                                f"✅ Deleted presentation: {ent.get('filename', ent['id'])}"
-                            )
-
-                            # Remove from tracking
-                            if ent in self._test_presentations:
-                                self._test_presentations.remove(ent)
-                            break  # Success, exit retry loop
-
-                        elif r.status_code == 423 and attempt < max_retries - 1:
-                            # Resource is locked, wait and retry
-                            self.logger.warning(
-                                "⏳ Presentation locked (423), retrying in %ss "
-                                "(attempt %s/%s): %s",
-                                retry_delay,
-                                attempt + 1,
-                                max_retries,
-                                ent.get("filename", ent["id"]),
-                            )
-                            await asyncio.sleep(retry_delay)
-                            retry_delay *= 2  # Exponential backoff
-                        else:
-                            # Other error or max retries reached
-                            self.logger.warning(
-                                f"Delete failed: {r.status_code} - {r.text[:200]}"
-                            )
-                            break  # Exit retry loop on non-retryable error
-
-                except Exception as e:
-                    self.logger.warning(
-                        f"Delete error for {ent.get('filename', ent['id'])}: {e}"
+                if success:
+                    deleted.append(ent["id"])
+                    self.logger.info(
+                        f"✅ Deleted presentation: {ent.get('filename', ent['id'])}"
                     )
+
+                    # Remove from tracking
+                    if ent in self._test_presentations:
+                        self._test_presentations.remove(ent)
 
         return deleted
 
@@ -382,6 +311,7 @@ class PowerPointBongo(BaseBongo):
 
         cleanup_stats = {
             "presentations_deleted": 0,
+            "files_deleted": 0,
             "errors": 0,
         }
 
@@ -398,71 +328,14 @@ class PowerPointBongo(BaseBongo):
                     cleanup_stats["presentations_deleted"] += len(deleted)
 
                 # Search for and cleanup any orphaned test presentations
-                await self._cleanup_orphaned_presentations(client, cleanup_stats)
+                await self._cleanup_orphaned_files(
+                    client, cleanup_stats, "Monke_", [".pptx"]
+                )
 
             self.logger.info(
                 f"🧹 Cleanup completed: {cleanup_stats['presentations_deleted']} "
-                f"presentations deleted, {cleanup_stats['errors']} errors"
+                f"presentations deleted, {cleanup_stats['files_deleted']} orphaned files deleted, "
+                f"{cleanup_stats['errors']} errors"
             )
         except Exception as e:
             self.logger.error(f"❌ Error during comprehensive cleanup: {e}")
-
-    async def _cleanup_orphaned_presentations(
-        self, client: httpx.AsyncClient, stats: Dict[str, Any]
-    ):
-        """Find and delete orphaned test presentations from previous runs."""
-        try:
-            await self._pace()
-            r = await client.get("/me/drive/root/children", headers=self._hdrs())
-
-            if r.status_code == 200:
-                files = r.json().get("value", [])
-
-                # Find test PowerPoint presentations
-                test_presentations = [
-                    f
-                    for f in files
-                    if f.get("name", "").startswith("Monke_")
-                    and f.get("name", "").endswith(".pptx")
-                ]
-
-                if test_presentations:
-                    self.logger.info(
-                        f"🔍 Found {len(test_presentations)} orphaned test presentations"
-                    )
-                    for pres in test_presentations:
-                        try:
-                            await self._pace()
-                            del_r = await client.delete(
-                                f"/me/drive/items/{pres['id']}",
-                                headers=self._hdrs(),
-                            )
-                            if del_r.status_code == 204:
-                                stats["presentations_deleted"] += 1
-                                self.logger.info(
-                                    f"✅ Deleted orphaned presentation: "
-                                    f"{pres.get('name', 'Unknown')}"
-                                )
-                            else:
-                                stats["errors"] += 1
-                        except Exception as e:
-                            stats["errors"] += 1
-                            self.logger.warning(
-                                f"⚠️  Failed to delete presentation {pres['id']}: {e}"
-                            )
-        except Exception as e:
-            self.logger.warning(f"⚠️  Could not search for orphaned presentations: {e}")
-
-    def _hdrs(self) -> Dict[str, str]:
-        """Get standard headers for Graph API requests."""
-        return {
-            "Authorization": f"Bearer {self.access_token}",
-            "Content-Type": "application/json",
-        }
-
-    async def _pace(self):
-        """Rate limiting helper."""
-        now = time.time()
-        if (delta := now - self._last_req) < self.rate_limit_delay:
-            await asyncio.sleep(self.rate_limit_delay - delta)
-        self._last_req = time.time()
