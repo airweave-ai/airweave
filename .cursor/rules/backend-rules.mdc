@@ -92,12 +92,11 @@ If necessary (like editing ), refer [sync-architecture.mdc](mdc:.cursor/rules/sy
 - **Module Path**: `airweave.analytics.service` for core analytics and user behavior tracking
 - **Environment Variables**: `POSTHOG_API_KEY`, `POSTHOG_HOST`, `ANALYTICS_ENABLED`, `ENVIRONMENT` in `core/config.py`
 - **Event Tagging**: All events automatically include an `environment` property from `ENVIRONMENT` variable for filtering by deployment environment
-- **Dependency Injection Architecture**: Analytics service is pre-configured in `ApiContext` via `deps.get_context()`
 - **Usage Patterns**:
-  - **API Endpoints**: Use `ctx.analytics.track_event()` for custom tracking (no decorators needed)
+  - **API Endpoints**: Import `analytics` directly and use `analytics.track_event()` for custom tracking
   - **Search Operations**: Automatically tracked via `SearchService.search()` - no manual tracking required
   - **Business Events**: Use `business_events.track_*()` methods for high-level metrics
-- **Context Requirements**: Always use `ApiContext` for API endpoints; analytics service is pre-configured with user/org context
+- **Direct Import Pattern**: Use `from airweave.analytics.service import analytics` instead of `ApiContext` for direct access
 - **Error Handling**: Analytics errors are logged but never crash the application
 - **Property Guidelines**: Use `.value` for enums, avoid mutating caller's properties dict
 - **Timing**: Use `time.monotonic()` for duration measurements, not `time.time()`

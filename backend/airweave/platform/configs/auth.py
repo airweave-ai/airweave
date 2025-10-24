@@ -426,6 +426,12 @@ class GoogleDriveAuthConfig(OAuth2BYOCAuthConfig):
     # Inherits client_id, client_secret, refresh_token and access_token from OAuth2BYOCAuthConfig
 
 
+class GoogleSlidesAuthConfig(OAuth2BYOCAuthConfig):
+    """Google Slides authentication credentials schema."""
+
+    # Inherits client_id, client_secret, refresh_token and access_token from OAuth2BYOCAuthConfig
+
+
 class GitLabAuthConfig(OAuth2WithRefreshAuthConfig):
     """GitLab authentication credentials schema."""
 
