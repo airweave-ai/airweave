@@ -67,6 +67,7 @@ class PipedreamAuthProvider(BaseAuthProvider):
         # Workspace needs to be moved to the regular config, which will conflict with composio
         "bitbucket",
         "onenote",
+        "excel",
     ]
 
     # Mapping of Airweave field names to Pipedream field names
