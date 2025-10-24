@@ -3,7 +3,6 @@
 Creates, updates, and deletes test entities via the real Microsoft Graph API.
 """
 
-import asyncio
 import io
 import uuid
 from typing import Any, Dict, List, Optional
@@ -14,8 +13,7 @@ from monke.generation.excel import generate_workbook_content
 
 # Try to import openpyxl for Excel file creation
 try:
-    from openpyxl import Workbook
-    from openpyxl.utils import get_column_letter
+    from openpyxl import Workbook, load_workbook
 
     HAS_OPENPYXL = True
 except ImportError:
@@ -139,15 +137,15 @@ class ExcelBongo(MicrosoftGraphBongo):
 
         # Create worksheets
         for i, (sheet_data, token) in enumerate(zip(worksheet_data, tokens)):
-            ws = wb.create_sheet(title=sheet_data["name"])
+            ws = wb.create_sheet(title=sheet_data.name)  # Use attribute access for Pydantic model
 
             # Write headers
-            headers = sheet_data["headers"]
+            headers = sheet_data.headers  # Use attribute access for Pydantic model
             for col_idx, header in enumerate(headers, start=1):
                 ws.cell(row=1, column=col_idx, value=header)
 
             # Write data rows with token
-            for row_idx, row_data in enumerate(sheet_data["rows"], start=2):
+            for row_idx, row_data in enumerate(sheet_data.rows, start=2):  # Use attribute access for Pydantic model
                 for col_idx, value in enumerate(row_data, start=1):
                     # Include token in first data row
                     if row_idx == 2 and col_idx == 1:
@@ -165,7 +163,7 @@ class ExcelBongo(MicrosoftGraphBongo):
         if not self._test_workbook_id:
             return []
 
-        self.logger.info(f"🥁 Updating worksheets in Excel workbook")
+        self.logger.info("🥁 Updating worksheets in Excel workbook")
         updated = []
 
         async with httpx.AsyncClient(base_url=GRAPH, timeout=60) as client:
@@ -216,7 +214,7 @@ class ExcelBongo(MicrosoftGraphBongo):
             )
 
             if r.status_code in (200, 201):
-                self.logger.info(f"✅ Successfully uploaded updated workbook")
+                self.logger.info("✅ Successfully uploaded updated workbook")
             else:
                 self.logger.warning(f"Failed to upload updated workbook: {r.status_code}")
 
@@ -227,7 +225,7 @@ class ExcelBongo(MicrosoftGraphBongo):
         if not self._test_workbook_id:
             return []
 
-        self.logger.info(f"🥁 Deleting Excel test workbook")
+        self.logger.info("🥁 Deleting Excel test workbook")
         deleted: List[str] = []
 
         async with httpx.AsyncClient(base_url=GRAPH, timeout=30) as client:
