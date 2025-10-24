@@ -84,9 +84,8 @@ class WordDocumentEntity(FileEntity):
         # Set Word-specific values
         if "mime_type" not in data or not data["mime_type"]:
             # Default MIME type for .docx files
-            data.setdefault(
-                "mime_type",
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            data["mime_type"] = (
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             )
 
         # Set file_type for categorization
