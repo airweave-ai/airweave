@@ -94,6 +94,7 @@ That's it! Access the dashboard at http://localhost:8080
 <img src="frontend/src/components/icons/apps/gitlab.svg" alt="Gitlab" width="50" height="50" style="margin: 8px;" />
 <img src="frontend/src/components/icons/apps/gmail.svg" alt="Gmail" width="50" height="50" style="margin: 8px;" />
 <img src="frontend/src/components/icons/apps/google_calendar.svg" alt="Google Calendar" width="50" height="50" style="margin: 8px;" />
+<img src="frontend/src/components/icons/apps/google_docs.svg" alt="Google Docs" width="50" height="50" style="margin: 8px;" />
 <img src="frontend/src/components/icons/apps/google_drive.svg" alt="Google Drive" width="50" height="50" style="margin: 8px;" />
 <img src="frontend/src/components/icons/apps/hubspot.svg" alt="Hubspot" width="50" height="50" style="margin: 8px;" />
 <img src="frontend/src/components/icons/apps/jira.svg" alt="Jira" width="50" height="50" style="margin: 8px;" />
