@@ -112,7 +112,7 @@ That's it! Access the dashboard at http://localhost:8080
 <img src="frontend/src/components/icons/apps/teams.svg" alt="Teams" width="50" height="50" style="margin: 8px;" />
 <img src="frontend/src/components/icons/apps/todoist.svg" alt="Todoist" width="50" height="50" style="margin: 8px;" />
 <img src="frontend/src/components/icons/apps/trello.svg" alt="Trello" width="50" height="50" style="margin: 8px;" />
-<img src="frontend/src/components/icons/apps/word.svg" alt="Trello" width="50" height="50" style="margin: 8px;" />
+<img src="frontend/src/components/icons/apps/word.svg" alt="Word" width="50" height="50" style="margin: 8px;" />
 <img src="frontend/src/components/icons/apps/zendesk.svg" alt="Zendesk" width="50" height="50" style="margin: 8px;" />
 </p>
 
