@@ -13,11 +13,9 @@ Reference:
 """
 
 import asyncio
-from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, Optional
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential
 
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import Breadcrumb, ChunkEntity
@@ -26,7 +24,9 @@ from airweave.platform.entities.excel import (
     ExcelWorkbookEntity,
     ExcelWorksheetEntity,
 )
-from airweave.platform.sources._base import BaseSource
+from airweave.platform.sources._microsoft_graph_files_base import (
+    MicrosoftGraphFilesSource,
+)
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
@@ -44,7 +44,7 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
     labels=["Productivity", "Spreadsheet", "Data Analysis"],
     supports_continuous=False,
 )
-class ExcelSource(BaseSource):
+class ExcelSource(MicrosoftGraphFilesSource):
     """Microsoft Excel source connector integrates with the Microsoft Graph API.
 
     Synchronizes data from Microsoft Excel including workbooks, worksheets, and tables.
@@ -53,15 +53,14 @@ class ExcelSource(BaseSource):
     and rate limiting.
     """
 
-    GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
+    # Supported Excel file extensions
+    FILE_EXTENSIONS = (".xlsx", ".xls", ".xlsm", ".xlsb")
 
     # Configuration constants for optimization
     MAX_WORKSHEET_ROWS = 200  # Limit rows per worksheet to prevent huge entities
     MAX_TABLE_ROWS = 100  # Limit rows per table
-    PAGE_SIZE_DRIVE = 250  # Optimal page size for drive items
     PAGE_SIZE_WORKSHEETS = 250  # Optimal page size for worksheets
     PAGE_SIZE_TABLES = 100  # Optimal page size for tables
-    MAX_FOLDER_DEPTH = 5  # Limit recursive folder traversal depth
     CONCURRENT_WORKSHEET_FETCH = 5  # Concurrent worksheet content fetches
 
     @classmethod
@@ -80,251 +79,6 @@ class ExcelSource(BaseSource):
         instance = cls()
         instance.access_token = access_token
         return instance
-
-    @retry(
-        stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), reraise=True
-    )
-    async def _get_with_auth(
-        self,
-        client: httpx.AsyncClient,
-        url: str,
-        params: Optional[dict] = None,
-    ) -> dict:
-        """Make an authenticated GET request to Microsoft Graph API.
-
-        Args:
-            client: HTTP client to use for the request
-            url: API endpoint URL
-            params: Optional query parameters
-
-        Returns:
-            JSON response data
-        """
-        # Get fresh token (will refresh if needed)
-        access_token = await self.get_access_token()
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Accept": "application/json",
-        }
-
-        try:
-            response = await client.get(url, headers=headers, params=params)
-
-            # Handle 401 errors by refreshing token and retrying
-            if response.status_code == 401:
-                self.logger.warning(
-                    f"Got 401 Unauthorized from Microsoft Graph API at {url}, refreshing token..."
-                )
-                await self.refresh_on_unauthorized()
-
-                # Get new token and retry
-                access_token = await self.get_access_token()
-                headers = {
-                    "Authorization": f"Bearer {access_token}",
-                    "Accept": "application/json",
-                }
-                response = await client.get(url, headers=headers, params=params)
-
-            # Handle 429 Rate Limit
-            if response.status_code == 429:
-                retry_after = response.headers.get("Retry-After", "60")
-                self.logger.warning(
-                    f"Rate limit hit for {url}, waiting {retry_after} seconds before retry"
-                )
-                import asyncio
-
-                await asyncio.sleep(float(retry_after))
-                # Retry after waiting
-                response = await client.get(url, headers=headers, params=params)
-
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            # Provide more descriptive error messages for common OAuth scope issues
-            error_msg = self._get_descriptive_error_message(url, str(e))
-            self.logger.error(f"Error in API request to {url}: {error_msg}")
-            raise
-
-    def _get_descriptive_error_message(self, url: str, error: str) -> str:
-        """Get descriptive error message for common OAuth scope issues.
-
-        Args:
-            url: The API URL that failed
-            error: The original error message
-
-        Returns:
-            Enhanced error message with helpful guidance
-        """
-        # Check for 401 Unauthorized errors
-        if "401" in error or "Unauthorized" in error:
-            if "/workbook" in url or "/drive" in url:
-                return (
-                    f"{error}\n\n"
-                    "🔧 Excel API requires specific OAuth scopes. Please ensure your auth "
-                    "provider (Composio, Pipedream, etc.) includes the following scopes:\n"
-                    "• Files.Read.All - Required to read Excel files from user's drive\n"
-                    "• User.Read - Required to access user information\n"
-                    "• offline_access - Required for token refresh\n\n"
-                    "If using Composio, make sure to add 'Files.Read.All' to your "
-                    "OneDrive integration scopes."
-                )
-            elif "/me" in url and "select=" in url:
-                return (
-                    f"{error}\n\n"
-                    "🔧 User profile access requires the User.Read scope. Please ensure your auth "
-                    "provider includes this scope in the OAuth configuration."
-                )
-
-        # Check for 403 Forbidden errors
-        if "403" in error or "Forbidden" in error:
-            if "/workbook" in url or "/drive" in url:
-                return (
-                    f"{error}\n\n"
-                    "🔧 Excel access is forbidden. This usually means:\n"
-                    "• The Files.Read.All scope is missing from your OAuth configuration\n"
-                    "• The user hasn't granted permission to access Excel files\n"
-                    "• The Excel service is not available for this user/tenant\n\n"
-                    "Please check your OAuth scopes and user permissions."
-                )
-
-        # Return original error if no specific guidance available
-        return error
-
-    def _parse_datetime(self, dt_str: Optional[str]) -> Optional[datetime]:
-        """Parse datetime string from Microsoft Graph API format.
-
-        Args:
-            dt_str: DateTime string from API
-
-        Returns:
-            Parsed datetime object or None
-        """
-        if not dt_str:
-            return None
-        try:
-            if dt_str.endswith("Z"):
-                dt_str = dt_str.replace("Z", "+00:00")
-            return datetime.fromisoformat(dt_str)
-        except (ValueError, TypeError) as e:
-            self.logger.warning(f"Error parsing datetime {dt_str}: {str(e)}")
-            return None
-
-    async def _discover_excel_files_recursive(
-        self, client: httpx.AsyncClient, folder_id: Optional[str] = None, depth: int = 0
-    ) -> AsyncGenerator[Dict[str, Any], None]:
-        """Recursively discover Excel files in drive folders.
-
-        Args:
-            client: HTTP client for API requests
-            folder_id: ID of folder to search (None for root)
-            depth: Current recursion depth
-
-        Yields:
-            DriveItem dictionaries for Excel files
-        """
-        if depth > self.MAX_FOLDER_DEPTH:
-            self.logger.debug(f"Max folder depth {self.MAX_FOLDER_DEPTH} reached, skipping")
-            return
-
-        # Build URL for folder or root
-        if folder_id:
-            url = f"{self.GRAPH_BASE_URL}/me/drive/items/{folder_id}/children"
-        else:
-            url = f"{self.GRAPH_BASE_URL}/me/drive/root/children"
-
-        params = {"$top": self.PAGE_SIZE_DRIVE}
-
-        try:
-            # Process all pages in this folder
-            while url:
-                data = await self._get_with_auth(client, url, params=params)
-                items = data.get("value", [])
-
-                folders_to_traverse = []
-
-                for item in items:
-                    file_name = item.get("name", "")
-
-                    # Check if it's an Excel file
-                    if file_name.endswith((".xlsx", ".xlsm", ".xlsb")):
-                        yield item
-
-                    # Collect folders for recursive traversal
-                    elif "folder" in item:
-                        folders_to_traverse.append(item.get("id"))
-
-                # Recursively process subfolders
-                for subfolder_id in folders_to_traverse:
-                    async for excel_file in self._discover_excel_files_recursive(
-                        client, subfolder_id, depth + 1
-                    ):
-                        yield excel_file
-
-                # Handle pagination
-                url = data.get("@odata.nextLink")
-                if url:
-                    params = None  # nextLink includes params
-
-        except Exception as e:
-            self.logger.warning(f"Error discovering files in folder (depth={depth}): {str(e)}")
-
-    async def _generate_workbook_entities(
-        self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[ExcelWorkbookEntity, None]:
-        """Generate ExcelWorkbookEntity objects for Excel files in user's drive.
-
-        Recursively searches OneDrive for Excel files and yields workbook entities.
-        Uses optimized pagination and reduced logging for production scale.
-
-        Args:
-            client: HTTP client for API requests
-
-        Yields:
-            ExcelWorkbookEntity objects
-        """
-        self.logger.info("Starting workbook discovery")
-        workbook_count = 0
-
-        try:
-            # Recursively discover all Excel files
-            async for item_data in self._discover_excel_files_recursive(client):
-                workbook_count += 1
-                workbook_id = item_data.get("id")
-                file_name = item_data.get("name", "Unknown")
-                display_name = file_name.rsplit(".", 1)[0]  # Remove extension
-
-                if workbook_count <= 10 or workbook_count % 50 == 0:
-                    # Log first 10 and then every 50th workbook to reduce noise
-                    self.logger.info(f"Found workbook #{workbook_count}: {display_name}")
-
-                yield ExcelWorkbookEntity(
-                    entity_id=workbook_id,
-                    breadcrumbs=[],
-                    name=display_name,
-                    file_name=file_name,
-                    web_url=item_data.get("webUrl"),
-                    size=item_data.get("size"),
-                    created_datetime=self._parse_datetime(item_data.get("createdDateTime")),
-                    last_modified_datetime=self._parse_datetime(
-                        item_data.get("lastModifiedDateTime")
-                    ),
-                    created_by=item_data.get("createdBy"),
-                    last_modified_by=item_data.get("lastModifiedBy"),
-                    parent_reference=item_data.get("parentReference"),
-                    drive_id=item_data.get("parentReference", {}).get("driveId"),
-                    description=item_data.get("description"),
-                )
-
-            if workbook_count == 0:
-                self.logger.warning(
-                    "No Excel files found in OneDrive (searched root and subfolders)"
-                )
-            else:
-                self.logger.info(f"Discovered {workbook_count} workbooks")
-
-        except Exception as e:
-            self.logger.error(f"Error generating workbook entities: {str(e)}", exc_info=True)
-            raise
 
     async def _generate_worksheet_entities(
         self,
@@ -642,23 +396,45 @@ class ExcelSource(BaseSource):
             async with self.http_client() as client:
                 self.logger.info("HTTP client created, starting entity generation")
 
-                # 1) Generate workbook entities
-                self.logger.info("Generating workbook entities...")
-                async for workbook_entity in self._generate_workbook_entities(client):
-                    entity_count += 1
-                    self.logger.info(
-                        f"Yielding entity #{entity_count}: Workbook - {workbook_entity.name}"
+                # Discover all Excel files recursively using base class method
+                self.logger.info("Discovering Excel workbooks...")
+                async for file_data in self._discover_files_recursive(client):
+                    workbook_id = file_data["id"]
+                    workbook_name = file_data.get("name", "Untitled Workbook")
+
+                    # Create workbook entity
+                    workbook_entity = ExcelWorkbookEntity(
+                        entity_id=workbook_id,
+                        breadcrumbs=[],
+                        name=(
+                            workbook_name.rsplit(".", 1)[0]
+                            if "." in workbook_name
+                            else workbook_name
+                        ),
+                        file_name=workbook_name,
+                        web_url=file_data.get("webUrl"),
+                        size=file_data.get("size"),
+                        created_datetime=self._parse_datetime(file_data.get("createdDateTime")),
+                        last_modified_datetime=self._parse_datetime(
+                            file_data.get("lastModifiedDateTime")
+                        ),
+                        created_by=file_data.get("createdBy"),
+                        last_modified_by=file_data.get("lastModifiedBy"),
+                        parent_reference=file_data.get("parentReference"),
+                        drive_id=file_data.get("parentReference", {}).get("driveId"),
+                        description=file_data.get("description"),
                     )
+
+                    entity_count += 1
+                    self.logger.info(f"Yielding entity #{entity_count}: Workbook - {workbook_name}")
                     yield workbook_entity
 
                     # Create workbook breadcrumb
-                    workbook_id = workbook_entity.entity_id
-                    workbook_name = workbook_entity.name
                     workbook_breadcrumb = Breadcrumb(
                         entity_id=workbook_id, name=workbook_name[:50], type="workbook"
                     )
 
-                    # 2) Generate worksheet entities for this workbook
+                    # Generate worksheet entities for this workbook
                     async for worksheet_entity in self._generate_worksheet_entities(
                         client, workbook_id, workbook_name, workbook_breadcrumb
                     ):
@@ -676,7 +452,7 @@ class ExcelSource(BaseSource):
                         )
                         worksheet_breadcrumbs = [workbook_breadcrumb, worksheet_breadcrumb]
 
-                        # 3) Generate table entities for this worksheet
+                        # Generate table entities for this worksheet
                         async for table_entity in self._generate_table_entities(
                             client,
                             workbook_id,

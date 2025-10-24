@@ -306,7 +306,12 @@ class OneNoteBongo(BaseBongo):
     async def _cleanup_orphaned_notebooks(
         self, client: httpx.AsyncClient, stats: Dict[str, Any]
     ):
-        """Find and delete orphaned test notebooks from previous runs."""
+        """Find and delete orphaned test notebooks from previous runs.
+
+        Note: OneNote's recycle bin can cause notebooks to appear in the list
+        even after deletion. They return 404 when attempting to delete again.
+        We silently skip these as they're already being cleaned up by OneNote.
+        """
         try:
             await self._pace()
             r = await client.get("/me/onenote/notebooks", headers=self._hdrs())
@@ -314,36 +319,68 @@ class OneNoteBongo(BaseBongo):
             if r.status_code == 200:
                 notebooks = r.json().get("value", [])
 
-                # Find test notebooks
+                # Find test notebooks that haven't been deleted yet
                 test_notebooks = [
                     nb for nb in notebooks if "Monke Test" in nb.get("displayName", "")
                 ]
 
                 if test_notebooks:
                     self.logger.info(
-                        f"🔍 Found {len(test_notebooks)} orphaned test notebooks"
+                        f"🔍 Found {len(test_notebooks)} test notebooks in OneNote"
                     )
+
+                    actually_deleted = 0
+                    already_deleted = 0
+
                     for nb in test_notebooks:
                         try:
+                            # Delete the notebook - OneNote will cascade delete all sections and pages
                             await self._pace()
                             del_r = await client.delete(
                                 f"/me/onenote/notebooks/{nb['id']}",
                                 headers=self._hdrs(),
                             )
                             if del_r.status_code == 204:
+                                actually_deleted += 1
                                 stats["notebooks_deleted"] += 1
                                 self.logger.info(
-                                    f"✅ Deleted orphaned notebook: {nb.get('displayName', 'Unknown')}"
+                                    f"✅ Deleted notebook: {nb.get('displayName', 'Unknown')}"
                                 )
+                            elif del_r.status_code == 404:
+                                # Notebook is in recycle bin or being deleted
+                                already_deleted += 1
                             else:
                                 stats["errors"] += 1
+                                self.logger.warning(
+                                    f"⚠️ Failed to delete notebook {nb['id']}: status {del_r.status_code}"
+                                )
+                        except httpx.HTTPStatusError as e:
+                            if e.response.status_code == 404:
+                                already_deleted += 1
+                            else:
+                                stats["errors"] += 1
+                                self.logger.warning(
+                                    f"⚠️ Failed to delete notebook {nb['id']}: {e}"
+                                )
                         except Exception as e:
                             stats["errors"] += 1
                             self.logger.warning(
                                 f"⚠️ Failed to delete notebook {nb['id']}: {e}"
                             )
+
+                    if actually_deleted > 0:
+                        self.logger.info(
+                            f"✅ Deleted {actually_deleted} active notebooks"
+                        )
+                    if already_deleted > 0:
+                        self.logger.info(
+                            f"ℹ️ Skipped {already_deleted} notebooks already in recycle bin "
+                            "(OneNote will permanently delete them soon)"
+                        )
+                else:
+                    self.logger.info("✅ No test notebooks found")
         except Exception as e:
-            self.logger.warning(f"⚠️ Could not search for orphaned notebooks: {e}")
+            self.logger.warning(f"⚠️ Could not search for notebooks: {e}")
 
     def _hdrs(self) -> Dict[str, str]:
         """Get standard headers for Graph API requests."""

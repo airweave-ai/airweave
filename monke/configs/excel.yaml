@@ -1,6 +1,6 @@
 # Excel connector test configuration
 name: "Excel Connector Test"
-description: "End-to-end test of Excel connector sync functionality with incremental deletion testing"
+description: "End-to-end test of Excel connector sync functionality with complete deletion testing"
 
 connector:
   name: "excel_test"
@@ -29,10 +29,6 @@ test_flow:
     - update
     - sync
     - verify
-    - partial_delete
-    - sync
-    - verify_partial_deletion
-    - verify_remaining_entities
     - complete_delete
     - sync
     - verify_complete_deletion
@@ -42,13 +38,11 @@ test_flow:
 entity_count: 3  # Number of worksheets to create for testing
 
 deletion:
-  # Phase 1: Partial deletion
-  partial_delete_count: 1  # Number of worksheets to delete during partial deletion
-
+  # Note: Excel files are atomic - individual worksheets cannot be deleted separately
+  # Only complete workbook deletion is supported, so partial deletion tests are skipped
+  
   # Verification settings
-  verify_partial_deletion: true  # Excel supports deletion detection
-  verify_remaining_entities: true
-  verify_complete_deletion: true
+  verify_complete_deletion: true  # Excel supports complete deletion detection
 
 collection:
   name_template: "monke-{connector_type}-test-{timestamp}"

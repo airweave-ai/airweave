@@ -68,6 +68,30 @@ Each bongo inherits from `BaseBongo` and implements:
 
 Bongos are auto-discovered by `BongoRegistry` via the `connector_type` class attribute.
 
+### Microsoft Graph Bongos
+For Microsoft Graph API connectors (Word, Excel, PowerPoint, OneNote), use `MicrosoftGraphBongo` base class instead of `BaseBongo`:
+
+```python
+from monke.bongos._microsoft_graph_base import MicrosoftGraphBongo
+
+class WordBongo(MicrosoftGraphBongo):
+    connector_type = "word"
+    
+    def __init__(self, credentials: Dict[str, Any], **kwargs):
+        super().__init__(credentials, **kwargs)
+        # self.access_token, rate limiting, and cleanup helpers are provided
+    
+    async def create_entities(self) -> List[Dict[str, Any]]:
+        # Use self._make_graph_request(), self._upload_file(), etc.
+```
+
+`MicrosoftGraphBongo` provides:
+- Rate limiting (`_pace()`)
+- Authenticated Graph API requests (`_make_graph_request()`)
+- File upload/deletion helpers (`_upload_file()`, `_delete_file()`)
+- Comprehensive cleanup with orphaned resource detection
+- Filename sanitization for OneDrive compatibility
+
 ### Example
 ```python
 class GitHubBongo(BaseBongo):
