@@ -25,16 +25,19 @@ router = TrailingSlashRouter()
 async def create_organization(
     organization_data: schemas.OrganizationCreate,
     db: AsyncSession = Depends(deps.get_db),
-    ctx: ApiContext = Depends(deps.get_context),
+    user: User = Depends(deps.get_user),
 ) -> schemas.Organization:
     """Create a new organization with current user as owner.
 
     Integrates with Auth0 Organizations API when available for enhanced multi-org support.
 
+    This endpoint uses get_user instead of get_context because users creating their
+    first organization don't have an organization context yet.
+
     Args:
         organization_data: The organization data to create
         db: Database session
-        ctx: API context containing user and analytics service
+        user: The authenticated user who will own the organization
 
     Returns:
         The created organization with user's role
@@ -45,7 +48,7 @@ async def create_organization(
     # Create the organization with Auth0 integration
     try:
         organization = await organization_service.create_organization_with_integrations(
-            db=db, org_data=organization_data, owner_user=ctx.user
+            db=db, org_data=organization_data, owner_user=user
         )
 
         # Set organization group properties for PostHog analytics
@@ -61,18 +64,23 @@ async def create_organization(
             },
         )
 
-        ctx.analytics.track_event(
-            "organization_created",
-            {
+        # Track event directly with analytics service (no ctx available during org creation)
+        from airweave.analytics.service import analytics
+
+        analytics.track_event(
+            event_name="organization_created",
+            distinct_id=user.email,
+            properties={
                 "organization_id": str(organization.id),
                 "plan": "trial",  # Default plan for new organizations
                 "source": "signup",
                 "organization_name": organization.name,
             },
+            groups={"organization": str(organization.id)},
         )
 
         # Notify Donke about new sign-up
-        await _notify_donke_signup(organization, ctx.user, db)
+        await _notify_donke_signup(organization, user, db)
 
         return organization
     except Exception as e:
