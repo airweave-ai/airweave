@@ -93,7 +93,9 @@ async def run_single_test(config_path: str, run_id: str) -> bool:
         return False
 
 
-async def event_listener(q: asyncio.Queue, progress: Any, runs: Dict[str, RunState]) -> None:
+async def event_listener(
+    q: asyncio.Queue, progress: Any, runs: Dict[str, RunState]
+) -> None:
     """Listen to events and update progress bars (Rich UI only)."""
     while True:
         ev = await q.get()
@@ -141,9 +143,16 @@ async def event_listener(q: asyncio.Queue, progress: Any, runs: Dict[str, RunSta
             q.task_done()
 
 
-async def run_parallel_with_ui(runs: Dict[str, RunState], max_concurrency: int) -> List[RunState]:
+async def run_parallel_with_ui(
+    runs: Dict[str, RunState], max_concurrency: int
+) -> List[RunState]:
     """Run tests in parallel with Rich progress UI."""
-    console = Console(width=None, force_terminal=True)
+    # Use appropriate console width for CI vs local development
+    if IS_CI:
+        console = Console(width=120, force_terminal=False)
+    else:
+        console = Console(width=None, force_terminal=True)
+
     progress = Progress(
         SpinnerColumn(),
         TextColumn("{task.description}"),
@@ -162,7 +171,8 @@ async def run_parallel_with_ui(runs: Dict[str, RunState], max_concurrency: int) 
     run_list = list(runs.values())
     if max_concurrency > 0:
         chunks = [
-            run_list[i : i + max_concurrency] for i in range(0, len(run_list), max_concurrency)
+            run_list[i : i + max_concurrency]
+            for i in range(0, len(run_list), max_concurrency)
         ]
     else:
         chunks = [run_list]
@@ -186,7 +196,9 @@ async def run_parallel_with_ui(runs: Dict[str, RunState], max_concurrency: int) 
             for cohort in chunks:
                 tasks = []
                 for rs in cohort:
-                    task = asyncio.create_task(run_single_test(str(rs.config_path), rs.run_id))
+                    task = asyncio.create_task(
+                        run_single_test(str(rs.config_path), rs.run_id)
+                    )
                     tasks.append((rs, task))
 
                 # Wait for completion
@@ -228,14 +240,17 @@ async def run_parallel_with_ui(runs: Dict[str, RunState], max_concurrency: int) 
     return all_results
 
 
-async def run_parallel_simple(runs: Dict[str, RunState], max_concurrency: int) -> List[RunState]:
+async def run_parallel_simple(
+    runs: Dict[str, RunState], max_concurrency: int
+) -> List[RunState]:
     """Run tests in parallel with simple console output (for CI)."""
     logger = get_logger("monke_runner")
 
     run_list = list(runs.values())
     if max_concurrency > 0:
         chunks = [
-            run_list[i : i + max_concurrency] for i in range(0, len(run_list), max_concurrency)
+            run_list[i : i + max_concurrency]
+            for i in range(0, len(run_list), max_concurrency)
         ]
     else:
         chunks = [run_list]
@@ -295,7 +310,9 @@ Examples:
         nargs="*",
         help="Connector names to test (e.g., github asana notion)",
     )
-    parser.add_argument("--all", "-a", action="store_true", help="Run all available tests")
+    parser.add_argument(
+        "--all", "-a", action="store_true", help="Run all available tests"
+    )
     parser.add_argument(
         "--changed",
         "-c",
@@ -308,11 +325,15 @@ Examples:
         default=int(os.getenv("MONKE_MAX_PARALLEL", "5")),
         help="Maximum parallel tests (default: 5)",
     )
-    parser.add_argument("--env", default=".env", help="Environment file (default: .env)")
+    parser.add_argument(
+        "--env", default=".env", help="Environment file (default: .env)"
+    )
     parser.add_argument(
         "--run-id-prefix", default="test-", help="Prefix for run IDs (default: test-)"
     )
-    parser.add_argument("--no-ui", action="store_true", help="Disable Rich UI even if available")
+    parser.add_argument(
+        "--no-ui", action="store_true", help="Disable Rich UI even if available"
+    )
 
     args = parser.parse_args()
 
@@ -357,7 +378,9 @@ Examples:
     if os.getenv("MONKE_COMPOSIO_API_KEY"):
         from monke.utils.composio_polyfill import connect_composio_provider_polyfill
 
-        response = await connect_composio_provider_polyfill(os.getenv("MONKE_COMPOSIO_API_KEY"))
+        response = await connect_composio_provider_polyfill(
+            os.getenv("MONKE_COMPOSIO_API_KEY")
+        )
         os.environ["MONKE_COMPOSIO_PROVIDER_ID"] = response["readable_id"]
 
     # Build run states
