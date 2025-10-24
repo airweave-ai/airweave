@@ -49,6 +49,7 @@ class ComposioAuthProvider(BaseAuthProvider):
         "sharepoint": "one_drive",  # Use OneDrive integration (same Graph API)
         "teams": "microsoft_teams",
         "onenote": "one_drive",
+        "word": "one_drive",
         # Add more mappings as needed
     }
 

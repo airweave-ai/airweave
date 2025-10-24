@@ -68,6 +68,7 @@ class PipedreamAuthProvider(BaseAuthProvider):
         "bitbucket",
         "onenote",
         "excel",
+        "word",
     ]
 
     # Mapping of Airweave field names to Pipedream field names
