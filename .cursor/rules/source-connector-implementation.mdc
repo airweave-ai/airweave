@@ -666,7 +666,7 @@ backend/airweave/platform/auth/yaml/dev.integrations.yaml
 The existing configuration will have one of these `oauth_type` values:
 
 1. **`with_refresh`** - Standard OAuth2 with non-rotating refresh tokens (Gmail, Asana, Dropbox)
-2. **`with_rotating_refresh`** - OAuth2 with rotating refresh tokens (Outlook, Jira, Confluence)
+2. **`with_rotating_refresh`** - OAuth2 with rotating refresh tokens (Outlook, Jira, Confluence, Excel, Word, PowerPoint, OneNote)
 3. **`access_only`** - OAuth2 without refresh tokens (Notion, Linear, Slack)
 
 ---
@@ -1088,9 +1088,86 @@ async def _generate_projects(self, client, workspace):
 
 ---
 
-## Complete Example
+## Complete Examples
 
-See the Asana connector for a complete, production-ready example:
+### Example 1: File-Based Connectors (PowerPoint, Excel, Word, OneNote)
+
+See the Microsoft Office connectors for file-based source implementations:
+- PowerPoint: `backend/airweave/platform/sources/powerpoint.py` + `backend/airweave/platform/entities/powerpoint.py`
+- Excel: `backend/airweave/platform/sources/excel.py` + `backend/airweave/platform/entities/excel.py`
+- Word: `backend/airweave/platform/sources/word.py` + `backend/airweave/platform/entities/word.py`
+- OneNote: `backend/airweave/platform/sources/onenote.py` + `backend/airweave/platform/entities/onenote.py`
+- OAuth: `backend/airweave/platform/auth/yaml/dev.integrations.yaml` (powerpoint, excel, word, onenote sections)
+
+**Key Characteristics of File-Based Connectors:**
+- ✅ Use Microsoft Graph API with `Files.Read.All` scope
+- ✅ Token type: `with_rotating_refresh` (refresh tokens rotate on each refresh)
+- ✅ Entity pattern: `FileEntity` → file handling pipeline → chunked and embedded
+- ✅ Processing flow: Download file → Convert to markdown → Chunk → Index
+- ✅ Validation: Check for empty downloads (0-byte files) at connector level
+- ✅ Supported file formats:
+  - PowerPoint: `.pptx` (slides, text, tables, shapes)
+  - Excel: `.xlsx` (workbooks, worksheets, tables, cells)
+  - Word: `.docx` (documents, paragraphs, tables)
+  - OneNote: `.one` (notebooks, sections, pages)
+
+**PowerPoint Connector Highlights:**
+```python
+class PowerPointPresentationEntity(FileEntity):
+    """Represents a PowerPoint file with metadata."""
+    
+    title: str = AirweaveField(..., embeddable=True)
+    content_download_url: str = AirweaveField(...)
+    web_url: Optional[str] = AirweaveField(None, embeddable=False)
+    size: Optional[int] = AirweaveField(None)
+    created_datetime: Optional[datetime] = AirweaveField(
+        None, is_created_at=True, embeddable=True
+    )
+    last_modified_datetime: Optional[datetime] = AirweaveField(
+        None, is_updated_at=True, embeddable=True
+    )
+    
+    def __init__(self, **data):
+        # Set file metadata for processing pipeline
+        data.setdefault("mime_type", "application/vnd.openxmlformats-officedocument.presentationml.presentation")
+        data.setdefault("file_type", "pptx")
+        data.setdefault("download_url", data.get("content_download_url", ""))
+        super().__init__(**data)
+```
+
+**File Processing in generate_entities():**
+```python
+async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
+    """Generate PowerPoint presentation entities."""
+    async with self.http_client() as client:
+        # Discover files from OneDrive
+        files = await self._discover_powerpoint_files_recursive(client)
+        
+        for file_data in files:
+            # Create FileEntity
+            presentation_entity = PowerPointPresentationEntity(
+                entity_id=file_data["id"],
+                title=file_data["name"],
+                content_download_url=file_data["@microsoft.graph.downloadUrl"],
+                # ... other fields
+            )
+            
+            # Process file entity (downloads, converts, chunks)
+            processed_entity = await self.process_file_entity(presentation_entity)
+            
+            # Validate downloaded file
+            if processed_entity:
+                file_size = processed_entity.airweave_system_metadata.total_size or 0
+                if file_size == 0:
+                    self.logger.warning(f"Skipping empty file: {presentation_entity.title}")
+                    continue
+                    
+                yield processed_entity
+```
+
+### Example 2: Task-Based Connectors (Asana)
+
+See the Asana connector for a complete, production-ready task management example:
 - Source: `backend/airweave/platform/sources/asana.py`
 - Entities: `backend/airweave/platform/entities/asana.py`
 - OAuth: `backend/airweave/platform/auth/yaml/dev.integrations.yaml` (asana section)

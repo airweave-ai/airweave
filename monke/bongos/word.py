@@ -7,7 +7,7 @@ import asyncio
 import io
 import time
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import httpx
 from monke.bongos.base_bongo import BaseBongo
@@ -121,7 +121,9 @@ class WordBongo(BaseBongo):
                 self._test_documents.append(ent)
                 self.created_entities.append({"id": doc_id, "name": safe_filename})
 
-                self.logger.info(f"📝 Document '{safe_filename}' created with token: {token}")
+                self.logger.info(
+                    f"📝 Document '{safe_filename}' created with token: {token}"
+                )
 
         self.logger.info(f"✅ Created {len(self._test_documents)} Word documents")
         return out
@@ -136,19 +138,21 @@ class WordBongo(BaseBongo):
             Sanitized filename safe for OneDrive
         """
         # Replace illegal characters: \ / : * ? " < > |
-        illegal_chars = ['\\', '/', ':', '*', '?', '"', '<', '>', '|']
+        illegal_chars = ["\\", "/", ":", "*", "?", '"', "<", ">", "|"]
         safe_name = filename
         for char in illegal_chars:
-            safe_name = safe_name.replace(char, '_')
+            safe_name = safe_name.replace(char, "_")
 
         # Remove leading/trailing spaces and dots
-        safe_name = safe_name.strip('. ')
+        safe_name = safe_name.strip(". ")
 
         # Limit length to 200 characters (OneDrive has a 400 char limit for full path)
         if len(safe_name) > 200:
             # Keep the extension
-            name, ext = safe_name.rsplit('.', 1) if '.' in safe_name else (safe_name, '')
-            safe_name = name[:195] + '.' + ext if ext else name[:200]
+            name, ext = (
+                safe_name.rsplit(".", 1) if "." in safe_name else (safe_name, "")
+            )
+            safe_name = name[:195] + "." + ext if ext else name[:200]
 
         return safe_name
 
@@ -194,7 +198,9 @@ class WordBongo(BaseBongo):
         if not self._test_documents:
             return []
 
-        self.logger.info(f"🥁 Updating {min(2, len(self._test_documents))} Word documents")
+        self.logger.info(
+            f"🥁 Updating {min(2, len(self._test_documents))} Word documents"
+        )
         updated = []
 
         async with httpx.AsyncClient(base_url=GRAPH, timeout=60) as client:
@@ -260,7 +266,9 @@ class WordBongo(BaseBongo):
         """Delete all test documents."""
         return await self.delete_specific_entities(self._test_documents)
 
-    async def delete_specific_entities(self, entities: List[Dict[str, Any]]) -> List[str]:
+    async def delete_specific_entities(
+        self, entities: List[Dict[str, Any]]
+    ) -> List[str]:
         """Delete specific Word documents with retry for locked files."""
         if not entities:
             # If no specific entities provided, delete all tracked documents
@@ -273,7 +281,8 @@ class WordBongo(BaseBongo):
         deleted: List[str] = []
 
         async with httpx.AsyncClient(base_url=GRAPH, timeout=30) as client:
-            for ent in entities:
+            # Iterate over a copy to avoid mutation issues when entities == self._test_documents
+            for ent in list(entities):
                 try:
                     await self._pace()
 
@@ -288,7 +297,9 @@ class WordBongo(BaseBongo):
 
                         if r.status_code == 204:
                             deleted.append(ent["id"])
-                            self.logger.info(f"✅ Deleted document: {ent.get('filename', ent['id'])}")
+                            self.logger.info(
+                                f"✅ Deleted document: {ent.get('filename', ent['id'])}"
+                            )
 
                             # Remove from tracking
                             if ent in self._test_documents:
@@ -311,7 +322,9 @@ class WordBongo(BaseBongo):
                             break  # Exit retry loop on non-retryable error
 
                 except Exception as e:
-                    self.logger.warning(f"Delete error for {ent.get('filename', ent['id'])}: {e}")
+                    self.logger.warning(
+                        f"Delete error for {ent.get('filename', ent['id'])}: {e}"
+                    )
 
         return deleted
 
@@ -328,8 +341,12 @@ class WordBongo(BaseBongo):
             async with httpx.AsyncClient(base_url=GRAPH, timeout=30) as client:
                 # Delete tracked test documents
                 if self._test_documents:
-                    self.logger.info(f"🗑️  Deleting {len(self._test_documents)} tracked documents")
-                    deleted = await self.delete_specific_entities(self._test_documents.copy())
+                    self.logger.info(
+                        f"🗑️  Deleting {len(self._test_documents)} tracked documents"
+                    )
+                    deleted = await self.delete_specific_entities(
+                        self._test_documents.copy()
+                    )
                     cleanup_stats["documents_deleted"] += len(deleted)
 
                 # Search for and cleanup any orphaned test documents
@@ -400,4 +417,3 @@ class WordBongo(BaseBongo):
         if (delta := now - self._last_req) < self.rate_limit_delay:
             await asyncio.sleep(self.rate_limit_delay - delta)
         self._last_req = time.time()
-

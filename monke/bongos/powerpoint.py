@@ -325,7 +325,8 @@ class PowerPointBongo(BaseBongo):
         deleted: List[str] = []
 
         async with httpx.AsyncClient(base_url=GRAPH, timeout=30) as client:
-            for ent in entities:
+            # Iterate over a copy to avoid mutation issues when entities == self._test_presentations
+            for ent in list(entities):
                 try:
                     await self._pace()
 

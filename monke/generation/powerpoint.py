@@ -86,9 +86,10 @@ async def generate_presentations_content(
         pres_content = await generate_powerpoint_presentation(model, token, pres_type)
         presentations.append(pres_content)
 
-        # Generate filename
+        # Generate filename incorporating base_name for uniqueness
+        safe_base = base_name.replace(" ", "_")
         safe_title = pres_content.title.replace(" ", "_")[:40]
-        filename = f"Monke_{safe_title}.pptx"
+        filename = f"Monke_{safe_base}_{safe_title}.pptx"
         filenames.append(filename)
 
     return filenames, presentations
