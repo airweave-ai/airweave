@@ -274,6 +274,20 @@ integrations:
     additional_frontend_params:
       response_mode: "query"
 
+  powerpoint:
+    oauth_type: "with_rotating_refresh"
+    url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
+    backend_url: "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+    grant_type: "authorization_code"
+    client_id: "7d6c7bdd-b4f9-4b78-b51c-0d8dac8f6bca"
+    client_secret: "IOA8Q~gLDCV61DTcgMp8r5ZJv~ic2sdGWrsAfbHW"
+    content_type: "application/x-www-form-urlencoded"
+    client_credential_location: "body"
+    scope: "offline_access https://graph.microsoft.com/User.Read https://graph.microsoft.com/Files.Read.All"
+    additional_frontend_params:
+      response_type: "code"
+      response_mode: "query"
+
   sharepoint:
     oauth_type: "with_rotating_refresh"
     url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"

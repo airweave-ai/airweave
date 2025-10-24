@@ -147,18 +147,27 @@ class PptxConverter(DocumentConverter):
         Returns:
             Markdown table representation
         """
-        markdown_rows = []
-        header = []
+        try:
+            markdown_rows = []
+            header = []
 
-        # Process header row
-        for cell in table.rows[0].cells:
-            header.append(cell.text.strip())
-        markdown_rows.append("| " + " | ".join(header) + " |")
-        markdown_rows.append("|" + "|".join(["---" for _ in header]) + "|")
+            # Check if table has any rows
+            if len(table.rows) == 0:
+                return "\n_[Empty Table]_\n"
 
-        # Process data rows
-        for row in table.rows[1:]:
-            cells = [cell.text.strip() for cell in row.cells]
-            markdown_rows.append("| " + " | ".join(cells) + " |")
+            # Process header row
+            for cell in table.rows[0].cells:
+                header.append(cell.text.strip())
+            markdown_rows.append("| " + " | ".join(header) + " |")
+            markdown_rows.append("|" + "|".join(["---" for _ in header]) + "|")
 
-        return "\n" + "\n".join(markdown_rows) + "\n"
+            # Process data rows (iterate manually to avoid slice issues)
+            for i in range(1, len(table.rows)):
+                row = table.rows[i]
+                cells = [cell.text.strip() for cell in row.cells]
+                markdown_rows.append("| " + " | ".join(cells) + " |")
+
+            return "\n" + "\n".join(markdown_rows) + "\n"
+        except Exception as e:
+            logger.warning(f"Error converting table to markdown: {str(e)}")
+            return "\n_[Table conversion error]_\n"
