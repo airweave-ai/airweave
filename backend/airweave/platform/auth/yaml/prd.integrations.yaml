@@ -136,6 +136,20 @@ integrations:
       access_type: "offline"
       prompt: "consent"
 
+  google_slides:
+    oauth_type: "with_refresh"
+    url: "https://accounts.google.com/o/oauth2/auth"
+    backend_url: "https://oauth2.googleapis.com/token"
+    grant_type: "authorization_code"
+    client_id: "976410117544-hk205nip54eqfoguuiqu93acqnoeo2n6.apps.googleusercontent.com"
+    client_secret: "google-slides-client-secret-key"
+    content_type: "application/x-www-form-urlencoded"
+    client_credential_location: "body"
+    scope: "https://www.googleapis.com/auth/presentations.readonly https://www.googleapis.com/auth/drive.readonly"
+    additional_frontend_params:
+      access_type: "offline"
+      prompt: "consent"
+
   google_drive:
     oauth_type: "with_refresh"
     url: "https://accounts.google.com/o/oauth2/auth"

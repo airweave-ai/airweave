@@ -44,6 +44,7 @@ class ComposioAuthProvider(BaseAuthProvider):
         "google_drive": "googledrive",
         "google_calendar": "googlecalendar",
         "google_docs": "googledocs",
+        "google_slides": "googleslides",
         "outlook_mail": "outlook",
         "outlook_calendar": "outlook",
         "onedrive": "one_drive",

@@ -261,6 +261,22 @@ class GoogleDriveConfig(SourceConfig):
         return value
 
 
+class GoogleSlidesConfig(SourceConfig):
+    """Google Slides configuration schema."""
+
+    include_trashed: bool = Field(
+        default=False,
+        title="Include Trashed Presentations",
+        description="Include presentations that have been moved to trash. Defaults to False.",
+    )
+
+    include_shared: bool = Field(
+        default=True,
+        title="Include Shared Presentations",
+        description="Include presentations shared with you by others. Defaults to True.",
+    )
+
+
 class HubspotConfig(SourceConfig):
     """Hubspot configuration schema."""
 
