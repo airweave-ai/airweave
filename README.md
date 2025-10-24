@@ -105,6 +105,7 @@ That's it! Access the dashboard at http://localhost:8080
 <img src="frontend/src/components/icons/apps/outlook_calendar.svg" alt="Outlook Calendar" width="50" height="50" style="margin: 8px;" />
 <img src="frontend/src/components/icons/apps/outlook_mail.svg" alt="Outlook Mail" width="50" height="50" style="margin: 8px;" />
 <img src="frontend/src/components/icons/apps/postgresql.svg" alt="Postgresql" width="50" height="50" style="margin: 8px;" />
+<img src="frontend/src/components/icons/apps/powerpoint.svg" alt="Postgresql" width="50" height="50" style="margin: 8px;" />
 <img src="frontend/src/components/icons/apps/salesforce.svg" alt="Salesforce" width="50" height="50" style="margin: 8px;" />
 <img src="frontend/src/components/icons/apps/sharepoint.svg" alt="Sharepoint" width="50" height="50" style="margin: 8px;" />
 <img src="frontend/src/components/icons/apps/slack.svg" alt="Slack" width="50" height="50" style="margin: 8px;" />
