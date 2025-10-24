@@ -1,0 +1,122 @@
+---
+title: "Excel"
+description: "Excel integration with Airweave"
+---
+
+{/* AUTO-GENERATED CONTENT START */}
+
+<div className="connector-header" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+  <img src="icon.svg" alt="Excel logo" width="48" height="48" className="connector-icon" />
+  <h1 style={{ margin: 0 }}>Excel</h1>
+</div>
+
+## Configuration
+
+Microsoft Excel source connector integrates with the Microsoft Graph API.
+
+Synchronizes data from Microsoft Excel including workbooks, worksheets, and tables.
+
+It provides comprehensive access to Excel resources with proper token refresh
+and rate limiting.
+
+<Card
+  title="View Source Code"
+  icon="brands github"
+  href="https://github.com/airweave-ai/airweave/tree/main/backend/airweave/platform/sources/excel.py"
+>
+  Explore the Excel connector implementation
+</Card>
+
+### Authentication
+
+This connector uses **OAuth 2.0 authentication**. You can connect through the Airweave UI or API using the OAuth flow.
+
+**Supported authentication methods:**
+- OAuth Browser Flow (recommended for UI)
+- OAuth Token (for programmatic access)
+- Auth Provider (enterprise SSO)
+
+### Configuration Options
+
+This connector does not have any additional configuration options.
+
+## Data Models
+
+The following data models are available for this connector:
+
+<Accordion title="ExcelWorkbookEntity">
+
+Schema for a Microsoft Excel workbook (file).
+
+Represents the Excel file itself with metadata.
+Based on the Microsoft Graph driveItem resource.
+Reference: https://learn.microsoft.com/en-us/graph/api/resources/driveitem
+
+| Field | Type | Description |
+|-------|------|-------------|
+| name | str | The name of the workbook file. |
+| file_name | str | The full file name including extension. |
+| web_url | Optional[str] | URL to open the workbook in Excel Online. |
+| size | Optional[int] | Size of the file in bytes. |
+| created_datetime | Optional[datetime] | Timestamp at which the workbook was created. |
+| last_modified_datetime | Optional[datetime] | Timestamp at which the workbook was last modified. |
+| created_by | Optional[Dict[str, Any]] | Identity of the user who created the workbook. |
+| last_modified_by | Optional[Dict[str, Any]] | Identity of the user who last modified the workbook. |
+| parent_reference | Optional[Dict[str, Any]] | Information about the parent folder/drive location. |
+| drive_id | Optional[str] | ID of the drive containing this workbook. |
+| description | Optional[str] | Description of the workbook if available. |
+
+</Accordion>
+<Accordion title="ExcelWorksheetEntity">
+
+Schema for a Microsoft Excel worksheet (sheet/tab).
+
+Represents individual sheets within an Excel workbook.
+Based on the Microsoft Graph worksheet resource.
+Reference: https://learn.microsoft.com/en-us/graph/api/resources/worksheet
+
+| Field | Type | Description |
+|-------|------|-------------|
+| workbook_id | str | ID of the parent workbook. |
+| workbook_name | str | Name of the parent workbook. |
+| name | str | The name of the worksheet. |
+| position | Optional[int] | The zero-based position of the worksheet within the workbook. |
+| visibility | Optional[str] | The visibility of the worksheet (Visible, Hidden, VeryHidden). |
+| range_address | Optional[str] | The address of the used range (e.g., 'A1:Z100'). |
+| cell_content | Optional[str] | Formatted text representation of the cell content in the used range. |
+| row_count | Optional[int] | Number of rows with data in the worksheet. |
+| column_count | Optional[int] | Number of columns with data in the worksheet. |
+| last_modified_datetime | Optional[datetime] | Timestamp at which the worksheet was last modified. |
+
+</Accordion>
+<Accordion title="ExcelTableEntity">
+
+Schema for a Microsoft Excel table.
+
+Represents structured data tables within worksheets.
+Based on the Microsoft Graph table resource.
+Reference: https://learn.microsoft.com/en-us/graph/api/resources/table
+
+| Field | Type | Description |
+|-------|------|-------------|
+| workbook_id | str | ID of the parent workbook. |
+| workbook_name | str | Name of the parent workbook. |
+| worksheet_id | str | ID of the parent worksheet. |
+| worksheet_name | str | Name of the parent worksheet. |
+| name | str | The name of the table. |
+| display_name | Optional[str] | Display name of the table. |
+| show_headers | Optional[bool] | Indicates whether the header row is visible. |
+| show_totals | Optional[bool] | Indicates whether the total row is visible. |
+| style | Optional[str] | Style name of the table. |
+| highlight_first_column | Optional[bool] | Indicates whether the first column contains special formatting. |
+| highlight_last_column | Optional[bool] | Indicates whether the last column contains special formatting. |
+| row_count | Optional[int] | Number of rows in the table. |
+| column_count | Optional[int] | Number of columns in the table. |
+| column_names | Optional[List[str]] | Names of the columns in the table. |
+| table_data | Optional[str] | The actual table data as formatted text (rows and columns). |
+| last_modified_datetime | Optional[datetime] | Timestamp at which the table was last modified. |
+
+</Accordion>
+
+
+{/* AUTO-GENERATED CONTENT END */}
