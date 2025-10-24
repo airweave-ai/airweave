@@ -225,6 +225,22 @@ class GoogleCalendarConfig(SourceConfig):
     pass
 
 
+class GoogleDocsConfig(SourceConfig):
+    """Google Docs configuration schema."""
+
+    include_trashed: bool = Field(
+        default=False,
+        title="Include Trashed Documents",
+        description="Include documents that have been moved to trash. Defaults to False.",
+    )
+
+    include_shared: bool = Field(
+        default=True,
+        title="Include Shared Documents",
+        description="Include documents shared with you by others. Defaults to True.",
+    )
+
+
 class GoogleDriveConfig(SourceConfig):
     """Google Drive configuration schema."""
 

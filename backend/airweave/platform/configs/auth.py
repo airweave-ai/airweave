@@ -414,6 +414,12 @@ class GoogleCalendarAuthConfig(OAuth2BYOCAuthConfig):
     # Inherits client_id, client_secret, refresh_token and access_token from OAuth2BYOCAuthConfig
 
 
+class GoogleDocsAuthConfig(OAuth2BYOCAuthConfig):
+    """Google Docs authentication credentials schema."""
+
+    # Inherits client_id, client_secret, refresh_token and access_token from OAuth2BYOCAuthConfig
+
+
 class GoogleDriveAuthConfig(OAuth2BYOCAuthConfig):
     """Google Drive authentication credentials schema."""
 
