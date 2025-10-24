@@ -27,15 +27,6 @@ from .collection import (
     CollectionUpdate,
 )
 from .connection import Connection, ConnectionCreate, ConnectionInDBBase, ConnectionUpdate
-from .dag import (
-    DagEdge,
-    DagEdgeCreate,
-    DagNode,
-    DagNodeCreate,
-    SyncDag,
-    SyncDagCreate,
-    SyncDagUpdate,
-)
 from .destination import (
     Destination,
     DestinationCreate,

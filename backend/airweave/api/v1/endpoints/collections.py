@@ -223,7 +223,6 @@ async def refresh_all_source_connections(
 
         # Get necessary objects for running the sync
         sync = await crud.sync.get(db=db, id=sync_job.sync_id, ctx=ctx, with_connections=True)
-        sync_dag = await sync_service.get_sync_dag(db=db, sync_id=sync_job.sync_id, ctx=ctx)
 
         # Get source connection with auth_fields for temporal processing
         source_connection = await source_connection_service.get_source_connection(
@@ -235,7 +234,6 @@ async def refresh_all_source_connections(
 
         # Prepare objects for background task
         sync = schemas.Sync.model_validate(sync, from_attributes=True)
-        sync_dag = schemas.SyncDag.model_validate(sync_dag, from_attributes=True)
         source_connection = schemas.SourceConnection.from_orm_with_collection_mapping(
             source_connection
         )
@@ -256,7 +254,6 @@ async def refresh_all_source_connections(
                 await temporal_service.run_source_connection_workflow(
                     sync=sync,
                     sync_job=sync_job,
-                    sync_dag=sync_dag,
                     collection=collection_obj,  # Use the already converted object
                     connection=connection_schema,  # Pass Connection, not SourceConnection
                     ctx=ctx,
@@ -267,7 +264,6 @@ async def refresh_all_source_connections(
                     sync_service.run,
                     sync,
                     sync_job,
-                    sync_dag,
                     collection_obj,  # Use the already converted object
                     source_connection,
                     ctx,

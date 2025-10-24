@@ -23,7 +23,7 @@ import httpx
 
 from airweave.core.logging import logger
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import Breadcrumb, ChunkEntity
+from airweave.platform.entities._base_legacy import Breadcrumb, ChunkEntity
 from airweave.platform.entities.confluence import (
     ConfluenceBlogPostEntity,
     ConfluenceCommentEntity,
@@ -35,45 +35,6 @@ from airweave.platform.entities.confluence import (
 )
 from airweave.platform.sources._base import BaseSource
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
-
-
-class AsyncIteratorWrapper:
-    """Wrapper to convert a sync iterator to an async one."""
-
-    def __init__(self, sync_iter):
-        """Initialize with a synchronous iterator.
-
-        Args:
-            sync_iter: A synchronous iterator to wrap
-        """
-        self.sync_iter = sync_iter
-        self._consumed = False  # Track if iterator has been consumed
-
-    def __aiter__(self):
-        """Return self as an async iterator.
-
-        Returns:
-            The async iterator instance
-        """
-        return self
-
-    async def __anext__(self):
-        """Get the next item asynchronously.
-
-        Returns:
-            The next item from the iterator
-
-        Raises:
-            StopAsyncIteration: When the iterator is exhausted
-        """
-        if self._consumed:
-            raise StopAsyncIteration
-
-        try:
-            return next(self.sync_iter)
-        except StopIteration as err:
-            self._consumed = True
-            raise StopAsyncIteration from err
 
 
 @source(
@@ -327,13 +288,10 @@ class ConfluenceSource(BaseSource):
                 </html>
                 """
 
-                # Use a memory stream instead of directly downloading
-                file_stream = AsyncIteratorWrapper(iter([html_content.encode("utf-8")]))
-
-                # Process the entity with the custom stream
-                processed_entity = await self.process_file_entity_with_content(
+                # Process the entity with in-memory HTML content
+                processed_entity = await self.process_file_entity_with_bytes(
                     file_entity=file_entity,
-                    content_stream=file_stream,
+                    content=html_content.encode("utf-8"),
                     metadata={"source": "confluence", "page_id": page["id"]},
                 )
 

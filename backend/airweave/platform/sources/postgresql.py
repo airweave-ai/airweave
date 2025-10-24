@@ -15,7 +15,7 @@ import asyncpg
 from airweave.core.pg_field_catalog_service import overwrite_catalog
 from airweave.db.session import get_db_context
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import ChunkEntity, PolymorphicEntity
+from airweave.platform.entities._base_legacy import ChunkEntity, PolymorphicEntity
 from airweave.platform.sources._base import BaseSource
 from airweave.schemas.source_connection import AuthenticationMethod
 

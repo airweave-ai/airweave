@@ -22,8 +22,8 @@ from airweave.core.logging import logger as default_logger
 from airweave.platform.configs.auth import S3AuthConfig
 from airweave.platform.decorators import destination
 from airweave.platform.destinations._base import BaseDestination
-from airweave.platform.entities._base import ChunkEntity
-from airweave.platform.file_handling.file_manager import file_manager
+from airweave.platform.entities._base_legacy import ChunkEntity
+from airweave.platform.storage import storage_manager
 
 
 @destination("S3", "s3", auth_config_class=S3AuthConfig, supports_vector=False)
@@ -62,7 +62,7 @@ class S3Destination(BaseDestination):
         self.collection_id: UUID | None = None
         self.organization_id: UUID | None = None
         self.collection_readable_id: str | None = None  # For human-readable S3 paths
-        self.sync_id: UUID | None = None  # For file_manager lookups
+        self.sync_id: UUID | None = None  # For file retrieval from storage
         self.bucket_name: str | None = None
         self.bucket_prefix: str = "airweave-outbound/"
         self.session: aioboto3.Session | None = None
@@ -84,7 +84,7 @@ class S3Destination(BaseDestination):
         organization_id: Optional[UUID] = None,
         logger: Optional[ContextualLogger] = None,
         collection_readable_id: Optional[str] = None,
-        sync_id: Optional[UUID] = None,  # For file_manager lookups
+        sync_id: Optional[UUID] = None,  # For file retrieval from storage
     ) -> "S3Destination":
         """Create and configure S3 destination (matches source pattern).
 
@@ -95,7 +95,7 @@ class S3Destination(BaseDestination):
             organization_id: Organization UUID
             logger: Logger instance
             collection_readable_id: Human-readable collection ID for S3 paths
-            sync_id: Sync ID for file_manager lookups
+            sync_id: Sync ID for file retrieval from storage
 
         Returns:
             Configured S3Destination instance
@@ -297,8 +297,8 @@ class S3Destination(BaseDestination):
         blob_key = None
         if self.sync_id and filename:
             try:
-                # Use file_manager to get file content
-                file_content = await file_manager.get_file_content(
+                # Use storage_manager to get file content
+                file_content = await storage_manager.get_file_content(
                     entity_id=entity_id,
                     sync_id=self.sync_id,
                     filename=filename,

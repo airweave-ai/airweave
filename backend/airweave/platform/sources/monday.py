@@ -11,7 +11,7 @@ import httpx
 
 from airweave.platform.configs.auth import MondayAuthConfig
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import Breadcrumb, ChunkEntity
+from airweave.platform.entities._base_legacy import Breadcrumb, ChunkEntity
 from airweave.platform.entities.monday import (
     MondayBoardEntity,
     MondayColumnEntity,

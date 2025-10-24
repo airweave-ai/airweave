@@ -5,7 +5,7 @@ from typing import Callable, List, Optional, Type, TypeVar
 
 from pydantic import BaseModel
 
-from airweave.platform.entities._base import ChunkEntity
+from airweave.platform.entities._base_legacy import ChunkEntity
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 

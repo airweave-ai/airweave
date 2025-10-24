@@ -48,7 +48,6 @@ from airweave.core.logging import logger
 from airweave.db.init_db import init_db
 from airweave.db.session import AsyncSessionLocal
 from airweave.platform.db_sync import sync_platform_components
-from airweave.platform.entities._base import ensure_file_entity_models
 
 
 @asynccontextmanager
@@ -70,8 +69,6 @@ async def lifespan(app: FastAPI):
                 env=env,
             )
         if settings.RUN_DB_SYNC:
-            # Ensure all FileEntity subclasses have their parent and chunk models created
-            ensure_file_entity_models()
             await sync_platform_components("airweave/platform", db)
         await init_db(db)
 

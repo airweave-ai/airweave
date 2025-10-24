@@ -57,7 +57,8 @@ class Entity(OrganizationBase):
         UniqueConstraint(
             "sync_id",
             "entity_id",
-            name="uq_sync_id_entity_id",
+            "entity_definition_id",
+            name="uq_sync_id_entity_id_entity_definition_id",
         ),
         # Performance indexes based on common query patterns
         Index("idx_entity_sync_id", "sync_id"),

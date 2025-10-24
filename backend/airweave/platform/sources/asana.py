@@ -7,7 +7,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from airweave.core.exceptions import TokenRefreshError
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import Breadcrumb, ChunkEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.asana import (
     AsanaCommentEntity,
     AsanaFileEntity,
@@ -128,7 +128,7 @@ class AsanaSource(BaseSource):
 
     async def _generate_workspace_entities(
         self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[AsanaWorkspaceEntity, None]:
         """Generate workspace entities."""
         # Request all available fields for workspaces
         workspace_fields = ["gid", "name", "is_organization", "email_domains", "resource_type"]
@@ -140,10 +140,13 @@ class AsanaSource(BaseSource):
 
         for workspace in workspaces_data.get("data", []):
             yield AsanaWorkspaceEntity(
+                # Base fields
                 entity_id=workspace["gid"],
                 breadcrumbs=[],
                 name=workspace["name"],
-                asana_gid=workspace["gid"],
+                created_at=None,  # not returned by the API
+                updated_at=None,  # not returned by the API
+                # API fields
                 is_organization=workspace.get("is_organization", False),
                 email_domains=workspace.get("email_domains", []),
                 permalink_url=f"https://app.asana.com/0/{workspace['gid']}",
@@ -151,7 +154,7 @@ class AsanaSource(BaseSource):
 
     async def _generate_project_entities(
         self, client: httpx.AsyncClient, workspace: Dict, workspace_breadcrumb: Breadcrumb
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[AsanaProjectEntity, None]:
         """Generate project entities for a workspace."""
         # Request all available fields for projects, including timestamps
         project_fields = [
@@ -202,11 +205,13 @@ class AsanaSource(BaseSource):
                 entity_id=project["gid"],
                 breadcrumbs=[workspace_breadcrumb],
                 name=project["name"],
+                created_at=project.get("created_at"),
+                updated_at=project.get("modified_at"),
+                # api fields
                 workspace_gid=workspace["gid"],
                 workspace_name=workspace["name"],
                 color=project.get("color"),
                 archived=project.get("archived", False),
-                created_at=project.get("created_at"),
                 current_status=project.get("current_status"),
                 default_view=project.get("default_view"),
                 due_date=project.get("due_on"),
@@ -215,7 +220,6 @@ class AsanaSource(BaseSource):
                 notes=project.get("notes"),
                 is_public=project.get("public", False),
                 start_on=project.get("start_on"),
-                modified_at=project.get("modified_at"),
                 owner=project.get("owner"),
                 team=project.get("team"),
                 members=project.get("members", []),
@@ -229,7 +233,7 @@ class AsanaSource(BaseSource):
 
     async def _generate_section_entities(
         self, client: httpx.AsyncClient, project: Dict, project_breadcrumbs: List[Breadcrumb]
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[AsanaSectionEntity, None]:
         """Generate section entities for a project."""
         # Request all available fields for sections
         section_fields = ["gid", "name", "created_at", "projects", "projects.name"]
@@ -244,8 +248,9 @@ class AsanaSource(BaseSource):
                 entity_id=section["gid"],
                 breadcrumbs=project_breadcrumbs,
                 name=section["name"],
-                project_gid=project["gid"],
                 created_at=section.get("created_at"),
+                updated_at=None,
+                project_gid=project["gid"],
                 projects=section.get("projects", []),
             )
 
@@ -255,7 +260,7 @@ class AsanaSource(BaseSource):
         project: Dict,
         section: Optional[Dict] = None,
         breadcrumbs: List[Breadcrumb] = None,
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[AsanaTaskEntity, None]:
         """Generate task entities for a project or section."""
         url = (
             f"https://app.asana.com/api/1.0/sections/{section['gid']}/tasks"
@@ -313,15 +318,16 @@ class AsanaSource(BaseSource):
             # If we have a section, add it to the breadcrumbs
             task_breadcrumbs = breadcrumbs
             if section:
-                section_breadcrumb = Breadcrumb(
-                    entity_id=section["gid"], name=section["name"], type="section"
-                )
+                section_breadcrumb = Breadcrumb(entity_id=section["gid"])
                 task_breadcrumbs = [*breadcrumbs, section_breadcrumb]
 
             yield AsanaTaskEntity(
                 entity_id=task["gid"],
                 breadcrumbs=task_breadcrumbs,
                 name=task["name"],
+                created_at=task.get("created_at"),
+                updated_at=task.get("modified_at"),
+                # api fields
                 project_gid=project["gid"],
                 section_gid=section["gid"] if section else None,
                 actual_time_minutes=task.get("actual_time_minutes"),
@@ -331,7 +337,6 @@ class AsanaSource(BaseSource):
                 completed=task.get("completed", False),
                 completed_at=task.get("completed_at"),
                 completed_by=task.get("completed_by"),
-                created_at=task.get("created_at"),
                 dependencies=task.get("dependencies", []),
                 dependents=task.get("dependents", []),
                 due_at=task.get("due_at"),
@@ -342,7 +347,6 @@ class AsanaSource(BaseSource):
                 is_rendered_as_separator=task.get("is_rendered_as_separator", False),
                 liked=task.get("liked", False),
                 memberships=task.get("memberships", []),
-                modified_at=task.get("modified_at"),
                 num_likes=task.get("num_likes", 0),
                 num_subtasks=task.get("num_subtasks", 0),
                 parent=task.get("parent"),
@@ -358,7 +362,7 @@ class AsanaSource(BaseSource):
 
     async def _generate_comment_entities(
         self, client: httpx.AsyncClient, task: Dict, task_breadcrumbs: List[Breadcrumb]
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[AsanaCommentEntity, None]:
         """Generate comment entities for a task."""
         # Request all available fields for stories/comments
         story_fields = [
@@ -387,12 +391,26 @@ class AsanaSource(BaseSource):
             if story.get("resource_subtype") != "comment_added":
                 continue
 
+            # Generate a name for the comment based on author and content
+            author_name = (
+                story["created_by"].get("name", "Unknown") if story.get("created_by") else "Unknown"
+            )
+            text_preview = (story.get("text") or story.get("html_text") or "")[:50]
+            comment_name = (
+                f"Comment by {author_name}: {text_preview}"
+                if text_preview
+                else f"Comment by {author_name}"
+            )
+
             yield AsanaCommentEntity(
                 entity_id=story["gid"],
                 breadcrumbs=task_breadcrumbs,
+                name=comment_name,
+                created_at=story.get("created_at"),
+                updated_at=None,
+                # api fields
                 task_gid=task["gid"],
                 author=story["created_by"],
-                created_at=story["created_at"],
                 resource_subtype="comment_added",
                 text=story.get("text"),
                 html_text=story.get("html_text"),
@@ -410,7 +428,7 @@ class AsanaSource(BaseSource):
         client: httpx.AsyncClient,
         task: Dict,
         task_breadcrumbs: List[Breadcrumb],
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[AsanaFileEntity, None]:
         """Generate file attachment entities for a task."""
         # Request basic attachment list first
         attachment_list_fields = ["gid", "name", "resource_type"]
@@ -455,18 +473,25 @@ class AsanaSource(BaseSource):
                 )
                 continue
 
+            # Determine file type from mime_type or filename
+            mime_type = attachment_detail.get("mime_type", "application/octet-stream")
+            file_type = mime_type.split("/")[0] if "/" in mime_type else "file"
+
             # Create the file entity with metadata
             file_entity = AsanaFileEntity(
+                # base fields
                 entity_id=attachment_detail["gid"],
                 breadcrumbs=task_breadcrumbs,
-                file_id=attachment["gid"],
-                name=attachment_detail.get("name"),
-                mime_type=attachment_detail.get("mime_type"),
-                size=attachment_detail.get("size"),
-                total_size=attachment_detail.get("size"),  # Set total_size from API response
-                download_url=attachment_detail.get("download_url"),
+                name=attachment_detail.get("name", "unknown"),
                 created_at=attachment_detail.get("created_at"),
-                modified_at=attachment_detail.get("modified_at"),
+                updated_at=None,
+                # file fields
+                url=attachment_detail.get("download_url"),
+                size=attachment_detail.get("size", 0),
+                file_type=file_type,
+                mime_type=mime_type,
+                local_path=None,
+                # api fields
                 task_gid=task["gid"],
                 task_name=task["name"],
                 resource_type=attachment_detail.get("resource_type"),
@@ -476,44 +501,44 @@ class AsanaSource(BaseSource):
                 permanent=attachment_detail.get("permanent", False),
             )
 
-            # Different headers based on URL type
-            headers = None
-            if file_entity.download_url.startswith("https://app.asana.com/"):
-                # Get fresh token for the download request
-                token = await self.get_access_token()
-                headers = {"Authorization": f"Bearer {token}"}
+            # Download file using downloader
+            try:
+                await self.file_downloader.download_from_url(
+                    entity=file_entity,
+                    http_client_factory=self.http_client,
+                    access_token_provider=self.get_access_token,
+                    logger=self.logger,
+                )
 
-            # Use the BaseSource helper method - it will use token manager automatically
-            processed_entity = await self.process_file_entity(
-                file_entity=file_entity,
-                headers=headers,
-                # No need to pass access_token - process_file_entity will get it from token manager
-            )
+                # Verify download succeeded
+                if not file_entity.local_path:
+                    raise ValueError(f"Download failed - no local path set for {file_entity.name}")
 
-            yield processed_entity
+                yield file_entity
 
-    async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
+            except Exception as e:
+                self.logger.error(
+                    f"Failed to download attachment {attachment_detail['gid']} "
+                    f"for task {task['gid']}: {e}"
+                )
+                # Continue with next attachment, don't fail entire sync
+
+    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate all entities from Asana."""
         async with self.http_client() as client:
             async for workspace_entity in self._generate_workspace_entities(client):
                 yield workspace_entity
 
-                workspace_breadcrumb = Breadcrumb(
-                    entity_id=workspace_entity.asana_gid,
-                    name=workspace_entity.name,
-                    type="workspace",
-                )
+                workspace_breadcrumb = Breadcrumb(entity_id=workspace_entity.entity_id)
 
                 async for project_entity in self._generate_project_entities(
                     client,
-                    {"gid": workspace_entity.asana_gid, "name": workspace_entity.name},
+                    {"gid": workspace_entity.entity_id, "name": workspace_entity.name},
                     workspace_breadcrumb,
                 ):
                     yield project_entity
 
-                    project_breadcrumb = Breadcrumb(
-                        entity_id=project_entity.entity_id, name=project_entity.name, type="project"
-                    )
+                    project_breadcrumb = Breadcrumb(entity_id=project_entity.entity_id)
                     project_breadcrumbs = [workspace_breadcrumb, project_breadcrumb]
 
                     async for section_entity in self._generate_section_entities(
@@ -533,11 +558,7 @@ class AsanaSource(BaseSource):
                             yield task_entity
 
                             # Generate file attachments for the task
-                            task_breadcrumb = Breadcrumb(
-                                entity_id=task_entity.entity_id,
-                                name=task_entity.name,
-                                type="task",
-                            )
+                            task_breadcrumb = Breadcrumb(entity_id=task_entity.entity_id)
                             task_breadcrumbs = [*project_breadcrumbs, task_breadcrumb]
 
                             async for file_entity in self._generate_file_entities(
@@ -559,11 +580,7 @@ class AsanaSource(BaseSource):
                         yield task_entity
 
                         # Generate file attachments for the task
-                        task_breadcrumb = Breadcrumb(
-                            entity_id=task_entity.entity_id,
-                            name=task_entity.name,
-                            type="task",
-                        )
+                        task_breadcrumb = Breadcrumb(entity_id=task_entity.entity_id)
                         task_breadcrumbs = [*project_breadcrumbs, task_breadcrumb]
 
                         async for file_entity in self._generate_file_entities(

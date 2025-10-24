@@ -5,13 +5,20 @@ from typing import Any, Dict, List, Optional
 
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import ChunkEntity, FileEntity
+from airweave.platform.entities._base import BaseEntity, FileEntity
 
 
-class NotionDatabaseEntity(ChunkEntity):
+class NotionDatabaseEntity(BaseEntity):
     """Schema for a Notion database."""
 
-    database_id: str = AirweaveField(..., description="The ID of the database")
+    # Base fields are inherited and set during entity creation:
+    # - entity_id (the database ID)
+    # - breadcrumbs
+    # - name (from title)
+    # - created_at (from created_time)
+    # - updated_at (from last_edited_time)
+
+    # API fields
     title: str = AirweaveField(..., description="The title of the database", embeddable=True)
     description: str = AirweaveField(
         default="", description="The description of the database", embeddable=True
@@ -22,21 +29,23 @@ class NotionDatabaseEntity(ChunkEntity):
     properties_text: Optional[str] = AirweaveField(
         default=None, description="Human-readable schema description", embeddable=True
     )
-    parent_id: str = AirweaveField(description="The ID of the parent")
+    parent_id: str = AirweaveField(..., description="The ID of the parent", embeddable=False)
     parent_type: str = AirweaveField(
-        description="The type of the parent (workspace, page_id, etc.)"
+        ..., description="The type of the parent (workspace, page_id, etc.)", embeddable=False
     )
-    icon: Optional[Dict[str, Any]] = AirweaveField(None, description="The icon of the database")
-    cover: Optional[Dict[str, Any]] = AirweaveField(None, description="The cover of the database")
-    archived: bool = AirweaveField(default=False, description="Whether the database is archived")
-    is_inline: bool = AirweaveField(default=False, description="Whether the database is inline")
-    url: str = AirweaveField(description="The URL of the database")
-    created_time: Optional[datetime] = AirweaveField(
-        None, description="When the database was created", is_created_at=True
+    icon: Optional[Dict[str, Any]] = AirweaveField(
+        None, description="The icon of the database", embeddable=False
     )
-    last_edited_time: Optional[datetime] = AirweaveField(
-        None, description="When the database was last edited", is_updated_at=True
+    cover: Optional[Dict[str, Any]] = AirweaveField(
+        None, description="The cover of the database", embeddable=False
     )
+    archived: bool = AirweaveField(
+        default=False, description="Whether the database is archived", embeddable=False
+    )
+    is_inline: bool = AirweaveField(
+        default=False, description="Whether the database is inline", embeddable=False
+    )
+    url: str = AirweaveField(..., description="The URL of the database", embeddable=False)
 
     def model_post_init(self, __context) -> None:
         """Post-init hook to generate properties_text from schema."""
@@ -79,13 +88,22 @@ class NotionDatabaseEntity(ChunkEntity):
         return " | ".join(text_parts) if text_parts else ""
 
 
-class NotionPageEntity(ChunkEntity):
+class NotionPageEntity(BaseEntity):
     """Schema for a Notion page with aggregated content."""
 
-    page_id: str = AirweaveField(..., description="The ID of the page")
-    parent_id: str = AirweaveField(description="The ID of the parent")
+    # Base fields are inherited and set during entity creation:
+    # - entity_id (the page ID)
+    # - breadcrumbs
+    # - name (from title)
+    # - created_at (from created_time)
+    # - updated_at (from last_edited_time)
+
+    # API fields
+    parent_id: str = AirweaveField(..., description="The ID of the parent", embeddable=False)
     parent_type: str = AirweaveField(
-        description="The type of the parent (workspace, page_id, database_id, etc.)"
+        ...,
+        description="The type of the parent (workspace, page_id, database_id, etc.)",
+        embeddable=False,
     )
     title: str = AirweaveField(..., description="The title of the page", embeddable=True)
     content: Optional[str] = AirweaveField(
@@ -101,20 +119,26 @@ class NotionPageEntity(ChunkEntity):
         default_factory=list, description="Structured property entities", embeddable=False
     )
     files: List[Any] = AirweaveField(
-        default_factory=list, description="Files referenced in the page"
+        default_factory=list, description="Files referenced in the page", embeddable=False
     )
-    icon: Optional[Dict[str, Any]] = AirweaveField(None, description="The icon of the page")
-    cover: Optional[Dict[str, Any]] = AirweaveField(None, description="The cover of the page")
-    archived: bool = AirweaveField(default=False, description="Whether the page is archived")
-    in_trash: bool = AirweaveField(default=False, description="Whether the page is in trash")
-    url: str = AirweaveField(description="The URL of the page")
-    content_blocks_count: int = AirweaveField(default=0, description="Number of blocks processed")
-    max_depth: int = AirweaveField(default=0, description="Maximum nesting depth of blocks")
-    created_time: Optional[datetime] = AirweaveField(
-        None, description="When the page was created", is_created_at=True
+    icon: Optional[Dict[str, Any]] = AirweaveField(
+        None, description="The icon of the page", embeddable=False
     )
-    last_edited_time: Optional[datetime] = AirweaveField(
-        None, description="When the page was last edited", is_updated_at=True
+    cover: Optional[Dict[str, Any]] = AirweaveField(
+        None, description="The cover of the page", embeddable=False
+    )
+    archived: bool = AirweaveField(
+        default=False, description="Whether the page is archived", embeddable=False
+    )
+    in_trash: bool = AirweaveField(
+        default=False, description="Whether the page is in trash", embeddable=False
+    )
+    url: str = AirweaveField(..., description="The URL of the page", embeddable=False)
+    content_blocks_count: int = AirweaveField(
+        default=0, description="Number of blocks processed", embeddable=False
+    )
+    max_depth: int = AirweaveField(
+        default=0, description="Maximum nesting depth of blocks", embeddable=False
     )
 
     # Lazy mechanics removed; eager-only entity
@@ -171,15 +195,25 @@ class NotionPageEntity(ChunkEntity):
         return " | ".join(text_parts) if text_parts else ""
 
 
-class NotionPropertyEntity(ChunkEntity):
+class NotionPropertyEntity(BaseEntity):
     """Schema for a Notion database page property."""
 
-    property_id: str = AirweaveField(..., description="The ID of the property")
+    # Base fields are inherited and set during entity creation:
+    # - entity_id (property_id)
+    # - breadcrumbs
+    # - name (from property_name)
+    # - created_at (None - properties don't have timestamps)
+    # - updated_at (None - properties don't have timestamps)
+
+    # API fields
+    property_id: str = AirweaveField(..., description="The ID of the property", embeddable=False)
     property_name: str = AirweaveField(..., description="The name of the property", embeddable=True)
     property_type: str = AirweaveField(..., description="The type of the property", embeddable=True)
-    page_id: str = AirweaveField(..., description="The ID of the page this property belongs to")
+    page_id: str = AirweaveField(
+        ..., description="The ID of the page this property belongs to", embeddable=False
+    )
     database_id: str = AirweaveField(
-        ..., description="The ID of the database this property belongs to"
+        ..., description="The ID of the database this property belongs to", embeddable=False
     )
     value: Optional[Any] = AirweaveField(
         None, description="The raw value of the property", embeddable=True
@@ -190,52 +224,35 @@ class NotionPropertyEntity(ChunkEntity):
 
 
 class NotionFileEntity(FileEntity):
-    """Schema for a Notion file."""
+    """Schema for a Notion file.
 
-    # Notion-specific fields
-    file_type: str = AirweaveField(
-        ..., description="The type of file (file, external, file_upload)", embeddable=False
-    )
-    url: str = AirweaveField(..., description="The URL to access the file", embeddable=False)
+    Reference:
+        https://developers.notion.com/reference/file-object
+    """
+
+    # Base fields are inherited from BaseEntity:
+    # - entity_id (file_id)
+    # - breadcrumbs
+    # - name
+    # - created_at (None - Notion files don't have timestamps)
+    # - updated_at (None - Notion files don't have timestamps)
+
+    # File fields are inherited from FileEntity:
+    # - url (download_url)
+    # - size (None - not provided by Notion API in block content)
+    # - file_type (e.g., "file", "external", "file_upload")
+    # - mime_type
+    # - local_path (set after download)
+
+    # API fields (Notion-specific)
+    file_id: str = AirweaveField(..., description="ID of the file in Notion", embeddable=False)
     expiry_time: Optional[datetime] = AirweaveField(
         None, description="When the file URL expires (for Notion-hosted files)", embeddable=False
     )
     caption: str = AirweaveField(default="", description="The caption of the file", embeddable=True)
-
-    # Initialize metadata field to ensure it exists
-    metadata: Optional[Dict[str, Any]] = AirweaveField(
-        default_factory=dict, description="Additional metadata about the file"
-    )
 
     def needs_refresh(self) -> bool:
         """Check if the file URL needs to be refreshed (for Notion-hosted files)."""
         if self.file_type == "file" and self.expiry_time:
             return utc_now_naive() >= self.expiry_time
         return False
-
-    def hash(self) -> str:
-        """Hash the file entity.
-
-        For files, we try the following strategies in order:
-        1. If local_path is available, compute hash from actual file contents
-        2. If checksum is available, use it as part of metadata hash
-        3. Fall back to parent hash method using all metadata
-        """
-        if getattr(self, "_hash", None):
-            return self._hash
-
-        if self.airweave_system_metadata.local_path:
-            # If we have the actual file, compute hash from its contents
-            try:
-                import hashlib
-
-                with open(self.airweave_system_metadata.local_path, "rb") as f:
-                    content = f.read()
-                    self._hash = hashlib.sha256(content).hexdigest()
-                    return self._hash
-            except Exception:
-                # If file read fails, fall through to next method
-                pass
-
-        # Fall back to parent hash method
-        return super().hash()

@@ -11,7 +11,7 @@ from tenacity import retry_if_exception_type, stop_after_attempt, wait_exponenti
 
 from airweave.platform.configs.auth import BitbucketAuthConfig
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import Breadcrumb, ChunkEntity
+from airweave.platform.entities._base_legacy import Breadcrumb, ChunkEntity
 from airweave.platform.entities.bitbucket import (
     BitbucketCodeFileEntity,
     BitbucketDirectoryEntity,
@@ -453,7 +453,7 @@ class BitbucketSource(BaseSource):
                     except Exception as e:
                         self.logger.error(f"Error counting lines for {item_path}: {str(e)}")
 
-                # Create file entity with content stored in memory
+                # Create file entity (without content field)
                 file_entity = BitbucketCodeFileEntity(
                     entity_id=f"{workspace_slug}/{repo_slug}/{item_path}",
                     source_name="bitbucket",
@@ -471,7 +471,6 @@ class BitbucketSource(BaseSource):
                     language=language,
                     line_count=line_count,
                     path_in_repo=item_path,
-                    content=content_text,  # Store the content directly in the entity
                     # Required fields from CodeFileEntity base class
                     repo_name=repo_slug,  # Repository name
                     repo_owner=workspace_slug,  # Repository owner (workspace)
@@ -483,6 +482,17 @@ class BitbucketSource(BaseSource):
                         else None
                     ),
                 )
+
+                # Write content to disk for uniform file handling
+                await self.file_downloader.save_bytes(
+                    entity=file_entity,
+                    content=content_text.encode("utf-8"),
+                    logger=self.logger,
+                )
+
+                # Verify save succeeded
+                if not file_entity.local_path:
+                    raise ValueError(f"Save failed - no local path set for {file_entity.name}")
 
                 yield file_entity
         except Exception as e:

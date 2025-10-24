@@ -1,0 +1,26 @@
+Hoi Niels,
+ 
+Hierbij ook mijn feedback voor jou. 😊
+ 
+Hoog over ben ik nog steeds onder de indruk van hoe veel je al weet en kan, gegeven hoe lang je hier al zit. Ik denk dat je problemen aan jou kan toevertrouwen en je kwaliteit altijd van een hoog niveau is. Ook vind ik het mooi om te zien hoe actief je met de feedback aan de slag bent gegaan. In de afgelopen paar maanden denk ik niet dat er grote veranderingen hebben plaatsgevonden ten opzichte van wat er is opgeschreven in je vorige evaluatie en daarom zou ik daar graag aan toe willen voegen.
+ 
+Strengths:
+You can absorb new information quickly and apply it to building new functionality efficiently.
+You understand the product end to end, you take an active role in designs & decisions and raise challenges or new ideas.
+You work independently and successfully so because of your resourcefulness and personal drive.
+ 
+Key development points:
+Strengthen your engineering hard skills, actively building your T-shape
+Create focus and stability in your work, by realizing what is your responsibility, being able to decline requests and continuously revisiting your prioritization in work tasks
+Create structure in how to approach and communicate about a new problem
+ 
+
+Wat toevoegingen die ik wel nog heb zijn op je development points:
+
+Op het punt “realizing what is your responsibility, being able to decline requests” heb ik voortgang gezien. Je weet wat meer dingen los te laten en zichzelf niet altijd in het centrum van de kritieke problemen te plaatsen. Probeer dit vast te houden in het geval er weer meer dingen van je gevraagd worden wanneer ik er niet ben.
+
+Op het punt “Create structure in how to approach and communicate about a new problem” heb ik voortgang gezien in hoe je over een probleem communiceert. Je berichten zijn wat meer gericht op de lezer en meer “to the point”. Het is me wel opgevallen dat je soms beter kan kiezen wanneer je wat communiceert. Een voorbeeld hiervan is dat je na het vinden van een bug een bericht stuurt in een chat om te updaten dat de data niet klopt (goed!), maar dat je dan ook meteen een update stuurt over je eerste hypothese, die vervolgens gaat leven in de teams, om er vervolgens snel achter te komen dat dat toch niet klopte. Als je dan een nieuwe update stuurt zorgt dit soms voor verwarring. Soms kan het hanidger zijn om alleen te sturen dat je er mee bezig bent en later een inhoudelijke update te sturen.
+
+Op het punt “Strengthen your engineering hard skills, actively building your T-shape” denk ik dat je (zeker op de PoC) nieuwe concepten en tools hebt geleerd. Naar de toekomst toe zou ik je adviseren om meer uit het operationele werk te stappen (ook als dit consequenties heeft) en te focussen op de innovatie of je leiderschaps skills. Niels, Max & Freek kunnen je ook helpen door dit expliciet met Leo te bespreken.
+
+Qua intern project zou ik je willen meegeven dat eens met Freek te bespreken en van tevoren na te denken over wat je leuk lijkt. Q4, recruitment, borrelcomissie, compliance etc.

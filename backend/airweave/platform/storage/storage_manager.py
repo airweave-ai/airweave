@@ -679,6 +679,76 @@ class StorageManager:
         # Otherwise use the provided path as-is
         return output_path
 
+    async def get_file_path(
+        self, entity_id: str, sync_id: UUID, filename: str, logger: ContextualLogger
+    ) -> Optional[str]:
+        """Get file path for an entity (from cache or temp directory).
+
+        Args:
+            entity_id: The entity ID
+            sync_id: The sync ID
+            filename: The filename
+            logger: Logger for diagnostics
+
+        Returns:
+            Path to the file, or None if not found
+        """
+        # First check if file exists in storage cache
+        cached_path = await self.get_cached_file_path(logger, sync_id, entity_id, filename)
+
+        if cached_path and os.path.exists(cached_path):
+            logger.debug(f"File found in storage cache: {cached_path}")
+            return cached_path
+
+        # Check temp directory as fallback
+        temp_base_dir = "/tmp/airweave/processing"
+        if not os.path.exists(temp_base_dir):
+            return None
+
+        # Search for files matching the safe filename pattern
+        safe_filename = "".join(c for c in filename if c.isalnum() or c in "._- ").strip()
+        temp_files = []
+        for file in os.listdir(temp_base_dir):
+            if file.endswith(safe_filename):
+                temp_path = os.path.join(temp_base_dir, file)
+                if os.path.exists(temp_path):
+                    temp_files.append(temp_path)
+
+        if temp_files:
+            # Return most recently modified
+            latest_file = max(temp_files, key=os.path.getmtime)
+            logger.debug(f"File found in temp directory: {latest_file}")
+            return latest_file
+
+        logger.debug(f"File not found for entity {entity_id}")
+        return None
+
+    async def get_file_content(
+        self, entity_id: str, sync_id: UUID, filename: str, logger: ContextualLogger
+    ) -> Optional[bytes]:
+        """Get file content as bytes.
+
+        Args:
+            entity_id: The entity ID
+            sync_id: The sync ID
+            filename: The filename
+            logger: Logger for diagnostics
+
+        Returns:
+            File content as bytes, or None if not found
+        """
+        file_path = await self.get_file_path(entity_id, sync_id, filename, logger)
+
+        if not file_path:
+            return None
+
+        try:
+            with open(file_path, "rb") as f:
+                return f.read()
+        except Exception as e:
+            logger.error(f"Failed to read file {file_path}: {e}")
+            return None
+
 
 # Global instance
 storage_manager = StorageManager()

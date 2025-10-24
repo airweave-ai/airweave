@@ -132,15 +132,22 @@ async def test_sync(
         sync_job = await crud.sync_job.create(db=db, obj_in=sync_job_in, ctx=ctx, uow=uow)
         await uow.session.flush()  # Flush to ensure created_at and modified_at are populated
 
-        # Get the DAG
-        sync_dag = await crud.sync_dag.get_by_sync_id(db=db, sync_id=sync.id, ctx=ctx)
+        # Get collection and source connection
+        collection = await crud.collection.get(db=db, id=sync.collection_id, ctx=ctx)
+        source_connection = await crud.connection.get(db=db, id=sync.source_connection_id, ctx=ctx)
 
         # Convert models to schemas
         sync_schema = schemas.Sync.model_validate(sync)
         sync_job_schema = schemas.SyncJob.model_validate(sync_job)
-        sync_dag_schema = schemas.SyncDag.model_validate(sync_dag)
-        ctx_schema = schemas.ApiContext.model_validate(ctx)
+        collection_schema = schemas.Collection.model_validate(collection)
+        source_connection_schema = schemas.Connection.model_validate(source_connection)
 
-    _ = await sync_service.run(sync_schema, sync_job_schema, sync_dag_schema, ctx_schema)
+    _ = await sync_service.run(
+        sync=sync_schema,
+        sync_job=sync_job_schema,
+        collection=collection_schema,
+        source_connection=source_connection_schema,
+        ctx=ctx,
+    )
 
     return sync_job_schema

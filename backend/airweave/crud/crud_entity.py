@@ -72,10 +72,9 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
 
         # On conflict, update the existing row with the new data
         stmt = stmt.on_conflict_do_update(
-            index_elements=["sync_id", "entity_id"],  # The unique constraint columns
+            index_elements=["sync_id", "entity_id", "entity_definition_id"],
             set_={
                 "sync_job_id": stmt.excluded.sync_job_id,
-                "entity_definition_id": stmt.excluded.entity_definition_id,
                 "hash": stmt.excluded.hash,
                 "modified_at": stmt.excluded.modified_at,
             },
@@ -120,6 +119,9 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
         """Get many entities by (entity_id, sync_id) in a single query.
 
         Returns a mapping of entity_id -> Entity. Missing ids are simply absent.
+
+        WARNING: If multiple entity types share the same entity_id, only one will be returned.
+        Use bulk_get_by_entity_sync_and_definition() for multi-type scenarios.
         """
         if not entity_ids:
             return {}
@@ -130,6 +132,46 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
         result = await db.execute(stmt)
         rows = list(result.unique().scalars().all())
         return {row.entity_id: row for row in rows}
+
+    async def bulk_get_by_entity_sync_and_definition(
+        self,
+        db: AsyncSession,
+        *,
+        sync_id: UUID,
+        entity_requests: list[tuple[str, UUID]],
+    ) -> dict[tuple[str, UUID], Entity]:
+        """Get many entities by (entity_id, sync_id, entity_definition_id).
+
+        This method handles multi-type entities correctly by including entity_definition_id
+        in the lookup. For example, GoogleCalendarList and GoogleCalendarCalendar can both
+        use "daan@airweave.ai" as entity_id, but they'll have different entity_definition_ids.
+
+        Args:
+            db: Database session
+            sync_id: The sync ID to filter by
+            entity_requests: List of (entity_id, entity_definition_id) tuples
+
+        Returns:
+            Dict mapping (entity_id, entity_definition_id) -> Entity
+        """
+        if not entity_requests:
+            return {}
+
+        # Build OR conditions for each (entity_id, entity_definition_id) pair
+        from sqlalchemy import and_, or_
+
+        conditions = [
+            and_(Entity.entity_id == eid, Entity.entity_definition_id == def_id)
+            for eid, def_id in entity_requests
+        ]
+
+        stmt = select(Entity).where(Entity.sync_id == sync_id, or_(*conditions))
+
+        result = await db.execute(stmt)
+        rows = list(result.unique().scalars().all())
+
+        # Return with composite key to avoid collisions
+        return {(row.entity_id, row.entity_definition_id): row for row in rows}
 
     def _get_org_id_from_context(self, ctx: ApiContext) -> UUID | None:
         """Attempt to extract organization ID from the API context."""
@@ -191,16 +233,15 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
             values_list.append(data)
 
         # Use PostgreSQL's INSERT ... ON CONFLICT DO UPDATE
-        # This handles the unique constraint on (sync_id, entity_id) gracefully
+        # This handles the unique constraint on (sync_id, entity_id, entity_definition_id)
         stmt = insert(Entity).values(values_list)
 
         # On conflict, update the existing row with the new data
         # This ensures we always have the latest sync_job_id and hash
         stmt = stmt.on_conflict_do_update(
-            index_elements=["sync_id", "entity_id"],  # The unique constraint columns
+            index_elements=["sync_id", "entity_id", "entity_definition_id"],
             set_={
                 "sync_job_id": stmt.excluded.sync_job_id,
-                "entity_definition_id": stmt.excluded.entity_definition_id,
                 "hash": stmt.excluded.hash,
                 "modified_at": stmt.excluded.modified_at,
                 # Keep the original organization_id to prevent cross-org updates

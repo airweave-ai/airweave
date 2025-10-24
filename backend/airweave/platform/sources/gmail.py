@@ -20,7 +20,7 @@ from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponen
 
 from airweave.core.logging import logger
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import Breadcrumb, ChunkEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.gmail import (
     GmailAttachmentEntity,
     GmailMessageDeletionEntity,
@@ -366,7 +366,7 @@ class GmailSource(BaseSource):
     # -----------------------
     async def _generate_thread_entities(  # noqa: C901
         self, client: httpx.AsyncClient, processed_message_ids: Set[str]
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate GmailThreadEntity objects and associated message entities.
 
         Two modes:
@@ -437,14 +437,21 @@ class GmailSource(BaseSource):
 
         label_ids = message_list[0].get("labelIds", []) if message_list else []
 
+        # Create name from snippet
+        thread_name = snippet[:50] + "..." if len(snippet) > 50 else snippet or "Thread"
+
         return GmailThreadEntity(
-            entity_id=f"thread_{thread_id}",  # Prefix to ensure uniqueness
-            breadcrumbs=[],  # Thread is top-level
+            # Base fields
+            entity_id=f"thread_{thread_id}",
+            breadcrumbs=[],
+            name=thread_name,
+            created_at=None,  # Threads don't have creation timestamp
+            updated_at=last_message_date,
+            # API fields
             snippet=snippet,
             history_id=history_id,
             message_count=message_count,
             label_ids=label_ids,
-            last_message_date=last_message_date,
         )
 
     async def _process_thread_messages(
@@ -455,7 +462,7 @@ class GmailSource(BaseSource):
         thread_breadcrumb: Breadcrumb,
         processed_message_ids: Set[str],
         lock: Optional[asyncio.Lock],
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Process messages in a thread, either sequentially or concurrently."""
         if not getattr(self, "batch_generation", False):
             for message_data in message_list:
@@ -496,7 +503,7 @@ class GmailSource(BaseSource):
         thread_data: Dict,
         processed_message_ids: Set[str],
         lock: Optional[asyncio.Lock] = None,
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Emit a thread entity and then all entities from its messages.
 
         If a lock is provided, use it to dedupe message IDs safely under concurrency.
@@ -507,15 +514,7 @@ class GmailSource(BaseSource):
         yield thread_entity
 
         # Breadcrumb for messages under this thread
-        thread_breadcrumb = Breadcrumb(
-            entity_id=f"thread_{thread_id}",  # Match the thread entity's ID
-            name=(
-                thread_entity.snippet[:50] + "..."
-                if len(thread_entity.snippet) > 50
-                else thread_entity.snippet
-            ),
-            type="thread",
-        )
+        thread_breadcrumb = Breadcrumb(entity_id=f"thread_{thread_id}")
 
         # Process messages
         message_list = thread_data.get("messages", []) or []
@@ -549,7 +548,7 @@ class GmailSource(BaseSource):
         message_data: Dict,
         thread_id: str,
         thread_breadcrumb: Breadcrumb,
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Process a message and its attachments."""
         # Get detailed message data if needed
         message_id = message_data.get("id")
@@ -621,8 +620,19 @@ class GmailSource(BaseSource):
         # Create message entity
         self.logger.info(f"Creating message entity for message {message_id}")
         message_entity = GmailMessageEntity(
-            entity_id=f"msg_{message_id}",  # Prefix to ensure uniqueness
+            # Base fields
+            entity_id=f"msg_{message_id}",
             breadcrumbs=[thread_breadcrumb],
+            name=subject or f"Message {message_id}",
+            created_at=date,
+            updated_at=internal_date,
+            # File fields (required for FileEntity)
+            url=f"https://mail.google.com/mail/u/0/#inbox/{message_id}",
+            size=message_data.get("sizeEstimate", 0),
+            file_type="html",
+            mime_type="text/html",
+            local_path=None,  # Will be set after downloading HTML body
+            # Gmail API fields
             thread_id=thread_id,
             subject=subject,
             sender=sender,
@@ -631,22 +641,25 @@ class GmailSource(BaseSource):
             bcc=bcc_list,
             date=date,
             snippet=message_data.get("snippet"),
-            body_plain=body_plain,
-            body_html=body_html,
             label_ids=message_data.get("labelIds", []),
             internal_date=internal_date,
-            size_estimate=message_data.get("sizeEstimate"),
         )
         self.logger.debug(f"Message entity created with ID: {message_entity.entity_id}")
+
+        # Download HTML body to file (NOT stored in entity fields)
+        # Email content is only in the local file for conversion
+        if body_html:
+            await self.file_downloader.save_bytes(
+                entity=message_entity,
+                content=body_html.encode("utf-8"),
+                logger=self.logger,
+            )
+
         yield message_entity
         self.logger.info(f"Message entity yielded for {message_id}")
 
         # Breadcrumb for attachments
-        message_breadcrumb = Breadcrumb(
-            entity_id=f"msg_{message_id}",  # Match the message entity's ID
-            name=subject or f"Message {message_id}",
-            type="message",
-        )
+        message_breadcrumb = Breadcrumb(entity_id=f"msg_{message_id}")
 
         # Process attachments (sequential vs concurrent)
         async for attachment_entity in self._process_attachments(
@@ -789,16 +802,24 @@ class GmailSource(BaseSource):
                         raise
                     size = attachment_data.get("size", 0)
 
+                    # Determine file type from mime_type
+                    file_type = mime_type.split("/")[0] if "/" in mime_type else "file"
+
                     # Create FileEntity wrapper
                     file_entity = GmailAttachmentEntity(
+                        # Base fields
                         entity_id=f"attach_{message_id}_{attachment_id}",
                         breadcrumbs=breadcrumbs,
-                        file_id=attachment_id,
                         name=filename,
-                        mime_type=mime_type,
+                        created_at=None,  # Attachments don't have timestamps
+                        updated_at=None,  # Attachments don't have timestamps
+                        # File fields
+                        url=f"gmail://attachment/{message_id}/{attachment_id}",  # dummy URL
                         size=size,
-                        total_size=size,
-                        download_url=f"gmail://attachment/{message_id}/{attachment_id}",  # dummy
+                        file_type=file_type,
+                        mime_type=mime_type,
+                        local_path=None,
+                        # API fields
                         message_id=message_id,
                         attachment_id=attachment_id,
                         thread_id=thread_id,
@@ -811,16 +832,25 @@ class GmailSource(BaseSource):
 
                     binary_data = base64.urlsafe_b64decode(base64_data)
 
-                    async def content_stream(data=binary_data):
-                        yield data
+                    # Save bytes using downloader
+                    try:
+                        await self.file_downloader.save_bytes(
+                            entity=file_entity,
+                            content=binary_data,
+                            logger=self.logger,
+                        )
 
-                    processed_entity = await self.process_file_entity_with_content(
-                        file_entity=file_entity,
-                        content_stream=content_stream(),
-                        metadata={"source": "gmail", "message_id": message_id},
-                    )
-                    if processed_entity:
-                        yield processed_entity
+                        # Verify save succeeded
+                        if not file_entity.local_path:
+                            raise ValueError(
+                                f"Save failed - no local path set for {file_entity.name}"
+                            )
+
+                        yield file_entity
+
+                    except Exception as e:
+                        self.logger.error(f"Failed to save attachment {filename}: {e}")
+                        return
                 except Exception as e:
                     self.logger.error(
                         f"Error processing attachment {attachment_id} on message {message_id}: {e}"
@@ -862,15 +892,23 @@ class GmailSource(BaseSource):
                         raise
                     size = attachment_data.get("size", 0)
 
+                    # Determine file type from mime_type
+                    file_type = mime_type.split("/")[0] if "/" in mime_type else "file"
+
                     file_entity = GmailAttachmentEntity(
+                        # Base fields
                         entity_id=f"attach_{message_id}_{attachment_id}",
                         breadcrumbs=breadcrumbs,
-                        file_id=attachment_id,
                         name=filename,
-                        mime_type=mime_type,
+                        created_at=None,  # Attachments don't have timestamps
+                        updated_at=None,  # Attachments don't have timestamps
+                        # File fields
+                        url=f"gmail://attachment/{message_id}/{attachment_id}",  # dummy URL
                         size=size,
-                        total_size=size,
-                        download_url=f"gmail://attachment/{message_id}/{attachment_id}",
+                        file_type=file_type,
+                        mime_type=mime_type,
+                        local_path=None,
+                        # API fields
                         message_id=message_id,
                         attachment_id=attachment_id,
                         thread_id=thread_id,
@@ -883,18 +921,25 @@ class GmailSource(BaseSource):
 
                     binary_data = base64.urlsafe_b64decode(base64_data)
 
-                    async def content_stream(data=binary_data):
-                        yield data
+                    # Save bytes using downloader
+                    try:
+                        await self.file_downloader.save_bytes(
+                            entity=file_entity,
+                            content=binary_data,
+                            logger=self.logger,
+                        )
 
-                    processed_entity = await self.process_file_entity_with_content(
-                        file_entity=file_entity,
-                        content_stream=content_stream(),
-                        metadata={"source": "gmail", "message_id": message_id},
-                    )
-                    if processed_entity:
-                        yield processed_entity
-                    else:
-                        self.logger.warning(f"Processing failed for attachment: {filename}")
+                        # Verify save succeeded
+                        if not file_entity.local_path:
+                            raise ValueError(
+                                f"Save failed - no local path set for {file_entity.name}"
+                            )
+
+                        yield file_entity
+
+                    except Exception as e:
+                        self.logger.error(f"Failed to save attachment {filename}: {e}")
+                        continue
                 except Exception as e:
                     self.logger.error(f"Error processing attachment {attachment_id}: {str(e)}")
 
@@ -912,7 +957,7 @@ class GmailSource(BaseSource):
     # -----------------------
     async def _run_incremental_sync(
         self, client: httpx.AsyncClient, start_history_id: str
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Run Gmail incremental sync using users.history.list pages."""
         base_url = "https://gmail.googleapis.com/gmail/v1/users/me/history"
         params: Dict[str, Any] = {
@@ -946,7 +991,7 @@ class GmailSource(BaseSource):
 
     async def _yield_history_deletions(
         self, data: Dict[str, Any]
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Yield deletion entities from a history page."""
         for h in data.get("history", []) or []:
             for deleted in h.get("messagesDeleted", []) or []:
@@ -956,7 +1001,13 @@ class GmailSource(BaseSource):
                 if not msg_id:
                     continue
                 yield GmailMessageDeletionEntity(
+                    # Base fields
                     entity_id=f"msg_{msg_id}",
+                    breadcrumbs=[],
+                    name=f"Deleted message {msg_id}",
+                    created_at=None,  # Deletions don't have timestamps
+                    updated_at=None,  # Deletions don't have timestamps
+                    # API fields
                     message_id=msg_id,
                     thread_id=thread_id,
                     deletion_status="removed",
@@ -964,7 +1015,7 @@ class GmailSource(BaseSource):
 
     async def _process_history_additions_sequential(
         self, client: httpx.AsyncClient, items: List[Dict[str, str]]
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Process history additions sequentially."""
         for it in items:
             msg_id = it["msg_id"]
@@ -984,11 +1035,7 @@ class GmailSource(BaseSource):
                     self.logger.debug(f"Skipping message {msg_id} - doesn't match filters")
                     continue
 
-                thread_breadcrumb = Breadcrumb(
-                    entity_id=f"thread_{thread_id}",
-                    name=f"Thread {thread_id}",
-                    type="thread",
-                )
+                thread_breadcrumb = Breadcrumb(entity_id=f"thread_{thread_id}")
                 async for entity in self._process_message(
                     client, message_data, thread_id, thread_breadcrumb
                 ):
@@ -998,7 +1045,7 @@ class GmailSource(BaseSource):
 
     async def _process_history_additions_concurrent(
         self, client: httpx.AsyncClient, items: List[Dict[str, str]]
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Process history additions concurrently."""
 
         async def _added_worker(item: Dict[str, str]):
@@ -1019,11 +1066,7 @@ class GmailSource(BaseSource):
                     self.logger.debug(f"Skipping message {msg_id} - doesn't match filters")
                     return
 
-                thread_breadcrumb = Breadcrumb(
-                    entity_id=f"thread_{thread_id}",
-                    name=f"Thread {thread_id}",
-                    type="thread",
-                )
+                thread_breadcrumb = Breadcrumb(entity_id=f"thread_{thread_id}")
                 async for ent in self._process_message(
                     client, message_data, thread_id, thread_breadcrumb
                 ):
@@ -1044,7 +1087,7 @@ class GmailSource(BaseSource):
 
     async def _yield_history_additions(
         self, client: httpx.AsyncClient, data: Dict[str, Any]
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Yield entities for added/changed messages from a history page.
 
         If batch_generation is enabled, fetch message details concurrently.
@@ -1072,7 +1115,7 @@ class GmailSource(BaseSource):
     # -----------------------
     # Top-level orchestration
     # -----------------------
-    async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
+    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate Gmail entities with incremental History API support."""
         try:
             async with self.http_client() as client:

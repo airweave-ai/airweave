@@ -11,7 +11,7 @@ import tenacity
 from tenacity import retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import Breadcrumb, ChunkEntity
+from airweave.platform.entities._base_legacy import Breadcrumb, ChunkEntity
 from airweave.platform.entities.gitlab import (
     GitLabCodeFileEntity,
     GitLabDirectoryEntity,
@@ -584,7 +584,7 @@ class GitLabSource(BaseSource):
                     except Exception as e:
                         self.logger.error(f"Error counting lines for {file_path}: {str(e)}")
 
-                # Create file entity
+                # Create file entity (without content field)
                 file_entity = GitLabCodeFileEntity(
                     entity_id=f"{project_id}/{file_path}",
                     source_name="gitlab",
@@ -603,9 +603,19 @@ class GitLabSource(BaseSource):
                     path_in_repo=file_path,
                     repo_name=project_path.split("/")[-1],
                     repo_owner=project_path.split("/")[0],
-                    content=content_text,  # Store the content directly in the entity
                     last_modified=None,  # GitLab API returns commit SHA, not timestamp
                 )
+
+                # Write content to disk for uniform file handling
+                await self.file_downloader.save_bytes(
+                    entity=file_entity,
+                    content=content_text.encode("utf-8"),
+                    logger=self.logger,
+                )
+
+                # Verify save succeeded
+                if not file_entity.local_path:
+                    raise ValueError(f"Save failed - no local path set for {file_entity.name}")
 
                 yield file_entity
 

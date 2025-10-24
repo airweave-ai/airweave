@@ -11,7 +11,6 @@ from airweave.core.shared_models import SyncStatus
 from airweave.models._base import OrganizationBase, UserMixin
 
 if TYPE_CHECKING:
-    from airweave.models.dag import SyncDag
     from airweave.models.entity import Entity
     from airweave.models.source_connection import SourceConnection
     from airweave.models.sync_connection import SyncConnection
@@ -63,15 +62,6 @@ class Sync(OrganizationBase, UserMixin):
         "SourceConnection",
         back_populates="sync",
         lazy="noload",
-        passive_deletes=True,
-    )
-
-    # Add relationship to SyncDag
-    sync_dag: Mapped[Optional["SyncDag"]] = relationship(
-        "SyncDag",
-        back_populates="sync",
-        lazy="noload",
-        cascade="all, delete-orphan",
         passive_deletes=True,
     )
 

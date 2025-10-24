@@ -696,7 +696,7 @@ async def _store_file_entity(
             )
     else:
         # Non-CTTI: Use standard sync-based storage
-        # (file will be uploaded by file_manager when needed)
+        # (file will be uploaded by FileDownloadService when needed)
         logger.debug(
             f"💾 WEB_FILE_CREATED [{entity_context}] Created local file at {temp_file_path}"
         )

@@ -31,10 +31,9 @@ from airweave.platform.locator import resource_locator
 from airweave.platform.sources._base import BaseSource
 from airweave.platform.sync.context import SyncContext
 from airweave.platform.sync.cursor import SyncCursor
-from airweave.platform.sync.entity_processor import EntityProcessor
+from airweave.platform.sync.entity_pipeline import EntityPipeline
 from airweave.platform.sync.orchestrator import SyncOrchestrator
 from airweave.platform.sync.pubsub import SyncEntityStateTracker, SyncProgress
-from airweave.platform.sync.router import SyncDAGRouter
 from airweave.platform.sync.stream import AsyncSourceStream
 from airweave.platform.sync.token_manager import TokenManager
 from airweave.platform.sync.worker_pool import AsyncWorkerPool
@@ -49,7 +48,6 @@ class SyncFactory:
         db: AsyncSession,
         sync: schemas.Sync,
         sync_job: schemas.SyncJob,
-        dag: schemas.SyncDag,
         collection: schemas.Collection,
         connection: schemas.Connection,  # Passed but unused - we load from DB
         ctx: ApiContext,
@@ -66,7 +64,6 @@ class SyncFactory:
             db: Database session
             sync: The sync configuration
             sync_job: The sync job
-            dag: The DAG for the sync
             collection: The collection to sync to
             connection: The connection (unused - we load source connection from DB)
             ctx: The API context
@@ -92,7 +89,6 @@ class SyncFactory:
             db=db,
             sync=sync,
             sync_job=sync_job,
-            dag=dag,
             collection=collection,
             connection=connection,  # Unused parameter
             ctx=ctx,
@@ -101,13 +97,8 @@ class SyncFactory:
         )
         logger.debug(f"Sync context created in {time.time() - context_start:.2f}s")
 
-        # CRITICAL FIX: Initialize transformer cache to eliminate 1.5s database lookups
-        cache_start = time.time()
-        await sync_context.router.initialize_transformer_cache(db)
-        logger.debug(f"Transformer cache initialized in {time.time() - cache_start:.2f}s")
-
-        # Create entity processor
-        entity_processor = EntityProcessor()
+        # Create entity pipeline
+        entity_pipeline = EntityPipeline()
 
         # Create worker pool
         worker_pool = AsyncWorkerPool(max_workers=max_workers, logger=sync_context.logger)
@@ -120,14 +111,11 @@ class SyncFactory:
 
         # Create dedicated orchestrator instance with all components
         orchestrator = SyncOrchestrator(
-            entity_processor=entity_processor,
+            entity_pipeline=entity_pipeline,
             worker_pool=worker_pool,
             stream=stream,
             sync_context=sync_context,
         )
-
-        # Initialize entity tracking
-        entity_processor.initialize_tracking(sync_context)
 
         logger.info(f"Total orchestrator initialization took {time.time() - init_start:.2f}s")
 
@@ -139,7 +127,6 @@ class SyncFactory:
         db: AsyncSession,
         sync: schemas.Sync,
         sync_job: schemas.SyncJob,
-        dag: schemas.SyncDag,
         collection: schemas.Collection,
         connection: schemas.Connection,
         ctx: ApiContext,
@@ -152,7 +139,6 @@ class SyncFactory:
             db: Database session
             sync: The sync configuration
             sync_job: The sync job
-            dag: The DAG for the sync
             collection: The collection to sync to
             connection: The connection (unused - we load source connection from DB)
             ctx: The API context
@@ -219,8 +205,6 @@ class SyncFactory:
             f"channel: sync_job_state:{sync_job.id}"
         )
 
-        router = SyncDAGRouter(dag, entity_map, logger=logger)
-
         logger.info("Sync context created")
 
         # Create GuardRailService with contextual logger
@@ -275,13 +259,11 @@ class SyncFactory:
             transformers=transformers,
             sync=sync,
             sync_job=sync_job,
-            dag=dag,
             collection=collection,
             connection=connection,  # Unused parameter
             progress=progress,
             entity_state_tracker=entity_state_tracker,
             cursor=cursor,
-            router=router,
             entity_map=entity_map,
             ctx=ctx,
             logger=logger,
@@ -390,6 +372,9 @@ class SyncFactory:
                     f"'{source_connection_data['short_name']}': {e}"
                 )
                 # Don't fail source creation if token manager setup fails
+
+        # Setup file downloader for file-based sources
+        cls._setup_file_downloader(source, logger)
 
         return source
 
@@ -844,6 +829,21 @@ class SyncFactory:
                 logger,
                 None,
             )
+
+    @classmethod
+    def _setup_file_downloader(cls, source: BaseSource, logger: ContextualLogger) -> None:
+        """Setup file downloader for file-based sources.
+
+        Args:
+            source: Source instance to configure
+            logger: Logger for diagnostics
+        """
+        from airweave.platform.downloader import FileDownloadService
+
+        if hasattr(source, "set_file_downloader"):
+            file_downloader = FileDownloadService()
+            source.set_file_downloader(file_downloader)
+            logger.debug(f"File downloader configured for {source.__class__.__name__}")
 
     @classmethod
     async def _setup_token_manager(

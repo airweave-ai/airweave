@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
 from airweave.api.context import ApiContext
-from airweave.core.dag_service import dag_service
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.shared_models import SyncJobStatus
 from airweave.core.sync_job_service import sync_job_service
@@ -74,10 +73,6 @@ class SyncService:
         sync = await crud.sync.create(db, obj_in=sync_in, ctx=ctx, uow=uow)
         await db.flush()
 
-        # Create the initial DAG for the sync
-        await dag_service.create_initial_dag(db=db, sync_id=sync.id, ctx=ctx, uow=uow)
-        # No flush needed here - let the caller decide when to flush
-
         # Schedule in Temporal if cron schedule provided (unless skipped)
         if sync_in.cron_schedule and not skip_temporal_schedule:
             await temporal_schedule_service.create_or_update_schedule(
@@ -100,7 +95,6 @@ class SyncService:
         self,
         sync: schemas.Sync,
         sync_job: schemas.SyncJob,
-        dag: schemas.SyncDag,
         collection: schemas.Collection,
         source_connection: schemas.Connection,
         ctx: ApiContext,
@@ -113,7 +107,6 @@ class SyncService:
         ----
             sync (schemas.Sync): The sync to run.
             sync_job (schemas.SyncJob): The sync job to run.
-            dag (schemas.SyncDag): The DAG to run.
             collection (schemas.Collection): The collection to sync.
             source_connection (schemas.Connection): The source connection to sync.
             ctx (ApiContext): The API context.
@@ -132,7 +125,6 @@ class SyncService:
                     db=db,
                     sync=sync,
                     sync_job=sync_job,
-                    dag=dag,
                     collection=collection,
                     connection=source_connection,
                     ctx=ctx,
@@ -330,7 +322,7 @@ class SyncService:
             ctx=ctx,
         )
 
-        # Delete sync (cascades to jobs and DAG)
+        # Delete sync (cascades to jobs)
         await crud.sync.remove(db, id=sync_id, ctx=ctx)
 
     async def get_sync_status(

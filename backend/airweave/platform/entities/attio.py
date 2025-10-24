@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import Field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import ChunkEntity
+from airweave.platform.entities._base_legacy import ChunkEntity
 
 
 class AttioObjectEntity(ChunkEntity):

@@ -6,14 +6,13 @@ from typing import Any, Dict, List, Optional
 from pydantic import Field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import ChunkEntity, FileEntity
+from airweave.platform.entities._base import BaseEntity, FileEntity
 
 
-class AsanaWorkspaceEntity(ChunkEntity):
+class AsanaWorkspaceEntity(BaseEntity):
     """Schema for Asana workspace entities."""
 
-    name: str = AirweaveField(..., description="The name of the workspace", embeddable=True)
-    asana_gid: str = Field(..., description="Globally unique identifier of the workspace")
+    # API fields
     is_organization: bool = Field(False, description="Whether the workspace is an organization")
     email_domains: List[str] = Field(
         default_factory=list, description="List of email domains that can access this workspace"
@@ -23,10 +22,9 @@ class AsanaWorkspaceEntity(ChunkEntity):
     )
 
 
-class AsanaProjectEntity(ChunkEntity):
+class AsanaProjectEntity(BaseEntity):
     """Schema for Asana project entities."""
 
-    name: str = AirweaveField(..., description="The name of the project", embeddable=True)
     workspace_gid: str = Field(
         ..., description="Globally unique identifier of the workspace the project belongs to"
     )
@@ -37,12 +35,6 @@ class AsanaProjectEntity(ChunkEntity):
         None, description="Color of the project (e.g. 'dark-pink', 'light-blue')"
     )
     archived: bool = Field(False, description="Whether the project is archived")
-    created_at: Optional[datetime] = AirweaveField(
-        None,
-        description="The time at which this project was created",
-        embeddable=True,
-        is_created_at=True,
-    )
     current_status: Optional[Dict] = AirweaveField(
         None, description="The current status update for this project", embeddable=True
     )
@@ -74,12 +66,6 @@ class AsanaProjectEntity(ChunkEntity):
         None,
         description="The day on which this project starts (YYYY-MM-DD format)",
         embeddable=True,
-    )
-    modified_at: Optional[datetime] = AirweaveField(
-        None,
-        description="The time at which this project was last modified",
-        embeddable=True,
-        is_updated_at=True,
     )
     owner: Optional[Dict] = AirweaveField(
         None, description="The owner of this project", embeddable=True
@@ -114,18 +100,11 @@ class AsanaProjectEntity(ChunkEntity):
     )
 
 
-class AsanaSectionEntity(ChunkEntity):
+class AsanaSectionEntity(BaseEntity):
     """Schema for Asana section entities."""
 
-    name: str = AirweaveField(..., description="The name of the section", embeddable=True)
     project_gid: str = Field(
         ..., description="Globally unique identifier of the project this section belongs to"
-    )
-    created_at: Optional[datetime] = AirweaveField(
-        None,
-        description="The time at which this section was created",
-        embeddable=True,
-        is_created_at=True,
     )
     projects: List[Dict] = AirweaveField(
         default_factory=list,
@@ -134,10 +113,9 @@ class AsanaSectionEntity(ChunkEntity):
     )
 
 
-class AsanaTaskEntity(ChunkEntity):
+class AsanaTaskEntity(BaseEntity):
     """Schema for Asana task entities."""
 
-    name: str = AirweaveField(..., description="The name of the task", embeddable=True)
     project_gid: str = Field(
         ..., description="Globally unique identifier of the project this task belongs to"
     )
@@ -166,12 +144,6 @@ class AsanaTaskEntity(ChunkEntity):
     )
     completed_by: Optional[Dict] = AirweaveField(
         None, description="The user who completed this task", embeddable=True
-    )
-    created_at: Optional[datetime] = AirweaveField(
-        None,
-        description="The time at which this task was created",
-        embeddable=True,
-        is_created_at=True,
     )
     dependencies: List[Dict] = AirweaveField(
         default_factory=list,
@@ -211,9 +183,6 @@ class AsanaTaskEntity(ChunkEntity):
     memberships: List[Dict] = Field(
         default_factory=list, description="Array of projects and sections this task is in"
     )
-    modified_at: Optional[datetime] = Field(
-        None, description="The time at which this task was last modified"
-    )
     num_likes: int = Field(0, description="The number of users who have liked this task")
     num_subtasks: int = Field(0, description="The number of subtasks on this task")
     parent: Optional[Dict] = AirweaveField(
@@ -251,7 +220,7 @@ class AsanaTaskEntity(ChunkEntity):
     )
 
 
-class AsanaCommentEntity(ChunkEntity):
+class AsanaCommentEntity(BaseEntity):
     """Schema for Asana comment/story entities."""
 
     task_gid: str = Field(
@@ -259,12 +228,6 @@ class AsanaCommentEntity(ChunkEntity):
     )
     author: Dict = AirweaveField(
         ..., description="The user who created this comment", embeddable=True
-    )
-    created_at: datetime = AirweaveField(
-        ...,
-        description="The time at which this comment was created",
-        embeddable=True,
-        is_created_at=True,
     )
     resource_subtype: str = Field(
         "comment_added", description="The subtype of the comment resource"
@@ -304,15 +267,3 @@ class AsanaFileEntity(FileEntity):
     )
     view_url: Optional[str] = Field(None, description="URL to view the attachment")
     permanent: bool = Field(False, description="Whether this is a permanent attachment")
-    updated_at: Optional[datetime] = AirweaveField(
-        None,
-        description="The time at which this file was last modified",
-        embeddable=True,
-        is_updated_at=True,
-    )
-    created_at: Optional[datetime] = AirweaveField(
-        None,
-        description="The time at which this file was created",
-        embeddable=True,
-        is_created_at=True,
-    )

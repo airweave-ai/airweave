@@ -6,7 +6,8 @@ from chonkie import RecursiveChunker, RecursiveLevel, RecursiveRules, TokenChunk
 
 from airweave.core.logging import ContextualLogger
 from airweave.platform.decorators import transformer
-from airweave.platform.entities._base import BaseEntity, ChunkEntity
+from airweave.platform.entities._base import BaseEntity
+from airweave.platform.entities._base_legacy import ChunkEntity
 from airweave.platform.sync.async_helpers import run_in_thread_pool
 from airweave.platform.transformers.utils import (
     count_tokens,

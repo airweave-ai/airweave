@@ -6,7 +6,6 @@ from .crud_billing_period import billing_period
 from .crud_collection import collection
 from .crud_connection import connection
 from .crud_connection_init_session import connection_init_session
-from .crud_dag import sync_dag
 from .crud_destination import destination
 from .crud_embedding_model import embedding_model
 from .crud_entity import entity
@@ -48,7 +47,6 @@ __all__ = [
     "source_connection",
     "sync",
     "sync_cursor",
-    "sync_dag",
     "sync_job",
     "transformer",
     "usage",

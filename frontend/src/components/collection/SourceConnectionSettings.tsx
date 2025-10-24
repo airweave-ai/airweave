@@ -55,7 +55,8 @@ interface SourceConnection {
   created_at: string;
   modified_at: string;
   connection_id?: string;
-  collection: string;
+  collection?: string;
+  readable_collection_id: string;
   created_by_email: string;
   modified_by_email: string;
   auth_fields?: Record<string, any> | string;
@@ -252,29 +253,41 @@ export const SourceConnectionSettings: React.FC<SourceConnectionSettingsProps> =
         key => editFormData.config_fields[key] !== sourceConnection?.config_fields?.[key]
       );
       if (hasConfigChanges) {
-        updateData.config_fields = editFormData.config_fields;
+        updateData.config = editFormData.config_fields;
       }
 
+      // Handle authentication updates
+      // Note: Backend only allows updating DirectAuthentication (credentials)
+      // OAuth and AuthProvider authentication cannot be updated - they require re-authentication
       const filledAuthFields = Object.entries(editFormData.auth_fields)
         .filter(([_, value]) => value && String(value).trim() !== '')
         .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
 
-      if (Object.keys(filledAuthFields).length > 0) {
-        updateData.auth_fields = filledAuthFields;
+      console.log('🔍 Update validation:', {
+        hasAuthProvider: !!sourceConnection?.auth_provider,
+        filledAuthFieldsCount: Object.keys(filledAuthFields).length,
+        filledAuthFields,
+        authFieldsRaw: editFormData.auth_fields,
+        isOAuth: sourceDetails?.auth_methods?.includes('oauth_browser') || sourceDetails?.auth_methods?.includes('oauth_token')
+      });
+
+      // Only send authentication if:
+      // 1. There are filled auth fields
+      // 2. Source doesn't use auth provider
+      // 3. Source is not OAuth-based (uses direct auth)
+      const isOAuthSource = sourceDetails?.auth_methods?.includes('oauth_browser') ||
+        sourceDetails?.auth_methods?.includes('oauth_token') ||
+        !!sourceConnection?.auth_provider;
+
+      if (Object.keys(filledAuthFields).length > 0 && !isOAuthSource) {
+        // Only send authentication update for direct auth sources
+        updateData.authentication = {
+          credentials: filledAuthFields
+        };
       }
 
-      if (editFormData.auth_provider !== sourceConnection?.auth_provider) {
-        updateData.auth_provider = editFormData.auth_provider;
-      }
-
-      if (sourceConnection?.auth_provider || editFormData.auth_provider) {
-        const hasAuthProviderConfigChanges = Object.keys(editFormData.auth_provider_config).some(
-          key => editFormData.auth_provider_config[key] !== sourceConnection?.auth_provider_config?.[key]
-        );
-        if (hasAuthProviderConfigChanges) {
-          updateData.auth_provider_config = editFormData.auth_provider_config;
-        }
-      }
+      // Note: Auth provider and OAuth settings cannot be updated via PATCH
+      // They require deleting and recreating the source connection
 
       if (Object.keys(updateData).length === 0) {
         toast({
@@ -285,7 +298,13 @@ export const SourceConnectionSettings: React.FC<SourceConnectionSettingsProps> =
         return;
       }
 
-      const response = await apiClient.put(`/source-connections/${sourceConnection?.id}`, null, updateData);
+      console.log('📤 Sending update request:', {
+        sourceConnectionId: sourceConnection?.id,
+        updateData,
+        updateDataKeys: Object.keys(updateData)
+      });
+
+      const response = await apiClient.patch(`/source-connections/${sourceConnection?.id}`, updateData);
 
       if (!response.ok) {
         throw new Error("Failed to update source connection");

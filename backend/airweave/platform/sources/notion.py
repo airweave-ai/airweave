@@ -16,7 +16,7 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 
 from airweave.core.logging import logger
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import Breadcrumb, ChunkEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.notion import (
     NotionDatabaseEntity,
     NotionFileEntity,
@@ -333,7 +333,7 @@ class NotionSource(BaseSource):
     # Child Database Processing
     async def _process_child_databases(  # noqa: C901 - complex loop over child DB traversal
         self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Process child databases discovered during page content extraction."""
         self.logger.info("Processing child databases")
 
@@ -377,13 +377,7 @@ class NotionSource(BaseSource):
 
                         try:
                             # Create breadcrumbs for child database pages
-                            page_breadcrumbs = breadcrumbs + [
-                                Breadcrumb(
-                                    entity_id=database_id,
-                                    name=database_entity.title,
-                                    type="database",
-                                )
-                            ]
+                            page_breadcrumbs = breadcrumbs + [Breadcrumb(entity_id=database_id)]
 
                             # Eagerly build page and files for child database page
                             page_entity, files = await self._create_comprehensive_page_entity(
@@ -464,10 +458,7 @@ class NotionSource(BaseSource):
                     parent_page = await self._get_with_auth(
                         client, f"https://api.notion.com/v1/pages/{parent_id}"
                     )
-                    parent_title = self._extract_page_title(parent_page)
-                    breadcrumbs.insert(
-                        0, Breadcrumb(entity_id=parent_id, name=parent_title, type="page")
-                    )
+                    breadcrumbs.insert(0, Breadcrumb(entity_id=parent_id))
                     current_page = parent_page
                 except Exception as e:
                     self.logger.warning(f"Could not fetch parent page {parent_id}: {str(e)}")
@@ -521,9 +512,13 @@ class NotionSource(BaseSource):
         properties_text = self._generate_properties_text_for_page(formatted_properties, title)
 
         page_entity = NotionPageEntity(
+            # Base fields
             entity_id=page_id,
             breadcrumbs=breadcrumbs,
-            page_id=page_id,
+            name=title,
+            created_at=self._parse_datetime(page.get("created_time")),
+            updated_at=self._parse_datetime(page.get("last_edited_time")),
+            # API fields
             parent_id=parent.get("page_id") or parent.get("database_id") or "",
             parent_type=parent.get("type", "workspace"),
             title=title,
@@ -539,8 +534,6 @@ class NotionSource(BaseSource):
             url=page.get("url", ""),
             content_blocks_count=content_result["blocks_count"],
             max_depth=content_result["max_depth"],
-            created_time=self._parse_datetime(page.get("created_time")),
-            last_edited_time=self._parse_datetime(page.get("last_edited_time")),
         )
 
         # Set breadcrumbs on file entities
@@ -961,9 +954,13 @@ class NotionSource(BaseSource):
         properties_text = self._generate_schema_text_for_database(formatted_schema)
 
         return NotionDatabaseEntity(
+            # Base fields
             entity_id=database_id,
             breadcrumbs=[],
-            database_id=database_id,
+            name=title or "Untitled Database",
+            created_at=self._parse_datetime(database.get("created_time")),
+            updated_at=self._parse_datetime(database.get("last_edited_time")),
+            # API fields
             title=title or "Untitled Database",
             description=description,
             properties=formatted_schema,  # Use formatted schema
@@ -975,8 +972,6 @@ class NotionSource(BaseSource):
             archived=database.get("archived", False),
             is_inline=database.get("is_inline", False),
             url=database.get("url", ""),
-            created_time=self._parse_datetime(database.get("created_time")),
-            last_edited_time=self._parse_datetime(database.get("last_edited_time")),
         )
 
     def _format_database_schema(self, properties: dict) -> Dict[str, Any]:
@@ -1048,8 +1043,13 @@ class NotionSource(BaseSource):
         formatted_value = self._format_property_value(prop_value, prop_type)
 
         return NotionPropertyEntity(
+            # Base fields
             entity_id=f"{page_id}_{schema_prop.get('id', prop_name)}",
             breadcrumbs=[],
+            name=prop_name,
+            created_at=None,  # Properties don't have timestamps
+            updated_at=None,  # Properties don't have timestamps
+            # API fields
             property_id=schema_prop.get("id", ""),
             property_name=prop_name,
             property_type=prop_type,
@@ -1063,17 +1063,17 @@ class NotionSource(BaseSource):
         self, block_content: dict, parent_id: str
     ) -> NotionFileEntity:
         """Create a file entity from block content."""
-        file_type = block_content.get("type", "external")
+        file_type_notion = block_content.get("type", "external")
 
         # Handle different file types according to Notion API
-        if file_type == "file":
+        if file_type_notion == "file":
             # Notion-hosted file (uploaded via UI)
             file_data = block_content.get("file", {})
             url = file_data.get("url", "")
             expiry_time = self._parse_datetime(file_data.get("expiry_time"))
             file_id = url  # Use URL as file_id for Notion-hosted files
             download_url = url
-        elif file_type == "file_upload":
+        elif file_type_notion == "file_upload":
             # File uploaded via API
             file_data = block_content.get("file_upload", {})
             file_id = file_data.get("id", "")
@@ -1135,19 +1135,27 @@ class NotionSource(BaseSource):
             }
             mime_type = mime_type_map.get(ext)
 
+        # Determine general file type from mime_type for FileEntity base class
+        if mime_type:
+            general_file_type = mime_type.split("/")[0]  # e.g., "image", "video", "audio"
+        else:
+            general_file_type = "file"
+
         return NotionFileEntity(
+            # Base fields
             entity_id=f"file_{parent_id}_{hash(file_id)}",
             breadcrumbs=[],
-            # FileEntity required fields
-            file_id=file_id,
             name=name or "Untitled File",
-            mime_type=mime_type,
-            size=None,  # Notion API doesn't provide size in block content
-            download_url=download_url,
-            should_skip=False,
-            # Notion-specific fields
-            file_type=file_type,
-            url=url,
+            created_at=None,  # Notion files don't have timestamps in block content
+            updated_at=None,  # Notion files don't have timestamps in block content
+            # File fields
+            url=download_url,
+            size=0,  # Notion API doesn't provide size in block content
+            file_type=general_file_type,
+            mime_type=mime_type or "application/octet-stream",
+            local_path=None,
+            # API fields (Notion-specific)
+            file_id=file_id,
             expiry_time=expiry_time,
             caption=caption,
         )
@@ -1379,7 +1387,7 @@ class NotionSource(BaseSource):
             return None
 
     # Main Entry Point
-    async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
+    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate all entities from Notion using streaming discovery."""
         self.logger.info("Starting streaming Notion entity generation with content aggregation")
         self._stats = {
@@ -1420,7 +1428,7 @@ class NotionSource(BaseSource):
 
     async def _stream_database_discovery(
         self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Discover databases and delegate per-database processing to a helper.
 
         Keeping this wrapper minimal satisfies complexity limits while preserving logic.
@@ -1437,7 +1445,7 @@ class NotionSource(BaseSource):
 
     async def _process_single_database(
         self, client: httpx.AsyncClient, database_id: str
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Process one database: fetch schema, emit DB entity, pages, files, child DBs."""
         try:
             self.logger.info(f"Fetching schema for database: {database_id}")
@@ -1457,11 +1465,7 @@ class NotionSource(BaseSource):
                 if page_id in self._processed_pages:
                     continue
                 try:
-                    breadcrumbs = [
-                        Breadcrumb(
-                            entity_id=database_id, name=database_entity.title, type="database"
-                        )
-                    ]
+                    breadcrumbs = [Breadcrumb(entity_id=database_id)]
                     page_entity, files = await self._create_comprehensive_page_entity(
                         client, page, breadcrumbs, database_id, schema
                     )
@@ -1490,7 +1494,7 @@ class NotionSource(BaseSource):
 
     async def _stream_page_discovery(
         self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Stream page discovery and immediately yield page entities."""
         self.logger.info("Streaming page discovery...")
 
@@ -1553,32 +1557,32 @@ class NotionSource(BaseSource):
                 return None
 
             # Skip external files (can't be downloaded)
-            if file_entity.file_type == "external":
-                self.logger.info(f"Skipping external file {file_entity.name} - external URL")
+            # Check the general file_type field (not the Notion-specific one)
+            if not file_entity.url or file_entity.url.startswith("http") is False:
+                self.logger.info(f"Skipping file {file_entity.name} - no valid download URL")
                 return None
 
-            # Download the file using BaseSource.process_file_entity
-            if file_entity.file_type == "file_upload":
-                # For file_upload type, we need special headers and access token
-                headers = {"Notion-Version": "2022-06-28"}
-                processed_entity = await self.process_file_entity(
-                    file_entity=file_entity, access_token=self.access_token, headers=headers
-                )
-            else:  # file_type == "file"
-                # For Notion-hosted files with pre-signed URLs, base class handles correctly
-                # It will detect the pre-signed URL and not add Authorization header
-                processed_entity = await self.process_file_entity(
-                    file_entity=file_entity, access_token=self.access_token
+            # Download the file using file downloader
+            try:
+                await self.file_downloader.download_from_url(
+                    entity=file_entity,
+                    http_client_factory=self.http_client,
+                    access_token_provider=self.get_access_token,
+                    logger=self.logger,
                 )
 
-            if processed_entity and not processed_entity.airweave_system_metadata.should_skip:
+                # Verify download succeeded
+                if not file_entity.local_path:
+                    raise ValueError(f"Download failed - no local path set for {file_entity.name}")
+
                 self.logger.info(
-                    f"Successfully processed file {processed_entity.name} "
-                    f"with local_path: {processed_entity.airweave_system_metadata.local_path}"
+                    f"Successfully downloaded file {file_entity.name} "
+                    f"to local_path: {file_entity.local_path}"
                 )
-                return processed_entity
-            else:
-                self.logger.warning(f"File {file_entity.name} was skipped during processing")
+                return file_entity
+
+            except Exception as e:
+                self.logger.error(f"Failed to download file {file_entity.name}: {e}")
                 return None
 
         except NotionSource.NotionAccessError as e:

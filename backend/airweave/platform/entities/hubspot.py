@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional
 from pydantic import field_validator
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import ChunkEntity
+from airweave.platform.entities._base_legacy import ChunkEntity
 
 
 def parse_hubspot_datetime(value: Any) -> Optional[datetime]:

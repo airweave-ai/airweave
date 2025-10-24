@@ -14,7 +14,7 @@ from datetime import datetime
 from typing import Optional
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import ChunkEntity, CodeFileEntity, ParentEntity
+from airweave.platform.entities._base_legacy import ChunkEntity, CodeFileEntity, ParentEntity
 
 
 class BitbucketWorkspaceEntity(ParentEntity):

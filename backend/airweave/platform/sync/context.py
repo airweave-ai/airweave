@@ -13,7 +13,6 @@ from airweave.platform.entities._base import BaseEntity
 from airweave.platform.sources._base import BaseSource
 from airweave.platform.sync.cursor import SyncCursor
 from airweave.platform.sync.pubsub import SyncEntityStateTracker, SyncProgress
-from airweave.platform.sync.router import SyncDAGRouter
 
 
 class SyncContext:
@@ -27,9 +26,7 @@ class SyncContext:
     - transformers - a dictionary of transformer callables
     - sync - the main sync object
     - sync job - the sync job that is created for the sync
-    - dag - the DAG that is created for the sync
     - progress - the progress tracker, interfaces with PubSub
-    - router - the DAG router
     - cursor - the cursor for the sync
     - collection - the collection that the sync is for
     - connection - the source connection that the sync is for
@@ -49,10 +46,8 @@ class SyncContext:
     transformers: dict[str, Callable]
     sync: schemas.Sync
     sync_job: schemas.SyncJob
-    dag: schemas.SyncDag
     progress: SyncProgress
     entity_state_tracker: Optional[SyncEntityStateTracker]
-    router: SyncDAGRouter
     cursor: SyncCursor
     collection: schemas.Collection
     connection: schemas.Connection
@@ -79,10 +74,8 @@ class SyncContext:
         transformers: dict[str, Callable],
         sync: schemas.Sync,
         sync_job: schemas.SyncJob,
-        dag: schemas.SyncDag,
         progress: SyncProgress,
         entity_state_tracker: Optional[SyncEntityStateTracker],
-        router: SyncDAGRouter,
         cursor: SyncCursor,
         collection: schemas.Collection,
         connection: schemas.Connection,
@@ -105,10 +98,8 @@ class SyncContext:
         self.transformers = transformers
         self.sync = sync
         self.sync_job = sync_job
-        self.dag = dag
         self.progress = progress
         self.entity_state_tracker = entity_state_tracker
-        self.router = router
         self.cursor = cursor
         self.collection = collection
         self.connection = connection

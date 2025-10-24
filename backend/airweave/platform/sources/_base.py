@@ -22,8 +22,8 @@ import httpx
 from pydantic import BaseModel
 
 from airweave.core.logging import logger
-from airweave.platform.entities._base import ChunkEntity, FileEntity
-from airweave.platform.file_handling.file_manager import file_manager
+from airweave.platform.entities._base import FileEntity
+from airweave.platform.entities._base_legacy import ChunkEntity
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
@@ -41,6 +41,7 @@ class BaseSource:
         self._logger: Optional[Any] = None  # Store contextual logger as instance variable
         self._token_manager: Optional[Any] = None  # Store token manager for OAuth sources
         self._http_client_factory: Optional[Callable] = None  # Factory for creating HTTP clients
+        self._file_downloader: Optional[Any] = None  # File download service
         # Optional sync identifiers for multi-tenant scoped helpers
         self._organization_id: Optional[str] = None
         self._source_connection_id: Optional[str] = None
@@ -88,6 +89,19 @@ class BaseSource:
         self._http_client_factory = factory
         if factory:
             self.logger.debug("HTTP client factory configured")
+
+    @property
+    def file_downloader(self):
+        """Get the file downloader for this source."""
+        return self._file_downloader
+
+    def set_file_downloader(self, downloader) -> None:
+        """Set file downloader service for this source.
+
+        Args:
+            downloader: FileDownloadService instance for downloading files
+        """
+        self._file_downloader = downloader
 
     @asynccontextmanager
     async def http_client(self, **kwargs):
@@ -262,10 +276,10 @@ class BaseSource:
         """Generate entities for the source."""
         pass
 
-    async def process_file_entity(  # noqa C901
+    async def process_file_entity(
         self, file_entity: FileEntity, download_url=None, access_token=None, headers=None
     ) -> Optional[ChunkEntity]:
-        """Process a file entity with automatic size limit checking.
+        """Process a file entity using the file download service.
 
         Args:
             file_entity: The FileEntity to process
@@ -276,117 +290,60 @@ class BaseSource:
         Returns:
             The processed entity if it should be included, None if it should be skipped
         """
-        # Use entity download_url if not explicitly provided
-        url = download_url or file_entity.download_url
-        if not url:
-            self.logger.warning(f"No download URL for file {file_entity.name}")
-            return None
+        if not self.file_downloader:
+            raise ValueError("FileDownloader not configured for this source")
 
-        # Check if this is a pre-signed URL (e.g., S3)
-        is_presigned_url = "X-Amz-Algorithm" in url
+        # Override download URL if provided
+        if download_url:
+            file_entity.download_url = download_url
 
-        # Get access token (from parameter, token manager, or instance)
-        token = access_token or await self.get_access_token()
+        # Create token provider that uses parameter or instance token
+        async def token_provider():
+            return access_token or await self.get_access_token()
 
-        # Validate we have an access token for authentication (unless it's a pre-signed URL)
-        if not token and not is_presigned_url:
-            self.logger.error(f"No access token provided for file {file_entity.name}")
-            raise ValueError(f"No access token available for processing file {file_entity.name}")
-
-        self.logger.debug(
-            f"Processing file entity: {file_entity.name} "
-            f"(pre-signed: {is_presigned_url}, has_token: {bool(token)})"
+        # Download and enrich entity using downloader service
+        return await self.file_downloader.download(
+            entity=file_entity,
+            http_client_factory=self.http_client,
+            access_token_provider=token_provider,
+            logger=self.logger,
         )
 
-        try:
-            # Stream file using our HTTP client (which might be a proxy)
-            async def stream_with_client():
-                async with self.http_client(timeout=httpx.Timeout(180.0, read=540.0)) as client:
-                    request_headers = headers or {}
-                    # Only add auth header if not using proxy AND not a pre-signed URL
-                    # Pre-signed URLs (S3) include auth in URL params and reject Auth headers
-                    if token and not hasattr(client, "_config") and not is_presigned_url:
-                        request_headers["Authorization"] = f"Bearer {token}"
-
-                    # Use stream context manager for proper streaming
-                    async with client.stream(
-                        "GET", url, headers=request_headers, follow_redirects=True
-                    ) as response:
-                        response.raise_for_status()
-                        # Stream the content
-                        async for chunk in response.aiter_bytes():
-                            yield chunk
-
-            # Process entity with the stream
-            processed_entity = await file_manager.handle_file_entity(
-                stream=stream_with_client(), entity=file_entity, logger=self.logger
-            )
-
-            # Skip if file was too large
-            if processed_entity.airweave_system_metadata.should_skip:
-                self.logger.warning(
-                    f"Skipping file {processed_entity.name}: "
-                    f"{processed_entity.metadata.get('error', 'Unknown reason')}"
-                )
-
-            return processed_entity
-        except httpx.HTTPStatusError as e:
-            # Handle specific HTTP errors gracefully
-            status_code = e.response.status_code if hasattr(e, "response") else None
-            error_msg = f"HTTP {status_code}: {str(e)}" if status_code else str(e)
-
-            self.logger.error(f"HTTP error downloading file {file_entity.name}: {error_msg}")
-
-            # Mark entity as skipped instead of failing
-            file_entity.airweave_system_metadata.should_skip = True
-            if not hasattr(file_entity, "metadata") or file_entity.metadata is None:
-                file_entity.metadata = {}
-            file_entity.metadata["error"] = error_msg
-            file_entity.metadata["http_status"] = status_code
-
-            return file_entity
-        except Exception as e:
-            # Log other errors but don't let them stop the sync
-            self.logger.error(f"Error processing file {file_entity.name}: {str(e)}")
-
-            # Mark entity as skipped
-            file_entity.airweave_system_metadata.should_skip = True
-            if not hasattr(file_entity, "metadata") or file_entity.metadata is None:
-                file_entity.metadata = {}
-            file_entity.metadata["error"] = str(e)
-
-            return file_entity
-
-    async def process_file_entity_with_content(
-        self, file_entity, content_stream, metadata: Optional[Dict[str, Any]] = None
+    async def process_file_entity_with_bytes(
+        self, file_entity: FileEntity, content: bytes, metadata: Optional[Dict[str, Any]] = None
     ) -> Optional[ChunkEntity]:
-        """Process a file entity with content directly available as a stream."""
-        self.logger.debug(f"Processing file entity with direct content: {file_entity.name}")
+        """Process a file entity with content already in memory.
 
-        try:
-            # Process entity with the file manager directly
-            processed_entity = await file_manager.handle_file_entity(
-                stream=content_stream, entity=file_entity, logger=self.logger
-            )
+        Used when content is already in memory from API response (e.g., Gmail attachments,
+        Confluence HTML). Writes bytes directly to disk for conversion pipeline.
 
-            # Add any additional metadata
-            if metadata and processed_entity:
-                # Initialize metadata if it doesn't exist
-                if not hasattr(processed_entity, "metadata") or processed_entity.metadata is None:
-                    processed_entity.metadata = {}
-                processed_entity.metadata.update(metadata)
+        Args:
+            file_entity: FileEntity to process
+            content: File content as bytes (already in memory)
+            metadata: Optional metadata to add to entity
 
-            # Skip if file was too large
-            if processed_entity.airweave_system_metadata.should_skip:
-                self.logger.warning(
-                    f"Skipping file {processed_entity.name}: "
-                    f"{processed_entity.metadata.get('error', 'Unknown reason')}"
-                )
+        Returns:
+            Processed FileEntity or None if processing failed
+        """
+        if not self.file_downloader:
+            raise ValueError("FileDownloader not configured for this source")
 
-            return processed_entity
-        except Exception as e:
-            self.logger.error(f"Error processing file {file_entity.name} with direct content: {e}")
-            return None
+        self.logger.debug(f"Processing file entity with in-memory bytes: {file_entity.name}")
+
+        # Save bytes using downloader (most efficient path)
+        processed_entity = await self.file_downloader.save_bytes(
+            entity=file_entity,
+            content=content,
+            logger=self.logger,
+        )
+
+        # Add any additional metadata
+        if metadata and processed_entity:
+            if not hasattr(processed_entity, "metadata") or processed_entity.metadata is None:
+                processed_entity.metadata = {}
+            processed_entity.metadata.update(metadata)
+
+        return processed_entity
 
     @abstractmethod
     async def validate(self) -> bool:

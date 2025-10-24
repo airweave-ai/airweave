@@ -83,12 +83,6 @@ class SyncNotFoundException(NotFoundException):
     pass
 
 
-class SyncDagNotFoundException(NotFoundException):
-    """Raised when a sync DAG is not found."""
-
-    pass
-
-
 class CollectionNotFoundException(NotFoundException):
     """Raised when a collection is not found."""
 

@@ -53,7 +53,6 @@ class RunSourceConnectionWorkflow:
         self,
         sync_dict: Dict[str, Any],
         sync_job_dict: Optional[Dict[str, Any]],  # Made optional for scheduled runs
-        sync_dag_dict: Dict[str, Any],
         collection_dict: Dict[str, Any],
         connection_dict: Dict[str, Any],  # Connection schema, NOT SourceConnection
         ctx_dict: Dict[str, Any],
@@ -65,7 +64,6 @@ class RunSourceConnectionWorkflow:
         Args:
             sync_dict: The sync configuration as dict
             sync_job_dict: The sync job as dict (optional for scheduled runs)
-            sync_dag_dict: The sync DAG as dict
             collection_dict: The collection as dict
             connection_dict: The connection as dict (Connection schema, NOT SourceConnection)
             ctx_dict: The API context as dict
@@ -119,7 +117,6 @@ class RunSourceConnectionWorkflow:
                 args=[
                     sync_dict,
                     sync_job_dict,
-                    sync_dag_dict,
                     collection_dict,
                     connection_dict,
                     ctx_dict,

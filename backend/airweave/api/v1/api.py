@@ -9,7 +9,6 @@ from airweave.api.v1.endpoints import (
     collections,
     connections,
     cursor_dev,
-    dag,
     destinations,
     embedding_models,
     entities,
@@ -49,7 +48,6 @@ api_router.include_router(
     source_connections.router, prefix="/source-connections", tags=["source-connections"]
 )
 api_router.include_router(sync.router, prefix="/sync", tags=["sync"])
-api_router.include_router(dag.router, prefix="/dag", tags=["dag"])
 api_router.include_router(entities.router, prefix="/entities", tags=["entities"])
 api_router.include_router(entity_counts.router, prefix="/entity-counts", tags=["entity-counts"])
 api_router.include_router(transformers.router, prefix="/transformers", tags=["transformers"])

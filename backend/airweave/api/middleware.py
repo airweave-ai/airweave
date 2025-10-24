@@ -30,7 +30,6 @@ from airweave.core.exceptions import (
     RateLimitExceededException,
     ScheduleNotExistsException,
     ScheduleOperationException,
-    SyncDagNotFoundException,
     SyncJobNotFoundException,
     SyncNotFoundException,
     TokenRefreshError,
@@ -423,7 +422,6 @@ async def airweave_exception_handler(request: Request, exc: AirweaveException) -
         # 404 Not Found - Resource doesn't exist
         SyncNotFoundException: 404,
         SyncJobNotFoundException: 404,
-        SyncDagNotFoundException: 404,
         CollectionNotFoundException: 404,
         # 400 Bad Request - Client error
         InvalidScheduleOperationException: 400,

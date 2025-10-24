@@ -8,7 +8,7 @@ from chonkie import RecursiveChunker, TokenChunker
 
 from airweave.core.logging import ContextualLogger
 from airweave.platform.decorators import transformer
-from airweave.platform.entities._base import ChunkEntity, FileEntity
+from airweave.platform.entities._base_legacy import ChunkEntity, FileEntity
 from airweave.platform.file_handling.conversion.factory import document_converter
 from airweave.platform.sync.async_helpers import run_in_thread_pool
 from airweave.platform.transformers.utils import count_tokens

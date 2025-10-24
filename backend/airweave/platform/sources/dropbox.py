@@ -6,7 +6,7 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import Breadcrumb, ChunkEntity
+from airweave.platform.entities._base_legacy import Breadcrumb, ChunkEntity
 from airweave.platform.entities.dropbox import (
     DropboxAccountEntity,
     DropboxFileEntity,
@@ -403,7 +403,7 @@ class DropboxSource(BaseSource):
                     file_entity = self._create_file_entity(entry, folder_breadcrumbs)
 
                     try:
-                        # Use the BaseSource helper method instead of direct file_manager calls
+                        # Use the BaseSource helper method with FileDownloadService
                         processed_entity = await self.process_file_entity(
                             file_entity=file_entity,
                             access_token=self.access_token,

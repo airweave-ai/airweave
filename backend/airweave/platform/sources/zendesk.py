@@ -8,7 +8,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from airweave.core.exceptions import TokenRefreshError
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import ChunkEntity
+from airweave.platform.entities._base_legacy import ChunkEntity
 from airweave.platform.entities.zendesk import (
     ZendeskAttachmentEntity,
     ZendeskCommentEntity,

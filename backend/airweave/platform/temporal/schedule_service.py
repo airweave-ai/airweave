@@ -72,7 +72,6 @@ class TemporalScheduleService:
         sync_id: UUID,
         cron_expression: str,
         sync_dict: dict,
-        sync_dag_dict: dict,
         collection_dict: dict,
         connection_dict: dict,
         user_dict: dict,
@@ -88,7 +87,6 @@ class TemporalScheduleService:
             sync_id: The sync ID
             cron_expression: Cron expression for the schedule
             sync_dict: The sync configuration as dict
-            sync_dag_dict: The sync DAG as dict
             collection_dict: The collection as dict
             connection_dict: The connection as dict (Connection schema, NOT SourceConnection)
             user_dict: The current user as dict
@@ -151,7 +149,6 @@ class TemporalScheduleService:
         workflow_args = [
             sync_dict,
             None,  # No pre-created sync job for scheduled runs
-            sync_dag_dict,
             collection_dict,
             connection_dict,
             user_dict,
@@ -207,7 +204,6 @@ class TemporalScheduleService:
         sync_id: UUID,
         cron_expression: str,
         sync_dict: dict,
-        sync_dag_dict: dict,
         collection_dict: dict,
         connection_dict: dict,
         user_dict: dict,
@@ -220,7 +216,6 @@ class TemporalScheduleService:
             sync_id=sync_id,
             cron_expression=cron_expression,
             sync_dict=sync_dict,
-            sync_dag_dict=sync_dag_dict,
             collection_dict=collection_dict,
             connection_dict=connection_dict,
             user_dict=user_dict,
@@ -235,7 +230,6 @@ class TemporalScheduleService:
         sync_id: UUID,
         cron_expression: str,
         sync_dict: dict,
-        sync_dag_dict: dict,
         collection_dict: dict,
         connection_dict: dict,
         user_dict: dict,
@@ -248,7 +242,6 @@ class TemporalScheduleService:
             sync_id=sync_id,
             cron_expression=cron_expression,
             sync_dict=sync_dict,
-            sync_dag_dict=sync_dag_dict,
             collection_dict=collection_dict,
             connection_dict=connection_dict,
             user_dict=user_dict,
@@ -263,7 +256,6 @@ class TemporalScheduleService:
         sync_id: UUID,
         cron_expression: str,  # e.g., "0 2 * * *" for 2 AM daily
         sync_dict: dict,
-        sync_dag_dict: dict,
         collection_dict: dict,
         connection_dict: dict,
         user_dict: dict,
@@ -277,7 +269,6 @@ class TemporalScheduleService:
             sync_id: The sync ID
             cron_expression: Cron expression for daily schedule (e.g., "0 2 * * *")
             sync_dict: The sync configuration as dict
-            sync_dag_dict: The sync DAG as dict
             collection_dict: The collection as dict
             connection_dict: The connection as dict (Connection schema, NOT SourceConnection)
             user_dict: The current user as dict
@@ -326,7 +317,6 @@ class TemporalScheduleService:
                     args=[
                         sync_dict,
                         None,  # No pre-created sync job for scheduled runs
-                        sync_dag_dict,
                         collection_dict,
                         connection_dict,
                         user_dict,
@@ -694,11 +684,6 @@ class TemporalScheduleService:
         if not collection:
             raise ValueError(f"No collection found for source connection {source_connection.id}")
 
-        # Get the sync DAG
-        sync_dag = await crud.sync_dag.get_by_sync_id(db=db, sync_id=sync_id, ctx=ctx)
-        if not sync_dag:
-            raise ValueError(f"No DAG found for sync {sync_id}")
-
         # Get the actual Connection object (not SourceConnection!)
         from airweave.core.source_connection_service_helpers import source_connection_helpers
 
@@ -707,12 +692,10 @@ class TemporalScheduleService:
         )
 
         sync_schema = schemas.Sync.model_validate(sync, from_attributes=True)
-        sync_dag_schema = schemas.SyncDag.model_validate(sync_dag, from_attributes=True)
         collection_schema = schemas.Collection.model_validate(collection, from_attributes=True)
 
         # Convert to dicts for Temporal workflow
         sync_dict = sync_schema.model_dump(mode="json")
-        sync_dag_dict = sync_dag_schema.model_dump(mode="json")
         collection_dict = collection_schema.model_dump(mode="json")
         connection_dict = connection_schema.model_dump(mode="json")
 
@@ -738,7 +721,6 @@ class TemporalScheduleService:
                 sync_id=sync_id,
                 cron_expression=cron_schedule,
                 sync_dict=sync_dict,
-                sync_dag_dict=sync_dag_dict,
                 collection_dict=collection_dict,
                 connection_dict=connection_dict,
                 user_dict=user_dict,
@@ -751,7 +733,6 @@ class TemporalScheduleService:
                 sync_id=sync_id,
                 cron_expression=cron_schedule,
                 sync_dict=sync_dict,
-                sync_dag_dict=sync_dag_dict,
                 collection_dict=collection_dict,
                 connection_dict=connection_dict,
                 user_dict=user_dict,

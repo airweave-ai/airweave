@@ -17,7 +17,7 @@ from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponen
 
 from airweave.core.logging import logger
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import Breadcrumb, ChunkEntity
+from airweave.platform.entities._base_legacy import Breadcrumb, ChunkEntity
 from airweave.platform.entities.outlook_mail import (
     OutlookAttachmentEntity,
     OutlookMailFolderDeletionEntity,
@@ -649,6 +649,16 @@ class OutlookMailSource(BaseSource):
         message_entity = OutlookMessageEntity(
             entity_id=message_id,
             breadcrumbs=[folder_breadcrumb],
+            name=subject or f"Message {message_id}",
+            created_at=sent_date,
+            updated_at=received_date,
+            # File fields (required for FileEntity)
+            url=f"https://outlook.office.com/mail/inbox/id/{message_id}",
+            size=len(body_content.encode("utf-8")) if body_content else 0,
+            file_type="html",
+            mime_type="text/html",
+            local_path=None,  # Will be set after downloading HTML body
+            # Outlook API fields
             folder_name=folder_name,
             subject=subject,
             sender=sender,
@@ -657,13 +667,21 @@ class OutlookMailSource(BaseSource):
             sent_date=sent_date,
             received_date=received_date,
             body_preview=body_preview,
-            body_content=body_content,
             is_read=message_data.get("isRead", False),
             is_draft=message_data.get("isDraft", False),
             importance=message_data.get("importance"),
             has_attachments=message_data.get("hasAttachments", False),
             internet_message_id=message_data.get("internetMessageId"),
         )
+
+        # Download HTML body to file (NOT stored in entity fields)
+        # Email content is only in the local file for conversion
+        if body_content:
+            await self.file_downloader.save_bytes(
+                entity=message_entity,
+                content=body_content.encode("utf-8"),
+                logger=self.logger,
+            )
 
         yield message_entity
         self.logger.debug(f"Message entity yielded for {message_id}")
@@ -696,10 +714,6 @@ class OutlookMailSource(BaseSource):
                     f"Error processing attachments for message {message_id}: {str(e)}"
                 )
                 # Continue with message processing even if attachments fail
-
-    async def _create_content_stream(self, binary_data: bytes):
-        """Create an async generator for binary content."""
-        yield binary_data
 
     async def _fetch_attachment_content(
         self, client: httpx.AsyncClient, message_id: str, attachment_id: str
@@ -787,12 +801,10 @@ class OutlookMailSource(BaseSource):
                 return None
 
             # Process using the BaseSource method
-            self.logger.debug(
-                f"Processing file entity for {attachment_name} with direct content stream"
-            )
-            processed_entity = await self.process_file_entity_with_content(
+            self.logger.debug(f"Processing file entity for {attachment_name} with in-memory bytes")
+            processed_entity = await self.process_file_entity_with_bytes(
                 file_entity=file_entity,
-                content_stream=self._create_content_stream(binary_data),
+                content=binary_data,
                 metadata={"source": "outlook_mail", "message_id": message_id},
             )
 

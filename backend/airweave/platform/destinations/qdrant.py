@@ -41,7 +41,7 @@ from airweave.platform.destinations.collection_strategy import (
     get_default_vector_size,
     get_physical_collection_name,
 )
-from airweave.platform.entities._base import ChunkEntity
+from airweave.platform.entities._base_legacy import ChunkEntity
 
 if TYPE_CHECKING:
     from airweave.search.operations.temporal_relevance import DecayConfig
