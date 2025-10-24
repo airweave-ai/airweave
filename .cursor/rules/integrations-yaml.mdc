@@ -71,6 +71,29 @@ When `requires_pkce: true`, the OAuth flow includes:
 
 This prevents authorization code interception attacks by ensuring the token exchange request comes from the same client that initiated authorization.
 
+**Microsoft Excel (Microsoft Graph API):**
+```yaml
+excel:
+  oauth_type: "with_rotating_refresh"
+  url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
+  backend_url: "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+  grant_type: "authorization_code"
+  client_id: "your-client-id"
+  client_secret: "your-client-secret"
+  content_type: "application/x-www-form-urlencoded"
+  client_credential_location: "body"
+  scope: "offline_access https://graph.microsoft.com/User.Read https://graph.microsoft.com/Files.Read.All"
+  additional_frontend_params:
+    response_type: "code"
+    response_mode: "query"
+```
+
+**Key Requirements:**
+- Uses Microsoft Graph API (v1.0) to access Excel files
+- Requires `Files.Read.All` permission to read Excel workbooks from OneDrive/SharePoint
+- Uses `with_rotating_refresh` token type (refresh tokens rotate on each refresh)
+- Entity hierarchy: `Workbook → Worksheet → Table/Rows`
+
 **Microsoft Teams (Microsoft Graph API):**
 ```yaml
 teams:

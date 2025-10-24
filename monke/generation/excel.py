@@ -42,7 +42,12 @@ async def generate_excel_worksheet(
 
     if not token_found and worksheet.rows:
         # Add token to first cell of last row
-        worksheet.rows[-1][0] = f"{worksheet.rows[-1][0]} {token}"
+        last_row = worksheet.rows[-1]
+        if last_row and len(last_row) > 0:
+            worksheet.rows[-1][0] = f"{worksheet.rows[-1][0]} {token}"
+        else:
+            # If last row is empty, append a new row with the token
+            worksheet.rows.append([token])
 
     return worksheet
 
