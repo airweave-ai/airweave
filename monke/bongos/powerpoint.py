@@ -1,6 +1,6 @@
-"""Word bongo implementation.
+"""PowerPoint bongo implementation.
 
-Creates, updates, and deletes test Word documents via the Microsoft Graph API.
+Creates, updates, and deletes test PowerPoint presentations via the Microsoft Graph API.
 """
 
 import asyncio
@@ -11,33 +11,33 @@ from typing import Any, Dict, List
 
 import httpx
 from monke.bongos.base_bongo import BaseBongo
-from monke.generation.word import generate_documents_content
+from monke.generation.powerpoint import generate_presentations_content
 from monke.utils.logging import get_logger
 
-# Try to import python-docx for Word document creation
+# Try to import python-pptx for PowerPoint presentation creation
 try:
-    from docx import Document
-    from docx.shared import Pt
+    from pptx import Presentation
+    from pptx.util import Inches
 
-    HAS_PYTHON_DOCX = True
+    HAS_PYTHON_PPTX = True
 except ImportError:
-    HAS_PYTHON_DOCX = False
+    HAS_PYTHON_PPTX = False
 
 GRAPH = "https://graph.microsoft.com/v1.0"
 
 
-class WordBongo(BaseBongo):
-    """Bongo for Word that creates test entities for E2E testing.
+class PowerPointBongo(BaseBongo):
+    """Bongo for PowerPoint that creates test entities for E2E testing.
 
     Key responsibilities:
-    - Create test Word documents in OneDrive
-    - Add content with verification tokens
-    - Update documents to test incremental sync
-    - Delete documents to test deletion detection
+    - Create test PowerPoint presentations in OneDrive
+    - Add slides with content containing verification tokens
+    - Update presentations to test incremental sync
+    - Delete presentations to test deletion detection
     - Clean up all test data
     """
 
-    connector_type = "word"
+    connector_type = "powerpoint"
 
     def __init__(self, credentials: Dict[str, Any], **kwargs):
         super().__init__(credentials)
@@ -45,47 +45,51 @@ class WordBongo(BaseBongo):
         self.entity_count: int = int(kwargs.get("entity_count", 3))
         self.openai_model: str = kwargs.get("openai_model", "gpt-4.1-mini")
         self.rate_limit_delay = float(kwargs.get("rate_limit_delay_ms", 500)) / 1000.0
-        self.logger = get_logger("word_bongo")
+        self.logger = get_logger("powerpoint_bongo")
 
         # Track created resources for cleanup
-        self._test_documents: List[Dict[str, Any]] = []
+        self._test_presentations: List[Dict[str, Any]] = []
         self._last_req = 0.0
 
-        if not HAS_PYTHON_DOCX:
+        if not HAS_PYTHON_PPTX:
             raise ImportError(
-                "python-docx is required for Word bongo. Install with: pip install python-docx"
+                "python-pptx is required for PowerPoint bongo. Install with: pip install python-pptx"
             )
 
     async def create_entities(self) -> List[Dict[str, Any]]:
-        """Create test Word documents in OneDrive."""
-        self.logger.info(f"🥁 Creating {self.entity_count} Word test documents")
+        """Create test PowerPoint presentations in OneDrive."""
+        self.logger.info(
+            f"🥁 Creating {self.entity_count} PowerPoint test presentations"
+        )
         out: List[Dict[str, Any]] = []
 
-        # Generate tokens for each document
+        # Generate tokens for each presentation
         tokens = [uuid.uuid4().hex[:8] for _ in range(self.entity_count)]
 
-        # Generate document content
-        test_name = f"TestDoc_{uuid.uuid4().hex[:8]}"
-        filenames, document_content = await generate_documents_content(
+        # Generate presentation content
+        test_name = f"TestPresentation_{uuid.uuid4().hex[:8]}"
+        filenames, presentation_content = await generate_presentations_content(
             self.openai_model, tokens, test_name
         )
 
-        self.logger.info(f"📄 Generated {len(document_content)} documents")
+        self.logger.info(f"📊 Generated {len(presentation_content)} presentations")
 
         async with httpx.AsyncClient(base_url=GRAPH, timeout=60) as client:
-            for i, (filename, doc_content, token) in enumerate(
-                zip(filenames, document_content, tokens)
+            for i, (filename, pres_content, token) in enumerate(
+                zip(filenames, presentation_content, tokens)
             ):
                 await self._pace()
 
                 # Sanitize filename for OneDrive (remove illegal characters)
                 safe_filename = self._sanitize_filename(filename)
 
-                # Create Word document file
-                doc_bytes = self._create_word_file(doc_content)
+                # Create PowerPoint presentation file
+                pres_bytes = self._create_powerpoint_file(pres_content)
 
                 # Upload to OneDrive
-                self.logger.info(f"📤 Uploading Word document: {safe_filename}")
+                self.logger.info(
+                    f"📤 Uploading PowerPoint presentation: {safe_filename}"
+                )
                 upload_url = f"/me/drive/root:/{safe_filename}:/content"
 
                 r = await client.put(
@@ -94,38 +98,42 @@ class WordBongo(BaseBongo):
                         "Authorization": f"Bearer {self.access_token}",
                         "Content-Type": (
                             "application/vnd.openxmlformats-officedocument."
-                            "wordprocessingml.document"
+                            "presentationml.presentation"
                         ),
                     },
-                    content=doc_bytes,
+                    content=pres_bytes,
                 )
 
                 if r.status_code not in (200, 201):
                     self.logger.error(f"Upload failed {r.status_code}: {r.text}")
                     r.raise_for_status()
 
-                doc_file = r.json()
-                doc_id = doc_file["id"]
+                pres_file = r.json()
+                pres_id = pres_file["id"]
 
-                self.logger.info(f"✅ Uploaded document: {doc_id} - {filename}")
+                self.logger.info(
+                    f"✅ Uploaded presentation: {pres_id} - {safe_filename}"
+                )
 
                 ent = {
-                    "type": "document",
-                    "id": doc_id,
+                    "type": "presentation",
+                    "id": pres_id,
                     "filename": safe_filename,
-                    "title": doc_content.title,
+                    "title": pres_content.title,
                     "token": token,
                     "expected_content": token,
                 }
                 out.append(ent)
-                self._test_documents.append(ent)
-                self.created_entities.append({"id": doc_id, "name": safe_filename})
+                self._test_presentations.append(ent)
+                self.created_entities.append({"id": pres_id, "name": safe_filename})
 
                 self.logger.info(
-                    f"📝 Document '{safe_filename}' created with token: {token}"
+                    f"📝 Presentation '{safe_filename}' created with token: {token}"
                 )
 
-        self.logger.info(f"✅ Created {len(self._test_documents)} Word documents")
+        self.logger.info(
+            f"✅ Created {len(self._test_presentations)} PowerPoint presentations"
+        )
         return out
 
     def _sanitize_filename(self, filename: str) -> str:
@@ -156,84 +164,120 @@ class WordBongo(BaseBongo):
 
         return safe_name
 
-    def _create_word_file(self, doc_content: Any) -> bytes:
-        """Create a Word document file with the given content.
+    def _create_powerpoint_file(self, pres_content: Any) -> bytes:
+        """Create a PowerPoint presentation file with the given content.
 
         Args:
-            doc_content: WordDocumentContent object
+            pres_content: PowerPointPresentationContent object
 
         Returns:
-            Bytes of the Word document
+            Bytes of the PowerPoint presentation
         """
-        doc = Document()
+        prs = Presentation()
+        prs.slide_width = Inches(10)
+        prs.slide_height = Inches(7.5)
 
-        # Add title
-        title = doc.add_heading(doc_content.title, level=0)
-        title.alignment = 1  # Center alignment
+        # Slide 1: Title slide
+        title_slide_layout = prs.slide_layouts[0]
+        slide = prs.slides.add_slide(title_slide_layout)
+        title = slide.shapes.title
+        subtitle = slide.placeholders[1]
 
-        # Add summary section
-        doc.add_heading("Summary", level=1)
-        doc.add_paragraph(doc_content.summary)
+        title.text = pres_content.title
+        subtitle.text = pres_content.subtitle
 
-        # Add main content
-        doc.add_heading("Content", level=1)
+        # Add content slides
+        for slide_content in pres_content.slides:
+            # Use bullet layout
+            bullet_slide_layout = prs.slide_layouts[1]
+            slide = prs.slides.add_slide(bullet_slide_layout)
 
-        # Split content by paragraphs and add them
-        paragraphs = doc_content.content.split("\n\n")
-        for para in paragraphs:
-            if para.strip():
-                p = doc.add_paragraph(para.strip())
-                # Set font size for readability
-                for run in p.runs:
-                    run.font.size = Pt(11)
+            # Set title
+            title_shape = slide.shapes.title
+            title_shape.text = slide_content.title
+
+            # Add content
+            content_shape = slide.placeholders[1]
+            text_frame = content_shape.text_frame
+            text_frame.clear()
+
+            for i, bullet_text in enumerate(slide_content.content):
+                if i == 0:
+                    p = text_frame.paragraphs[0]
+                else:
+                    p = text_frame.add_paragraph()
+                p.text = bullet_text
+                p.level = 0
 
         # Save to bytes
         buffer = io.BytesIO()
-        doc.save(buffer)
+        prs.save(buffer)
         buffer.seek(0)
         return buffer.getvalue()
 
     async def update_entities(self) -> List[Dict[str, Any]]:
-        """Update Word documents by appending new content with same tokens."""
-        if not self._test_documents:
+        """Update PowerPoint presentations by adding a new slide with same tokens."""
+        if not self._test_presentations:
             return []
 
         self.logger.info(
-            f"🥁 Updating {min(2, len(self._test_documents))} Word documents"
+            f"🥁 Updating {min(2, len(self._test_presentations))} PowerPoint presentations"
         )
         updated = []
 
         async with httpx.AsyncClient(base_url=GRAPH, timeout=60) as client:
-            for ent in self._test_documents[: min(2, len(self._test_documents))]:
+            for ent in self._test_presentations[
+                : min(2, len(self._test_presentations))
+            ]:
                 await self._pace()
 
-                # Download current document
+                # Download current presentation
                 download_url = f"/me/drive/items/{ent['id']}/content"
                 r = await client.get(download_url, headers=self._hdrs())
 
                 if r.status_code != 200:
                     self.logger.warning(
-                        f"Failed to download document: {r.status_code} - {r.text[:200]}"
+                        f"Failed to download presentation: {r.status_code} - {r.text[:200]}"
                     )
                     continue
 
-                # Load existing document
-                doc = Document(io.BytesIO(r.content))
+                # Load existing presentation
+                prs = Presentation(io.BytesIO(r.content))
 
-                # Append update section with token
-                doc.add_heading("Update Section", level=1)
-                doc.add_paragraph(
-                    f"This document has been updated. Update token: {ent['token']}\n"
-                    f"Updated content to verify incremental sync functionality."
-                )
+                # Add new slide with update information
+                bullet_slide_layout = prs.slide_layouts[1]
+                new_slide = prs.slides.add_slide(bullet_slide_layout)
 
-                # Save updated document
+                # Set title
+                title_shape = new_slide.shapes.title
+                title_shape.text = "Update Section"
+
+                # Add content with token
+                content_shape = new_slide.placeholders[1]
+                text_frame = content_shape.text_frame
+                text_frame.clear()
+
+                update_content = [
+                    "This presentation has been updated",
+                    f"Update token: {ent['token']}",
+                    "Updated to verify incremental sync functionality",
+                ]
+
+                for i, bullet_text in enumerate(update_content):
+                    if i == 0:
+                        p = text_frame.paragraphs[0]
+                    else:
+                        p = text_frame.add_paragraph()
+                    p.text = bullet_text
+                    p.level = 0
+
+                # Save updated presentation
                 buffer = io.BytesIO()
-                doc.save(buffer)
+                prs.save(buffer)
                 buffer.seek(0)
                 updated_bytes = buffer.getvalue()
 
-                # Upload updated document
+                # Upload updated presentation
                 upload_url = f"/me/drive/items/{ent['id']}/content"
                 r = await client.put(
                     upload_url,
@@ -241,7 +285,7 @@ class WordBongo(BaseBongo):
                         "Authorization": f"Bearer {self.access_token}",
                         "Content-Type": (
                             "application/vnd.openxmlformats-officedocument."
-                            "wordprocessingml.document"
+                            "presentationml.presentation"
                         ),
                     },
                     content=updated_bytes,
@@ -250,11 +294,11 @@ class WordBongo(BaseBongo):
                 if r.status_code in (200, 201):
                     updated.append({**ent, "updated": True})
                     self.logger.info(
-                        f"📝 Updated document '{ent['filename']}' with token: {ent['token']}"
+                        f"📝 Updated presentation '{ent['filename']}' with token: {ent['token']}"
                     )
                 else:
                     self.logger.warning(
-                        f"Failed to update document: {r.status_code} - {r.text[:200]}"
+                        f"Failed to update presentation: {r.status_code} - {r.text[:200]}"
                     )
 
                 # Brief delay between updates
@@ -263,30 +307,30 @@ class WordBongo(BaseBongo):
         return updated
 
     async def delete_entities(self) -> List[str]:
-        """Delete all test documents."""
-        return await self.delete_specific_entities(self._test_documents)
+        """Delete all test presentations."""
+        return await self.delete_specific_entities(self._test_presentations)
 
     async def delete_specific_entities(
         self, entities: List[Dict[str, Any]]
     ) -> List[str]:
-        """Delete specific Word documents with retry for locked files."""
+        """Delete specific PowerPoint presentations with retry for locked files."""
         if not entities:
-            # If no specific entities provided, delete all tracked documents
-            entities = self._test_documents
+            # If no specific entities provided, delete all tracked presentations
+            entities = self._test_presentations
 
         if not entities:
             return []
 
-        self.logger.info(f"🥁 Deleting {len(entities)} Word documents")
+        self.logger.info(f"🥁 Deleting {len(entities)} PowerPoint presentations")
         deleted: List[str] = []
 
         async with httpx.AsyncClient(base_url=GRAPH, timeout=30) as client:
-            # Iterate over a copy to avoid mutation issues when entities == self._test_documents
+            # Iterate over a copy to avoid mutation issues when entities == self._test_presentations
             for ent in list(entities):
                 try:
                     await self._pace()
 
-                    # Try to delete the document with retry for locked files (423)
+                    # Try to delete the presentation with retry for locked files (423)
                     max_retries = 3
                     retry_delay = 2.0  # seconds
 
@@ -298,19 +342,23 @@ class WordBongo(BaseBongo):
                         if r.status_code == 204:
                             deleted.append(ent["id"])
                             self.logger.info(
-                                f"✅ Deleted document: {ent.get('filename', ent['id'])}"
+                                f"✅ Deleted presentation: {ent.get('filename', ent['id'])}"
                             )
 
                             # Remove from tracking
-                            if ent in self._test_documents:
-                                self._test_documents.remove(ent)
+                            if ent in self._test_presentations:
+                                self._test_presentations.remove(ent)
                             break  # Success, exit retry loop
 
                         elif r.status_code == 423 and attempt < max_retries - 1:
                             # Resource is locked, wait and retry
                             self.logger.warning(
-                                f"⏳ Document locked (423), retrying in {retry_delay}s "
-                                f"(attempt {attempt + 1}/{max_retries}): {ent.get('filename', ent['id'])}"
+                                "⏳ Presentation locked (423), retrying in %ss "
+                                "(attempt %s/%s): %s",
+                                retry_delay,
+                                attempt + 1,
+                                max_retries,
+                                ent.get("filename", ent["id"]),
                             )
                             await asyncio.sleep(retry_delay)
                             retry_delay *= 2  # Exponential backoff
@@ -330,39 +378,39 @@ class WordBongo(BaseBongo):
 
     async def cleanup(self):
         """Comprehensive cleanup of all test resources."""
-        self.logger.info("🧹 Starting comprehensive Word cleanup")
+        self.logger.info("🧹 Starting comprehensive PowerPoint cleanup")
 
         cleanup_stats = {
-            "documents_deleted": 0,
+            "presentations_deleted": 0,
             "errors": 0,
         }
 
         try:
             async with httpx.AsyncClient(base_url=GRAPH, timeout=30) as client:
-                # Delete tracked test documents
-                if self._test_documents:
+                # Delete tracked test presentations
+                if self._test_presentations:
                     self.logger.info(
-                        f"🗑️  Deleting {len(self._test_documents)} tracked documents"
+                        f"🗑️  Deleting {len(self._test_presentations)} tracked presentations"
                     )
                     deleted = await self.delete_specific_entities(
-                        self._test_documents.copy()
+                        self._test_presentations.copy()
                     )
-                    cleanup_stats["documents_deleted"] += len(deleted)
+                    cleanup_stats["presentations_deleted"] += len(deleted)
 
-                # Search for and cleanup any orphaned test documents
-                await self._cleanup_orphaned_documents(client, cleanup_stats)
+                # Search for and cleanup any orphaned test presentations
+                await self._cleanup_orphaned_presentations(client, cleanup_stats)
 
             self.logger.info(
-                f"🧹 Cleanup completed: {cleanup_stats['documents_deleted']} "
-                f"documents deleted, {cleanup_stats['errors']} errors"
+                f"🧹 Cleanup completed: {cleanup_stats['presentations_deleted']} "
+                f"presentations deleted, {cleanup_stats['errors']} errors"
             )
         except Exception as e:
             self.logger.error(f"❌ Error during comprehensive cleanup: {e}")
 
-    async def _cleanup_orphaned_documents(
+    async def _cleanup_orphaned_presentations(
         self, client: httpx.AsyncClient, stats: Dict[str, Any]
     ):
-        """Find and delete orphaned test documents from previous runs."""
+        """Find and delete orphaned test presentations from previous runs."""
         try:
             await self._pace()
             r = await client.get("/me/drive/root/children", headers=self._hdrs())
@@ -370,39 +418,40 @@ class WordBongo(BaseBongo):
             if r.status_code == 200:
                 files = r.json().get("value", [])
 
-                # Find test Word documents
-                test_documents = [
+                # Find test PowerPoint presentations
+                test_presentations = [
                     f
                     for f in files
                     if f.get("name", "").startswith("Monke_")
-                    and f.get("name", "").endswith(".docx")
+                    and f.get("name", "").endswith(".pptx")
                 ]
 
-                if test_documents:
+                if test_presentations:
                     self.logger.info(
-                        f"🔍 Found {len(test_documents)} orphaned test documents"
+                        f"🔍 Found {len(test_presentations)} orphaned test presentations"
                     )
-                    for doc in test_documents:
+                    for pres in test_presentations:
                         try:
                             await self._pace()
                             del_r = await client.delete(
-                                f"/me/drive/items/{doc['id']}",
+                                f"/me/drive/items/{pres['id']}",
                                 headers=self._hdrs(),
                             )
                             if del_r.status_code == 204:
-                                stats["documents_deleted"] += 1
+                                stats["presentations_deleted"] += 1
                                 self.logger.info(
-                                    f"✅ Deleted orphaned document: {doc.get('name', 'Unknown')}"
+                                    f"✅ Deleted orphaned presentation: "
+                                    f"{pres.get('name', 'Unknown')}"
                                 )
                             else:
                                 stats["errors"] += 1
                         except Exception as e:
                             stats["errors"] += 1
                             self.logger.warning(
-                                f"⚠️  Failed to delete document {doc['id']}: {e}"
+                                f"⚠️  Failed to delete presentation {pres['id']}: {e}"
                             )
         except Exception as e:
-            self.logger.warning(f"⚠️  Could not search for orphaned documents: {e}")
+            self.logger.warning(f"⚠️  Could not search for orphaned presentations: {e}")
 
     def _hdrs(self) -> Dict[str, str]:
         """Get standard headers for Graph API requests."""

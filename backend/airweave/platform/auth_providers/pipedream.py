@@ -69,6 +69,7 @@ class PipedreamAuthProvider(BaseAuthProvider):
         "onenote",
         "excel",
         "word",
+        "powerpoint",
     ]
 
     # Mapping of Airweave field names to Pipedream field names

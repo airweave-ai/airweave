@@ -19,3 +19,6 @@ openpyxl>=3.1.0
 
 # Word document manipulation
 python-docx>=1.2.0
+
+# PowerPoint presentation manipulation
+python-pptx>=0.6.21

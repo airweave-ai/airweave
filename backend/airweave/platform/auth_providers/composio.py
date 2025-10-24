@@ -50,6 +50,7 @@ class ComposioAuthProvider(BaseAuthProvider):
         "teams": "microsoft_teams",
         "onenote": "one_drive",
         "word": "one_drive",
+        "powerpoint": "one_drive",
         # Add more mappings as needed
     }
 

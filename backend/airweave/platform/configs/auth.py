@@ -513,6 +513,12 @@ class WordAuthConfig(OAuth2WithRefreshAuthConfig):
     # Inherits refresh_token and access_token from OAuth2WithRefreshAuthConfig
 
 
+class PowerPointAuthConfig(OAuth2WithRefreshAuthConfig):
+    """Microsoft PowerPoint authentication credentials schema."""
+
+    # Inherits refresh_token and access_token from OAuth2WithRefreshAuthConfig
+
+
 class CTTIAuthConfig(AuthConfig):
     """CTTI Clinical Trials authentication credentials schema."""
 

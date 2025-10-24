@@ -6,7 +6,9 @@ from monke.client.llm import LLMClient
 from monke.generation.schemas.word import WordDocumentContent
 
 
-async def generate_word_document(model: str, token: str, doc_type: str) -> WordDocumentContent:
+async def generate_word_document(
+    model: str, token: str, doc_type: str
+) -> WordDocumentContent:
     """Generate realistic Word document content with embedded verification token.
 
     Args:
@@ -68,10 +70,10 @@ async def generate_documents_content(
         doc_content = await generate_word_document(model, token, doc_type)
         documents.append(doc_content)
 
-        # Generate filename
+        # Generate filename incorporating base_name for uniqueness
+        safe_base = base_name.replace(" ", "_")
         safe_title = doc_content.title.replace(" ", "_")[:40]
-        filename = f"Monke_{safe_title}.docx"
+        filename = f"Monke_{safe_base}_{safe_title}.docx"
         filenames.append(filename)
 
     return filenames, documents
-
