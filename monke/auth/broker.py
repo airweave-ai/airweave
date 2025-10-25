@@ -15,6 +15,21 @@ import httpx
 
 from monke.utils.logging import get_logger
 
+# Mapping of Airweave source short names to Composio toolkit slugs
+# This should match the SLUG_NAME_MAPPING in platform/auth_providers/composio.py
+SLUG_MAPPING = {
+    "google_drive": "googledrive",
+    "google_calendar": "googlecalendar",
+    "google_slides": "googleslides",
+    "google_sheets": "googlesheets",
+    "outlook_mail": "outlook",
+    "outlook_calendar": "outlook",
+    "onedrive": "one_drive",
+    "sharepoint": "one_drive",  # this is not a bug, we are using the one drive token for sharepoint given overlapping scopes
+    "teams": "microsoft_teams",
+    "onenote": "one_drive",  # OneNote uses OneDrive integration (same Graph API)
+}
+
 
 class BaseAuthBroker(ABC):
     """Abstract interface for resolving credentials for a connector.
@@ -105,20 +120,6 @@ class ComposioBroker(BaseAuthBroker):
     async def get_credentials(
         self, source_short_name: str, required_fields: Optional[List[str]] = None
     ) -> Dict[str, Any]:
-        # Mapping of Airweave source short names to Composio toolkit slugs
-        # This should match the SLUG_NAME_MAPPING in platform/auth_providers/composio.py
-        SLUG_MAPPING = {
-            "google_drive": "googledrive",
-            "google_calendar": "googlecalendar",
-            "google_slides": "googleslides",
-            "outlook_mail": "outlook",
-            "outlook_calendar": "outlook",
-            "onedrive": "one_drive",
-            "sharepoint": "one_drive",  # this is not a bug, we are using the one drive token for sharepoint given overlapping scopes
-            "teams": "microsoft_teams",
-            "onenote": "one_drive",  # OneNote uses OneDrive integration (same Graph API)
-        }
-
         # Check if we have an explicit mapping
         if source_short_name in SLUG_MAPPING:
             slug = SLUG_MAPPING[source_short_name]
