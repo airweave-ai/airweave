@@ -43,8 +43,9 @@ FIELD_NAME_MAPPING = {"api_key": "generic_api_key", "personal_access_token": "ac
 
 # Map Airweave source names to provider source names (only needed when names differ)
 SLUG_NAME_MAPPING = {
-    "google_drive": "googledrive", 
+    "google_drive": "googledrive",
     "google_slides": "googleslides",
+    "google_sheets": "googlesheets",
     "outlook_mail": "outlook"
 }
 ```
