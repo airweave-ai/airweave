@@ -42,7 +42,7 @@ Map between Airweave and external service naming:
 FIELD_NAME_MAPPING = {"api_key": "generic_api_key", "personal_access_token": "access_token"}
 
 # Map Airweave source names to provider source names (only needed when names differ)
-SLUG_NAME_MAPPING = {"google_drive": "googledrive", "outlook_mail": "outlook"}
+SLUG_NAME_MAPPING = {"google_drive": "googledrive", "google_docs": "googledocs", "outlook_mail": "outlook"}
 ```
 
 

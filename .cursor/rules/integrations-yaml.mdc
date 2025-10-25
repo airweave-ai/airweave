@@ -108,6 +108,30 @@ teams:
   scope: "offline_access User.Read Team.ReadBasic.All Channel.ReadBasic.All ChannelMessage.Read.All Chat.Read ChatMessage.Read Files.Read.All"
 ```
 
+**Google Docs (Google Drive API):**
+```yaml
+google_docs:
+  oauth_type: "with_refresh"
+  url: "https://accounts.google.com/o/oauth2/auth"
+  backend_url: "https://oauth2.googleapis.com/token"
+  grant_type: "authorization_code"
+  client_id: "your-client-id"
+  client_secret: "your-client-secret"
+  content_type: "application/x-www-form-urlencoded"
+  client_credential_location: "body"
+  scope: "https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/documents.readonly"
+  additional_frontend_params:
+    access_type: "offline"
+    prompt: "consent"
+```
+
+**Key Requirements:**
+- Uses Google Drive API to access Google Docs documents
+- Requires `drive.readonly` permission to list and access documents
+- Requires `documents.readonly` permission to read document content
+- Documents are exported as DOCX format for processing
+- Entity hierarchy: `GoogleDocsDocumentEntity` (FileEntity-based)
+
 ## Folder Structure
 The files appear to be part of a structured monorepo with:
 

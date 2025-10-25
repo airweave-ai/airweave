@@ -218,7 +218,7 @@ class GoogleDocsBongo(BaseBongo):
 
     async def delete_entities(self) -> List[str]:
         """Delete all test documents."""
-        return await self.delete_specific_entities(self._test_docs)
+        return await self.delete_specific_entities(self._test_docs[:])
 
     async def delete_specific_entities(
         self, entities: List[Dict[str, Any]]
