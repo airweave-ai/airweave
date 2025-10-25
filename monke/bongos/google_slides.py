@@ -105,8 +105,10 @@ class GoogleSlidesBongo(BaseBongo):
 
                 # Parse content into slides (split by "---" separator)
                 slide_contents = pres_data.content.split("---")
-                slide_contents = [content.strip() for content in slide_contents if content.strip()]
-                
+                slide_contents = [
+                    content.strip() for content in slide_contents if content.strip()
+                ]
+
                 # If no separators found, treat as single slide
                 if len(slide_contents) == 1:
                     slide_contents = [pres_data.content]
@@ -115,55 +117,59 @@ class GoogleSlidesBongo(BaseBongo):
                 requests_payload = []
                 current_slide_id = slides[0]["objectId"]
                 slide_ids = [current_slide_id]  # Start with existing first slide
-                
+
                 # Add slides for additional content (if more than 1 slide worth of content)
                 for i in range(1, len(slide_contents)):
                     slide_id = f"slide_{i}_{uuid.uuid4().hex[:8]}"
                     slide_ids.append(slide_id)  # Store the slide ID for later use
-                    requests_payload.append({
-                        "createSlide": {
-                            "objectId": slide_id,
-                            "insertionIndex": i,
-                            "slideLayoutReference": {
-                                "predefinedLayout": "BLANK"
+                    requests_payload.append(
+                        {
+                            "createSlide": {
+                                "objectId": slide_id,
+                                "insertionIndex": i,
+                                "slideLayoutReference": {"predefinedLayout": "BLANK"},
                             }
                         }
-                    })
+                    )
 
                 # Add content to each slide
                 for i, slide_content in enumerate(slide_contents):
                     slide_id = slide_ids[i]  # Use the stored slide ID
                     textbox_id = f"textbox_{i}_{uuid.uuid4().hex[:8]}"
-                    
+
                     # Create text box for this slide
-                    requests_payload.append({
-                        "createShape": {
-                            "objectId": textbox_id,
-                            "shapeType": "TEXT_BOX",
-                            "elementProperties": {
-                                "pageObjectId": slide_id,
-                                "size": {
-                                    "height": {"magnitude": 300, "unit": "PT"},
-                                    "width": {"magnitude": 600, "unit": "PT"},
+                    requests_payload.append(
+                        {
+                            "createShape": {
+                                "objectId": textbox_id,
+                                "shapeType": "TEXT_BOX",
+                                "elementProperties": {
+                                    "pageObjectId": slide_id,
+                                    "size": {
+                                        "height": {"magnitude": 300, "unit": "PT"},
+                                        "width": {"magnitude": 600, "unit": "PT"},
+                                    },
+                                    "transform": {
+                                        "scaleX": 1.0,
+                                        "scaleY": 1.0,
+                                        "translateX": 50.0,
+                                        "translateY": 50.0,
+                                        "unit": "PT",
+                                    },
                                 },
-                                "transform": {
-                                    "scaleX": 1.0,
-                                    "scaleY": 1.0,
-                                    "translateX": 50.0,
-                                    "translateY": 50.0,
-                                    "unit": "PT",
-                                },
-                            },
+                            }
                         }
-                    })
-                    
+                    )
+
                     # Insert text into this slide's text box
-                    requests_payload.append({
-                        "insertText": {
-                            "objectId": textbox_id,
-                            "text": slide_content,
+                    requests_payload.append(
+                        {
+                            "insertText": {
+                                "objectId": textbox_id,
+                                "text": slide_content,
+                            }
                         }
-                    })
+                    )
 
                 content_response = await client.post(
                     f"{SLIDES_API}/presentations/{pres_id}:batchUpdate",
