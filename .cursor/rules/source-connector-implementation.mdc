@@ -1088,9 +1088,10 @@ async def _generate_projects(self, client, workspace):
 
 ---
 
-## Complete Example
+## Complete Examples
 
-See the Asana connector for a complete, production-ready example:
+### Asana Connector (Hierarchical Data)
+See the Asana connector for a complete, production-ready example of hierarchical data:
 - Source: `backend/airweave/platform/sources/asana.py`
 - Entities: `backend/airweave/platform/entities/asana.py`
 - OAuth: `backend/airweave/platform/auth/yaml/dev.integrations.yaml` (asana section)
@@ -1104,6 +1105,21 @@ The Asana connector demonstrates:
 - ✅ Breadcrumb tracking
 - ✅ Rate limiting
 - ✅ Error handling
+
+### Google Docs Connector (File-Based Data)
+See the Google Docs connector for a complete, production-ready example of file-based data:
+- Source: `backend/airweave/platform/sources/google_docs.py`
+- Entities: `backend/airweave/platform/entities/google_docs.py`
+- OAuth: `backend/airweave/platform/auth/yaml/dev.integrations.yaml` (google_docs section)
+
+The Google Docs connector demonstrates:
+- ✅ FileEntity-based entities for document processing
+- ✅ Google Drive API integration with proper scopes
+- ✅ DOCX export and file processing pipeline
+- ✅ Document metadata extraction (owners, permissions, timestamps)
+- ✅ Proper MIME type handling for file processing
+- ✅ Token refresh handling for Google APIs
+- ✅ Error handling for document access permissions
 
 ---
 

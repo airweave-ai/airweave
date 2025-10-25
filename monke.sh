@@ -146,7 +146,7 @@ get_core_connectors() {
         "github"      # Most popular, good API coverage
         "asana"       # Task management, different data patterns
         "linear"      # Modern API, good for testing
-        "onenote"     # Microsoft OneNote, comprehensive Microsoft Graph API testing
+        "google_docs"
     )
 
     # Filter to only include connectors that have configs
@@ -227,7 +227,7 @@ detect_changed_connectors() {
 # Get hybrid connector list: core + changed
 get_hybrid_connectors() {
     # Core connectors that always run
-    local core_connectors=("github" "asana" "linear" "onenote")
+    local core_connectors=("github" "asana" "linear" "google_docs")
     local changed_connectors=()
 
     # Try to detect changed connectors
