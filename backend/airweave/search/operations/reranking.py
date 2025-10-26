@@ -184,7 +184,11 @@ class Reranking(SearchOperation):
         return documents, top_n
 
     def _prepare_documents(self, results: List[dict]) -> List[str]:
-        """Create provider document strings from result payloads."""
+        """Extract textual_representation from result payloads.
+
+        textual_representation already contains formatted content from entity_pipeline.py,
+        so we use it directly without building document strings.
+        """
         documents: List[str] = []
         for i, result in enumerate(results):
             if not isinstance(result, dict):
@@ -193,28 +197,13 @@ class Reranking(SearchOperation):
             if not isinstance(payload, dict):
                 payload = {}
 
-            source = payload.get("source_name") or payload.get("source") or ""
-            title = payload.get("md_title") or payload.get("title") or payload.get("name") or ""
-            content = (
-                payload.get("embeddable_text")
-                or payload.get("md_content")
-                or payload.get("content")
-                or payload.get("text")
-                or ""
-            )
-
-            # Compose a single string; providers may add additional formatting
-            parts = []
-            if source:
-                parts.append(f"Source: {source}")
-            if title:
-                parts.append(f"Title: {title}")
-            if content:
-                parts.append(f"Content: {content}")
-            doc = "\n".join(parts) if parts else ""
+            # textual_representation is always present after entity_pipeline.py
+            doc = payload.get("textual_representation", "")
             if not doc:
-                # Keep empty string to preserve index alignment; provider will handle/raise
-                doc = ""
+                raise ValueError(
+                    f"Result at index {i} missing textual_representation. "
+                    "All entities should have this field after entity_pipeline.py processing."
+                )
             documents.append(doc)
 
         return documents

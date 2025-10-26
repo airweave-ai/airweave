@@ -451,15 +451,15 @@ class FederatedSearch(SearchOperation):
         """Convert entity to result dictionary matching vector DB format.
 
         Args:
-            entity: ChunkEntity from federated source
+            entity: BaseEntity from federated source
             source_name: Name of the source
             rank: Position of this result in the source's result list (for RRF)
 
         Returns:
             Dictionary with result data in vector DB format
         """
-        # Convert entity to storage dict (similar to what goes in vector DB)
-        payload = entity.to_storage_dict()
+        # Convert entity to dict (UUIDs->strings, datetimes->ISO, same as vector DB)
+        payload = entity.model_dump(mode="json", exclude_none=True)
 
         # Extract score if available (from entity metadata or system metadata)
         score = 0.0

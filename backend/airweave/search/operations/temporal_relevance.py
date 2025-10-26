@@ -38,7 +38,7 @@ class DecayConfig(BaseModel):
 class TemporalRelevance(SearchOperation):
     """Compute dynamic temporal decay configuration for recency-aware search."""
 
-    DATETIME_FIELD = "airweave_system_metadata.airweave_updated_at"
+    DATETIME_FIELD = "updated_at"  # Primary timestamp field (fallback to created_at in extraction)
     DECAY_TYPE = "linear"
     MIDPOINT = 0.5
 
@@ -236,16 +236,13 @@ class TemporalRelevance(SearchOperation):
         if not point or not hasattr(point, "payload"):
             return None
 
-        # Navigate nested path: airweave_system_metadata.airweave_updated_at
+        # Get timestamp directly from payload (entity-level field)
         payload = point.payload
-        parts = self.DATETIME_FIELD.split(".")
 
-        value = payload
-        for part in parts:
-            if isinstance(value, dict):
-                value = value.get(part)
-            else:
-                return None
+        # Try updated_at first, fallback to created_at
+        value = payload.get(self.DATETIME_FIELD)
+        if value is None:
+            value = payload.get("created_at")
 
         # Parse datetime and ensure timezone-aware
         if isinstance(value, str):

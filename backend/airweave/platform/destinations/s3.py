@@ -22,8 +22,7 @@ from airweave.core.logging import logger as default_logger
 from airweave.platform.configs.auth import S3AuthConfig
 from airweave.platform.decorators import destination
 from airweave.platform.destinations._base import BaseDestination
-from airweave.platform.entities._base import ChunkEntity
-from airweave.platform.file_handling.file_manager import file_manager
+from airweave.platform.storage import storage_manager
 
 
 @destination("S3", "s3", auth_config_class=S3AuthConfig, supports_vector=False)
@@ -62,7 +61,7 @@ class S3Destination(BaseDestination):
         self.collection_id: UUID | None = None
         self.organization_id: UUID | None = None
         self.collection_readable_id: str | None = None  # For human-readable S3 paths
-        self.sync_id: UUID | None = None  # For file_manager lookups
+        self.sync_id: UUID | None = None  # For file retrieval from storage
         self.bucket_name: str | None = None
         self.bucket_prefix: str = "airweave-outbound/"
         self.session: aioboto3.Session | None = None
@@ -84,7 +83,7 @@ class S3Destination(BaseDestination):
         organization_id: Optional[UUID] = None,
         logger: Optional[ContextualLogger] = None,
         collection_readable_id: Optional[str] = None,
-        sync_id: Optional[UUID] = None,  # For file_manager lookups
+        sync_id: Optional[UUID] = None,  # For file retrieval from storage
     ) -> "S3Destination":
         """Create and configure S3 destination (matches source pattern).
 
@@ -95,7 +94,7 @@ class S3Destination(BaseDestination):
             organization_id: Organization UUID
             logger: Logger instance
             collection_readable_id: Human-readable collection ID for S3 paths
-            sync_id: Sync ID for file_manager lookups
+            sync_id: Sync ID for file retrieval from storage
 
         Returns:
             Configured S3Destination instance
@@ -201,16 +200,16 @@ class S3Destination(BaseDestination):
 
         return ".bin"
 
-    async def insert(self, entity: ChunkEntity) -> None:
+    async def insert(self, entity) -> None:
         """Single entity insert - delegates to bulk_insert."""
         await self.bulk_insert([entity])
 
-    async def bulk_insert(self, entities: list[ChunkEntity]) -> None:
+    async def bulk_insert(self, entities: list) -> None:
         """Write entities as individual JSON files to S3.
 
         Handles two types:
-        1. Regular entities (ChunkEntity): JSON metadata only
-        2. File entities (FileEntity/ParentEntity): JSON metadata + actual blob file
+        1. Regular entities: JSON metadata only
+        2. File entities: JSON metadata + actual blob file
 
         INSERT and UPDATE both use PUT (overwrite).
         """
@@ -254,11 +253,10 @@ class S3Destination(BaseDestination):
             self.logger.error(f"Failed to write entities to S3: {e}", exc_info=True)
             raise
 
-    async def _write_regular_entity(
-        self, s3, entity: ChunkEntity, base_path: str, entity_id: str
-    ) -> None:
+    async def _write_regular_entity(self, s3, entity, base_path: str, entity_id: str) -> None:
         """Write regular entity as JSON file."""
-        entity_data = entity.to_storage_dict()
+        # Get entity data as dict (UUIDs->strings, datetimes->ISO)
+        entity_data = entity.model_dump(mode="json", exclude_none=True)
         key = f"{base_path}/entities/{entity_id}.json"
 
         await s3.put_object(
@@ -273,17 +271,14 @@ class S3Destination(BaseDestination):
             },
         )
 
-    async def _write_file_entity(
-        self, s3, entity: ChunkEntity, base_path: str, entity_id: str
-    ) -> None:
+    async def _write_file_entity(self, s3, entity, base_path: str, entity_id: str) -> None:
         """Write file entity: blob + metadata JSON.
 
         Uploads the actual file content to /blobs/ and metadata to /entities/.
         Rewrites download_url to point to the blob in S3.
 
-        Works with runtime unified chunks (e.g., AsanaFileUnifiedChunk) that have:
-        - local_path in airweave_system_metadata
-        - download_url attribute
+        Works with file entities that have:
+        - local_path field
         - mime_type and name attributes
         """
         # Get file metadata
@@ -297,8 +292,8 @@ class S3Destination(BaseDestination):
         blob_key = None
         if self.sync_id and filename:
             try:
-                # Use file_manager to get file content
-                file_content = await file_manager.get_file_content(
+                # Use storage_manager to get file content
+                file_content = await storage_manager.get_file_content(
                     entity_id=entity_id,
                     sync_id=self.sync_id,
                     filename=filename,
@@ -331,7 +326,8 @@ class S3Destination(BaseDestination):
                 blob_key = None
 
         # Prepare entity metadata
-        entity_data = entity.to_storage_dict()
+        # Get entity data as dict (UUIDs->strings, datetimes->ISO)
+        entity_data = entity.model_dump(mode="json", exclude_none=True)
 
         # Rewrite download_url to point to blob if we uploaded it
         if blob_key:

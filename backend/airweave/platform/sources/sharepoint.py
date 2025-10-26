@@ -20,7 +20,7 @@ import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import Breadcrumb, ChunkEntity
+from airweave.platform.entities._base import Breadcrumb, BaseEntity
 from airweave.platform.entities.sharepoint import (
     SharePointDriveEntity,
     SharePointDriveItemEntity,
@@ -543,7 +543,7 @@ class SharePointSource(BaseSource):
         site_id: str,
         site_name: str,
         site_breadcrumb: Breadcrumb,
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate SharePointDriveItemEntity objects for files in the drive."""
         self.logger.debug(f"Starting file generation for drive: {drive_name}")
         file_count = 0
@@ -852,7 +852,7 @@ class SharePointSource(BaseSource):
         site_name: str,
         site_breadcrumb: Breadcrumb,
         start_count: int,
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate list entities and their items for a site.
 
         Args:
@@ -891,7 +891,7 @@ class SharePointSource(BaseSource):
         site_name: str,
         site_breadcrumb: Breadcrumb,
         start_count: int,
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate drive entities and their files for a site.
 
         Args:
@@ -927,7 +927,7 @@ class SharePointSource(BaseSource):
                 self.logger.debug(f"Yielding entity #{current_count}: {entity_type} - {file_name}")
                 yield file_entity
 
-    async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
+    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate all SharePoint entities.
 
         Yields entities in the following order:

@@ -6,10 +6,10 @@ from typing import Any, Dict, List, Optional
 from pydantic import Field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import ChunkEntity, FileEntity
+from airweave.platform.entities._base import FileEntity
 
 
-class ZendeskTicketEntity(ChunkEntity):
+class ZendeskTicketEntity(BaseEntity):
     """Schema for Zendesk ticket entities."""
 
     ticket_id: int = Field(..., description="Unique identifier of the ticket")
@@ -63,7 +63,7 @@ class ZendeskTicketEntity(ChunkEntity):
     url: Optional[str] = Field(None, description="URL to view the ticket in Zendesk")
 
 
-class ZendeskCommentEntity(ChunkEntity):
+class ZendeskCommentEntity(BaseEntity):
     """Schema for Zendesk comment entities."""
 
     comment_id: int = Field(..., description="Unique identifier of the comment")
@@ -89,7 +89,7 @@ class ZendeskCommentEntity(ChunkEntity):
     )
 
 
-class ZendeskUserEntity(ChunkEntity):
+class ZendeskUserEntity(BaseEntity):
     """Schema for Zendesk user entities."""
 
     user_id: int = Field(..., description="Unique identifier of the user")
@@ -133,7 +133,7 @@ class ZendeskUserEntity(ChunkEntity):
     )
 
 
-class ZendeskOrganizationEntity(ChunkEntity):
+class ZendeskOrganizationEntity(BaseEntity):
     """Schema for Zendesk organization entities."""
 
     organization_id: int = Field(..., description="Unique identifier of the organization")

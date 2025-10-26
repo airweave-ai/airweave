@@ -23,7 +23,7 @@ import httpx
 
 from airweave.core.logging import logger
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import Breadcrumb, ChunkEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.confluence import (
     ConfluenceBlogPostEntity,
     ConfluenceCommentEntity,
@@ -35,45 +35,6 @@ from airweave.platform.entities.confluence import (
 )
 from airweave.platform.sources._base import BaseSource
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
-
-
-class AsyncIteratorWrapper:
-    """Wrapper to convert a sync iterator to an async one."""
-
-    def __init__(self, sync_iter):
-        """Initialize with a synchronous iterator.
-
-        Args:
-            sync_iter: A synchronous iterator to wrap
-        """
-        self.sync_iter = sync_iter
-        self._consumed = False  # Track if iterator has been consumed
-
-    def __aiter__(self):
-        """Return self as an async iterator.
-
-        Returns:
-            The async iterator instance
-        """
-        return self
-
-    async def __anext__(self):
-        """Get the next item asynchronously.
-
-        Returns:
-            The next item from the iterator
-
-        Raises:
-            StopAsyncIteration: When the iterator is exhausted
-        """
-        if self._consumed:
-            raise StopAsyncIteration
-
-        try:
-            return next(self.sync_iter)
-        except StopIteration as err:
-            self._consumed = True
-            raise StopAsyncIteration from err
 
 
 @source(
@@ -252,16 +213,18 @@ class ConfluenceSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for space in data.get("results", []):
                 yield ConfluenceSpaceEntity(
+                    # Base fields
                     entity_id=space["id"],
-                    breadcrumbs=[],  # top-level object
-                    space_key=space["key"],
+                    breadcrumbs=[],
                     name=space.get("name"),
+                    created_at=space.get("createdAt"),
+                    updated_at=space.get("updatedAt"),
+                    # API fields
+                    space_key=space["key"],
                     space_type=space.get("type"),
                     description=space.get("description"),
                     status=space.get("status"),
                     homepage_id=space.get("homepageId"),
-                    created_at=space.get("createdAt"),
-                    updated_at=space.get("updatedAt"),
                 )
 
             # Cursor-based pagination (check for next link)
@@ -297,20 +260,25 @@ class ConfluenceSource(BaseSource):
                 download_url = f"{self.base_url}/wiki/api/v2/pages/{page_id}"
 
                 file_entity = ConfluencePageEntity(
+                    # Base fields
                     entity_id=page["id"],
                     breadcrumbs=page_breadcrumbs,
+                    name=filename_with_extension,
+                    created_at=page_details.get("createdAt"),
+                    updated_at=page_details.get("updatedAt"),
+                    # File fields
+                    url=download_url,
+                    size=0,  # Content is in local file
+                    file_type="html",
+                    mime_type="text/html",
+                    local_path=None,  # Will be set after saving HTML content
+                    # API fields
                     content_id=page["id"],
                     title=page_details.get("title"),
                     space_id=page_details.get("space", {}).get("id"),
-                    body=body_content,  # Use the detailed body content
+                    body=body_content,
                     version=page_details.get("version", {}).get("number"),
                     status=page_details.get("status"),
-                    created_at=page_details.get("createdAt"),
-                    updated_at=page_details.get("updatedAt"),
-                    file_id=page["id"],
-                    name=filename_with_extension,
-                    mime_type="text/html",
-                    download_url=download_url,
                 )
 
                 # Create HTML file content with full body
@@ -327,19 +295,25 @@ class ConfluenceSource(BaseSource):
                 </html>
                 """
 
-                # Use a memory stream instead of directly downloading
-                file_stream = AsyncIteratorWrapper(iter([html_content.encode("utf-8")]))
+                # Save HTML content to file using file downloader
+                try:
+                    await self.file_downloader.save_bytes(
+                        entity=file_entity,
+                        content=html_content.encode("utf-8"),
+                        logger=self.logger,
+                    )
 
-                # Process the entity with the custom stream
-                processed_entity = await self.process_file_entity_with_content(
-                    file_entity=file_entity,
-                    content_stream=file_stream,
-                    metadata={"source": "confluence", "page_id": page["id"]},
-                )
+                    # Verify save succeeded
+                    if not file_entity.local_path:
+                        raise ValueError(f"Save failed - no local path set for {file_entity.name}")
 
-                # Only yield if processing was successful
-                if processed_entity:
-                    yield processed_entity
+                    self.logger.debug(f"Successfully saved page HTML: {file_entity.name}")
+                    yield file_entity
+
+                except Exception as e:
+                    self.logger.warning(f"Failed to save page {page_title}: {e}")
+                    # Skip this page on save failure
+                    continue
 
             # Handle pagination
             next_link = data.get("_links", {}).get("next")
@@ -347,7 +321,7 @@ class ConfluenceSource(BaseSource):
 
     async def _generate_blog_post_entities(
         self, client: httpx.AsyncClient, space_id: str, space_breadcrumb: Breadcrumb
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate ConfluenceBlogPostEntity objects."""
         limit = 50
         url = f"{self.base_url}/wiki/api/v2/spaces/{space_id}/blogposts?limit={limit}"
@@ -355,16 +329,19 @@ class ConfluenceSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for blog in data.get("results", []):
                 yield ConfluenceBlogPostEntity(
+                    # Base fields
                     entity_id=blog["id"],
                     breadcrumbs=[space_breadcrumb],
+                    name=blog.get("title", "Untitled Blog Post"),
+                    created_at=blog.get("createdAt"),
+                    updated_at=blog.get("updatedAt"),
+                    # API fields
                     content_id=blog["id"],
                     title=blog.get("title"),
                     space_id=blog.get("spaceId"),
                     body=(blog.get("body", {}).get("storage", {}).get("value")),
                     version=blog.get("version", {}).get("number"),
                     status=blog.get("status"),
-                    created_at=blog.get("createdAt"),
-                    updated_at=blog.get("updatedAt"),
                 )
 
             next_link = data.get("_links", {}).get("next")
@@ -372,7 +349,7 @@ class ConfluenceSource(BaseSource):
 
     async def _generate_comment_entities(
         self, client: httpx.AsyncClient, page_id: str, parent_breadcrumbs: List[Breadcrumb]
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate ConfluenceCommentEntity objects for a given content (page, blog, etc.).
 
         For example:
@@ -387,15 +364,27 @@ class ConfluenceSource(BaseSource):
         while url:
             data = await self._get_with_auth(client, url)
             for comment in data.get("results", []):
+                # Extract comment text and create name
+                comment_text = comment.get("body", {}).get("storage", {}).get("value", "")
+                # Strip HTML for preview
+                import re
+
+                text_preview = re.sub(r"<[^>]+>", "", comment_text)[:50]
+                comment_name = text_preview + "..." if len(text_preview) == 50 else text_preview
+                if not comment_name:
+                    comment_name = f"Comment {comment['id']}"
+
                 yield ConfluenceCommentEntity(
+                    # Base fields
                     entity_id=comment["id"],
                     breadcrumbs=parent_breadcrumbs,
-                    page_id=comment["id"],
-                    parent_content_id=comment.get("container", {}).get("id"),
-                    text=(comment.get("body", {}).get("storage", {}).get("value")),
-                    created_by=comment.get("createdBy"),
+                    name=comment_name,
                     created_at=comment.get("createdAt"),
                     updated_at=comment.get("updatedAt"),
+                    # API fields
+                    parent_content_id=comment.get("container", {}).get("id"),
+                    text=comment_text,
+                    created_by=comment.get("createdBy"),
                     status=comment.get("status"),
                 )
             next_link = data.get("_links", {}).get("next")
@@ -405,7 +394,7 @@ class ConfluenceSource(BaseSource):
     # For example:
     async def _generate_label_entities(
         self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate ConfluenceLabelEntity objects."""
         # The Confluence v2 REST API for labels is still evolving; example endpoint:
         url = "https://your-domain.atlassian.net/wiki/api/v2/labels?limit=50"
@@ -413,9 +402,13 @@ class ConfluenceSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for label_obj in data.get("results", []):
                 yield ConfluenceLabelEntity(
+                    # Base fields
                     entity_id=label_obj["id"],
                     breadcrumbs=[],
                     name=label_obj.get("name", ""),
+                    created_at=None,  # Labels don't have creation timestamp
+                    updated_at=None,  # Labels don't have update timestamp
+                    # API fields
                     label_type=label_obj.get("type"),
                     owner_id=label_obj.get("ownerId"),
                 )
@@ -427,21 +420,24 @@ class ConfluenceSource(BaseSource):
 
     async def _generate_database_entities(
         self, client: httpx.AsyncClient, space_key: str, space_breadcrumb: Breadcrumb
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate ConfluenceDatabaseEntity objects for a given space."""
         url = f"https://your-domain.atlassian.net/wiki/api/v2/spaces/{space_key}/databases?limit=50"
         while url:
             data = await self._get_with_auth(client, url)
             for database in data.get("results", []):
                 yield ConfluenceDatabaseEntity(
+                    # Base fields
                     entity_id=database["id"],
                     breadcrumbs=[space_breadcrumb],
+                    name=database.get("title", "Untitled Database"),
+                    created_at=database.get("createdAt"),
+                    updated_at=database.get("updatedAt"),
+                    # API fields
                     content_id=database["id"],
                     title=database.get("title"),
                     space_key=space_key,
                     description=database.get("description"),
-                    created_at=database.get("createdAt"),
-                    updated_at=database.get("updatedAt"),
                     status=database.get("status"),
                 )
             next_link = data.get("_links", {}).get("next")
@@ -449,20 +445,23 @@ class ConfluenceSource(BaseSource):
 
     async def _generate_folder_entities(
         self, client: httpx.AsyncClient, space_id: str, space_breadcrumb: Breadcrumb
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate ConfluenceFolderEntity objects for a given space."""
         url = f"{self.base_url}/wiki/api/v2/spaces/{space_id}/content/folder?limit=50"
         while url:
             data = await self._get_with_auth(client, url)
             for folder in data.get("results", []):
                 yield ConfluenceFolderEntity(
+                    # Base fields
                     entity_id=folder["id"],
                     breadcrumbs=[space_breadcrumb],
+                    name=folder.get("title", "Untitled Folder"),
+                    created_at=folder.get("createdAt"),
+                    updated_at=folder.get("updatedAt"),
+                    # API fields
                     content_id=folder["id"],
                     title=folder.get("title"),
                     space_key=space_id,
-                    created_at=folder.get("createdAt"),
-                    updated_at=folder.get("updatedAt"),
                     status=folder.get("status"),
                 )
             next_link = data.get("_links", {}).get("next")
@@ -496,18 +495,14 @@ class ConfluenceSource(BaseSource):
             timeout=10.0,
         )
 
-    async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:  # noqa: C901
+    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:  # noqa: C901
         """Generate all Confluence content."""
         async with httpx.AsyncClient() as client:
             # 1) Yield all spaces (top-level)
             async for space_entity in self._generate_space_entities(client):
                 yield space_entity
 
-                space_breadcrumb = Breadcrumb(
-                    entity_id=space_entity.entity_id,
-                    name=space_entity.name or "",
-                    type="space",
-                )
+                space_breadcrumb = Breadcrumb(entity_id=space_entity.entity_id)
 
                 # 2) For each space, yield pages and their children
                 async for page_entity in self._generate_page_entities(
@@ -523,11 +518,7 @@ class ConfluenceSource(BaseSource):
 
                     page_breadcrumbs = [
                         space_breadcrumb,
-                        Breadcrumb(
-                            entity_id=page_entity.entity_id,
-                            name=page_entity.title or "",
-                            type="page",
-                        ),
+                        Breadcrumb(entity_id=page_entity.entity_id),
                     ]
                     # 3) For each page, yield comments
                     async for comment_entity in self._generate_comment_entities(

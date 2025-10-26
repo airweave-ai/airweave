@@ -137,9 +137,8 @@ async def create_sync(
 
     # If job was created and should run immediately, start it in background
     if sync_job and sync_in.run_immediately:
-        sync_dag = await sync_service.get_sync_dag(db=db, sync_id=sync.id, ctx=ctx)
         background_tasks.add_task(
-            sync_service.run, sync, sync_job, sync_dag, collection, source_connection, ctx
+            sync_service.run, sync, sync_job, collection, source_connection, ctx
         )
 
     return sync
@@ -191,10 +190,23 @@ async def run_sync(
         sync_job (schemas.SyncJob): The sync job
     """
     # Trigger the sync run - kinda, not really, we'll do that in the background
-    sync, sync_job, sync_dag = await sync_service.trigger_sync_run(db=db, sync_id=sync_id, ctx=ctx)
+    sync, sync_job = await sync_service.trigger_sync_run(db=db, sync_id=sync_id, ctx=ctx)
+
+    # Get collection and source connection for sync.run
+    source_conn = await crud.source_connection.get_by_sync_id(db=db, sync_id=sync.id, ctx=ctx)
+    collection = await crud.collection.get_by_readable_id(
+        db=db, readable_id=source_conn.readable_collection_id, ctx=ctx
+    )
+    collection_schema = schemas.Collection.model_validate(collection, from_attributes=True)
+    source_conn_connection = await crud.connection.get(db=db, id=source_conn.connection_id, ctx=ctx)
+    connection_schema = schemas.Connection.model_validate(
+        source_conn_connection, from_attributes=True
+    )
 
     # Start the sync job in the background - this is where the sync actually runs
-    background_tasks.add_task(sync_service.run, sync, sync_job, sync_dag, ctx)
+    background_tasks.add_task(
+        sync_service.run, sync, sync_job, collection_schema, connection_schema, ctx
+    )
 
     return sync_job
 
@@ -397,16 +409,6 @@ async def subscribe_entity_state(
             "Access-Control-Allow-Origin": "*",
         },
     )
-
-
-@router.get("/{sync_id}/dag", response_model=schemas.SyncDag)
-async def get_sync_dag(
-    sync_id: UUID,
-    db: AsyncSession = Depends(deps.get_db),
-    ctx: ApiContext = Depends(deps.get_context),
-) -> schemas.SyncDag:
-    """Get the DAG for a specific sync."""
-    return await sync_service.get_sync_dag(db=db, sync_id=sync_id, ctx=ctx)
 
 
 @router.patch("/{sync_id}", response_model=schemas.Sync)

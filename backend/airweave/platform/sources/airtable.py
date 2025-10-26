@@ -7,7 +7,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from airweave.core.exceptions import TokenRefreshError
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import Breadcrumb, ChunkEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.airtable import (
     AirtableAttachmentEntity,
     AirtableBaseEntity,
@@ -263,7 +263,7 @@ class AirtableSource(BaseSource):
 
     async def _generate_base_entities(
         self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate base entities.
 
         Note: Bases must already exist in Airtable. The API does not provide
@@ -281,10 +281,13 @@ class AirtableSource(BaseSource):
                     continue
 
                 yield AirtableBaseEntity(
+                    # Base fields
                     entity_id=base_id,
                     breadcrumbs=[],
-                    base_id=base_id,
                     name=base.get("name", base_id),
+                    created_at=None,  # Bases don't have creation timestamp in API
+                    updated_at=None,  # Bases don't have update timestamp in API
+                    # API fields
                     permission_level=base.get("permissionLevel"),
                     url=f"https://airtable.com/{base_id}",
                 )
@@ -293,7 +296,7 @@ class AirtableSource(BaseSource):
 
     async def _generate_table_entities(
         self, client: httpx.AsyncClient, base_id: str, base_name: str, base_breadcrumb: Breadcrumb
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate table entities for a base."""
         try:
             schema = await self._get_base_schema(client, base_id)
@@ -318,11 +321,14 @@ class AirtableSource(BaseSource):
                     primary_field_name = fields[0].get("name")
 
                 yield AirtableTableEntity(
+                    # Base fields
                     entity_id=table_id,
                     breadcrumbs=[base_breadcrumb],
-                    table_id=table_id,
-                    base_id=base_id,
                     name=table_name or table_id,
+                    created_at=None,  # Tables don't have creation timestamp in API
+                    updated_at=None,  # Tables don't have update timestamp in API
+                    # API fields
+                    base_id=base_id,
                     description=table.get("description"),
                     fields_schema=fields,
                     primary_field_name=primary_field_name,
@@ -332,35 +338,6 @@ class AirtableSource(BaseSource):
         except Exception as e:
             self.logger.error(f"Error generating table entities for base {base_id}: {e}")
 
-    async def _generate_record_entities(
-        self,
-        client: httpx.AsyncClient,
-        base_id: str,
-        table_id: str,
-        table_name: str,
-        table_breadcrumbs: List[Breadcrumb],
-    ) -> AsyncGenerator[ChunkEntity, None]:
-        """Generate record entities for a table."""
-        try:
-            async for record in self._list_records(client, base_id, table_id):
-                record_id = record.get("id")
-                if not record_id:
-                    continue
-
-                yield AirtableRecordEntity(
-                    entity_id=record_id,
-                    breadcrumbs=table_breadcrumbs,
-                    record_id=record_id,
-                    base_id=base_id,
-                    table_id=table_id,
-                    table_name=table_name,
-                    fields=record.get("fields", {}),
-                    created_time=record.get("createdTime"),
-                )
-
-        except Exception as e:
-            self.logger.error(f"Error generating record entities for {base_id}/{table_id}: {e}")
-
     async def _generate_comment_entities(
         self,
         client: httpx.AsyncClient,
@@ -368,7 +345,7 @@ class AirtableSource(BaseSource):
         table_id: str,
         record: Dict[str, Any],
         record_breadcrumbs: List[Breadcrumb],
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate comment entities for a record."""
         record_id = record.get("id")
         if not record_id:
@@ -381,20 +358,28 @@ class AirtableSource(BaseSource):
                     continue
 
                 author = comment.get("author", {})
+                comment_text = comment.get("text", "")
+
+                # Create comment name from text preview
+                comment_name = comment_text[:50] + "..." if len(comment_text) > 50 else comment_text
+                if not comment_name:
+                    comment_name = f"Comment {comment_id}"
 
                 yield AirtableCommentEntity(
+                    # Base fields
                     entity_id=comment_id,
                     breadcrumbs=record_breadcrumbs,
-                    comment_id=comment_id,
+                    name=comment_name,
+                    created_at=comment.get("createdTime"),
+                    updated_at=comment.get("lastUpdatedTime"),
+                    # API fields
                     record_id=record_id,
                     base_id=base_id,
                     table_id=table_id,
-                    text=comment.get("text", ""),
+                    text=comment_text,
                     author_id=author.get("id"),
                     author_email=author.get("email"),
                     author_name=author.get("name"),
-                    created_time=comment.get("createdTime"),
-                    last_updated_time=comment.get("lastUpdatedTime"),
                 )
 
         except Exception as e:
@@ -417,18 +402,26 @@ class AirtableSource(BaseSource):
 
         att_id = attachment.get("id", f"{record_id}:{field_name}")
         filename = attachment.get("filename") or attachment.get("name") or "attachment"
-        mime_type = attachment.get("type")
-        size = attachment.get("size")
+        mime_type = attachment.get("type") or "application/octet-stream"
+        size = attachment.get("size", 0)
+
+        # Determine file type from mime_type
+        file_type = mime_type.split("/")[0] if "/" in mime_type else "file"
 
         return AirtableAttachmentEntity(
+            # Base fields
             entity_id=att_id,
             breadcrumbs=record_breadcrumbs,
-            file_id=att_id,
             name=filename,
-            mime_type=mime_type,
+            created_at=None,  # Attachments don't have timestamps in API
+            updated_at=None,  # Attachments don't have timestamps in API
+            # File fields
+            url=url,
             size=size,
-            total_size=size,
-            download_url=url,
+            file_type=file_type,
+            mime_type=mime_type,
+            local_path=None,  # Will be set after download
+            # API fields
             base_id=base_id,
             table_id=table_id,
             table_name=table_name,
@@ -444,7 +437,7 @@ class AirtableSource(BaseSource):
         table_name: str,
         record: Dict[str, Any],
         record_breadcrumbs: List[Breadcrumb],
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate attachment entities for a record."""
         record_id = record.get("id")
         if not record_id:
@@ -474,31 +467,49 @@ class AirtableSource(BaseSource):
                 if not file_entity:
                     continue
 
-                # Process the file entity (download and extract content)
+                # Download the file using file downloader
                 try:
                     # Airtable URLs expire after 2 hours, so download immediately
-                    processed_entity = await self.process_file_entity(
-                        file_entity=file_entity,
-                        headers=None,  # Airtable attachment URLs are pre-signed
+                    # Airtable attachment URLs are pre-signed, no auth token needed
+                    await self.file_downloader.download_from_url(
+                        entity=file_entity,
+                        http_client_factory=self.http_client,
+                        access_token_provider=lambda: None,  # No auth for pre-signed URLs
+                        logger=self.logger,
                     )
 
-                    if processed_entity:
-                        yield processed_entity
-                except Exception as e:
-                    self.logger.error(f"Error processing attachment {file_entity.file_id}: {e}")
+                    # Verify download succeeded
+                    if not file_entity.local_path:
+                        raise ValueError(
+                            f"Download failed - no local path set for {file_entity.name}"
+                        )
 
-    async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
+                    self.logger.debug(f"Successfully downloaded attachment: {file_entity.name}")
+                    yield file_entity
+
+                except Exception as e:
+                    self.logger.error(f"Error downloading attachment {file_entity.name}: {e}")
+
+    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate all entities from Airtable."""
         async with self.http_client() as client:
             # First, yield the user entity
             user_info = await self._get_user_info(client)
             if user_info:
                 try:
+                    user_id = user_info.get("id", "unknown")
+                    email = user_info.get("email")
+                    user_name = email or user_id
+
                     yield AirtableUserEntity(
-                        entity_id=user_info.get("id", "unknown"),
+                        # Base fields
+                        entity_id=user_id,
                         breadcrumbs=[],
-                        user_id=user_info.get("id", "unknown"),
-                        email=user_info.get("email"),
+                        name=user_name,
+                        created_at=None,  # User doesn't have creation timestamp
+                        updated_at=None,  # User doesn't have update timestamp
+                        # API fields
+                        email=email,
                         scopes=user_info.get("scopes"),
                     )
                 except Exception as e:
@@ -508,14 +519,10 @@ class AirtableSource(BaseSource):
             async for base_entity in self._generate_base_entities(client):
                 yield base_entity
 
-                base_id = base_entity.base_id
+                base_id = base_entity.entity_id
                 base_name = base_entity.name
 
-                base_breadcrumb = Breadcrumb(
-                    entity_id=base_id,
-                    name=base_name,
-                    type="base",
-                )
+                base_breadcrumb = Breadcrumb(entity_id=base_id)
 
                 # Generate table entities for this base
                 async for table_entity in self._generate_table_entities(
@@ -523,14 +530,10 @@ class AirtableSource(BaseSource):
                 ):
                     yield table_entity
 
-                    table_id = table_entity.table_id
+                    table_id = table_entity.entity_id
                     table_name = table_entity.name
 
-                    table_breadcrumb = Breadcrumb(
-                        entity_id=table_id,
-                        name=table_name,
-                        type="table",
-                    )
+                    table_breadcrumb = Breadcrumb(entity_id=table_id)
                     table_breadcrumbs = [base_breadcrumb, table_breadcrumb]
 
                     # Generate record entities for this table
@@ -539,24 +542,36 @@ class AirtableSource(BaseSource):
                         if not record_id:
                             continue
 
+                        # Get record name from first non-empty field value or record ID
+                        fields = record.get("fields", {})
+                        record_name = record_id
+                        if fields:
+                            # Try to get first field value as name
+                            for value in fields.values():
+                                if isinstance(value, str) and value.strip():
+                                    record_name = value.strip()[:100]  # Truncate to 100 chars
+                                    break
+                                elif value and not isinstance(value, (dict, list)):
+                                    record_name = str(value)[:100]
+                                    break
+
                         # Yield the record entity
                         record_entity = AirtableRecordEntity(
+                            # Base fields
                             entity_id=record_id,
                             breadcrumbs=table_breadcrumbs,
-                            record_id=record_id,
+                            name=record_name,
+                            created_at=record.get("createdTime"),
+                            updated_at=None,  # Records don't have update timestamp in API
+                            # API fields
                             base_id=base_id,
                             table_id=table_id,
                             table_name=table_name,
-                            fields=record.get("fields", {}),
-                            created_time=record.get("createdTime"),
+                            fields=fields,
                         )
                         yield record_entity
 
-                        record_breadcrumb = Breadcrumb(
-                            entity_id=record_id,
-                            name=record_id,
-                            type="record",
-                        )
+                        record_breadcrumb = Breadcrumb(entity_id=record_id)
                         record_breadcrumbs = [*table_breadcrumbs, record_breadcrumb]
 
                         # Generate comment entities for this record

@@ -24,9 +24,9 @@ provider_models:
       tokenizer: "cl100k_base"
       context_window: 400000
     embedding:
-      name: "text-embedding-3-small"
+      name: "text-embedding-3-large"
       tokenizer: "cl100k_base"
-      dimensions: 1536
+      dimensions: 3072
       max_tokens: 8191
     rerank:
       name: "gpt-5-nano"

@@ -4,28 +4,50 @@ Simplified entity schemas for Jira Projects and Issues to demonstrate
 Airweave's capabilities with minimal complexity.
 """
 
-from datetime import datetime
 from typing import Optional
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import ChunkEntity
+from airweave.platform.entities._base import BaseEntity
 
 
-class JiraProjectEntity(ChunkEntity):
-    """Schema for a Jira Project."""
+class JiraProjectEntity(BaseEntity):
+    """Schema for a Jira Project.
 
+    Reference:
+        https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-projects/
+    """
+
+    # Base fields are inherited and set during entity creation:
+    # - entity_id (project-{id})
+    # - breadcrumbs (empty - projects are top-level)
+    # - name (from project name)
+    # - created_at (None - projects don't have creation timestamp in API)
+    # - updated_at (None - projects don't have update timestamp in API)
+
+    # API fields
     project_key: str = AirweaveField(
         ..., description="Unique key of the project (e.g., 'PROJ').", embeddable=True
     )
-    name: Optional[str] = AirweaveField(None, description="Name of the project.", embeddable=True)
     description: Optional[str] = AirweaveField(
         None, description="Description of the project.", embeddable=True
     )
 
 
-class JiraIssueEntity(ChunkEntity):
-    """Schema for a Jira Issue."""
+class JiraIssueEntity(BaseEntity):
+    """Schema for a Jira Issue.
 
+    Reference:
+        https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issues/
+    """
+
+    # Base fields are inherited and set during entity creation:
+    # - entity_id (issue-{id})
+    # - breadcrumbs (project breadcrumb)
+    # - name (from summary)
+    # - created_at (from created timestamp)
+    # - updated_at (from updated timestamp)
+
+    # API fields
     issue_key: str = AirweaveField(
         ..., description="Jira key for the issue (e.g. 'PROJ-123').", embeddable=True
     )
@@ -40,10 +62,4 @@ class JiraIssueEntity(ChunkEntity):
     )
     issue_type: Optional[str] = AirweaveField(
         None, description="Type of the issue (bug, task, story, etc.).", embeddable=True
-    )
-    created_at: Optional[datetime] = AirweaveField(
-        None, description="Timestamp when the issue was created.", is_created_at=True
-    )
-    updated_at: Optional[datetime] = AirweaveField(
-        None, description="Timestamp when the issue was last updated.", is_updated_at=True
     )

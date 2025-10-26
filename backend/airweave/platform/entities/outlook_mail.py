@@ -12,10 +12,11 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import ChunkEntity, FileEntity
+from airweave.platform.entities._base import DeletionEntity, EmailEntity, FileEntity
+from airweave.platform.entities._base import 
 
 
-class OutlookMailFolderEntity(ChunkEntity):
+class OutlookMailFolderEntity(BaseEntity):
     """Schema for an Outlook mail folder.
 
     See:
@@ -42,11 +43,28 @@ class OutlookMailFolderEntity(ChunkEntity):
     )
 
 
-class OutlookMessageEntity(ChunkEntity):
+class OutlookMessageEntity(EmailEntity):
     """Schema for Outlook message entities.
 
     Reference: https://learn.microsoft.com/en-us/graph/api/resources/message?view=graph-rest-1.0
     """
+
+    # Base fields are inherited from BaseEntity:
+    # - entity_id (message ID)
+    # - breadcrumbs (folder breadcrumb)
+    # - name (from subject)
+    # - created_at (from sent_date)
+    # - updated_at (from received_date)
+
+    # File fields are inherited from FileEntity (required):
+    # - url (link to message in Outlook)
+    # - size (message size in bytes)
+    # - file_type (set to "html")
+    # - mime_type (set to "text/html")
+    # - local_path (set after downloading HTML body)
+
+    # Email body content is NOT stored in entity fields
+    # It is saved to local_path file for conversion
 
     folder_name: str = AirweaveField(
         ..., description="Name of the folder containing this message", embeddable=True
@@ -64,16 +82,13 @@ class OutlookMessageEntity(ChunkEntity):
         default_factory=list, description="CC recipients", embeddable=True
     )
     sent_date: Optional[datetime] = AirweaveField(
-        None, description="Date the message was sent", is_created_at=True
+        None, description="Date the message was sent", embeddable=True
     )
     received_date: Optional[datetime] = AirweaveField(
-        None, description="Date the message was received", is_updated_at=True
+        None, description="Date the message was received", embeddable=True
     )
     body_preview: Optional[str] = AirweaveField(
         None, description="Brief snippet of the message content", embeddable=True
-    )
-    body_content: Optional[str] = AirweaveField(
-        None, description="Full message body content", embeddable=True
     )
     is_read: bool = AirweaveField(False, description="Whether the message has been read")
     is_draft: bool = AirweaveField(False, description="Whether the message is a draft")
@@ -100,7 +115,7 @@ class OutlookAttachmentEntity(FileEntity):
     )
 
 
-class OutlookMessageDeletionEntity(ChunkEntity):
+class OutlookMessageDeletionEntity(DeletionEntity):
     """Deletion signal for an Outlook message.
 
     Emitted when the Graph delta API reports a message was removed.
@@ -109,12 +124,9 @@ class OutlookMessageDeletionEntity(ChunkEntity):
     """
 
     message_id: str = AirweaveField(..., description="ID of the deleted message")
-    deletion_status: str = AirweaveField(
-        ..., description="Status indicating the entity was removed (e.g., 'removed')"
-    )
 
 
-class OutlookMailFolderDeletionEntity(ChunkEntity):
+class OutlookMailFolderDeletionEntity(DeletionEntity):
     """Deletion signal for an Outlook mail folder.
 
     Emitted when the Graph delta API reports a folder was removed.
@@ -122,6 +134,3 @@ class OutlookMailFolderDeletionEntity(ChunkEntity):
     """
 
     folder_id: str = AirweaveField(..., description="ID of the deleted folder")
-    deletion_status: str = AirweaveField(
-        ..., description="Status indicating the entity was removed (e.g., 'removed')"
-    )

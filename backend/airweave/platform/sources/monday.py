@@ -11,7 +11,7 @@ import httpx
 
 from airweave.platform.configs.auth import MondayAuthConfig
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import Breadcrumb, ChunkEntity
+from airweave.platform.entities._base import Breadcrumb, BaseEntity
 from airweave.platform.entities.monday import (
     MondayBoardEntity,
     MondayColumnEntity,
@@ -450,7 +450,7 @@ class MondaySource(BaseSource):
                 assets=upd.get("assets", []),
             )
 
-    async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
+    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate all Monday.com entities in a style similar to other connectors.
 
         Yields Monday.com entities in the following order:

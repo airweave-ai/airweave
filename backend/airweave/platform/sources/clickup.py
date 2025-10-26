@@ -8,7 +8,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from airweave.core.exceptions import TokenRefreshError
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import Breadcrumb, ChunkEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.clickup import (
     ClickUpCommentEntity,
     ClickUpFileEntity,
@@ -153,17 +153,20 @@ class ClickUpSource(BaseSource):
 
     async def _generate_workspace_entities(
         self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate workspace entities."""
         # Get teams (workspaces) from ClickUp API
         teams_data = await self._get_with_auth(client, f"{self.BASE_URL}/team")
 
         for team in teams_data.get("teams", []):
             yield ClickUpWorkspaceEntity(
+                # Base fields
                 entity_id=team["id"],
                 breadcrumbs=[],
-                workspace_id=team["id"],
                 name=team["name"],
+                created_at=None,  # Workspaces don't have creation timestamp
+                updated_at=None,  # Workspaces don't have update timestamp
+                # API fields
                 color=team.get("color"),
                 avatar=team.get("avatar"),
                 members=team.get("members", []),
@@ -171,7 +174,7 @@ class ClickUpSource(BaseSource):
 
     async def _generate_space_entities(
         self, client: httpx.AsyncClient, workspace: Dict, workspace_breadcrumb: Breadcrumb
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate space entities for a workspace."""
         spaces_data = await self._get_with_auth(
             client, f"{self.BASE_URL}/team/{workspace['id']}/space"
@@ -179,10 +182,13 @@ class ClickUpSource(BaseSource):
 
         for space in spaces_data.get("spaces", []):
             yield ClickUpSpaceEntity(
+                # Base fields
                 entity_id=space["id"],
                 breadcrumbs=[workspace_breadcrumb],
-                space_id=space["id"],
                 name=space["name"],
+                created_at=None,  # Spaces don't have creation timestamp
+                updated_at=None,  # Spaces don't have update timestamp
+                # API fields
                 private=space.get("private", False),
                 status=space.get("status", {}),
                 multiple_assignees=space.get("multiple_assignees", False),
@@ -191,7 +197,7 @@ class ClickUpSource(BaseSource):
 
     async def _generate_folder_entities(
         self, client: httpx.AsyncClient, space: Dict, space_breadcrumb: Breadcrumb
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate folder entities for a space."""
         folders_data = await self._get_with_auth(
             client, f"{self.BASE_URL}/space/{space['id']}/folder"
@@ -199,10 +205,13 @@ class ClickUpSource(BaseSource):
 
         for folder in folders_data.get("folders", []):
             yield ClickUpFolderEntity(
+                # Base fields
                 entity_id=folder["id"],
                 breadcrumbs=[space_breadcrumb],
-                folder_id=folder["id"],
                 name=folder["name"],
+                created_at=None,  # Folders don't have creation timestamp
+                updated_at=None,  # Folders don't have update timestamp
+                # API fields
                 hidden=folder.get("hidden", False),
                 space_id=space["id"],
                 task_count=folder.get("task_count"),
@@ -213,7 +222,7 @@ class ClickUpSource(BaseSource):
         client: httpx.AsyncClient,
         folder: Optional[Dict],
         parent_breadcrumbs: List[Breadcrumb],
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate list entities for a folder or space."""
         if folder:
             # Lists within a folder
@@ -229,20 +238,19 @@ class ClickUpSource(BaseSource):
             lists_data = await self._get_with_auth(client, f"{self.BASE_URL}/space/{space_id}/list")
 
         for list_item in lists_data.get("lists", []):
-            # Determine parent names from breadcrumbs
-            space_name = ""
-            folder_name = None
-
-            if len(parent_breadcrumbs) >= 2:  # workspace + space
-                space_name = parent_breadcrumbs[1].name
-            if len(parent_breadcrumbs) >= 3:  # workspace + space + folder
-                folder_name = parent_breadcrumbs[2].name
+            # Get parent names from the objects themselves (breadcrumbs simplified)
+            folder_name = folder["name"] if folder else None
+            # Space name should come from the space dict passed earlier, but we'll use a fallback
+            space_name = ""  # Will be populated from breadcrumb context in generate_entities
 
             yield ClickUpListEntity(
+                # Base fields
                 entity_id=list_item["id"],
                 breadcrumbs=parent_breadcrumbs,
-                list_id=list_item["id"],
                 name=list_item["name"],
+                created_at=None,  # Lists don't have creation timestamp
+                updated_at=None,  # Lists don't have update timestamp
+                # API fields
                 folder_id=folder["id"] if folder else None,
                 space_id=space_id,
                 content=list_item.get("content"),
@@ -258,7 +266,7 @@ class ClickUpSource(BaseSource):
 
     async def _generate_task_entities(
         self, client: httpx.AsyncClient, list_item: Dict, list_breadcrumbs: List[Breadcrumb]
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate task entities for a list."""
         # Include subtasks in the task request
         tasks_data = await self._get_with_auth(
@@ -299,13 +307,7 @@ class ClickUpSource(BaseSource):
 
             # Add parent tasks to breadcrumbs (in reverse order - top-level first)
             for parent_task in reversed(parent_chain):
-                breadcrumbs.append(
-                    Breadcrumb(
-                        entity_id=parent_task["id"],
-                        name=parent_task["name"],
-                        type="task" if not parent_task.get("parent") else "subtask",
-                    )
-                )
+                breadcrumbs.append(Breadcrumb(entity_id=parent_task["id"]))
 
             # Nesting level is the length of the parent chain
             nesting_level = len(parent_chain)
@@ -321,10 +323,13 @@ class ClickUpSource(BaseSource):
                 )
 
                 yield ClickUpSubtaskEntity(
+                    # Base fields
                     entity_id=task["id"],
                     breadcrumbs=subtask_breadcrumbs,
-                    subtask_id=task["id"],
                     name=task["name"],
+                    created_at=None,  # Subtasks don't have creation timestamp
+                    updated_at=None,  # Subtasks don't have update timestamp
+                    # API fields
                     parent_task_id=task["parent"],
                     status=task.get("status", {}),
                     assignees=task.get("assignees", []),
@@ -335,10 +340,13 @@ class ClickUpSource(BaseSource):
             else:
                 # This is a regular task (top-level)
                 yield ClickUpTaskEntity(
+                    # Base fields
                     entity_id=task["id"],
                     breadcrumbs=list_breadcrumbs,
-                    task_id=task["id"],
                     name=task["name"],
+                    created_at=None,  # Tasks don't have creation timestamp
+                    updated_at=None,  # Tasks don't have update timestamp
+                    # API fields
                     status=task.get("status", {}),
                     priority=task.get("priority"),
                     assignees=task.get("assignees", []),
@@ -358,7 +366,7 @@ class ClickUpSource(BaseSource):
 
     async def _generate_comment_entities(
         self, client: httpx.AsyncClient, task: Dict, task_breadcrumbs: List[Breadcrumb]
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate comment entities for a task."""
         comments_data = await self._get_with_auth(
             client, f"{self.BASE_URL}/task/{task['id']}/comment"
@@ -380,10 +388,22 @@ class ClickUpSource(BaseSource):
             elif isinstance(comment_content, str):
                 comment_text = comment_content
 
+            # Create comment name from text preview
+            comment_name = comment_text[:50] + "..." if len(comment_text) > 50 else comment_text
+            if not comment_name:
+                comment_name = f"Comment {comment['id']}"
+
+            # Parse the date for created_at
+            date = self._parse_clickup_timestamp(comment.get("date") or comment.get("date_created"))
+
             yield ClickUpCommentEntity(
+                # Base fields
                 entity_id=comment["id"],
                 breadcrumbs=task_breadcrumbs,
-                comment_id=comment["id"],
+                name=comment_name,
+                created_at=date,
+                updated_at=None,  # Comments don't have update timestamp
+                # API fields
                 task_id=task["id"],
                 user=comment.get("user", {}),
                 text_content=comment_text,
@@ -391,12 +411,11 @@ class ClickUpSource(BaseSource):
                 assignee=comment.get("assignee"),
                 assigned_by=comment.get("assigned_by"),
                 reactions=comment.get("reactions", []),
-                date=comment.get("date") or comment.get("date_created"),
             )
 
     async def _generate_subtask_entities(
         self, client: httpx.AsyncClient, task: Dict, task_breadcrumbs: List[Breadcrumb]
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate subtask entities for a task."""
         # Get subtasks from the task's subtasks field (if included in response)
         subtasks = task.get("subtasks", [])
@@ -417,20 +436,24 @@ class ClickUpSource(BaseSource):
                     continue
 
                 yield ClickUpSubtaskEntity(
+                    # Base fields
                     entity_id=subtask_id,
                     breadcrumbs=task_breadcrumbs,
-                    subtask_id=subtask_id,
                     name=subtask_name,
+                    created_at=None,  # Subtasks don't have creation timestamp
+                    updated_at=None,  # Subtasks don't have update timestamp
+                    # API fields
                     parent_task_id=task["id"],
                     status=subtask.get("status", {}),
                     assignees=subtask.get("assignees", []),
                     due_date=subtask.get("due_date"),
                     description=subtask.get("description", ""),
+                    nesting_level=None,  # Not provided in basic subtask data
                 )
 
     async def _generate_file_entities(
         self, client: httpx.AsyncClient, task: Dict, task_breadcrumbs: List[Breadcrumb]
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate file attachment entities for a task."""
         task_id = task["id"]
 
@@ -472,105 +495,100 @@ class ClickUpSource(BaseSource):
                 # Parse the attachment date
                 attachment_date = self._parse_clickup_timestamp(attachment.get("date"))
 
+                # Determine file type from mime_type or extension
+                mime_type = attachment.get("mimetype") or "application/octet-stream"
+                extension = attachment.get("extension", "")
+                if mime_type and "/" in mime_type:
+                    file_type = mime_type.split("/")[0]
+                elif extension:
+                    file_type = extension
+                else:
+                    file_type = "file"
+
                 # Create file entity with all available fields
                 file_entity = ClickUpFileEntity(
+                    # Base fields
                     entity_id=attachment["id"],
                     breadcrumbs=task_breadcrumbs,
-                    file_id=attachment["id"],
                     name=file_name,
-                    mime_type=attachment.get("mimetype"),
-                    size=attachment.get("size"),
-                    download_url=download_url,
-                    metadata={
-                        "clickup_attachment_id": attachment["id"],
-                        "version": attachment.get("version"),
-                        "extension": attachment.get("extension"),
-                        "thumbnail_small": attachment.get("thumbnail_small"),
-                        "thumbnail_medium": attachment.get("thumbnail_medium"),
-                        "thumbnail_large": attachment.get("thumbnail_large"),
-                        "total_comments": attachment.get("total_comments"),
-                        "user": attachment.get("user"),
-                        "source": attachment.get("source"),
-                        "type": attachment.get("type"),
-                        "orientation": attachment.get("orientation"),
-                        "email_data": attachment.get("email_data"),
-                        "resolved": attachment.get("resolved"),
-                        "hidden": attachment.get("hidden"),
-                        "is_folder": attachment.get("is_folder"),
-                        "original_date": attachment.get("date"),  # Keep raw value for debugging
-                        "url_w_query": attachment.get("url_w_query"),
-                        "url_w_host": attachment.get("url_w_host"),
-                        "parent_id": attachment.get("parent_id"),
-                        "deleted": attachment.get("deleted"),
-                        "workspace_id": attachment.get("workspace_id"),
-                        "resolved_comments": attachment.get("resolved_comments"),
-                    },
-                    # ClickUp-specific fields
+                    created_at=attachment_date,
+                    updated_at=None,  # Attachments don't have update timestamp
+                    # File fields
+                    url=download_url,
+                    size=attachment.get("size", 0),
+                    file_type=file_type,
+                    mime_type=mime_type,
+                    local_path=None,  # Will be set after download
+                    # API fields (ClickUp-specific)
                     task_id=task["id"],
                     task_name=task.get("name", ""),
-                    attachment_id=attachment["id"],
                     version=attachment.get("version"),
-                    date=attachment_date,
                     title=attachment.get("title"),
-                    extension=attachment.get("extension"),
+                    extension=extension,
                     hidden=attachment.get("hidden", False),
                     parent=attachment.get("parent"),
                     thumbnail_small=attachment.get("thumbnail_small"),
                     thumbnail_medium=attachment.get("thumbnail_medium"),
                     thumbnail_large=attachment.get("thumbnail_large"),
-                    is_folder=attachment.get("is_folder"),  # Allow None
-                    mimetype=attachment.get("mimetype"),
+                    is_folder=attachment.get("is_folder"),
                     total_comments=attachment.get("total_comments"),
-                    url=download_url,
                     url_w_query=attachment.get("url_w_query"),
                     url_w_host=attachment.get("url_w_host"),
                     email_data=attachment.get("email_data"),
                     user=attachment.get("user"),
                     resolved=attachment.get("resolved"),
                     resolved_comments=attachment.get("resolved_comments"),
-                    source=attachment.get("source"),  # This is an integer
-                    attachment_type=attachment.get("type"),  # This is an integer
+                    source=attachment.get("source"),
+                    attachment_type=attachment.get("type"),
                     orientation=attachment.get("orientation"),
                     parent_id=attachment.get("parent_id"),
                     deleted=attachment.get("deleted"),
                     workspace_id=attachment.get("workspace_id"),
                 )
 
-                # Process the file using the BaseSource helper method
+                # Download the file using file downloader
                 # ClickUp attachment URLs are pre-signed and don't require OAuth headers
-                processed_entity = await self.process_file_entity(
-                    file_entity=file_entity, headers={}
-                )
+                try:
+                    await self.file_downloader.download_from_url(
+                        entity=file_entity,
+                        http_client_factory=self.http_client,
+                        access_token_provider=lambda: None,  # No auth for pre-signed URLs
+                        logger=self.logger,
+                    )
 
-                # Only yield if the entity was successfully processed
-                if processed_entity:
-                    yield processed_entity
+                    # Verify download succeeded
+                    if not file_entity.local_path:
+                        raise ValueError(
+                            f"Download failed - no local path set for {file_entity.name}"
+                        )
+
+                    self.logger.debug(f"Successfully downloaded attachment: {file_entity.name}")
+                    yield file_entity
+
+                except Exception as e:
+                    self.logger.warning(f"Failed to download attachment {file_name}: {e}")
+                    # Still yield the file entity without processed content
+                    yield file_entity
 
         except Exception as e:
             self.logger.error(f"Error processing attachments for task {task_id}: {str(e)}")
 
-    async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:  # noqa: C901
+    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:  # noqa: C901
         """Generate all entities from ClickUp."""
         async with httpx.AsyncClient() as client:
             async for workspace_entity in self._generate_workspace_entities(client):
                 yield workspace_entity
 
-                workspace_breadcrumb = Breadcrumb(
-                    entity_id=workspace_entity.workspace_id,
-                    name=workspace_entity.name,
-                    type="workspace",
-                )
+                workspace_breadcrumb = Breadcrumb(entity_id=workspace_entity.entity_id)
 
                 async for space_entity in self._generate_space_entities(
                     client,
-                    {"id": workspace_entity.workspace_id, "name": workspace_entity.name},
+                    {"id": workspace_entity.entity_id, "name": workspace_entity.name},
                     workspace_breadcrumb,
                 ):
                     yield space_entity
 
-                    space_breadcrumb = Breadcrumb(
-                        entity_id=space_entity.entity_id, name=space_entity.name, type="space"
-                    )
+                    space_breadcrumb = Breadcrumb(entity_id=space_entity.entity_id)
                     space_breadcrumbs = [workspace_breadcrumb, space_breadcrumb]
 
                     # Generate folders (optional) and their lists
@@ -581,11 +599,7 @@ class ClickUpSource(BaseSource):
                     ):
                         yield folder_entity
 
-                        folder_breadcrumb = Breadcrumb(
-                            entity_id=folder_entity.entity_id,
-                            name=folder_entity.name,
-                            type="folder",
-                        )
+                        folder_breadcrumb = Breadcrumb(entity_id=folder_entity.entity_id)
                         folder_breadcrumbs = [*space_breadcrumbs, folder_breadcrumb]
 
                         # Generate lists within folders
@@ -600,11 +614,7 @@ class ClickUpSource(BaseSource):
                         ):
                             yield list_entity
 
-                            list_breadcrumb = Breadcrumb(
-                                entity_id=list_entity.entity_id,
-                                name=list_entity.name,
-                                type="list",
-                            )
+                            list_breadcrumb = Breadcrumb(entity_id=list_entity.entity_id)
                             list_breadcrumbs = [*folder_breadcrumbs, list_breadcrumb]
 
                             # Generate tasks and subtasks for this list
@@ -616,15 +626,7 @@ class ClickUpSource(BaseSource):
                                 yield task_entity
 
                                 # Generate comments and attachments for both tasks and subtasks
-                                task_breadcrumb = Breadcrumb(
-                                    entity_id=task_entity.entity_id,
-                                    name=task_entity.name,
-                                    type=(
-                                        "task"
-                                        if isinstance(task_entity, ClickUpTaskEntity)
-                                        else "subtask"
-                                    ),
-                                )
+                                task_breadcrumb = Breadcrumb(entity_id=task_entity.entity_id)
                                 task_breadcrumbs = [*list_breadcrumbs, task_breadcrumb]
 
                                 # Generate additional subtasks only for main tasks
@@ -663,11 +665,7 @@ class ClickUpSource(BaseSource):
                     ):
                         yield list_entity
 
-                        list_breadcrumb = Breadcrumb(
-                            entity_id=list_entity.entity_id,
-                            name=list_entity.name,
-                            type="list",
-                        )
+                        list_breadcrumb = Breadcrumb(entity_id=list_entity.entity_id)
                         list_breadcrumbs = [*space_breadcrumbs, list_breadcrumb]
 
                         # Generate tasks and subtasks for this list
@@ -679,15 +677,7 @@ class ClickUpSource(BaseSource):
                             yield task_entity
 
                             # Generate comments and attachments for both tasks and subtasks
-                            task_breadcrumb = Breadcrumb(
-                                entity_id=task_entity.entity_id,
-                                name=task_entity.name,
-                                type=(
-                                    "task"
-                                    if isinstance(task_entity, ClickUpTaskEntity)
-                                    else "subtask"
-                                ),
-                            )
+                            task_breadcrumb = Breadcrumb(entity_id=task_entity.entity_id)
                             task_breadcrumbs = [*list_breadcrumbs, task_breadcrumb]
 
                             # Generate additional subtasks only for main tasks (not for subtasks)

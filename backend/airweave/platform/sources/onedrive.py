@@ -21,7 +21,7 @@ import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import Breadcrumb, ChunkEntity
+from airweave.platform.entities._base import Breadcrumb, BaseEntity
 from airweave.platform.entities.onedrive import OneDriveDriveEntity, OneDriveDriveItemEntity
 from airweave.platform.sources._base import BaseSource
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
@@ -338,7 +338,7 @@ class OneDriveSource(BaseSource):
 
     async def _generate_drive_item_entities(
         self, client: httpx.AsyncClient, drive_id: str, drive_name: str
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate OneDriveDriveItemEntity objects for files in the drive."""
         file_count = 0
         async for item in self._list_all_drive_items_recursively(client, drive_id):
@@ -373,7 +373,7 @@ class OneDriveSource(BaseSource):
 
         self.logger.info(f"Total files processed: {file_count}")
 
-    async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
+    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate all OneDrive entities.
 
         Yields entities in the following order:

@@ -1,41 +1,59 @@
 """Airtable entity schemas."""
 
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import Field
-
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import ChunkEntity, FileEntity
+from airweave.platform.entities._base import BaseEntity, FileEntity
 
 
-class AirtableUserEntity(ChunkEntity):
+class AirtableUserEntity(BaseEntity):
     """The authenticated user (from /meta/whoami endpoint)."""
 
-    user_id: str = Field(..., description="Airtable user ID")
+    # Base fields are inherited and set during entity creation:
+    # - entity_id (the user ID)
+    # - breadcrumbs (empty - user is top-level)
+    # - name (from email or user ID)
+    # - created_at (None - user doesn't have creation timestamp)
+    # - updated_at (None - user doesn't have update timestamp)
+
+    # API fields
     email: Optional[str] = AirweaveField(None, description="User email address", embeddable=True)
     scopes: Optional[List[str]] = AirweaveField(
-        default=None, description="OAuth scopes granted to the token", embeddable=True
+        default=None, description="OAuth scopes granted to the token", embeddable=False
     )
 
 
-class AirtableBaseEntity(ChunkEntity):
+class AirtableBaseEntity(BaseEntity):
     """Metadata for an Airtable base."""
 
-    base_id: str = Field(..., description="Airtable base ID (e.g., appXXXXXXX)")
-    name: str = AirweaveField(..., description="Base name", embeddable=True)
+    # Base fields are inherited and set during entity creation:
+    # - entity_id (the base ID)
+    # - breadcrumbs (empty - bases are top-level)
+    # - name (from base name)
+    # - created_at (None - bases don't have creation timestamp in API)
+    # - updated_at (None - bases don't have update timestamp in API)
+
+    # API fields
     permission_level: Optional[str] = AirweaveField(
-        None, description="Permission level for this base", embeddable=True
+        None, description="Permission level for this base", embeddable=False
     )
-    url: Optional[str] = Field(None, description="URL to open the base in Airtable")
+    url: Optional[str] = AirweaveField(
+        None, description="URL to open the base in Airtable", embeddable=False
+    )
 
 
-class AirtableTableEntity(ChunkEntity):
+class AirtableTableEntity(BaseEntity):
     """Metadata for an Airtable table (schema-level info)."""
 
-    table_id: str = Field(..., description="Airtable table ID (e.g., tblXXXXXXX)")
-    base_id: str = Field(..., description="Parent base ID")
-    name: str = AirweaveField(..., description="Table name", embeddable=True)
+    # Base fields are inherited and set during entity creation:
+    # - entity_id (the table ID)
+    # - breadcrumbs (base breadcrumb)
+    # - name (from table name)
+    # - created_at (None - tables don't have creation timestamp in API)
+    # - updated_at (None - tables don't have update timestamp in API)
+
+    # API fields
+    base_id: str = AirweaveField(..., description="Parent base ID", embeddable=False)
     description: Optional[str] = AirweaveField(
         None, description="Table description, if any", embeddable=True
     )
@@ -45,71 +63,82 @@ class AirtableTableEntity(ChunkEntity):
     primary_field_name: Optional[str] = AirweaveField(
         None, description="Name of the primary field", embeddable=True
     )
-    view_count: Optional[int] = Field(None, description="Number of views in this table")
+    view_count: Optional[int] = AirweaveField(
+        None, description="Number of views in this table", embeddable=False
+    )
 
 
-class AirtableRecordEntity(ChunkEntity):
+class AirtableRecordEntity(BaseEntity):
     """One Airtable record (row) as a searchable chunk."""
 
-    record_id: str = Field(..., description="Record ID")
-    base_id: str = Field(..., description="Parent base ID")
-    table_id: str = Field(..., description="Parent table ID")
+    # Base fields are inherited and set during entity creation:
+    # - entity_id (the record ID)
+    # - breadcrumbs (base and table breadcrumbs)
+    # - name (from primary field or record ID)
+    # - created_at (from created_time)
+    # - updated_at (None - records don't have update timestamp in API)
+
+    # API fields
+    base_id: str = AirweaveField(..., description="Parent base ID", embeddable=False)
+    table_id: str = AirweaveField(..., description="Parent table ID", embeddable=False)
     table_name: Optional[str] = AirweaveField(
         None, description="Parent table name", embeddable=True
     )
     fields: Dict[str, Any] = AirweaveField(
         default_factory=dict, description="Raw Airtable fields map", embeddable=True
     )
-    created_time: Optional[datetime] = AirweaveField(
-        None,
-        description="Record creation timestamp",
-        embeddable=True,
-        is_created_at=True,
-    )
 
 
-class AirtableCommentEntity(ChunkEntity):
+class AirtableCommentEntity(BaseEntity):
     """A comment on an Airtable record."""
 
-    comment_id: str = Field(..., description="Comment ID")
-    record_id: str = Field(..., description="Parent record ID")
-    base_id: str = Field(..., description="Parent base ID")
-    table_id: str = Field(..., description="Parent table ID")
+    # Base fields are inherited and set during entity creation:
+    # - entity_id (the comment ID)
+    # - breadcrumbs (base, table, and record breadcrumbs)
+    # - name (comment preview or comment ID)
+    # - created_at (from created_time)
+    # - updated_at (from last_updated_time)
+
+    # API fields
+    record_id: str = AirweaveField(..., description="Parent record ID", embeddable=False)
+    base_id: str = AirweaveField(..., description="Parent base ID", embeddable=False)
+    table_id: str = AirweaveField(..., description="Parent table ID", embeddable=False)
     text: str = AirweaveField(..., description="Comment text", embeddable=True)
-    author_id: Optional[str] = Field(None, description="Author user ID")
+    author_id: Optional[str] = AirweaveField(None, description="Author user ID", embeddable=False)
     author_email: Optional[str] = AirweaveField(
         None, description="Author email address", embeddable=True
     )
     author_name: Optional[str] = AirweaveField(
         None, description="Author display name", embeddable=True
     )
-    created_time: Optional[datetime] = AirweaveField(
-        None,
-        description="Comment creation timestamp",
-        embeddable=True,
-        is_created_at=True,
-    )
-    last_updated_time: Optional[datetime] = AirweaveField(
-        None,
-        description="Comment last updated timestamp",
-        embeddable=True,
-        is_updated_at=True,
-    )
 
 
 class AirtableAttachmentEntity(FileEntity):
-    """Attachment file from an Airtable record."""
+    """Attachment file from an Airtable record.
 
-    base_id: str = Field(..., description="Base ID")
-    table_id: str = Field(..., description="Table ID")
+    Reference:
+        https://airtable.com/developers/web/api/field-model#multipleattachment
+    """
+
+    # Base fields are inherited from BaseEntity:
+    # - entity_id (attachment ID or composite key)
+    # - breadcrumbs (base, table, and record breadcrumbs)
+    # - name (filename)
+    # - created_at (None - attachments don't have timestamps in API)
+    # - updated_at (None - attachments don't have timestamps in API)
+
+    # File fields are inherited from FileEntity:
+    # - url (attachment URL)
+    # - size (file size in bytes)
+    # - file_type (determined from mime_type)
+    # - mime_type
+    # - local_path (set after download)
+
+    # API fields (Airtable-specific)
+    base_id: str = AirweaveField(..., description="Base ID", embeddable=False)
+    table_id: str = AirweaveField(..., description="Table ID", embeddable=False)
     table_name: Optional[str] = AirweaveField(None, description="Table name", embeddable=True)
-    record_id: str = Field(..., description="Record ID")
+    record_id: str = AirweaveField(..., description="Record ID", embeddable=False)
     field_name: str = AirweaveField(
         ..., description="Field name that contains this attachment", embeddable=True
-    )
-    created_at: Optional[datetime] = AirweaveField(
-        None,
-        description="Attachment creation timestamp",
-        embeddable=True,
-        is_created_at=True,
     )

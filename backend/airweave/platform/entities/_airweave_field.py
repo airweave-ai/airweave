@@ -37,42 +37,30 @@ def AirweaveField(  # noqa: D417
     kw_only: Optional[bool] = None,
     # Airweave-specific metadata
     embeddable: bool = False,
-    is_created_at: bool = False,
-    is_updated_at: bool = False,
     **extra: Any,
 ) -> FieldInfo:
     """Create a Pydantic Field with Airweave-specific metadata.
 
     This extends the standard Pydantic Field to include metadata for:
     - embeddable: Whether this field should be included in embeddable text generation
-    - is_created_at: Marks this field as the creation timestamp for harmonization
-    - is_updated_at: Marks this field as the update timestamp for harmonization
 
     Args:
         default: Default value for the field
         embeddable: Whether this field should be included in neural embedding
-        is_created_at: If True, this field represents the creation timestamp
-        is_updated_at: If True, this field represents the update timestamp
         **extra: Any additional metadata to be added to the field
 
     Returns:
         FieldInfo object with Airweave metadata in json_schema_extra
 
     Example:
-        >>> class MyEntity(ChunkEntity):
+        >>> class MyEntity(BaseEntity):
         ...     name: str = AirweaveField(..., description="Name", embeddable=True)
-        ...     modified_at: datetime = AirweaveField(None, is_updated_at=True, embeddable=True)
-        ...     created: datetime = AirweaveField(None, is_created_at=True)
         ...     description: str = AirweaveField(..., description="Description", embeddable=True)
     """
     # Build json_schema_extra with Airweave metadata
     airweave_metadata = {}
     if embeddable:
         airweave_metadata["embeddable"] = True
-    if is_created_at:
-        airweave_metadata["is_created_at"] = True
-    if is_updated_at:
-        airweave_metadata["is_updated_at"] = True
 
     # Merge with existing json_schema_extra if provided
     if json_schema_extra:

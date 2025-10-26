@@ -13,7 +13,8 @@ from airweave.core.sync_cursor_service import sync_cursor_service
 from airweave.core.sync_job_service import sync_job_service
 from airweave.db.session import get_db_context
 from airweave.platform.sync.context import SyncContext
-from airweave.platform.sync.entity_processor import EntityProcessor
+from airweave.platform.sync.entity_pipeline import EntityPipeline
+from airweave.platform.sync.exceptions import EntityProcessingError, SyncFailureError
 from airweave.platform.sync.stream import AsyncSourceStream
 from airweave.platform.sync.worker_pool import AsyncWorkerPool
 from airweave.platform.utils.error_utils import get_error_message
@@ -32,13 +33,13 @@ class SyncOrchestrator:
 
     def __init__(
         self,
-        entity_processor: EntityProcessor,
+        entity_pipeline: EntityPipeline,
         worker_pool: AsyncWorkerPool,
         stream: AsyncSourceStream,
         sync_context: SyncContext,
     ):
         """Initialize the sync orchestrator with ALL required components."""
-        self.entity_processor = entity_processor
+        self.entity_pipeline = entity_pipeline
         self.worker_pool = worker_pool
         self.stream = stream  # Stream is now passed in, not created here!
         self.sync_context = sync_context
@@ -91,6 +92,16 @@ class SyncOrchestrator:
                     f"Failed to flush guard rail usage: {flush_error}", exc_info=True
                 )
 
+            # Always cleanup temp files to prevent pod eviction
+            try:
+                self.sync_context.logger.info("Cleaning up temporary files...")
+                await self.entity_pipeline.cleanup_temp_files(self.sync_context)
+            except Exception as cleanup_error:
+                # Never raise from cleanup - preserve original error
+                self.sync_context.logger.error(
+                    f"Temp file cleanup failed: {cleanup_error}", exc_info=True
+                )
+
     async def _start_sync(self) -> None:
         """Initialize sync job and start all components."""
         self.sync_context.logger.info("Starting sync job")
@@ -108,20 +119,8 @@ class SyncOrchestrator:
 
         self.sync_context.sync_job.started_at = started_at
 
-    async def _process_entities(self) -> None:
-        """Dispatch to batched or unbatched processing depending on the context flag."""
-        if self.should_batch:
-            await self._process_entities_batched()
-        else:
-            await self._process_entities_unbatched()
-
-    # ------------------------------ Batched path ------------------------------
-    async def _process_entities_batched(self) -> None:  # noqa: C901
+    async def _process_entities(self) -> None:  # noqa: C901
         """Process entities using micro-batching with bounded inner concurrency."""
-        source_node = self.sync_context.dag.get_source_node()
-
-        self.entity_processor.initialize_tracking(self.sync_context)
-
         self.sync_context.logger.info(
             f"Starting pull-based processing from source {self.sync_context.source._name} "
             f"(max workers: {self.worker_pool.max_workers}, "
@@ -148,17 +147,11 @@ class SyncOrchestrator:
                     # Flush any buffered work so we don't drop it
                     if batch_buffer:
                         pending_tasks = await self._submit_batch_and_trim(
-                            batch_buffer, pending_tasks, source_node
+                            batch_buffer, pending_tasks
                         )
                         batch_buffer = []
                         flush_deadline = None
                     break
-
-                # Handle skipped entities without using a worker
-                if entity.airweave_system_metadata.should_skip:
-                    self.sync_context.logger.debug(f"Skipping entity: {entity.entity_id}")
-                    await self.sync_context.progress.increment("skipped", 1)
-                    continue
 
                 # Accumulate into batch
                 batch_buffer.append(entity)
@@ -171,9 +164,7 @@ class SyncOrchestrator:
 
                 # Size-based flush
                 if len(batch_buffer) >= self.batch_size:
-                    pending_tasks = await self._submit_batch_and_trim(
-                        batch_buffer, pending_tasks, source_node
-                    )
+                    pending_tasks = await self._submit_batch_and_trim(batch_buffer, pending_tasks)
                     batch_buffer = []
                     flush_deadline = None
                     continue
@@ -183,17 +174,13 @@ class SyncOrchestrator:
                     flush_deadline is not None
                     and asyncio.get_running_loop().time() >= flush_deadline
                 ):
-                    pending_tasks = await self._submit_batch_and_trim(
-                        batch_buffer, pending_tasks, source_node
-                    )
+                    pending_tasks = await self._submit_batch_and_trim(batch_buffer, pending_tasks)
                     batch_buffer = []
                     flush_deadline = None
 
             # End-of-stream: flush any remaining buffered entities
             if batch_buffer:
-                pending_tasks = await self._submit_batch_and_trim(
-                    batch_buffer, pending_tasks, source_node
-                )
+                pending_tasks = await self._submit_batch_and_trim(batch_buffer, pending_tasks)
                 batch_buffer = []
                 flush_deadline = None
 
@@ -216,95 +203,107 @@ class SyncOrchestrator:
         self,
         batch: list,
         pending_tasks: set[asyncio.Task],
-        source_node: schemas.DagNode,
     ) -> set[asyncio.Task]:
         """Submit a micro-batch to the worker pool and trim to max parallelism if needed."""
         if not batch:
             return pending_tasks
 
         task = await self.worker_pool.submit(
-            self.entity_processor.process_batch,
+            self.entity_pipeline.process,
             entities=list(batch),
-            source_node=source_node,
             sync_context=self.sync_context,
         )
         pending_tasks.add(task)
 
+        # Check for completed tasks and fail fast on sync errors
+        pending_tasks = await self._check_completed_tasks_fail_fast(pending_tasks)
+
+        # Trim if we've hit max parallelism
         if len(pending_tasks) >= self.worker_pool.max_workers:
             pending_tasks = await self._handle_completed_tasks(pending_tasks)
 
         return pending_tasks
 
-    # ----------------------------- Unbatched path -----------------------------
-    async def _process_entities_unbatched(self) -> None:  # noqa: C901
-        """Process entities one-at-a-time (legacy path)."""
-        source_node = self.sync_context.dag.get_source_node()
+    async def _check_completed_tasks_fail_fast(
+        self, pending_tasks: set[asyncio.Task]
+    ) -> set[asyncio.Task]:
+        """Check any completed tasks and fail immediately on sync errors.
 
-        self.entity_processor.initialize_tracking(self.sync_context)
+        This provides fail-fast behavior - we don't wait for all tasks to finish
+        before detecting critical errors.
+        """
+        completed = {t for t in pending_tasks if t.done()}
+        if not completed:
+            return pending_tasks
 
-        self.sync_context.logger.info(
-            f"Starting pull-based processing from source {self.sync_context.source._name} "
-            f"(max workers: {self.worker_pool.max_workers})"
-        )
+        # Check errors using shared logic
+        entity_failures = self._check_task_errors(completed)
 
-        stream_error: Optional[Exception] = None
-        pending_tasks: set[asyncio.Task] = set()
+        # Remove completed tasks from pending set
+        pending_tasks -= completed
 
-        try:
-            # Use the pre-created stream (already started in _start_sync)
-            async for entity in self.stream.get_entities():
-                try:
-                    await self.sync_context.guard_rail.is_allowed(ActionType.ENTITIES)
-                except (UsageLimitExceededException, PaymentRequiredException) as guard_error:
-                    self.sync_context.logger.error(
-                        f"Guard rail check failed: {type(guard_error).__name__}: {str(guard_error)}"
-                    )
-                    stream_error = guard_error
-                    break
+        # Track entity failures
+        if entity_failures:
+            await self.sync_context.progress.increment("skipped", len(entity_failures))
 
-                # Handle skipped entities safely
-                # Entities always have airweave_system_metadata with should_skip defaulting to False
-                if entity.airweave_system_metadata.should_skip:
-                    self.sync_context.logger.debug(f"Skipping entity: {entity.entity_id}")
-                    await self.sync_context.progress.increment("skipped", 1)
-                    continue
-
-                # Submit per-entity processing
-                task = await self.worker_pool.submit(
-                    self.entity_processor.process,
-                    entity=entity,
-                    source_node=source_node,
-                    sync_context=self.sync_context,
-                )
-                pending_tasks.add(task)
-
-                # Trim when we reach parallelism cap
-                if len(pending_tasks) >= self.worker_pool.max_workers:
-                    pending_tasks = await self._handle_completed_tasks(pending_tasks)
-
-        except asyncio.CancelledError as e:
-            stream_error = e
-            self.sync_context.logger.info("Cancelled during unbatched processing; finalizing...")
-        except Exception as e:
-            stream_error = e
-            self.sync_context.logger.error(f"Error during entity streaming: {get_error_message(e)}")
-        finally:
-            # Clean up stream and tasks
-            await self._finalize_stream_and_tasks(self.stream, stream_error, pending_tasks)
-
-            # Re-raise error if there was one
-            if stream_error:
-                raise stream_error
+        return pending_tasks
 
     # ----------------------------- Shared helpers -----------------------------
+    def _check_task_errors(self, tasks: set[asyncio.Task]) -> list[EntityProcessingError]:
+        """Check tasks for errors and handle based on error type.
+
+        Args:
+            tasks: Set of tasks to check for errors
+
+        Returns:
+            List of EntityProcessingError instances (recoverable errors)
+
+        Raises:
+            SyncFailureError: On explicit sync failure
+            Exception: On unexpected errors
+        """
+        entity_failures = []
+
+        for task in tasks:
+            if not task.cancelled() and task.exception():
+                exc = task.exception()
+
+                if isinstance(exc, EntityProcessingError):
+                    # Entity-level error - track for skipping
+                    entity_failures.append(exc)
+                    self.sync_context.logger.warning(f"Entity processing error: {exc}")
+                elif isinstance(exc, SyncFailureError):
+                    # Explicit sync failure - fail immediately
+                    self.sync_context.logger.error(f"Sync failure detected: {exc}")
+                    raise exc
+                else:
+                    # Unexpected error - also fail sync
+                    self.sync_context.logger.error(
+                        f"Unexpected error in task: {exc}", exc_info=True
+                    )
+                    raise exc
+
+        return entity_failures
+
     async def _handle_completed_tasks(self, pending_tasks: set[asyncio.Task]) -> set[asyncio.Task]:
-        """Handle completed tasks and check for exceptions."""
+        """Handle completed tasks and check for exceptions.
+
+        Waits for at least one task to complete when we hit max parallelism.
+        """
         completed, pending_tasks = await asyncio.wait(
             pending_tasks, return_when=asyncio.FIRST_COMPLETED
         )
-        for task in completed:
-            if task.exception():
-                raise task.exception()
+
+        # Check errors using shared logic
+        entity_failures = self._check_task_errors(completed)
+
+        # Increment skipped count for entity failures
+        if entity_failures:
+            await self.sync_context.progress.increment("skipped", len(entity_failures))
+            self.sync_context.logger.info(
+                f"Skipped {len(entity_failures)} entities due to processing errors"
+            )
+
         return pending_tasks
 
     async def _wait_for_remaining_tasks(self, pending_tasks: set[asyncio.Task]) -> None:
@@ -314,11 +313,16 @@ class SyncOrchestrator:
                 f"Waiting for {len(pending_tasks)} remaining tasks to complete"
             )
             done, _ = await asyncio.wait(pending_tasks)
-            for task in done:
-                if not task.cancelled() and task.exception():
-                    self.sync_context.logger.warning(
-                        f"Task failed with exception: {task.exception()}"
-                    )
+
+            # Check errors using shared logic
+            entity_failures = self._check_task_errors(done)
+
+            # Increment skipped count for entity failures
+            if entity_failures:
+                await self.sync_context.progress.increment("skipped", len(entity_failures))
+                self.sync_context.logger.info(
+                    f"Skipped {len(entity_failures)} entities due to processing errors"
+                )
 
     async def _finalize_stream_and_tasks(
         self,
@@ -363,7 +367,7 @@ class SyncOrchestrator:
                 self.sync_context.logger.info(
                     "🧹 Starting orphaned entity cleanup phase (first sync - no cursor data)"
                 )
-            await self.entity_processor.cleanup_orphaned_entities(self.sync_context)
+            await self.entity_pipeline.cleanup_orphaned_entities(self.sync_context)
         elif has_cursor_data and not self.sync_context.force_full_sync:
             self.sync_context.logger.info(
                 "⏩ Skipping orphaned entity cleanup for INCREMENTAL sync "

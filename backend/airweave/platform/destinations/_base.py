@@ -6,7 +6,7 @@ from uuid import UUID
 
 from airweave.core.logging import ContextualLogger
 from airweave.core.logging import logger as default_logger
-from airweave.platform.entities._base import ChunkEntity
+from airweave.platform.entities._base import BaseEntity
 
 
 class BaseDestination(ABC):
@@ -60,12 +60,12 @@ class BaseDestination(ABC):
         pass
 
     @abstractmethod
-    async def insert(self, entity: ChunkEntity) -> None:
+    async def insert(self, entity: BaseEntity) -> None:
         """Insert a single entity into the destination."""
         pass
 
     @abstractmethod
-    async def bulk_insert(self, entities: list[ChunkEntity]) -> None:
+    async def bulk_insert(self, entities: list[BaseEntity]) -> None:
         """Bulk insert entities into the destination."""
         pass
 

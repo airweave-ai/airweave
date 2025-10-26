@@ -32,7 +32,7 @@ def parse_entity_file(connector_name):
 
     entity_classes = []
 
-    # Find all class definitions that inherit from BaseEntity or ChunkEntity
+    # Find all class definitions that inherit from BaseEntity
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
             # Check if this class inherits from any entity base class
@@ -41,11 +41,12 @@ def parse_entity_file(connector_name):
                 if isinstance(base, ast.Name):
                     if base.id in [
                         "BaseEntity",
-                        "ChunkEntity",
-                        "PolymorphicEntity",
-                        "ParentEntity",
-                        "CodeFileEntity",
                         "FileEntity",
+                        "CodeFileEntity",
+                        "PolymorphicEntity",
+                        "DeletionEntity",
+                        "EmailEntity",
+                        "WebEntity",
                     ]:
                         is_entity = True
                         break
@@ -55,11 +56,12 @@ def parse_entity_file(connector_name):
                 ):
                     if base.value.id in [
                         "BaseEntity",
-                        "ChunkEntity",
-                        "PolymorphicEntity",
-                        "ParentEntity",
-                        "CodeFileEntity",
                         "FileEntity",
+                        "CodeFileEntity",
+                        "PolymorphicEntity",
+                        "DeletionEntity",
+                        "EmailEntity",
+                        "WebEntity",
                     ]:
                         is_entity = True
                         break

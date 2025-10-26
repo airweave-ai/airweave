@@ -9,7 +9,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from airweave.core.exceptions import TokenRefreshError
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import Breadcrumb, ChunkEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.box import (
     BoxCollaborationEntity,
     BoxCommentEntity,
@@ -212,10 +212,13 @@ class BoxSource(BaseSource):
                 return None
 
             return BoxUserEntity(
+                # Base fields
                 entity_id=user_data["id"],
                 breadcrumbs=[],
                 name=user_data.get("name", ""),
-                box_id=user_data["id"],
+                created_at=user_data.get("created_at"),
+                updated_at=user_data.get("modified_at"),
+                # API fields
                 login=user_data.get("login"),
                 status=user_data.get("status"),
                 job_title=user_data.get("job_title"),
@@ -223,8 +226,6 @@ class BoxSource(BaseSource):
                 address=user_data.get("address"),
                 language=user_data.get("language"),
                 timezone=user_data.get("timezone"),
-                created_at=user_data.get("created_at"),
-                modified_at=user_data.get("modified_at"),
                 space_amount=user_data.get("space_amount"),
                 space_used=user_data.get("space_used"),
                 max_upload_size=user_data.get("max_upload_size"),
@@ -256,17 +257,18 @@ class BoxSource(BaseSource):
         path_entries = path_collection_data.get("entries") or []
 
         return BoxFolderEntity(
+            # Base fields
             entity_id=folder_data["id"],
             breadcrumbs=breadcrumbs,
             name=folder_data.get("name", ""),
-            box_id=folder_data["id"],
+            created_at=folder_data.get("created_at"),
+            updated_at=folder_data.get("modified_at"),
+            # API fields
             description=folder_data.get("description"),
             size=folder_data.get("size"),
             path_collection=[
                 {"id": entry.get("id"), "name": entry.get("name")} for entry in path_entries
             ],
-            created_at=folder_data.get("created_at"),
-            modified_at=folder_data.get("modified_at"),
             content_created_at=folder_data.get("content_created_at"),
             content_modified_at=folder_data.get("content_modified_at"),
             created_by=folder_data.get("created_by"),
@@ -287,7 +289,7 @@ class BoxSource(BaseSource):
 
     async def _process_folder_items(
         self, client: httpx.AsyncClient, folder_id: str, folder_breadcrumbs: List[Breadcrumb]
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Process all items (files and subfolders) within a folder with pagination.
 
         Args:
@@ -296,7 +298,7 @@ class BoxSource(BaseSource):
             folder_breadcrumbs: Breadcrumbs including current folder
 
         Yields:
-            ChunkEntity instances for all items in the folder
+            BaseEntity instances for all items in the folder
         """
         offset = 0
         limit = 1000
@@ -342,7 +344,7 @@ class BoxSource(BaseSource):
 
     async def _generate_folder_entities(
         self, client: httpx.AsyncClient, folder_id: str, breadcrumbs: List[Breadcrumb]
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate folder and file entities recursively for a folder.
 
         Args:
@@ -351,7 +353,7 @@ class BoxSource(BaseSource):
             breadcrumbs: Parent breadcrumbs for this folder
 
         Yields:
-            ChunkEntity instances for folders, files, comments, and collaborations
+            BaseEntity instances for folders, files, comments, and collaborations
         """
         # Get folder details
         folder_fields = (
@@ -374,9 +376,7 @@ class BoxSource(BaseSource):
         yield folder_entity
 
         # Create breadcrumb for this folder
-        folder_breadcrumb = Breadcrumb(
-            entity_id=folder_data["id"], name=folder_data.get("name", ""), type="folder"
-        )
+        folder_breadcrumb = Breadcrumb(entity_id=folder_data["id"])
         folder_breadcrumbs = [*breadcrumbs, folder_breadcrumb]
 
         # Generate collaborations for this folder (skip root folder - ID 0)
@@ -393,7 +393,7 @@ class BoxSource(BaseSource):
 
     async def _generate_file_entities(
         self, client: httpx.AsyncClient, file_data: Dict, breadcrumbs: List[Breadcrumb]
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate file entity and related entities (comments, collaborations).
 
         Args:
@@ -414,32 +414,45 @@ class BoxSource(BaseSource):
 
         file_name = file_data.get("name", "")
         file_extension = file_data.get("extension", "").lower()
+        mime_type = file_data.get("mime_type") or "application/octet-stream"
+        size = file_data.get("size", 0)
 
         # Check if this is a Box Note (proprietary format that can't be downloaded)
         is_box_note = file_extension == "boxnote"
 
+        # Determine file type from mime_type or extension
+        if mime_type and "/" in mime_type:
+            file_type = mime_type.split("/")[0]
+        elif file_extension:
+            file_type = file_extension
+        else:
+            file_type = "file"
+
         # Create file entity
         file_entity = BoxFileEntity(
+            # Base fields
             entity_id=file_data["id"],
             breadcrumbs=breadcrumbs,
-            file_id=file_data["id"],
             name=file_name,
-            box_id=file_data["id"],
+            created_at=file_data.get("created_at"),
+            updated_at=file_data.get("modified_at"),
+            # File fields
+            url=f"{self.API_BASE}/files/{file_data['id']}/content",
+            size=size,
+            file_type=file_type,
+            mime_type=mime_type,
+            local_path=None,  # Will be set after download
+            # API fields
             description=file_data.get("description"),
             parent_folder_id=parent_folder_id,
             parent_folder_name=parent_folder_name,
             path_collection=[
                 {"id": entry.get("id"), "name": entry.get("name")} for entry in path_entries
             ],
-            mime_type=file_data.get("mime_type"),
-            size=file_data.get("size"),
-            total_size=file_data.get("size"),
             sha1=file_data.get("sha1"),
             extension=file_data.get("extension"),
             version_number=file_data.get("version_number"),
             comment_count=file_data.get("comment_count"),
-            created_at=file_data.get("created_at"),
-            modified_at=file_data.get("modified_at"),
             content_created_at=file_data.get("content_created_at"),
             content_modified_at=file_data.get("content_modified_at"),
             created_by=file_data.get("created_by"),
@@ -452,7 +465,6 @@ class BoxSource(BaseSource):
             permissions=file_data.get("permissions"),
             lock=file_data.get("lock"),
             permalink_url=f"https://app.box.com/file/{file_data['id']}",
-            download_url=f"{self.API_BASE}/files/{file_data['id']}/content",
             etag=file_data.get("etag"),
             sequence_id=file_data.get("sequence_id"),
         )
@@ -473,25 +485,29 @@ class BoxSource(BaseSource):
             )
             yield file_entity
         else:
-            # File can be downloaded - process it
-            token = await self.get_access_token()
-            headers = {"Authorization": f"Bearer {token}"}
-
+            # File can be downloaded - download it using file downloader
             try:
-                processed_entity = await self.process_file_entity(
-                    file_entity=file_entity,
-                    headers=headers,
+                await self.file_downloader.download_from_url(
+                    entity=file_entity,
+                    http_client_factory=self.http_client,
+                    access_token_provider=self.get_access_token,
+                    logger=self.logger,
                 )
-                yield processed_entity
+
+                # Verify download succeeded
+                if not file_entity.local_path:
+                    raise ValueError(f"Download failed - no local path set for {file_entity.name}")
+
+                self.logger.debug(f"Successfully downloaded file: {file_entity.name}")
+                yield file_entity
+
             except Exception as e:
-                self.logger.warning(f"Failed to process file {file_name} ({file_data['id']}): {e}")
+                self.logger.warning(f"Failed to download file {file_name} ({file_data['id']}): {e}")
                 # Still yield the file entity without processed content
                 yield file_entity
 
         # Create breadcrumb for this file
-        file_breadcrumb = Breadcrumb(
-            entity_id=file_data["id"], name=file_data.get("name", ""), type="file"
-        )
+        file_breadcrumb = Breadcrumb(entity_id=file_data["id"])
         file_breadcrumbs = [*breadcrumbs, file_breadcrumb]
 
         # Generate comments for this file
@@ -512,7 +528,7 @@ class BoxSource(BaseSource):
         file_id: str,
         file_name: str,
         breadcrumbs: List[Breadcrumb],
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate comment entities for a file.
 
         Args:
@@ -538,16 +554,24 @@ class BoxSource(BaseSource):
                 return
 
             for comment in comments_data.get("entries", []):
+                # Create comment name from message preview
+                message = comment.get("message", "")
+                comment_name = message[:50] + "..." if len(message) > 50 else message
+                if not comment_name:
+                    comment_name = f"Comment {comment['id']}"
+
                 yield BoxCommentEntity(
+                    # Base fields
                     entity_id=comment["id"],
                     breadcrumbs=breadcrumbs,
-                    box_id=comment["id"],
+                    name=comment_name,
+                    created_at=comment.get("created_at"),
+                    updated_at=comment.get("modified_at"),
+                    # API fields
                     file_id=file_id,
                     file_name=file_name,
-                    message=comment.get("message", ""),
+                    message=message,
                     created_by=comment.get("created_by", {}),
-                    created_at=comment.get("created_at"),
-                    modified_at=comment.get("modified_at"),
                     is_reply_comment=comment.get("is_reply_comment", False),
                     tagged_message=comment.get("tagged_message"),
                 )
@@ -562,7 +586,7 @@ class BoxSource(BaseSource):
         item_type: str,
         item_name: str,
         breadcrumbs: List[Breadcrumb],
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate collaboration entities for a file or folder.
 
         Args:
@@ -590,19 +614,27 @@ class BoxSource(BaseSource):
                 return
 
             for collab in collabs_data.get("entries", []):
+                # Create collaboration name from role and accessible_by
+                accessible_by = collab.get("accessible_by", {})
+                accessible_name = accessible_by.get("name", accessible_by.get("login", "Unknown"))
+                role = collab.get("role", "")
+                collab_name = f"{role} - {accessible_name}"
+
                 yield BoxCollaborationEntity(
+                    # Base fields
                     entity_id=collab["id"],
                     breadcrumbs=breadcrumbs,
-                    box_id=collab["id"],
-                    role=collab.get("role", ""),
-                    accessible_by=collab.get("accessible_by", {}),
+                    name=collab_name,
+                    created_at=collab.get("created_at"),
+                    updated_at=collab.get("modified_at"),
+                    # API fields
+                    role=role,
+                    accessible_by=accessible_by,
                     item=collab.get("item", {}),
                     item_id=item_id,
                     item_type=item_type,
                     item_name=item_name,
                     status=collab.get("status", ""),
-                    created_at=collab.get("created_at"),
-                    modified_at=collab.get("modified_at"),
                     created_by=collab.get("created_by"),
                     expires_at=collab.get("expires_at"),
                     is_access_only=collab.get("is_access_only"),
@@ -613,7 +645,7 @@ class BoxSource(BaseSource):
         except Exception as e:
             self.logger.debug(f"Failed to get collaborations for {item_type} {item_id}: {e}")
 
-    async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
+    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate all entities from Box.
 
         This method orchestrates the entire sync process:

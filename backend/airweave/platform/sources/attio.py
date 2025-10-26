@@ -19,7 +19,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from airweave.platform.configs.auth import AttioAuthConfig
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import Breadcrumb, ChunkEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.attio import (
     AttioListEntity,
     AttioNoteEntity,
@@ -115,7 +115,8 @@ class AttioSource(BaseSource):
 
                     if attempt < max_retries - 1:
                         self.logger.warning(
-                            f"Rate limited (429) on {url}, waiting {wait_seconds:.1f}s (attempt {attempt + 1}/{max_retries})"
+                            f"Rate limited (429) on {url}, waiting {wait_seconds:.1f}s "
+                            f"(attempt {attempt + 1}/{max_retries})"
                         )
                         await asyncio.sleep(wait_seconds)
                         continue
@@ -298,7 +299,7 @@ class AttioSource(BaseSource):
 
     async def _generate_object_entities(
         self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate Attio Object entities (Companies, People, Deals, etc.).
 
         Yields:
@@ -315,20 +316,25 @@ class AttioSource(BaseSource):
 
             self.logger.debug(f"Generating object entity: {object_id}")
 
+            singular_noun = obj.get("singular_noun", "")
+
             yield AttioObjectEntity(
+                # Base fields
                 entity_id=object_id,
                 breadcrumbs=[],
-                object_id=object_id,
-                singular_noun=obj.get("singular_noun", ""),
+                name=singular_noun,
+                created_at=obj.get("created_at"),
+                updated_at=None,  # Objects don't have update timestamp
+                # API fields
+                singular_noun=singular_noun,
                 plural_noun=obj.get("plural_noun", ""),
                 api_slug=obj.get("api_slug", ""),
                 icon=obj.get("icon"),
-                created_at=obj.get("created_at"),
             )
 
     async def _generate_list_entities(
         self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate Attio List entities.
 
         Yields:
@@ -351,13 +357,15 @@ class AttioSource(BaseSource):
                 parent_object = ", ".join(parent_object) if parent_object else None
 
             yield AttioListEntity(
+                # Base fields
                 entity_id=list_id,
                 breadcrumbs=[],
-                list_id=list_id,
                 name=lst.get("name", ""),
+                created_at=lst.get("created_at"),
+                updated_at=None,  # Lists don't have update timestamp
+                # API fields
                 workspace_id=lst.get("workspace_id", ""),
                 parent_object=parent_object,
-                created_at=lst.get("created_at"),
             )
 
     async def _generate_record_entities_for_object(
@@ -366,7 +374,7 @@ class AttioSource(BaseSource):
         object_slug: str,
         object_name: str,
         object_breadcrumb: Breadcrumb,
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate record entities for a specific object.
 
         Args:
@@ -459,21 +467,27 @@ class AttioSource(BaseSource):
                 # Store all attributes for searchability
                 attributes[attr_key] = attr_values
 
+            # Create record name from name attribute or record ID
+            record_name = name or record_id
+
             yield AttioRecordEntity(
+                # Base fields
                 entity_id=record_id,
                 breadcrumbs=[object_breadcrumb],
-                record_id=record_id,
+                name=record_name,
+                created_at=record.get("created_at"),
+                updated_at=record.get("updated_at"),
+                # API fields
                 object_id=object_slug,
+                list_id=None,  # This is an object record, not a list record
                 parent_object_name=object_name,
-                name=name,
                 description=description,
                 email_addresses=email_addresses,
                 phone_numbers=phone_numbers,
                 domains=domains,
                 categories=categories,
                 attributes=attributes,
-                created_at=record.get("created_at"),
-                updated_at=record.get("updated_at"),
+                permalink_url=None,  # Not provided by API for records
             )
 
     async def _generate_record_entities_for_list(
@@ -482,7 +496,7 @@ class AttioSource(BaseSource):
         list_id: str,
         list_name: str,
         list_breadcrumb: Breadcrumb,
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate record entities for a specific list.
 
         Args:
@@ -538,17 +552,27 @@ class AttioSource(BaseSource):
 
                 attributes[attr_key] = attr_values
 
+            # Create record name from name attribute or record ID
+            record_name = name or record_id
+
             yield AttioRecordEntity(
+                # Base fields
                 entity_id=record_id,
                 breadcrumbs=[list_breadcrumb],
-                record_id=record_id,
-                list_id=list_id,
-                parent_object_name=list_name,
-                name=name,
-                description=description,
-                attributes=attributes,
+                name=record_name,
                 created_at=record.get("created_at"),
                 updated_at=record.get("updated_at"),
+                # API fields
+                object_id=None,  # This is a list record, not an object record
+                list_id=list_id,
+                parent_object_name=list_name,
+                description=description,
+                email_addresses=[],  # List records might not have these fields
+                phone_numbers=[],  # List records might not have these fields
+                domains=[],  # List records might not have these fields
+                categories=[],  # List records might not have these fields
+                attributes=attributes,
+                permalink_url=None,  # Not provided by API for records
             )
 
     async def _generate_note_entities_for_record(
@@ -557,7 +581,7 @@ class AttioSource(BaseSource):
         parent_object_or_list_id: str,
         record_id: str,
         record_breadcrumbs: List[Breadcrumb],
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate note entities for a specific record.
 
         Args:
@@ -570,7 +594,8 @@ class AttioSource(BaseSource):
             AttioNoteEntity instances
         """
         self.logger.debug(
-            f"🔍 Attempting to fetch notes for record {record_id} (parent: {parent_object_or_list_id})"
+            f"🔍 Attempting to fetch notes for record {record_id} "
+            f"(parent: {parent_object_or_list_id})"
         )
 
         # According to Attio API docs, use GET /v2/notes with query parameters
@@ -590,7 +615,8 @@ class AttioSource(BaseSource):
             notes = response.get("data", [])
             if notes:
                 self.logger.info(
-                    f"✅ Found {len(notes)} notes for record {record_id} (parent: {parent_object_or_list_id})"
+                    f"✅ Found {len(notes)} notes for record {record_id} "
+                    f"(parent: {parent_object_or_list_id})"
                 )
             else:
                 self.logger.debug(f"No notes found for record {record_id}")
@@ -614,21 +640,35 @@ class AttioSource(BaseSource):
             if not note_id:
                 continue
 
+            # Create note name from title or content preview
+            title = note.get("title")
+            content = note.get("content", "")
+            if title:
+                note_name = title
+            else:
+                # Use content preview if no title
+                note_name = content[:50] + "..." if len(content) > 50 else content
+                if not note_name:
+                    note_name = f"Note {note_id}"
+
             yield AttioNoteEntity(
+                # Base fields
                 entity_id=note_id,
                 breadcrumbs=record_breadcrumbs,
-                note_id=note_id,
-                parent_record_id=record_id,
-                parent_object=parent_object_or_list_id,
-                title=note.get("title"),
-                content=note.get("content", ""),
-                format=note.get("format"),
-                author=note.get("author"),
+                name=note_name,
                 created_at=note.get("created_at"),
                 updated_at=note.get("updated_at"),
+                # API fields
+                parent_record_id=record_id,
+                parent_object=parent_object_or_list_id,
+                title=title,
+                content=content,
+                format=note.get("format"),
+                author=note.get("author"),
+                permalink_url=None,  # Not provided by API for notes
             )
 
-    async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
+    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate all entities from Attio.
 
         This is the main entry point called by the sync engine.
@@ -655,38 +695,34 @@ class AttioSource(BaseSource):
                 # Generate records for each object (with concurrent note fetching)
                 for object_id, obj in object_map.items():
                     try:
-                        object_breadcrumb = Breadcrumb(
-                            entity_id=object_id, name=obj.singular_noun, type="object"
-                        )
+                        object_breadcrumb = Breadcrumb(entity_id=object_id)
 
                         # Create a worker that processes a record and its notes concurrently
-                        async def _record_worker(record):
+                        # Bind loop variables to avoid closure issues
+                        async def _record_worker(record, _obj=obj, _breadcrumb=object_breadcrumb):
                             # Yield the record first
                             yield record
 
                             # Generate notes for this record
                             try:
-                                record_breadcrumb = Breadcrumb(
-                                    entity_id=record.record_id,
-                                    name=record.name or record.record_id,
-                                    type="record",
-                                )
-                                record_breadcrumbs = [object_breadcrumb, record_breadcrumb]
+                                record_breadcrumb = Breadcrumb(entity_id=record.entity_id)
+                                record_breadcrumbs = [_breadcrumb, record_breadcrumb]
 
                                 note_count = 0
                                 async for note in self._generate_note_entities_for_record(
-                                    client, obj.api_slug, record.record_id, record_breadcrumbs
+                                    client, _obj.api_slug, record.entity_id, record_breadcrumbs
                                 ):
                                     note_count += 1
                                     yield note
 
                                 if note_count > 0:
                                     self.logger.info(
-                                        f"✅ Yielded {note_count} notes for record {record.record_id}"
+                                        f"✅ Yielded {note_count} notes for "
+                                        f"record {record.entity_id}"
                                     )
                             except Exception as e:
                                 self.logger.warning(
-                                    f"❌ Error fetching notes for record {record.record_id}: {e}",
+                                    f"❌ Error fetching notes for record {record.entity_id}: {e}",
                                     exc_info=True,
                                 )
 
@@ -716,36 +752,36 @@ class AttioSource(BaseSource):
                 # Generate records for each list (with concurrent note fetching)
                 for list_id, lst in list_map.items():
                     try:
-                        list_breadcrumb = Breadcrumb(entity_id=list_id, name=lst.name, type="list")
+                        list_breadcrumb = Breadcrumb(entity_id=list_id)
 
                         # Create a worker that processes a record and its notes concurrently
-                        async def _list_record_worker(record):
+                        # Bind loop variables to avoid closure issues
+                        async def _list_record_worker(
+                            record, _list_id=list_id, _breadcrumb=list_breadcrumb
+                        ):
                             # Yield the record first
                             yield record
 
                             # Generate notes for this record
                             try:
-                                record_breadcrumb = Breadcrumb(
-                                    entity_id=record.record_id,
-                                    name=record.name or record.record_id,
-                                    type="record",
-                                )
-                                record_breadcrumbs = [list_breadcrumb, record_breadcrumb]
+                                record_breadcrumb = Breadcrumb(entity_id=record.entity_id)
+                                record_breadcrumbs = [_breadcrumb, record_breadcrumb]
 
                                 note_count = 0
                                 async for note in self._generate_note_entities_for_record(
-                                    client, list_id, record.record_id, record_breadcrumbs
+                                    client, _list_id, record.entity_id, record_breadcrumbs
                                 ):
                                     note_count += 1
                                     yield note
 
                                 if note_count > 0:
                                     self.logger.info(
-                                        f"✅ Yielded {note_count} notes for record {record.record_id}"
+                                        f"✅ Yielded {note_count} notes for "
+                                        f"record {record.entity_id}"
                                     )
                             except Exception as e:
                                 self.logger.warning(
-                                    f"❌ Error fetching notes for record {record.record_id}: {e}",
+                                    f"❌ Error fetching notes for record {record.entity_id}: {e}",
                                     exc_info=True,
                                 )
 

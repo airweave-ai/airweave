@@ -15,7 +15,7 @@ import asyncpg
 from airweave.core.pg_field_catalog_service import overwrite_catalog
 from airweave.db.session import get_db_context
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import ChunkEntity, PolymorphicEntity
+from airweave.platform.entities._base import BaseEntity, PolymorphicEntity
 from airweave.platform.sources._base import BaseSource
 from airweave.schemas.source_connection import AuthenticationMethod
 
@@ -604,7 +604,7 @@ class PostgreSQLSource(BaseSource):
         entity_class: Type[PolymorphicEntity],
         primary_keys: List[str],
         cursor_field: Optional[str] = None,
-    ) -> tuple[ChunkEntity, Any]:
+    ) -> tuple[BaseEntity, Any]:
         """Process a database record into an entity."""
         data = dict(record)
         cursor_value = data.get(cursor_field) if cursor_field else None
@@ -655,7 +655,7 @@ class PostgreSQLSource(BaseSource):
         entity_class: Type[PolymorphicEntity],
         cursor_field: Optional[str],
         last_cursor_value: Any,
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Process table using server-side cursor for efficient streaming.
 
         Uses PostgreSQL's server-side cursor for optimal performance on large tables.
@@ -761,7 +761,7 @@ class PostgreSQLSource(BaseSource):
         schema: str,
         table: str,
         cursor_data: Dict[str, Any],
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Process a single table with incremental support using server-side cursor.
 
         Uses PostgreSQL's server-side cursor for efficient streaming of data,
@@ -799,7 +799,7 @@ class PostgreSQLSource(BaseSource):
         ):
             yield entity
 
-    async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
+    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate entities for all tables in specified schemas with incremental support."""
         try:
             await self._connect()

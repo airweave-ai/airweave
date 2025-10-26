@@ -8,10 +8,10 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import ChunkEntity
+from airweave.platform.entities._base import 
 
 
-class MondayBoardEntity(ChunkEntity):
+class MondayBoardEntity(BaseEntity):
     """Schema for Monday Board objects.
 
     https://developer.monday.com/api-reference/reference/boards
@@ -54,7 +54,7 @@ class MondayBoardEntity(ChunkEntity):
     )
 
 
-class MondayGroupEntity(ChunkEntity):
+class MondayGroupEntity(BaseEntity):
     """Schema for Monday Group objects.
 
     Groups are collections of items (rows) within a board.
@@ -77,7 +77,7 @@ class MondayGroupEntity(ChunkEntity):
     )
 
 
-class MondayColumnEntity(ChunkEntity):
+class MondayColumnEntity(BaseEntity):
     """Schema for Monday Column objects.
 
     Columns define the structure of data on a Monday board.
@@ -104,7 +104,7 @@ class MondayColumnEntity(ChunkEntity):
     archived: bool = AirweaveField(False, description="Whether this column is archived or hidden.")
 
 
-class MondayItemEntity(ChunkEntity):
+class MondayItemEntity(BaseEntity):
     """Schema for Monday Item objects (rows on a board).
 
     https://developer.monday.com/api-reference/reference/boards
@@ -136,7 +136,7 @@ class MondayItemEntity(ChunkEntity):
     )
 
 
-class MondaySubitemEntity(ChunkEntity):
+class MondaySubitemEntity(BaseEntity):
     """Schema for Monday Subitem objects.
 
     Subitems are items nested under a parent item, often in a dedicated 'Subitems' column.
@@ -173,7 +173,7 @@ class MondaySubitemEntity(ChunkEntity):
     )
 
 
-class MondayUpdateEntity(ChunkEntity):
+class MondayUpdateEntity(BaseEntity):
     """Schema for Monday Update objects.
 
     monday.com updates add notes and discussions to items outside of their column data.

@@ -18,16 +18,24 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import ChunkEntity
+from airweave.platform.entities._base import BaseEntity
 
 
-class TeamsUserEntity(ChunkEntity):
+class TeamsUserEntity(BaseEntity):
     """Schema for a Microsoft Teams user.
 
     Based on the Microsoft Graph user resource.
     Reference: https://learn.microsoft.com/en-us/graph/api/resources/user
     """
 
+    # Base fields are inherited and set during entity creation:
+    # - entity_id (user ID)
+    # - breadcrumbs (empty - users are top-level)
+    # - name (from display_name)
+    # - created_at (None - users don't have creation timestamp in Teams API)
+    # - updated_at (None - users don't have update timestamp in Teams API)
+
+    # API fields
     display_name: Optional[str] = AirweaveField(
         None, description="The name displayed in the address book for the user.", embeddable=True
     )
@@ -50,13 +58,21 @@ class TeamsUserEntity(ChunkEntity):
     )
 
 
-class TeamsTeamEntity(ChunkEntity):
+class TeamsTeamEntity(BaseEntity):
     """Schema for a Microsoft Teams team.
 
     Based on the Microsoft Graph team resource.
     Reference: https://learn.microsoft.com/en-us/graph/api/resources/team
     """
 
+    # Base fields are inherited and set during entity creation:
+    # - entity_id (team ID)
+    # - breadcrumbs (empty - teams are top-level)
+    # - name (from display_name)
+    # - created_at (from created_datetime)
+    # - updated_at (None - teams don't have update timestamp)
+
+    # API fields
     display_name: str = AirweaveField(..., description="The name of the team.", embeddable=True)
     description: Optional[str] = AirweaveField(
         None, description="An optional description for the team.", embeddable=True
@@ -67,16 +83,10 @@ class TeamsTeamEntity(ChunkEntity):
         embeddable=True,
     )
     is_archived: Optional[bool] = AirweaveField(
-        None, description="Whether this team is in read-only mode."
+        None, description="Whether this team is in read-only mode.", embeddable=False
     )
     web_url: Optional[str] = AirweaveField(
-        None, description="A hyperlink that goes to the team in Microsoft Teams."
-    )
-    created_datetime: Optional[datetime] = AirweaveField(
-        None,
-        description="Timestamp at which the team was created.",
-        is_created_at=True,
-        embeddable=True,
+        None, description="A hyperlink that goes to the team in Microsoft Teams.", embeddable=False
     )
     classification: Optional[str] = AirweaveField(
         None,
@@ -89,18 +99,28 @@ class TeamsTeamEntity(ChunkEntity):
         embeddable=True,
     )
     internal_id: Optional[str] = AirweaveField(
-        None, description="A unique ID for the team used in audit logs."
+        None, description="A unique ID for the team used in audit logs.", embeddable=False
     )
 
 
-class TeamsChannelEntity(ChunkEntity):
+class TeamsChannelEntity(BaseEntity):
     """Schema for a Microsoft Teams channel.
 
     Based on the Microsoft Graph channel resource.
     Reference: https://learn.microsoft.com/en-us/graph/api/resources/channel
     """
 
-    team_id: str = AirweaveField(..., description="ID of the team this channel belongs to.")
+    # Base fields are inherited and set during entity creation:
+    # - entity_id (channel ID)
+    # - breadcrumbs (team breadcrumb)
+    # - name (from display_name)
+    # - created_at (from created_datetime)
+    # - updated_at (None - channels don't have update timestamp)
+
+    # API fields
+    team_id: str = AirweaveField(
+        ..., description="ID of the team this channel belongs to.", embeddable=False
+    )
     display_name: str = AirweaveField(
         ..., description="Channel name as it appears to users.", embeddable=True
     )
@@ -108,7 +128,7 @@ class TeamsChannelEntity(ChunkEntity):
         None, description="Optional textual description for the channel.", embeddable=True
     )
     email: Optional[str] = AirweaveField(
-        None, description="The email address for sending messages to the channel."
+        None, description="The email address for sending messages to the channel.", embeddable=False
     )
     membership_type: Optional[str] = AirweaveField(
         None,
@@ -116,29 +136,35 @@ class TeamsChannelEntity(ChunkEntity):
         embeddable=True,
     )
     is_archived: Optional[bool] = AirweaveField(
-        None, description="Indicates whether the channel is archived."
+        None, description="Indicates whether the channel is archived.", embeddable=False
     )
     is_favorite_by_default: Optional[bool] = AirweaveField(
-        None, description="Indicates whether the channel is recommended for all team members."
+        None,
+        description="Indicates whether the channel is recommended for all team members.",
+        embeddable=False,
     )
     web_url: Optional[str] = AirweaveField(
-        None, description="A hyperlink that goes to the channel in Microsoft Teams."
-    )
-    created_datetime: Optional[datetime] = AirweaveField(
         None,
-        description="Timestamp at which the channel was created.",
-        is_created_at=True,
-        embeddable=True,
+        description="A hyperlink that goes to the channel in Microsoft Teams.",
+        embeddable=False,
     )
 
 
-class TeamsChatEntity(ChunkEntity):
+class TeamsChatEntity(BaseEntity):
     """Schema for a Microsoft Teams chat (1:1, group, or meeting chat).
 
     Based on the Microsoft Graph chat resource.
     Reference: https://learn.microsoft.com/en-us/graph/api/resources/chat
     """
 
+    # Base fields are inherited and set during entity creation:
+    # - entity_id (chat ID)
+    # - breadcrumbs (empty - chats are top-level)
+    # - name (from topic or chat_type)
+    # - created_at (from created_datetime)
+    # - updated_at (from last_updated_datetime)
+
+    # API fields
     chat_type: str = AirweaveField(
         ...,
         description="Type of chat (oneOnOne, group, meeting).",
@@ -149,41 +175,37 @@ class TeamsChatEntity(ChunkEntity):
         description="Subject or topic for the chat (only for group chats).",
         embeddable=True,
     )
-    created_datetime: Optional[datetime] = AirweaveField(
-        None,
-        description="Date and time at which the chat was created.",
-        is_created_at=True,
-        embeddable=True,
-    )
-    last_updated_datetime: Optional[datetime] = AirweaveField(
-        None,
-        description="Date and time at which the chat was last updated.",
-        is_updated_at=True,
-        embeddable=True,
-    )
     web_url: Optional[str] = AirweaveField(
-        None, description="The URL for the chat in Microsoft Teams."
+        None, description="The URL for the chat in Microsoft Teams.", embeddable=False
     )
 
 
-class TeamsMessageEntity(ChunkEntity):
+class TeamsMessageEntity(BaseEntity):
     """Schema for a Microsoft Teams message (in channel or chat).
 
     Based on the Microsoft Graph chatMessage resource.
     Reference: https://learn.microsoft.com/en-us/graph/api/resources/chatmessage
     """
 
+    # Base fields are inherited and set during entity creation:
+    # - entity_id (message ID)
+    # - breadcrumbs (team/channel or chat breadcrumbs)
+    # - name (from subject or body preview)
+    # - created_at (from created_datetime)
+    # - updated_at (from last_modified_datetime)
+
+    # API fields
     team_id: Optional[str] = AirweaveField(
-        None, description="ID of the team (if this is a channel message)."
+        None, description="ID of the team (if this is a channel message).", embeddable=False
     )
     channel_id: Optional[str] = AirweaveField(
-        None, description="ID of the channel (if this is a channel message)."
+        None, description="ID of the channel (if this is a channel message).", embeddable=False
     )
     chat_id: Optional[str] = AirweaveField(
-        None, description="ID of the chat (if this is a chat message)."
+        None, description="ID of the chat (if this is a chat message).", embeddable=False
     )
     reply_to_id: Optional[str] = AirweaveField(
-        None, description="ID of the parent message (for replies)."
+        None, description="ID of the parent message (for replies).", embeddable=False
     )
     message_type: Optional[str] = AirweaveField(
         None,
@@ -197,28 +219,16 @@ class TeamsMessageEntity(ChunkEntity):
         None, description="The content of the message body.", embeddable=True
     )
     body_content_type: Optional[str] = AirweaveField(
-        None, description="The type of the content (html or text)."
+        None, description="The type of the content (html or text).", embeddable=False
     )
     from_user: Optional[Dict[str, Any]] = AirweaveField(
         None, description="Details of the sender of the message.", embeddable=True
     )
-    created_datetime: Optional[datetime] = AirweaveField(
-        None,
-        description="Timestamp of when the message was created.",
-        is_created_at=True,
-        embeddable=True,
-    )
-    last_modified_datetime: Optional[datetime] = AirweaveField(
-        None,
-        description="Timestamp when the message was last modified.",
-        is_updated_at=True,
-        embeddable=True,
-    )
     last_edited_datetime: Optional[datetime] = AirweaveField(
-        None, description="Timestamp when edits to the message were made.", embeddable=True
+        None, description="Timestamp when edits to the message were made.", embeddable=False
     )
     deleted_datetime: Optional[datetime] = AirweaveField(
-        None, description="Timestamp at which the message was deleted.", embeddable=True
+        None, description="Timestamp at which the message was deleted.", embeddable=False
     )
     importance: Optional[str] = AirweaveField(
         None, description="The importance of the message (normal, high, urgent).", embeddable=True
@@ -239,5 +249,5 @@ class TeamsMessageEntity(ChunkEntity):
         embeddable=True,
     )
     web_url: Optional[str] = AirweaveField(
-        None, description="Link to the message in Microsoft Teams."
+        None, description="Link to the message in Microsoft Teams.", embeddable=False
     )

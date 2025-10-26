@@ -14,7 +14,6 @@ from airweave.core.exceptions import NotFoundException
 async def _run_sync_task(
     sync,
     sync_job,
-    sync_dag,
     collection,
     connection,
     ctx,
@@ -29,7 +28,6 @@ async def _run_sync_task(
         return await sync_service.run(
             sync=sync,
             sync_job=sync_job,
-            dag=sync_dag,
             collection=collection,
             source_connection=connection,  # sync_service expects this parameter name
             ctx=ctx,
@@ -54,7 +52,6 @@ async def _run_sync_task(
 async def run_sync_activity(
     sync_dict: Dict[str, Any],
     sync_job_dict: Dict[str, Any],
-    sync_dag_dict: Dict[str, Any],
     collection_dict: Dict[str, Any],
     connection_dict: Dict[str, Any],
     ctx_dict: Dict[str, Any],
@@ -68,7 +65,6 @@ async def run_sync_activity(
     Args:
         sync_dict: The sync configuration as dict
         sync_job_dict: The sync job as dict
-        sync_dag_dict: The sync DAG as dict
         collection_dict: The collection as dict
         connection_dict: The connection as dict (Connection schema, NOT SourceConnection)
         ctx_dict: The API context as dict
@@ -83,7 +79,6 @@ async def run_sync_activity(
     # Convert dicts back to Pydantic models
     sync = schemas.Sync(**sync_dict)
     sync_job = schemas.SyncJob(**sync_job_dict)
-    sync_dag = schemas.SyncDag(**sync_dag_dict)
     collection = schemas.Collection(**collection_dict)
     connection = schemas.Connection(**connection_dict)
 
@@ -115,7 +110,6 @@ async def run_sync_activity(
         _run_sync_task(
             sync,
             sync_job,
-            sync_dag,
             collection,
             connection,
             ctx,

@@ -19,7 +19,6 @@ class TemporalService:
         self,
         sync: schemas.Sync,
         sync_job: schemas.SyncJob,
-        sync_dag: schemas.SyncDag,
         collection: schemas.Collection,
         connection: schemas.Connection,  # Connection, NOT SourceConnection
         ctx: ApiContext,
@@ -31,7 +30,6 @@ class TemporalService:
         Args:
             sync: The sync configuration
             sync_job: The sync job
-            sync_dag: The sync DAG
             collection: The collection
             connection: The connection (Connection schema, NOT SourceConnection)
             ctx: The API context
@@ -58,7 +56,6 @@ class TemporalService:
             args=[
                 sync.model_dump(mode="json"),
                 sync_job.model_dump(mode="json"),
-                sync_dag.model_dump(mode="json"),
                 collection.model_dump(mode="json"),
                 connection.model_dump(mode="json"),
                 ctx.to_serializable_dict(),  # Use serializable dict instead of model_dump

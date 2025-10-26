@@ -6,7 +6,6 @@ from .billing_period import BillingPeriod
 from .collection import Collection
 from .connection import Connection
 from .connection_init_session import ConnectionInitSession
-from .dag import DagEdge, DagNode, SyncDag
 from .destination import Destination
 from .embedding_model import EmbeddingModel
 from .entity import Entity
@@ -40,8 +39,6 @@ __all__ = [
     "EntityCount",
     "Connection",
     "ConnectionInitSession",
-    "DagEdge",
-    "DagNode",
     "Destination",
     "EmbeddingModel",
     "EntityDefinition",
@@ -59,7 +56,6 @@ __all__ = [
     "Sync",
     "SyncConnection",
     "SyncCursor",
-    "SyncDag",
     "SyncJob",
     "Transformer",
     "Usage",

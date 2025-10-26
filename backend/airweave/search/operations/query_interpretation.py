@@ -80,8 +80,12 @@ class QueryInterpretation(SearchOperation):
         "source_name": "Source connector name (case-sensitive)",
         "entity_type": "Entity type name",
         "sync_id": "Sync ID (UUID, for debugging)",
-        "airweave_created_at": "Created in Airweave (ISO8601 datetime)",
-        "airweave_updated_at": "Last updated in Airweave (ISO8601 datetime)",
+    }
+
+    # Entity-level timestamp fields (not nested)
+    ENTITY_TIMESTAMP_FIELDS = {
+        "created_at": "Entity creation timestamp (ISO8601 datetime)",
+        "updated_at": "Entity last update timestamp (ISO8601 datetime)",
     }
 
     def __init__(self, providers: List[BaseProvider]) -> None:
@@ -278,6 +282,9 @@ class QueryInterpretation(SearchOperation):
 
         # Add system metadata fields from class constant
         all_fields.update(self.NESTED_SYSTEM_FIELDS)
+
+        # Add entity-level timestamp fields (not nested)
+        all_fields.update(self.ENTITY_TIMESTAMP_FIELDS)
 
         return all_fields
 

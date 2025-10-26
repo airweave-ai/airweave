@@ -18,10 +18,10 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import ChunkEntity, FileEntity
+from airweave.platform.entities._base import FileEntity
 
 
-class SharePointUserEntity(ChunkEntity):
+class SharePointUserEntity(BaseEntity):
     """Schema for a SharePoint user.
 
     Based on the Microsoft Graph user resource.
@@ -59,7 +59,7 @@ class SharePointUserEntity(ChunkEntity):
     )
 
 
-class SharePointGroupEntity(ChunkEntity):
+class SharePointGroupEntity(BaseEntity):
     """Schema for a SharePoint group.
 
     Based on the Microsoft Graph group resource.
@@ -99,7 +99,7 @@ class SharePointGroupEntity(ChunkEntity):
     )
 
 
-class SharePointSiteEntity(ChunkEntity):
+class SharePointSiteEntity(BaseEntity):
     """Schema for a SharePoint site.
 
     Based on the Microsoft Graph site resource.
@@ -138,7 +138,7 @@ class SharePointSiteEntity(ChunkEntity):
     )
 
 
-class SharePointDriveEntity(ChunkEntity):
+class SharePointDriveEntity(BaseEntity):
     """Schema for a SharePoint drive (document library).
 
     Based on the Microsoft Graph drive resource.
@@ -230,7 +230,7 @@ class SharePointDriveItemEntity(FileEntity):
     )
 
 
-class SharePointListEntity(ChunkEntity):
+class SharePointListEntity(BaseEntity):
     """Schema for a SharePoint list.
 
     Based on the Microsoft Graph list resource.
@@ -265,7 +265,7 @@ class SharePointListEntity(ChunkEntity):
     )
 
 
-class SharePointListItemEntity(ChunkEntity):
+class SharePointListItemEntity(BaseEntity):
     """Schema for a SharePoint list item.
 
     Based on the Microsoft Graph listItem resource.
@@ -307,7 +307,7 @@ class SharePointListItemEntity(ChunkEntity):
     )
 
 
-class SharePointPageEntity(ChunkEntity):
+class SharePointPageEntity(BaseEntity):
     """Schema for a SharePoint site page.
 
     Based on the Microsoft Graph sitePage resource.

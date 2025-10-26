@@ -23,9 +23,10 @@ class UserFilter(SearchOperation):
         "source_name",
         "entity_type",
         "sync_id",
-        "airweave_created_at",
-        "airweave_updated_at",
     }
+
+    # Note: created_at, updated_at are entity-level fields (not nested in airweave_system_metadata)
+    # They don't need path mapping - used directly in filters
 
     def __init__(self, filter: QdrantFilter) -> None:
         """Initialize with user-provided filter."""

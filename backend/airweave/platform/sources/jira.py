@@ -197,10 +197,14 @@ class JiraSource(BaseSource):
         entity_id = f"project-{project_data['id']}"
 
         return JiraProjectEntity(
-            entity_id=entity_id,  # Modified to use unique ID
-            breadcrumbs=[],  # top-level object, no parent
+            # Base fields
+            entity_id=entity_id,
+            breadcrumbs=[],
+            name=project_data.get("name") or project_data["key"],
+            created_at=None,  # Projects don't have creation timestamp in API
+            updated_at=None,  # Projects don't have update timestamp in API
+            # API fields
             project_key=project_data["key"],
-            name=project_data.get("name"),
             description=project_data.get("description"),
         )
 
@@ -263,17 +267,18 @@ class JiraSource(BaseSource):
         entity_id = f"issue-{issue_data['id']}"
 
         return JiraIssueEntity(
-            entity_id=entity_id,  # Modified to use unique ID
-            breadcrumbs=[
-                Breadcrumb(entity_id=project.entity_id, name=project.name or "", type="project")
-            ],
+            # Base fields
+            entity_id=entity_id,
+            breadcrumbs=[Breadcrumb(entity_id=project.entity_id)],
+            name=fields.get("summary") or issue_key,
+            created_at=fields.get("created"),
+            updated_at=fields.get("updated"),
+            # API fields
             issue_key=issue_key,
             summary=fields.get("summary"),
             description=description_text,
             status=status_name,
             issue_type=issue_type_name,
-            created_at=fields.get("created"),
-            updated_at=fields.get("updated"),
         )
 
     async def _generate_project_entities(

@@ -8,7 +8,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from airweave.core.exceptions import TokenRefreshError
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import ChunkEntity
+from airweave.platform.entities._base import BaseEntity
 from airweave.platform.entities.zendesk import (
     ZendeskAttachmentEntity,
     ZendeskCommentEntity,
@@ -144,7 +144,7 @@ class ZendeskSource(BaseSource):
 
     async def _generate_organization_entities(
         self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate organization entities."""
         url = f"https://{self.subdomain}.zendesk.com/api/v2/organizations.json"
 
@@ -173,7 +173,7 @@ class ZendeskSource(BaseSource):
 
     async def _generate_user_entities(
         self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate user entities."""
         url = f"https://{self.subdomain}.zendesk.com/api/v2/users.json"
 
@@ -230,7 +230,7 @@ class ZendeskSource(BaseSource):
 
     async def _generate_ticket_entities(
         self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate ticket entities."""
         url = f"https://{self.subdomain}.zendesk.com/api/v2/tickets.json"
 
@@ -274,7 +274,7 @@ class ZendeskSource(BaseSource):
 
     async def _generate_comment_entities(
         self, client: httpx.AsyncClient, ticket: Dict
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate comment entities for a ticket."""
         ticket_id = ticket["id"]
         # Include users in the response to get author names
@@ -331,7 +331,7 @@ class ZendeskSource(BaseSource):
 
     async def _generate_attachment_entities(
         self, client: httpx.AsyncClient, ticket: Dict
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate attachment entities for a ticket."""
         ticket_id = ticket["id"]
 
@@ -392,7 +392,7 @@ class ZendeskSource(BaseSource):
             else:
                 raise
 
-    async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
+    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate all entities from Zendesk."""
         async with self.http_client() as client:
             # Generate organizations first

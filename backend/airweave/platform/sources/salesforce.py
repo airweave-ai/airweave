@@ -16,7 +16,7 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import ChunkEntity
+from airweave.platform.entities._base import BaseEntity
 from airweave.platform.entities.salesforce import (
     SalesforceAccountEntity,
     SalesforceContactEntity,
@@ -132,7 +132,7 @@ class SalesforceSource(BaseSource):
 
     async def _generate_account_entities(
         self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Retrieve accounts from Salesforce using SOQL query.
 
         Uses Salesforce Object Query Language (SOQL) to fetch Account records.
@@ -212,7 +212,7 @@ class SalesforceSource(BaseSource):
 
     async def _generate_contact_entities(
         self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Retrieve contacts from Salesforce using SOQL query.
 
         Uses Salesforce Object Query Language (SOQL) to fetch Contact records.
@@ -296,7 +296,7 @@ class SalesforceSource(BaseSource):
 
     async def _generate_opportunity_entities(
         self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Retrieve opportunities from Salesforce using SOQL query.
 
         Uses Salesforce Object Query Language (SOQL) to fetch Opportunity records.
@@ -357,7 +357,7 @@ class SalesforceSource(BaseSource):
             else:
                 url = None
 
-    async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
+    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate all Salesforce entities.
 
         - Accounts

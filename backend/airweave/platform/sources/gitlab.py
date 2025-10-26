@@ -11,7 +11,7 @@ import tenacity
 from tenacity import retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import Breadcrumb, ChunkEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.gitlab import (
     GitLabCodeFileEntity,
     GitLabDirectoryEntity,
@@ -253,18 +253,21 @@ class GitLabSource(BaseSource):
         user_data = await self._get_with_auth(client, url)
 
         return GitLabUserEntity(
+            # Base fields
             entity_id=str(user_data["id"]),
             breadcrumbs=[],
-            username=user_data["username"],
             name=user_data["name"],
-            state=user_data["state"],
-            avatar_url=user_data.get("avatar_url"),
-            web_url=user_data["web_url"],
             created_at=(
                 datetime.fromisoformat(user_data["created_at"].replace("Z", "+00:00"))
                 if user_data.get("created_at")
                 else None
             ),
+            updated_at=None,  # Users don't have update timestamp
+            # API fields
+            username=user_data["username"],
+            state=user_data["state"],
+            avatar_url=user_data.get("avatar_url"),
+            web_url=user_data["web_url"],
             bio=user_data.get("bio"),
             location=user_data.get("location"),
             public_email=user_data.get("public_email"),
@@ -289,19 +292,21 @@ class GitLabSource(BaseSource):
         project_data = await self._get_with_auth(client, url)
 
         return GitLabProjectEntity(
+            # Base fields
             entity_id=str(project_data["id"]),
             breadcrumbs=[],
             name=project_data["name"],
-            path=project_data["path"],
-            path_with_namespace=project_data["path_with_namespace"],
-            description=project_data.get("description"),
-            default_branch=project_data.get("default_branch"),
             created_at=datetime.fromisoformat(project_data["created_at"].replace("Z", "+00:00")),
-            last_activity_at=(
+            updated_at=(
                 datetime.fromisoformat(project_data["last_activity_at"].replace("Z", "+00:00"))
                 if project_data.get("last_activity_at")
                 else None
             ),
+            # API fields
+            path=project_data["path"],
+            path_with_namespace=project_data["path_with_namespace"],
+            description=project_data.get("description"),
+            default_branch=project_data.get("default_branch"),
             visibility=project_data["visibility"],
             topics=project_data.get("topics", []),
             namespace=project_data.get("namespace", {}),
@@ -315,7 +320,7 @@ class GitLabSource(BaseSource):
 
     async def _get_project_issues(
         self, client: httpx.AsyncClient, project_id: str, project_breadcrumbs: List[Breadcrumb]
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Get issues for a project.
 
         Args:
@@ -331,13 +336,16 @@ class GitLabSource(BaseSource):
 
         for issue in issues:
             yield GitLabIssueEntity(
+                # Base fields
                 entity_id=f"{project_id}/issues/{issue['iid']}",
                 breadcrumbs=project_breadcrumbs,
+                name=issue["title"],
+                created_at=datetime.fromisoformat(issue["created_at"].replace("Z", "+00:00")),
+                updated_at=datetime.fromisoformat(issue["updated_at"].replace("Z", "+00:00")),
+                # API fields
                 title=issue["title"],
                 description=issue.get("description"),
                 state=issue["state"],
-                created_at=datetime.fromisoformat(issue["created_at"].replace("Z", "+00:00")),
-                updated_at=datetime.fromisoformat(issue["updated_at"].replace("Z", "+00:00")),
                 closed_at=(
                     datetime.fromisoformat(issue["closed_at"].replace("Z", "+00:00"))
                     if issue.get("closed_at")
@@ -357,7 +365,7 @@ class GitLabSource(BaseSource):
 
     async def _get_project_merge_requests(
         self, client: httpx.AsyncClient, project_id: str, project_breadcrumbs: List[Breadcrumb]
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Get merge requests for a project.
 
         Args:
@@ -373,13 +381,16 @@ class GitLabSource(BaseSource):
 
         for mr in merge_requests:
             yield GitLabMergeRequestEntity(
+                # Base fields
                 entity_id=f"{project_id}/merge_requests/{mr['iid']}",
                 breadcrumbs=project_breadcrumbs,
+                name=mr["title"],
+                created_at=datetime.fromisoformat(mr["created_at"].replace("Z", "+00:00")),
+                updated_at=datetime.fromisoformat(mr["updated_at"].replace("Z", "+00:00")),
+                # API fields
                 title=mr["title"],
                 description=mr.get("description"),
                 state=mr["state"],
-                created_at=datetime.fromisoformat(mr["created_at"].replace("Z", "+00:00")),
-                updated_at=datetime.fromisoformat(mr["updated_at"].replace("Z", "+00:00")),
                 merged_at=(
                     datetime.fromisoformat(mr["merged_at"].replace("Z", "+00:00"))
                     if mr.get("merged_at")
@@ -415,7 +426,7 @@ class GitLabSource(BaseSource):
         project_path: str,
         branch: str,
         project_breadcrumbs: List[Breadcrumb],
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Traverse repository contents using DFS.
 
         Args:
@@ -446,7 +457,7 @@ class GitLabSource(BaseSource):
         branch: str,
         breadcrumbs: List[Breadcrumb],
         processed_paths: set,
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Recursively traverse a directory using DFS.
 
         Args:
@@ -481,8 +492,13 @@ class GitLabSource(BaseSource):
                 if item_type == "tree":  # Directory
                     # Create directory entity
                     dir_entity = GitLabDirectoryEntity(
+                        # Base fields
                         entity_id=f"{project_id}/{item_path}",
                         breadcrumbs=breadcrumbs.copy(),
+                        name=Path(item_path).name,
+                        created_at=None,  # Directories don't have timestamps
+                        updated_at=None,  # Directories don't have timestamps
+                        # API fields
                         path=item_path,
                         project_id=str(project_id),
                         project_path=project_path,
@@ -490,11 +506,7 @@ class GitLabSource(BaseSource):
                     )
 
                     # Create breadcrumb for this directory
-                    dir_breadcrumb = Breadcrumb(
-                        entity_id=dir_entity.entity_id,
-                        name=Path(item_path).name,
-                        type="directory",
-                    )
+                    dir_breadcrumb = Breadcrumb(entity_id=dir_entity.entity_id)
 
                     # Yield the directory entity
                     yield dir_entity
@@ -532,7 +544,7 @@ class GitLabSource(BaseSource):
         file_path: str,
         branch: str,
         breadcrumbs: List[Breadcrumb],
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Process a file item and create file entities.
 
         Args:
@@ -584,28 +596,47 @@ class GitLabSource(BaseSource):
                     except Exception as e:
                         self.logger.error(f"Error counting lines for {file_path}: {str(e)}")
 
-                # Create file entity
+                # Determine file type from mime_type
+                mime_type = mimetypes.guess_type(file_path)[0] or "text/plain"
+                file_type = mime_type.split("/")[0] if "/" in mime_type else "file"
+
+                # Create file entity (without content field)
                 file_entity = GitLabCodeFileEntity(
+                    # Base fields
                     entity_id=f"{project_id}/{file_path}",
-                    source_name="gitlab",
-                    file_id=file_data["blob_id"],
+                    breadcrumbs=breadcrumbs.copy(),
                     name=file_name,
-                    mime_type=mimetypes.guess_type(file_path)[0] or "text/plain",
+                    created_at=None,  # GitLab files don't have creation timestamp
+                    updated_at=None,  # GitLab files don't have update timestamp
+                    # File fields
+                    url=f"https://gitlab.com/{project_path}/-/blob/{branch}/{file_path}",
                     size=file_size,
-                    path=file_path,
+                    file_type=file_type,
+                    mime_type=mime_type,
+                    local_path=None,  # Will be set by file_downloader
+                    # Code file fields
+                    repo_name=project_path.split("/")[-1],
+                    path_in_repo=file_path,
+                    repo_owner=project_path.split("/")[0],
+                    language=language,
+                    commit_id=file_data["blob_id"],
+                    # API fields (GitLab-specific)
+                    blob_id=file_data["blob_id"],
                     project_id=str(project_id),
                     project_path=project_path,
-                    blob_id=file_data["blob_id"],
-                    breadcrumbs=breadcrumbs.copy(),
-                    url=f"https://gitlab.com/{project_path}/-/blob/{branch}/{file_path}",
-                    language=language,
                     line_count=line_count,
-                    path_in_repo=file_path,
-                    repo_name=project_path.split("/")[-1],
-                    repo_owner=project_path.split("/")[0],
-                    content=content_text,  # Store the content directly in the entity
-                    last_modified=None,  # GitLab API returns commit SHA, not timestamp
                 )
+
+                # Write content to disk for uniform file handling
+                await self.file_downloader.save_bytes(
+                    entity=file_entity,
+                    content=content_text.encode("utf-8"),
+                    logger=self.logger,
+                )
+
+                # Verify save succeeded
+                if not file_entity.local_path:
+                    raise ValueError(f"Save failed - no local path set for {file_entity.name}")
 
                 yield file_entity
 
@@ -642,7 +673,7 @@ class GitLabSource(BaseSource):
         client: httpx.AsyncClient,
         project: GitLabProjectEntity,
         project_breadcrumbs: List[Breadcrumb],
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Process a single project and yield all its entities.
 
         Args:
@@ -695,7 +726,7 @@ class GitLabSource(BaseSource):
         except Exception as e:
             self.logger.warning(f"Failed to get MRs for {project.path_with_namespace}: {e}")
 
-    async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
+    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate entities from GitLab.
 
         Yields:
@@ -713,9 +744,7 @@ class GitLabSource(BaseSource):
             for project in projects:
                 yield project
 
-                project_breadcrumb = Breadcrumb(
-                    entity_id=project.entity_id, name=project.name, type="project"
-                )
+                project_breadcrumb = Breadcrumb(entity_id=project.entity_id)
                 project_breadcrumbs = [project_breadcrumb]
 
                 # Process all entities within the project

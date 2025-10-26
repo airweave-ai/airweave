@@ -6,7 +6,7 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import Breadcrumb, ChunkEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.dropbox import (
     DropboxAccountEntity,
     DropboxFileEntity,
@@ -105,7 +105,7 @@ class DropboxSource(BaseSource):
 
     async def _generate_account_entities(
         self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate Dropbox account-level entities using the Dropbox API.
 
         Args:
@@ -126,22 +126,20 @@ class DropboxSource(BaseSource):
 
             # Create and yield the account entity
             yield DropboxAccountEntity(
-                # Required ChunkEntity fields
+                # Base fields
                 entity_id=account_data.get("account_id", "dropbox-account"),
-                breadcrumbs=[],  # Top-level entity, no breadcrumbs
-                # Core identification fields
-                account_id=account_data.get("account_id"),
-                # Name information
+                breadcrumbs=[],
                 name=name_data.get("display_name", "Dropbox Account"),
+                created_at=None,  # Accounts don't have creation timestamp
+                updated_at=None,  # Accounts don't have update timestamp
+                # API fields
                 abbreviated_name=name_data.get("abbreviated_name"),
                 familiar_name=name_data.get("familiar_name"),
                 given_name=name_data.get("given_name"),
                 surname=name_data.get("surname"),
-                # Account status and details
                 email=account_data.get("email"),
                 email_verified=account_data.get("email_verified", False),
                 disabled=account_data.get("disabled", False),
-                # Account type and relationships
                 account_type=(
                     account_data.get("account_type", {}).get(".tag")
                     if account_data.get("account_type")
@@ -150,15 +148,19 @@ class DropboxSource(BaseSource):
                 is_teammate=account_data.get("is_teammate", False),
                 is_paired=account_data.get("is_paired", False),
                 team_member_id=account_data.get("team_member_id"),
-                # Regional and language settings
                 locale=account_data.get("locale"),
                 country=account_data.get("country"),
-                # URLs and external references
                 profile_photo_url=account_data.get("profile_photo_url"),
                 referral_link=account_data.get("referral_link"),
-                # Team information - keep whole object for reference
+                space_used=account_data.get("space_usage", {}).get("used")
+                if account_data.get("space_usage")
+                else None,
+                space_allocated=account_data.get("space_usage", {})
+                .get("allocation", {})
+                .get("allocated")
+                if account_data.get("space_usage")
+                else None,
                 team_info=account_data.get("team"),
-                # Root information - keep whole object for reference
                 root_info=account_data.get("root_info"),
             )
 
@@ -187,21 +189,19 @@ class DropboxSource(BaseSource):
         sharing_info = entry.get("sharing_info", {})
 
         folder_entity = DropboxFolderEntity(
-            # Required fields
+            # Base fields
             entity_id=folder_id if folder_id else f"folder-{folder_path}",
             breadcrumbs=[account_breadcrumb],
-            folder_id=folder_id,
             name=folder_name,
-            # Path information
+            created_at=None,  # Folders don't have creation timestamp
+            updated_at=None,  # Folders don't have update timestamp
+            # API fields
             path_lower=entry.get("path_lower"),
             path_display=entry.get("path_display"),
-            # Complete sharing info object
             sharing_info=sharing_info,
-            # Key sharing fields extracted for convenience
             read_only=sharing_info.get("read_only", False),
             traverse_only=sharing_info.get("traverse_only", False),
             no_access=sharing_info.get("no_access", False),
-            # Custom properties/tags
             property_groups=entry.get("property_groups"),
         )
 
@@ -252,7 +252,7 @@ class DropboxSource(BaseSource):
         self,
         client: httpx.AsyncClient,
         account_breadcrumb: Breadcrumb,
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate folder entities for a given Dropbox account."""
         # Start with the root folder
         url = "https://api.dropboxapi.com/2/files/list_folder"
@@ -337,26 +337,37 @@ class DropboxSource(BaseSource):
         sharing_info = entry.get("sharing_info", {})
 
         # Create custom headers that will be needed for Dropbox download
-        # These will be stored in sync_metadata and used during file download
+        # Dropbox uses a special header for the file path
         dropbox_api_arg = json.dumps({"path": file_path})
 
+        # Determine file type from file name
+        file_name = entry.get("name", "Unknown File")
+        import mimetypes
+
+        mime_type = mimetypes.guess_type(file_name)[0]
+        if mime_type and "/" in mime_type:
+            file_type = mime_type.split("/")[0]
+        else:
+            # Fallback to extension or generic file type
+            import os
+
+            ext = os.path.splitext(file_name)[1].lower().lstrip(".")
+            file_type = ext if ext else "file"
+
         return DropboxFileEntity(
-            # Required fields from ChunkEntity
+            # Base fields
             entity_id=file_id if file_id else f"file-{file_path}",
             breadcrumbs=folder_breadcrumbs,
-            # Required fields from FileEntity
-            file_id=file_id if file_id else f"file-{file_path}",
-            name=entry.get("name", "Unknown File"),
-            download_url="https://content.dropboxapi.com/2/files/download",
-            # Store download headers as metadata
-            sync_metadata={
-                "headers": {"Dropbox-API-Arg": dropbox_api_arg},
-                "method": "POST",  # Dropbox requires POST for download
-            },
-            # Optional fields from FileEntity
-            mime_type=None,  # Not directly provided by Dropbox API
-            size=entry.get("size"),
-            # Dropbox-specific fields - ALL OPTIONAL
+            name=file_name,
+            created_at=None,  # Dropbox doesn't have creation timestamp
+            updated_at=server_modified,
+            # File fields
+            url="https://content.dropboxapi.com/2/files/download",
+            size=entry.get("size", 0),
+            file_type=file_type,
+            mime_type=mime_type or "application/octet-stream",
+            local_path=None,  # Will be set after download
+            # API fields (Dropbox-specific)
             path_lower=entry.get("path_lower"),
             path_display=entry.get("path_display"),
             rev=entry.get("rev"),
@@ -364,14 +375,13 @@ class DropboxSource(BaseSource):
             server_modified=server_modified,
             is_downloadable=entry.get("is_downloadable", True),
             content_hash=entry.get("content_hash"),
-            # Additional optional fields
             sharing_info=sharing_info,
             has_explicit_shared_members=entry.get("has_explicit_shared_members"),
         )
 
     async def _generate_file_entities(
         self, client: httpx.AsyncClient, folder_breadcrumbs: List[Breadcrumb], folder_path: str = ""
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate file entities within a given folder using the Dropbox API."""
         # Use list_folder API to get files in the folder
         url = "https://api.dropboxapi.com/2/files/list_folder"
@@ -399,21 +409,49 @@ class DropboxSource(BaseSource):
                         )
                         continue
 
-                    # Create file entity with Dropbox-specific download metadata
+                    # Create file entity
                     file_entity = self._create_file_entity(entry, folder_breadcrumbs)
 
                     try:
-                        # Use the BaseSource helper method instead of direct file_manager calls
-                        processed_entity = await self.process_file_entity(
-                            file_entity=file_entity,
-                            access_token=self.access_token,
-                            headers=file_entity.sync_metadata.get("headers"),
-                        )
+                        # Download file using custom Dropbox download logic
+                        # Dropbox requires POST with special header containing the file path
+                        import json
 
-                        yield processed_entity
+                        dropbox_api_arg = json.dumps({"path": file_entity.path_lower})
+
+                        async with self.http_client() as download_client:
+                            access_token = await self.get_access_token()
+                            headers = {
+                                "Authorization": f"Bearer {access_token}",
+                                "Dropbox-API-Arg": dropbox_api_arg,
+                            }
+
+                            # Dropbox uses POST for downloads
+                            response = await download_client.post(
+                                "https://content.dropboxapi.com/2/files/download",
+                                headers=headers,
+                            )
+                            response.raise_for_status()
+
+                            # Save the file content
+                            content = response.content
+                            await self.file_downloader.save_bytes(
+                                entity=file_entity,
+                                content=content,
+                                logger=self.logger,
+                            )
+
+                            # Verify save succeeded
+                            if not file_entity.local_path:
+                                raise ValueError(
+                                    f"Save failed - no local path set for {file_entity.name}"
+                                )
+
+                            self.logger.debug(f"Successfully downloaded file: {file_entity.name}")
+                            yield file_entity
 
                     except Exception as e:
-                        self.logger.error(f"Failed to process file {file_entity.name}: {str(e)}")
+                        self.logger.error(f"Failed to download file {file_entity.name}: {e}")
                         # Continue with other files even if one fails
                         continue
 
@@ -423,7 +461,7 @@ class DropboxSource(BaseSource):
 
     async def _process_folder_and_contents(
         self, client: httpx.AsyncClient, folder_path: str, folder_breadcrumbs: List[Breadcrumb]
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Process a folder recursively, yielding files and subfolders.
 
         Args:
@@ -468,11 +506,7 @@ class DropboxSource(BaseSource):
                     yield folder_entity
 
                     # Create new breadcrumb for this folder
-                    folder_breadcrumb = Breadcrumb(
-                        entity_id=folder_entity.folder_id,
-                        name=folder_entity.name,
-                        type="folder",
-                    )
+                    folder_breadcrumb = Breadcrumb(entity_id=folder_entity.entity_id)
                     # Build complete breadcrumb path to this folder
                     new_breadcrumbs = folder_breadcrumbs + [folder_breadcrumb]
 
@@ -486,7 +520,7 @@ class DropboxSource(BaseSource):
             self.logger.error(f"Error processing folder {folder_path}: {str(e)}")
             raise
 
-    async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
+    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Recursively generate all entities from Dropbox.
 
         Yields:
@@ -499,11 +533,7 @@ class DropboxSource(BaseSource):
             async for account_entity in self._generate_account_entities(client):
                 yield account_entity
 
-                account_breadcrumb = Breadcrumb(
-                    entity_id=account_entity.account_id,
-                    name=account_entity.name,
-                    type="account",
-                )
+                account_breadcrumb = Breadcrumb(entity_id=account_entity.entity_id)
 
                 # Create breadcrumbs list with just the account
                 account_breadcrumbs = [account_breadcrumb]
@@ -519,7 +549,6 @@ class DropboxSource(BaseSource):
                     client, account_breadcrumb
                 ):
                     # Skip excluded paths
-                    # TODO: change for code that works!
                     if (
                         self.exclude_path
                         and folder_entity.path_lower
@@ -530,11 +559,7 @@ class DropboxSource(BaseSource):
 
                     yield folder_entity
 
-                    folder_breadcrumb = Breadcrumb(
-                        entity_id=folder_entity.folder_id,
-                        name=folder_entity.name,
-                        type="folder",
-                    )
+                    folder_breadcrumb = Breadcrumb(entity_id=folder_entity.entity_id)
                     folder_breadcrumbs = [account_breadcrumb, folder_breadcrumb]
 
                     # Process all subfolders and their files recursively

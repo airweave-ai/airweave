@@ -6,10 +6,10 @@ from typing import Any, Dict, Optional
 from pydantic import Field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import ChunkEntity
+from airweave.platform.entities._base import 
 
 
-class SlackMessageEntity(ChunkEntity):
+class SlackMessageEntity(BaseEntity):
     """Schema for Slack message entities from federated search."""
 
     # Core message fields

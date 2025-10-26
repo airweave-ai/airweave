@@ -21,7 +21,7 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import Breadcrumb, ChunkEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.teams import (
     TeamsChannelEntity,
     TeamsChatEntity,
@@ -188,8 +188,13 @@ class TeamsSource(BaseSource):
                     self.logger.debug(f"Processing user #{user_count}: {display_name}")
 
                     yield TeamsUserEntity(
+                        # Base fields
                         entity_id=user_id,
                         breadcrumbs=[],
+                        name=display_name,
+                        created_at=None,  # Users don't have creation timestamp in Teams API
+                        updated_at=None,  # Users don't have update timestamp in Teams API
+                        # API fields
                         display_name=display_name,
                         user_principal_name=user_data.get("userPrincipalName"),
                         mail=user_data.get("mail"),
@@ -240,14 +245,18 @@ class TeamsSource(BaseSource):
                     self.logger.debug(f"Processing team #{team_count}: {display_name}")
 
                     yield TeamsTeamEntity(
+                        # Base fields
                         entity_id=team_id,
                         breadcrumbs=[],
+                        name=display_name,
+                        created_at=self._parse_datetime(team_data.get("createdDateTime")),
+                        updated_at=None,  # Teams don't have update timestamp
+                        # API fields
                         display_name=display_name,
                         description=team_data.get("description"),
                         visibility=team_data.get("visibility"),
                         is_archived=team_data.get("isArchived"),
                         web_url=team_data.get("webUrl"),
-                        created_datetime=self._parse_datetime(team_data.get("createdDateTime")),
                         classification=team_data.get("classification"),
                         specialization=team_data.get("specialization"),
                         internal_id=team_data.get("internalId"),
@@ -296,10 +305,13 @@ class TeamsSource(BaseSource):
                     self.logger.debug(f"Processing channel #{channel_count}: {display_name}")
 
                     yield TeamsChannelEntity(
+                        # Base fields
                         entity_id=channel_id,
-                        breadcrumbs=[
-                            Breadcrumb(entity_id=team_id, name=team_name[:50], type="team")
-                        ],
+                        breadcrumbs=[Breadcrumb(entity_id=team_id)],
+                        name=display_name,
+                        created_at=self._parse_datetime(channel_data.get("createdDateTime")),
+                        updated_at=None,  # Channels don't have update timestamp
+                        # API fields
                         team_id=team_id,
                         display_name=display_name,
                         description=channel_data.get("description"),
@@ -308,7 +320,6 @@ class TeamsSource(BaseSource):
                         is_archived=channel_data.get("isArchived"),
                         is_favorite_by_default=channel_data.get("isFavoriteByDefault"),
                         web_url=channel_data.get("webUrl"),
-                        created_datetime=self._parse_datetime(channel_data.get("createdDateTime")),
                     )
 
                 # Handle pagination
@@ -374,22 +385,33 @@ class TeamsSource(BaseSource):
                     body = message_data.get("body", {})
                     body_content = body.get("content", "")
 
+                    # Create name from subject or body preview
+                    subject = message_data.get("subject")
+                    if subject:
+                        name = subject
+                    elif body_content:
+                        # Use first 50 chars of body as name
+                        name = body_content[:50] + "..." if len(body_content) > 50 else body_content
+                    else:
+                        name = f"Message {message_id}"
+
                     yield TeamsMessageEntity(
+                        # Base fields
                         entity_id=message_id,
                         breadcrumbs=[team_breadcrumb, channel_breadcrumb],
+                        name=name,
+                        created_at=self._parse_datetime(message_data.get("createdDateTime")),
+                        updated_at=self._parse_datetime(message_data.get("lastModifiedDateTime")),
+                        # API fields
                         team_id=team_id,
                         channel_id=channel_id,
                         chat_id=None,
                         reply_to_id=message_data.get("replyToId"),
                         message_type=message_data.get("messageType"),
-                        subject=message_data.get("subject"),
+                        subject=subject,
                         body_content=body_content,
                         body_content_type=body.get("contentType"),
                         from_user=from_info,
-                        created_datetime=self._parse_datetime(message_data.get("createdDateTime")),
-                        last_modified_datetime=self._parse_datetime(
-                            message_data.get("lastModifiedDateTime")
-                        ),
                         last_edited_datetime=self._parse_datetime(
                             message_data.get("lastEditedDateTime")
                         ),
@@ -447,15 +469,19 @@ class TeamsSource(BaseSource):
 
                     self.logger.debug(f"Processing chat #{chat_count}: {chat_type} - {topic}")
 
+                    # Create name from topic or chat type
+                    name = topic if topic else f"{chat_type} chat"
+
                     yield TeamsChatEntity(
+                        # Base fields
                         entity_id=chat_id,
                         breadcrumbs=[],
+                        name=name,
+                        created_at=self._parse_datetime(chat_data.get("createdDateTime")),
+                        updated_at=self._parse_datetime(chat_data.get("lastUpdatedDateTime")),
+                        # API fields
                         chat_type=chat_type,
                         topic=topic if topic else None,
-                        created_datetime=self._parse_datetime(chat_data.get("createdDateTime")),
-                        last_updated_datetime=self._parse_datetime(
-                            chat_data.get("lastUpdatedDateTime")
-                        ),
                         web_url=chat_data.get("webUrl"),
                     )
 
@@ -515,22 +541,33 @@ class TeamsSource(BaseSource):
                     body = message_data.get("body", {})
                     body_content = body.get("content", "")
 
+                    # Create name from subject or body preview
+                    subject = message_data.get("subject")
+                    if subject:
+                        name = subject
+                    elif body_content:
+                        # Use first 50 chars of body as name
+                        name = body_content[:50] + "..." if len(body_content) > 50 else body_content
+                    else:
+                        name = f"Message {message_id}"
+
                     yield TeamsMessageEntity(
+                        # Base fields
                         entity_id=message_id,
                         breadcrumbs=[chat_breadcrumb],
+                        name=name,
+                        created_at=self._parse_datetime(message_data.get("createdDateTime")),
+                        updated_at=self._parse_datetime(message_data.get("lastModifiedDateTime")),
+                        # API fields
                         team_id=None,
                         channel_id=None,
                         chat_id=chat_id,
                         reply_to_id=message_data.get("replyToId"),
                         message_type=message_data.get("messageType"),
-                        subject=message_data.get("subject"),
+                        subject=subject,
                         body_content=body_content,
                         body_content_type=body.get("contentType"),
                         from_user=from_info,
-                        created_datetime=self._parse_datetime(message_data.get("createdDateTime")),
-                        last_modified_datetime=self._parse_datetime(
-                            message_data.get("lastModifiedDateTime")
-                        ),
                         last_edited_datetime=self._parse_datetime(
                             message_data.get("lastEditedDateTime")
                         ),
@@ -557,7 +594,7 @@ class TeamsSource(BaseSource):
             self.logger.error(f"Error generating messages for chat {display_chat}: {str(e)}")
             # Don't raise - continue with other chats
 
-    async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
+    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate all Microsoft Teams entities.
 
         Yields entities in the following order:
@@ -596,9 +633,7 @@ class TeamsSource(BaseSource):
                     # Create team breadcrumb
                     team_id = team_entity.entity_id
                     team_name = team_entity.display_name
-                    team_breadcrumb = Breadcrumb(
-                        entity_id=team_id, name=team_name[:50], type="team"
-                    )
+                    team_breadcrumb = Breadcrumb(entity_id=team_id)
 
                     # 3) Generate channels for this team
                     async for channel_entity in self._generate_channel_entities(
@@ -614,9 +649,7 @@ class TeamsSource(BaseSource):
                         # Create channel breadcrumb
                         channel_id = channel_entity.entity_id
                         channel_name = channel_entity.display_name
-                        channel_breadcrumb = Breadcrumb(
-                            entity_id=channel_id, name=channel_name[:50], type="channel"
-                        )
+                        channel_breadcrumb = Breadcrumb(entity_id=channel_id)
 
                         # 4) Generate messages for this channel
                         async for message_entity in self._generate_channel_message_entities(
@@ -646,10 +679,7 @@ class TeamsSource(BaseSource):
 
                     # Create chat breadcrumb
                     chat_id = chat_entity.entity_id
-                    chat_topic = chat_entity.topic or f"{chat_entity.chat_type} chat"
-                    chat_breadcrumb = Breadcrumb(
-                        entity_id=chat_id, name=chat_topic[:50], type="chat"
-                    )
+                    chat_breadcrumb = Breadcrumb(entity_id=chat_id)
 
                     # 6) Generate messages for this chat
                     async for message_entity in self._generate_chat_message_entities(

@@ -11,7 +11,7 @@ from tenacity import retry_if_exception_type, stop_after_attempt, wait_exponenti
 
 from airweave.platform.configs.auth import BitbucketAuthConfig
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import Breadcrumb, ChunkEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.bitbucket import (
     BitbucketCodeFileEntity,
     BitbucketDirectoryEntity,
@@ -203,17 +203,20 @@ class BitbucketSource(BaseSource):
         workspace_data = await self._get_with_auth(client, url)
 
         return BitbucketWorkspaceEntity(
+            # Base fields
             entity_id=workspace_data["uuid"],
-            source_name="bitbucket",
-            slug=workspace_data["slug"],
+            breadcrumbs=[],
             name=workspace_data["name"],
-            uuid=workspace_data["uuid"],
-            is_private=workspace_data.get("is_private", True),
-            created_on=(
+            created_at=(
                 datetime.fromisoformat(workspace_data["created_on"].replace("Z", "+00:00"))
                 if workspace_data.get("created_on")
                 else None
             ),
+            updated_at=None,  # Workspaces don't have update timestamp
+            # API fields
+            slug=workspace_data["slug"],
+            uuid=workspace_data["uuid"],
+            is_private=workspace_data.get("is_private", True),
             url=workspace_data["links"]["html"]["href"],
         )
 
@@ -234,17 +237,19 @@ class BitbucketSource(BaseSource):
         repo_data = await self._get_with_auth(client, url)
 
         return BitbucketRepositoryEntity(
+            # Base fields
             entity_id=repo_data["uuid"],
-            source_name="bitbucket",
+            breadcrumbs=[],  # Will be set by caller
             name=repo_data["name"],
+            created_at=datetime.fromisoformat(repo_data["created_on"].replace("Z", "+00:00")),
+            updated_at=datetime.fromisoformat(repo_data["updated_on"].replace("Z", "+00:00")),
+            # API fields
             slug=repo_data["slug"],
             full_name=repo_data["full_name"],
             description=repo_data.get("description"),
             is_private=repo_data.get("is_private", True),
             fork_policy=repo_data.get("fork_policy"),
             language=repo_data.get("language"),
-            created_on=datetime.fromisoformat(repo_data["created_on"].replace("Z", "+00:00")),
-            updated_on=datetime.fromisoformat(repo_data["updated_on"].replace("Z", "+00:00")),
             size=repo_data.get("size"),
             mainbranch=(
                 repo_data.get("mainbranch", {}).get("name") if repo_data.get("mainbranch") else None
@@ -270,7 +275,7 @@ class BitbucketSource(BaseSource):
 
     async def _traverse_repository(
         self, client: httpx.AsyncClient, workspace_slug: str, repo_slug: str, branch: str
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Traverse repository contents using DFS.
 
         Args:
@@ -287,9 +292,7 @@ class BitbucketSource(BaseSource):
         yield repo_entity
 
         # Create breadcrumb for the repo
-        repo_breadcrumb = Breadcrumb(
-            entity_id=repo_entity.entity_id, name=repo_entity.name, type="repository"
-        )
+        repo_breadcrumb = Breadcrumb(entity_id=repo_entity.entity_id)
 
         # Track processed paths to avoid duplicates
         processed_paths = set()
@@ -309,7 +312,7 @@ class BitbucketSource(BaseSource):
         breadcrumbs: List[Breadcrumb],
         branch: str,
         processed_paths: set,
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Recursively traverse a directory using DFS.
 
         Args:
@@ -343,23 +346,22 @@ class BitbucketSource(BaseSource):
                 if item_type == "commit_directory":
                     # Create directory entity
                     dir_entity = BitbucketDirectoryEntity(
+                        # Base fields
                         entity_id=f"{workspace_slug}/{repo_slug}/{item_path}",
-                        source_name="bitbucket",
+                        breadcrumbs=breadcrumbs.copy(),
+                        name=Path(item_path).name,
+                        created_at=None,  # Directories don't have timestamps
+                        updated_at=None,  # Directories don't have timestamps
+                        # API fields
                         path=item_path,
                         repo_slug=repo_slug,
                         repo_full_name=f"{workspace_slug}/{repo_slug}",
                         workspace_slug=workspace_slug,
-                        content=f"Directory: {item_path}",
-                        breadcrumbs=breadcrumbs.copy(),
                         url=f"https://bitbucket.org/{workspace_slug}/{repo_slug}/src/{branch}/{item_path}",
                     )
 
                     # Create breadcrumb for this directory
-                    dir_breadcrumb = Breadcrumb(
-                        entity_id=dir_entity.entity_id,
-                        name=Path(item_path).name,
-                        type="directory",
-                    )
+                    dir_breadcrumb = Breadcrumb(entity_id=dir_entity.entity_id)
 
                     # Yield the directory entity
                     yield dir_entity
@@ -400,7 +402,7 @@ class BitbucketSource(BaseSource):
         item: Dict[str, Any],
         breadcrumbs: List[Breadcrumb],
         branch: str,
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Process a file item and create file entities.
 
         Args:
@@ -453,42 +455,57 @@ class BitbucketSource(BaseSource):
                     except Exception as e:
                         self.logger.error(f"Error counting lines for {item_path}: {str(e)}")
 
-                # Create file entity with content stored in memory
+                # Determine file type from mime_type
+                mime_type = mimetypes.guess_type(item_path)[0] or "text/plain"
+                file_type = mime_type.split("/")[0] if "/" in mime_type else "file"
+
+                # Get commit hash for commit_id
+                commit_hash = item.get("commit", {}).get("hash", "")
+
+                # Create file entity (without content field)
                 file_entity = BitbucketCodeFileEntity(
+                    # Base fields
                     entity_id=f"{workspace_slug}/{repo_slug}/{item_path}",
-                    source_name="bitbucket",
-                    file_id=item.get("commit", {}).get("hash", ""),
+                    breadcrumbs=breadcrumbs.copy(),
                     name=file_name,
-                    mime_type=mimetypes.guess_type(item_path)[0] or "text/plain",
+                    created_at=None,  # Bitbucket files don't have creation timestamp
+                    updated_at=None,  # Bitbucket files don't have update timestamp
+                    # File fields
+                    url=f"https://bitbucket.org/{workspace_slug}/{repo_slug}/src/{branch}/{item_path}",
                     size=file_size,
-                    path=item_path,
+                    file_type=file_type,
+                    mime_type=mime_type,
+                    local_path=None,  # Will be set by file_downloader
+                    # Code file fields
+                    repo_name=repo_slug,
+                    path_in_repo=item_path,
+                    repo_owner=workspace_slug,
+                    language=language,
+                    commit_id=commit_hash,
+                    # API fields (Bitbucket-specific)
+                    commit_hash=commit_hash,
                     repo_slug=repo_slug,
                     repo_full_name=f"{workspace_slug}/{repo_slug}",
                     workspace_slug=workspace_slug,
-                    commit_hash=item.get("commit", {}).get("hash"),
-                    breadcrumbs=breadcrumbs.copy(),
-                    url=f"https://bitbucket.org/{workspace_slug}/{repo_slug}/src/{branch}/{item_path}",
-                    language=language,
                     line_count=line_count,
-                    path_in_repo=item_path,
-                    content=content_text,  # Store the content directly in the entity
-                    # Required fields from CodeFileEntity base class
-                    repo_name=repo_slug,  # Repository name
-                    repo_owner=workspace_slug,  # Repository owner (workspace)
-                    last_modified=(
-                        datetime.fromisoformat(
-                            item.get("commit", {}).get("date", "").replace("Z", "+00:00")
-                        )
-                        if item.get("commit", {}).get("date")
-                        else None
-                    ),
                 )
+
+                # Write content to disk for uniform file handling
+                await self.file_downloader.save_bytes(
+                    entity=file_entity,
+                    content=content_text.encode("utf-8"),
+                    logger=self.logger,
+                )
+
+                # Verify save succeeded
+                if not file_entity.local_path:
+                    raise ValueError(f"Save failed - no local path set for {file_entity.name}")
 
                 yield file_entity
         except Exception as e:
             self.logger.error(f"Error processing file {item_path}: {str(e)}")
 
-    async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
+    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate entities from Bitbucket.
 
         Yields:
@@ -502,11 +519,7 @@ class BitbucketSource(BaseSource):
             workspace_entity = await self._get_workspace_info(client, self.workspace)
             yield workspace_entity
 
-            workspace_breadcrumb = Breadcrumb(
-                entity_id=workspace_entity.entity_id,
-                name=workspace_entity.name,
-                type="workspace",
-            )
+            workspace_breadcrumb = Breadcrumb(entity_id=workspace_entity.entity_id)
 
             # If a specific repository is specified, only process that one
             if hasattr(self, "repo_slug") and self.repo_slug:

@@ -5,7 +5,7 @@ we define entity schemas for the following core objects:
   • Drive
   • DriveItem
 
-Each schema inherits from ChunkEntity, which provides an entity_id field to
+Each schema inherits from which provides an entity_id field to
 store the OneDrive object's unique ID (e.g., drive.id or driveItem.id).
 
 References:
@@ -17,10 +17,10 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import ChunkEntity, FileEntity
+from airweave.platform.entities._base import FileEntity
 
 
-class OneDriveDriveEntity(ChunkEntity):
+class OneDriveDriveEntity(BaseEntity):
     """Schema for a OneDrive Drive object.
 
     The inherited entity_id stores the drive's unique ID. Additional key fields come

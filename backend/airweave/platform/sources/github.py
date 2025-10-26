@@ -12,7 +12,7 @@ from tenacity import retry_if_exception_type, stop_after_attempt, wait_exponenti
 
 from airweave.platform.configs.auth import GitHubAuthConfig
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import Breadcrumb, ChunkEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.github import (
     GitHubCodeFileEntity,
     GitHubDirectoryEntity,
@@ -302,14 +302,16 @@ class GitHubSource(BaseSource):
         self._update_cursor_data(current_pushed_at, repo_name)
 
         return GitHubRepositoryEntity(
+            # Base fields
             entity_id=str(repo_data["id"]),
-            source_name="github",
+            breadcrumbs=[],
             name=repo_data["name"],
+            created_at=datetime.fromisoformat(repo_data["created_at"].replace("Z", "+00:00")),
+            updated_at=datetime.fromisoformat(repo_data["updated_at"].replace("Z", "+00:00")),
+            # API fields
             full_name=repo_data["full_name"],
             description=repo_data.get("description"),
             default_branch=repo_data["default_branch"],
-            created_at=datetime.fromisoformat(repo_data["created_at"].replace("Z", "+00:00")),
-            updated_at=datetime.fromisoformat(repo_data["updated_at"].replace("Z", "+00:00")),
             language=repo_data.get("language"),
             fork=repo_data["fork"],
             size=repo_data["size"],
@@ -317,12 +319,11 @@ class GitHubSource(BaseSource):
             watchers_count=repo_data.get("watchers_count"),
             forks_count=repo_data.get("forks_count"),
             open_issues_count=repo_data.get("open_issues_count"),
-            url=repo_data["html_url"],
         )
 
     async def _traverse_repository(
         self, client: httpx.AsyncClient, repo_name: str, branch: str
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Traverse repository contents using DFS.
 
         Args:
@@ -341,22 +342,29 @@ class GitHubSource(BaseSource):
         owner, repo = repo_name.split("/")
 
         # Create breadcrumb for the repo
-        repo_breadcrumb = Breadcrumb(
-            entity_id=repo_entity.entity_id, name=repo_entity.name, type="repository"
-        )
+        repo_breadcrumb = Breadcrumb(entity_id=repo_entity.entity_id)
 
         # Track processed paths to avoid duplicates
         processed_paths = set()
+        processed_files = set()  # Track files separately to prevent duplicates
 
         # Start DFS traversal from root
         async for entity in self._traverse_directory(
-            client, repo_name, "", [repo_breadcrumb], owner, repo, branch, processed_paths
+            client,
+            repo_name,
+            "",
+            [repo_breadcrumb],
+            owner,
+            repo,
+            branch,
+            processed_paths,
+            processed_files,
         ):
             yield entity
 
     async def _traverse_repository_incremental(
         self, client: httpx.AsyncClient, repo_name: str, branch: str, since_timestamp: str
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Traverse repository contents incrementally using commits since last sync.
 
         Args:
@@ -411,13 +419,17 @@ class GitHubSource(BaseSource):
                     self.logger.info(f"Processing deleted file: {file_path}")
                     # Create a special deletion entity
                     deletion_entity = GitHubFileDeletionEntity(
+                        # Base fields
                         entity_id=f"{repo_name}/{file_path}",
-                        source_name="github",
+                        breadcrumbs=[],
+                        name=f"Deleted file {file_path}",
+                        created_at=None,  # Deletions don't have timestamps
+                        updated_at=None,  # Deletions don't have timestamps
+                        # API fields
                         file_path=file_path,
                         repo_name=repo,
                         repo_owner=owner,
                         deletion_status="removed",
-                        sync_metadata={"github_status": "removed"},
                     )
                     yield deletion_entity
                     continue
@@ -488,7 +500,7 @@ class GitHubSource(BaseSource):
         owner: str,
         repo: str,
         branch: str,
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Process a single changed file.
 
         Args:
@@ -507,16 +519,14 @@ class GitHubSource(BaseSource):
         breadcrumbs = []
 
         # Add repository breadcrumb
-        repo_breadcrumb = Breadcrumb(entity_id=f"{owner}/{repo}", name=repo, type="repository")
+        repo_breadcrumb = Breadcrumb(entity_id=f"{owner}/{repo}")
         breadcrumbs.append(repo_breadcrumb)
 
         # Add directory breadcrumbs
         current_path = ""
         for _i, part in enumerate(path_parts[:-1]):  # Exclude the filename
             current_path = f"{current_path}/{part}" if current_path else part
-            dir_breadcrumb = Breadcrumb(
-                entity_id=f"{repo_name}/{current_path}", name=part, type="directory"
-            )
+            dir_breadcrumb = Breadcrumb(entity_id=f"{repo_name}/{current_path}")
             breadcrumbs.append(dir_breadcrumb)
 
         # Get file content
@@ -547,26 +557,46 @@ class GitHubSource(BaseSource):
             # Count lines
             line_count = content_text.count("\n") + 1
 
-            # Create file entity
+            # Determine file type from mime_type
+            mime_type = mimetypes.guess_type(file_path)[0] or "text/plain"
+            file_type = mime_type.split("/")[0] if "/" in mime_type else "file"
+
+            # Create file entity (without content field)
             file_entity = GitHubCodeFileEntity(
+                # Base fields
                 entity_id=f"{repo_name}/{file_path}",
-                source_name="github",
-                file_id=file_data["sha"],
-                name=path_parts[-1],  # Filename
-                mime_type=mimetypes.guess_type(file_path)[0] or "text/plain",
-                size=file_size,
-                path=file_path,
-                repo_name=repo,
-                repo_owner=owner,
-                sha=file_data["sha"],
                 breadcrumbs=breadcrumbs,
-                url=file_data["html_url"],
-                language=language,
-                line_count=line_count,
+                name=path_parts[-1],  # Filename
+                created_at=None,  # GitHub files don't have creation timestamp
+                updated_at=None,  # GitHub files don't have update timestamp
+                # File fields
+                url=file_data.get("html_url", ""),
+                size=file_size,
+                file_type=file_type,
+                mime_type=mime_type,
+                local_path=None,  # Will be set by file_downloader
+                # Code file fields
+                repo_name=repo,
                 path_in_repo=file_path,
-                content=content_text,
-                last_modified=None,
+                repo_owner=owner,
+                language=language,
+                commit_id=file_data["sha"],
+                # API fields
+                sha=file_data["sha"],
+                line_count=line_count,
+                is_binary=False,
             )
+
+            # Write content to disk for uniform file handling
+            await self.file_downloader.save_bytes(
+                entity=file_entity,
+                content=content_text.encode("utf-8"),
+                logger=self.logger,
+            )
+
+            # Verify save succeeded
+            if not file_entity.local_path:
+                raise ValueError(f"Save failed - no local path set for {file_entity.name}")
 
             yield file_entity
 
@@ -602,7 +632,8 @@ class GitHubSource(BaseSource):
         repo: str,
         branch: str,
         processed_paths: set,
-    ) -> AsyncGenerator[ChunkEntity, None]:
+        processed_files: set,
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Recursively traverse a directory using DFS.
 
         Args:
@@ -613,7 +644,8 @@ class GitHubSource(BaseSource):
             owner: Repository owner
             repo: Repository name
             branch: Branch name
-            processed_paths: Set of already processed paths
+            processed_paths: Set of already processed directory paths
+            processed_files: Set of already processed file paths
 
         Yields:
             Directory and file entities
@@ -644,22 +676,20 @@ class GitHubSource(BaseSource):
                 if item_type == "dir":
                     # Create directory entity
                     dir_entity = GitHubDirectoryEntity(
+                        # Base fields
                         entity_id=f"{repo_name}/{item_path}",
-                        source_name="github",
+                        breadcrumbs=breadcrumbs.copy(),
+                        name=Path(item_path).name,
+                        created_at=None,  # Directories don't have timestamps
+                        updated_at=None,  # Directories don't have timestamps
+                        # API fields
                         path=item_path,
                         repo_name=repo,
                         repo_owner=owner,
-                        content=f"Directory: {item_path}",
-                        breadcrumbs=breadcrumbs.copy(),
-                        url=item["html_url"],
                     )
 
                     # Create breadcrumb for this directory
-                    dir_breadcrumb = Breadcrumb(
-                        entity_id=dir_entity.entity_id,
-                        name=Path(item_path).name,
-                        type="directory",
-                    )
+                    dir_breadcrumb = Breadcrumb(entity_id=dir_entity.entity_id)
 
                     # Yield the directory entity
                     yield dir_entity
@@ -677,10 +707,17 @@ class GitHubSource(BaseSource):
                         repo,
                         branch,
                         processed_paths,
+                        processed_files,
                     ):
                         yield child_entity
 
                 elif item_type == "file":
+                    # Skip if already processed
+                    if item_path in processed_files:
+                        continue
+
+                    processed_files.add(item_path)
+
                     # Process the file and yield entities
                     async for file_entity in self._process_file(
                         client, repo_name, item_path, item, breadcrumbs, owner, repo, branch
@@ -700,7 +737,7 @@ class GitHubSource(BaseSource):
         owner: str,
         repo: str,
         branch: str,
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Process a file item and create file entities.
 
         Args:
@@ -749,28 +786,47 @@ class GitHubSource(BaseSource):
                     except Exception as e:
                         self.logger.error(f"Error counting lines for {item_path}: {str(e)}")
 
-                # Create file entity with guaranteed valid paths and store content in memory
+                # Determine file type from mime_type
+                mime_type = mimetypes.guess_type(item_path)[0] or "text/plain"
+                file_type = mime_type.split("/")[0] if "/" in mime_type else "file"
+
+                # Create file entity (without content field)
                 file_entity = GitHubCodeFileEntity(
+                    # Base fields
                     entity_id=f"{repo_name}/{item_path}",
-                    source_name="github",
-                    file_id=file_data["sha"],
-                    name=file_name,
-                    mime_type=mimetypes.guess_type(item_path)[0] or "text/plain",
-                    size=file_size,
-                    path=item_path or file_name,  # Fallback to file name if path is empty
-                    repo_name=repo,
-                    repo_owner=owner,
-                    sha=file_data["sha"],
                     breadcrumbs=breadcrumbs.copy(),
+                    name=file_name,
+                    created_at=None,  # GitHub files don't have creation timestamp
+                    updated_at=None,  # GitHub files don't have update timestamp
+                    # File fields
                     url=file_data["html_url"],
-                    language=language,
-                    line_count=line_count,
+                    size=file_size,
+                    file_type=file_type,
+                    mime_type=mime_type,
+                    local_path=None,  # Will be set by file_downloader
+                    # Code file fields
+                    repo_name=repo,
                     path_in_repo=item_path,
-                    content=content_text,  # Store the content directly in the entity
-                    last_modified=None,  # GitHub API doesn't provide this directly
+                    repo_owner=owner,
+                    language=language,
+                    commit_id=file_data["sha"],
+                    # API fields
+                    sha=file_data["sha"],
+                    line_count=line_count,
+                    is_binary=False,
                 )
 
-                # Let the file handler manage actual file processing
+                # Write content to disk for uniform file handling
+                await self.file_downloader.save_bytes(
+                    entity=file_entity,
+                    content=content_text.encode("utf-8"),
+                    logger=self.logger,
+                )
+
+                # Verify save succeeded
+                if not file_entity.local_path:
+                    raise ValueError(f"Save failed - no local path set for {file_entity.name}")
+
                 yield file_entity
         except Exception as e:
             self.logger.error(f"Error processing file {item_path}: {str(e)}")
@@ -829,7 +885,7 @@ class GitHubSource(BaseSource):
                     f"Available branches: {available_branches}"
                 )
 
-    async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
+    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate entities from GitHub repository with incremental support.
 
         Yields:

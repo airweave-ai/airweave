@@ -1,136 +1,140 @@
 """Linear entity schemas."""
 
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import ChunkEntity, FileEntity
+from airweave.platform.entities._base import BaseEntity, FileEntity
 
 
-class LinearIssueEntity(ChunkEntity):
+class LinearIssueEntity(BaseEntity):
     """Schema for Linear issue entities.
 
     This entity represents an issue from Linear, containing all relevant
     metadata and content from the Linear API.
+
+    Reference:
+        https://developers.linear.app/docs/graphql/schema
     """
 
-    # Core identification fields
+    # Base fields are inherited and set during entity creation:
+    # - entity_id (the Linear issue ID)
+    # - breadcrumbs (team and project breadcrumbs)
+    # - name (from title)
+    # - created_at (from createdAt timestamp)
+    # - updated_at (from updatedAt timestamp)
+
+    # API fields (Linear-specific)
     identifier: str = AirweaveField(
         ..., description="The unique identifier of the issue (e.g., 'ENG-123')", embeddable=True
     )
     title: str = AirweaveField(..., description="The title of the issue", embeddable=True)
-
-    # Content fields
     description: Optional[str] = AirweaveField(
         None, description="The description/content of the issue", embeddable=True
     )
-
-    # Status and priority fields
-    priority: Optional[int] = AirweaveField(None, description="The priority level of the issue")
+    priority: Optional[int] = AirweaveField(
+        None, description="The priority level of the issue", embeddable=False
+    )
     state: Optional[str] = AirweaveField(
         None, description="The current state/status name of the issue", embeddable=True
     )
-
-    # Temporal information
-    created_at: Optional[datetime] = AirweaveField(
-        None, description="When the issue was created", is_created_at=True
-    )
-    updated_at: Optional[datetime] = AirweaveField(
-        None, description="When the issue was last updated", is_updated_at=True
-    )
-    completed_at: Optional[datetime] = AirweaveField(
-        None, description="When the issue was completed, if applicable"
+    completed_at: Optional[Any] = AirweaveField(
+        None, description="When the issue was completed, if applicable", embeddable=False
     )
     due_date: Optional[str] = AirweaveField(
         None, description="The due date for the issue, if set", embeddable=True
     )
-
-    # Organizational information
-    team_id: Optional[str] = AirweaveField(None, description="ID of the team this issue belongs to")
+    team_id: Optional[str] = AirweaveField(
+        None, description="ID of the team this issue belongs to", embeddable=False
+    )
     team_name: Optional[str] = AirweaveField(
         None, description="Name of the team this issue belongs to", embeddable=True
     )
     project_id: Optional[str] = AirweaveField(
-        None, description="ID of the project this issue belongs to, if any"
+        None, description="ID of the project this issue belongs to, if any", embeddable=False
     )
     project_name: Optional[str] = AirweaveField(
         None, description="Name of the project this issue belongs to, if any", embeddable=True
     )
-
-    # Assignment information
     assignee: Optional[str] = AirweaveField(
         None, description="Name of the user assigned to this issue, if any", embeddable=True
     )
+    url: Optional[str] = AirweaveField(None, description="URL to view the issue", embeddable=False)
 
 
 class LinearAttachmentEntity(FileEntity):
     """Schema for Linear attachment entities.
 
     Attachments in Linear allow linking external resources to issues.
+
+    Reference:
+        https://developers.linear.app/docs/graphql/schema
     """
 
-    issue_id: str = AirweaveField(..., description="ID of the issue this attachment belongs to")
+    # Base fields are inherited from BaseEntity:
+    # - entity_id (the attachment ID)
+    # - breadcrumbs (team, project, and issue breadcrumbs)
+    # - name (from filename or title)
+    # - created_at (from createdAt timestamp)
+    # - updated_at (from updatedAt timestamp)
+
+    # File fields are inherited from FileEntity:
+    # - url (download URL)
+    # - size (file size in bytes, if available)
+    # - file_type (determined from name/mime_type)
+    # - mime_type
+    # - local_path (set after download)
+
+    # API fields (Linear-specific)
+    issue_id: str = AirweaveField(
+        ..., description="ID of the issue this attachment belongs to", embeddable=False
+    )
     issue_identifier: str = AirweaveField(
-        ..., description="Identifier of the issue (e.g., 'ENG-123')"
+        ..., description="Identifier of the issue (e.g., 'ENG-123')", embeddable=True
     )
-
-    # Attachment specific fields
-    title: Optional[str] = AirweaveField(None, description="Title of the attachment")
-    subtitle: Optional[str] = AirweaveField(None, description="Subtitle of the attachment")
-
-    # Source metadata
+    title: Optional[str] = AirweaveField(
+        None, description="Title of the attachment", embeddable=True
+    )
+    subtitle: Optional[str] = AirweaveField(
+        None, description="Subtitle of the attachment", embeddable=True
+    )
     source: Optional[Dict[str, Any]] = AirweaveField(
-        None, description="Source information about the attachment"
-    )
-
-    # Temporal information
-    created_at: Optional[datetime] = AirweaveField(
-        None, description="When the attachment was created", is_created_at=True
-    )
-    updated_at: Optional[datetime] = AirweaveField(
-        None, description="When the attachment was last updated", is_updated_at=True
-    )
-
-    # Additional metadata
-    metadata: Optional[Dict[str, Any]] = AirweaveField(
-        None, description="Key-value metadata for the attachment"
+        None, description="Source information about the attachment", embeddable=False
     )
 
 
-class LinearProjectEntity(ChunkEntity):
+class LinearProjectEntity(BaseEntity):
     """Schema for Linear project entities.
 
     This entity represents a project from Linear, containing all relevant
     metadata and content from the Linear API.
+
+    Reference:
+        https://developers.linear.app/docs/graphql/schema
     """
 
-    # Core identification fields
-    name: str = AirweaveField(..., description="The name of the project", embeddable=True)
-    slug_id: str = AirweaveField(..., description="The project's unique URL slug", embeddable=True)
+    # Base fields are inherited and set during entity creation:
+    # - entity_id (the Linear project ID)
+    # - breadcrumbs (team breadcrumbs)
+    # - name (from project name)
+    # - created_at (from createdAt timestamp)
+    # - updated_at (from updatedAt timestamp)
 
-    # Content fields
+    # API fields (Linear-specific)
+    slug_id: str = AirweaveField(..., description="The project's unique URL slug", embeddable=False)
     description: Optional[str] = AirweaveField(
         None, description="The project's description", embeddable=True
     )
-
-    # Status and priority fields
-    priority: Optional[int] = AirweaveField(None, description="The priority level of the project")
+    priority: Optional[int] = AirweaveField(
+        None, description="The priority level of the project", embeddable=False
+    )
     state: Optional[str] = AirweaveField(
         None, description="The current state/status name of the project", embeddable=True
     )
-
-    # Temporal information
-    created_at: Optional[datetime] = AirweaveField(
-        None, description="When the project was created", is_created_at=True
+    completed_at: Optional[Any] = AirweaveField(
+        None, description="When the project was completed, if applicable", embeddable=False
     )
-    updated_at: Optional[datetime] = AirweaveField(
-        None, description="When the project was last updated", is_updated_at=True
-    )
-    completed_at: Optional[datetime] = AirweaveField(
-        None, description="When the project was completed, if applicable"
-    )
-    started_at: Optional[datetime] = AirweaveField(
-        None, description="When the project was started, if applicable"
+    started_at: Optional[Any] = AirweaveField(
+        None, description="When the project was started, if applicable", embeddable=False
     )
     target_date: Optional[str] = AirweaveField(
         None, description="The estimated completion date of the project", embeddable=True
@@ -138,71 +142,66 @@ class LinearProjectEntity(ChunkEntity):
     start_date: Optional[str] = AirweaveField(
         None, description="The estimated start date of the project", embeddable=True
     )
-
-    # Organizational information
     team_ids: Optional[List[str]] = AirweaveField(
-        None, description="IDs of the teams this project belongs to"
+        None, description="IDs of the teams this project belongs to", embeddable=False
     )
     team_names: Optional[List[str]] = AirweaveField(
         None, description="Names of the teams this project belongs to", embeddable=True
     )
-
-    # Progress information
     progress: Optional[float] = AirweaveField(
-        None, description="The overall progress of the project"
+        None, description="The overall progress of the project", embeddable=False
     )
-
-    # Leader information
     lead: Optional[str] = AirweaveField(
         None, description="Name of the project lead, if any", embeddable=True
     )
+    url: Optional[str] = AirweaveField(
+        None, description="URL to view the project", embeddable=False
+    )
 
 
-class LinearTeamEntity(ChunkEntity):
+class LinearTeamEntity(BaseEntity):
     """Schema for Linear team entities.
 
     This entity represents a team from Linear, containing all relevant
     metadata and content from the Linear API.
+
+    Reference:
+        https://developers.linear.app/docs/graphql/schema
     """
 
-    # Core identification fields
-    name: str = AirweaveField(..., description="The team's name", embeddable=True)
-    key: str = AirweaveField(..., description="The team's unique key used in URLs", embeddable=True)
+    # Base fields are inherited and set during entity creation:
+    # - entity_id (the Linear team ID)
+    # - breadcrumbs (parent team breadcrumb, if applicable)
+    # - name (from team name)
+    # - created_at (from createdAt timestamp)
+    # - updated_at (from updatedAt timestamp)
 
-    # Content fields
+    # API fields (Linear-specific)
+    key: str = AirweaveField(..., description="The team's unique key used in URLs", embeddable=True)
     description: Optional[str] = AirweaveField(
         None, description="The team's description", embeddable=True
     )
-
-    # Display fields
-    color: Optional[str] = AirweaveField(None, description="The team's color")
-    icon: Optional[str] = AirweaveField(None, description="The icon of the team")
-
-    # Team properties
-    private: Optional[bool] = AirweaveField(None, description="Whether the team is private or not")
-    timezone: Optional[str] = AirweaveField(None, description="The timezone of the team")
-
-    # Organizational information
+    color: Optional[str] = AirweaveField(None, description="The team's color", embeddable=False)
+    icon: Optional[str] = AirweaveField(None, description="The icon of the team", embeddable=False)
+    private: Optional[bool] = AirweaveField(
+        None, description="Whether the team is private or not", embeddable=False
+    )
+    timezone: Optional[str] = AirweaveField(
+        None, description="The timezone of the team", embeddable=False
+    )
     parent_id: Optional[str] = AirweaveField(
-        None, description="ID of the parent team, if this is a sub-team"
+        None, description="ID of the parent team, if this is a sub-team", embeddable=False
     )
     parent_name: Optional[str] = AirweaveField(
         None, description="Name of the parent team, if this is a sub-team", embeddable=True
     )
-
-    # Temporal information
-    created_at: Optional[datetime] = AirweaveField(
-        None, description="When the team was created", is_created_at=True
+    issue_count: Optional[int] = AirweaveField(
+        None, description="Number of issues in the team", embeddable=False
     )
-    updated_at: Optional[datetime] = AirweaveField(
-        None, description="When the team was last updated", is_updated_at=True
-    )
-
-    # Member information
-    member_count: Optional[int] = AirweaveField(None, description="Number of members in the team")
+    url: Optional[str] = AirweaveField(None, description="URL to view the team", embeddable=False)
 
 
-class LinearCommentEntity(ChunkEntity):
+class LinearCommentEntity(BaseEntity):
     """Schema for Linear comment entities.
 
     This entity represents a comment on a Linear issue, containing all relevant
@@ -249,7 +248,7 @@ class LinearCommentEntity(ChunkEntity):
     )
 
 
-class LinearUserEntity(ChunkEntity):
+class LinearUserEntity(BaseEntity):
     """Schema for Linear user entities.
 
     This entity represents a user from Linear, containing all relevant

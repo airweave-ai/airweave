@@ -5,7 +5,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 import httpx
 
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import Breadcrumb, ChunkEntity
+from airweave.platform.entities._base import Breadcrumb, BaseEntity
 from airweave.platform.entities.todoist import (
     TodoistCommentEntity,
     TodoistProjectEntity,
@@ -237,7 +237,7 @@ class TodoistSource(BaseSource):
                 posted_at=comment["posted_at"],
             )
 
-    async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
+    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate all entities from Todoist: Projects, Sections, Tasks, and Comments.
 
         For each project:

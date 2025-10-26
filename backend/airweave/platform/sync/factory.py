@@ -21,20 +21,15 @@ from airweave.platform.auth_providers._base import BaseAuthProvider
 from airweave.platform.auth_providers.auth_result import AuthProviderMode
 from airweave.platform.auth_providers.pipedream import PipedreamAuthProvider
 from airweave.platform.destinations._base import BaseDestination
-from airweave.platform.embedding_models._base import BaseEmbeddingModel
-from airweave.platform.embedding_models.bm25_text2vec import BM25Text2Vec
-from airweave.platform.embedding_models.local_text2vec import LocalText2Vec
-from airweave.platform.embedding_models.openai_text2vec import OpenAIText2Vec
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.http_client import PipedreamProxyClient
 from airweave.platform.locator import resource_locator
 from airweave.platform.sources._base import BaseSource
 from airweave.platform.sync.context import SyncContext
 from airweave.platform.sync.cursor import SyncCursor
-from airweave.platform.sync.entity_processor import EntityProcessor
+from airweave.platform.sync.entity_pipeline import EntityPipeline
 from airweave.platform.sync.orchestrator import SyncOrchestrator
 from airweave.platform.sync.pubsub import SyncEntityStateTracker, SyncProgress
-from airweave.platform.sync.router import SyncDAGRouter
 from airweave.platform.sync.stream import AsyncSourceStream
 from airweave.platform.sync.token_manager import TokenManager
 from airweave.platform.sync.worker_pool import AsyncWorkerPool
@@ -49,7 +44,6 @@ class SyncFactory:
         db: AsyncSession,
         sync: schemas.Sync,
         sync_job: schemas.SyncJob,
-        dag: schemas.SyncDag,
         collection: schemas.Collection,
         connection: schemas.Connection,  # Passed but unused - we load from DB
         ctx: ApiContext,
@@ -66,7 +60,6 @@ class SyncFactory:
             db: Database session
             sync: The sync configuration
             sync_job: The sync job
-            dag: The DAG for the sync
             collection: The collection to sync to
             connection: The connection (unused - we load source connection from DB)
             ctx: The API context
@@ -92,7 +85,6 @@ class SyncFactory:
             db=db,
             sync=sync,
             sync_job=sync_job,
-            dag=dag,
             collection=collection,
             connection=connection,  # Unused parameter
             ctx=ctx,
@@ -101,13 +93,8 @@ class SyncFactory:
         )
         logger.debug(f"Sync context created in {time.time() - context_start:.2f}s")
 
-        # CRITICAL FIX: Initialize transformer cache to eliminate 1.5s database lookups
-        cache_start = time.time()
-        await sync_context.router.initialize_transformer_cache(db)
-        logger.debug(f"Transformer cache initialized in {time.time() - cache_start:.2f}s")
-
-        # Create entity processor
-        entity_processor = EntityProcessor()
+        # Create entity pipeline
+        entity_pipeline = EntityPipeline()
 
         # Create worker pool
         worker_pool = AsyncWorkerPool(max_workers=max_workers, logger=sync_context.logger)
@@ -120,14 +107,11 @@ class SyncFactory:
 
         # Create dedicated orchestrator instance with all components
         orchestrator = SyncOrchestrator(
-            entity_processor=entity_processor,
+            entity_pipeline=entity_pipeline,
             worker_pool=worker_pool,
             stream=stream,
             sync_context=sync_context,
         )
-
-        # Initialize entity tracking
-        entity_processor.initialize_tracking(sync_context)
 
         logger.info(f"Total orchestrator initialization took {time.time() - init_start:.2f}s")
 
@@ -139,7 +123,6 @@ class SyncFactory:
         db: AsyncSession,
         sync: schemas.Sync,
         sync_job: schemas.SyncJob,
-        dag: schemas.SyncDag,
         collection: schemas.Collection,
         connection: schemas.Connection,
         ctx: ApiContext,
@@ -152,7 +135,6 @@ class SyncFactory:
             db: Database session
             sync: The sync configuration
             sync_job: The sync job
-            dag: The DAG for the sync
             collection: The collection to sync to
             connection: The connection (unused - we load source connection from DB)
             ctx: The API context
@@ -185,9 +167,8 @@ class SyncFactory:
             ctx=ctx,
             access_token=access_token,
             logger=logger,  # Pass the contextual logger
+            sync_job=sync_job,  # Pass sync_job for file downloader temp directory setup
         )
-        embedding_model = cls._get_embedding_model(logger=logger)
-        keyword_indexing_model = cls._get_keyword_indexing_model(logger=logger)
         destinations = await cls._create_destination_instances(
             db=db,
             sync=sync,
@@ -195,7 +176,6 @@ class SyncFactory:
             ctx=ctx,
             logger=logger,
         )
-        transformers = await cls._get_transformer_callables(db=db, sync=sync)
         entity_map = await cls._get_entity_definition_map(db=db)
 
         progress = SyncProgress(sync_job.id, logger=logger)
@@ -218,8 +198,6 @@ class SyncFactory:
             f"✅ Created SyncEntityStateTracker for job {sync_job.id}, "
             f"channel: sync_job_state:{sync_job.id}"
         )
-
-        router = SyncDAGRouter(dag, entity_map, logger=logger)
 
         logger.info("Sync context created")
 
@@ -270,18 +248,13 @@ class SyncFactory:
         sync_context = SyncContext(
             source=source,
             destinations=destinations,
-            embedding_model=embedding_model,
-            keyword_indexing_model=keyword_indexing_model,
-            transformers=transformers,
             sync=sync,
             sync_job=sync_job,
-            dag=dag,
             collection=collection,
             connection=connection,  # Unused parameter
             progress=progress,
             entity_state_tracker=entity_state_tracker,
             cursor=cursor,
-            router=router,
             entity_map=entity_map,
             ctx=ctx,
             logger=logger,
@@ -320,6 +293,7 @@ class SyncFactory:
         ctx: ApiContext,
         logger: ContextualLogger,
         access_token: Optional[str] = None,
+        sync_job: Optional[Any] = None,
     ) -> BaseSource:
         """Create and configure the source instance using pre-fetched connection data."""
         # Get auth configuration (credentials + proxy setup if needed)
@@ -390,6 +364,9 @@ class SyncFactory:
                     f"'{source_connection_data['short_name']}': {e}"
                 )
                 # Don't fail source creation if token manager setup fails
+
+        # Setup file downloader for file-based sources
+        cls._setup_file_downloader(source, sync_job, logger)
 
         return source
 
@@ -846,6 +823,30 @@ class SyncFactory:
             )
 
     @classmethod
+    def _setup_file_downloader(
+        cls, source: BaseSource, sync_job: Optional[Any], logger: ContextualLogger
+    ) -> None:
+        """Setup file downloader for file-based sources.
+
+        Args:
+            source: Source instance to configure
+            sync_job: Sync job for temp directory organization (None if called outside sync)
+            logger: Logger for diagnostics
+        """
+        from airweave.platform.downloader import FileDownloadService
+
+        if hasattr(source, "set_file_downloader"):
+            # Use sync_job_id for temp directory organization if available
+            if sync_job and hasattr(sync_job, "id"):
+                file_downloader = FileDownloadService(sync_job_id=str(sync_job.id))
+            else:
+                # Fallback for non-sync contexts (e.g., validation)
+                file_downloader = FileDownloadService(sync_job_id="validation")
+
+            source.set_file_downloader(file_downloader)
+            logger.debug(f"File downloader configured for {source.__class__.__name__}")
+
+    @classmethod
     async def _setup_token_manager(
         cls,
         db: AsyncSession,
@@ -937,28 +938,6 @@ class SyncFactory:
         if not credential:
             raise NotFoundException("Source integration credential not found")
         return credential
-
-    @classmethod
-    def _get_embedding_model(cls, logger: ContextualLogger) -> BaseEmbeddingModel:
-        """Get embedding model instance.
-
-        If OpenAI API key is available, it will use OpenAI embeddings instead of local.
-
-        Args:
-            logger (ContextualLogger): The logger to use
-
-        Returns:
-            BaseEmbeddingModel: The embedding model to use
-        """
-        if settings.OPENAI_API_KEY:
-            return OpenAIText2Vec(api_key=settings.OPENAI_API_KEY, logger=logger)
-
-        return LocalText2Vec(logger=logger)
-
-    @classmethod
-    def _get_keyword_indexing_model(cls, logger: ContextualLogger) -> BaseEmbeddingModel:
-        """Get keyword indexing model instance."""
-        return BM25Text2Vec(logger=logger)
 
     @classmethod
     async def _create_destination_instances(
@@ -1096,17 +1075,7 @@ class SyncFactory:
 
         return destinations
 
-    @classmethod
-    async def _get_transformer_callables(
-        cls, db: AsyncSession, sync: schemas.Sync
-    ) -> dict[str, callable]:
-        """Get transformers instance."""
-        transformers = {}
-
-        transformer_functions = await crud.transformer.get_all(db)
-        for transformer in transformer_functions:
-            transformers[transformer.method_name] = resource_locator.get_transformer(transformer)
-        return transformers
+    # NOTE: Transformers removed - chunking now happens in entity_pipeline.py
 
     @classmethod
     async def _get_entity_definition_map(cls, db: AsyncSession) -> dict[type[BaseEntity], UUID]:

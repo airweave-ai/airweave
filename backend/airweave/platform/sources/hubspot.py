@@ -6,7 +6,7 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import ChunkEntity
+from airweave.platform.entities._base import BaseEntity
 from airweave.platform.entities.hubspot import (
     HubspotCompanyEntity,
     HubspotContactEntity,
@@ -201,7 +201,7 @@ class HubspotSource(BaseSource):
 
     async def _generate_contact_entities(
         self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate Contact entities from HubSpot.
 
         This uses the REST CRM API endpoint for contacts:
@@ -219,16 +219,34 @@ class HubspotSource(BaseSource):
                 # Clean properties to remove null/empty values
                 cleaned_properties = self._clean_properties(raw_properties)
 
+                # Construct contact name
+                first_name = cleaned_properties.get("firstname")
+                last_name = cleaned_properties.get("lastname")
+                email = cleaned_properties.get("email")
+
+                if first_name and last_name:
+                    contact_name = f"{first_name} {last_name}"
+                elif first_name:
+                    contact_name = first_name
+                elif last_name:
+                    contact_name = last_name
+                elif email:
+                    contact_name = email
+                else:
+                    contact_name = f"Contact {contact['id']}"
+
                 yield HubspotContactEntity(
+                    # Base fields
                     entity_id=contact["id"],
-                    # Core fields for easy access
-                    first_name=cleaned_properties.get("firstname"),
-                    last_name=cleaned_properties.get("lastname"),
-                    email=cleaned_properties.get("email"),
-                    # Cleaned properties from HubSpot
-                    properties=cleaned_properties,
+                    breadcrumbs=[],
+                    name=contact_name,
                     created_at=parse_hubspot_datetime(contact.get("createdAt")),
                     updated_at=parse_hubspot_datetime(contact.get("updatedAt")),
+                    # API fields
+                    first_name=first_name,
+                    last_name=last_name,
+                    email=email,
+                    properties=cleaned_properties,
                     archived=contact.get("archived", False),
                 )
 
@@ -239,7 +257,7 @@ class HubspotSource(BaseSource):
 
     async def _generate_company_entities(
         self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate Company entities from HubSpot.
 
         This uses the REST CRM API endpoint for companies:
@@ -257,15 +275,19 @@ class HubspotSource(BaseSource):
                 # Clean properties to remove null/empty values
                 cleaned_properties = self._clean_properties(raw_properties)
 
+                # Get company name
+                company_name = cleaned_properties.get("name") or f"Company {company['id']}"
+
                 yield HubspotCompanyEntity(
+                    # Base fields
                     entity_id=company["id"],
-                    # Core fields for easy access
-                    name=cleaned_properties.get("name"),
-                    domain=cleaned_properties.get("domain"),
-                    # Cleaned properties from HubSpot
-                    properties=cleaned_properties,
+                    breadcrumbs=[],
+                    name=company_name,
                     created_at=parse_hubspot_datetime(company.get("createdAt")),
                     updated_at=parse_hubspot_datetime(company.get("updatedAt")),
+                    # API fields
+                    domain=cleaned_properties.get("domain"),
+                    properties=cleaned_properties,
                     archived=company.get("archived", False),
                 )
 
@@ -275,7 +297,7 @@ class HubspotSource(BaseSource):
 
     async def _generate_deal_entities(
         self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate Deal entities from HubSpot.
 
         This uses the REST CRM API endpoint for deals:
@@ -293,15 +315,20 @@ class HubspotSource(BaseSource):
                 # Clean properties to remove null/empty values
                 cleaned_properties = self._clean_properties(raw_properties)
 
+                # Get deal name
+                deal_name = cleaned_properties.get("dealname") or f"Deal {deal['id']}"
+
                 yield HubspotDealEntity(
+                    # Base fields
                     entity_id=deal["id"],
-                    # Core fields for easy access
-                    deal_name=cleaned_properties.get("dealname"),
-                    amount=self._safe_float_conversion(cleaned_properties.get("amount")),
-                    # Cleaned properties from HubSpot
-                    properties=cleaned_properties,
+                    breadcrumbs=[],
+                    name=deal_name,
                     created_at=parse_hubspot_datetime(deal.get("createdAt")),
                     updated_at=parse_hubspot_datetime(deal.get("updatedAt")),
+                    # API fields
+                    deal_name=cleaned_properties.get("dealname"),
+                    amount=self._safe_float_conversion(cleaned_properties.get("amount")),
+                    properties=cleaned_properties,
                     archived=deal.get("archived", False),
                 )
 
@@ -311,7 +338,7 @@ class HubspotSource(BaseSource):
 
     async def _generate_ticket_entities(
         self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate Ticket entities from HubSpot.
 
         This uses the REST CRM API endpoint for tickets:
@@ -329,15 +356,20 @@ class HubspotSource(BaseSource):
                 # Clean properties to remove null/empty values
                 cleaned_properties = self._clean_properties(raw_properties)
 
+                # Get ticket name (from subject)
+                ticket_name = cleaned_properties.get("subject") or f"Ticket {ticket['id']}"
+
                 yield HubspotTicketEntity(
+                    # Base fields
                     entity_id=ticket["id"],
-                    # Core fields for easy access
-                    subject=cleaned_properties.get("subject"),
-                    content=cleaned_properties.get("content"),
-                    # Cleaned properties from HubSpot
-                    properties=cleaned_properties,
+                    breadcrumbs=[],
+                    name=ticket_name,
                     created_at=parse_hubspot_datetime(ticket.get("createdAt")),
                     updated_at=parse_hubspot_datetime(ticket.get("updatedAt")),
+                    # API fields
+                    subject=cleaned_properties.get("subject"),
+                    content=cleaned_properties.get("content"),
+                    properties=cleaned_properties,
                     archived=ticket.get("archived", False),
                 )
 
@@ -345,7 +377,7 @@ class HubspotSource(BaseSource):
             next_link = paging.get("next", {}).get("link")
             url = next_link if next_link else None
 
-    async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
+    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate all entities from HubSpot.
 
         Yields:

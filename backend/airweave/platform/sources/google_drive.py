@@ -21,7 +21,7 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 
 from airweave.core.exceptions import TokenRefreshError
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import ChunkEntity
+from airweave.platform.entities._base import BaseEntity
 from airweave.platform.entities.google_drive import (
     GoogleDriveDriveEntity,
     GoogleDriveFileEntity,
@@ -219,18 +219,19 @@ class GoogleDriveSource(BaseSource):
 
     async def _generate_drive_entities(
         self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[GoogleDriveDriveEntity, None]:
         """Generate GoogleDriveDriveEntity objects for each shared drive."""
         async for drive_obj in self._list_drives(client):
             yield GoogleDriveDriveEntity(
+                # Base fields
                 entity_id=drive_obj["id"],
-                # No breadcrumbs for top-level drives in this connector
                 breadcrumbs=[],
-                drive_id=drive_obj["id"],
-                name=drive_obj.get("name"),
+                name=drive_obj.get("name", "Untitled Drive"),
+                created_at=drive_obj.get("createdTime"),
+                updated_at=None,  # Drives don't have modified time
+                # API fields
                 kind=drive_obj.get("kind"),
                 color_rgb=drive_obj.get("colorRgb"),
-                created_time=drive_obj.get("createdTime"),
                 hidden=drive_obj.get("hidden", False),
                 org_unit_id=drive_obj.get("orgUnitId"),
             )
@@ -495,6 +496,126 @@ class GoogleDriveSource(BaseSource):
             return pattern
         return None
 
+    async def _resolve_pattern_to_roots(
+        self,
+        client: httpx.AsyncClient,
+        corpora: str,
+        include_all_drives: bool,
+        drive_id: Optional[str],
+        pattern: str,
+    ) -> tuple[List[str], Optional[str]]:
+        """Resolve a pattern like 'FOLDER/SUBFOLDER/*.pdf' to root folder IDs and filename glob.
+
+        Supports patterns like: 'Folder/*', 'Folder/Sub/file.pdf'.
+        Folder segments are treated as exact names.
+        The last segment may be a filename glob; if omitted, includes all files recursively.
+        """
+        # Normalize pattern and split
+        self.logger.debug(f"Resolve pattern: '{pattern}'")
+        norm = pattern.strip().strip("/")
+        segments = norm.split("/") if norm else []
+
+        if not segments:
+            return [], None
+
+        # Determine if last segment is a file glob (has '.' or wildcard) -> treat as filename glob
+        last = segments[-1]
+        filename_glob: Optional[str] = None
+        folder_segments = segments
+        if "." in last or "*" in last or "?" in last:
+            filename_glob = last
+            folder_segments = segments[:-1]
+        self.logger.debug(
+            f"Pattern segments: folders={folder_segments}, filename_glob={filename_glob}"
+        )
+
+        async def find_folders_by_name(parent_ids: Optional[List[str]], name: str) -> List[str]:
+            """Find folders by exact name, either under specific parents or globally."""
+            found: List[str] = []
+            safe_name = name.replace("'", "\\'")
+
+            if parent_ids:
+                # Search under specific parent folders
+                for pid in parent_ids:
+                    url = "https://www.googleapis.com/drive/v3/files"
+                    q = (
+                        f"'{pid}' in parents and mimeType = 'application/vnd.google-apps.folder' "
+                        f"and name = '{safe_name}' and trashed = false"
+                    )
+                    params = {
+                        "pageSize": 100,
+                        "corpora": corpora,
+                        "includeItemsFromAllDrives": str(include_all_drives).lower(),
+                        "supportsAllDrives": "true",
+                        "q": q,
+                        "fields": "nextPageToken, files(id, name)",
+                    }
+                    if drive_id:
+                        params["driveId"] = drive_id
+
+                    while url:
+                        data = await self._get_with_auth(client, url, params=params)
+                        for f in data.get("files", []):
+                            found.append(f["id"])
+                        npt = data.get("nextPageToken")
+                        if not npt:
+                            break
+                        params["pageToken"] = npt
+
+                self.logger.debug(
+                    f"find_folders_by_name: name='{name}' under {len(parent_ids)} "
+                    f"parents -> {len(found)} matches"
+                )
+            else:
+                # Search folders by exact name anywhere in scope
+                url = "https://www.googleapis.com/drive/v3/files"
+                q = (
+                    "mimeType = 'application/vnd.google-apps.folder' and "
+                    f"name = '{safe_name}' and trashed = false"
+                )
+                params = {
+                    "pageSize": 100,
+                    "corpora": corpora,
+                    "includeItemsFromAllDrives": str(include_all_drives).lower(),
+                    "supportsAllDrives": "true",
+                    "q": q,
+                    "fields": "nextPageToken, files(id, name)",
+                }
+                if drive_id:
+                    params["driveId"] = drive_id
+
+                while url:
+                    data = await self._get_with_auth(client, url, params=params)
+                    for f in data.get("files", []):
+                        found.append(f["id"])
+                    npt = data.get("nextPageToken")
+                    if not npt:
+                        break
+                    params["pageToken"] = npt
+
+                self.logger.debug(
+                    f"find_folders_by_name: global name='{name}' -> {len(found)} matches"
+                )
+            return found
+
+        # Traverse folder hierarchy
+        parent_ids: Optional[List[str]] = None
+        for seg in folder_segments:
+            ids = await find_folders_by_name(parent_ids, seg)
+            parent_ids = ids
+            if not parent_ids:
+                break
+
+        # If no folder segments (pattern was just filename glob) return empty roots
+        if not folder_segments:
+            return [], filename_glob or "*"
+
+        self.logger.debug(
+            f"Resolved pattern '{pattern}' to {len(parent_ids or [])} folder(s), "
+            f"filename_glob={filename_glob}"
+        )
+        return parent_ids or [], filename_glob
+
     async def _traverse_and_yield_files(
         self,
         client: httpx.AsyncClient,
@@ -594,12 +715,11 @@ class GoogleDriveSource(BaseSource):
 
         # Get the original file name
         file_name = file_obj.get("name", "Untitled")
+        mime_type = file_obj.get("mimeType", "")
 
-        if file_obj.get("mimeType", "").startswith("application/vnd.google-apps."):
+        if mime_type.startswith("application/vnd.google-apps."):
             # For Google native files, get the appropriate export format
-            export_mime_type, file_extension = self._get_export_format_and_extension(
-                file_obj.get("mimeType", "")
-            )
+            export_mime_type, file_extension = self._get_export_format_and_extension(mime_type)
 
             # Create export URL with the appropriate MIME type
             download_url = f"https://www.googleapis.com/drive/v3/files/{file_obj['id']}/export?mimeType={export_mime_type}"
@@ -616,13 +736,25 @@ class GoogleDriveSource(BaseSource):
         if not download_url:
             return None
 
+        # Determine general file type from mime_type
+        from airweave.platform.entities.utils import _determine_file_type_from_mime
+
+        file_type = _determine_file_type_from_mime(mime_type)
+
         return GoogleDriveFileEntity(
+            # Base fields
             entity_id=file_obj["id"],
             breadcrumbs=[],
-            file_id=file_obj["id"],
-            download_url=download_url,
             name=file_name,  # Use the modified name with extension
-            mime_type=file_obj.get("mimeType"),
+            created_at=file_obj.get("createdTime"),
+            updated_at=file_obj.get("modifiedTime"),
+            # File fields
+            url=download_url,
+            size=int(file_obj["size"]) if file_obj.get("size") else 0,
+            file_type=file_type,
+            mime_type=mime_type or "application/octet-stream",
+            local_path=None,
+            # API fields
             description=file_obj.get("description"),
             starred=file_obj.get("starred", False),
             trashed=file_obj.get("trashed", False),
@@ -632,25 +764,42 @@ class GoogleDriveSource(BaseSource):
             shared=file_obj.get("shared", False),
             web_view_link=file_obj.get("webViewLink"),
             icon_link=file_obj.get("iconLink"),
-            created_time=file_obj.get("createdTime"),
-            modified_time=file_obj.get("modifiedTime"),
-            size=int(file_obj["size"]) if file_obj.get("size") else None,
             md5_checksum=file_obj.get("md5Checksum"),
         )
 
     # ------------------------------
     # Concurrency-aware processing
     # ------------------------------
-    async def _process_file_batch(self, file_obj: Dict) -> Optional[ChunkEntity]:
+    async def _process_file_batch(self, file_obj: Dict) -> Optional[GoogleDriveFileEntity]:
         """Build & process a single file (used by concurrent driver)."""
         try:
             file_entity = self._build_file_entity(file_obj)
             if not file_entity:
                 return None
-            self.logger.debug(f"Processing file entity: {file_entity.file_id} '{file_entity.name}'")
-            processed_entity = await self.process_file_entity(file_entity=file_entity)
-            self.logger.debug(f"Processed result: {'yielded' if processed_entity else 'skipped'}")
-            return processed_entity
+            self.logger.debug(
+                f"Processing file entity: {file_entity.entity_id} '{file_entity.name}'"
+            )
+
+            # Download file using downloader
+            try:
+                await self.file_downloader.download_from_url(
+                    entity=file_entity,
+                    http_client_factory=self.http_client,
+                    access_token_provider=self.get_access_token,
+                    logger=self.logger,
+                )
+
+                # Verify download succeeded
+                if not file_entity.local_path:
+                    raise ValueError(f"Download failed - no local path set for {file_entity.name}")
+
+                self.logger.debug(f"Successfully downloaded file: {file_entity.name}")
+                return file_entity
+
+            except Exception as e:
+                self.logger.error(f"Failed to download file {file_entity.name}: {e}")
+                return None
+
         except Exception as e:
             self.logger.error(f"Failed to process file {file_obj.get('name', 'unknown')}: {str(e)}")
             return None
@@ -662,7 +811,7 @@ class GoogleDriveSource(BaseSource):
         include_all_drives: bool,
         drive_id: Optional[str] = None,
         context: str = "",
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[GoogleDriveFileEntity, None]:
         """Generate file entities from a file listing."""
         try:
             if getattr(self, "batch_generation", False):
@@ -690,9 +839,28 @@ class GoogleDriveSource(BaseSource):
                         file_entity = self._build_file_entity(file_obj)
                         if not file_entity:
                             continue
-                        processed_entity = await self.process_file_entity(file_entity=file_entity)
-                        if processed_entity:
-                            yield processed_entity
+
+                        # Download file using downloader
+                        try:
+                            await self.file_downloader.download_from_url(
+                                entity=file_entity,
+                                http_client_factory=self.http_client,
+                                access_token_provider=self.get_access_token,
+                                logger=self.logger,
+                            )
+
+                            # Verify download succeeded
+                            if not file_entity.local_path:
+                                raise ValueError(
+                                    f"Download failed - no local path set for {file_entity.name}"
+                                )
+
+                            yield file_entity
+
+                        except Exception as e:
+                            self.logger.error(f"Failed to download file {file_entity.name}: {e}")
+                            continue
+
                     except Exception as e:
                         error_context = f"in drive {drive_id}" if drive_id else "in MY DRIVE"
                         self.logger.error(
@@ -705,7 +873,7 @@ class GoogleDriveSource(BaseSource):
             self.logger.error(f"Critical exception in _generate_file_entities: {str(e)}")
             # Don't re-raise - let the generator complete
 
-    async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:  # noqa: C901
+    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:  # noqa: C901
         """Generate all Google Drive entities.
 
         Behavior:
@@ -813,11 +981,30 @@ class GoogleDriveSource(BaseSource):
                                         file_entity = self._build_file_entity(file_obj)
                                         if not file_entity:
                                             continue
-                                        processed_entity = await self.process_file_entity(
-                                            file_entity=file_entity
-                                        )
-                                        if processed_entity:
-                                            yield processed_entity
+
+                                        # Download file using downloader
+                                        try:
+                                            await self.file_downloader.download_from_url(
+                                                entity=file_entity,
+                                                http_client_factory=self.http_client,
+                                                access_token_provider=self.get_access_token,
+                                                logger=self.logger,
+                                            )
+
+                                            # Verify download succeeded
+                                            if not file_entity.local_path:
+                                                raise ValueError(
+                                                    f"Download failed - no local path set "
+                                                    f"for {file_entity.name}"
+                                                )
+
+                                            yield file_entity
+
+                                        except Exception as e:
+                                            self.logger.error(
+                                                f"Failed to download file {file_entity.name}: {e}"
+                                            )
+                                            continue
 
                         # Filename-only patterns (no folder segments) -> global name search
                         filename_only_patterns = [p for p in patterns if "/" not in p]
@@ -861,11 +1048,30 @@ class GoogleDriveSource(BaseSource):
                                         file_entity = self._build_file_entity(file_obj)
                                         if not file_entity:
                                             continue
-                                        processed_entity = await self.process_file_entity(
-                                            file_entity=file_entity
-                                        )
-                                        if processed_entity:
-                                            yield processed_entity
+
+                                        # Download file using downloader
+                                        try:
+                                            await self.file_downloader.download_from_url(
+                                                entity=file_entity,
+                                                http_client_factory=self.http_client,
+                                                access_token_provider=self.get_access_token,
+                                                logger=self.logger,
+                                            )
+
+                                            # Verify download succeeded
+                                            if not file_entity.local_path:
+                                                raise ValueError(
+                                                    f"Download failed - no local path set "
+                                                    f"for {file_entity.name}"
+                                                )
+
+                                            yield file_entity
+
+                                        except Exception as e:
+                                            self.logger.error(
+                                                f"Failed to download file {file_entity.name}: {e}"
+                                            )
+                                            continue
 
                     except Exception as e:
                         self.logger.error(f"Include mode error for drive {drive_id}: {str(e)}")
@@ -920,11 +1126,30 @@ class GoogleDriveSource(BaseSource):
                                     file_entity = self._build_file_entity(file_obj)
                                     if not file_entity:
                                         continue
-                                    processed_entity = await self.process_file_entity(
-                                        file_entity=file_entity
-                                    )
-                                    if processed_entity:
-                                        yield processed_entity
+
+                                    # Download file using downloader
+                                    try:
+                                        await self.file_downloader.download_from_url(
+                                            entity=file_entity,
+                                            http_client_factory=self.http_client,
+                                            access_token_provider=self.get_access_token,
+                                            logger=self.logger,
+                                        )
+
+                                        # Verify download succeeded
+                                        if not file_entity.local_path:
+                                            raise ValueError(
+                                                f"Download failed - no local path set "
+                                                f"for {file_entity.name}"
+                                            )
+
+                                        yield file_entity
+
+                                    except Exception as e:
+                                        self.logger.error(
+                                            f"Failed to download file {file_entity.name}: {e}"
+                                        )
+                                        continue
 
                     filename_only_patterns = [p for p in patterns if "/" not in p]
                     import fnmatch as _fn
@@ -967,11 +1192,30 @@ class GoogleDriveSource(BaseSource):
                                     file_entity = self._build_file_entity(file_obj)
                                     if not file_entity:
                                         continue
-                                    processed_entity = await self.process_file_entity(
-                                        file_entity=file_entity
-                                    )
-                                    if processed_entity:
-                                        yield processed_entity
+
+                                    # Download file using downloader
+                                    try:
+                                        await self.file_downloader.download_from_url(
+                                            entity=file_entity,
+                                            http_client_factory=self.http_client,
+                                            access_token_provider=self.get_access_token,
+                                            logger=self.logger,
+                                        )
+
+                                        # Verify download succeeded
+                                        if not file_entity.local_path:
+                                            raise ValueError(
+                                                f"Download failed - no local path set "
+                                                f"for {file_entity.name}"
+                                            )
+
+                                        yield file_entity
+
+                                    except Exception as e:
+                                        self.logger.error(
+                                            f"Failed to download file {file_entity.name}: {e}"
+                                        )
+                                        continue
 
                 except Exception as e:
                     self.logger.error(f"Include mode error for My Drive: {str(e)}")

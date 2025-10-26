@@ -5,18 +5,16 @@ import importlib
 import inspect
 import os
 import re
-from typing import Callable, Dict, Type, Union
+from typing import Callable, Dict, Type
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing_extensions import get_type_hints
 
 from airweave import crud, schemas
 from airweave.core.logging import logger
 from airweave.models.entity_definition import EntityType
 from airweave.platform.auth_providers._base import BaseAuthProvider
 from airweave.platform.destinations._base import BaseDestination
-from airweave.platform.embedding_models._base import BaseEmbeddingModel
 from airweave.platform.sources._base import BaseSource
 
 sync_logger = logger.with_prefix("Platform sync: ").with_context(component="platform_sync")
@@ -148,23 +146,12 @@ def _process_module_classes(module, components: Dict[str, list[Type | Callable]]
             components["sources"].append(cls)
         elif getattr(cls, "_is_destination", False):
             components["destinations"].append(cls)
-        elif getattr(cls, "_is_embedding_model", False):
-            components["embedding_models"].append(cls)
         elif getattr(cls, "_is_auth_provider", False):
             components["auth_providers"].append(cls)
 
 
-def _process_module_functions(module, components: Dict[str, list[Type | Callable]]) -> None:
-    """Process functions in a module and add them to the components dictionary.
-
-    Args:
-        module: The module to process
-        components: Dictionary to add components to
-    """
-    # Scan for transformer functions
-    for _, func in inspect.getmembers(module, inspect.isfunction):
-        if getattr(func, "_is_transformer", False):
-            components["transformers"].append(func)
+# NOTE: Transformers were removed - chunking now happens in entity_pipeline.py
+# using CodeChunker and SemanticChunker, not decorator-based transformers
 
 
 def _get_decorated_classes(directory: str) -> Dict[str, list[Type | Callable]]:
@@ -183,9 +170,7 @@ def _get_decorated_classes(directory: str) -> Dict[str, list[Type | Callable]]:
     components = {
         "sources": [],
         "destinations": [],
-        "embedding_models": [],
         "auth_providers": [],
-        "transformers": [],
     }
 
     base_package = directory.replace("/", ".")
@@ -206,7 +191,6 @@ def _get_decorated_classes(directory: str) -> Dict[str, list[Type | Callable]]:
             try:
                 module = importlib.import_module(full_module_name)
                 _process_module_classes(module, components)
-                _process_module_functions(module, components)
             except ImportError as e:
                 # Convert the warning into a fatal error to prevent silent failures
                 error_msg = (
@@ -276,14 +260,9 @@ def _get_entity_schema_with_direct_fields_only(cls: Type) -> dict:
 
     # Fields to always exclude (system metadata and internal fields)
     always_exclude = {
-        "airweave_system_metadata",
-        "_hash",
-        "default_exclude_fields",
-        "embeddable_text",  # This is generated, not a source field
-        "entity_id",  # This is set by the source connector
-        "parent_entity_id",  # This is set by the source connector
-        "url",  # This is set by the source connector
-        "chunk_index",  # This is set by the source connector
+        "airweave_system_metadata",  # System tracking, not business data
+        "textual_representation",  # Generated during pipeline, not source field
+        "entity_id",  # Set by source connector, not business data
     }
 
     # Build the filtered schema
@@ -317,31 +296,8 @@ def _get_entity_schema_with_direct_fields_only(cls: Type) -> dict:
     return filtered_schema
 
 
-async def _sync_embedding_models(db: AsyncSession, models: list[Type[BaseEmbeddingModel]]) -> None:
-    """Sync embedding models with the database.
-
-    Args:
-        db (AsyncSession): Database session
-        models (list[Type[BaseEmbeddingModel]]): List of embedding model classes
-    """
-    sync_logger.info("Syncing embedding models to database.")
-
-    model_definitions = []
-    for model_class in models:
-        model_def = schemas.EmbeddingModelCreate(
-            name=model_class._name,
-            short_name=model_class._short_name,
-            class_name=model_class.__name__,
-            description=model_class.__doc__,
-            provider=model_class._provider,
-            model_name=model_class._model_name,
-            model_version=model_class._model_version,
-            auth_config_class=getattr(model_class, "_auth_config_class", None),
-        )
-        model_definitions.append(model_def)
-
-    await crud.embedding_model.sync(db, model_definitions)
-    sync_logger.info(f"Synced {len(model_definitions)} embedding models to database.")
+# NOTE: Embedding models sync removed - embeddings now handled by
+# DenseEmbedder and SparseEmbedder in platform/embedders/, not decorator-based models
 
 
 async def _sync_entity_definitions(db: AsyncSession) -> Dict[str, dict]:
@@ -558,168 +514,8 @@ async def _sync_auth_providers(
     sync_logger.info(f"Synced {len(auth_provider_definitions)} auth providers to database.")
 
 
-def _get_type_names(type_hint) -> list[str]:
-    """Extract type names from a type hint, handling Union types correctly.
-
-    Args:
-        type_hint: The type hint to extract names from
-
-    Returns:
-        list[str]: List of type names
-    """
-    # Handle Union types (both typing.Union and types.UnionType (|))
-    if hasattr(type_hint, "__origin__"):
-        if type_hint.__origin__ is Union or str(type_hint.__origin__) == "typing.Union":
-            return [t.__name__ for t in type_hint.__args__]
-        if str(type_hint.__origin__) == "|":  # Python 3.10+ Union type
-            return [t.__name__ for t in type_hint.__args__]
-        if type_hint.__origin__ is list:
-            # For list types, process the inner type
-            return _get_type_names(type_hint.__args__[0])
-        # Handle other generic types
-        return [type_hint.__args__[0].__name__]
-
-    # Handle UnionType at the base level (Python 3.10+ |)
-    if str(type(type_hint)) == "<class 'types.UnionType'>":
-        return [t.__name__ for t in type_hint.__args__]
-
-    # Handle simple types
-    return [type_hint.__name__]
-
-
-def _build_entity_mappings(module_entity_map: Dict[str, dict]) -> tuple[dict, dict]:
-    """Build mappings from class names and entity names to entity IDs.
-
-    Args:
-        module_entity_map: Mapping of module names to their entity details
-
-    Returns:
-        tuple: (entity_class_to_id_map, entity_name_to_id_map)
-    """
-    # Create a reverse mapping from class name to entity ID
-    entity_class_to_id_map = {}
-    # Create a mapping from entity name to entity ID
-    entity_name_to_id_map = {}
-
-    for module_info in module_entity_map.values():
-        for i, name in enumerate(module_info.get("entity_names", [])):
-            if i < len(module_info.get("entity_ids", [])):
-                if name not in entity_name_to_id_map:
-                    entity_name_to_id_map[name] = []
-                entity_name_to_id_map[name].append(module_info["entity_ids"][i])
-
-        for i, class_name in enumerate(module_info.get("entity_classes", [])):
-            entity_name = module_info["entity_names"][i]
-            # Find the entity ID for this class
-            for entity_id in module_info.get("entity_ids", []):
-                if (
-                    entity_name
-                    == module_info["entity_names"][module_info["entity_classes"].index(class_name)]
-                ):
-                    if class_name not in entity_class_to_id_map:
-                        entity_class_to_id_map[class_name] = []
-                    entity_class_to_id_map[class_name].append(entity_id)
-
-    return entity_class_to_id_map, entity_name_to_id_map
-
-
-def _create_transformer_definition(
-    transformer_func: Callable, entity_name_to_id_map: dict
-) -> schemas.TransformerCreate:
-    """Create a transformer definition from a transformer function.
-
-    Args:
-        transformer_func: The transformer function
-        entity_name_to_id_map: Mapping from entity names to entity IDs
-
-    Returns:
-        schemas.TransformerCreate: The transformer definition
-    """
-    # Get type hints for input/output
-    type_hints = get_type_hints(transformer_func)
-
-    # Get input type from first parameter
-    first_param = next(iter(inspect.signature(transformer_func).parameters.values()))
-    input_type = type_hints[first_param.name]
-    input_type_name = input_type.__name__
-
-    # Base types from _base.py are special cases
-    base_types = [
-        "BaseEntity",
-        "ChunkEntity",
-        "ParentEntity",
-        "FileEntity",
-        "PolymorphicEntity",
-        "CodeFileEntity",
-        "WebEntity",
-    ]
-    # For input types
-    input_entity_ids = []
-    if input_type_name in entity_name_to_id_map:
-        input_entity_ids = [UUID(id) for id in entity_name_to_id_map[input_type_name]]
-    elif input_type_name in base_types:
-        # For base types, we don't require entity IDs since they're not directly registered
-        # as entity definitions (they're abstract base classes)
-        sync_logger.info(
-            f"Transformer {transformer_func._name} uses base type {input_type_name} as input"
-        )
-    else:
-        raise ValueError(
-            f"Transformer {transformer_func._name} has unknown input type {input_type_name}"
-        )
-
-    # Get output types from return annotation
-    return_type = type_hints["return"]
-    output_types = _get_type_names(return_type)
-
-    # For output types
-    output_entity_ids = []
-    for type_name in output_types:
-        if type_name in entity_name_to_id_map:
-            output_entity_ids.extend([UUID(id) for id in entity_name_to_id_map[type_name]])
-        elif type_name in base_types:
-            # For base types, don't add entity IDs but don't error either
-            sync_logger.info(
-                f"Transformer {transformer_func._name} uses base type {type_name} as output"
-            )
-        else:
-            raise ValueError(
-                f"Transformer {transformer_func._name} has unknown output type {type_name}"
-            )
-
-    return schemas.TransformerCreate(
-        name=transformer_func._name,
-        description=transformer_func.__doc__,
-        method_name=transformer_func.__name__,
-        module_name=transformer_func.__module__,
-        config_schema=getattr(transformer_func, "_config_schema", {}),
-        input_entity_definition_ids=input_entity_ids,
-        output_entity_definition_ids=output_entity_ids,
-    )
-
-
-async def _sync_transformers(
-    db: AsyncSession, transformers: list[Callable], module_entity_map: Dict[str, dict]
-) -> None:
-    """Sync transformers with the database.
-
-    Args:
-        db (AsyncSession): Database session
-        transformers (list[Callable]): List of transformer functions
-        module_entity_map (Dict[str, dict]): Mapping of module names to their entity details
-    """
-    sync_logger.info("Syncing transformers to database.")
-
-    # Build entity mappings
-    _, entity_name_to_id_map = _build_entity_mappings(module_entity_map)
-
-    # Create transformer definitions
-    transformer_definitions = [
-        _create_transformer_definition(func, entity_name_to_id_map) for func in transformers
-    ]
-
-    await crud.transformer.sync(db, transformer_definitions, unique_field="method_name")
-    sync_logger.info(f"Synced {len(transformer_definitions)} transformers to database.")
+# NOTE: Transformer sync functions removed - chunking now handled by
+# CodeChunker and SemanticChunker in entity_pipeline.py, not decorator-based transformers
 
 
 async def sync_platform_components(platform_dir: str, db: AsyncSession) -> None:
@@ -742,18 +538,16 @@ async def sync_platform_components(platform_dir: str, db: AsyncSession) -> None:
         # Log component counts to help diagnose issues
         sync_logger.info(
             f"Found {len(c['sources'])} sources, {len(c['destinations'])} destinations, "
-            f"{len(c['embedding_models'])} embedding models, {len(c['auth_providers'])} "
-            f"auth providers, {len(c['transformers'])} transformers."
+            f"{len(c['auth_providers'])} auth providers."
         )
 
         # First sync entities to get their IDs
         module_entity_map = await _sync_entity_definitions(db)
 
-        await _sync_embedding_models(db, components["embedding_models"])
+        # Sync platform components
         await _sync_sources(db, components["sources"], module_entity_map)
         await _sync_destinations(db, components["destinations"])
         await _sync_auth_providers(db, components["auth_providers"])
-        await _sync_transformers(db, components["transformers"], module_entity_map)
 
         sync_logger.info("Platform components sync completed successfully.")
     except ImportError as e:

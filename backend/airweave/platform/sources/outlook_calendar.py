@@ -17,7 +17,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from airweave.core.logging import logger
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import Breadcrumb, ChunkEntity
+from airweave.platform.entities._base import Breadcrumb, BaseEntity
 from airweave.platform.entities.outlook_calendar import (
     OutlookCalendarAttachmentEntity,
     OutlookCalendarCalendarEntity,
@@ -167,7 +167,7 @@ class OutlookCalendarSource(BaseSource):
         self,
         client: httpx.AsyncClient,
         calendar: OutlookCalendarCalendarEntity,
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate OutlookCalendarEventEntity objects and their attachments.
 
         Endpoint: GET /me/calendars/{calendar_id}/events
@@ -317,7 +317,7 @@ class OutlookCalendarSource(BaseSource):
         client: httpx.AsyncClient,
         event_data: Dict,
         cal_breadcrumb: Breadcrumb,
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Process a single event and its attachments."""
         event_id = event_data["id"]
         event_subject = event_data.get("subject", "No Subject")
@@ -354,10 +354,6 @@ class OutlookCalendarSource(BaseSource):
                 )
             except Exception as e:
                 self.logger.error(f"Error processing attachments for event {event_id}: {str(e)}")
-
-    async def _create_content_stream(self, binary_data: bytes):
-        """Create an async generator for binary content."""
-        yield binary_data
 
     async def _process_event_attachments(
         self,
@@ -463,12 +459,10 @@ class OutlookCalendarSource(BaseSource):
                 return None
 
             # Process using the BaseSource method
-            self.logger.debug(
-                f"Processing file entity for {attachment_name} with direct content stream"
-            )
-            processed_entity = await self.process_file_entity_with_content(
+            self.logger.debug(f"Processing file entity for {attachment_name} with in-memory bytes")
+            processed_entity = await self.process_file_entity_with_bytes(
                 file_entity=file_entity,
-                content_stream=self._create_content_stream(binary_data),
+                content=binary_data,
                 metadata={"source": "outlook_calendar", "event_id": event_id},
             )
 
@@ -483,7 +477,7 @@ class OutlookCalendarSource(BaseSource):
             self.logger.error(f"Error processing attachment {attachment_id}: {str(e)}")
             return None
 
-    async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
+    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate all Outlook Calendar entities: Calendars, Events and Attachments."""
         self.logger.info("===== STARTING OUTLOOK CALENDAR ENTITY GENERATION =====")
         entity_count = 0

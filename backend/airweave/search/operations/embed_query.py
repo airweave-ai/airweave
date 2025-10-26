@@ -8,7 +8,7 @@ the retrieval strategy (hybrid, neural, or keyword).
 from typing import Any, List, Optional
 
 from airweave.api.context import ApiContext
-from airweave.platform.embedding_models.bm25_text2vec import BM25Text2Vec
+from airweave.platform.embedders import SparseEmbedder
 from airweave.schemas.search import RetrievalStrategy
 from airweave.search.context import SearchContext
 from airweave.search.providers._base import BaseProvider
@@ -105,8 +105,8 @@ class EmbedQuery(SearchOperation):
 
     async def _generate_sparse_embeddings(self, queries: List[str], ctx: ApiContext) -> List:
         """Generate sparse BM25 embeddings for keyword search."""
-        # BM25 is local and always available
-        bm25_embedder = BM25Text2Vec(logger=None)
+        # Use SparseEmbedder from platform/embedders/
+        bm25_embedder = SparseEmbedder()
 
         # Generate sparse embeddings
         if len(queries) == 1:

@@ -26,74 +26,8 @@ const arePropsEqual = (prevProps: EntityResultCardProps, nextProps: EntityResult
     );
 };
 
-/**
- * Format embeddable text for nice Markdown display
- * Extracts metadata fields and preserves content markdown structure
- */
-const formatEmbeddableText = (text: string): string => {
-    if (!text) return '';
-
-    // Detect if single-line format (multiple " * " on same line)
-    const hasNewlines = text.includes('\n');
-    const asteriskCount = (text.match(/\s\*\s/g) || []).length;
-
-    let normalized = text;
-
-    // Convert single-line to multi-line for easier parsing
-    if (asteriskCount > 2 && (!hasNewlines || text.split('\n').length < 3)) {
-        normalized = text.replace(/\s\*\s/g, '\n* ');
-    }
-
-    const lines = normalized.split('\n');
-    const fields: { key: string; value: string }[] = [];
-    const contentLines: string[] = [];
-    let inContent = false;
-
-    for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-
-        // Match metadata fields: "* field_name: value"
-        const fieldMatch = trimmed.match(/^\*\s+([a-zA-Z_\s]+):\s*(.+)$/);
-
-        if (fieldMatch && !inContent) {
-            const [, key, value] = fieldMatch;
-            const lowerKey = key.toLowerCase().trim();
-
-            // Check if this is a "content" field - everything after is actual content
-            if (lowerKey === 'content') {
-                inContent = true;
-                // The value after "content:" is the start of actual content
-                if (value.trim()) {
-                    contentLines.push(value.trim());
-                }
-            } else {
-                // Regular metadata field
-                fields.push({ key, value: value.trim() });
-            }
-        } else if (inContent) {
-            // We're in the content section - preserve everything as-is
-            contentLines.push(trimmed);
-        }
-    }
-
-    // Format the metadata fields
-    let result = '';
-    for (const { key, value } of fields) {
-        const formattedKey = key.trim()
-            .split(/[\s_]+/)
-            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-            .join(' ');
-        result += `**${formattedKey}:** ${value}\n\n`;
-    }
-
-    // Add the content section if present
-    if (contentLines.length > 0) {
-        result += contentLines.join('\n');
-    }
-
-    return result.trim();
-};
+// NOTE: formatEmbeddableText removed - textual_representation is already
+// properly formatted by entity_pipeline.py, no need to reformat
 
 /**
  * EntityResultCard - A human-readable card view for entity search results
@@ -145,40 +79,24 @@ const EntityResultCardComponent: React.FC<EntityResultCardProps> = ({
     const entityId = payload.entity_id || payload.id || payload._id;
     const sourceName = payload.airweave_system_metadata?.source_name || payload.source_name || 'Unknown Source';
     const sourceIconUrl = getAppIconUrl(sourceName, resolvedTheme);
-    const embeddableText = payload.embeddable_text || '';
+    const textualRepresentation = payload.textual_representation || '';
     const breadcrumbs = payload.breadcrumbs || [];
     const url = payload.url;
-    const mdContent = payload.md_content;
 
-    // Format embeddable text for display
-    // Prefer actual content field (with proper formatting) over embeddable_text content
+    // Use textual_representation directly - it's already formatted by entity_pipeline.py
     const formattedContent = useMemo(() => {
-        const formatted = formatEmbeddableText(embeddableText);
+        return textualRepresentation;
+    }, [textualRepresentation]);
 
-        // If we have a separate content field with better formatting, use it instead of extracted content
-        if (payload.content && payload.content.trim()) {
-            // Extract just the metadata fields from formatted embeddable text
-            const metadataLines = formatted.split('\n').filter(line => line.startsWith('**') && line.includes(':'));
-
-            // Combine metadata with the properly formatted content
-            if (metadataLines.length > 0) {
-                return metadataLines.join('\n') + '\n\n' + payload.content;
-            }
-        }
-
-        return formatted;
-    }, [embeddableText, payload.content]);
-
-    // Extract title and metadata from payload (not from embeddable_text)
-    const title = payload.md_title || payload.title || payload.name || 'Untitled';
+    // Extract title and metadata from payload
+    const title = payload.name || 'Untitled';
     const entityType = payload.airweave_system_metadata?.entity_type?.replace('Entity', '').replace(/([A-Z])/g, ' $1').trim() || 'Document';
     const context = breadcrumbs.length > 0 ? breadcrumbs.map((b: any) =>
-        typeof b === 'string' ? b : b.name || b.title || ''
+        typeof b === 'string' ? b : b.name || ''
     ).filter(Boolean).join(' > ') : '';
 
-    // Extract the most relevant timestamp (updated_at from system metadata)
-    const relevantTimestamp = payload.airweave_system_metadata?.airweave_updated_at ||
-        payload.airweave_system_metadata?.airweave_created_at;
+    // Extract the most relevant timestamp (updated_at, fallback to created_at)
+    const relevantTimestamp = payload.updated_at || payload.created_at;
 
     // Get Airweave logo for section headers
     const airweaveLogo = isDark
@@ -196,10 +114,10 @@ const EntityResultCardComponent: React.FC<EntityResultCardProps> = ({
         const filtered: Record<string, any> = {};
         const excludeKeys = [
             'entity_id', 'id', '_id',
-            'embeddable_text', 'md_content', 'md_title',
-            'title', 'name', 'breadcrumbs', 'url',
+            'textual_representation',  // Already displayed in preview
+            'name', 'breadcrumbs', 'url',
             'airweave_system_metadata', 'source_name',
-            'download_url', 'local_path', 'file_uuid', 'checksum',
+            'created_at', 'updated_at',  // Displayed in timestamp badge
             'vector', 'vectors'
         ];
 
@@ -220,7 +138,7 @@ const EntityResultCardComponent: React.FC<EntityResultCardProps> = ({
     const hasMetadata = Object.keys(metadata).length > 0;
 
     // Prioritize important fields and limit display
-    const IMPORTANT_FIELDS = ['Owner', 'Assignee', 'Status', 'Priority', 'Due Date', 'Created At', 'Updated At', 'Author', 'Completion', 'Tags', 'Labels'];
+    const IMPORTANT_FIELDS = ['Owner', 'Assignee', 'Status', 'Priority', 'Due Date', 'Author', 'Completion', 'Tags', 'Labels'];
     const MAX_FIELDS_DEFAULT = 4; // Show max 4 fields by default
 
     const { importantMetadata, remainingMetadata } = useMemo(() => {
@@ -469,7 +387,7 @@ const EntityResultCardComponent: React.FC<EntityResultCardProps> = ({
                                                             "text-[11px] font-bold tracking-wide",
                                                             isDark ? "text-gray-300" : "text-gray-700"
                                                         )}>
-                                                            {payload.airweave_system_metadata?.airweave_updated_at ? 'Last Updated' : 'Created'}
+                                                            {payload.updated_at ? 'Last Updated' : 'Created'}
                                                         </div>
                                                         <div className={cn(
                                                             "text-[12px] font-mono",

@@ -11,7 +11,7 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import Breadcrumb, ChunkEntity
+from airweave.platform.entities._base import Breadcrumb, BaseEntity
 from airweave.platform.entities.trello import (
     TrelloBoardEntity,
     TrelloCardEntity,
@@ -250,7 +250,7 @@ class TrelloSource(BaseSource):
 
     async def _generate_board_entities(
         self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate board entities for the authenticated user."""
         # Get boards for the authenticated user
         boards_data = await self._get_with_oauth1(
@@ -283,7 +283,7 @@ class TrelloSource(BaseSource):
 
     async def _generate_list_entities(
         self, client: httpx.AsyncClient, board: Dict, board_breadcrumb: Breadcrumb
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate list entities for a board."""
         lists_data = await self._get_with_oauth1(
             client,
@@ -333,7 +333,7 @@ class TrelloSource(BaseSource):
         board: Dict,
         list_item: Dict,
         list_breadcrumbs: List[Breadcrumb],
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate card entities for a list."""
         cards_data = await self._get_with_oauth1(
             client,
@@ -382,7 +382,7 @@ class TrelloSource(BaseSource):
         client: httpx.AsyncClient,
         card: Dict,
         card_breadcrumbs: List[Breadcrumb],
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate checklist entities for a card."""
         # Get checklists for the card
         checklists_data = await self._get_with_oauth1(
@@ -406,7 +406,7 @@ class TrelloSource(BaseSource):
 
     async def _generate_member_entities(
         self, client: httpx.AsyncClient
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate member entity for the authenticated user."""
         # Get authenticated user's member info
         member_data = await self._get_with_oauth1(
@@ -431,7 +431,7 @@ class TrelloSource(BaseSource):
             member_type=member_data.get("memberType"),
         )
 
-    async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
+    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate all entities from Trello.
 
         Hierarchy: Board → List → Card → Checklist

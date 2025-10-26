@@ -39,7 +39,7 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import Breadcrumb, ChunkEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.google_calendar import (
     GoogleCalendarCalendarEntity,
     GoogleCalendarEventEntity,
@@ -175,10 +175,17 @@ class GoogleCalendarSource(BaseSource):
             items = data.get("items", []) or []
             self.logger.info(f"CalendarList page #{page} returned {len(items)} items")
             for cal in items:
+                # Use summary_override if available, otherwise summary
+                name = cal.get("summaryOverride") or cal.get("summary") or "Untitled Calendar"
+
                 yield GoogleCalendarListEntity(
+                    # Base fields
                     entity_id=cal["id"],
-                    breadcrumbs=[],  # top level entity
-                    calendar_id=cal["id"],
+                    breadcrumbs=[],
+                    name=name,
+                    created_at=None,  # Calendar list entries don't have timestamps
+                    updated_at=None,  # Calendar list entries don't have timestamps
+                    # API fields
                     summary=cal.get("summary"),
                     summary_override=cal.get("summaryOverride"),
                     color_id=cal.get("colorId"),
@@ -206,9 +213,13 @@ class GoogleCalendarSource(BaseSource):
         self.logger.info(f"Fetching Calendar resource for calendar_id={calendar_id}")
         data = await self._get_with_auth(client, url)
         yield GoogleCalendarCalendarEntity(
+            # Base fields
             entity_id=data["id"],
-            breadcrumbs=[],  # each calendar is top-level (matching the underlying resource)
-            calendar_id=data["id"],
+            breadcrumbs=[],
+            name=data.get("summary", "Untitled Calendar"),
+            created_at=None,  # Calendars don't have creation timestamp
+            updated_at=None,  # Calendars don't have modification timestamp
+            # API fields
             summary=data.get("summary"),
             description=data.get("description"),
             location=data.get("location"),
@@ -220,26 +231,22 @@ class GoogleCalendarSource(BaseSource):
     ) -> AsyncGenerator[GoogleCalendarEventEntity, None]:
         """Yield GoogleCalendarEventEntities for all events in the given calendar."""
         # URL encode the calendar_id
-        encoded_calendar_id = urllib.parse.quote(calendar_list_entry.calendar_id)
+        encoded_calendar_id = urllib.parse.quote(calendar_list_entry.entity_id)
         base_url = f"https://www.googleapis.com/calendar/v3/calendars/{encoded_calendar_id}/events"
         params = {"maxResults": 100}
         # Create a breadcrumb for this calendar to attach to events
-        cal_breadcrumb = Breadcrumb(
-            entity_id=calendar_list_entry.calendar_id,
-            name=(calendar_list_entry.summary_override or calendar_list_entry.summary or "")[:50],
-            type="calendar",
-        )
+        cal_breadcrumb = Breadcrumb(entity_id=calendar_list_entry.entity_id)
         page = 0
         while True:
             page += 1
             self.logger.info(
-                f"Fetching events page #{page} for calendar_id={calendar_list_entry.calendar_id} "
+                f"Fetching events page #{page} for calendar_id={calendar_list_entry.entity_id} "
                 f"params={params}"
             )
             data = await self._get_with_auth(client, base_url, params=params)
             events = data.get("items", []) or []
             self.logger.info(
-                f"Events page #{page} for calendar_id={calendar_list_entry.calendar_id}: "
+                f"Events page #{page} for calendar_id={calendar_list_entry.entity_id}: "
                 f"{len(events)} events"
             )
             for event in events:
@@ -267,13 +274,15 @@ class GoogleCalendarSource(BaseSource):
                 )
 
                 yield GoogleCalendarEventEntity(
+                    # Base fields
                     entity_id=event_id,
                     breadcrumbs=[cal_breadcrumb],
-                    event_id=event_id,
-                    status=event.get("status"),
-                    html_link=event.get("htmlLink"),
+                    name=event.get("summary", f"Event {event_id}"),
                     created_at=created_at,
                     updated_at=updated_at,
+                    # API fields
+                    status=event.get("status"),
+                    html_link=event.get("htmlLink"),
                     summary=event.get("summary"),
                     description=event.get("description"),
                     location=event.get("location"),
@@ -296,7 +305,7 @@ class GoogleCalendarSource(BaseSource):
             next_page_token = data.get("nextPageToken")
             if not next_page_token:
                 self.logger.info(
-                    f"No more event pages for calendar_id={calendar_list_entry.calendar_id}"
+                    f"No more event pages for calendar_id={calendar_list_entry.entity_id}"
                 )
                 break
             params["pageToken"] = next_page_token
@@ -312,28 +321,33 @@ class GoogleCalendarSource(BaseSource):
         request_body = {
             "timeMin": now.isoformat() + "Z",
             "timeMax": in_7_days.isoformat() + "Z",
-            "items": [{"id": calendar_list_entry.calendar_id}],
+            "items": [{"id": calendar_list_entry.entity_id}],
         }
-        self.logger.info(f"Fetching FreeBusy for calendar_id={calendar_list_entry.calendar_id}")
+        self.logger.info(f"Fetching FreeBusy for calendar_id={calendar_list_entry.entity_id}")
         data = await self._post_with_auth(client, url, request_body)
-        cal_busy_info = data.get("calendars", {}).get(calendar_list_entry.calendar_id, {}) or {}
+        cal_busy_info = data.get("calendars", {}).get(calendar_list_entry.entity_id, {}) or {}
         busy_ranges = cal_busy_info.get("busy", []) or []
 
         yield GoogleCalendarFreeBusyEntity(
-            entity_id=calendar_list_entry.calendar_id + "_freebusy",
+            # Base fields
+            entity_id=calendar_list_entry.entity_id + "_freebusy",
             breadcrumbs=[],
-            calendar_id=calendar_list_entry.calendar_id,
+            name=f"Free/Busy for {calendar_list_entry.name}",
+            created_at=None,  # Free/busy queries don't have timestamps
+            updated_at=None,  # Free/busy queries don't have timestamps
+            # API fields
+            calendar_id=calendar_list_entry.entity_id,
             busy=busy_ranges,
         )
 
     async def _process_calendars_sequential(
         self, client: httpx.AsyncClient, calendar_list_entries: List[GoogleCalendarListEntity]
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Process calendars sequentially (original behavior)."""
         # 2) For each calendar in the user's calendarList, yield its Calendar resource
         for cal_list_entity in calendar_list_entries:
             async for calendar_entity in self._generate_calendar_entity(
-                client, cal_list_entity.calendar_id
+                client, cal_list_entity.entity_id
             ):
                 yield calendar_entity
 
@@ -349,14 +363,14 @@ class GoogleCalendarSource(BaseSource):
 
     async def _process_calendars_concurrent(
         self, client: httpx.AsyncClient, calendar_list_entries: List[GoogleCalendarListEntity]
-    ) -> AsyncGenerator[ChunkEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Process calendars concurrently using bounded concurrency."""
 
         async def _calendar_worker(cal_list_entity: GoogleCalendarListEntity):
             """Emit Calendar resource, its events, then free/busy for a single calendar."""
             # 2) Calendar resource
             async for calendar_entity in self._generate_calendar_entity(
-                client, cal_list_entity.calendar_id
+                client, cal_list_entity.entity_id
             ):
                 yield calendar_entity
 
@@ -382,7 +396,7 @@ class GoogleCalendarSource(BaseSource):
     # -----------------------
     # Top-level orchestration
     # -----------------------
-    async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
+    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate all Google Calendar entities.
 
         Yields entities in the following order:

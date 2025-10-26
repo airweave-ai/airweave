@@ -3,12 +3,7 @@
 Contains entity schemas for various data sources and destinations.
 """
 
-from ._base import (
-    Breadcrumb,
-    ChunkEntity,
-    CodeFileEntity,
-    ParentEntity,
-)
+from ._base import BaseEntity, Breadcrumb, CodeFileEntity, FileEntity
 from .github import (
     GitHubCodeFileEntity,
     GithubContentEntity,
@@ -19,10 +14,10 @@ from .github import (
 )
 
 __all__ = [
+    "BaseEntity",
     "Breadcrumb",
-    "ChunkEntity",
     "CodeFileEntity",
-    "ParentEntity",
+    "FileEntity",
     "GitHubCodeFileEntity",
     "GitHubDirectoryEntity",
     "GitHubFileDeletionEntity",

@@ -6,10 +6,10 @@ from typing import Any, Dict, List, Optional
 from pydantic import Field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import ChunkEntity
+from airweave.platform.entities._base import 
 
 
-class TrelloBoardEntity(ChunkEntity):
+class TrelloBoardEntity(BaseEntity):
     """Schema for Trello board entities."""
 
     name: str = AirweaveField(..., description="The name of the board", embeddable=True)
@@ -27,7 +27,7 @@ class TrelloBoardEntity(ChunkEntity):
     pinned: bool = Field(False, description="Whether the board is pinned")
 
 
-class TrelloListEntity(ChunkEntity):
+class TrelloListEntity(BaseEntity):
     """Schema for Trello list entities (columns on a board)."""
 
     name: str = AirweaveField(..., description="The name of the list", embeddable=True)
@@ -43,7 +43,7 @@ class TrelloListEntity(ChunkEntity):
     )
 
 
-class TrelloCardEntity(ChunkEntity):
+class TrelloCardEntity(BaseEntity):
     """Schema for Trello card entities."""
 
     name: str = AirweaveField(..., description="The name/title of the card", embeddable=True)
@@ -98,7 +98,7 @@ class TrelloCardEntity(ChunkEntity):
     )
 
 
-class TrelloChecklistEntity(ChunkEntity):
+class TrelloChecklistEntity(BaseEntity):
     """Schema for Trello checklist entities."""
 
     name: str = AirweaveField(..., description="The name of the checklist", embeddable=True)
@@ -114,7 +114,7 @@ class TrelloChecklistEntity(ChunkEntity):
     )
 
 
-class TrelloMemberEntity(ChunkEntity):
+class TrelloMemberEntity(BaseEntity):
     """Schema for Trello member (user) entities."""
 
     username: str = AirweaveField(..., description="The username of the member", embeddable=True)

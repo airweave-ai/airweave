@@ -8,10 +8,10 @@ from datetime import datetime
 from typing import List, Optional
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import ChunkEntity
+from airweave.platform.entities._base import 
 
 
-class TodoistProjectEntity(ChunkEntity):
+class TodoistProjectEntity(BaseEntity):
     """Schema for Todoist project entities."""
 
     name: str = AirweaveField(..., description="The name of the project", embeddable=True)
@@ -33,7 +33,7 @@ class TodoistProjectEntity(ChunkEntity):
     parent_id: Optional[str] = AirweaveField(None, description="ID of the parent project if nested")
 
 
-class TodoistSectionEntity(ChunkEntity):
+class TodoistSectionEntity(BaseEntity):
     """Schema for Todoist section entities."""
 
     name: str = AirweaveField(..., description="The name of the section", embeddable=True)
@@ -41,7 +41,7 @@ class TodoistSectionEntity(ChunkEntity):
     order: int = AirweaveField(0, description="Section order in the project")
 
 
-class TodoistTaskEntity(ChunkEntity):
+class TodoistTaskEntity(BaseEntity):
     """Schema for Todoist task entities."""
 
     content: str = AirweaveField(..., description="The task content/title", embeddable=True)
@@ -104,7 +104,7 @@ class TodoistTaskEntity(ChunkEntity):
     url: Optional[str] = AirweaveField(None, description="URL to access the task")
 
 
-class TodoistCommentEntity(ChunkEntity):
+class TodoistCommentEntity(BaseEntity):
     """Schema for Todoist comment entities."""
 
     task_id: str = AirweaveField(..., description="ID of the task this comment belongs to")

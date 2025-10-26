@@ -12,7 +12,6 @@ from airweave.models._base import Base
 
 if TYPE_CHECKING:
     from airweave.models.auth_provider import AuthProvider
-    from airweave.models.dag import DagNode
     from airweave.models.destination import Destination
     from airweave.models.embedding_model import EmbeddingModel
     from airweave.models.integration_credential import IntegrationCredential
@@ -113,15 +112,6 @@ class Connection(Base):
         viewonly=False,
         lazy="noload",
         passive_deletes=False,  # Force Python-side cascade
-    )
-
-    # Add a relationship to dag nodes with cascade delete
-    dag_nodes: Mapped[List["DagNode"]] = relationship(
-        "DagNode",
-        primaryjoin="Connection.id==DagNode.connection_id",
-        cascade="all, delete-orphan",
-        back_populates="connection",
-        lazy="noload",
     )
 
     __table_args__ = (

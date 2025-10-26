@@ -41,7 +41,7 @@ from airweave.platform.destinations.collection_strategy import (
     get_default_vector_size,
     get_physical_collection_name,
 )
-from airweave.platform.entities._base import ChunkEntity
+from airweave.platform.entities._base import BaseEntity
 
 if TYPE_CHECKING:
     from airweave.search.operations.temporal_relevance import DecayConfig
@@ -277,10 +277,10 @@ class QdrantDestination(VectorDBDestination):
                 field_schema=rest.PayloadSchemaType.KEYWORD,
             )
 
-            self.logger.info("Creating parent_entity_id index for parent-based deletes")
+            self.logger.info("Creating original_entity_id index for parent-based deletes")
             await self.client.create_payload_index(
                 collection_name=self.collection_name,
-                field_name="parent_entity_id",
+                field_name="airweave_system_metadata.original_entity_id",
                 field_schema=rest.PayloadSchemaType.KEYWORD,
             )
 
@@ -290,12 +290,12 @@ class QdrantDestination(VectorDBDestination):
             )
             await self.client.create_payload_index(
                 collection_name=self.collection_name,
-                field_name="airweave_system_metadata.airweave_updated_at",
+                field_name="updated_at",
                 field_schema=rest.PayloadSchemaType.DATETIME,
             )
             await self.client.create_payload_index(
                 collection_name=self.collection_name,
-                field_name="airweave_system_metadata.airweave_created_at",
+                field_name="created_at",
                 field_schema=rest.PayloadSchemaType.DATETIME,
             )
 
@@ -309,25 +309,26 @@ class QdrantDestination(VectorDBDestination):
     # ID helper (deterministic per-chunk IDs; avoids overwrites)
     # ----------------------------------------------------------------------------------
     @staticmethod
-    def _make_point_uuid(db_entity_id: UUID | str, child_entity_id: str) -> str:
-        """Create a deterministic UUIDv5 for a chunk based on its parent DB id and entity id."""
-        ns = UUID(str(db_entity_id)) if not isinstance(db_entity_id, UUID) else db_entity_id
-        return str(uuid.uuid5(ns, child_entity_id))
+    def _make_point_uuid(sync_id: UUID | str, chunk_entity_id: str) -> str:
+        """Create a deterministic UUIDv5 for a chunk based on sync_id and entity_id."""
+        ns = UUID(str(sync_id)) if not isinstance(sync_id, UUID) else sync_id
+        return str(uuid.uuid5(ns, chunk_entity_id))
 
     # ----------------------------------------------------------------------------------
     # Insert / Upsert
     # ----------------------------------------------------------------------------------
-    async def insert(self, entity: ChunkEntity) -> None:
-        """Upsert a single chunk entity into Qdrant."""
+    async def insert(self, entity: BaseEntity) -> None:
+        """Upsert a single entity into Qdrant."""
         await self.ensure_client_readiness()
 
-        data_object = entity.to_storage_dict()
+        # Get entity data as dict (UUIDs->strings, datetimes->ISO)
+        data_object = entity.model_dump(mode="json", exclude_none=True)
 
         # Sanity checks
         if not entity.airweave_system_metadata or not entity.airweave_system_metadata.vectors:
             raise ValueError(f"Entity {entity.entity_id} has no vector in system metadata")
-        if not entity.airweave_system_metadata.db_entity_id:
-            raise ValueError(f"Entity {entity.entity_id} has no db_entity_id in system metadata")
+        if not entity.airweave_system_metadata.sync_id:
+            raise ValueError(f"Entity {entity.entity_id} has no sync_id in system metadata")
 
         # Remove vectors from payload (store them only in vector fields)
         if "airweave_system_metadata" in data_object and isinstance(
@@ -339,9 +340,7 @@ class QdrantDestination(VectorDBDestination):
         data_object["airweave_collection_id"] = str(self.collection_id)
 
         # Deterministic per-chunk ID
-        point_id = self._make_point_uuid(
-            entity.airweave_system_metadata.db_entity_id, entity.entity_id
-        )
+        point_id = self._make_point_uuid(entity.airweave_system_metadata.sync_id, entity.entity_id)
 
         # Optional sparse (accepts fastembed object or dict)
         sv = entity.airweave_system_metadata.vectors[1]
@@ -365,14 +364,17 @@ class QdrantDestination(VectorDBDestination):
         )
 
     # --------- NEW: helpers to keep bulk_insert simple (fixes C901) -------------------
-    def _build_point_struct(self, entity: ChunkEntity) -> rest.PointStruct:
-        """Convert a ChunkEntity to a Qdrant PointStruct with tenant metadata."""
-        entity_data = entity.to_storage_dict()
+    def _build_point_struct(self, entity: BaseEntity) -> rest.PointStruct:
+        """Convert a BaseEntity to a Qdrant PointStruct with tenant metadata."""
+        # Get entity data as dict (UUIDs->strings, datetimes->ISO)
+        entity_data = entity.model_dump(mode="json", exclude_none=True)
 
         if not entity.airweave_system_metadata:
             raise ValueError(f"Entity {entity.entity_id} has no system metadata")
         if not entity.airweave_system_metadata.vectors:
             raise ValueError(f"Entity {entity.entity_id} has no vector in system metadata")
+        if not entity.airweave_system_metadata.sync_id:
+            raise ValueError(f"Entity {entity.entity_id} has no sync_id in system metadata")
 
         # Remove vectors from payload
         if "airweave_system_metadata" in entity_data and isinstance(
@@ -383,9 +385,7 @@ class QdrantDestination(VectorDBDestination):
         # Add tenant metadata for filtering
         entity_data["airweave_collection_id"] = str(self.collection_id)
 
-        point_id = self._make_point_uuid(
-            entity.airweave_system_metadata.db_entity_id, entity.entity_id
-        )
+        point_id = self._make_point_uuid(entity.airweave_system_metadata.sync_id, entity.entity_id)
 
         sv = entity.airweave_system_metadata.vectors[1]
         sparse_part: dict = {}
@@ -472,7 +472,7 @@ class QdrantDestination(VectorDBDestination):
             await self._upsert_points_with_fallback(right, min_batch=min_batch)
 
     # ----------------------------------------------------------------------------------
-    async def bulk_insert(self, entities: list[ChunkEntity]) -> None:
+    async def bulk_insert(self, entities: list[BaseEntity]) -> None:
         """Upsert multiple chunk entities with fallback halving on write timeouts."""
         if not entities:
             return
@@ -593,7 +593,8 @@ class QdrantDestination(VectorDBDestination):
                             match=rest.MatchValue(value=str(self.collection_id)),
                         ),
                         rest.FieldCondition(
-                            key="parent_entity_id", match=rest.MatchValue(value=str(parent_id))
+                            key="airweave_system_metadata.original_entity_id",
+                            match=rest.MatchValue(value=str(parent_id)),
                         ),
                         rest.FieldCondition(
                             key="airweave_system_metadata.sync_id",
@@ -625,7 +626,7 @@ class QdrantDestination(VectorDBDestination):
                             match=rest.MatchValue(value=str(sync_id)),
                         ),
                         rest.FieldCondition(
-                            key="parent_entity_id",
+                            key="airweave_system_metadata.original_entity_id",
                             match=rest.MatchAny(any=[str(pid) for pid in parent_ids]),
                         ),
                     ]

@@ -9,7 +9,6 @@ from temporalio.worker import Worker
 
 from airweave.core.config import settings
 from airweave.core.logging import logger
-from airweave.platform.entities._base import ensure_file_entity_models
 from airweave.platform.temporal.activities import (
     cleanup_stuck_sync_jobs_activity,
     create_sync_job_activity,
@@ -35,9 +34,6 @@ class TemporalWorker:
     async def start(self) -> None:
         """Start the Temporal worker."""
         try:
-            # Ensure all FileEntity subclasses have their parent and chunk models created
-            ensure_file_entity_models()
-
             client = await temporal_client.get_client()
             task_queue = settings.TEMPORAL_TASK_QUEUE
             logger.info(f"Starting Temporal worker on task queue: {task_queue}")

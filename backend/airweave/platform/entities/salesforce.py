@@ -4,7 +4,7 @@ Based on the Salesforce REST API, we define entity schemas for
 the core Salesforce objects: Accounts, Contacts, and Opportunities.
 
 These schemas follow the same style as other connectors (e.g., Stripe, HubSpot),
-where each entity class inherits from our ChunkEntity and adds relevant fields with
+where each entity class inherits from our  and adds relevant fields with
 shared or per-resource metadata as needed.
 """
 
@@ -12,10 +12,10 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import ChunkEntity
+from airweave.platform.entities._base import 
 
 
-class SalesforceAccountEntity(ChunkEntity):
+class SalesforceAccountEntity(BaseEntity):
     """Schema for Salesforce Account entities.
 
     https://developer.salesforce.com/docs/atlas.en-us.object_reference.meta/object_reference/sforce_api_objects_account.htm
@@ -105,7 +105,7 @@ class SalesforceAccountEntity(ChunkEntity):
     )
 
 
-class SalesforceContactEntity(ChunkEntity):
+class SalesforceContactEntity(BaseEntity):
     """Schema for Salesforce Contact entities.
 
     https://developer.salesforce.com/docs/atlas.en-us.object_reference.meta/object_reference/sforce_api_objects_contact.htm
@@ -222,7 +222,7 @@ class SalesforceContactEntity(ChunkEntity):
     )
 
 
-class SalesforceOpportunityEntity(ChunkEntity):
+class SalesforceOpportunityEntity(BaseEntity):
     """Schema for Salesforce Opportunity entities.
 
     https://developer.salesforce.com/docs/atlas.en-us.object_reference.meta/object_reference/sforce_api_objects_opportunity.htm

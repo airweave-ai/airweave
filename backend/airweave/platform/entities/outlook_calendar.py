@@ -11,10 +11,10 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import ChunkEntity, FileEntity
+from airweave.platform.entities._base import FileEntity
 
 
-class OutlookCalendarCalendarEntity(ChunkEntity):
+class OutlookCalendarCalendarEntity(BaseEntity):
     """Schema for an Outlook Calendar object.
 
     Based on the Microsoft Graph Calendar resource.
@@ -58,7 +58,7 @@ class OutlookCalendarCalendarEntity(ChunkEntity):
     )
 
 
-class OutlookCalendarEventEntity(ChunkEntity):
+class OutlookCalendarEventEntity(BaseEntity):
     """Schema for an Outlook Calendar Event object.
 
     Based on the Microsoft Graph Event resource.
