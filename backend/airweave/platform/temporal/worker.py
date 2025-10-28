@@ -40,9 +40,6 @@ class TemporalWorker:
             # Start control server for /drain endpoint
             await self._start_control_server()
 
-            # Start control server for /drain endpoint
-            await self._start_control_server()
-
             client = await temporal_client.get_client()
             task_queue = settings.TEMPORAL_TASK_QUEUE
             logger.info(f"Starting Temporal worker on task queue: {task_queue}")
