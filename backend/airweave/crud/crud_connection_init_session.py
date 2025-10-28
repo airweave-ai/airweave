@@ -4,6 +4,7 @@ This keeps the global CRUD behavior unchanged and only filters unknown fields
 (e.g., auto-injected audit keys) for ConnectionInitSession to avoid TypeError.
 """
 
+import secrets
 from typing import Any, Dict, Optional
 from uuid import UUID
 
@@ -127,8 +128,10 @@ class CRUDConnectionInitSession(CRUDBaseOrganization[ConnectionInitSession, Base
                 f"Session {session.id}: overrides={session.overrides}, "
                 f"has oauth_token={oauth_token_value}"
             )
-            # Match manually
-            if session.overrides and session.overrides.get("oauth_token") == oauth_token:
+            # Match manually using constant-time comparison
+            if session.overrides and secrets.compare_digest(
+                session.overrides.get("oauth_token", ""), oauth_token
+            ):
                 logger.debug(f"Found matching session: {session.id}")
                 return session
 
