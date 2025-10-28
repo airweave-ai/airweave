@@ -102,8 +102,25 @@ class TemporalWorker:
         await temporal_client.close()
 
     async def _start_control_server(self):
-        """Start HTTP server for drain control and metrics."""
-        app = web.Application()
+        """Start HTTP server for drain control and metrics.
+        
+        Security Notes:
+        - In local development: Access via kubectl port-forward
+        - In Kubernetes: Internal ClusterIP service only
+        - CORS enabled for local HTML file access (file:// origin)
+        - Exposes operational metadata (job IDs, org IDs) but no user data
+        """
+        # Middleware to add CORS headers for local development
+        @web.middleware
+        async def cors_middleware(request, handler):
+            # Allow CORS for local development (file:// and localhost origins)
+            response = await handler(request)
+            response.headers["Access-Control-Allow-Origin"] = "*"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+            return response
+
+        app = web.Application(middlewares=[cors_middleware])
         app.router.add_post("/drain", self._handle_drain)
         app.router.add_get("/health", self._handle_health)
         app.router.add_get("/metrics", self._handle_metrics)
