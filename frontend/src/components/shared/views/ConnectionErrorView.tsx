@@ -143,13 +143,18 @@ export const ConnectionErrorView: React.FC<ConnectionErrorViewProps> = ({
                                 className="w-full h-full object-contain"
                                 onError={(e) => {
                                     e.currentTarget.style.display = 'none';
-                                    e.currentTarget.parentElement!.innerHTML = `
-                                    <div class="w-full h-full rounded-lg flex items-center justify-center ${isDark ? 'bg-blue-900' : 'bg-blue-100'}">
-                                      <span class="text-5xl font-bold ${isDark ? 'text-blue-400' : 'text-blue-600'}">
-                                        ${sourceShortName.substring(0, 2).toUpperCase()}
-                                      </span>
-                                    </div>
-                                  `;
+                                    const parent = e.currentTarget.parentElement!;
+
+                                    // Create elements safely without innerHTML to prevent XSS
+                                    const wrapper = document.createElement('div');
+                                    wrapper.className = `w-full h-full rounded-lg flex items-center justify-center ${isDark ? 'bg-blue-900' : 'bg-blue-100'}`;
+
+                                    const span = document.createElement('span');
+                                    span.className = `text-5xl font-bold ${isDark ? 'text-blue-400' : 'text-blue-600'}`;
+                                    span.textContent = sourceShortName.substring(0, 2).toUpperCase();
+
+                                    wrapper.appendChild(span);
+                                    parent.appendChild(wrapper);
                                 }}
                             />
                         </div>
