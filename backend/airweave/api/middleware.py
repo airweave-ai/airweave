@@ -241,8 +241,7 @@ async def cache_control_middleware(request: Request, call_next: callable) -> Res
     # Don't override existing Cache-Control headers (e.g., SSE endpoints)
     if "Cache-Control" not in response.headers:
         # For API endpoints, prevent all caching
-        if request.url.path.startswith("/"):
-            response.headers["Cache-Control"] = "no-store, private"
+        response.headers["Cache-Control"] = "no-store, private"
 
     return response
 
