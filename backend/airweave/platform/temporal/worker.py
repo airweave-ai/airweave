@@ -103,13 +103,14 @@ class TemporalWorker:
 
     async def _start_control_server(self):
         """Start HTTP server for drain control and metrics.
-        
+
         Security Notes:
         - In local development: Access via kubectl port-forward
         - In Kubernetes: Internal ClusterIP service only
         - CORS enabled for local HTML file access (file:// origin)
         - Exposes operational metadata (job IDs, org IDs) but no user data
         """
+
         # Middleware to add CORS headers for local development
         @web.middleware
         async def cors_middleware(request, handler):

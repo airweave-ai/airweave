@@ -166,4 +166,3 @@ class WorkerMetricsRegistry:
 
 # Global singleton instance
 worker_metrics = WorkerMetricsRegistry()
-
