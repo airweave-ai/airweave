@@ -8,6 +8,7 @@ import { apiClient } from "@/lib/api";
 import { authenticateSource } from "@/lib/authenticate";
 import { getAppIconUrl } from "@/lib/utils/icons";
 import { toast } from "sonner";
+import { safeLogAuthValues, safeLogDialogState } from "@/lib/auth-utils";
 
 export interface MinimalConfigureSourceViewProps {
     onNext?: (data?: any) => void;
@@ -85,7 +86,7 @@ export const MinimalConfigureSourceView: React.FC<MinimalConfigureSourceViewProp
 
             // Restore any saved auth values ONLY if they match the current source
             if (viewData.authValues) {
-                console.log("🔑 [MinimalConfigureSourceView] Restoring auth values:", viewData.authValues);
+                safeLogAuthValues(viewData.authValues, '🔑 [MinimalConfigureSourceView] Restoring');
                 setAuthValues(viewData.authValues);
             }
         }
@@ -131,7 +132,7 @@ export const MinimalConfigureSourceView: React.FC<MinimalConfigureSourceViewProp
                                 initialAuthValues[field.name] = '';
                             }
                         });
-                        console.log('🔧 [MinimalConfigureSourceView] Initialized auth values:', initialAuthValues);
+                        safeLogAuthValues(initialAuthValues, '🔧 [MinimalConfigureSourceView] Initialized');
                         setAuthValues(initialAuthValues);
                     }
 
@@ -203,7 +204,7 @@ export const MinimalConfigureSourceView: React.FC<MinimalConfigureSourceViewProp
                 dialogMode: 'semantic-mcp' // Ensure mode is preserved
             };
 
-            console.log('🔧 [MinimalConfigureSourceView] Calling authenticateSource with state:', dialogState);
+            safeLogDialogState(dialogState, '🔧 [MinimalConfigureSourceView]');
 
             // Check if this is an OAuth flow
             const isOAuthFlow = sourceDetails.auth_type && sourceDetails.auth_type.startsWith('oauth2');
@@ -368,7 +369,7 @@ export const MinimalConfigureSourceView: React.FC<MinimalConfigureSourceViewProp
 
     // Log state changes
     useEffect(() => {
-        console.log('🔧 [MinimalConfigureSourceView] Auth values changed:', authValues);
+        safeLogAuthValues(authValues, '🔧 [MinimalConfigureSourceView] Auth values changed:');
     }, [authValues]);
 
     useEffect(() => {
