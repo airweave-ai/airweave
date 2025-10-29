@@ -13,6 +13,7 @@ import httpx
 import tenacity
 from tenacity import stop_after_attempt, wait_exponential
 
+from airweave.core.exceptions import TokenRefreshError
 from airweave.core.logging import logger
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
@@ -49,7 +50,11 @@ class JiraSource(BaseSource):
 
     @staticmethod
     async def _get_accessible_resources(access_token: str) -> list[dict]:
-        """Get the list of accessible Atlassian resources for this token."""
+        """Get the list of accessible Atlassian resources for this token.
+
+        Raises:
+            TokenRefreshError: If authentication fails (401/403), indicating token is invalid
+        """
         logger.info("Retrieving accessible Atlassian resources")
         async with httpx.AsyncClient() as client:
             headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
@@ -65,7 +70,21 @@ class JiraSource(BaseSource):
                 logger.info(f"Found {len(resources)} accessible Atlassian resources")
                 logger.debug(f"Resources: {resources}")
                 return resources
+            except httpx.HTTPStatusError as e:
+                # Authentication failures should bubble up to mark connection as unauthenticated
+                if e.response.status_code in (401, 403):
+                    logger.error(
+                        f"Authentication failed getting accessible resources: "
+                        f"{e.response.status_code} - Token is invalid or expired"
+                    )
+                    raise TokenRefreshError(
+                        f"Failed to access Atlassian resources: {e.response.status_code} {e.response.reason_phrase}"
+                    ) from e
+                # Other HTTP errors - log and return empty (maybe network issues, temporary errors)
+                logger.error(f"HTTP error getting accessible resources: {str(e)}")
+                return []
             except Exception as e:
+                # Other exceptions (network, timeout, etc.) - log and return empty
                 logger.error(f"Error getting accessible resources: {str(e)}")
                 return []
 
@@ -90,7 +109,11 @@ class JiraSource(BaseSource):
                 logger.info(f"Successfully extracted cloud ID: {cloud_id}")
             return cloud_id
 
+        except TokenRefreshError:
+            # Re-raise auth errors - these indicate invalid/expired credentials
+            raise
         except Exception as e:
+            # Other errors (network, parsing, etc.) - log and return empty
             logger.error(f"Error extracting cloud ID: {str(e)}")
             return ""
 

@@ -21,6 +21,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
 
+from airweave.core.exceptions import TokenRefreshError
 from airweave.core.logging import logger
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
@@ -70,6 +71,9 @@ class ConfluenceSource(BaseSource):
 
         Returns:
             list[dict]: List of accessible resources, each containing 'id' and 'url' keys
+
+        Raises:
+            TokenRefreshError: If authentication fails (401/403), indicating token is invalid
         """
         async with httpx.AsyncClient() as client:
             headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
@@ -79,7 +83,21 @@ class ConfluenceSource(BaseSource):
                 )
                 response.raise_for_status()
                 return response.json()
+            except httpx.HTTPStatusError as e:
+                # Authentication failures should bubble up to mark connection as unauthenticated
+                if e.response.status_code in (401, 403):
+                    logger.error(
+                        f"Authentication failed getting accessible resources: "
+                        f"{e.response.status_code} - Token is invalid or expired"
+                    )
+                    raise TokenRefreshError(
+                        f"Failed to access Atlassian resources: {e.response.status_code} {e.response.reason_phrase}"
+                    ) from e
+                # Other HTTP errors - log and return empty (maybe network issues, temporary errors)
+                logger.error(f"HTTP error getting accessible resources: {str(e)}")
+                return []
             except Exception as e:
+                # Other exceptions (network, timeout, etc.) - log and return empty
                 logger.error(f"Error getting accessible resources: {str(e)}")
                 return []
 
@@ -109,7 +127,11 @@ class ConfluenceSource(BaseSource):
                 logger.warning("Missing ID in accessible resources")
             return cloud_id
 
+        except TokenRefreshError:
+            # Re-raise auth errors - these indicate invalid/expired credentials
+            raise
         except Exception as e:
+            # Other errors (network, parsing, etc.) - log and return empty
             logger.error(f"Error extracting cloud ID: {str(e)}")
             return ""
 

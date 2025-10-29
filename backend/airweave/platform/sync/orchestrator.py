@@ -3,10 +3,14 @@
 import asyncio
 from typing import Optional
 
-from airweave import schemas
+from airweave import crud, schemas
 from airweave.analytics import business_events
 from airweave.core.datetime_utils import utc_now_naive
-from airweave.core.exceptions import PaymentRequiredException, UsageLimitExceededException
+from airweave.core.exceptions import (
+    PaymentRequiredException,
+    TokenRefreshError,
+    UsageLimitExceededException,
+)
 from airweave.core.guard_rail_service import ActionType
 from airweave.core.shared_models import SyncJobStatus
 from airweave.core.sync_cursor_service import sync_cursor_service
@@ -520,6 +524,10 @@ class SyncOrchestrator:
             stats=stats,
         )
 
+        # Check if this is an authentication-related failure
+        if self._is_auth_error(error, error_message):
+            await self._mark_connection_unauthenticated()
+
         # Calculate duration from start to failure
         if not self.sync_context.sync_job.started_at:
             # This can happen if failure occurs during _start_sync before
@@ -539,6 +547,67 @@ class SyncOrchestrator:
             error=error_message,
             duration_ms=duration_ms,
         )
+
+    def _is_auth_error(self, error: Exception, error_message: str) -> bool:
+        """Determine if an error is authentication-related.
+
+        Source connectors raise TokenRefreshError when authentication fails.
+        This provides a clean, source-agnostic way to detect auth failures.
+
+        Args:
+            error: The exception that was raised
+            error_message: The formatted error message (unused, kept for compatibility)
+
+        Returns:
+            True if this is an auth-related error requiring reconnection
+        """
+        # Check if this is a TokenRefreshError or has one in its cause chain
+        current = error
+        while current is not None:
+            if isinstance(current, TokenRefreshError):
+                return True
+            current = current.__cause__
+
+        return False
+
+    async def _mark_connection_unauthenticated(self) -> None:
+        """Mark the source connection as unauthenticated so UI shows reconnect button."""
+        try:
+            self.sync_context.logger.warning(
+                f"Authentication failure detected for sync {self.sync_context.sync.id}. "
+                f"Marking source connection as unauthenticated."
+            )
+
+            # Use a separate database session to update the source connection
+            async with get_db_context() as db:
+                # Get the source connection via the sync
+                source_connection = await crud.source_connection.get_by_sync_id(
+                    db, sync_id=self.sync_context.sync.id, ctx=self.sync_context.ctx
+                )
+
+                if source_connection:
+                    # Update is_authenticated to False using CRUD layer
+                    await crud.source_connection.update(
+                        db,
+                        db_obj=source_connection,
+                        obj_in={"is_authenticated": False},
+                        ctx=self.sync_context.ctx,
+                    )
+
+                    self.sync_context.logger.info(
+                        f"✅ Marked source connection {source_connection.id} as unauthenticated. "
+                        f"UI will now show reconnect button."
+                    )
+                else:
+                    self.sync_context.logger.warning(
+                        f"Could not find source connection for sync {self.sync_context.sync.id} "
+                        f"to mark as unauthenticated"
+                    )
+        except Exception as e:
+            # Don't let this failure stop the sync failure handling
+            self.sync_context.logger.error(
+                f"Failed to mark connection as unauthenticated: {str(e)}", exc_info=True
+            )
 
     async def _handle_cancellation(self) -> None:
         """Centralized cancellation handler - explicit and immediate."""
