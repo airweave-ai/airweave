@@ -70,8 +70,10 @@ class RunSourceConnectionWorkflow:
             access_token: Optional access token
             force_full_sync: If True, forces a full sync with orphaned entity deletion
         """
-        from airweave.platform.temporal.activities import run_sync_activity
-        from airweave.platform.temporal.cleanup import self_destruct_orphaned_sync_activity
+        from airweave.platform.temporal.activities import (
+            run_sync_activity,
+            self_destruct_orphaned_sync_activity,
+        )
 
         # Create sync job if needed (for scheduled runs)
         sync_job_dict = await self._create_sync_job_if_needed(

@@ -3,14 +3,18 @@ import { apiClient } from '@/lib/api';
 
 export interface APIKey {
   id: string;
+  organization_id: string;
   created_at: string;
+  modified_at: string;
   last_used_date: string | null;
   expiration_date: string;
+  created_by_email: string | null;
+  modified_by_email: string | null;
   decrypted_key: string;
 }
 
 interface CreateAPIKeyRequest {
-  // Add any specific fields if needed by backend
+  expiration_days?: number; // Number of days until expiration (default: 90)
 }
 
 interface APIKeysState {
@@ -28,7 +32,8 @@ interface APIKeysState {
 
   // API actions
   fetchAPIKeys: (forceRefresh?: boolean) => Promise<APIKey[]>;
-  createAPIKey: () => Promise<APIKey>;
+  createAPIKey: (expirationDays?: number) => Promise<APIKey>;
+  rotateAPIKey: (keyId: string) => Promise<APIKey>;
   deleteAPIKey: (keyId: string) => Promise<void>;
 
   // Utility actions
@@ -94,11 +99,12 @@ export const useAPIKeysStore = create<APIKeysState>((set, get) => ({
     }
   },
 
-  createAPIKey: async () => {
+  createAPIKey: async (expirationDays?: number) => {
     set({ isLoading: true, error: null });
 
     try {
-      const response = await apiClient.post('/api-keys', {});
+      const body: CreateAPIKeyRequest = expirationDays ? { expiration_days: expirationDays } : {};
+      const response = await apiClient.post('/api-keys', body);
 
       if (!response.ok) {
         throw new Error(`Failed to create API key: ${response.status}`);
@@ -115,6 +121,32 @@ export const useAPIKeysStore = create<APIKeysState>((set, get) => ({
       return newKey;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to create API key';
+      set({ error: errorMessage, isLoading: false });
+      throw new Error(errorMessage);
+    }
+  },
+
+  rotateAPIKey: async (keyId: string) => {
+    set({ isLoading: true, error: null });
+
+    try {
+      const response = await apiClient.post(`/api-keys/${keyId}/rotate`, {});
+
+      if (!response.ok) {
+        throw new Error(`Failed to rotate API key: ${response.status}`);
+      }
+
+      const newKey = await response.json();
+
+      // Add the new key to the beginning of the array
+      set((state) => ({
+        apiKeys: [newKey, ...state.apiKeys],
+        isLoading: false
+      }));
+
+      return newKey;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to rotate API key';
       set({ error: errorMessage, isLoading: false });
       throw new Error(errorMessage);
     }

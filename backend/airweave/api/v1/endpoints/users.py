@@ -17,11 +17,11 @@ from airweave.api import deps
 from airweave.api.auth import auth0
 from airweave.api.context import ApiContext
 from airweave.api.router import TrailingSlashRouter
-from airweave.core.email_service import send_welcome_email
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import logger
 from airweave.core.shared_models import AuthMethod
 from airweave.db.unit_of_work import UnitOfWork
+from airweave.email.services import send_welcome_email
 from airweave.schemas import OrganizationWithRole, User
 
 router = TrailingSlashRouter()

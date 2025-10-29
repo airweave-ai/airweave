@@ -1,7 +1,7 @@
 """CRUD operations for the APIKey model."""
 
 import secrets
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Optional
 from uuid import UUID
 
@@ -45,9 +45,9 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
         key = secrets.token_urlsafe(32)
         encrypted_key = credentials.encrypt({"key": key})
 
-        expiration_date = obj_in.expiration_date or (
-            utc_now_naive() + timedelta(days=180)  # Default to 180 days
-        )
+        # Calculate expiration date from days (defaults to 90)
+        expiration_days = obj_in.expiration_days if obj_in.expiration_days is not None else 90
+        expiration_date = utc_now_naive() + timedelta(days=expiration_days)
 
         # Create a dictionary with the data instead of using the schema
         api_key_data = {
@@ -142,6 +142,37 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
                 continue
 
         raise NotFoundException("API key not found")
+
+    async def get_keys_expiring_in_range(
+        self,
+        db: AsyncSession,
+        start_date: datetime,
+        end_date: datetime,
+    ) -> list[APIKey]:
+        """Get API keys expiring within a date range.
+
+        Args:
+        ----
+            db (AsyncSession): The database session.
+            start_date (datetime): Start of the date range (inclusive).
+            end_date (datetime): End of the date range (exclusive).
+
+        Returns:
+        -------
+            list[APIKey]: List of API keys expiring in the range.
+
+        """
+        from sqlalchemy import and_, select
+
+        query = select(self.model).where(
+            and_(
+                self.model.expiration_date >= start_date,
+                self.model.expiration_date < end_date,
+            )
+        )
+
+        result = await db.execute(query)
+        return list(result.scalars().all())
 
 
 api_key = CRUDAPIKey(APIKey)

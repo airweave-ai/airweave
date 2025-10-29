@@ -822,6 +822,56 @@ class TemporalScheduleService:
         logger.info(f"Successfully created cleanup schedule {schedule_id}")
         return schedule_id
 
+    async def create_api_key_notification_schedule(self) -> str:
+        """Create a singleton schedule for API key expiration notifications.
+
+        This schedule runs every minute to check for and notify about:
+        - API keys expiring in 14 days
+        - API keys expiring in 3 days
+        - API keys that have recently expired (within last 24h)
+
+        Returns:
+            Schedule ID of the notification schedule
+        """
+        from airweave.platform.temporal.workflows.api_key_notifications import (
+            APIKeyExpirationCheckWorkflow,
+        )
+
+        client = await self._get_client()
+        schedule_id = "api-key-expiration-notifications"
+
+        # Check if schedule already exists
+        try:
+            handle = client.get_schedule_handle(schedule_id)
+            await handle.describe()
+            logger.info(f"API key notification schedule {schedule_id} already exists")
+            return schedule_id
+        except Exception:
+            # Schedule doesn't exist, create it
+            pass
+
+        logger.info(f"Creating API key notification schedule {schedule_id}")
+
+        # Create schedule to run every minute (for testing)
+        schedule = Schedule(
+            action=ScheduleActionStartWorkflow(
+                APIKeyExpirationCheckWorkflow.run,
+                id="api-key-notification-workflow",
+                task_queue=settings.TEMPORAL_TASK_QUEUE,
+            ),
+            spec=ScheduleSpec(
+                intervals=[ScheduleIntervalSpec(every=timedelta(days=1))],
+            ),
+            state=ScheduleState(
+                note="API key expiration notifications (runs every day)",
+                paused=False,
+            ),
+        )
+
+        await client.create_schedule(schedule_id, schedule)
+        logger.info(f"Successfully created API key notification schedule {schedule_id} (every day)")
+        return schedule_id
+
 
 # Singleton instance
 temporal_schedule_service = TemporalScheduleService()

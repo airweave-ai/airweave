@@ -59,8 +59,33 @@ async def _authenticate_auth0_user(
     return user_context, AuthMethod.AUTH0, {"auth0_id": auth0_user.id}
 
 
+def _extract_client_ip(request: Request) -> str:
+    """Extract client IP from request headers.
+
+    Checks X-Forwarded-For header first (for proxied requests),
+    then falls back to direct client IP.
+
+    Args:
+    ----
+        request (Request): FastAPI request object
+
+    Returns:
+    -------
+        str: Client IP address or "unknown" if not available
+
+    """
+    # Check X-Forwarded-For first (for proxied requests)
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        # X-Forwarded-For can be a comma-separated list, take the first one (original client)
+        return forwarded_for.split(",")[0].strip()
+
+    # Fallback to direct client IP
+    return request.client.host if request.client else "unknown"
+
+
 async def _authenticate_api_key(
-    db: AsyncSession, api_key: str
+    db: AsyncSession, api_key: str, request: Request
 ) -> Tuple[None, AuthMethod, dict, str]:
     """Authenticate API key and return organization ID.
 
@@ -86,6 +111,14 @@ async def _authenticate_api_key(
         # Cache miss - validate API key via CRUD
         api_key_obj = await crud.api_key.get_by_key(db, key=api_key)
         org_id = api_key_obj.organization_id
+
+        # Log API key usage with structured dimensions (flows to Azure LAW)
+        client_ip = _extract_client_ip(request)
+        audit_logger = logger.with_context(event_type="api_key_usage")
+        audit_logger.info(
+            f"API key usage: key={api_key_obj.id} org={org_id} ip={client_ip} "
+            f"endpoint={request.url.path} created_by={api_key_obj.created_by_email}"
+        )
 
         # Cache the mapping for next time
         await context_cache.set_api_key_org_id(api_key, org_id)
@@ -328,7 +361,7 @@ async def get_context(
         user_context, auth_method, auth_metadata = await _get_or_fetch_user_context(db, auth0_user)
     elif x_api_key:
         user_context, auth_method, auth_metadata, api_key_org_id = await _authenticate_api_key(
-            db, x_api_key
+            db, x_api_key, request
         )
 
     if not auth_method:

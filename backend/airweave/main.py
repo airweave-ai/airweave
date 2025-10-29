@@ -85,6 +85,17 @@ async def lifespan(app: FastAPI):
                 f"Failed to initialize cleanup schedule (Temporal may not be available): {e}"
             )
 
+        # Initialize API key expiration notification schedule
+        try:
+            logger.info("Initializing API key expiration notification schedule...")
+            await temporal_schedule_service.create_api_key_notification_schedule()
+            logger.info("API key notification schedule initialized successfully")
+        except Exception as e:
+            logger.warning(
+                f"Failed to initialize API key notification schedule "
+                f"(Temporal may not be available): {e}"
+            )
+
     yield
 
 

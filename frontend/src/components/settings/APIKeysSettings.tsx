@@ -1,13 +1,9 @@
 import { useState, useEffect } from "react";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Key, Copy, Loader2, AlertCircle, Clock, CalendarIcon, CheckCircle, Trash2, Shield } from "lucide-react";
+import { Key, Copy, Loader2, Plus, Trash2, RotateCw, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { format, differenceInDays } from "date-fns";
 import { cn } from "@/lib/utils";
-import { useTheme } from "@/lib/theme-provider";
-import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useAPIKeysStore, type APIKey } from "@/lib/stores/apiKeys";
 import {
   Dialog,
@@ -18,47 +14,53 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+const EXPIRATION_PRESETS = [
+  { days: 30, label: "30 days" },
+  { days: 60, label: "60 days" },
+  { days: 90, label: "90 days", recommended: true },
+  { days: 180, label: "180 days" },
+  { days: 365, label: "365 days" },
+];
+
 export function APIKeysSettings() {
-  // Use the store instead of local state
   const {
     apiKeys,
-    isLoading: loading,
+    isLoading,
     error,
     fetchAPIKeys,
     createAPIKey,
+    rotateAPIKey,
     deleteAPIKey
   } = useAPIKeysStore();
 
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [selectedExpiration, setSelectedExpiration] = useState(90);
+  const [creating, setCreating] = useState(false);
   const [newlyCreatedKey, setNewlyCreatedKey] = useState<APIKey | null>(null);
-  const [copySuccess, setCopySuccess] = useState<string | null>(null);
-  const { resolvedTheme } = useTheme();
-  const isDark = resolvedTheme === 'dark';
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [keyToDelete, setKeyToDelete] = useState<APIKey | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [creating, setCreating] = useState(false);
+  const [rotatingKeyId, setRotatingKeyId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchAPIKeys();
   }, [fetchAPIKeys]);
 
-  const maskApiKey = (key: string) => {
-    if (!key) return "";
-    const firstFour = key.substring(0, 4);
-    const masked = Array(key.length - 4).fill("*").join("");
-    return `${firstFour}${masked}`;
+  const handleCreateClick = () => {
+    setSelectedExpiration(90);
+    setCreateDialogOpen(true);
   };
 
-  const handleCreateApiKey = async () => {
+  const handleConfirmCreate = async () => {
     setCreating(true);
-
     try {
-      const newKey = await createAPIKey();
+      const newKey = await createAPIKey(selectedExpiration);
       setNewlyCreatedKey(newKey);
+      setCreateDialogOpen(false);
       toast.success("API key created successfully");
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to create API key. Please try again.";
-      toast.error(errorMessage);
+      toast.error(err instanceof Error ? err.message : "Failed to create API key");
     } finally {
       setCreating(false);
     }
@@ -67,317 +69,336 @@ export function APIKeysSettings() {
   const handleCopyKey = (key: string) => {
     navigator.clipboard.writeText(key).then(
       () => {
-        setCopySuccess(key);
-        toast.success("API key copied to clipboard");
-        setTimeout(() => setCopySuccess(null), 2000);
+        setCopiedKey(key);
+        toast.success("Copied to clipboard");
+        setTimeout(() => setCopiedKey(null), 2000);
       },
-      () => {
-        toast.error("Failed to copy API key");
-      }
+      () => toast.error("Failed to copy")
     );
   };
 
-  const openDeleteDialog = (apiKey: APIKey) => {
-    setKeyToDelete(apiKey);
-    setDeleteDialogOpen(true);
+  const handleRotateKey = async (apiKey: APIKey) => {
+    setRotatingKeyId(apiKey.id);
+    try {
+      const newKey = await rotateAPIKey(apiKey.id);
+      toast.success("Key rotated successfully");
+      setNewlyCreatedKey(newKey);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to rotate key");
+    } finally {
+      setRotatingKeyId(null);
+    }
   };
 
-  const handleDeleteKey = async (id: string) => {
+  const handleDeleteKey = async () => {
+    if (!keyToDelete) return;
     setDeleting(true);
     try {
-      await deleteAPIKey(id);
-      toast.success("API key deleted successfully");
-
-      // If we just deleted the newly created key, clear that state
-      if (newlyCreatedKey && newlyCreatedKey.id === id) {
+      await deleteAPIKey(keyToDelete.id);
+      toast.success("API key deleted");
+      if (newlyCreatedKey && newlyCreatedKey.id === keyToDelete.id) {
         setNewlyCreatedKey(null);
       }
-
       setDeleteDialogOpen(false);
       setKeyToDelete(null);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to delete API key. Please try again.";
-      toast.error(errorMessage);
+      toast.error(err instanceof Error ? err.message : "Failed to delete key");
     } finally {
       setDeleting(false);
     }
   };
 
-  const formatDate = (dateString: string, includeRelative: boolean = false) => {
+  const maskKey = (key: string) => {
+    if (!key || key.length < 8) return key;
+    return `${key.substring(0, 8)}${"•".repeat(32)}`;
+  };
+
+  const getDaysRemaining = (expirationDate: string) => {
     try {
-      const date = new Date(dateString);
-      if (isNaN(date.getTime())) return "Invalid date";
-
-      const formattedDate = format(date, "PPP");
-
-      if (includeRelative) {
-        const now = new Date();
-        const daysRemaining = differenceInDays(date, now);
-
-        if (daysRemaining < 0) {
-          return `${formattedDate} (Expired)`;
-        } else if (daysRemaining === 0) {
-          return `${formattedDate} (Today)`;
-        } else if (daysRemaining === 1) {
-          return `${formattedDate} (Tomorrow)`;
-        } else {
-          return `${formattedDate} (${daysRemaining} days remaining)`;
-        }
-      }
-
-      return formattedDate;
-    } catch (e) {
-      console.error("Error formatting date:", e);
-      return "Invalid date";
+      return differenceInDays(new Date(expirationDate), new Date());
+    } catch {
+      return 0;
     }
   };
 
-  const getExpirationStatus = (expirationDate: string) => {
-    try {
-      const date = new Date(expirationDate);
-      const now = new Date();
-      const daysRemaining = differenceInDays(date, now);
-
-      if (daysRemaining < 0) {
-        return "EXPIRED";
-      } else if (daysRemaining <= 7) {
-        return "EXPIRING_SOON";
-      } else {
-        return "ACTIVE";
-      }
-    } catch (e) {
-      return "UNKNOWN";
-    }
+  const getStatusColor = (daysRemaining: number) => {
+    if (daysRemaining < 0) return "text-red-500";
+    if (daysRemaining <= 7) return "text-amber-500";
+    return "text-slate-500 dark:text-slate-400";
   };
+
+  if (isLoading && apiKeys.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-4">
-
-      <div className="py-2 space-y-8">
-        {/* Create new API key section */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <h3 className="text-sm font-medium">Create new API key</h3>
-            <p className="text-xs text-muted-foreground">
-              API keys will expire 180 days after creation
-            </p>
-          </div>
-          <Button
-            onClick={handleCreateApiKey}
-            disabled={creating}
-            className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white h-8 px-3.5 text-sm w-full sm:w-auto"
-          >
-            {creating ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <Key className="h-3 w-3" />
-            )}
-            {creating ? 'Creating...' : 'Create key'}
-          </Button>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-50">API Keys</h2>
+          <p className="text-sm text-slate-600 dark:text-slate-400 mt-0.5">
+            Manage access tokens for programmatic integration
+          </p>
         </div>
-
-        {/* Newly created key alert */}
-        {newlyCreatedKey && newlyCreatedKey.decrypted_key && (
-          <div className={cn(
-            "py-4 space-y-4",
-            isDark ? "border-t border-b border-slate-800" : "border-t border-b border-slate-200"
-          )}>
-            <div className="space-y-2">
-              <h4 className="font-medium">Your new API key has been created</h4>
-            </div>
-
-            <div className="flex items-stretch gap-2">
-              <div className="flex-grow relative">
-                <Input
-                  type="text"
-                  value={newlyCreatedKey.decrypted_key}
-                  readOnly
-                  className="font-mono text-sm h-9 pr-10"
-                />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleCopyKey(newlyCreatedKey.decrypted_key || "")}
-                  className="absolute right-0 top-0 h-full rounded-l-none"
-                >
-                  {copySuccess === newlyCreatedKey.decrypted_key ? (
-                    <CheckCircle className="h-4 w-4" />
-                  ) : (
-                    <Copy className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
-            </div>
-
-            <Button
-              variant="link"
-              size="sm"
-              onClick={() => setNewlyCreatedKey(null)}
-              className="px-0 h-auto"
-            >
-              I've saved the key
-            </Button>
-          </div>
-        )}
-
-        {/* Error state */}
-        {error && (
-          <Alert variant="destructive" className="mb-4">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-
-        {/* Loading state */}
-        {loading ? (
-          <div className="flex items-center justify-center py-10">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        ) : (
-          <>
-            {/* API Keys list */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium">Your API keys</h3>
-                <div className="text-xs text-muted-foreground">{apiKeys.length} key{apiKeys.length !== 1 ? 's' : ''}</div>
-              </div>
-
-              {apiKeys.length === 0 ? (
-                <div className={cn(
-                  "rounded-lg border border-dashed p-8 text-center",
-                  isDark ? "border-slate-800" : "border-slate-200"
-                )}>
-                  <Key className="mx-auto h-8 w-8 text-muted-foreground opacity-50" />
-                  <h3 className="mt-2 text-sm font-medium">No API keys</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    You don't have any API keys yet. Create one to get started.
-                  </p>
-                </div>
-              ) : (
-                <div className="grid gap-3">
-                  {apiKeys.map((apiKey) => {
-                    const status = getExpirationStatus(apiKey.expiration_date);
-                    const date = new Date(apiKey.expiration_date);
-                    const now = new Date();
-                    const daysRemaining = differenceInDays(date, now);
-                    const isExpiringSoon = daysRemaining >= 0 && daysRemaining <= 7;
-                    const isExpired = daysRemaining < 0;
-
-                    return (
-                      <div
-                        key={apiKey.id}
-                        className={cn(
-                          "relative rounded-xl overflow-hidden cursor-default",
-                          "border",
-                          isDark
-                            ? "border-slate-800 hover:border-slate-700"
-                            : "border-slate-200 hover:border-slate-300",
-                          "transition-all duration-200"
-                        )}
-                      >
-                        <div className="p-4">
-                          <div className="space-y-3">
-                            {/* Key and controls */}
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <Key className={cn("h-4 w-4", isDark ? "text-blue-400" : "text-blue-500")} />
-                                <code className="font-mono text-sm font-medium">
-                                  {maskApiKey(apiKey.decrypted_key)}
-                                </code>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <StatusBadge status={status} showTooltip={true} tooltipContext="apiKey" />
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7 rounded-full hover:bg-transparent"
-                                  onClick={() => handleCopyKey(apiKey.decrypted_key)}
-                                >
-                                  {copySuccess === apiKey.decrypted_key ? (
-                                    <CheckCircle className="h-3.5 w-3.5" />
-                                  ) : (
-                                    <Copy className="h-3.5 w-3.5" />
-                                  )}
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className={cn(
-                                    "h-7 w-7 rounded-full hover:bg-transparent",
-                                    isDark ? "hover:text-red-300" : "hover:text-red-600"
-                                  )}
-                                  onClick={() => openDeleteDialog(apiKey)}
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
-                              </div>
-                            </div>
-
-                            {/* Divider */}
-                            <div className={cn(
-                              "h-px w-full",
-                              isDark ? "bg-slate-800" : "bg-slate-100"
-                            )} />
-
-                            {/* Dates */}
-                            <div className="flex justify-between items-center text-xs text-muted-foreground">
-                              <div className="flex items-center gap-1.5">
-                                <CalendarIcon className="h-3 w-3" />
-                                <span>Created {formatDate(apiKey.created_at)}</span>
-                              </div>
-                              <div className="flex items-center gap-1.5">
-                                <Clock className="h-3 w-3" />
-                                <span className={cn(
-                                  isExpired
-                                    ? isDark ? "text-red-400" : "text-red-500"
-                                    : isExpiringSoon
-                                      ? isDark ? "text-amber-400" : "text-amber-500"
-                                      : "text-muted-foreground"
-                                )}>
-                                  Expires: {formatDate(apiKey.expiration_date, true)}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </>
-        )}
+        <Button
+          onClick={handleCreateClick}
+          size="default"
+          className="h-9 gap-2 px-3 bg-slate-800 hover:bg-slate-700 dark:bg-slate-200 dark:hover:bg-slate-300 text-slate-50 dark:text-slate-900 font-medium"
+        >
+          <Plus className="h-4 w-4" />
+          Create key
+        </Button>
       </div>
 
-      {/* Delete confirmation dialog */}
+      {/* New Key Display */}
+      {newlyCreatedKey && newlyCreatedKey.decrypted_key && (
+        <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-4">
+          <div className="flex items-start justify-between gap-4 mb-3">
+            <div className="space-y-0.5">
+              <p className="text-xs font-medium text-slate-700 dark:text-slate-300">Your new API key</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Copy and save it now — you won't see it again
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setNewlyCreatedKey(null)}
+              className="h-6 text-xs text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300"
+            >
+              Dismiss
+            </Button>
+          </div>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 text-xs font-mono px-3 py-2 rounded-md bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100">
+              {newlyCreatedKey.decrypted_key}
+            </code>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleCopyKey(newlyCreatedKey.decrypted_key)}
+              className="h-[34px] gap-2 text-xs bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700"
+            >
+              {copiedKey === newlyCreatedKey.decrypted_key ? (
+                <CheckCircle2 className="h-3.5 w-3.5" />
+              ) : (
+                <Copy className="h-3.5 w-3.5" />
+              )}
+              Copy
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Error State */}
+      {error && (
+        <div className="rounded-lg border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-900/10 px-4 py-3 text-sm text-red-600 dark:text-red-400">
+          {error}
+        </div>
+      )}
+
+      {/* Keys List */}
+      {apiKeys.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="rounded-full bg-slate-100 dark:bg-slate-800 p-4 mb-4">
+            <Key className="h-6 w-6 text-slate-400" />
+          </div>
+          <p className="text-sm font-medium mb-1">No API keys yet</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+            Create your first key to start using the API
+          </p>
+          <Button onClick={handleCreateClick} size="sm" variant="outline">
+            <Plus className="h-4 w-4 mr-2" />
+            Create key
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {apiKeys.map((apiKey) => {
+            const daysRemaining = getDaysRemaining(apiKey.expiration_date);
+            const isExpired = daysRemaining < 0;
+            const isExpiringSoon = daysRemaining >= 0 && daysRemaining <= 7;
+
+            return (
+              <div
+                key={apiKey.id}
+                className={cn(
+                  "rounded-lg border bg-white dark:bg-slate-900/50",
+                  isExpired
+                    ? "border-red-200 dark:border-red-900/50"
+                    : "border-slate-200 dark:border-slate-800"
+                )}
+              >
+                <div className="p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    {/* Key Info */}
+                    <div className="flex-1 min-w-0 space-y-3">
+                      <div className="flex items-center gap-3">
+                        <code className="text-xs font-mono font-medium">
+                          {maskKey(apiKey.decrypted_key)}
+                        </code>
+                        {isExpired && (
+                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                            Expired
+                          </span>
+                        )}
+                        {isExpiringSoon && !isExpired && (
+                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                            Expiring soon
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400">
+                        <span>Created {format(new Date(apiKey.created_at), "MMM d, yyyy")}</span>
+                        <span className="text-slate-300 dark:text-slate-700">•</span>
+                        <span className={getStatusColor(daysRemaining)}>
+                          {isExpired
+                            ? `Expired ${Math.abs(daysRemaining)} day${Math.abs(daysRemaining) === 1 ? "" : "s"} ago`
+                            : `Expires in ${daysRemaining} day${daysRemaining === 1 ? "" : "s"}`}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleCopyKey(apiKey.decrypted_key)}
+                        className="h-8 w-8 text-slate-500 hover:text-slate-900 dark:hover:text-slate-100"
+                        title="Copy key"
+                      >
+                        {copiedKey === apiKey.decrypted_key ? (
+                          <CheckCircle2 className="h-4 w-4" />
+                        ) : (
+                          <Copy className="h-4 w-4" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleRotateKey(apiKey)}
+                        disabled={rotatingKeyId === apiKey.id}
+                        className="h-8 w-8 text-slate-500 hover:text-slate-900 dark:hover:text-slate-100"
+                        title="Rotate key"
+                      >
+                        {rotatingKeyId === apiKey.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <RotateCw className="h-4 w-4" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setKeyToDelete(apiKey);
+                          setDeleteDialogOpen(true);
+                        }}
+                        className="h-8 w-8 text-slate-500 hover:text-red-600 dark:hover:text-red-500"
+                        title="Delete key"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Create Dialog */}
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader className="space-y-2">
+            <DialogTitle className="text-xl font-semibold">Create API key</DialogTitle>
+            <DialogDescription className="text-slate-500 dark:text-slate-400">
+              Choose how long this key should remain valid
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-6 space-y-2">
+            {EXPIRATION_PRESETS.map((preset) => (
+              <button
+                key={preset.days}
+                onClick={() => setSelectedExpiration(preset.days)}
+                className={cn(
+                  "w-full flex items-center justify-between px-4 py-3.5 rounded-lg border text-left transition-colors",
+                  selectedExpiration === preset.days
+                    ? "border-primary bg-primary/5 dark:bg-primary/10"
+                    : "border-slate-200 dark:border-slate-800"
+                )}
+              >
+                <span className={cn(
+                  "text-sm font-medium",
+                  selectedExpiration === preset.days
+                    ? "text-slate-900 dark:text-slate-50"
+                    : "text-slate-700 dark:text-slate-300"
+                )}>{preset.label}</span>
+                {preset.recommended && (
+                  <span className="text-xs px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium">
+                    Recommended
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setCreateDialogOpen(false)}
+              disabled={creating}
+              className="flex-1 sm:flex-none"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmCreate}
+              disabled={creating}
+              className="flex-1 sm:flex-none bg-slate-800 hover:bg-slate-700 dark:bg-slate-200 dark:hover:bg-slate-300 text-slate-50 dark:text-slate-900"
+            >
+              {creating ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Create key"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Dialog */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Shield className={cn("h-5 w-5", isDark ? "text-amber-400" : "text-amber-500")} />
-              Confirm API Key Deletion
-            </DialogTitle>
+            <DialogTitle>Delete API key</DialogTitle>
             <DialogDescription>
-              This action cannot be undone. The API key will be permanently deleted and any applications using it will no longer be able to authenticate.
+              This action cannot be undone. Any applications using this key will lose access immediately.
             </DialogDescription>
           </DialogHeader>
 
           {keyToDelete && (
-            <div className={cn(
-              "my-4 p-3 rounded-md",
-              isDark ? "bg-slate-900 border border-slate-800" : "bg-slate-50 border border-slate-200"
-            )}>
-              <div className="flex items-center gap-2 font-mono text-sm">
-                <Key className={cn("h-4 w-4", isDark ? "text-blue-400" : "text-blue-500")} />
-                {maskApiKey(keyToDelete.decrypted_key)}
-              </div>
+            <div className="my-4 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 p-3">
+              <code className="text-sm font-mono">
+                {maskKey(keyToDelete.decrypted_key)}
+              </code>
             </div>
           )}
 
-          <DialogFooter className="sm:justify-between gap-3 mt-2">
+          <DialogFooter>
             <Button
-              variant="ghost"
+              variant="outline"
               onClick={() => setDeleteDialogOpen(false)}
               disabled={deleting}
             >
@@ -385,9 +406,8 @@ export function APIKeysSettings() {
             </Button>
             <Button
               variant="destructive"
-              onClick={() => keyToDelete && handleDeleteKey(keyToDelete.id)}
+              onClick={handleDeleteKey}
               disabled={deleting}
-              className="sm:w-auto w-full"
             >
               {deleting ? (
                 <>
@@ -397,7 +417,7 @@ export function APIKeysSettings() {
               ) : (
                 <>
                   <Trash2 className="mr-2 h-4 w-4" />
-                  Delete API Key
+                  Delete key
                 </>
               )}
             </Button>

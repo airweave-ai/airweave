@@ -2110,6 +2110,16 @@
             "title": "Id",
             "description": "Unique system identifier for the collection. This UUID is generated automatically and used for internal references."
           },
+          "vector_size": {
+            "type": "integer",
+            "title": "Vector Size",
+            "description": "Vector dimensions used by this collection. Determines which embedding model is used: 3072 (text-embedding-3-large), 1536 (text-embedding-3-small), or 384 (MiniLM-L6-v2)."
+          },
+          "embedding_model_name": {
+            "type": "string",
+            "title": "Embedding Model Name",
+            "description": "Name of the embedding model used for this collection (e.g., 'text-embedding-3-large', 'text-embedding-3-small'). This ensures queries use the same model as the indexed data."
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -2165,6 +2175,8 @@
           "name",
           "readable_id",
           "id",
+          "vector_size",
+          "embedding_model_name",
           "created_at",
           "modified_at",
           "organization_id"

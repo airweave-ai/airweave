@@ -1,12 +1,10 @@
 """APIKey schema."""
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
-
-from airweave.core.datetime_utils import utc_now_naive
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class APIKeyBase(BaseModel):
@@ -21,79 +19,35 @@ class APIKeyBase(BaseModel):
 class APIKeyCreate(BaseModel):
     """Schema for creating an APIKey object."""
 
-    expiration_date: Optional[datetime] = Field(
-        default=None,  # Let the backend handle the default
-        description="Expiration date for the API key, defaults to 180 days from now",
+    expiration_days: Optional[int] = Field(
+        default=90,
+        description="Number of days until the API key expires (default: 90, max: 365)",
     )
 
-    @model_validator(mode="before")
-    def set_expiration_utc(cls, values: dict) -> dict:
-        """Ensure expiration_date is in UTC but as timezone-naive.
+    @field_validator("expiration_days")
+    def check_expiration_days(cls, v: Optional[int]) -> Optional[int]:
+        """Validate the expiration days.
 
         Args:
         ----
-            values (dict): The values to validate.
-
-        Returns:
-        -------
-            dict: The validated values.
-
-        """
-        expiration_date = values.get("expiration_date")
-        if expiration_date is None:
-            return values  # Let the datetime validation handle this
-
-        if isinstance(expiration_date, str):
-            # Parse the string and convert to UTC naive
-            try:
-                parsed_date = datetime.fromisoformat(expiration_date)
-                if parsed_date.tzinfo is not None:
-                    # Convert to UTC and make naive
-                    values["expiration_date"] = parsed_date.astimezone(timezone.utc).replace(
-                        tzinfo=None
-                    )
-                else:
-                    # Already naive, assume UTC
-                    values["expiration_date"] = parsed_date
-            except ValueError:
-                return values  # Let the datetime validation handle this
-        elif isinstance(expiration_date, datetime):
-            if expiration_date.tzinfo is not None:
-                # Convert to UTC and make naive
-                values["expiration_date"] = expiration_date.astimezone(timezone.utc).replace(
-                    tzinfo=None
-                )
-            else:
-                # Already naive, assume UTC
-                values["expiration_date"] = expiration_date
-
-        return values
-
-    @field_validator("expiration_date")
-    def check_expiration_date(cls, v: Optional[datetime]) -> Optional[datetime]:
-        """Validate the expiration date.
-
-        Args:
-        ----
-            v (datetime): The expiration date.
+            v (int): The number of days until expiration.
 
         Raises:
         ------
-            ValueError: If the expiration date is in the past or more than 1 year in the future.
+            ValueError: If the expiration days is invalid.
 
         Returns:
         -------
-            datetime: The expiration date.
+            int: The validated expiration days.
 
         """
         if v is None:
-            return None
+            return 90  # Default to 90 days
 
-        now = utc_now_naive()
-        if v < now:
-            raise ValueError("Expiration date cannot be in the past.")
-        if v > now.replace(year=now.year + 1):
-            raise ValueError("Expiration date cannot be more than 1 year in the future.")
+        if v < 1:
+            raise ValueError("Expiration days must be at least 1.")
+        if v > 365:
+            raise ValueError("Expiration days cannot be more than 365.")
         return v
 
     class Config:
@@ -117,7 +71,7 @@ class APIKeyInDBBase(APIKeyBase):
     """Base schema for APIKey stored in DB."""
 
     id: UUID
-    organization: UUID
+    organization_id: UUID
     created_at: datetime
     modified_at: datetime
     last_used_date: Optional[datetime] = None
@@ -134,7 +88,7 @@ class APIKeyInDBBase(APIKeyBase):
 class APIKey(APIKeyInDBBase):
     """Schema for API keys returned to clients - includes decrypted key."""
 
-    decrypted_key: str
+    decrypted_key: Optional[str] = None
 
     class Config:
         """Pydantic config for APIKey."""
