@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import schemas
 from airweave.api import deps
 from airweave.api.context import ApiContext
+from airweave.api.rbac import require_org_role
 from airweave.api.router import TrailingSlashRouter
 from airweave.core.connection_service import connection_service
 from airweave.models.integration_credential import IntegrationType
@@ -132,7 +133,7 @@ async def delete_connection(
         HTTPException: If user lacks admin privileges (403) or connection not found (404).
     """
     # Validate user has admin role
-    deps.require_org_role(ctx, min_role="admin")
+    require_org_role(ctx, min_role="admin")
 
     return await connection_service.delete_connection(db, connection_id, ctx)
 
@@ -163,7 +164,7 @@ async def disconnect_source_connection(
         HTTPException: If user lacks admin privileges (403) or connection not found (404).
     """
     # Validate user has admin role
-    deps.require_org_role(ctx, min_role="admin")
+    require_org_role(ctx, min_role="admin")
 
     connection = await connection_service.disconnect_source(db, connection_id, ctx)
     # Ensure we return something that is compatible with the response_model

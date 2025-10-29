@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud, schemas
 from airweave.api import deps
 from airweave.api.context import ApiContext
+from airweave.api.rbac import require_org_role
 from airweave.api.router import TrailingSlashRouter
 from airweave.core import credentials
 from airweave.core.logging import logger
@@ -534,7 +535,7 @@ async def delete_auth_provider_connection(
         HTTPException: If user lacks admin privileges (403) or connection not found (404).
     """
     # Validate user has admin role
-    deps.require_org_role(ctx, min_role="admin")
+    require_org_role(ctx, min_role="admin")
 
     # Find the connection by readable_id and integration_type
     connection = await crud.connection.get_by_readable_id(db, readable_id=readable_id, ctx=ctx)
@@ -762,7 +763,7 @@ async def update_auth_provider_connection(
         HTTPException: If user lacks admin privileges (403) or connection not found (404).
     """
     # Validate user has admin role
-    deps.require_org_role(ctx, min_role="admin")
+    require_org_role(ctx, min_role="admin")
 
     async with UnitOfWork(db) as uow:
         try:

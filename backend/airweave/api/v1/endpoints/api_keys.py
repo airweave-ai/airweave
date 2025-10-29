@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud, schemas
 from airweave.api import deps
 from airweave.api.context import ApiContext
+from airweave.api.rbac import require_org_role
 from airweave.api.router import TrailingSlashRouter
 from airweave.core import credentials
 
@@ -175,7 +176,7 @@ async def delete_api_key(
 
     """
     # Validate user has admin role
-    deps.require_org_role(ctx, min_role="admin")
+    require_org_role(ctx, min_role="admin")
 
     api_key = await crud.api_key.get(db=db, id=id, ctx=ctx)
 

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud
 from airweave.api import deps
 from airweave.api.context import ApiContext
+from airweave.api.rbac import require_org_role
 from airweave.api.router import TrailingSlashRouter
 from airweave.core.credentials import encrypt
 from airweave.core.shared_models import ConnectionStatus, FeatureFlag
@@ -206,7 +207,7 @@ async def delete_s3_configuration(
         HTTPException: If user lacks admin privileges (403) or S3 connection not found (404).
     """
     # Validate user has admin role
-    deps.require_org_role(ctx, min_role="admin")
+    require_org_role(ctx, min_role="admin")
 
     from sqlalchemy import and_, select
 

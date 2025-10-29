@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud, schemas
 from airweave.api import deps
 from airweave.api.context import ApiContext
+from airweave.api.rbac import require_org_role
 from airweave.api.router import TrailingSlashRouter
 from airweave.core.logging import logger
 from airweave.core.pubsub import core_pubsub
@@ -172,7 +173,7 @@ async def delete_sync(
         HTTPException: If user lacks admin privileges (403) or sync not found (404).
     """
     # Validate user has admin role
-    deps.require_org_role(ctx, min_role="admin")
+    require_org_role(ctx, min_role="admin")
 
     return await sync_service.delete_sync(db=db, sync_id=sync_id, ctx=ctx, delete_data=delete_data)
 
@@ -448,7 +449,7 @@ async def update_sync(
         HTTPException: If user lacks admin privileges (403) or sync not found (404).
     """
     # Validate user has admin role
-    deps.require_org_role(ctx, min_role="admin")
+    require_org_role(ctx, min_role="admin")
 
     return await sync_service.update_sync(db=db, sync_id=sync_id, sync_update=sync_update, ctx=ctx)
 
@@ -511,7 +512,7 @@ async def update_minute_level_schedule(
         HTTPException: If user lacks admin privileges (403) or schedule not found (404).
     """
     # Validate user has admin role
-    deps.require_org_role(ctx, min_role="admin")
+    require_org_role(ctx, min_role="admin")
 
     return await sync_service.update_minute_level_schedule(
         db=db,
