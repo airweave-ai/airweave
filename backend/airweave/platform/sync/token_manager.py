@@ -1,6 +1,8 @@
 """Token manager for handling OAuth2 token refresh during sync operations."""
 
 import asyncio
+import base64
+import json
 import time
 from typing import Any, Optional
 
@@ -25,8 +27,8 @@ class TokenManager:
     - Auth provider token refresh
     """
 
-    # Token refresh interval (25 minutes to be safe with 1-hour tokens)
-    REFRESH_INTERVAL_SECONDS = 25 * 60
+    # Safety buffer: refresh token this many seconds before expiry
+    EXPIRY_BUFFER_SECONDS = 5 * 60  # 5 minutes
 
     def __init__(
         self,
@@ -80,7 +82,6 @@ class TokenManager:
                 f"TokenManager requires a token to manage."
             )
 
-        self._last_refresh_time = time.time()
         self._refresh_lock = asyncio.Lock()
 
         # For sources without refresh tokens, we can't refresh
@@ -103,8 +104,8 @@ class TokenManager:
     async def get_valid_token(self) -> str:
         """Get a valid access token, refreshing if necessary.
 
-        This method ensures the token is fresh and handles refresh logic
-        with proper concurrency control.
+        This method checks the actual token expiry time (from JWT claims) and
+        refreshes proactively before expiration.
 
         Returns:
             A valid access token
@@ -116,32 +117,52 @@ class TokenManager:
         if not self._can_refresh:
             return self._current_token
 
-        # Check if token needs refresh (proactive refresh before expiry)
-        current_time = time.time()
-        time_since_refresh = current_time - self._last_refresh_time
-
-        if time_since_refresh < self.REFRESH_INTERVAL_SECONDS:
+        # Check if token needs refresh based on actual expiry time
+        token_expiry = self._get_token_expiry_time(self._current_token)
+        
+        if token_expiry is None:
+            # Not a JWT or can't parse expiry - return current token
+            # (This handles opaque tokens, API keys, etc.)
+            self.logger.debug(
+                f"Token for {self.source_short_name} is not a JWT or has no expiry, "
+                "skipping expiry-based refresh"
+            )
             return self._current_token
 
-        # Token needs refresh - use lock to prevent concurrent refreshes
+        current_time = time.time()
+        time_until_expiry = token_expiry - current_time
+
+        # If token is still valid with buffer, return it
+        if time_until_expiry > self.EXPIRY_BUFFER_SECONDS:
+            return self._current_token
+
+        # Token is expired or expiring soon - refresh it
         async with self._refresh_lock:
             # Double-check after acquiring lock (another worker might have refreshed)
-            current_time = time.time()
-            time_since_refresh = current_time - self._last_refresh_time
-
-            if time_since_refresh < self.REFRESH_INTERVAL_SECONDS:
-                return self._current_token
+            token_expiry = self._get_token_expiry_time(self._current_token)
+            if token_expiry is not None:
+                current_time = time.time()
+                time_until_expiry = token_expiry - current_time
+                
+                if time_until_expiry > self.EXPIRY_BUFFER_SECONDS:
+                    # Another worker refreshed it
+                    return self._current_token
 
             # Perform the refresh
-            self.logger.debug(
-                f"Refreshing token for {self.source_short_name} "
-                f"(last refresh: {time_since_refresh:.0f}s ago)"
-            )
+            if time_until_expiry <= 0:
+                self.logger.warning(
+                    f"Token for {self.source_short_name} has expired "
+                    f"({abs(time_until_expiry):.0f}s ago), refreshing now"
+                )
+            else:
+                self.logger.debug(
+                    f"Refreshing token for {self.source_short_name} "
+                    f"(expires in {time_until_expiry:.0f}s)"
+                )
 
             try:
                 new_token = await self._refresh_token()
                 self._current_token = new_token
-                self._last_refresh_time = current_time
 
                 self.logger.debug(f"Successfully refreshed token for {self.source_short_name}")
                 return new_token
@@ -173,7 +194,6 @@ class TokenManager:
             try:
                 new_token = await self._refresh_token()
                 self._current_token = new_token
-                self._last_refresh_time = time.time()
 
                 self.logger.debug(
                     f"Successfully refreshed token for {self.source_short_name} after 401"
@@ -325,6 +345,45 @@ class TokenManager:
             if isinstance(e, TokenRefreshError):
                 raise
             raise TokenRefreshError(f"OAuth refresh failed: {str(e)}") from e
+
+    def _get_token_expiry_time(self, token: str) -> Optional[float]:
+        """Extract expiry time from JWT token.
+
+        Args:
+            token: The JWT token string
+
+        Returns:
+            Unix timestamp of token expiry, or None if not a JWT or no expiry claim
+        """
+        try:
+            # Split JWT into parts
+            parts = token.split(".")
+            if len(parts) != 3:
+                # Not a JWT format
+                return None
+
+            # Decode the payload (middle part)
+            # Add padding if needed for base64 decoding
+            payload_part = parts[1]
+            padding = "=" * (-len(payload_part) % 4)
+            payload_bytes = base64.urlsafe_b64decode(payload_part + padding)
+            
+            # Parse JSON payload
+            payload = json.loads(payload_bytes.decode("utf-8"))
+            
+            # Extract expiry claim
+            exp = payload.get("exp")
+            if exp is None:
+                return None
+            
+            return float(exp)
+
+        except Exception as e:
+            # Token is not a JWT or parsing failed
+            self.logger.debug(
+                f"Could not extract expiry from token for {self.source_short_name}: {str(e)}"
+            )
+            return None
 
     def _extract_token_from_credentials(self, credentials: Any) -> Optional[str]:
         """Extract OAuth access token from credentials.
