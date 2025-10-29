@@ -81,10 +81,17 @@ class SearchFactory:
         if not has_federated_sources and not has_vector_sources:
             raise ValueError("Collection has no sources")
 
+        # Use collection's stored vector_size for provider initialization
+        vector_size = collection.vector_size
+
+        # Fail-fast: vector_size must be set
+        if vector_size is None:
+            raise ValueError(f"Collection {collection.readable_id} has no vector_size set.")
+
         # Select providers for operations
         api_keys = self._get_available_api_keys()
         providers = self._create_provider_for_each_operation(
-            api_keys, params, has_federated_sources, has_vector_sources, ctx
+            api_keys, params, has_federated_sources, has_vector_sources, ctx, vector_size
         )
 
         # Create event emitter and emit skip notices if needed
@@ -102,9 +109,7 @@ class SearchFactory:
                 # If we can't determine source support, raise the error
                 raise ValueError(f"Failed to check temporal relevance support: {e}") from e
 
-        # Build operations
-        vector_size = get_default_vector_size()
-
+        # Build operations with vector_size
         operations = self._build_operations(
             params,
             providers,
@@ -112,6 +117,7 @@ class SearchFactory:
             has_vector_sources,
             search_request,
             temporal_supporting_sources,
+            vector_size,
         )
 
         search_context = SearchContext(
@@ -202,8 +208,6 @@ class SearchFactory:
 
     def _get_vector_size(self) -> int:
         """Get the default vector size for embeddings."""
-        from airweave.platform.destinations.collection_strategy import get_default_vector_size
-
         return get_default_vector_size()
 
     async def _emit_skip_notices_if_needed(
@@ -253,6 +257,7 @@ class SearchFactory:
         has_vector_sources: bool,
         search_request: SearchRequest,
         temporal_supporting_sources: Optional[List[str]] = None,
+        vector_size: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Build operation instances for the search context.
 
@@ -268,6 +273,7 @@ class SearchFactory:
                 - Non-empty list: Filter to these sources (some don't support temporal)
                 - Empty list: Skip operation (no sources support temporal)
                 - None: No filtering needed (temporal disabled or not checked)
+            vector_size: Vector dimensions for this collection (used by EmbedQuery)
         """
         return {
             "query_expansion": (
@@ -282,6 +288,7 @@ class SearchFactory:
                 EmbedQuery(
                     strategy=params["retrieval_strategy"],
                     provider=providers["embed"],  # Single provider - embeddings must be consistent
+                    vector_size=vector_size,
                 )
                 if has_vector_sources
                 else None
@@ -369,13 +376,14 @@ class SearchFactory:
         has_federated_sources: bool,
         has_vector_sources: bool,
         ctx: ApiContext,
+        vector_size: int,
     ) -> Dict[str, BaseProvider]:
         """Select and validate all required providers."""
         providers = {}
 
         # Create embedding provider if needed
         if has_vector_sources:
-            providers["embed"] = self._create_embedding_provider(api_keys, ctx)
+            providers["embed"] = self._create_embedding_provider(api_keys, ctx, vector_size)
 
         # Create LLM providers for enabled operations
         providers.update(
@@ -388,14 +396,16 @@ class SearchFactory:
         return providers
 
     def _create_embedding_provider(
-        self, api_keys: Dict[str, Optional[str]], ctx: ApiContext
+        self, api_keys: Dict[str, Optional[str]], ctx: ApiContext, vector_size: int
     ) -> BaseProvider:
         """Create embedding provider for vector-backed search.
 
         Note: Returns single provider, not a list. Embeddings must use consistent
         models within a collection and cannot fallback to different providers.
         """
-        providers = self._init_all_providers_for_operation("embed_query", api_keys, ctx)
+        providers = self._init_all_providers_for_operation(
+            "embed_query", api_keys, ctx, vector_size
+        )
         if not providers:
             raise ValueError(
                 "Embedding provider required for vector-backed search. Configure OPENAI_API_KEY"
@@ -592,12 +602,22 @@ class SearchFactory:
         return supporting_sources
 
     def _init_all_providers_for_operation(
-        self, operation_name: str, api_keys: Dict[str, Optional[str]], ctx: ApiContext
+        self,
+        operation_name: str,
+        api_keys: Dict[str, Optional[str]],
+        ctx: ApiContext,
+        vector_size: Optional[int] = None,
     ) -> List[BaseProvider]:
         """Initialize ALL available providers for an operation in preference order.
 
         Returns list of working providers that can be used for fallback.
         Operations will try providers in order until one succeeds.
+
+        Args:
+            operation_name: Name of the operation (e.g., "embed_query")
+            api_keys: Dict of provider API keys
+            ctx: API context
+            vector_size: Optional vector dimensions for embedding model selection
         """
         preferences = operation_preferences.get(operation_name, {})
         order = preferences.get("order", [])
@@ -621,7 +641,9 @@ class SearchFactory:
 
             # Build model configs for each type
             llm_config = self._build_llm_config(provider_spec, entry.get("llm"))
-            embedding_config = self._build_embedding_config(provider_spec, entry.get("embedding"))
+            embedding_config = self._build_embedding_config_for_vector_size(
+                provider_spec, entry.get("embedding"), vector_size
+            )
             rerank_config = self._build_rerank_config(provider_spec, entry.get("rerank"))
 
             model_spec = ProviderModelSpec(
@@ -692,6 +714,44 @@ class SearchFactory:
         model_dict = provider_spec.get(model_key)
         if not model_dict:
             return None
+
+        return EmbeddingModelConfig(**model_dict)
+
+    def _build_embedding_config_for_vector_size(
+        self, provider_spec: dict, model_key: Optional[str], vector_size: Optional[int]
+    ) -> Optional[EmbeddingModelConfig]:
+        """Build EmbeddingModelConfig by selecting the right model key from defaults.yml.
+
+        For OpenAI embeddings, selects between embedding_small and embedding_large:
+        - 3072: uses embedding_large (text-embedding-3-large)
+        - 1536: uses embedding_small (text-embedding-3-small)
+        - Other: uses the provided model_key (e.g., "embedding" as fallback)
+
+        Args:
+            provider_spec: Provider specification from defaults.yml
+            model_key: Key to look up model config (e.g., "embedding")
+            vector_size: Vector dimensions for this collection
+
+        Returns:
+            EmbeddingModelConfig from the appropriate model key, or None if not applicable
+        """
+        if not model_key:
+            return None
+
+        # For OpenAI provider, select the right model key based on vector_size
+        actual_model_key = model_key
+        if vector_size == 3072:
+            actual_model_key = "embedding_large"
+        elif vector_size == 1536:
+            actual_model_key = "embedding_small"
+        # else: use provided model_key (fallback to "embedding" for other sizes)
+
+        model_dict = provider_spec.get(actual_model_key)
+        if not model_dict:
+            # Fallback to original model_key if specific one not found
+            model_dict = provider_spec.get(model_key)
+            if not model_dict:
+                return None
 
         return EmbeddingModelConfig(**model_dict)
 

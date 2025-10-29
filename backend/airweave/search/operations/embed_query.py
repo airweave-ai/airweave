@@ -19,10 +19,13 @@ from ._base import SearchOperation
 class EmbedQuery(SearchOperation):
     """Generate vector embeddings for queries."""
 
-    def __init__(self, strategy: RetrievalStrategy, provider: BaseProvider) -> None:
-        """Initialize with retrieval strategy and provider."""
+    def __init__(
+        self, strategy: RetrievalStrategy, provider: BaseProvider, vector_size: int
+    ) -> None:
+        """Initialize with retrieval strategy, provider, and vector dimensions."""
         self.strategy = strategy
         self.provider = provider
+        self.vector_size = vector_size
 
     def depends_on(self) -> List[str]:
         """Depends on query expansion to get all queries to embed."""

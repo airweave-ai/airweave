@@ -15,40 +15,64 @@ from ._base import BaseEmbedder
 
 
 class DenseEmbedder(BaseEmbedder):
-    """Singleton dense embedder using OpenAI text-embedding-3-large (3072 dims).
+    """OpenAI dense embedder with dynamic model selection (non-singleton).
+
+    IMPORTANT: No longer a singleton! Each collection may use different embedding models,
+    so we create fresh instances with the correct model for each sync/search operation.
 
     Features:
-    - Singleton shared across all syncs in pod
+    - Dynamic model selection based on vector_size (3072 or 1536)
     - Batch processing with OpenAI limits (2048 texts/request, 300K tokens/request)
     - 5 concurrent requests max
-    - Rate limiting with OpenAIRateLimiter singleton
+    - Rate limiting with OpenAIRateLimiter singleton (shared across instances)
     - Automatic retry on transient errors (via AsyncOpenAI client)
     - Fail-fast on any API errors (no silent failures)
     """
 
-    MODEL_NAME = "text-embedding-3-large"
-    VECTOR_DIMENSIONS = 3072
     MAX_TOKENS_PER_TEXT = 8192  # OpenAI limit per text
     MAX_BATCH_SIZE = 2048  # OpenAI limit per request
     MAX_TOKENS_PER_REQUEST = 300000  # OpenAI limit
     MAX_CONCURRENT_REQUESTS = 5
 
-    def __init__(self):
-        """Initialize OpenAI embedder (once per pod)."""
-        if self._initialized:
-            return
+    def __new__(cls, vector_size: int = None):
+        """Override singleton pattern from BaseEmbedder - create fresh instances."""
+        return object.__new__(cls)
 
+    def __init__(self, vector_size: int = None):
+        """Initialize OpenAI embedder for specific vector dimensions.
+
+        Args:
+            vector_size: Vector dimensions to determine model:
+                - 3072: text-embedding-3-large
+                - 1536: text-embedding-3-small
+                - None: defaults to 3072 (large model)
+        """
         if not settings.OPENAI_API_KEY:
             raise SyncFailureError("OPENAI_API_KEY required for dense embeddings")
 
+        # Fail-fast: vector_size should always be provided from collection
+        # Only allow None for backward compatibility, but warn
+        if vector_size is None:
+            # Fallback to large model but this shouldn't happen
+            self.MODEL_NAME = "text-embedding-3-large"
+            self.VECTOR_DIMENSIONS = 3072
+        else:
+            # Select model and dimensions based on vector_size
+            from airweave.platform.destinations.collection_strategy import (
+                get_openai_embedding_model_for_vector_size,
+            )
+
+            self.MODEL_NAME = get_openai_embedding_model_for_vector_size(vector_size)
+            self.VECTOR_DIMENSIONS = vector_size
+
+        # Create fresh client instance
         self._client = AsyncOpenAI(
             api_key=settings.OPENAI_API_KEY,
             timeout=1200.0,  # 20 min timeout for high concurrency
             max_retries=2,
         )
-        self._rate_limiter = OpenAIRateLimiter()  # Singleton
+        self._rate_limiter = OpenAIRateLimiter()  # This singleton is still OK (shared rate limit)
         self._tokenizer = tiktoken.get_encoding("cl100k_base")
-        self._initialized = True
 
     async def embed_many(self, texts: List[str], sync_context: SyncContext) -> List[List[float]]:
         """Embed batch of texts using OpenAI text-embedding-3-large.

@@ -23,6 +23,16 @@ provider_models:
       name: "gpt-5-nano"
       tokenizer: "cl100k_base"
       context_window: 400000
+    embedding_large:
+      name: "text-embedding-3-large"
+      tokenizer: "cl100k_base"
+      dimensions: 3072
+      max_tokens: 8191
+    embedding_small:
+      name: "text-embedding-3-small"
+      tokenizer: "cl100k_base"
+      dimensions: 1536
+      max_tokens: 8191
     embedding:
       name: "text-embedding-3-large"
       tokenizer: "cl100k_base"

@@ -1167,9 +1167,10 @@ class EntityPipeline:
             sparse_texts.append(json.dumps(entity_dict, sort_keys=True))
 
         # Compute dense embeddings (always required)
+        # Create embedder with collection's vector_size (creates fresh instance)
         from airweave.platform.embedders import DenseEmbedder
 
-        dense_embedder = DenseEmbedder()
+        dense_embedder = DenseEmbedder(vector_size=sync_context.collection.vector_size)
         dense_embeddings = await dense_embedder.embed_many(dense_texts, sync_context)
 
         # Compute sparse embeddings (only if destination supports keyword index)

@@ -38,6 +38,13 @@ class OpenAIProvider(BaseProvider):
         except Exception as e:
             raise RuntimeError(f"Failed to initialize OpenAI client: {e}") from e
 
+        # Log which embedding model we're using (if any)
+        if model_spec.embedding_model:
+            self.ctx.logger.info(
+                f"[OpenAIProvider] Using embedding model: {model_spec.embedding_model.name} "
+                f"({model_spec.embedding_model.dimensions}-dim)"
+            )
+
         self.ctx.logger.debug(f"[OpenAIProvider] Initialized with model spec: {model_spec}")
 
         self.llm_tokenizer: Optional[Encoding] = None

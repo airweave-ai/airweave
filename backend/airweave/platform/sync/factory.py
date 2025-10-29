@@ -951,7 +951,7 @@ class SyncFactory:
         return credential
 
     @classmethod
-    async def _create_destination_instances(
+    async def _create_destination_instances(  # noqa: C901
         cls,
         db: AsyncSession,
         sync: schemas.Sync,
@@ -997,12 +997,17 @@ class SyncFactory:
                     destination_schema = schemas.Destination.model_validate(destination_model)
                     destination_class = resource_locator.get_destination(destination_schema)
 
+                    # Fail-fast: vector_size must be set
+                    if collection.vector_size is None:
+                        raise ValueError(f"Collection {collection.id} has no vector_size set.")
+
                     # Native Qdrant: no credentials (uses settings)
                     destination = await destination_class.create(
                         credentials=None,
                         config=None,
                         collection_id=collection.id,
                         organization_id=collection.organization_id,
+                        vector_size=collection.vector_size,
                         logger=logger,
                     )
 
