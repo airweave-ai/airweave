@@ -113,6 +113,8 @@ async def delete_connection(
 ) -> schemas.Connection:
     """Delete a connection.
 
+    This operation requires admin or owner role within the organization.
+
     Deletes the connection and integration credential.
 
     Args:
@@ -124,7 +126,14 @@ async def delete_connection(
     Returns:
     --------
         connection (schemas.Connection): The deleted connection
+
+    Raises:
+    -------
+        HTTPException: If user lacks admin privileges (403) or connection not found (404).
     """
+    # Validate user has admin role
+    deps.require_org_role(ctx, min_role="admin")
+
     return await connection_service.delete_connection(db, connection_id, ctx)
 
 
@@ -137,6 +146,8 @@ async def disconnect_source_connection(
 ) -> schemas.Connection:
     """Disconnect from a source connection.
 
+    This operation requires admin or owner role within the organization.
+
     Args:
     -----
         db (AsyncSession): The database session
@@ -146,7 +157,14 @@ async def disconnect_source_connection(
     Returns:
     --------
         connection (schemas.Connection): The disconnected connection
+
+    Raises:
+    -------
+        HTTPException: If user lacks admin privileges (403) or connection not found (404).
     """
+    # Validate user has admin role
+    deps.require_org_role(ctx, min_role="admin")
+
     connection = await connection_service.disconnect_source(db, connection_id, ctx)
     # Ensure we return something that is compatible with the response_model
     return connection

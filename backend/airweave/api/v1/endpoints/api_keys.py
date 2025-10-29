@@ -157,6 +157,8 @@ async def delete_api_key(
 ) -> schemas.APIKey:
     """Delete an API key.
 
+    This operation requires admin or owner role within the organization.
+
     Args:
     ----
         db (AsyncSession): The database session.
@@ -169,9 +171,12 @@ async def delete_api_key(
 
     Raises:
     ------
-        HTTPException: If the API key is not found.
+        HTTPException: If the API key is not found or user lacks admin privileges (403).
 
     """
+    # Validate user has admin role
+    deps.require_org_role(ctx, min_role="admin")
+
     api_key = await crud.api_key.get(db=db, id=id, ctx=ctx)
 
     # Decrypt the key for the response

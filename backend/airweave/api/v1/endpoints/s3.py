@@ -197,8 +197,17 @@ async def delete_s3_configuration(
 ) -> dict:
     """Remove S3 configuration for organization.
 
+    This operation requires admin or owner role within the organization.
+
     Deletes the S3 connection. Future syncs will only use Qdrant.
+
+    Raises:
+    -------
+        HTTPException: If user lacks admin privileges (403) or S3 connection not found (404).
     """
+    # Validate user has admin role
+    deps.require_org_role(ctx, min_role="admin")
+
     from sqlalchemy import and_, select
 
     # Find S3 connection
