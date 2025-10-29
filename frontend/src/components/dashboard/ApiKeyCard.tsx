@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Check, Copy, Key, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { useAPIKeysStore } from "@/lib/stores/apiKeys";
+import { useOrganizationContext } from "@/hooks/use-organization-context";
 
 interface ApiKeyCardProps {
   onRequestNewKey?: () => void;
@@ -19,6 +20,9 @@ export const ApiKeyCard = ({ onRequestNewKey }: ApiKeyCardProps) => {
     fetchAPIKeys,
     createAPIKey
   } = useAPIKeysStore();
+
+  const { isCurrentUserAdmin } = useOrganizationContext();
+  const isAdmin = isCurrentUserAdmin();
 
   useEffect(() => {
     fetchAPIKeys();
@@ -98,34 +102,40 @@ export const ApiKeyCard = ({ onRequestNewKey }: ApiKeyCardProps) => {
                 </div>
               </Button>
             </div>
-            <div className="mt-2 text-right">
-              <button
-                className="text-xs text-primary hover:underline"
-                onClick={handleNeedAnotherKey}
-                disabled={isCreating}
-              >
-                {isCreating ? "Creating..." : "Need another API key?"}
-              </button>
-            </div>
+            {isAdmin && (
+              <div className="mt-2 text-right">
+                <button
+                  className="text-xs text-primary hover:underline"
+                  onClick={handleNeedAnotherKey}
+                  disabled={isCreating}
+                >
+                  {isCreating ? "Creating..." : "Need another API key?"}
+                </button>
+              </div>
+            )}
           </>
         ) : (
           <div className="text-center py-2">
-            <p className="text-xs text-muted-foreground mb-3">No API keys yet</p>
-            <Button
-              size="sm"
-              onClick={handleCreateAPIKey}
-              disabled={isCreating}
-              className="h-8 px-3 text-xs"
-            >
-              {isCreating ? (
-                "Creating..."
-              ) : (
-                <>
-                  <Plus className="h-3 w-3 mr-1" />
-                  Create your first API key
-                </>
-              )}
-            </Button>
+            <p className="text-xs text-muted-foreground mb-3">
+              {isAdmin ? "No API keys yet" : "No API keys - Contact an admin"}
+            </p>
+            {isAdmin && (
+              <Button
+                size="sm"
+                onClick={handleCreateAPIKey}
+                disabled={isCreating}
+                className="h-8 px-3 text-xs"
+              >
+                {isCreating ? (
+                  "Creating..."
+                ) : (
+                  <>
+                    <Plus className="h-3 w-3 mr-1" />
+                    Create your first API key
+                  </>
+                )}
+              </Button>
+            )}
           </div>
         )}
       </div>
