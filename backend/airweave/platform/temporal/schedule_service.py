@@ -151,7 +151,7 @@ class TemporalScheduleService:
             None,  # No pre-created sync job for scheduled runs
             collection_dict,
             connection_dict,
-            user_dict,
+            ctx.to_serializable_dict(),  # Use full context dict, not just user_dict
             access_token,
         ]
 

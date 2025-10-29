@@ -49,7 +49,7 @@ async def _run_sync_task(
 
 # Import inside the activity to avoid issues with Temporal's sandboxing
 @activity.defn
-async def run_sync_activity(
+async def run_sync_activity(  # noqa: C901
     sync_dict: Dict[str, Any],
     sync_job_dict: Dict[str, Any],
     collection_dict: Dict[str, Any],
@@ -75,6 +75,7 @@ async def run_sync_activity(
     from airweave import schemas
     from airweave.api.context import ApiContext
     from airweave.core.logging import LoggerConfigurator
+    from airweave.platform.temporal.worker_metrics import worker_metrics
 
     # Convert dicts back to Pydantic models
     sync = schemas.Sync(**sync_dict)
@@ -105,66 +106,92 @@ async def run_sync_activity(
     )
 
     ctx.logger.debug(f"\n\nStarting sync activity for job {sync_job.id}\n\n")
-    # Start the sync task
-    sync_task = asyncio.create_task(
-        _run_sync_task(
-            sync,
-            sync_job,
-            collection,
-            connection,
-            ctx,
-            access_token,
-            force_full_sync,
+
+    # Track this activity in worker metrics (fail-safe: never crash sync)
+    try:
+        tracking_context = worker_metrics.track_activity(
+            activity_name="run_sync_activity",
+            sync_job_id=sync_job.id,
+            organization_id=organization.id,
+            metadata={
+                "connection_name": connection.name,
+                "collection_name": collection.name,
+                "force_full_sync": force_full_sync,
+            },
         )
-    )
+        await tracking_context.__aenter__()
+    except Exception as e:
+        ctx.logger.warning(f"Failed to register activity in metrics: {e}")
+        tracking_context = None
 
     try:
-        while True:
-            done, _ = await asyncio.wait({sync_task}, timeout=1)
-            if sync_task in done:
-                # Propagate result/exception (including CancelledError from inner task)
-                await sync_task
-                break
-            ctx.logger.debug("HEARTBEAT: Sync in progress")
-            activity.heartbeat("Sync in progress")
-
-        ctx.logger.info(f"\n\nCompleted sync activity for job {sync_job.id}\n\n")
-
-    except asyncio.CancelledError:
-        ctx.logger.info(f"\n\n[ACTIVITY] Sync activity cancelled for job {sync_job.id}\n\n")
-        # 1) Flip job status to CANCELLED immediately so UI reflects truth
-        try:
-            # Import inside to avoid sandbox issues
-            from airweave.core.datetime_utils import utc_now_naive
-            from airweave.core.shared_models import SyncJobStatus
-            from airweave.core.sync_job_service import sync_job_service
-
-            await sync_job_service.update_status(
-                sync_job_id=sync_job.id,
-                status=SyncJobStatus.CANCELLED,
-                ctx=ctx,
-                error="Workflow was cancelled",
-                failed_at=utc_now_naive(),
+        # Start the sync task
+        sync_task = asyncio.create_task(
+            _run_sync_task(
+                sync,
+                sync_job,
+                collection,
+                connection,
+                ctx,
+                access_token,
+                force_full_sync,
             )
-            ctx.logger.debug(f"\n\n[ACTIVITY] Updated job {sync_job.id} to CANCELLED\n\n")
-        except Exception as status_err:
-            ctx.logger.error(f"Failed to update job {sync_job.id} to CANCELLED: {status_err}")
+        )
 
-        # 2) Ensure the internal sync task is cancelled and awaited while heartbeating
-        sync_task.cancel()
-        while not sync_task.done():
+        try:
+            while True:
+                done, _ = await asyncio.wait({sync_task}, timeout=1)
+                if sync_task in done:
+                    # Propagate result/exception (including CancelledError from inner task)
+                    await sync_task
+                    break
+                ctx.logger.debug("HEARTBEAT: Sync in progress")
+                activity.heartbeat("Sync in progress")
+
+            ctx.logger.info(f"\n\nCompleted sync activity for job {sync_job.id}\n\n")
+
+        except asyncio.CancelledError:
+            ctx.logger.info(f"\n\n[ACTIVITY] Sync activity cancelled for job {sync_job.id}\n\n")
+            # 1) Flip job status to CANCELLED immediately so UI reflects truth
             try:
-                await asyncio.wait_for(sync_task, timeout=1)
-            except asyncio.TimeoutError:
-                activity.heartbeat("Cancelling sync...")
-        with suppress(asyncio.CancelledError):
-            await sync_task
+                # Import inside to avoid sandbox issues
+                from airweave.core.datetime_utils import utc_now_naive
+                from airweave.core.shared_models import SyncJobStatus
+                from airweave.core.sync_job_service import sync_job_service
 
-        # 3) Re-raise so Temporal records the activity as CANCELED
-        raise
-    except Exception as e:
-        ctx.logger.error(f"Failed sync activity for job {sync_job.id}: {e}")
-        raise
+                await sync_job_service.update_status(
+                    sync_job_id=sync_job.id,
+                    status=SyncJobStatus.CANCELLED,
+                    ctx=ctx,
+                    error="Workflow was cancelled",
+                    failed_at=utc_now_naive(),
+                )
+                ctx.logger.debug(f"\n\n[ACTIVITY] Updated job {sync_job.id} to CANCELLED\n\n")
+            except Exception as status_err:
+                ctx.logger.error(f"Failed to update job {sync_job.id} to CANCELLED: {status_err}")
+
+            # 2) Ensure the internal sync task is cancelled and awaited while heartbeating
+            sync_task.cancel()
+            while not sync_task.done():
+                try:
+                    await asyncio.wait_for(sync_task, timeout=1)
+                except asyncio.TimeoutError:
+                    activity.heartbeat("Cancelling sync...")
+            with suppress(asyncio.CancelledError):
+                await sync_task
+
+            # 3) Re-raise so Temporal records the activity as CANCELED
+            raise
+        except Exception as e:
+            ctx.logger.error(f"Failed sync activity for job {sync_job.id}: {e}")
+            raise
+    finally:
+        # Clean up metrics tracking (fail-safe)
+        if tracking_context:
+            try:
+                await tracking_context.__aexit__(None, None, None)
+            except Exception as cleanup_err:
+                ctx.logger.warning(f"Failed to cleanup metrics tracking: {cleanup_err}")
 
 
 @activity.defn
