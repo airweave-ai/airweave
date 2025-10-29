@@ -34,7 +34,7 @@ router = TrailingSlashRouter()
     ),
 )
 async def list(
-    skip: int = Query(0, description="Number of collections to skip for pagination"),
+    skip: int = Query(0, ge=0, description="Number of collections to skip for pagination"),
     limit: int = Query(
         100, description="Maximum number of collections to return (1-1000)", le=1000, ge=1
     ),

@@ -24,8 +24,8 @@ router = TrailingSlashRouter()
 async def list_syncs(
     *,
     db: AsyncSession = Depends(deps.get_db),
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(0, ge=0, description="Number of syncs to skip for pagination"),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum number of syncs to return"),
     with_source_connection: bool = False,
     ctx: ApiContext = Depends(deps.get_context),
 ) -> list[schemas.Sync] | list[schemas.SyncWithSourceConnection]:
@@ -56,8 +56,8 @@ async def list_syncs(
 async def list_all_jobs(
     *,
     db: AsyncSession = Depends(deps.get_db),
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(0, ge=0, description="Number of jobs to skip for pagination"),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum number of jobs to return"),
     status: Optional[List[str]] = Query(None, description="Filter by job status"),
     ctx: ApiContext = Depends(deps.get_context),
 ) -> list[schemas.SyncJob]:

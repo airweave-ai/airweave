@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import Body, Depends
+from fastapi import Body, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
@@ -105,8 +105,8 @@ async def read_api_key(
 async def read_api_keys(
     *,
     db: AsyncSession = Depends(deps.get_db),
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(0, ge=0, description="Number of API keys to skip for pagination"),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum number of API keys to return"),
     ctx: ApiContext = Depends(deps.get_context),
 ) -> list[schemas.APIKey]:
     """Retrieve all API keys for the current user.
