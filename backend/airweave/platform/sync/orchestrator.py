@@ -3,7 +3,7 @@
 import asyncio
 from typing import Optional
 
-from airweave import schemas
+from airweave import crud, schemas
 from airweave.analytics import business_events
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.exceptions import PaymentRequiredException, UsageLimitExceededException
@@ -62,6 +62,7 @@ class SyncOrchestrator:
         final_status = SyncJobStatus.FAILED  # Default to failed, will be updated based on outcome
         error_message: Optional[str] = None  # Track error message for finalization
         try:
+            await self._validate_source_connection()
             await self._start_sync()
             await self._process_entities()
             await self._cleanup_orphaned_entities_if_needed()
@@ -105,6 +106,63 @@ class SyncOrchestrator:
                     f"Temp file cleanup failed (non-fatal in finally block): {cleanup_error}",
                     exc_info=True,
                 )
+
+    async def _validate_source_connection(self) -> None:
+        """Validate source connection before starting sync.
+        
+        Calls the source's validate() method to ensure credentials are valid.
+        If validation fails, marks the source connection as not authenticated
+        to trigger re-authentication UI in the frontend.
+        
+        Raises:
+            SyncFailureError: If validation returns False or raises an exception.
+        """
+        self.sync_context.logger.info("Validating source connection...")
+        
+        try:
+            is_valid = await self.sync_context.source.validate()
+        except Exception as e:
+            await self._mark_connection_not_authenticated()
+            self.sync_context.logger.error(f"Source validation failed with exception: {e}")
+            raise SyncFailureError(
+                f"Source validation failed for {self.sync_context.source._short_name}: {str(e)}. "
+                f"Please reconnect your account."
+            )
+        
+        if not is_valid:
+            await self._mark_connection_not_authenticated()
+            self.sync_context.logger.error("Source validation returned False")
+            raise SyncFailureError(
+                f"Source validation failed for {self.sync_context.source._short_name}. "
+                f"Please reconnect your account."
+            )
+        
+        self.sync_context.logger.info("✅ Source validation passed")
+    
+    async def _mark_connection_not_authenticated(self) -> None:
+        """Mark source connection as not authenticated to trigger re-auth UI."""
+        try:
+            async with get_db_context() as db:
+                source_connection = await crud.source_connection.get_by_sync_id(
+                    db=db,
+                    sync_id=self.sync_context.sync.id,
+                    ctx=self.sync_context.ctx
+                )
+                
+                if source_connection:
+                    await crud.source_connection.update(
+                        db=db,
+                        db_obj=source_connection,
+                        obj_in={"is_authenticated": False},
+                        ctx=self.sync_context.ctx
+                    )
+                    self.sync_context.logger.info(
+                        "Marked source connection as not authenticated, showing re-auth UI"
+                    )
+        except Exception as e:
+            self.sync_context.logger.warning(
+                f"Failed to mark source connection as not authenticated: {e}"
+            )
 
     async def _start_sync(self) -> None:
         """Initialize sync job and start all components."""
