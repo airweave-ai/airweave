@@ -2,7 +2,7 @@
 
 from typing import Any, Dict, List, Optional
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
@@ -158,8 +158,10 @@ async def list_auth_providers(
     *,
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(0, ge=0, description="Number of auth providers to skip for pagination"),
+    limit: int = Query(
+        100, ge=1, le=1000, description="Maximum number of auth providers to return"
+    ),
 ) -> List[schemas.AuthProvider]:
     """Get all available auth providers.
 
@@ -226,8 +228,8 @@ async def list_auth_provider_connections(
     *,
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(0, ge=0, description="Number of connections to skip for pagination"),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum number of connections to return"),
 ) -> List[schemas.AuthProviderConnection]:
     """Get all auth provider connections for the current organization.
 
