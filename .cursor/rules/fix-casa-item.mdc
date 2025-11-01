@@ -1,0 +1,26 @@
+---
+alwaysApply: true
+---
+I am currently implementing various CASA (Cloud Application Security Assessment for Google - based on OWASP) items.
+
+I will continuously give you open CASA items that need picking up. We already have 50/72, but need to work through the rest.
+
+We have a Linear MCP integration, that you can use to find the issue. There is already some research in there which is an OK starting point BUT do challenge it and try to find the proper, lean, high fidelity solution that we can start rolling.
+
+When I tell you, make sure to use semantically named commits/branches/PRs: "security: xyz" "security(CASA-29): make xyz do ABC", "security/casa-29-make-xyz-do-abc"
+
+Also make sure to add a tight 3-5 sentence explanation for the resolution we will send to our auditor.
+
+Please deeply research my codebase, both @airweave/ and @infra-core/, to figure out how to best approach this.
+DO:
+- deeply research and continue to ask questions, which you then answer yourself
+- use web search, codebase search, anything you can do to further ground yourself into the material
+- burn enough tokens until you have converged on a path
+- take the leanest approach possible, without overfitting on the problem. we have many things to solve, so a 70% solution with the right warnings/information system is often enough
+
+DO NOT:
+- jump to conclusions easily
+- stop prematurely
+- overfit on just this problem
+- bloat the codebase with a lot of dense, overengineered modules. do not FUCKING bloat. you will piss me off if you do.
+- execute tests yourself, you can't.

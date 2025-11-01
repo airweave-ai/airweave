@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud, schemas
 from airweave.api import deps
 from airweave.api.context import ApiContext
+from airweave.api.rbac import require_org_role
 from airweave.api.router import TrailingSlashRouter
 from airweave.core.logging import logger
 from airweave.core.pubsub import core_pubsub
@@ -154,6 +155,8 @@ async def delete_sync(
 ) -> schemas.Sync:
     """Delete a sync configuration and optionally its associated data.
 
+    This operation requires admin or owner role within the organization.
+
     Args:
     -----
         db: The database session
@@ -164,7 +167,14 @@ async def delete_sync(
     Returns:
     --------
         sync (schemas.Sync): The deleted sync
+
+    Raises:
+    -------
+        HTTPException: If user lacks admin privileges (403) or sync not found (404).
     """
+    # Validate user has admin role
+    require_org_role(ctx, min_role="admin")
+
     return await sync_service.delete_sync(db=db, sync_id=sync_id, ctx=ctx, delete_data=delete_data)
 
 
@@ -421,6 +431,8 @@ async def update_sync(
 ) -> schemas.Sync:
     """Update a sync configuration.
 
+    This operation requires admin or owner role within the organization.
+
     Args:
     -----
         db: The database session
@@ -431,7 +443,14 @@ async def update_sync(
     Returns:
     --------
         sync (schemas.Sync): The updated sync
+
+    Raises:
+    -------
+        HTTPException: If user lacks admin privileges (403) or sync not found (404).
     """
+    # Validate user has admin role
+    require_org_role(ctx, min_role="admin")
+
     return await sync_service.update_sync(db=db, sync_id=sync_id, sync_update=sync_update, ctx=ctx)
 
 
@@ -475,6 +494,8 @@ async def update_minute_level_schedule(
 ) -> schemas.ScheduleResponse:
     """Update an existing minute-level schedule.
 
+    This operation requires admin or owner role within the organization.
+
     Args:
     -----
         db: The database session
@@ -485,7 +506,14 @@ async def update_minute_level_schedule(
     Returns:
     --------
         schemas.ScheduleResponse: The schedule response with status and message
+
+    Raises:
+    -------
+        HTTPException: If user lacks admin privileges (403) or schedule not found (404).
     """
+    # Validate user has admin role
+    require_org_role(ctx, min_role="admin")
+
     return await sync_service.update_minute_level_schedule(
         db=db,
         sync_id=sync_id,
