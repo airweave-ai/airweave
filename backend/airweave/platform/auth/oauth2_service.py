@@ -539,22 +539,22 @@ class OAuth2Service:
             "refresh_token": refresh_token,
         }
 
-        # Include scope in refresh request if available
-        # This ensures the refreshed token maintains the same permissions
-        if hasattr(integration_config, "scope") and integration_config.scope:
-            payload["scope"] = integration_config.scope
-            logger.debug(f"Including scope in token refresh: {integration_config.scope}")
-
-        # Include additional_frontend_params (e.g., audience for Atlassian)
-        # These are often required for the refreshed token to access the same resources
+        # IMPORTANT: For WITH_ROTATING_REFRESH OAuth (Jira, Confluence, Microsoft),
+        # do NOT include scope parameter - Atlassian/Microsoft reject it with 403
+        # For WITH_REFRESH OAuth (Google, Slack), scope should be included
+        # See: https://developer.atlassian.com/cloud/jira/platform/oauth-2-3lo-apps/#refresh-a-token
+        oauth_type = getattr(integration_config, "oauth_type", None)
         if (
-            hasattr(integration_config, "additional_frontend_params")
-            and integration_config.additional_frontend_params
+            oauth_type == "with_refresh"
+            and hasattr(integration_config, "scope")
+            and integration_config.scope
         ):
-            payload.update(integration_config.additional_frontend_params)
+            payload["scope"] = integration_config.scope
             logger.debug(
-                f"Including additional params in token refresh: {list(integration_config.additional_frontend_params.keys())}"
+                f"Including scope in token refresh (oauth_type=with_refresh): {integration_config.scope}"
             )
+        elif oauth_type == "with_rotating_refresh":
+            logger.debug(f"Skipping scope in token refresh (oauth_type=with_rotating_refresh)")
 
         if integration_config.client_credential_location == "header":
             encoded_credentials = OAuth2Service._encode_client_credentials(client_id, client_secret)

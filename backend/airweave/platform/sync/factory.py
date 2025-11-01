@@ -323,15 +323,16 @@ class SyncFactory:
             pass
 
         # Setup token manager for OAuth sources (if applicable)
-        # Skip only for direct token injection - let _setup_token_manager decide if
-        # a token manager should actually be created based on OAuth type and credentials
+        # Skip only for direct token injection (when access_token parameter was explicitly passed)
+        # Don't confuse this with credentials being processed to a string for the source
         auth_mode = auth_config.get("auth_mode")
         auth_provider_instance = auth_config.get("auth_provider_instance")
-        is_direct_injection = auth_mode == AuthProviderMode.DIRECT and isinstance(
-            source_credentials, str
-        )
 
-        if not is_direct_injection:
+        # Only skip token manager if access_token was directly injected via parameter
+        # (not when credentials are just processed to string format for source consumption)
+        is_direct_token_injection = access_token is not None
+
+        if not is_direct_token_injection:
             try:
                 await cls._setup_token_manager(
                     db=db,
@@ -499,7 +500,7 @@ class SyncFactory:
             if isinstance(source_credentials, dict) and "access_token" in source_credentials:
                 should_create_token_manager = True
                 logger.debug(
-                    f"OAuth source {short_name} without auth_config_class will use token manager"
+                    f"✅ OAuth source {short_name} without auth_config_class will use token manager"
                 )
 
         if should_create_token_manager:

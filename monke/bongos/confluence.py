@@ -64,16 +64,17 @@ class ConfluenceBongo(BaseBongo):
             token = str(uuid.uuid4())[:8]
 
             title, content = await generate_confluence_artifact(self.openai_model, token)
+            unique_title = f"{title} [{token}]"
 
             # Create page
-            page_data = await self._create_test_page(self.test_space_key, title, content)
+            page_data = await self._create_test_page(self.test_space_key, unique_title, content)
 
             self.logger.info(f"📄 Created test page: {page_data['title']}")
 
             return {
                 "type": "page",
                 "id": page_data["id"],
-                "title": title,
+                "title": unique_title,  # Store the unique title
                 "space_key": self.test_space_key,
                 "token": token,
                 "expected_content": token,
@@ -100,19 +101,21 @@ class ConfluenceBongo(BaseBongo):
             token = page_info.get("token") or str(uuid.uuid4())[:8]
 
             # Generate new content with same token
-            title, content = await generate_confluence_artifact(
+            # Keep the original title to avoid conflicts in Confluence
+            original_title = page_info.get("title")
+            _, content = await generate_confluence_artifact(
                 self.openai_model, token, is_update=True
             )
 
-            # Update page
-            await self._update_test_page(page_info["id"], title, content)
+            # Update page with original title (Confluence doesn't allow duplicate titles in a space)
+            await self._update_test_page(page_info["id"], original_title, content)
 
-            self.logger.info(f"📝 Updated test page: {title}")
+            self.logger.info(f"📝 Updated test page: {original_title}")
 
             return {
                 "type": "page",
                 "id": page_info["id"],
-                "title": title,
+                "title": original_title,  # Keep original title
                 "space_key": self.test_space_key,
                 "token": token,
                 "expected_content": token,

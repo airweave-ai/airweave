@@ -36,6 +36,7 @@ class JiraBongo(BaseBongo):
         # Test data tracking
         self.test_issues = []
         self.test_project_key = None
+        self.valid_issue_types = []  # Store valid issue types for the project
 
         # Rate limiting (Jira: varies by endpoint)
         self.last_request_time = 0
@@ -56,6 +57,9 @@ class JiraBongo(BaseBongo):
         # Get or create a test project
         await self._ensure_test_project()
 
+        # Determine which issue type to use (prefer standard types)
+        issue_type_to_use = self._get_preferred_issue_type()
+
         # Create issues based on configuration
         from monke.generation.jira import generate_jira_artifact
 
@@ -63,13 +67,13 @@ class JiraBongo(BaseBongo):
             # Short unique token used in summary and description for verification
             token = str(uuid.uuid4())[:8]
 
-            summary, description, issue_type = await generate_jira_artifact(
+            summary, description, _ = await generate_jira_artifact(
                 self.openai_model, token
             )
 
-            # Create issue
+            # Create issue with a valid issue type
             issue_data = await self._create_test_issue(
-                self.test_project_key, summary, description, issue_type
+                self.test_project_key, summary, description, issue_type_to_use
             )
 
             entities.append(
@@ -145,10 +149,14 @@ class JiraBongo(BaseBongo):
         return await self.delete_specific_entities(self.created_entities)
 
     async def delete_specific_entities(self, entities: List[Dict[str, Any]]) -> List[str]:
-        """Delete specific entities from Jira."""
+        """Delete specific entities from Jira.
+        
+        Returns:
+            List of entity IDs that were successfully deleted
+        """
         self.logger.info(f"🥁 Deleting {len(entities)} specific issues from Jira")
 
-        deleted_keys = []
+        deleted_ids = []
 
         for entity in entities:
             try:
@@ -157,7 +165,7 @@ class JiraBongo(BaseBongo):
 
                 if test_issue:
                     await self._delete_test_issue(test_issue["id"])
-                    deleted_keys.append(test_issue["key"])
+                    deleted_ids.append(test_issue["id"])  # Return ID, not key
                     self.logger.info(f"🗑️ Deleted test issue: {test_issue['key']}")
                 else:
                     self.logger.warning(
@@ -174,14 +182,14 @@ class JiraBongo(BaseBongo):
         # VERIFICATION: Check if issues are actually deleted
         self.logger.info("🔍 VERIFYING: Checking if issues are actually deleted from Jira")
         for entity in entities:
-            if entity.get("key") in deleted_keys:
+            if entity.get("id") in deleted_ids:
                 is_deleted = await self._verify_issue_deleted(entity["id"])
                 if is_deleted:
                     self.logger.info(f"✅ Issue {entity['key']} confirmed deleted from Jira")
                 else:
                     self.logger.warning(f"⚠️ Issue {entity['key']} still exists in Jira!")
 
-        return deleted_keys
+        return deleted_ids
 
     async def cleanup(self):
         """Clean up any remaining test data."""
@@ -242,6 +250,61 @@ class JiraBongo(BaseBongo):
             # Use the first project
             self.test_project_key = projects[0]["key"]
             self.logger.info(f"📁 Using project: {self.test_project_key}")
+
+            # Fetch valid issue types for this project
+            await self._fetch_valid_issue_types()
+
+    async def _fetch_valid_issue_types(self):
+        """Fetch valid issue types for the current project."""
+        await self._rate_limit()
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"https://api.atlassian.com/ex/jira/{self.cloud_id}/rest/api/3/project/{self.test_project_key}",
+                headers={
+                    "Authorization": f"Bearer {self.access_token}",
+                    "Accept": "application/json",
+                },
+            )
+
+            if response.status_code != 200:
+                raise Exception(
+                    f"Failed to get project details: {response.status_code} - {response.text}"
+                )
+
+            project_data = response.json()
+            issue_types = project_data.get("issueTypes", [])
+            
+            if not issue_types:
+                raise Exception(f"No issue types found for project {self.test_project_key}")
+
+            # Store valid issue type names
+            self.valid_issue_types = [it["name"] for it in issue_types]
+            self.logger.info(
+                f"✅ Found {len(self.valid_issue_types)} valid issue types: {', '.join(self.valid_issue_types)}"
+            )
+
+    def _get_preferred_issue_type(self) -> str:
+        """Get a preferred issue type from the available types.
+        
+        Prefers standard types like Task, Bug, or Story.
+        Falls back to the first available type.
+        """
+        if not self.valid_issue_types:
+            raise Exception("No valid issue types available")
+
+        # Preferred types in order
+        preferred_types = ["Task", "Bug", "Story"]
+        
+        for preferred in preferred_types:
+            if preferred in self.valid_issue_types:
+                self.logger.info(f"🎯 Using issue type: {preferred}")
+                return preferred
+        
+        # Fall back to first available type
+        fallback_type = self.valid_issue_types[0]
+        self.logger.info(f"🎯 Using fallback issue type: {fallback_type}")
+        return fallback_type
 
     async def _create_test_issue(
         self, project_key: str, summary: str, description: str, issue_type: str = "Task"

@@ -20,7 +20,10 @@ References:
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
+import tenacity
+from tenacity import stop_after_attempt, wait_exponential
 
+from airweave.core.exceptions import TokenRefreshError
 from airweave.core.logging import logger
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
@@ -45,7 +48,7 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
         AuthenticationMethod.OAUTH_TOKEN,
         AuthenticationMethod.AUTH_PROVIDER,
     ],
-    oauth_type=OAuthType.WITH_REFRESH,
+    oauth_type=OAuthType.WITH_ROTATING_REFRESH,
     auth_config_class=None,
     config_class="ConfluenceConfig",
     labels=["Knowledge Base", "Documentation"],
@@ -61,57 +64,42 @@ class ConfluenceSource(BaseSource):
     extracts embedded files and attachments from page content.
     """
 
-    @staticmethod
-    async def _get_accessible_resources(access_token: str) -> list[dict]:
+    async def _get_accessible_resources(self) -> list[dict]:
         """Get the list of accessible Atlassian resources for this token.
 
-        Args:
-            access_token: The OAuth access token
-
-        Returns:
-            list[dict]: List of accessible resources, each containing 'id' and 'url' keys
+        Uses token manager to ensure fresh access token.
         """
+        self.logger.info("Retrieving accessible Atlassian resources")
+
+        # Get fresh access token (will refresh if needed)
+        access_token = await self.get_access_token()
+
+        if not access_token:
+            self.logger.error("Cannot get accessible resources: access token is None")
+            return []
+
         async with httpx.AsyncClient() as client:
             headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
             try:
+                self.logger.debug(
+                    "Making request to https://api.atlassian.com/oauth/token/accessible-resources"
+                )
                 response = await client.get(
                     "https://api.atlassian.com/oauth/token/accessible-resources", headers=headers
                 )
                 response.raise_for_status()
-                return response.json()
-            except Exception as e:
-                logger.error(f"Error getting accessible resources: {str(e)}")
+                resources = response.json()
+                self.logger.info(f"Found {len(resources)} accessible Atlassian resources")
+                self.logger.debug(f"Resources: {resources}")
+                return resources
+            except httpx.HTTPStatusError as e:
+                self.logger.error(
+                    f"HTTP error getting accessible resources: {e.response.status_code} - {e.response.text}"
+                )
                 return []
-
-    @staticmethod
-    async def _extract_cloud_id(access_token: str) -> tuple[str, str]:
-        """Extract the Atlassian Cloud ID from OAuth 2.0 accessible-resources.
-
-        Args:
-            access_token: The OAuth access token
-
-        Returns:
-            cloud_id (str): The cloud instance ID
-        """
-        try:
-            resources = await ConfluenceSource._get_accessible_resources(access_token)
-
-            if not resources:
-                logger.warning("No accessible resources found")
-                return ""
-
-            # Use the first available resource
-            # In most cases, there will only be one resource
-            resource = resources[0]
-            cloud_id = resource.get("id", "")
-
-            if not cloud_id:
-                logger.warning("Missing ID in accessible resources")
-            return cloud_id
-
-        except Exception as e:
-            logger.error(f"Error extracting cloud ID: {str(e)}")
-            return ""
+            except Exception as e:
+                self.logger.error(f"Error getting accessible resources: {str(e)}", exc_info=True)
+                return []
 
     @classmethod
     async def create(
@@ -120,11 +108,14 @@ class ConfluenceSource(BaseSource):
         """Create a new Confluence source instance."""
         instance = cls()
         instance.access_token = access_token
-        instance.cloud_id = await cls._extract_cloud_id(access_token)
-        instance.base_url = f"https://api.atlassian.com/ex/confluence/{instance.cloud_id}"
-        logger.info(f"Initialized Confluence source with base URL: {instance.base_url}")
         return instance
 
+    @tenacity.retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=tenacity.retry_if_exception_type(httpx.HTTPStatusError),
+        reraise=True,
+    )
     async def _get_with_auth(self, client: httpx.AsyncClient, url: str) -> Any:
         """Make an authenticated GET request to the Confluence REST API using the provided URL.
 
@@ -137,56 +128,40 @@ class ConfluenceSource(BaseSource):
             "X-Atlassian-Token": "no-check",  # Required for CSRF protection
         }
 
-        # Add cloud instance ID if available
-        if self.cloud_id:
-            headers["X-Cloud-ID"] = self.cloud_id
-
-        self.logger.debug(f"Making request to {url} with headers: {headers}")
-
+        self.logger.debug(f"Request headers: {headers}")
         try:
             response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            return response.json()
         except httpx.HTTPStatusError as e:
             # Handle 401 Unauthorized - try refreshing token
             if e.response.status_code == 401 and self._token_manager:
-                self.logger.info("Received 401 error, attempting to refresh token")
-                refreshed = await self._token_manager.refresh_on_unauthorized()
+                self.logger.warning(
+                    "🔐 Received 401 Unauthorized from Confluence - attempting token refresh"
+                )
+                try:
+                    refreshed = await self._token_manager.refresh_on_unauthorized()
 
-                if refreshed:
-                    # Retry with new token
-                    new_access_token = await self.get_access_token()
-                    headers["Authorization"] = f"Bearer {new_access_token}"
-                    self.logger.info("Retrying request with refreshed token")
-                    response = await client.get(url, headers=headers)
-                else:
-                    raise
-            else:
-                raise
-
-        if not response.is_success:
-            self.logger.error(f"Request failed with status {response.status_code}")
-            self.logger.error(f"Response headers: {dict(response.headers)}")
-            self.logger.error(f"Response body: {response.text}")
-
-            # Special handling for scope-related errors
-            if response.status_code == 401:
-                error_body = response.json() if response.text else {}
-                error_message = error_body.get("message", "")
-
-                if (
-                    "scope" in error_message.lower()
-                    or "x-failure-category" in response.headers
-                    and "SCOPE" in response.headers.get("x-failure-category", "")
-                ):
+                    if refreshed:
+                        # Retry with new token (the retry decorator will handle this)
+                        self.logger.info("✅ Token refreshed successfully, retrying request")
+                        raise  # Let tenacity retry with the refreshed token
+                except TokenRefreshError as refresh_error:
+                    # Token refresh failed - provide clear error message
                     self.logger.error(
-                        "OAuth scope error. The token doesn't have the required permissions."
+                        f"❌ Token refresh failed: {str(refresh_error)}. "
+                        f"User may need to reconnect their Confluence account."
                     )
-                    self.logger.error(
-                        "Please verify that your OAuth app has the correct scopes configured."
-                    )
-                    raise ValueError(f"OAuth scope error: {error_message}.")
+                    # Re-raise with clearer context
+                    raise TokenRefreshError(
+                        f"Failed to refresh Confluence access token: {str(refresh_error)}. "
+                        f"Please reconnect your Confluence account."
+                    ) from refresh_error
 
-        response.raise_for_status()
-        return response.json()
+            # Log the error details
+            self.logger.error(f"Request failed: {str(e)}")
+            self.logger.error(f"Response body: {e.response.text}")
+            raise
 
     async def _generate_space_entities(
         self, client: httpx.AsyncClient
@@ -469,35 +444,36 @@ class ConfluenceSource(BaseSource):
             url = f"{self.base_url}{next_link}" if next_link else None
 
     async def validate(self) -> bool:
-        """Verify Confluence OAuth2 token and site access by pinging a lightweight endpoint."""
-        # Ensure we have a cloud_id/base_url; if missing, try to resolve from the current token.
-        if not getattr(self, "cloud_id", None) or not getattr(self, "base_url", None):
-            token = await self.get_access_token()
-            if not token:
-                self.logger.error("Confluence validation failed: no access token available.")
-                return False
-            cloud_id = await self._extract_cloud_id(token)
-            if not cloud_id:
-                self.logger.error(
-                    "Confluence validation failed: unable to resolve Atlassian cloud ID."
-                )
-                return False
-            self.cloud_id = cloud_id
-            self.base_url = f"https://api.atlassian.com/ex/confluence/{cloud_id}"
+        """Verify Confluence OAuth2 token by calling accessible-resources endpoint.
 
-        # Simple authorized ping against spaces (validates scopes and site reachability).
-        return await self._validate_oauth2(
-            ping_url=f"{self.base_url}/wiki/api/v2/spaces?limit=1",
-            headers={
-                "Accept": "application/json",
-                "X-Atlassian-Token": "no-check",
-                "X-Cloud-ID": self.cloud_id,
-            },
-            timeout=10.0,
-        )
+        A successful call proves the token is valid and has necessary scopes.
+        Cloud ID extraction happens lazily during sync.
+        """
+        try:
+            resources = await self._get_accessible_resources()
+
+            if not resources:
+                self.logger.error("Confluence validation failed: no accessible resources found")
+                return False
+
+            self.logger.info("✅ Confluence validation successful")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Confluence validation failed: {str(e)}")
+            return False
 
     async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:  # noqa: C901
         """Generate all Confluence content."""
+        self.logger.info("Starting Confluence entity generation process")
+
+        resources = await self._get_accessible_resources()
+        if not resources:
+            raise ValueError("No accessible resources found")
+        cloud_id = resources[0]["id"]
+
+        self.base_url = f"https://api.atlassian.com/ex/confluence/{cloud_id}"
+        self.logger.debug(f"Base URL set to: {self.base_url}")
         async with httpx.AsyncClient() as client:
             # 1) Yield all spaces (top-level)
             async for space_entity in self._generate_space_entities(client):

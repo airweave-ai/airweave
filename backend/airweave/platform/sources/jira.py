@@ -13,6 +13,7 @@ import httpx
 import tenacity
 from tenacity import stop_after_attempt, wait_exponential
 
+from airweave.core.exceptions import TokenRefreshError
 from airweave.core.logging import logger
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
@@ -32,7 +33,7 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
         AuthenticationMethod.OAUTH_TOKEN,
         AuthenticationMethod.AUTH_PROVIDER,
     ],
-    oauth_type=OAuthType.WITH_REFRESH,
+    oauth_type=OAuthType.WITH_ROTATING_REFRESH,
     auth_config_class=None,
     config_class="JiraConfig",
     labels=["Project Management", "Issue Tracking"],
@@ -47,14 +48,24 @@ class JiraSource(BaseSource):
     relationships for agile development and issue tracking workflows.
     """
 
-    @staticmethod
-    async def _get_accessible_resources(access_token: str) -> list[dict]:
-        """Get the list of accessible Atlassian resources for this token."""
-        logger.info("Retrieving accessible Atlassian resources")
+    async def _get_accessible_resources(self) -> list[dict]:
+        """Get the list of accessible Atlassian resources for this token.
+
+        Uses token manager to ensure fresh access token.
+        """
+        self.logger.info("Retrieving accessible Atlassian resources")
+
+        # Get fresh access token (will refresh if needed)
+        access_token = await self.get_access_token()
+
+        if not access_token:
+            self.logger.error("Cannot get accessible resources: access token is None")
+            return []
+
         async with httpx.AsyncClient() as client:
             headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
             try:
-                logger.debug(
+                self.logger.debug(
                     "Making request to https://api.atlassian.com/oauth/token/accessible-resources"
                 )
                 response = await client.get(
@@ -62,49 +73,25 @@ class JiraSource(BaseSource):
                 )
                 response.raise_for_status()
                 resources = response.json()
-                logger.info(f"Found {len(resources)} accessible Atlassian resources")
-                logger.debug(f"Resources: {resources}")
+                self.logger.info(f"Found {len(resources)} accessible Atlassian resources")
+                self.logger.debug(f"Resources: {resources}")
                 return resources
-            except Exception as e:
-                logger.error(f"Error getting accessible resources: {str(e)}")
+            except httpx.HTTPStatusError as e:
+                self.logger.error(
+                    f"HTTP error getting accessible resources: {e.response.status_code} - {e.response.text}"
+                )
                 return []
-
-    @staticmethod
-    async def _extract_cloud_id(access_token: str) -> str:
-        """Extract the Atlassian Cloud ID from OAuth 2.0 accessible-resources."""
-        logger.info("Extracting Atlassian Cloud ID")
-        try:
-            resources = await JiraSource._get_accessible_resources(access_token)
-
-            if not resources:
-                logger.warning("No accessible resources found")
-                return ""
-
-            # Use the first available resource
-            resource = resources[0]
-            cloud_id = resource.get("id", "")
-
-            if not cloud_id:
-                logger.warning("Missing ID in accessible resources")
-            else:
-                logger.info(f"Successfully extracted cloud ID: {cloud_id}")
-            return cloud_id
-
-        except Exception as e:
-            logger.error(f"Error extracting cloud ID: {str(e)}")
-            return ""
+            except Exception as e:
+                self.logger.error(f"Error getting accessible resources: {str(e)}", exc_info=True)
+                return []
 
     @classmethod
     async def create(
         cls, access_token: str, config: Optional[Dict[str, Any]] = None
     ) -> "JiraSource":
         """Create a new Jira source instance."""
-        logger.info("Creating new Jira source instance")
         instance = cls()
         instance.access_token = access_token
-        instance.cloud_id = await cls._extract_cloud_id(access_token)
-        instance.base_url = f"https://api.atlassian.com/ex/jira/{instance.cloud_id}"
-        logger.info(f"Initialized Jira source with base URL: {instance.base_url}")
         return instance
 
     @tenacity.retry(
@@ -120,10 +107,6 @@ class JiraSource(BaseSource):
             "X-Atlassian-Token": "no-check",  # Required for CSRF protection
         }
 
-        # Add cloud instance ID if available
-        if self.cloud_id:
-            headers["X-Cloud-ID"] = self.cloud_id
-
         self.logger.debug(f"Request headers: {headers}")
         try:
             response = await client.get(url, headers=headers)
@@ -135,13 +118,27 @@ class JiraSource(BaseSource):
         except httpx.HTTPStatusError as e:
             # Handle 401 Unauthorized - try refreshing token
             if e.response.status_code == 401 and self._token_manager:
-                self.logger.info("Received 401 error, attempting to refresh token")
-                refreshed = await self._token_manager.refresh_on_unauthorized()
+                self.logger.warning(
+                    "🔐 Received 401 Unauthorized from Jira - attempting token refresh"
+                )
+                try:
+                    refreshed = await self._token_manager.refresh_on_unauthorized()
 
-                if refreshed:
-                    # Retry with new token (the retry decorator will handle this)
-                    self.logger.info("Token refreshed, retrying request")
-                    raise  # Let tenacity retry with the refreshed token
+                    if refreshed:
+                        # Retry with new token (the retry decorator will handle this)
+                        self.logger.info("✅ Token refreshed successfully, retrying request")
+                        raise  # Let tenacity retry with the refreshed token
+                except TokenRefreshError as refresh_error:
+                    # Token refresh failed - provide clear error message
+                    self.logger.error(
+                        f"❌ Token refresh failed: {str(refresh_error)}. "
+                        f"User may need to reconnect their Jira account."
+                    )
+                    # Re-raise with clearer context
+                    raise TokenRefreshError(
+                        f"Failed to refresh Jira access token: {str(refresh_error)}. "
+                        f"Please reconnect your Jira account."
+                    ) from refresh_error
 
             # Log the error details
             self.logger.error(f"Request failed: {str(e)}")
@@ -166,9 +163,6 @@ class JiraSource(BaseSource):
             "Content-Type": "application/json",
             "X-Atlassian-Token": "no-check",
         }
-
-        if self.cloud_id:
-            headers["X-Cloud-ID"] = self.cloud_id
 
         try:
             response = await client.post(url, headers=headers, json=json_data)
@@ -371,6 +365,14 @@ class JiraSource(BaseSource):
     async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate all entities from Jira."""
         self.logger.info("Starting Jira entity generation process")
+
+        resources = await self._get_accessible_resources()
+        if not resources:
+            raise ValueError("No accessible resources found")
+        cloud_id = resources[0]["id"]
+
+        self.base_url = f"https://api.atlassian.com/ex/jira/{cloud_id}"
+        self.logger.debug(f"Base URL set to: {self.base_url}")
         async with httpx.AsyncClient() as client:
             project_count = 0
             issue_count = 0
@@ -428,27 +430,21 @@ class JiraSource(BaseSource):
             )
 
     async def validate(self) -> bool:
-        """Verify Jira OAuth2 token and site access with a lightweight ping."""
-        # Ensure cloud_id/base_url are set; if not, try to resolve with current token.
-        if not getattr(self, "cloud_id", None) or not getattr(self, "base_url", None):
-            token = await self.get_access_token()
-            if not token:
-                self.logger.error("Jira validation failed: no access token available.")
-                return False
-            cloud_id = await self._extract_cloud_id(token)
-            if not cloud_id:
-                self.logger.error("Jira validation failed: unable to resolve Atlassian cloud ID.")
-                return False
-            self.cloud_id = cloud_id
-            self.base_url = f"https://api.atlassian.com/ex/jira/{cloud_id}"
+        """Verify Jira OAuth2 token by calling accessible-resources endpoint.
 
-        # Simple authorized ping against /myself to validate scopes and reachability.
-        return await self._validate_oauth2(
-            ping_url=f"{self.base_url}/rest/api/3/myself",
-            headers={
-                "Accept": "application/json",
-                "X-Atlassian-Token": "no-check",
-                "X-Cloud-ID": self.cloud_id,
-            },
-            timeout=10.0,
-        )
+        A successful call proves the token is valid and has necessary scopes.
+        Cloud ID extraction happens lazily during sync.
+        """
+        try:
+            resources = await self._get_accessible_resources()
+
+            if not resources:
+                self.logger.error("Jira validation failed: no accessible resources found")
+                return False
+
+            self.logger.info("✅ Jira validation successful")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Jira validation failed: {str(e)}")
+            return False

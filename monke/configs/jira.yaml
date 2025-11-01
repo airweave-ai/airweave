@@ -7,8 +7,8 @@ connector:
   type: "jira"
   auth_mode: composio
   composio_config:
-    account_id: ca_example_jira
-    auth_config_id: ac_BCboB-rIS5fe
+    account_id: ca_2xrOTscSrbNv
+    auth_config_id: ac_zrWOjxNKKXrA
     # access_token: "${JIRA_ACCESS_TOKEN}"
   config_fields:
     cloud_id: "${JIRA_CLOUD_ID}"  # Optional, will be auto-discovered if not provided

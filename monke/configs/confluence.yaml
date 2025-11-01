@@ -7,8 +7,8 @@ connector:
   type: "confluence"
   auth_mode: composio
   composio_config:
-    account_id: ca_example_confluence
-    auth_config_id: ac_example_confluence
+    account_id: ca_mXqstVZ1VFMr
+    auth_config_id: ac_DEqMajROMkFV
   config_fields:
     cloud_id: "${CONFLUENCE_CLOUD_ID}"  # Optional, will be auto-discovered if not provided
     openai_model: "gpt-4.1-mini"
