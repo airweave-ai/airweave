@@ -59,8 +59,8 @@ class SyncOrchestrator:
         )
 
     async def run(self) -> schemas.Sync:
-        """Execute the synchronization process."""
-        final_status = SyncJobStatus.FAILED  # Default to failed, will be updated based on outcome
+        """Execute the synchronization process with adjacent access control pipeline."""
+        final_status = SyncJobStatus.FAILED  # Default to failed, updated on outcome
         error_message: Optional[str] = None  # Track error message for finalization
         try:
             # Phase 1: Start sync
@@ -73,19 +73,24 @@ class SyncOrchestrator:
             phase_start = time.time()
             self.sync_context.logger.info("🚀 PHASE 2: Processing entities from source...")
             await self._process_entities()
+            await self._process_access_control_memberships()
             self.sync_context.logger.info(f"✅ PHASE 2 complete ({time.time() - phase_start:.2f}s)")
 
             # Phase 3: Cleanup orphaned entities
             phase_start = time.time()
-            self.sync_context.logger.info("🚀 PHASE 3: Cleanup orphaned entities (if needed)...")
+            self.sync_context.logger.info("🚀 PHASE 3: Cleaning up orphaned entities...")
             await self._cleanup_orphaned_entities_if_needed()
             self.sync_context.logger.info(f"✅ PHASE 3 complete ({time.time() - phase_start:.2f}s)")
 
             # Phase 4: Complete sync
             phase_start = time.time()
             self.sync_context.logger.info("🚀 PHASE 4: Finalizing sync...")
+
+            # Phase 5: Complete sync
+            phase_start = time.time()
+            self.sync_context.logger.info("🚀 PHASE 5: Completing sync...")
             await self._complete_sync()
-            self.sync_context.logger.info(f"✅ PHASE 4 complete ({time.time() - phase_start:.2f}s)")
+            self.sync_context.logger.info(f"✅ PHASE 5 complete ({time.time() - phase_start:.2f}s)")
 
             final_status = SyncJobStatus.COMPLETED
             return self.sync_context.sync
@@ -372,6 +377,126 @@ class SyncOrchestrator:
 
         # 3. Wait for all tasks to complete
         await self._wait_for_remaining_tasks(pending_tasks)
+
+    async def _process_access_control_memberships(self) -> None:
+        """Process access control memberships using adjacent pipeline.
+
+        This runs AFTER entity sync, reusing same patterns:
+        - AsyncSourceStream for streaming
+        - AsyncWorkerPool for concurrency
+        - Same batching logic
+        - Separate progress tracking
+        """
+        # Check if source supports membership extraction
+        if not hasattr(self.sync_context.source, "generate_access_control_memberships"):
+            self.sync_context.logger.info(
+                "⏩ Skipping access control sync - source doesn't implement it"
+            )
+            return
+
+        self.sync_context.logger.info("🔐 Starting access control membership sync phase...")
+
+        # Create access control pipeline (simplified vs entity pipeline)
+        from airweave.platform.sync.access_control_pipeline import AccessControlPipeline
+
+        access_control_pipeline = AccessControlPipeline()
+
+        # Create separate stream for memberships (reuse AsyncSourceStream pattern)
+        membership_stream = AsyncSourceStream(
+            source_generator=self.sync_context.source.generate_access_control_memberships(),
+            queue_size=1000,  # Smaller queue - typically fewer memberships than entities
+            logger=self.sync_context.logger.with_context(component="access_control_stream"),
+        )
+
+        # Start stream
+        await membership_stream.start()
+
+        # Reuse same worker pool and batching pattern
+        stream_error: Optional[Exception] = None
+        pending_tasks: set[asyncio.Task] = set()
+        batch_buffer = []
+        flush_deadline = None
+
+        try:
+            async for membership in membership_stream.get_entities():
+                # Accumulate into batch
+                batch_buffer.append(membership)
+
+                # Set flush deadline
+                if flush_deadline is None and self.max_batch_latency_ms > 0:
+                    flush_deadline = (
+                        asyncio.get_running_loop().time() + self.max_batch_latency_ms / 1000.0
+                    )
+
+                # Size-based flush
+                if len(batch_buffer) >= self.batch_size:
+                    pending_tasks = await self._submit_membership_batch(
+                        batch_buffer, pending_tasks, access_control_pipeline
+                    )
+                    batch_buffer = []
+                    flush_deadline = None
+                    continue
+
+                # Time-based flush
+                if (
+                    flush_deadline is not None
+                    and asyncio.get_running_loop().time() >= flush_deadline
+                ):
+                    pending_tasks = await self._submit_membership_batch(
+                        batch_buffer, pending_tasks, access_control_pipeline
+                    )
+                    batch_buffer = []
+                    flush_deadline = None
+
+            # Flush remaining
+            if batch_buffer:
+                pending_tasks = await self._submit_membership_batch(
+                    batch_buffer, pending_tasks, access_control_pipeline
+                )
+
+        except Exception as e:
+            stream_error = e
+            self.sync_context.logger.error(
+                f"Error during membership streaming: {get_error_message(e)}"
+            )
+
+        finally:
+            # Cleanup stream and tasks (reuse existing pattern)
+            await self._finalize_stream_and_tasks(membership_stream, stream_error, pending_tasks)
+
+            if stream_error:
+                raise stream_error
+
+        self.sync_context.logger.info("✅ Access control membership sync complete")
+
+    async def _submit_membership_batch(
+        self, batch: list, pending_tasks: set[asyncio.Task], pipeline
+    ) -> set[asyncio.Task]:
+        """Submit membership batch to worker pool (reuses entity pattern).
+
+        Args:
+            batch: List of membership objects
+            pending_tasks: Set of currently pending tasks
+            pipeline: AccessControlPipeline instance
+
+        Returns:
+            Updated set of pending tasks
+        """
+        if not batch:
+            return pending_tasks
+
+        task = await self.worker_pool.submit(
+            pipeline.process, memberships=list(batch), sync_context=self.sync_context
+        )
+        pending_tasks.add(task)
+
+        # Trim if at max parallelism
+        if len(pending_tasks) >= self.worker_pool.max_workers:
+            completed, pending_tasks = await asyncio.wait(
+                pending_tasks, return_when=asyncio.FIRST_COMPLETED
+            )
+
+        return pending_tasks
 
     async def _cleanup_orphaned_entities_if_needed(self) -> None:
         """Cleanup orphaned entities based on sync type."""

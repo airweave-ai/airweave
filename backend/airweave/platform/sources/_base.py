@@ -22,6 +22,7 @@ import httpx
 from pydantic import BaseModel
 
 from airweave.core.logging import logger
+from airweave.platform.access_control.schemas import AccessControlMembership
 from airweave.platform.entities._base import BaseEntity
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
@@ -229,6 +230,13 @@ class BaseSource:
     @abstractmethod
     async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate entities for the source."""
+        pass
+
+    @abstractmethod
+    async def generate_access_control_memberships(
+        self,
+    ) -> AsyncGenerator[AccessControlMembership, None]:
+        """Generate access control memberships for the source."""
         pass
 
     @abstractmethod

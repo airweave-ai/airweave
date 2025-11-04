@@ -126,7 +126,7 @@ async def search(
     ctx: ApiContext = Depends(deps.get_context),
     guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
 ) -> Union[SearchResponse, LegacySearchResponse]:
-    """Search your collection.
+    """Search your collection with access control filtering.
 
     Accepts both new SearchRequest and legacy LegacySearchRequest formats
     for backwards compatibility.
@@ -158,6 +158,36 @@ async def search(
         db=db,
         ctx=ctx,
     )
+
+    # NEW: Apply access control filtering (post-filter for MVP)
+    if ctx.has_user_context:
+        from airweave.platform.access_control import AccessBroker
+
+        access_broker = AccessBroker()
+
+        # Resolve user's access context (expand groups)
+        access_context = await access_broker.resolve_access_context(
+            db=db, user_email=ctx.user.email, organization_id=ctx.organization_id
+        )
+
+        # Filter results based on access control
+        original_count = len(search_response.results)
+        filtered_results = [
+            result
+            for result in search_response.results
+            if access_broker.check_entity_access(
+                entity_access=result.get("entity", {}).get("access"),
+                access_context=access_context,
+            )
+        ]
+
+        if original_count != len(filtered_results):
+            ctx.logger.info(
+                f"Access control filtered {original_count - len(filtered_results)} "
+                f"results (from {original_count} to {len(filtered_results)})"
+            )
+
+        search_response.results = filtered_results
 
     ctx.logger.info(f"Search completed for collection '{readable_id}'")
     await guard_rail.increment(ActionType.QUERIES)

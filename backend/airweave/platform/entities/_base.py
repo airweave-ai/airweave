@@ -12,6 +12,26 @@ class Breadcrumb(BaseModel):
     entity_id: str = Field(..., description="ID of the entity in the source.")
 
 
+class AccessControl(BaseModel):
+    """Access control metadata for an entity (source-agnostic).
+
+    Stores who can view this entity as principal identifiers.
+    Principals are NOT expanded - groups stored as-is.
+
+    Format:
+        - Users: "user:john@acme.com"
+        - Groups: "group:<group_id>" (e.g., "group:engineering" or "group:uuid-123")
+    """
+
+    viewers: List[str] = Field(
+        default_factory=list, description="Principal IDs who can view this entity"
+    )
+    is_public: bool = Field(
+        default=False,
+        description="Whether this entity is publicly accessible.",
+    )
+
+
 class AirweaveSystemMetadata(BaseModel):
     """System metadata for this entity.
 
@@ -79,6 +99,11 @@ class BaseEntity(BaseModel):
     )
     airweave_system_metadata: Optional[AirweaveSystemMetadata] = Field(
         None, description="System metadata for this entity."
+    )
+
+    # access control
+    access: Optional[AccessControl] = Field(
+        None, description="Access control - who can view this entity (not expanded)"
     )
 
     model_config = ConfigDict(arbitrary_types_allowed=True)

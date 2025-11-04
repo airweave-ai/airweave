@@ -44,6 +44,7 @@ class SyncContext:
     cursor: SyncCursor
     collection: schemas.Collection
     connection: schemas.Connection
+    source_connection: schemas.SourceConnection
     entity_map: dict[type[BaseEntity], UUID]
     ctx: ApiContext
     guard_rail: GuardRailService
@@ -69,6 +70,7 @@ class SyncContext:
         cursor: SyncCursor,
         collection: schemas.Collection,
         connection: schemas.Connection,
+        source_connection: schemas.SourceConnection,
         entity_map: dict[type[BaseEntity], UUID],
         ctx: ApiContext,
         guard_rail: GuardRailService,
@@ -90,6 +92,7 @@ class SyncContext:
         self.cursor = cursor
         self.collection = collection
         self.connection = connection
+        self.source_connection = source_connection
         self.entity_map = entity_map
         self.ctx = ctx
         self.guard_rail = guard_rail

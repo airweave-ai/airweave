@@ -14,13 +14,13 @@ Reference:
 """
 
 from collections import deque
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import BaseEntity, Breadcrumb
+from airweave.platform.entities._base import AccessControl, BaseEntity, Breadcrumb
 from airweave.platform.entities.sharepoint import (
     SharePointDriveEntity,
     SharePointDriveItemEntity,
@@ -333,6 +333,67 @@ class SharePointSource(BaseSource):
             self.logger.warning(f"Error parsing datetime {dt_str}: {str(e)}")
             return None
 
+    async def _extract_item_permissions(
+        self, client: httpx.AsyncClient, drive_id: str, item_id: str
+    ) -> Optional["AccessControl"]:
+        """Query Graph API /permissions endpoint and parse to AccessControl.
+
+        Args:
+            client: HTTP client
+            drive_id: ID of the drive
+            item_id: ID of the item
+
+        Returns:
+            AccessControl object or None if extraction fails
+        """
+        try:
+            # Query permissions endpoint
+            url = f"{self.GRAPH_BASE_URL}/drives/{drive_id}/items/{item_id}/permissions"
+            data = await self._get_with_auth(client, url)
+
+            permissions = data.get("value", [])
+            return self._parse_permissions_to_access_control(permissions)
+
+        except Exception as e:
+            self.logger.warning(f"Failed to extract permissions for item {item_id}: {e}")
+            return None  # Fail gracefully - entity will have no access control
+
+    def _parse_permissions_to_access_control(self, permissions: List[Dict]) -> "AccessControl":
+        """Parse Graph API permission format to AccessControl.
+
+        Args:
+            permissions: List of permission objects from Graph API
+
+        Returns:
+            AccessControl object with viewers list
+        """
+        from airweave.platform.entities._base import AccessControl
+
+        viewers = []
+
+        for perm in permissions:
+            # Only include permissions with "read" role or higher
+            roles = perm.get("roles", [])
+            if not any(r in ["read", "write", "owner"] for r in roles):
+                continue
+
+            # Use grantedToV2 (new API format)
+            granted_to = perm.get("grantedToV2", {})
+
+            # User principal
+            if "user" in granted_to:
+                user_email = granted_to["user"].get("email")
+                if user_email:
+                    viewers.append(f"user:{user_email}")
+
+            # Group principal (NOT expanded)
+            elif "group" in granted_to:
+                group_id = granted_to["group"].get("id")
+                if group_id:
+                    viewers.append(f"group:{group_id}")
+
+        return AccessControl(viewers=viewers)
+
     async def _generate_drive_entities(
         self, client: httpx.AsyncClient, site_id: str, site_name: str
     ) -> AsyncGenerator[SharePointDriveEntity, None]:
@@ -588,6 +649,12 @@ class SharePointSource(BaseSource):
 
                 if not file_entity:
                     continue
+
+                # NEW: Extract permissions for this item
+                access_control = await self._extract_item_permissions(
+                    client=client, drive_id=drive_id, item_id=item["id"]
+                )
+                file_entity.access = access_control
 
                 # Download the file using file downloader
                 try:
@@ -1054,3 +1121,90 @@ class SharePointSource(BaseSource):
             headers={"Accept": "application/json"},
             timeout=10.0,
         )
+
+    async def generate_access_control_memberships(self) -> AsyncGenerator[Any, None]:
+        """Generate user-group membership tuples (separate from entities).
+
+        This runs AFTER entity sync as an adjacent pipeline.
+        Yields AccessControlMembership objects for each user-group relationship.
+        """
+        from airweave.platform.access_control.schemas import AccessControlMembership
+
+        self.logger.info("Starting access control membership extraction...")
+
+        membership_count = 0
+
+        try:
+            async with self.http_client() as client:
+                # Iterate through all groups
+                async for group_entity in self._generate_group_entities(client):
+                    group_id = group_entity.entity_id
+                    group_name = group_entity.display_name
+
+                    # Query group members
+                    members = await self._get_group_members(client, group_id)
+
+                    self.logger.debug(f"Found {len(members)} members in group {group_name}")
+
+                    # Yield membership tuple for each member
+                    for member in members:
+                        membership_count += 1
+                        member_email = (
+                            member.get("mail")
+                            or member.get("userPrincipalName")
+                            or member.get("id")  # Fallback to ID
+                        )
+                        yield AccessControlMembership(
+                            member_id=member_email,
+                            member_type="user",
+                            group_id=group_id,
+                            group_name=group_name,
+                        )
+
+        except Exception as e:
+            self.logger.error(f"Error generating access control memberships: {str(e)}")
+            raise
+        finally:
+            self.logger.info(
+                "Access control membership extraction complete. "
+                f"Total memberships: {membership_count}"
+            )
+
+    async def _get_group_members(self, client: httpx.AsyncClient, group_id: str) -> List[Dict]:
+        """Query /groups/{id}/transitivemembers endpoint with pagination.
+
+        Uses transitivemembers instead of members to get ALL users including
+        those in nested groups. This handles group-to-group memberships automatically
+        without needing to store group-group relationships.
+
+        Args:
+            client: HTTP client
+            group_id: ID of the group
+
+        Returns:
+            List of USER member objects with id, mail, userPrincipalName fields
+            (groups are automatically expanded by Microsoft Graph API)
+        """
+        # Use transitivemembers to handle nested groups
+        url = f"{self.GRAPH_BASE_URL}/groups/{group_id}/transitivemembers"
+        params = {"$select": "id,mail,userPrincipalName", "$top": 100}
+
+        members = []
+        try:
+            while url:
+                data = await self._get_with_auth(client, url, params=params)
+                members.extend(data.get("value", []))
+
+                # Pagination
+                url = data.get("@odata.nextLink")
+                if url:
+                    params = None  # nextLink includes params
+
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 403:
+                self.logger.warning(f"Access denied to group {group_id} members, skipping")
+                return []
+            else:
+                raise
+
+        return members

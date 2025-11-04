@@ -146,6 +146,9 @@ class SyncFactory:
         """
         # Get source connection data first (includes source class with cursor schema)
         source_connection_data = await cls._get_source_connection_data(db, sync, ctx)
+        source_connection_schema = schemas.SourceConnection.model_validate(
+            source_connection_data["source_connection_obj"], from_attributes=True
+        )
 
         # Create a contextualized logger with all job metadata
         logger = LoggerConfigurator.configure_logger(
@@ -154,7 +157,7 @@ class SyncFactory:
                 "sync_id": str(sync.id),
                 "sync_job_id": str(sync_job.id),
                 "organization_id": str(ctx.organization.id),
-                "source_connection_id": str(source_connection_data["connection_id"]),
+                "source_connection_id": str(source_connection_schema.id),
                 "collection_readable_id": str(collection.readable_id),
                 "organization_name": ctx.organization.name,
                 "scheduled": str(sync_job.scheduled),
@@ -260,7 +263,8 @@ class SyncFactory:
             sync=sync,
             sync_job=sync_job,
             collection=collection,
-            connection=connection,  # Unused parameter
+            connection=connection,  # Unused parameter TODO: remove this
+            source_connection=source_connection_schema,
             progress=progress,
             entity_state_tracker=entity_state_tracker,
             cursor=cursor,
