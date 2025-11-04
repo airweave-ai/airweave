@@ -476,11 +476,24 @@ class EntityPipeline:
         if entity_requests:
             try:
                 async with get_db_context() as db:
+                    # Log start of bulk lookup for large datasets
+                    if len(entity_requests) > 10000:
+                        sync_context.logger.info(
+                            f"🔍 Starting bulk lookup for {len(entity_requests)} entities "
+                            f"({(len(entity_requests) + 999) // 1000} chunks)"
+                        )
+
                     existing_map = await crud.entity.bulk_get_by_entity_sync_and_definition(
                         db,
                         sync_id=sync_context.sync.id,
                         entity_requests=entity_requests,
+                        heartbeat_callback=sync_context.progress.heartbeat,
                     )
+
+                    if len(entity_requests) > 10000:
+                        sync_context.logger.info(
+                            f"✅ Completed bulk lookup - found {len(existing_map)} existing entities"
+                        )
             except asyncio.CancelledError:
                 raise
             except Exception as e:

@@ -89,6 +89,25 @@ class SyncProgress:
             json.dumps(data),
         )
 
+    async def heartbeat(self) -> None:
+        """Update the last_update_timestamp without incrementing counters.
+
+        This is used during long-running operations (e.g., bulk database lookups)
+        to prevent the cleanup job from marking the sync as stuck.
+        """
+        from datetime import datetime, timezone
+        from airweave.core.redis_client import redis_client
+        import json
+
+        # Only update Redis snapshot, don't publish to pubsub (no progress change)
+        self.stats.last_update_timestamp = datetime.now(timezone.utc).isoformat()
+        snapshot_key = f"sync_progress_snapshot:{self.job_id}"
+        await redis_client.client.setex(
+            snapshot_key,
+            1800,  # 30 min TTL
+            json.dumps(self.stats.model_dump()),
+        )
+
     async def finalize(self, status: SyncJobStatus) -> None:
         """Publish final progress with the sync job status.
 

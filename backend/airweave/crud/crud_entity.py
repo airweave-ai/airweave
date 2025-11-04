@@ -139,6 +139,7 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
         *,
         sync_id: UUID,
         entity_requests: list[tuple[str, UUID]],
+        heartbeat_callback: Optional[callable] = None,
     ) -> dict[tuple[str, UUID], Entity]:
         """Get many entities by (entity_id, sync_id, entity_definition_id).
 
@@ -153,6 +154,8 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
             db: Database session
             sync_id: The sync ID to filter by
             entity_requests: List of (entity_id, entity_definition_id) tuples
+            heartbeat_callback: Optional async callback to call after each chunk
+                               (useful for preventing stuck sync detection)
 
         Returns:
             Dict mapping (entity_id, entity_definition_id) -> Entity
@@ -165,6 +168,7 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
         # Chunk requests to avoid timeouts with large datasets
         CHUNK_SIZE = 1000
         result_map: dict[tuple[str, UUID], Entity] = {}
+        total_chunks = (len(entity_requests) + CHUNK_SIZE - 1) // CHUNK_SIZE
 
         for i in range(0, len(entity_requests), CHUNK_SIZE):
             chunk = entity_requests[i : i + CHUNK_SIZE]
@@ -183,6 +187,12 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
             # Merge into result map with composite key to avoid collisions
             for row in rows:
                 result_map[(row.entity_id, row.entity_definition_id)] = row
+
+            # Call heartbeat callback after processing each chunk (for long-running lookups)
+            if heartbeat_callback:
+                chunk_num = (i // CHUNK_SIZE) + 1
+                if chunk_num % 10 == 0 or chunk_num == total_chunks:  # Every 10 chunks or last
+                    await heartbeat_callback()
 
         return result_map
 
