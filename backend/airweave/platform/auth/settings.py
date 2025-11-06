@@ -11,6 +11,7 @@ from airweave.core.secrets import secret_client
 from airweave.platform.auth.schemas import (
     APIKeyAuthSettings,
     BaseAuthSettings,
+    ClientCredentialsSettings,
     ConfigClassAuthSettings,
     OAuth1Settings,
     OAuth2Settings,
@@ -84,6 +85,9 @@ class IntegrationSettings:
             elif oauth_type_str == "with_rotating_refresh":
                 model = OAuth2WithRefreshRotatingSettings
                 config["oauth_type"] = OAuthType.WITH_ROTATING_REFRESH.value
+            elif oauth_type_str == "client_credentials":
+                model = ClientCredentialsSettings
+                config["oauth_type"] = OAuthType.CLIENT_CREDENTIALS.value
             else:
                 raise ValueError(f"Unknown oauth_type for integration {name}: {oauth_type_str}")
 

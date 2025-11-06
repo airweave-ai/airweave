@@ -1,0 +1,200 @@
+---
+title: "Sharepoint Enterprise"
+description: "Sharepoint Enterprise integration with Airweave"
+---
+
+{/* AUTO-GENERATED CONTENT START */}
+
+
+
+<div className="connector-header" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+  <img src="icon.svg" alt="Sharepoint Enterprise logo" width="48" height="48" className="connector-icon" />
+  <h1 style={{ margin: 0 }}>Sharepoint Enterprise</h1>
+</div>
+
+## Configuration
+
+SharePoint Enterprise connector for admin-level syncing.
+
+Uses Azure AD Application Permissions (Client Credentials Flow) to sync
+tenant-wide SharePoint data including:
+- All sites, drives, and files across the organization
+- User and group information
+- File-level permissions for access controls
+- Group memberships (using /transitivemembers for nested groups)
+
+Requires Azure AD admin to set up app registration with required permissions.
+
+<Card
+  title="View Source Code"
+  icon="brands github"
+  href="https://github.com/airweave-ai/airweave/tree/main/backend/airweave/platform/sources/sharepoint_enterprise.py"
+>
+  Explore the Sharepoint Enterprise connector implementation
+</Card>
+
+### Authentication
+
+This connector uses a custom authentication configuration.
+
+<Card
+  title="Authentication Configuration"
+  className="auth-config-card"
+  style={{ backgroundColor: 'rgba(0, 0, 0, 0.1)', padding: '16px', marginBottom: '24px' }}
+>
+
+SharePoint Enterprise admin authentication via Azure AD App Registration.
+
+Uses Client Credentials Flow with Application Permissions for tenant-wide access.
+Requires admin consent in Azure AD portal.
+
+This enables:
+- Automated syncing without user interaction
+- Access to all sites and files in the tenant
+- Group membership extraction for access controls
+
+<ParamField
+  path="client_id"
+  type="str"
+  required={true}
+>
+  Azure AD Application (client) ID from your app registration
+</ParamField>
+<ParamField
+  path="client_secret"
+  type="str"
+  required={true}
+>
+  Azure AD client secret (create in Certificates & secrets)
+</ParamField>
+<ParamField
+  path="tenant_id"
+  type="str"
+  required={true}
+>
+  Your Azure AD Directory (tenant) ID
+</ParamField>
+</Card>
+
+### Configuration Options
+
+This connector does not have any additional configuration options.
+
+
+
+
+
+{/* AUTO-GENERATED CONTENT END */}
+
+---
+
+# Administrator Setup Guide
+
+This guide is for **Microsoft 365 administrators** setting up tenant-wide SharePoint syncing with access controls.
+
+<Callout intent="warning">
+  This connector requires **Global Administrator** or **Application Administrator** role in Azure AD to set up. Regular users cannot configure this connector.
+</Callout>
+
+## What This Enables
+
+- Sync **all SharePoint content** across your organization
+- Enforce **file-level access controls** in search
+- **Automated syncing** without user interaction
+
+## Azure AD App Registration
+
+### Step 1: Create App Registration
+
+1. Go to [Azure Portal](https://portal.azure.com) → **Azure Active Directory**
+2. Navigate to **App registrations** → **+ New registration**
+3. Configure the registration:
+   - **Name**: `Airweave SharePoint Enterprise`
+   - **Supported account types**: "Accounts in this organizational directory only"
+   - **Redirect URI**: Leave empty
+4. Click **Register**
+5. **Save these values** (needed for Airweave):
+   - **Application (client) ID**: `12345678-1234-1234-1234-123456789012`
+   - **Directory (tenant) ID**: `87654321-4321-4321-4321-210987654321`
+
+### Step 2: Create Client Secret
+
+1. In your app registration, go to **Certificates & secrets**
+2. Under **Client secrets**, click **+ New client secret**
+3. Configure:
+   - **Description**: `Airweave Sync Secret`
+   - **Expires**: 24 months (recommended)
+4. Click **Add**
+5. **IMMEDIATELY copy the Value** (not the Secret ID!)
+   ```
+   Example: abc123~def456.ghi789_jkl012
+   ```
+   <Callout intent="error">
+     You cannot view the secret value again! Save it securely now.
+   </Callout>
+
+### Step 3: Grant API Permissions
+
+1. In your app registration, go to **API permissions**
+2. Click **+ Add a permission** → **Microsoft Graph** → **Application permissions**
+
+3. Add these 5 permissions:
+
+   **Content Access**:
+   - `Sites.Read.All`
+   - `Files.Read.All`
+
+   **Access Controls**:
+   - `User.Read.All`
+   - `Group.Read.All`
+   - `GroupMember.Read.All`
+
+4. Click **Add permissions**
+
+5. **Grant Admin Consent**:
+   - Click **"Grant admin consent for [Your Organization]"**
+   - Confirm by clicking **Yes**
+   - Verify all permissions show ✅ "Granted for [Your Organization]"
+
+<Callout intent="success">
+  All 5 permissions must have green checkmarks. If any show "Not granted", click the consent button again.
+</Callout>
+
+## Configure in Airweave
+
+1. In Airweave, go to **Connectors** → **Add Connection**
+2. Select **SharePoint Enterprise**
+3. Choose **Direct Credentials** authentication
+4. Enter your Azure AD credentials:
+   ```
+   Client ID:      [Application (client) ID from Step 1]
+   Client Secret:  [Secret VALUE from Step 2]
+   Tenant ID:      [Directory (tenant) ID from Step 1]
+   ```
+5. Click **Connect** - Airweave validates credentials
+6. Create and run a sync
+
+## Verify Setup
+
+### Check Azure AD Permissions
+
+All permissions should look like this:
+
+```
+API / Permissions name    Type          Admin consent  Status
+Microsoft Graph
+├─ Files.Read.All         Application   Required      ✅ Granted for [Org]
+├─ Group.Read.All         Application   Required      ✅ Granted for [Org]
+├─ GroupMember.Read.All   Application   Required      ✅ Granted for [Org]
+├─ Sites.Read.All         Application   Required      ✅ Granted for [Org]
+└─ User.Read.All          Application   Required      ✅ Granted for [Org]
+```
+
+## Support
+
+Need help? Contact Airweave support with:
+- App registration Application ID (client_id)
+- Error messages from sync logs
+- Azure AD tenant ID
+
+**Never share your client_secret** in support tickets!

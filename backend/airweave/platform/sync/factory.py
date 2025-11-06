@@ -16,6 +16,7 @@ from airweave.core.exceptions import NotFoundException
 from airweave.core.guard_rail_service import GuardRailService
 from airweave.core.logging import ContextualLogger, LoggerConfigurator, logger
 from airweave.core.sync_cursor_service import sync_cursor_service
+from airweave.platform.auth.schemas import BaseAuthSettings
 from airweave.platform.auth_providers._base import BaseAuthProvider
 from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.entities._base import BaseEntity
@@ -146,9 +147,6 @@ class SyncFactory:
         """
         # Get source connection data first (includes source class with cursor schema)
         source_connection_data = await cls._get_source_connection_data(db, sync, ctx)
-        source_connection_schema = schemas.SourceConnection.model_validate(
-            source_connection_data["source_connection_obj"], from_attributes=True
-        )
 
         # Create a contextualized logger with all job metadata
         logger = LoggerConfigurator.configure_logger(
@@ -157,7 +155,7 @@ class SyncFactory:
                 "sync_id": str(sync.id),
                 "sync_job_id": str(sync_job.id),
                 "organization_id": str(ctx.organization.id),
-                "source_connection_id": str(source_connection_schema.id),
+                "source_connection_id": str(source_connection_data["source_connection_obj"].id),
                 "collection_readable_id": str(collection.readable_id),
                 "organization_name": ctx.organization.name,
                 "scheduled": str(sync_job.scheduled),
@@ -264,7 +262,7 @@ class SyncFactory:
             sync_job=sync_job,
             collection=collection,
             connection=connection,  # Unused parameter TODO: remove this
-            source_connection=source_connection_schema,
+            source_connection=source_connection_data["source_connection_obj"],
             progress=progress,
             entity_state_tracker=entity_state_tracker,
             cursor=cursor,
@@ -292,6 +290,20 @@ class SyncFactory:
         sync_job: Optional[Any] = None,
     ) -> BaseSource:
         """Create and configure the source instance using pre-fetched connection data."""
+        # Load typed auth settings once for OAuth sources (avoid duplicate loads)
+        auth_settings = None
+        source_model = source_connection_data.get("source_model")
+        if source_model and source_model.oauth_type:
+            from airweave.platform.auth.settings import integration_settings
+
+            auth_settings = await integration_settings.get_by_short_name(
+                source_connection_data["short_name"]
+            )
+            logger.debug(
+                f"Loaded auth settings: {auth_settings.__class__.__name__} "
+                f"for {source_connection_data['short_name']}"
+            )
+
         # Get auth configuration (credentials + proxy setup if needed)
         auth_config = await get_auth_configuration(
             db=db,
@@ -301,11 +313,12 @@ class SyncFactory:
             access_token=access_token,
         )
 
-        # Process credentials for source consumption
+        # Process credentials for source consumption (pass auth_settings to avoid reload)
         source_credentials = await process_credentials_for_source(
             raw_credentials=auth_config["credentials"],
             source_connection_data=source_connection_data,
             logger=logger,
+            auth_settings=auth_settings,  # Pass typed schema to avoid duplicate load
         )
 
         # Create the source instance with processed credentials
@@ -353,6 +366,7 @@ class SyncFactory:
                     ctx=ctx,
                     logger=logger,
                     auth_provider_instance=auth_provider_instance,
+                    auth_settings=auth_settings,  # Pass to avoid duplicate load
                 )
             except Exception as e:
                 logger.error(
@@ -477,71 +491,43 @@ class SyncFactory:
         db: AsyncSession,
         source: BaseSource,
         source_connection_data: dict,
-        source_credentials: any,
+        source_credentials: Any,
         ctx: ApiContext,
         logger: ContextualLogger,
         auth_provider_instance: Optional[BaseAuthProvider] = None,
+        auth_settings: Optional[BaseAuthSettings] = None,
     ) -> None:
-        """Set up token manager for OAuth sources."""
         short_name = source_connection_data["short_name"]
         source_model = source_connection_data.get("source_model")
 
-        # Determine if we should create a token manager based on oauth_type
-        should_create_token_manager = False
-
-        if source_model and hasattr(source_model, "oauth_type") and source_model.oauth_type:
-            # Import OAuthType enum
+        if source_model and source_model.oauth_type:
             from airweave.schemas.source_connection import OAuthType
 
-            # Only create token manager for sources that support token refresh
-            if source_model.oauth_type in (OAuthType.WITH_REFRESH, OAuthType.WITH_ROTATING_REFRESH):
-                should_create_token_manager = True
-                logger.debug(
-                    f"✅ OAuth source {short_name} with oauth_type={source_model.oauth_type} "
-                    f"will use token manager for refresh"
+            if source_model.oauth_type in (
+                OAuthType.WITH_REFRESH,
+                OAuthType.WITH_ROTATING_REFRESH,
+                OAuthType.CLIENT_CREDENTIALS,
+            ):
+                if not auth_settings:
+                    from airweave.platform.auth.settings import integration_settings
+
+                    auth_settings = await integration_settings.get_by_short_name(short_name)
+                    if not auth_settings:
+                        raise ValueError(f"Auth settings required for OAuth source {short_name}")
+
+                token_manager = TokenManager(
+                    db=db,
+                    auth_settings=auth_settings,
+                    integration_credential_id=source_connection_data["integration_credential_id"],
+                    connection_id=source_connection_data["connection_id"],
+                    ctx=ctx,
+                    initial_credentials=source_credentials,
+                    config_fields=source_connection_data.get("config_fields"),
+                    is_direct_injection=False,
+                    logger_instance=logger,
+                    auth_provider_instance=auth_provider_instance,
                 )
-            else:
-                logger.debug(
-                    f"⏭️ Skipping token manager for {short_name} - "
-                    f"oauth_type={source_model.oauth_type} does not support token refresh"
-                )
-
-        if should_create_token_manager:
-            # Create a minimal connection object with only the fields needed by TokenManager
-            # Use pre-fetched IDs to avoid SQLAlchemy lazy loading issues
-            minimal_source_connection = type(
-                "SourceConnection",
-                (),
-                {
-                    "id": source_connection_data["connection_id"],
-                    "integration_credential_id": source_connection_data[
-                        "integration_credential_id"
-                    ],
-                    "config_fields": source_connection_data.get("config_fields"),
-                },
-            )()
-
-            token_manager = TokenManager(
-                db=db,
-                source_short_name=short_name,
-                source_connection=minimal_source_connection,
-                ctx=ctx,
-                initial_credentials=source_credentials,
-                is_direct_injection=False,  # TokenManager will determine this internally
-                logger_instance=logger,
-                auth_provider_instance=auth_provider_instance,
-            )
-            source.set_token_manager(token_manager)
-
-            logger.info(
-                f"Token manager initialized for OAuth source {short_name} "
-                f"(auth_provider: {'Yes' if auth_provider_instance else 'None'})"
-            )
-        else:
-            logger.debug(
-                f"Skipping token manager for {short_name} - "
-                "not an OAuth source or no access_token in credentials"
-            )
+                source.set_token_manager(token_manager)
 
     @classmethod
     async def _create_destination_instances(  # noqa: C901

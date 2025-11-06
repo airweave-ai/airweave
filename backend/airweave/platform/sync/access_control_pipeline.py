@@ -45,7 +45,6 @@ class AccessControlPipeline:
                 organization_id=sync_context.ctx.organization.id,
                 source_connection_id=sync_context.source_connection.id,
                 source_name=sync_context.source_connection.short_name,
-                ctx=sync_context.ctx,
             )
 
         sync_context.logger.debug(f"Persisted {count} memberships to database")

@@ -24,3 +24,4 @@ class GitHubCursor(BaseCursor):
         default=None, description="Name of the repository being synced"
     )
     branch: Optional[str] = Field(default=None, description="Branch being synced")
+

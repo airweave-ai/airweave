@@ -1,7 +1,7 @@
 """Clean source connection service with auth method inference."""
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Type
 from uuid import UUID
 
 if TYPE_CHECKING:
@@ -31,6 +31,7 @@ from airweave.schemas.source_connection import (
     DirectAuthentication,
     OAuthBrowserAuthentication,
     OAuthTokenAuthentication,
+    OAuthType,
     SourceConnection,
     SourceConnectionCreate,
     SourceConnectionListItem,
@@ -281,7 +282,7 @@ class SourceConnectionService:
         """
         # Get source and validate
         source = await self._get_and_validate_source(db, obj_in.short_name)
-        source_class = self._get_source_class(source.class_name)
+        source_class = self._get_source_class(source)
 
         # Generate default name if not provided
         if obj_in.name is None:
@@ -327,7 +328,9 @@ class SourceConnectionService:
 
         # Route based on auth method
         if auth_method == AuthenticationMethod.DIRECT:
-            source_connection = await self._create_with_direct_auth(db, obj_in=obj_in, ctx=ctx)
+            source_connection = await self._create_with_direct_auth(
+                db, obj_in=obj_in, ctx=ctx, source_class=source_class
+            )
         elif auth_method == AuthenticationMethod.OAUTH_BROWSER:
             # Determine OAuth1 vs OAuth2
             oauth_settings = await integration_settings.get_by_short_name(obj_in.short_name)
@@ -554,6 +557,7 @@ class SourceConnectionService:
         db: AsyncSession,
         obj_in: SourceConnectionCreate,
         ctx: ApiContext,
+        source_class: Type[BaseSource],
     ) -> SourceConnection:
         """Create connection with direct authentication credentials."""
         from airweave.schemas.source_connection import DirectAuthentication
@@ -574,8 +578,25 @@ class SourceConnectionService:
             db, obj_in.short_name, obj_in.config, ctx
         )
 
-        # Validate credentials with source
-        await self._validate_direct_auth(db, source, validated_auth, validated_config, ctx)
+        # Extract template configs for OAuth flow (e.g., tenant_id for SharePoint Enterprise)
+        template_configs = await self._validate_and_extract_template_configs(
+            db, source, validated_config, ctx
+        )
+
+        token_response = await oauth2_service.exchange_client_credentials_for_token(
+            ctx,
+            source.short_name,
+            validated_auth.client_id,
+            validated_auth.client_secret,
+            template_configs,
+        )
+
+        if source_class._oauth_type == OAuthType.CLIENT_CREDENTIALS:
+            await self._validate_oauth_token(
+                source, token_response.access_token, validated_config, ctx
+            )
+        else:
+            await self._validate_direct_auth(source, validated_auth, validated_config, ctx)
 
         async with UnitOfWork(db) as uow:
             # Get collection
@@ -933,7 +954,7 @@ class SourceConnectionService:
 
         # Validate token
         await self._validate_oauth_token(
-            db, source, obj_in.authentication.access_token, validated_config, ctx
+            source, obj_in.authentication.access_token, validated_config, ctx
         )
 
         async with UnitOfWork(db) as uow:
@@ -1223,7 +1244,7 @@ class SourceConnectionService:
             Tuple of (sync_id, sync_schema, sync_job_schema) where schemas may be None
         """
         # Check if this is a federated search source - these don't need syncs
-        source_class = self._get_source_class(source.class_name)
+        source_class = self._get_source_class(source)
         if getattr(source_class, "_federated_search", False):
             ctx.logger.info(
                 f"Skipping sync creation for federated search source '{source.short_name}'. "
@@ -1448,19 +1469,23 @@ class SourceConnectionService:
             raise HTTPException(status_code=404, detail=f"Source '{short_name}' not found")
         return source
 
-    def _get_source_class(self, class_name: str) -> type[BaseSource]:
-        """Get source class by name."""
-        # Import the source module dynamically
-        module_name = class_name.replace("Source", "").lower()
+    def _get_source_class(self, source: schemas.Source) -> type[BaseSource]:
+        """Get source class using short_name from source schema.
 
-        # Handle special cases
-        if module_name.startswith("google") and len(module_name) > 6:
-            module_name = "google_" + module_name[6:]
-        elif module_name.startswith("outlook") and len(module_name) > 7:
-            module_name = "outlook_" + module_name[7:]
+        Args:
+            source: Source schema with short_name and class_name
 
-        module = __import__(f"airweave.platform.sources.{module_name}", fromlist=[class_name])
-        return getattr(module, class_name)
+        Returns:
+            Source class
+
+        Note: short_name directly maps to the module file name, eliminating
+        the need for fragile heuristics.
+        """
+        # Use short_name as module name (authoritative mapping)
+        module = __import__(
+            f"airweave.platform.sources.{source.short_name}", fromlist=[source.class_name]
+        )
+        return getattr(module, source.class_name)
 
     async def run(
         self,
@@ -1754,7 +1779,6 @@ class SourceConnectionService:
 
         # Validate OAuth2 token
         await self._validate_oauth_token(
-            db,
             await crud.source.get_by_short_name(db, short_name=init_session.short_name),
             token_response.access_token,
             None,

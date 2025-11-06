@@ -1,5 +1,5 @@
 # Warning: this file is not used in production. It is only used for development.
-# The secrets that we openly share with you are for development purposes only and cannot 
+# The secrets that we openly share with you are for development purposes only and cannot
 # be used in production.
 
 integrations:
@@ -319,6 +319,15 @@ integrations:
     additional_frontend_params:
       response_type: "code"
       response_mode: "query"
+
+  sharepoint_enterprise:
+    oauth_type: "client_credentials"
+    backend_url: "https://login.microsoftonline.com/{tenant_name}/oauth2/v2.0/token"
+    backend_url_template: true
+    grant_type: "client_credentials"
+    scope: "https://graph.microsoft.com/.default"
+    content_type: "application/x-www-form-urlencoded"
+    client_credential_location: "body"
 
   slack:
     oauth_type: "access_only"

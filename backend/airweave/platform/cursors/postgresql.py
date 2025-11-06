@@ -22,3 +22,4 @@ class PostgreSQLCursor(BaseCursor):
         default_factory=dict,
         description="Per-table cursor values as 'schema.table' -> cursor value mapping",
     )
+

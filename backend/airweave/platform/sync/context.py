@@ -1,6 +1,6 @@
 """Module for sync context."""
 
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID
 
 from airweave import schemas
@@ -44,7 +44,7 @@ class SyncContext:
     cursor: SyncCursor
     collection: schemas.Collection
     connection: schemas.Connection
-    source_connection: schemas.SourceConnection
+    source_connection: Any
     entity_map: dict[type[BaseEntity], UUID]
     ctx: ApiContext
     guard_rail: GuardRailService
@@ -70,7 +70,7 @@ class SyncContext:
         cursor: SyncCursor,
         collection: schemas.Collection,
         connection: schemas.Connection,
-        source_connection: schemas.SourceConnection,
+        source_connection: Any,
         entity_map: dict[type[BaseEntity], UUID],
         ctx: ApiContext,
         guard_rail: GuardRailService,

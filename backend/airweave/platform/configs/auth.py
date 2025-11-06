@@ -55,6 +55,19 @@ class OAuth2BYOCAuthConfig(OAuth2WithRefreshAuthConfig):
     )
 
 
+class ClientCredentialsAuthConfig(AuthConfig):
+    """Client Credentials authentication config."""
+
+    client_id: str = Field(
+        title="Client ID",
+        description="The client ID for the Client Credentials authentication",
+    )
+    client_secret: str = Field(
+        title="Client Secret",
+        description="The client secret for the Client Credentials authentication",
+    )
+
+
 class APIKeyAuthConfig(AuthConfig):
     """API key authentication credentials schema."""
 
@@ -557,6 +570,37 @@ class SharePointAuthConfig(OAuth2WithRefreshAuthConfig):
     """SharePoint authentication credentials schema."""
 
     # Inherits refresh_token and access_token from OAuth2WithRefreshAuthConfig
+
+
+class SharePointEnterpriseAuthConfig(ClientCredentialsAuthConfig):
+    """SharePoint Enterprise admin authentication via Azure AD App Registration.
+
+    Uses Client Credentials Flow with Application Permissions for tenant-wide access.
+    Requires admin consent in Azure AD portal.
+
+    This enables:
+    - Automated syncing without user interaction
+    - Access to all sites and files in the tenant
+    - Group membership extraction for access controls
+    """
+
+    client_id: str = Field(
+        title="Client ID (Application ID)",
+        description="Azure AD Application (client) ID from your app registration",
+        min_length=36,
+        max_length=36,
+    )
+    client_secret: str = Field(
+        title="Client Secret",
+        description="Azure AD client secret (create in Certificates & secrets)",
+        min_length=10,
+    )
+    tenant_id: str = Field(
+        title="Tenant ID (Directory ID)",
+        description="Your Azure AD Directory (tenant) ID",
+        min_length=36,
+        max_length=36,
+    )
 
 
 class SlackAuthConfig(OAuth2AuthConfig):

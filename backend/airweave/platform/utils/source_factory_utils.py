@@ -15,9 +15,11 @@ from airweave.api.context import ApiContext
 from airweave.core import credentials
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger
+from airweave.platform.auth.schemas import BaseAuthSettings, ClientCredentialsSettings
 from airweave.platform.auth_providers._base import BaseAuthProvider
 from airweave.platform.auth_providers.auth_result import AuthProviderMode
 from airweave.platform.auth_providers.pipedream import PipedreamAuthProvider
+from airweave.platform.configs.auth import ClientCredentialsAuthConfig
 from airweave.platform.http_client import PipedreamProxyClient
 from airweave.platform.locator import resource_locator
 
@@ -217,6 +219,18 @@ async def handle_auth_config_credentials(
         # This preserves fields like instance_url, client_id, etc.
         return updated_credentials
 
+    if issubclass(auth_config, ClientCredentialsAuthConfig):
+        from airweave.platform.auth.oauth2_service import oauth2_service
+
+        oauth2_response = await oauth2_service.exchange_client_credentials_for_token(
+            ctx,
+            short_name,
+            source_credentials.client_id,
+            source_credentials.client_secret,
+            source_connection_data["config_fields"],
+        )
+        decrypted_credential["access_token"] = oauth2_response.access_token
+        return decrypted_credential
     return source_credentials
 
 
@@ -224,6 +238,7 @@ async def process_credentials_for_source(
     raw_credentials: Any,
     source_connection_data: dict,
     logger: ContextualLogger,
+    auth_settings: Optional[BaseAuthSettings] = None,
 ) -> Any:
     """Process raw credentials into the format expected by the source.
 
@@ -236,28 +251,34 @@ async def process_credentials_for_source(
         raw_credentials: Raw credentials from auth provider or database
         source_connection_data: Source connection data dict
         logger: Logger for diagnostics
+        auth_settings: Optional typed auth schema (OAuth2Settings or ClientCredentialsSettings)
+            to avoid re-loading from integration_settings
 
     Returns:
         Processed credentials in format expected by source
     """
+    from airweave.platform.auth.schemas import (
+        OAuth2Settings,
+    )
+
     auth_config_class_name = source_connection_data.get("auth_config_class")
     source_model = source_connection_data.get("source_model")
     short_name = source_connection_data["short_name"]
 
+    if isinstance(auth_settings, (OAuth2Settings, ClientCredentialsSettings)):
+        return raw_credentials["access_token"]
+
     # Case 1: OAuth sources without auth_config_class need just the access_token string
-    # This applies to sources like Asana, Google Calendar, etc.
-    if (
-        not auth_config_class_name
-        and source_model
-        and hasattr(source_model, "oauth_type")
-        and source_model.oauth_type
-    ):
-        # Extract access token from dict if present
+    # Use typed auth settings to check explicitly (no more hasattr!)
+    if not auth_config_class_name and source_model and source_model.oauth_type:
+        if not auth_settings:
+            from airweave.platform.auth.settings import integration_settings
+
+            auth_settings = await integration_settings.get_by_short_name(short_name)
+
         if isinstance(raw_credentials, dict) and "access_token" in raw_credentials:
-            logger.debug(f"Extracting access_token for OAuth source {short_name}")
             return raw_credentials["access_token"]
         elif isinstance(raw_credentials, str):
-            # Already a string token, pass through
             logger.debug(f"OAuth source {short_name} credentials already a string token")
             return raw_credentials
         else:

@@ -279,44 +279,28 @@ class SourceConnectionHelpers:
 
     async def validate_direct_auth(
         self,
-        db: AsyncSession,
         source: schemas.Source,
         auth_fields: AuthConfig,
         config_fields: Optional[ConfigValues],
         ctx: ApiContext,
-    ) -> Dict[str, Any]:
+    ) -> None:
         """Validate direct authentication credentials."""
-        try:
-            source_cls = resource_locator.get_source(source)
-            source_instance = await source_cls.create(auth_fields, config=config_fields)
-            source_instance.set_logger(ctx.logger)
+        source_cls = resource_locator.get_source(source)
+        source_instance = await source_cls.create(auth_fields, config=config_fields)
+        source_instance.set_logger(ctx.logger)
 
-            if hasattr(source_instance, "validate"):
-                is_valid = await source_instance.validate()
-                if not is_valid:
-                    raise HTTPException(
-                        status_code=400, detail="Authentication credentials are invalid"
-                    )
-            else:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"No validate method found for {source.short_name}",
-                )
-            return {"valid": True, "source": source.short_name}
-        except HTTPException:
-            raise
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Validation failed: {str(e)}") from e
+        is_valid = await source_instance.validate()
+        if not is_valid:
+            raise HTTPException(status_code=400, detail="Authentication credentials are invalid")
 
     async def validate_oauth_token(
         self,
-        db: AsyncSession,
         source: schemas.Source,
         access_token: str,
         config_fields: Optional[ConfigValues],
         ctx: ApiContext,
         credentials: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+    ) -> None:
         """Validate OAuth access token.
 
         Args:
@@ -327,24 +311,15 @@ class SourceConnectionHelpers:
             ctx: API context
             credentials: Full OAuth credentials dict (includes access_token, instance_url, etc.)
         """
-        try:
-            source_cls = resource_locator.get_source(source)
+        source_cls = resource_locator.get_source(source)
 
-            source_instance = await source_cls.create(
-                access_token=access_token, config=config_fields
-            )
+        source_instance = await source_cls.create(access_token=access_token, config=config_fields)
 
-            source_instance.set_logger(ctx.logger)
+        source_instance.set_logger(ctx.logger)
 
-            if hasattr(source_instance, "validate"):
-                is_valid = await source_instance.validate()
-                if not is_valid:
-                    raise HTTPException(status_code=400, detail="OAuth token is invalid")
-            return {"valid": True, "source": source.short_name}
-        except HTTPException:
-            raise
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Token validation failed: {str(e)}") from e
+        is_valid = await source_instance.validate()
+        if not is_valid:
+            raise HTTPException(status_code=400, detail="OAuth token is invalid")
 
     async def create_integration_credential(
         self,

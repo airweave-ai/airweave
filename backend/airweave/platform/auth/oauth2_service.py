@@ -22,6 +22,7 @@ from airweave.db.unit_of_work import UnitOfWork
 from airweave.models.integration_credential import IntegrationType
 from airweave.platform.auth.schemas import (
     BaseAuthSettings,
+    ClientCredentialsSettings,
     OAuth2Settings,
     OAuth2TokenResponse,
 )
@@ -136,7 +137,7 @@ class OAuth2Service:
         redirect_uri = OAuth2Service._get_redirect_url(source_short_name)
 
         # Render backend URL if it's a template
-        if getattr(oauth2_settings, "backend_url_template", False):
+        if isinstance(oauth2_settings, OAuth2Settings) and oauth2_settings.backend_url_template:
             if not template_configs:
                 raise ValueError(f"template_configs needed for {source_short_name}")
             try:
@@ -280,7 +281,7 @@ class OAuth2Service:
             ) from e
 
         # Render backend URL if it's a template
-        if getattr(oauth2_settings, "backend_url_template", False):
+        if isinstance(oauth2_settings, OAuth2Settings) and oauth2_settings.backend_url_template:
             if not template_configs:
                 raise ValueError(f"template_configs needed for {source_short_name}")
             try:
@@ -307,6 +308,70 @@ class OAuth2Service:
             integration_config=oauth2_settings,
             code_verifier=code_verifier,
         )
+
+    @staticmethod
+    async def exchange_client_credentials_for_token(
+        ctx: ApiContext,
+        source_short_name: str,
+        client_id: str,
+        client_secret: str,
+        template_configs: Optional[dict] = None,
+    ) -> OAuth2TokenResponse:
+        """Exchange client credentials for an service-to-service OAuth2 token.
+
+        Uses the OAuth 2.0 Client Credentials grant type for machine-to-machine
+        authentication without user context.
+
+        Args:
+        ----
+            ctx (ApiContext): The API context.
+            source_short_name (str): The short name of the integration source.
+            client_id (str): The client ID for the application.
+            client_secret (str): The client secret for the application.
+            template_configs (Optional[dict]): Optional config fields for URL templates
+                (e.g., tenant_id).
+
+        Returns:
+        -------
+            OAuth2TokenResponse: The response containing the access token.
+
+        Raises:
+        ------
+            HTTPException: If settings are not found or token exchange fails.
+            ValueError: If template URL requires template_configs but it's missing.
+        """
+        oauth2_settings = await integration_settings.get_by_short_name(source_short_name)
+        if not oauth2_settings:
+            raise HTTPException(
+                status_code=404, detail=f"Settings not found for source: {source_short_name}"
+            )
+
+        # Render backend URL if it's a template
+        if (
+            isinstance(oauth2_settings, (OAuth2Settings, ClientCredentialsSettings))
+            and oauth2_settings.backend_url_template
+        ):
+            if not template_configs:
+                raise ValueError(f"template_configs needed for {source_short_name}")
+            try:
+                backend_url = oauth2_settings.render_backend_url(**template_configs)
+                ctx.logger.debug(f"Rendered backend URL for client credentials: {backend_url}")
+            except KeyError as e:
+                raise ValueError(
+                    f"Missing template variable {e} in template_configs for client credentials"
+                ) from e
+        else:
+            backend_url = oauth2_settings.backend_url
+
+        headers, payload = OAuth2Service._prepare_client_credentials_request(
+            ctx.logger, oauth2_settings, client_id, client_secret
+        )
+
+        response = await OAuth2Service._make_token_request(
+            ctx.logger, backend_url, headers, payload
+        )
+
+        return OAuth2TokenResponse(**response.json())
 
     @staticmethod
     async def refresh_access_token(
@@ -350,8 +415,10 @@ class OAuth2Service:
             )
 
             # Render backend URL if it's a template
-            backend_url = integration_config.backend_url
-            if getattr(integration_config, "backend_url_template", False):
+            if (
+                isinstance(integration_config, OAuth2Settings)
+                and integration_config.backend_url_template
+            ):
                 if not config_fields:
                     raise ValueError(
                         f"config_fields required for token refresh of {integration_short_name}"
@@ -382,6 +449,8 @@ class OAuth2Service:
                     raise ValueError(
                         f"Missing template variable {e} in config_fields for token refresh"
                     ) from e
+            else:
+                backend_url = integration_config.backend_url
 
             # Get client credentials
             # TODO: this is the only place we need to check the db for client credentials
@@ -543,18 +612,17 @@ class OAuth2Service:
         # do NOT include scope parameter - Atlassian/Microsoft reject it with 403
         # For WITH_REFRESH OAuth (Google, Slack), scope should be included
         # See: https://developer.atlassian.com/cloud/jira/platform/oauth-2-3lo-apps/#refresh-a-token
-        oauth_type = getattr(integration_config, "oauth_type", None)
         if (
-            oauth_type == "with_refresh"
-            and hasattr(integration_config, "scope")
+            integration_config.oauth_type == "with_refresh"
+            and isinstance(integration_config, OAuth2Settings)
             and integration_config.scope
         ):
             payload["scope"] = integration_config.scope
             logger.debug(
-                f"Including scope in token refresh (oauth_type=with_refresh): {integration_config.scope}"
+                f"Including scope in request (oauth_type=with_refresh): {integration_config.scope}"
             )
-        elif oauth_type == "with_rotating_refresh":
-            logger.debug(f"Skipping scope in token refresh (oauth_type=with_rotating_refresh)")
+        elif integration_config.oauth_type == "with_rotating_refresh":
+            logger.debug("Skipping scope in token refresh (oauth_type=with_rotating_refresh)")
 
         if integration_config.client_credential_location == "header":
             encoded_credentials = OAuth2Service._encode_client_credentials(client_id, client_secret)
@@ -571,6 +639,68 @@ class OAuth2Service:
             f"Client ID: {client_id}, "
             f"Code length: {len(refresh_token)}, "
             f"Grant type: {payload['grant_type']}, "
+            f"Credential location: {integration_config.client_credential_location}"
+        )
+
+        return headers, payload
+
+    @staticmethod
+    def _prepare_client_credentials_request(
+        logger: ContextualLogger,
+        integration_config: schemas.Source | schemas.Destination | schemas.EmbeddingModel,
+        client_id: str,
+        client_secret: str,
+    ) -> tuple[dict, dict]:
+        """Prepare headers and payload for client credentials grant request.
+
+        The client credentials grant type is used for machine-to-machine authentication
+        where no user context is required. This is typically used for service accounts
+        or system-level access.
+
+        Args:
+        ----
+            logger (ContextualLogger): The logger to use.
+            integration_config (schemas.Source | schemas.Destination | schemas.EmbeddingModel):
+                The integration configuration.
+            client_id (str): The client ID.
+            client_secret (str): The client secret.
+
+        Returns:
+        -------
+            tuple[dict, dict]: The headers and payload for the token request.
+        """
+        headers = {
+            "Content-Type": integration_config.content_type,
+        }
+
+        payload = {
+            "grant_type": "client_credentials",
+        }
+
+        # Include scope if configured for the integration
+        if (
+            isinstance(integration_config, (OAuth2Settings, ClientCredentialsSettings))
+            and integration_config.scope
+        ):
+            payload["scope"] = integration_config.scope
+            logger.debug(f"Including scope in request: {integration_config.scope}")
+
+        # Add client credentials based on where the provider expects them
+        if integration_config.client_credential_location == "header":
+            encoded_credentials = OAuth2Service._encode_client_credentials(client_id, client_secret)
+            headers["Authorization"] = f"Basic {encoded_credentials}"
+            logger.debug("Client credentials placed in Authorization header")
+        else:
+            payload["client_id"] = client_id
+            payload["client_secret"] = client_secret
+            logger.debug("Client credentials placed in request body")
+
+        # Log the request details for debugging
+        logger.info(
+            f"OAuth2 client credentials request - "
+            f"URL: {integration_config.backend_url}, "
+            f"Client ID: {client_id}, "
+            f"Grant type: client_credentials, "
             f"Credential location: {integration_config.client_credential_location}"
         )
 
@@ -638,10 +768,7 @@ class OAuth2Service:
         oauth2_token_response = OAuth2TokenResponse(**response.json())
 
         # Check if this is a rotating refresh token OAuth
-        if (
-            hasattr(integration_config, "oauth_type")
-            and integration_config.oauth_type == "with_rotating_refresh"
-        ):
+        if integration_config.oauth_type == "with_rotating_refresh":
             # Get connection and its credential
             connection = await crud.connection.get(db=db, id=connection_id, ctx=ctx)
             integration_credential = await crud.integration_credential.get(
@@ -905,7 +1032,7 @@ class OAuth2Service:
         # Otherwise store both refresh and access tokens
         decrypted_credentials = (
             {"access_token": oauth2_response.access_token}
-            if (hasattr(settings, "oauth_type") and settings.oauth_type == "access_only")
+            if settings.oauth_type == "access_only"
             else {
                 "refresh_token": oauth2_response.refresh_token,
                 "access_token": oauth2_response.access_token,

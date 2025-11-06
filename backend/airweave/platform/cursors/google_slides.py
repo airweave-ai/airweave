@@ -18,3 +18,4 @@ class GoogleSlidesCursor(BaseCursor):
         default="",
         description="Drive Changes API page token for tracking presentation changes",
     )
+

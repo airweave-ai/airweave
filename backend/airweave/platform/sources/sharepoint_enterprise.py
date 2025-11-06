@@ -14,13 +14,13 @@ Reference:
 """
 
 from collections import deque
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import BaseEntity, Breadcrumb
+from airweave.platform.entities._base import AccessControl, BaseEntity, Breadcrumb
 from airweave.platform.entities.sharepoint import (
     SharePointDriveEntity,
     SharePointDriveItemEntity,
@@ -36,38 +36,49 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
 @source(
-    name="SharePoint",
-    short_name="sharepoint",
+    name="SharePoint Enterprise",
+    short_name="sharepoint_enterprise",
     auth_methods=[
-        AuthenticationMethod.OAUTH_BROWSER,
-        AuthenticationMethod.OAUTH_TOKEN,
+        AuthenticationMethod.DIRECT,
         AuthenticationMethod.AUTH_PROVIDER,
     ],
-    oauth_type=OAuthType.WITH_ROTATING_REFRESH,
-    auth_config_class=None,
-    config_class="SharePointConfig",
-    labels=["File Storage", "Collaboration"],
+    oauth_type=OAuthType.CLIENT_CREDENTIALS,
+    auth_config_class="SharePointEnterpriseAuthConfig",
+    config_class="SharePointEnterpriseConfig",
+    labels=["File Storage", "Collaboration", "Enterprise"],
     supports_continuous=False,
 )
-class SharePointSource(BaseSource):
-    """SharePoint source connector integrates with the Microsoft Graph API.
+class SharePointEnterpriseSource(BaseSource):
+    """SharePoint Enterprise connector for admin-level syncing.
 
-    Synchronizes data from SharePoint including sites, document libraries,
-    files, users, and groups.
+    Uses Azure AD Application Permissions (Client Credentials Flow) to sync
+    tenant-wide SharePoint data including:
+    - All sites, drives, and files across the organization
+    - User and group information
+    - File-level permissions for access controls
+    - Group memberships (using /transitivemembers for nested groups)
 
-    It provides comprehensive access to SharePoint resources with intelligent
-    error handling and rate limiting.
+    Requires Azure AD admin to set up app registration with required permissions.
     """
 
     GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
+    TOKEN_ENDPOINT = "https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
 
     @classmethod
     async def create(
         cls, access_token: str, config: Optional[Dict[str, Any]] = None
-    ) -> "SharePointSource":
-        """Create a new SharePoint source instance with the provided OAuth access token."""
+    ) -> "SharePointEnterpriseSource":
+        """Create SharePoint Enterprise source.
+
+        Args:
+            access_token: OAuth access token for SharePoint Enterprise API
+            config: Optional configuration parameters
+        Returns:
+            Configured SharePointEnterpriseSource instance
+        """
         instance = cls()
         instance.access_token = access_token
+        instance.config = config
         return instance
 
     @retry(
@@ -86,9 +97,8 @@ class SharePointSource(BaseSource):
         - 429 rate limits by respecting Retry-After header
         """
         # Get fresh token (will refresh if needed)
-        access_token = await self.get_access_token()
         headers = {
-            "Authorization": f"Bearer {access_token}",
+            "Authorization": f"Bearer {self.access_token}",
             "Accept": "application/json",
         }
 
@@ -103,9 +113,8 @@ class SharePointSource(BaseSource):
                 await self.refresh_on_unauthorized()
 
                 # Get new token and retry
-                access_token = await self.get_access_token()
                 headers = {
-                    "Authorization": f"Bearer {access_token}",
+                    "Authorization": f"Bearer {self.access_token}",
                     "Accept": "application/json",
                 }
                 resp = await client.get(url, headers=headers, params=params, timeout=30.0)
@@ -299,6 +308,9 @@ class SharePointSource(BaseSource):
             created_datetime = self._parse_datetime(site_data.get("createdDateTime"))
             last_modified_datetime = self._parse_datetime(site_data.get("lastModifiedDateTime"))
 
+            # Extract access control
+            access_control = await self._extract_site_permissions(client, site_id)
+
             yield SharePointSiteEntity(
                 # Base fields
                 entity_id=site_id,
@@ -306,6 +318,7 @@ class SharePointSource(BaseSource):
                 name=display_name,
                 created_at=created_datetime,
                 updated_at=last_modified_datetime,
+                access=access_control,
                 # API fields
                 display_name=display_name,
                 site_name=site_data.get("name"),
@@ -333,6 +346,178 @@ class SharePointSource(BaseSource):
             self.logger.warning(f"Error parsing datetime {dt_str}: {str(e)}")
             return None
 
+    async def _extract_site_permissions(
+        self, client: httpx.AsyncClient, site_id: str
+    ) -> Optional["AccessControl"]:
+        """Extract permissions for a SharePoint site.
+
+        Args:
+            client: HTTP client
+            site_id: ID of the site
+
+        Returns:
+            AccessControl object or None if extraction fails
+        """
+        try:
+            url = f"{self.GRAPH_BASE_URL}/sites/{site_id}/permissions"
+            data = await self._get_with_auth(client, url)
+            permissions = data.get("value", [])
+            return self._parse_permissions_to_access_control(permissions)
+        except Exception as e:
+            self.logger.warning(f"Failed to extract permissions for site {site_id}: {e}")
+            return None
+
+    async def _extract_drive_permissions(
+        self, client: httpx.AsyncClient, drive_id: str
+    ) -> Optional["AccessControl"]:
+        """Extract permissions for a drive.
+
+        Args:
+            client: HTTP client
+            drive_id: ID of the drive
+
+        Returns:
+            AccessControl object or None if extraction fails
+        """
+        try:
+            url = f"{self.GRAPH_BASE_URL}/drives/{drive_id}/permissions"
+            data = await self._get_with_auth(client, url)
+            permissions = data.get("value", [])
+            return self._parse_permissions_to_access_control(permissions)
+        except Exception as e:
+            self.logger.warning(f"Failed to extract permissions for drive {drive_id}: {e}")
+            return None
+
+    async def _extract_item_permissions(
+        self, client: httpx.AsyncClient, drive_id: str, item_id: str
+    ) -> Optional["AccessControl"]:
+        """Query Graph API /permissions endpoint and parse to AccessControl.
+
+        Args:
+            client: HTTP client
+            drive_id: ID of the drive
+            item_id: ID of the item
+
+        Returns:
+            AccessControl object or None if extraction fails
+        """
+        try:
+            # Query permissions endpoint
+            url = f"{self.GRAPH_BASE_URL}/drives/{drive_id}/items/{item_id}/permissions"
+            data = await self._get_with_auth(client, url)
+
+            permissions = data.get("value", [])
+            return self._parse_permissions_to_access_control(permissions)
+
+        except Exception as e:
+            self.logger.warning(f"Failed to extract permissions for item {item_id}: {e}")
+            return None  # Fail gracefully - entity will have no access control
+
+    async def _extract_list_permissions(
+        self, client: httpx.AsyncClient, site_id: str, list_id: str
+    ) -> Optional["AccessControl"]:
+        """Extract permissions for a SharePoint list.
+
+        Args:
+            client: HTTP client
+            site_id: ID of the site
+            list_id: ID of the list
+
+        Returns:
+            AccessControl object or None if extraction fails
+        """
+        try:
+            url = f"{self.GRAPH_BASE_URL}/sites/{site_id}/lists/{list_id}/permissions"
+            data = await self._get_with_auth(client, url)
+            permissions = data.get("value", [])
+            return self._parse_permissions_to_access_control(permissions)
+        except Exception as e:
+            self.logger.warning(f"Failed to extract permissions for list {list_id}: {e}")
+            return None
+
+    async def _extract_list_item_permissions(
+        self, client: httpx.AsyncClient, site_id: str, list_id: str, item_id: str
+    ) -> Optional["AccessControl"]:
+        """Extract permissions for a SharePoint list item.
+
+        Args:
+            client: HTTP client
+            site_id: ID of the site
+            list_id: ID of the list
+            item_id: ID of the list item
+
+        Returns:
+            AccessControl object or None if extraction fails
+        """
+        try:
+            url = (
+                f"{self.GRAPH_BASE_URL}/sites/{site_id}/lists/{list_id}/items/{item_id}/permissions"
+            )
+            data = await self._get_with_auth(client, url)
+            permissions = data.get("value", [])
+            return self._parse_permissions_to_access_control(permissions)
+        except Exception as e:
+            self.logger.warning(f"Failed to extract permissions for list item {item_id}: {e}")
+            return None
+
+    async def _extract_page_permissions(
+        self, client: httpx.AsyncClient, site_id: str, page_id: str
+    ) -> Optional["AccessControl"]:
+        """Extract permissions for a SharePoint page.
+
+        Args:
+            client: HTTP client
+            site_id: ID of the site
+            page_id: ID of the page
+
+        Returns:
+            AccessControl object or None if extraction fails
+        """
+        try:
+            url = f"{self.GRAPH_BASE_URL}/sites/{site_id}/pages/{page_id}/permissions"
+            data = await self._get_with_auth(client, url)
+            permissions = data.get("value", [])
+            return self._parse_permissions_to_access_control(permissions)
+        except Exception as e:
+            self.logger.warning(f"Failed to extract permissions for page {page_id}: {e}")
+            return None
+
+    def _parse_permissions_to_access_control(self, permissions: List[Dict]) -> "AccessControl":
+        """Parse Graph API permission format to AccessControl.
+
+        Args:
+            permissions: List of permission objects from Graph API
+
+        Returns:
+            AccessControl object with viewers list
+        """
+        from airweave.platform.entities._base import AccessControl
+
+        viewers = []
+
+        for perm in permissions:
+            # Only include permissions with "read" role or higher
+            roles = perm.get("roles", [])
+            if not any(r in ["read", "write", "owner"] for r in roles):
+                continue
+
+            # Use grantedToV2 (new API format)
+            granted_to = perm.get("grantedToV2", {})
+
+            # User principal
+            if "user" in granted_to:
+                user_email = granted_to["user"].get("email")
+                if user_email:
+                    viewers.append(f"user:{user_email}")
+
+            # Group principal (NOT expanded)
+            elif "group" in granted_to:
+                group_id = granted_to["group"].get("id")
+                if group_id:
+                    viewers.append(f"group:{group_id}")
+
+        return AccessControl(viewers=viewers)
+
     async def _generate_drive_entities(
         self, client: httpx.AsyncClient, site_id: str, site_name: str
     ) -> AsyncGenerator[SharePointDriveEntity, None]:
@@ -359,6 +544,9 @@ class SharePointSource(BaseSource):
                     # Create site breadcrumb
                     site_breadcrumb = Breadcrumb(entity_id=site_id)
 
+                    # Extract access control
+                    access_control = await self._extract_drive_permissions(client, drive_id)
+
                     yield SharePointDriveEntity(
                         # Base fields
                         entity_id=drive_id,
@@ -366,6 +554,7 @@ class SharePointSource(BaseSource):
                         name=drive_name,
                         created_at=self._parse_datetime(drive_data.get("createdDateTime")),
                         updated_at=self._parse_datetime(drive_data.get("lastModifiedDateTime")),
+                        access=access_control,
                         # API fields
                         description=drive_data.get("description"),
                         drive_type=drive_data.get("driveType"),
@@ -589,6 +778,11 @@ class SharePointSource(BaseSource):
                 if not file_entity:
                     continue
 
+                access_control = await self._extract_item_permissions(
+                    client=client, drive_id=drive_id, item_id=item["id"]
+                )
+                file_entity.access = access_control
+
                 # Download the file using file downloader
                 try:
                     await self.file_downloader.download_from_url(
@@ -643,6 +837,9 @@ class SharePointSource(BaseSource):
 
                     self.logger.debug(f"Processing list #{list_count}: {display_name}")
 
+                    # Extract access control
+                    access_control = await self._extract_list_permissions(client, site_id, list_id)
+
                     yield SharePointListEntity(
                         # Base fields
                         entity_id=list_id,
@@ -650,6 +847,7 @@ class SharePointSource(BaseSource):
                         name=display_name,
                         created_at=self._parse_datetime(list_data.get("createdDateTime")),
                         updated_at=self._parse_datetime(list_data.get("lastModifiedDateTime")),
+                        access=access_control,
                         # API fields
                         display_name=display_name,
                         list_name=list_data.get("name"),
@@ -705,6 +903,11 @@ class SharePointSource(BaseSource):
 
                     list_breadcrumb = Breadcrumb(entity_id=list_id)
 
+                    # Extract access control
+                    access_control = await self._extract_list_item_permissions(
+                        client, list_entity.site_id, list_id, item_id
+                    )
+
                     yield SharePointListItemEntity(
                         # Base fields
                         entity_id=item_id,
@@ -712,6 +915,7 @@ class SharePointSource(BaseSource):
                         name=item_name,
                         created_at=self._parse_datetime(item_data.get("createdDateTime")),
                         updated_at=self._parse_datetime(item_data.get("lastModifiedDateTime")),
+                        access=access_control,
                         # API fields
                         fields=fields,
                         content_type=item_data.get("contentType"),
@@ -841,6 +1045,9 @@ class SharePointSource(BaseSource):
                     # Extract text content from webParts
                     content = self._extract_page_content(page_data)
 
+                    # Extract access control
+                    access_control = await self._extract_page_permissions(client, site_id, page_id)
+
                     yield SharePointPageEntity(
                         # Base fields
                         entity_id=page_id,
@@ -848,6 +1055,7 @@ class SharePointSource(BaseSource):
                         name=title,
                         created_at=self._parse_datetime(page_data.get("createdDateTime")),
                         updated_at=self._parse_datetime(page_data.get("lastModifiedDateTime")),
+                        access=access_control,
                         # API fields
                         title=title,
                         page_name=page_data.get("name"),
@@ -1048,9 +1256,121 @@ class SharePointSource(BaseSource):
             )
 
     async def validate(self) -> bool:
-        """Verify SharePoint OAuth2 token by pinging the sites endpoint."""
-        return await self._validate_oauth2(
-            ping_url=f"{self.GRAPH_BASE_URL}/sites/root",
-            headers={"Accept": "application/json"},
-            timeout=10.0,
-        )
+        """Verify SharePoint Enterprise credentials by pinging Microsoft Graph API.
+
+        TokenManager will acquire the token on first call using Client Credentials Flow.
+        """
+        try:
+            # Ping Microsoft Graph API to verify credentials
+            async with self.http_client(timeout=15.0) as client:
+                headers = {
+                    "Authorization": f"Bearer {self.access_token}",
+                    "Accept": "application/json",
+                }
+
+                response = await client.get(
+                    f"{self.GRAPH_BASE_URL}/users?$top=1",
+                    headers=headers,
+                )
+
+                if response.status_code == 200:
+                    self.logger.info("SharePoint Enterprise validation succeeded")
+                    return True
+
+                # Log failure details
+                self.logger.warning(
+                    f"SharePoint Enterprise validation failed: "
+                    f"HTTP {response.status_code} - {response.text[:200]}"
+                )
+                return False
+
+        except Exception as e:
+            self.logger.error(f"SharePoint Enterprise validation error: {e}")
+            return False
+
+    async def generate_access_control_memberships(self) -> AsyncGenerator[Any, None]:
+        """Generate user-group membership tuples (separate from entities).
+
+        This runs AFTER entity sync as an adjacent pipeline.
+        Yields AccessControlMembership objects for each user-group relationship.
+        """
+        from airweave.platform.access_control.schemas import AccessControlMembership
+
+        self.logger.info("Starting access control membership extraction...")
+
+        membership_count = 0
+
+        try:
+            async with self.http_client() as client:
+                # Iterate through all groups
+                async for group_entity in self._generate_group_entities(client):
+                    group_id = group_entity.entity_id
+                    group_name = group_entity.display_name
+
+                    # Query group members
+                    members = await self._get_group_members(client, group_id)
+
+                    self.logger.debug(f"Found {len(members)} members in group {group_name}")
+
+                    # Yield membership tuple for each member
+                    for member in members:
+                        membership_count += 1
+                        member_email = (
+                            member.get("mail")
+                            or member.get("userPrincipalName")
+                            or member.get("id")  # Fallback to ID
+                        )
+                        yield AccessControlMembership(
+                            member_id=member_email,
+                            member_type="user",
+                            group_id=group_id,
+                            group_name=group_name,
+                        )
+
+        except Exception as e:
+            self.logger.error(f"Error generating access control memberships: {str(e)}")
+            raise
+        finally:
+            self.logger.info(
+                "Access control membership extraction complete. "
+                f"Total memberships: {membership_count}"
+            )
+
+    async def _get_group_members(self, client: httpx.AsyncClient, group_id: str) -> List[Dict]:
+        """Query /groups/{id}/transitivemembers endpoint with pagination.
+
+        Uses transitivemembers instead of members to get ALL users including
+        those in nested groups. This handles group-to-group memberships automatically
+        without needing to store group-group relationships.
+
+        Args:
+            client: HTTP client
+            group_id: ID of the group
+
+        Returns:
+            List of USER member objects with id, mail, userPrincipalName fields
+            (groups are automatically expanded by Microsoft Graph API)
+        """
+        # Use transitivemembers to handle nested groups
+        url = f"{self.GRAPH_BASE_URL}/groups/{group_id}/transitivemembers"
+        params = {"$select": "id,mail,userPrincipalName", "$top": 100}
+
+        members = []
+        try:
+            while url:
+                data = await self._get_with_auth(client, url, params=params)
+                members.extend(data.get("value", []))
+
+                # Pagination
+                url = data.get("@odata.nextLink")
+                if url:
+                    params = None  # nextLink includes params
+
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 403:
+                self.logger.warning(f"Access denied to group {group_id} members, skipping")
+                return []
+            else:
+                raise
+
+        return members

@@ -524,6 +524,21 @@ class TodoistConfig(SourceConfig):
     pass
 
 
+class SharePointEnterpriseConfig(SourceConfig):
+    """SharePoint Enterprise configuration schema."""
+
+    tenant_name: str = RequiredTemplateConfig(
+        title="Tenant Name or ID",
+        description=(
+            "Your Microsoft 365 tenant domain or ID. Use one of: "
+            "(1) Full domain: 'contoso.onmicrosoft.com', "
+            "(2) Tenant UUID: '12345678-1234-1234-1234-123456789abc'. "
+            "Find in Azure Portal > Microsoft Entra ID > Overview."
+        ),
+        json_schema_extra={"required_for_auth": True},
+    )
+
+
 class TrelloConfig(SourceConfig):
     """Trello configuration schema."""
 

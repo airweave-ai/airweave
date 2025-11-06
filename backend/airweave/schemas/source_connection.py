@@ -33,6 +33,7 @@ class OAuthType(str, Enum):
     ACCESS_ONLY = "access_only"  # Just access token, no refresh
     WITH_REFRESH = "with_refresh"  # Access + refresh token
     WITH_ROTATING_REFRESH = "with_rotating_refresh"  # Refresh token rotates on use
+    CLIENT_CREDENTIALS = "client_credentials"  # Service-to-service auth (no user, no refresh token)
 
 
 # ===========================

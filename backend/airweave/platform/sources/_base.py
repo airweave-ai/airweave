@@ -24,6 +24,7 @@ from pydantic import BaseModel
 from airweave.core.logging import logger
 from airweave.platform.access_control.schemas import AccessControlMembership
 from airweave.platform.entities._base import BaseEntity
+from airweave.platform.sync.token_manager import TokenManager
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
@@ -39,7 +40,7 @@ class BaseSource:
     def __init__(self):
         """Initialize the base source."""
         self._logger: Optional[Any] = None  # Store contextual logger as instance variable
-        self._token_manager: Optional[Any] = None  # Store token manager for OAuth sources
+        self._token_manager: Optional[TokenManager] = None  # Store token manager for OAuth sources
         self._http_client_factory: Optional[Callable] = None  # Factory for creating HTTP clients
         self._file_downloader: Optional[Any] = None  # File download service
         # Optional sync identifiers for multi-tenant scoped helpers

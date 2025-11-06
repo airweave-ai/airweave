@@ -183,6 +183,69 @@ class OAuth2WithRefreshRotatingSettings(OAuth2Settings):
     pass
 
 
+class ClientCredentialsSettings(BaseAuthSettings):
+    """OAuth2 Client Credentials Flow settings.
+
+    For service-to-service authentication without user interaction.
+    Used by SharePoint Enterprise, Azure services, etc.
+
+    Attributes:
+        integration_short_name: The integration short name
+        backend_url: Token endpoint URL (may contain {tenant_id} template)
+        backend_url_template: Whether backend_url has template variables
+        grant_type: Always "client_credentials"
+        scope: OAuth2 scope (e.g., "https://graph.microsoft.com/.default")
+        content_type: Request content type
+        client_credential_location: "body" or "header"
+    """
+
+    integration_short_name: str
+    backend_url: str
+    backend_url_template: bool = False
+    grant_type: str
+    scope: Optional[str] = None
+    content_type: str
+    client_credential_location: str
+
+    @model_validator(mode="after")
+    def validate_client_credentials_fields(self):
+        """Validate Client Credentials settings."""
+        if self.grant_type != "client_credentials":
+            raise ValueError(
+                f"Client Credentials flow requires grant_type='client_credentials', "
+                f"got '{self.grant_type}'"
+            )
+        if not self.backend_url:
+            raise ValueError(
+                f"Client Credentials integration {self.integration_short_name} "
+                f"missing 'backend_url' field"
+            )
+        return self
+
+    def render_backend_url(self, **template_vars) -> str:
+        """Render backend URL with template variables.
+
+        Args:
+            **template_vars: Variables to interpolate (e.g., tenant_id="abc-123")
+
+        Returns:
+            Rendered backend URL with variables replaced
+
+        Raises:
+            KeyError: If template variable missing
+
+        Example:
+            >>> settings.backend_url = (
+            ...     "https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
+            ... )
+            >>> settings.render_backend_url(tenant_id="12345678-abcd-...")
+            'https://login.microsoftonline.com/12345678-abcd-.../oauth2/v2.0/token'
+        """
+        if self.backend_url_template:
+            return self.backend_url.format(**template_vars)
+        return self.backend_url
+
+
 class ConfigClassAuthSettings(BaseAuthSettings):
     """Config class authentication settings schema."""
 

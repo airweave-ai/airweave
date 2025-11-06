@@ -2,7 +2,8 @@
 
 import asyncio
 import time
-from typing import Any, Optional
+from typing import Any, Dict, Optional
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,8 +11,14 @@ from airweave import crud, schemas
 from airweave.api.context import ApiContext
 from airweave.core import credentials
 from airweave.core.exceptions import TokenRefreshError
-from airweave.core.logging import logger
+from airweave.core.logging import ContextualLogger, logger
 from airweave.platform.auth.oauth2_service import oauth2_service
+from airweave.platform.auth.schemas import (
+    BaseAuthSettings,
+    ClientCredentialsSettings,
+    OAuth2Settings,
+)
+from airweave.platform.auth_providers._base import BaseAuthProvider
 
 
 class TokenManager:
@@ -31,40 +38,43 @@ class TokenManager:
     def __init__(
         self,
         db: AsyncSession,
-        source_short_name: str,
-        source_connection: schemas.SourceConnection,
+        auth_settings: BaseAuthSettings,
+        integration_credential_id: UUID,
+        connection_id: UUID,
         ctx: ApiContext,
         initial_credentials: Any,
+        config_fields: Optional[Dict[str, Any]] = None,
         is_direct_injection: bool = False,
-        logger_instance=None,
-        auth_provider_instance: Optional[Any] = None,
+        logger_instance: Optional[ContextualLogger] = None,
+        auth_provider_instance: Optional[BaseAuthProvider] = None,
     ):
         """Initialize the token manager.
 
         Args:
             db: Database session
-            source_short_name: Short name of the source
-            source_connection: Source connection configuration
+            auth_settings: Typed auth settings schema (OAuth2Settings or ClientCredentialsSettings)
+            integration_credential_id: ID of the integration credential
+            connection_id: ID of the connection
             ctx: The API context
             initial_credentials: The initial credentials (dict, string token, or auth config object)
+            config_fields: Optional config fields for template rendering (e.g., tenant_id)
             is_direct_injection: Whether token was directly injected (no refresh)
             logger_instance: Optional logger instance for contextual logging
             auth_provider_instance: Optional auth provider instance for token refresh
         """
         self.db = db
-        self.source_short_name = source_short_name
-        self.connection_id = source_connection.id
-        self.integration_credential_id = source_connection.integration_credential_id
+        self.auth_settings = auth_settings
+        self.integration_credential_id = integration_credential_id
+        self.connection_id = connection_id
         self.ctx = ctx
+        self.config_fields = config_fields
+        self.source_short_name = auth_settings.integration_short_name
 
         self.is_direct_injection = is_direct_injection
         self.logger = logger_instance or logger
 
         # Auth provider instance
         self.auth_provider_instance = auth_provider_instance
-
-        # NEW: Store config fields for token refresh (needed for templated backend URLs)
-        self.config_fields = getattr(source_connection, "config_fields", None)
 
         # Log if config_fields available
         if self.config_fields and self.logger:
@@ -76,7 +86,7 @@ class TokenManager:
         self._current_token = self._extract_token_from_credentials(initial_credentials)
         if not self._current_token:
             raise ValueError(
-                f"No token found in credentials for source '{source_short_name}'. "
+                f"No token found in credentials for source '{self.source_short_name}'. "
                 f"TokenManager requires a token to manage."
             )
 
@@ -90,13 +100,17 @@ class TokenManager:
         self._can_refresh = self._determine_refresh_capability()
 
     def _determine_refresh_capability(self) -> bool:
-        """Determine if this source supports token refresh."""
+        """Determine if this source supports token refresh/acquisition."""
         # Direct injection tokens should not be refreshed
         if self.is_direct_injection:
             return False
 
         # If auth provider instance is available, we can always refresh through it
         if self.auth_provider_instance:
+            return True
+
+        # Client Credentials sources need token acquisition
+        if isinstance(self.auth_settings, ClientCredentialsSettings):
             return True
 
         # For standard OAuth (without auth provider), we assume refresh is possible
@@ -196,14 +210,18 @@ class TokenManager:
                 raise TokenRefreshError(f"Token refresh failed after 401: {str(e)}") from e
 
     async def _refresh_token(self) -> str:
-        """Internal method to perform the actual token refresh.
+        """Internal method to perform the actual token refresh/acquisition.
 
         Returns:
             The new access token
 
         Raises:
-            Exception: If refresh fails
+            Exception: If refresh/acquisition fails
         """
+        # Client Credentials flow (service-to-service)
+        if isinstance(self.auth_settings, ClientCredentialsSettings):
+            return await self._acquire_client_credentials_token()
+
         # If auth provider instance is available, refresh through it
         if self.auth_provider_instance:
             return await self._refresh_via_auth_provider()
@@ -293,6 +311,10 @@ class TokenManager:
         Raises:
             TokenRefreshError: If refresh fails
         """
+        # Type check
+        if not isinstance(self.auth_settings, OAuth2Settings):
+            raise TokenRefreshError("OAuth refresh requires OAuth2Settings")
+
         try:
             # Use a separate database session to avoid transaction issues
             from airweave.db.session import get_db_context
@@ -334,6 +356,87 @@ class TokenManager:
             if isinstance(e, TokenRefreshError):
                 raise
             raise TokenRefreshError(f"OAuth refresh failed: {str(e)}") from e
+
+    async def _acquire_client_credentials_token(self) -> str:
+        """Acquire access token using OAuth2 Client Credentials Flow.
+
+        Used for service-to-service authentication (e.g., SharePoint Enterprise with Azure AD).
+        No refresh token - just re-acquire with same client credentials.
+
+        Returns:
+            New access token
+
+        Raises:
+            TokenRefreshError: If token acquisition fails
+        """
+        # Type check for safety
+        if not isinstance(self.auth_settings, ClientCredentialsSettings):
+            raise TokenRefreshError(
+                "Client Credentials token acquisition requires ClientCredentialsSettings"
+            )
+
+        try:
+            from airweave.db.session import get_db_context
+
+            async with get_db_context() as token_db:
+                # Get stored credentials
+                if not self.integration_credential_id:
+                    raise TokenRefreshError("No integration credential for Client Credentials flow")
+
+                credential = await crud.integration_credential.get(
+                    token_db, self.integration_credential_id, self.ctx
+                )
+                if not credential:
+                    raise TokenRefreshError("Integration credential not found")
+
+                decrypted = credentials.decrypt(credential.encrypted_credentials)
+
+                # Extract client credentials
+                client_id = decrypted.get("client_id")
+                client_secret = decrypted.get("client_secret")
+
+                if not all([client_id, client_secret]):
+                    raise TokenRefreshError(
+                        "Client Credentials flow requires client_id and client_secret"
+                    )
+
+                # Use oauth2_service instead of manual httpx call
+                token_response = await oauth2_service.exchange_client_credentials_for_token(
+                    self.ctx,
+                    self.source_short_name,
+                    client_id,
+                    client_secret,
+                    self.config_fields,
+                )
+
+                # Update stored credentials with new token
+                decrypted["access_token"] = token_response.access_token
+                credential_update = schemas.IntegrationCredentialUpdate(
+                    encrypted_credentials=credentials.encrypt(decrypted)
+                )
+
+                await crud.integration_credential.update(
+                    token_db,
+                    db_obj=credential,
+                    obj_in=credential_update,
+                    ctx=self.ctx,
+                )
+
+                self.logger.info(
+                    f"Successfully acquired Client Credentials token for {self.source_short_name}"
+                )
+
+                return token_response.access_token
+
+        except Exception as e:
+            try:
+                await self.db.rollback()
+            except Exception:
+                pass
+
+            if isinstance(e, TokenRefreshError):
+                raise
+            raise TokenRefreshError(f"Client Credentials token acquisition failed: {str(e)}") from e
 
     def _extract_token_from_credentials(self, credentials: Any) -> Optional[str]:
         """Extract OAuth access token from credentials.

@@ -19,7 +19,7 @@ class AccessControl(BaseModel):
     Principals are NOT expanded - groups stored as-is.
 
     Format:
-        - Users: "user:john@acme.com"
+        - Users: "user:john@acme.com" 
         - Groups: "group:<group_id>" (e.g., "group:engineering" or "group:uuid-123")
     """
 

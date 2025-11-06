@@ -39,3 +39,4 @@ class OutlookMailCursor(BaseCursor):
         default_factory=dict,
         description="Per-folder last sync timestamps as folder_id -> ISO 8601 timestamp",
     )
+

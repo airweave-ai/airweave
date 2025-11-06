@@ -18,11 +18,15 @@ class AccessControlMembership(OrganizationBase):
     Clean tuple design: (member_id, member_type) → group_id
 
     Examples:
-    - User-to-group: ("john@acme.com", "user", "group-engineering")
+    - User-to-group: ("john@acme.com", "user", "group-frontend")
     - Group-to-group: ("group-frontend", "group", "group-engineering")
 
     Used at search time to expand group principals into user principals.
     """
+
+    # when expanded: {
+    #     "john@acme.com" : [user:john@acme.com, group:group-frontend, group:group-engineering],
+    # }
 
     __tablename__ = "access_control_membership"
 

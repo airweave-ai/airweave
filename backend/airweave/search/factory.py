@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
+from airweave.platform.auth.schemas import BaseAuthSettings
 from airweave.platform.destinations.collection_strategy import get_default_vector_size
 from airweave.platform.locator import resource_locator
 from airweave.platform.sources._base import BaseSource
@@ -805,6 +806,34 @@ class SearchFactory:
         except Exception as e:
             raise ValueError(f"Error getting federated sources: {e}")
 
+    async def _build_source_connection_data(
+        self, db: AsyncSession, source_model, source_class, source_connection, ctx: ApiContext
+    ) -> dict:
+        """Build source_connection_data dict with integration credential."""
+        source_connection_data = {
+            "source_model": source_model,
+            "source_class": source_class,
+            "short_name": source_connection.short_name,
+            "config_fields": source_connection.config_fields,
+            "readable_auth_provider_id": getattr(
+                source_connection, "readable_auth_provider_id", None
+            ),
+            "auth_provider_config": getattr(source_connection, "auth_provider_config", None),
+            "connection_id": getattr(source_connection, "connection_id", None),
+            "integration_credential_id": None,  # Loaded below
+            "auth_config_class": None,  # Not used for federated search
+        }
+
+        # Load integration_credential_id from connection if exists
+        if source_connection_data["connection_id"]:
+            connection = await crud.connection.get(db, source_connection_data["connection_id"], ctx)
+            if connection:
+                source_connection_data["integration_credential_id"] = (
+                    connection.integration_credential_id
+                )
+
+        return source_connection_data
+
     async def _instantiate_federated_source(
         self, db: AsyncSession, source_connection, ctx: ApiContext
     ) -> Optional[BaseSource]:
@@ -836,29 +865,22 @@ class SearchFactory:
 
         try:
             # Step 2: Build source_connection_data dict
-            source_connection_data = {
-                "source_model": source_model,
-                "source_class": source_class,
-                "short_name": source_connection.short_name,
-                "config_fields": source_connection.config_fields,
-                "readable_auth_provider_id": getattr(
-                    source_connection, "readable_auth_provider_id", None
-                ),
-                "auth_provider_config": getattr(source_connection, "auth_provider_config", None),
-                "connection_id": getattr(source_connection, "connection_id", None),
-                "integration_credential_id": None,  # Loaded below
-                "auth_config_class": None,  # Not used for federated search
-            }
+            source_connection_data = await self._build_source_connection_data(
+                db, source_model, source_class, source_connection, ctx
+            )
 
-            # Load integration_credential_id from connection if exists
-            if source_connection_data["connection_id"]:
-                connection = await crud.connection.get(
-                    db, source_connection_data["connection_id"], ctx
+            # Load typed auth settings for OAuth sources (required for token manager)
+            auth_settings = None
+            if source_model.oauth_type:
+                from airweave.platform.auth.settings import integration_settings
+
+                auth_settings = await integration_settings.get_by_short_name(
+                    source_connection.short_name
                 )
-                if connection:
-                    source_connection_data["integration_credential_id"] = (
-                        connection.integration_credential_id
-                    )
+                ctx.logger.debug(
+                    f"Loaded auth settings: {auth_settings.__class__.__name__} "
+                    f"for {source_connection.short_name}"
+                )
 
             # Step 3: Get complete auth configuration (shared utility)
             auth_config = await get_auth_configuration(
@@ -869,11 +891,13 @@ class SearchFactory:
                 access_token=None,  # Search never uses direct injection
             )
 
-            # Step 4: Process credentials for source consumption (shared utility)
+            # Step 4: Process credentials for source consumption
+            # (pass auth_settings to avoid reload)
             source_credentials = await process_credentials_for_source(
                 raw_credentials=auth_config["credentials"],
                 source_connection_data=source_connection_data,
                 logger=ctx.logger,
+                auth_settings=auth_settings,  # Pass typed schema to avoid duplicate load
             )
 
             # Step 5: Create source instance
@@ -898,8 +922,9 @@ class SearchFactory:
                 if source_model.oauth_type in (
                     OAuthType.WITH_REFRESH,
                     OAuthType.WITH_ROTATING_REFRESH,
+                    OAuthType.CLIENT_CREDENTIALS,
                 ):
-                    self._setup_token_manager(
+                    await self._setup_token_manager(
                         source_instance,
                         db,
                         source_connection,
@@ -907,6 +932,7 @@ class SearchFactory:
                         auth_config["credentials"],
                         ctx,
                         auth_provider_instance=auth_config.get("auth_provider_instance"),
+                        auth_settings=auth_settings,  # Pass to avoid duplicate load
                     )
                 else:
                     ctx.logger.debug(
@@ -931,7 +957,7 @@ class SearchFactory:
                 f"Error: {str(e)}"
             ) from e
 
-    def _setup_token_manager(
+    async def _setup_token_manager(
         self,
         source_instance: BaseSource,
         db: AsyncSession,
@@ -939,25 +965,29 @@ class SearchFactory:
         integration_credential_id: Optional[UUID],
         decrypted_credential: dict,
         ctx: ApiContext,
+        auth_settings: BaseAuthSettings,
         auth_provider_instance=None,
     ):
-        """Setup token manager for OAuth sources with auth provider support."""
-        minimal_connection = type(
-            "MinimalConnection",
-            (),
-            {
-                "id": source_connection.connection_id,
-                "integration_credential_id": integration_credential_id,
-                "config_fields": source_connection.config_fields,
-            },
-        )()
+        """Setup token manager for OAuth sources with auth provider support.
 
+        Args:
+            source_instance: Source instance to configure
+            db: Database session
+            source_connection: Source connection object
+            integration_credential_id: Integration credential ID
+            decrypted_credential: Decrypted credentials dict
+            ctx: API context
+            auth_settings: Typed auth schema (OAuth2Settings or ClientCredentialsSettings)
+            auth_provider_instance: Optional auth provider instance
+        """
         token_manager = TokenManager(
             db=db,
-            source_short_name=source_connection.short_name,
-            source_connection=minimal_connection,
+            auth_settings=auth_settings,  # Always required!
+            integration_credential_id=integration_credential_id,
+            connection_id=source_connection.connection_id,
             ctx=ctx,
             initial_credentials=decrypted_credential,
+            config_fields=source_connection.config_fields,
             is_direct_injection=False,
             logger_instance=ctx.logger,
             auth_provider_instance=auth_provider_instance,

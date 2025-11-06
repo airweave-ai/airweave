@@ -20,3 +20,4 @@ class BaseCursor(BaseModel):
         # Use JSON serialization mode by default
         ser_json_timedelta="iso8601",
     )
+
