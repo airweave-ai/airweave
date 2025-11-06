@@ -779,11 +779,19 @@ class QdrantDestination(VectorDBDestination):
                                 key="airweave_system_metadata.sync_id",
                                 match=rest.MatchValue(value=str(sync_id)),
                             ),
+                        ],
+                        should=[
+                            # Check new field (indexed)
                             rest.FieldCondition(
                                 key="airweave_system_metadata.original_entity_id",
                                 match=rest.MatchAny(any=[str(pid) for pid in parent_ids]),
                             ),
-                        ]
+                            # Fallback to old field for backward compatibility
+                            rest.FieldCondition(
+                                key="parent_entity_id",
+                                match=rest.MatchAny(any=[str(pid) for pid in parent_ids]),
+                            ),
+                        ],
                     )
                 ),
                 wait=True,
