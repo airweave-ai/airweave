@@ -119,3 +119,25 @@ class VectorDBDestination(BaseDestination):
     async def get_vector_config_names(self) -> list[str]:
         """Get the vector config names for the destination."""
         pass
+
+# -----------------------------
+# Shared destination exceptions
+# -----------------------------
+
+from airweave.platform.sync.exceptions import EntityProcessingError  # noqa: E402
+
+
+class DestinationBadRequestError(EntityProcessingError):
+    """Permanent client-side error from destination (HTTP 4xx).
+
+    Signals invalid payload/parameters. Should not be retried or split.
+    """
+
+    def __init__(self, message: str, *, status_code: int | None = None, body_excerpt: str | None = None):
+        details = message
+        if status_code is not None:
+            details += f" (status={status_code})"
+        if body_excerpt:
+            excerpt = body_excerpt[:500]
+            details += f" body_excerpt={excerpt}"
+        super().__init__(details)

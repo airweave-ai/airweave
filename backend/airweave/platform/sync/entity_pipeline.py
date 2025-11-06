@@ -1283,12 +1283,24 @@ class EntityPipeline:
 
         # Insert new chunks
         sync_context.logger.debug(f"Inserting {len(chunk_entities)} chunk entities to destinations")
+        from airweave.platform.destinations._base import DestinationBadRequestError
+
         for dest in sync_context.destinations:
-            await self._retry_destination_operation(
-                operation=lambda d=dest: d.bulk_insert(chunk_entities),
-                operation_name="insert",
-                sync_context=sync_context,
-            )
+            try:
+                await self._retry_destination_operation(
+                    operation=lambda d=dest: d.bulk_insert(chunk_entities),
+                    operation_name="insert",
+                    sync_context=sync_context,
+                )
+            except DestinationBadRequestError as e:
+                # Permanent 4xx from destination: skip this batch and continue
+                skipped_count = len(chunk_entities)
+                await sync_context.progress.increment("skipped", skipped_count)
+                sync_context.logger.error(
+                    f"Destination 4xx during insert; skipped {skipped_count} chunk entities: {e}"
+                )
+                # Continue with next destination (if any)
+                continue
 
         sync_context.logger.debug("Destination persistence complete (commit point)")
 
@@ -1533,6 +1545,9 @@ class EntityPipeline:
             try:
                 return await operation()
             except Exception as e:
+                # Let entity-level errors bubble (do not retry or convert)
+                if isinstance(e, EntityProcessingError):
+                    raise
                 # Detect permanent errors (auth, not found) and fail without retry
                 error_msg = str(e).lower()
                 permanent_indicators = ["401", "403", "404", "400", "unauthorized", "forbidden"]
@@ -1550,6 +1565,9 @@ class EntityPipeline:
             return await _execute_with_retry()
         except SyncFailureError:
             raise  # Already wrapped
+        except EntityProcessingError:
+            # Bubble entity-level errors to caller (pipeline can decide skipping)
+            raise
         except Exception as e:
             # Retries exhausted or non-retryable error
             sync_context.logger.error(

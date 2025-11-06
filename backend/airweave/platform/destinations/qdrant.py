@@ -37,7 +37,7 @@ from airweave.core.logging import ContextualLogger
 from airweave.core.logging import logger as default_logger
 from airweave.platform.configs.auth import QdrantAuthConfig
 from airweave.platform.decorators import destination
-from airweave.platform.destinations._base import VectorDBDestination
+from airweave.platform.destinations._base import DestinationBadRequestError, VectorDBDestination
 from airweave.platform.destinations.collection_strategy import (
     get_default_vector_size,
     get_physical_collection_name,
@@ -48,6 +48,10 @@ if TYPE_CHECKING:
     from airweave.search.operations.temporal_relevance import DecayConfig
 
 KEYWORD_VECTOR_NAME = "bm25"
+
+
+class QdrantBadRequestError(DestinationBadRequestError):
+    """Qdrant-specific bad request error (HTTP 4xx)."""
 
 
 @destination("Qdrant", "qdrant", auth_config_class=QdrantAuthConfig, supports_vector=True)
@@ -79,6 +83,31 @@ class QdrantDestination(VectorDBDestination):
         # One-time collection readiness cache
         self._collection_ready: bool = False
         self._collection_ready_lock = asyncio.Lock()
+
+        # Metrics (optional Prometheus)
+        try:
+            from prometheus_client import Counter, Histogram  # type: ignore
+
+            self._m_upsert_success = Counter(
+                "qdrant_upsert_success_total",
+                "Successful Qdrant upserts",
+                ["collection", "status_class"],
+            )
+            self._m_upsert_fail = Counter(
+                "qdrant_upsert_fail_total",
+                "Failed Qdrant upserts",
+                ["collection", "reason"],
+            )
+            self._m_upsert_duration = Histogram(
+                "qdrant_upsert_duration_seconds",
+                "Duration of Qdrant upserts",
+                ["collection", "status_class"],
+                buckets=(0.1, 0.5, 1.0, 3.0, 5.0, 10.0, 30.0, 60.0, 120.0),
+            )
+        except Exception:  # pragma: no cover
+            self._m_upsert_success = None
+            self._m_upsert_fail = None
+            self._m_upsert_duration = None
 
     # ----------------------------------------------------------------------------------
     # Lifecycle / connection
@@ -157,6 +186,28 @@ class QdrantDestination(VectorDBDestination):
                     f"collection_id={self.collection_id}. Creating it now..."
                 )
                 await self.setup_collection(self.vector_size)
+            else:
+                # Light verification of tenant index presence (best effort)
+                try:
+                    info = await self.client.get_collection(collection_name=self.collection_name)
+                    has_tenant = False
+                    try:
+                        for idx in (info.payload_schema or {}).values():  # type: ignore[attr-defined]
+                            # Keyword schema with is_tenant flag
+                            if (
+                                getattr(idx, "is_tenant", False)
+                                and getattr(idx, "data_type", None)
+                                == rest.PayloadSchemaType.KEYWORD
+                            ):
+                                has_tenant = True
+                                break
+                    except Exception:
+                        pass
+                    self.logger.debug(
+                        f"[Qdrant] Tenant index present={has_tenant} for collection={self.collection_name}"
+                    )
+                except Exception:
+                    pass
             self._collection_ready = True
 
     async def connect_to_qdrant(self) -> None:
@@ -173,6 +224,21 @@ class QdrantDestination(VectorDBDestination):
                 timeout=120.0,  # float timeout (seconds) for connect/read/write
                 prefer_grpc=False,  # revert: some setups don't expose gRPC
             )
+
+            # Optional: enable httpx debug logging for diagnostics
+            try:
+                import os
+
+                if os.environ.get("QDRANT_HTTPX_DEBUG"):
+                    import logging as _logging
+
+                    _logging.getLogger("httpx").setLevel(_logging.DEBUG)
+                    _logging.getLogger("httpcore").setLevel(_logging.DEBUG)
+                    _logging.getLogger("httpx").addHandler(_logging.StreamHandler())
+                    _logging.getLogger("httpcore").addHandler(_logging.StreamHandler())
+                    self.logger.info("Enabled httpx/httpcore DEBUG logging for Qdrant client")
+            except Exception:
+                pass
 
             # Ping
             await self.client.get_collections()
@@ -482,109 +548,179 @@ class QdrantDestination(VectorDBDestination):
             payload=entity_data,
         )
 
-    async def _upsert_points_with_fallback(
-        self, points: list[rest.PointStruct], *, min_batch: int = 50
-    ) -> None:
-        """Upsert points in batches to prevent timeouts and allow heartbeats.
-
-        Proactively splits large batches to avoid blocking and timeouts.
-        Falls back to smaller batches on errors.
-        """
-        # Build exception tuples safely without C408 (use literals)
-        rhex: tuple[type[BaseException], ...] = ()
-        try:
-            from qdrant_client.http.exceptions import ResponseHandlingException  # type: ignore
-
-            rhex = (ResponseHandlingException,)  # type: ignore[assignment]
-        except Exception:  # pragma: no cover
-            rhex = ()
-
-        timeout_errors: tuple[type[BaseException], ...] = ()
+    async def _upsert_points_once(self, points: list[rest.PointStruct]) -> None:
+        """Upsert points in a single request, with status-aware backoff (no splitting)."""
         try:
             import httpcore  # type: ignore
             import httpx
 
-            # Catch both read and write timeouts
             timeout_errors = (
                 httpx.ReadTimeout,
                 httpx.WriteTimeout,
+                httpx.ConnectTimeout,
                 httpcore.ReadTimeout,
                 httpcore.WriteTimeout,
+                httpcore.ConnectTimeout,
             )
         except Exception:  # pragma: no cover
-            timeout_errors = ()
+            timeout_errors = (TimeoutError,)
 
-        # Proactively batch large upserts to prevent timeouts and allow heartbeats
-        MAX_BATCH_SIZE = 100
+        max_attempts = 3
+        attempt = 0
+        last_err: BaseException | None = None
 
-        if len(points) > MAX_BATCH_SIZE:
-            self.logger.debug(
-                f"[Qdrant] Batching {len(points)} points into chunks of {MAX_BATCH_SIZE} "
-                f"to prevent timeout and allow heartbeats"
-            )
-            for i in range(0, len(points), MAX_BATCH_SIZE):
-                batch = points[i : i + MAX_BATCH_SIZE]
-                await self._upsert_points_with_fallback(batch, min_batch=min_batch)
-                # Yield control to event loop between batches (for heartbeats)
-                await asyncio.sleep(0)
-            return
-
-        try:
+        while attempt < max_attempts:
+            attempt += 1
             start_time = asyncio.get_event_loop().time()
-            self.logger.debug(
-                f"[Qdrant] Upserting {len(points)} points to collection={self.collection_name}, "
-                f"collection_id={self.collection_id}, vector_size={self.vector_size}"
-            )
-            op = await self.client.upsert(
-                collection_name=self.collection_name,
-                points=points,
-                wait=True,
-            )
-            duration = asyncio.get_event_loop().time() - start_time
-
-            if hasattr(op, "errors") and op.errors:
-                raise Exception(f"Errors during bulk insert: {op.errors}")
-
-            # SUCCESS LOGGING - Critical for confirming split effectiveness
-            self.logger.info(
-                f"[Qdrant] ✅ Upserted {len(points)} points in {duration:.2f}s "
-                f"(collection={self.collection_name})"
-            )
-        except (*timeout_errors, *rhex) as e:  # type: ignore[misc]
-            n = len(points)
-            timeout_duration = asyncio.get_event_loop().time() - start_time
-
-            # Extract underlying error if wrapped
-            underlying_error = None
-            if hasattr(e, "__cause__") and e.__cause__:
-                underlying_error = e.__cause__
-
-            error_details = f"{type(e).__name__}: {e}"
-            if underlying_error:
-                error_details += (
-                    f" | Underlying: {type(underlying_error).__name__}: {underlying_error}"
+            try:
+                self.logger.debug(
+                    f"[Qdrant] Upserting {len(points)} points to collection={self.collection_name}, "
+                    f"collection_id={self.collection_id}, vector_size={self.vector_size} (attempt={attempt})"
                 )
+                op = await self.client.upsert(
+                    collection_name=self.collection_name,
+                    points=points,
+                    wait=True,
+                )
+                duration = asyncio.get_event_loop().time() - start_time
 
-            if n <= 1 or n <= min_batch:
+                if hasattr(op, "errors") and op.errors:
+                    raise Exception(f"Errors during bulk insert: {op.errors}")
+
+                # Metrics + logging
+                if self._m_upsert_duration:
+                    self._m_upsert_duration.labels(self.collection_name or "", "2xx").observe(
+                        duration
+                    )
+                if self._m_upsert_success:
+                    self._m_upsert_success.labels(self.collection_name or "", "2xx").inc()
+                self.logger.info(
+                    f"[Qdrant] ✅ Upserted {len(points)} points in {duration:.2f}s "
+                    f"(collection={self.collection_name})"
+                )
+                return
+            except timeout_errors as e:  # type: ignore[misc]
+                last_err = e
+                duration = asyncio.get_event_loop().time() - start_time
+                if self._m_upsert_duration:
+                    self._m_upsert_duration.labels(self.collection_name or "", "timeout").observe(
+                        duration
+                    )
+                if attempt >= max_attempts:
+                    if self._m_upsert_fail:
+                        self._m_upsert_fail.labels(self.collection_name or "", "timeout").inc()
+                    self.logger.error(
+                        f"[Qdrant] ❌ Timeout after {duration:.2f}s for {len(points)} points (attempts={attempt})"
+                    )
+                    raise
+                backoff = min(2 ** (attempt - 1), 10)
+                self.logger.warning(
+                    f"[Qdrant] ⏳ Timeout after {duration:.2f}s for {len(points)} points; retrying in {backoff}s"
+                )
+                await asyncio.sleep(backoff)
+            except Exception as e:  # Qdrant API exceptions or others
+                last_err = e
+                status_code = None
+                body_excerpt = None
+                code_class = "err"
+                # Extract status if available
+                for attr in ("status", "status_code", "code"):
+                    try:
+                        val = getattr(e, attr)
+                        if isinstance(val, int):
+                            status_code = val
+                            break
+                    except Exception:
+                        pass
+                # Extract body if available
+                for attr in ("body", "response", "message"):
+                    try:
+                        val = getattr(e, attr)
+                        if isinstance(val, (str, bytes)):
+                            body_excerpt = (val.decode("utf-8") if isinstance(val, bytes) else val)[
+                                :500
+                            ]
+                            break
+                    except Exception:
+                        pass
+
+                if isinstance(status_code, int):
+                    if 400 <= status_code < 500:
+                        code_class = "4xx"
+                        if self._m_upsert_fail:
+                            self._m_upsert_fail.labels(self.collection_name or "", "4xx").inc()
+                        # Optional diagnostic logging of first few point IDs
+                        first_ids = []
+                        try:
+                            for p in points[:2]:
+                                first_ids.append(str(getattr(p, "id", "unknown")))
+                        except Exception:
+                            pass
+                        self.logger.error(
+                            f"[Qdrant] 🚫 4xx during upsert ({status_code}) for {len(points)} points: {body_excerpt} "
+                            f"first_ids={first_ids}"
+                        )
+                        # Feature flag to drop a lightweight diagnostic file
+                        try:
+                            import os
+
+                            if os.environ.get("QDRANT_ISOLATE_ON_400"):
+                                import json as _json
+                                from pathlib import Path
+
+                                diag_dir = Path("backend/local_storage/qdrant_failures")
+                                diag_dir.mkdir(parents=True, exist_ok=True)
+                                payload = {
+                                    "collection": self.collection_name,
+                                    "status": status_code,
+                                    "first_ids": first_ids,
+                                    "count": len(points),
+                                    "body_excerpt": body_excerpt,
+                                }
+                                fname = (
+                                    diag_dir / f"failure_{asyncio.get_event_loop().time():.0f}.json"
+                                )
+                                fname.write_text(_json.dumps(payload, ensure_ascii=False))
+                        except Exception:
+                            pass
+                        raise QdrantBadRequestError(
+                            "Qdrant 4xx during upsert",
+                            status_code=status_code,
+                            body_excerpt=body_excerpt,
+                        )
+                    if status_code >= 500:
+                        code_class = "5xx"
+                        if attempt >= max_attempts:
+                            if self._m_upsert_fail:
+                                self._m_upsert_fail.labels(self.collection_name or "", "5xx").inc()
+                            self.logger.error(
+                                f"[Qdrant] ❌ 5xx after attempts={attempt} for {len(points)} points: {body_excerpt}"
+                            )
+                            raise
+                        backoff = min(2 ** (attempt - 1), 10)
+                        self.logger.warning(
+                            f"[Qdrant] ⏳ 5xx during upsert ({status_code}); retrying in {backoff}s"
+                        )
+                        await asyncio.sleep(backoff)
+                        continue
+
+                # Unknown error type — do not retry indefinitely
+                if self._m_upsert_fail:
+                    self._m_upsert_fail.labels(self.collection_name or "", code_class).inc()
                 self.logger.error(
-                    f"[Qdrant] 💥 FATAL: Cannot split further - {n} points ≤ min_batch={min_batch} "
-                    f"after {timeout_duration:.2f}s timeout "
-                    f"(collection={self.collection_name}). Error: {error_details}",
-                    exc_info=True,  # This will log the full traceback
+                    f"[Qdrant] ❌ Error upserting {len(points)} points: {type(e).__name__}: {e}",
+                    exc_info=True,
                 )
                 raise
-            mid = n // 2
-            left, right = points[:mid], points[mid:]
-            self.logger.warning(
-                f"[Qdrant] ⚠️  Timeout after {timeout_duration:.2f}s for {n} points; "
-                f"splitting into {len(left)} + {len(right)} and retrying..."
-            )
-            await self._upsert_points_with_fallback(left, min_batch=min_batch)
-            await self._upsert_points_with_fallback(right, min_batch=min_batch)
+
+        # Should not reach here
+        if last_err:
+            raise last_err
+        raise RuntimeError("Unknown failure in _upsert_points_once")
 
     # ----------------------------------------------------------------------------------
     async def bulk_insert(self, entities: list[BaseEntity]) -> None:
-        """Upsert multiple chunk entities with fallback halving on write timeouts."""
+        """Upsert multiple chunk entities with fixed chunking and status-aware handling."""
         if not entities:
             return
 
@@ -603,16 +739,18 @@ class QdrantDestination(VectorDBDestination):
             self.logger.warning("No valid entities to insert")
             return
 
-        # Try once with the whole payload; fall back to halving on failure
-        # Track semaphore contention to understand queueing behavior
-        active_writes = self.DEFAULT_WRITE_CONCURRENCY - self._write_sem._value
-        self.logger.info(
-            f"[Qdrant] 🔒 Semaphore state: {active_writes}/{self.DEFAULT_WRITE_CONCURRENCY} active writes "
-            f"before acquiring lock for {len(point_structs)} points"
-        )
-
-        async with self._write_sem:
-            await self._upsert_points_with_fallback(point_structs, min_batch=10)
+        # Fixed-size chunking to keep calls bounded
+        MAX_BATCH_SIZE = 100
+        for i in range(0, len(point_structs), MAX_BATCH_SIZE):
+            batch = point_structs[i : i + MAX_BATCH_SIZE]
+            batch_id = str(uuid.uuid4())
+            active_writes = self.DEFAULT_WRITE_CONCURRENCY - self._write_sem._value
+            self.logger.info(
+                f"[Qdrant] 🔒 Semaphore state: {active_writes}/{self.DEFAULT_WRITE_CONCURRENCY} active writes "
+                f"before acquiring lock for {len(batch)} points (batch_id={batch_id})"
+            )
+            async with self._write_sem:
+                await self._upsert_points_once(batch)
 
     # ----------------------------------------------------------------------------------
     # Deletes (by parent/sync/etc.)
