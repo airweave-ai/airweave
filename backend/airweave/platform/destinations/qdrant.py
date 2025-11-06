@@ -157,7 +157,48 @@ class QdrantDestination(VectorDBDestination):
                     f"collection_id={self.collection_id}. Creating it now..."
                 )
                 await self.setup_collection(self.vector_size)
+
+            # Ensure payload indexes for efficient filtered operations
+            await self._ensure_payload_indexes()
+
             self._collection_ready = True
+
+    async def _ensure_payload_indexes(self) -> None:
+        """Ensure payload indexes exist for efficient filtered delete operations.
+
+        Without these indexes, filtered deletes scan the entire collection (22.8TB reads),
+        causing memory pressure and 4-8s latencies. With indexes: <0.01s deletes.
+
+        This is idempotent and safe to call on every deployment.
+        """
+        # Fields we use in delete filters - must match our FieldCondition queries
+        index_fields = [
+            "airweave_collection_id",  # Multi-tenant filter (ALL operations)
+            "airweave_system_metadata.db_entity_id",  # delete()
+            "airweave_system_metadata.sync_id",  # delete_by_sync_id(), bulk_delete()
+            "airweave_system_metadata.original_entity_id",  # bulk_delete_by_parent_id(s)
+            "entity_id",  # bulk_delete()
+        ]
+
+        for field in index_fields:
+            try:
+                # create_payload_index is idempotent - safe to call if already exists
+                await self.client.create_payload_index(
+                    collection_name=self.collection_name,
+                    field_name=field,
+                    field_schema="keyword",  # Exact match for UUID/string fields
+                    wait=False,  # Don't block - build in background
+                )
+                self.logger.info(
+                    f"[Qdrant] Ensured payload index on '{field}' "
+                    f"(collection={self.collection_name})"
+                )
+            except Exception as e:
+                # Index might already exist, or field not present in all documents
+                # Log as debug, not error - this is expected
+                self.logger.debug(
+                    f"[Qdrant] Index on '{field}': {e} (collection={self.collection_name})"
+                )
 
     async def connect_to_qdrant(self) -> None:
         """Initialize the AsyncQdrantClient and verify connectivity."""
