@@ -190,6 +190,7 @@ class SharePointEnterpriseSource(BaseSource):
                         name=display_name,
                         created_at=None,  # Users don't have creation timestamp
                         updated_at=None,  # Users don't have update timestamp
+                        access=self._build_user_access_control(),
                         # API fields
                         display_name=display_name,
                         user_principal_name=user_data.get("userPrincipalName"),
@@ -258,6 +259,10 @@ class SharePointEnterpriseSource(BaseSource):
                                 f"Error parsing created datetime for group {group_id}: {str(e)}"
                             )
 
+                    # Build access control based on visibility
+                    visibility = group_data.get("visibility")
+                    access_control = self._build_group_access_control(visibility, group_id)
+
                     yield SharePointGroupEntity(
                         # Base fields
                         entity_id=group_id,
@@ -265,6 +270,7 @@ class SharePointEnterpriseSource(BaseSource):
                         name=display_name,
                         created_at=created_datetime,
                         updated_at=None,  # Groups don't have update timestamp
+                        access=access_control,
                         # API fields
                         display_name=display_name,
                         description=group_data.get("description"),
@@ -272,7 +278,7 @@ class SharePointEnterpriseSource(BaseSource):
                         mail_enabled=group_data.get("mailEnabled"),
                         security_enabled=group_data.get("securityEnabled"),
                         group_types=group_data.get("groupTypes", []),
-                        visibility=group_data.get("visibility"),
+                        visibility=visibility,
                     )
 
                 # Handle pagination
@@ -418,6 +424,9 @@ class SharePointEnterpriseSource(BaseSource):
     ) -> Optional["AccessControl"]:
         """Extract permissions for a SharePoint list.
 
+        Lists can have their own permissions or inherit from the parent site.
+        If list-specific permissions fail, falls back to site permissions.
+
         Args:
             client: HTTP client
             site_id: ID of the site
@@ -430,10 +439,51 @@ class SharePointEnterpriseSource(BaseSource):
             url = f"{self.GRAPH_BASE_URL}/sites/{site_id}/lists/{list_id}/permissions"
             data = await self._get_with_auth(client, url)
             permissions = data.get("value", [])
-            return self._parse_permissions_to_access_control(permissions)
-        except Exception as e:
-            self.logger.warning(f"Failed to extract permissions for list {list_id}: {e}")
+            if permissions:
+                return self._parse_permissions_to_access_control(permissions)
+            else:
+                # Empty permissions - list likely inherits from site
+                self.logger.debug(
+                    f"No permissions found for list {list_id}, using site permissions"
+                )
+                return await self._extract_site_permissions(client, site_id)
+        except httpx.HTTPStatusError as e:
+            # Log the actual HTTP error for debugging
+            status_code = e.response.status_code
+            error_body = None
+            try:
+                error_body = e.response.json()
+            except Exception:
+                error_body = e.response.text[:500]
+
+            self.logger.warning(
+                f"Failed to extract permissions for list {list_id}: "
+                f"HTTP {status_code} - {error_body}"
+            )
+
+            # If 404 or 403, the list might inherit permissions from site
+            # Fall back to site permissions
+            if status_code in (404, 403):
+                self.logger.debug(f"Falling back to site permissions for list {list_id}")
+                try:
+                    return await self._extract_site_permissions(client, site_id)
+                except Exception as site_error:
+                    self.logger.warning(
+                        f"Failed to extract site permissions as fallback "
+                        f"for list {list_id}: {site_error}"
+                    )
             return None
+        except Exception as e:
+            self.logger.error(
+                f"Unexpected error extracting permissions for list {list_id}: {e}",
+                exc_info=True,
+            )
+            # Try site permissions as fallback
+            try:
+                self.logger.debug(f"Falling back to site permissions for list {list_id}")
+                return await self._extract_site_permissions(client, site_id)
+            except Exception:
+                return None
 
     async def _extract_list_item_permissions(
         self, client: httpx.AsyncClient, site_id: str, list_id: str, item_id: str
@@ -517,6 +567,43 @@ class SharePointEnterpriseSource(BaseSource):
                     viewers.append(f"group:{group_id}")
 
         return AccessControl(viewers=viewers)
+
+    def _build_user_access_control(self) -> "AccessControl":
+        """Build access control for user entities.
+
+        Users are accessible to everyone in the organization (public).
+
+        Returns:
+            AccessControl with is_public=True
+        """
+        from airweave.platform.entities._base import AccessControl
+
+        return AccessControl(is_public=True)
+
+    def _build_group_access_control(
+        self, visibility: Optional[str], group_id: str
+    ) -> "AccessControl":
+        """Build access control for group entities.
+
+        Groups respect their visibility setting:
+        - Public groups: accessible to everyone
+        - Private/HiddenMembership groups: accessible to group members
+
+        Args:
+            visibility: Group visibility ("Public", "Private", "HiddenMembership", etc.)
+            group_id: The group's unique identifier
+
+        Returns:
+            AccessControl object with proper is_public flag and viewers list
+        """
+        from airweave.platform.entities._base import AccessControl
+
+        if visibility == "Public":
+            return AccessControl(is_public=True)
+
+        # Private/HiddenMembership groups: members can discover the group entity
+        # by including the group's own ID in the viewers list
+        return AccessControl(is_public=False, viewers=[f"group:{group_id}"])
 
     async def _generate_drive_entities(
         self, client: httpx.AsyncClient, site_id: str, site_name: str
@@ -1289,40 +1376,80 @@ class SharePointEnterpriseSource(BaseSource):
             return False
 
     async def generate_access_control_memberships(self) -> AsyncGenerator[Any, None]:
-        """Generate user-group membership tuples (separate from entities).
+        """Generate user-group and group-group membership tuples (separate from entities).
 
         This runs AFTER entity sync as an adjacent pipeline.
-        Yields AccessControlMembership objects for each user-group relationship.
+        Yields AccessControlMembership objects for each user-group AND group-group relationship.
+
+        Uses /members (not /transitivemembers) to get direct memberships, allowing
+        the access broker to handle recursive expansion at query time.
         """
         from airweave.platform.access_control.schemas import AccessControlMembership
 
-        self.logger.info("Starting access control membership extraction...")
+        self.logger.info("=" * 80)
+        self.logger.info("🔐 ACCESS CONTROL MEMBERSHIP EXTRACTION STARTED")
+        self.logger.info("=" * 80)
 
         membership_count = 0
+        user_membership_count = 0
+        group_membership_count = 0
+        groups_processed = 0
 
         try:
             async with self.http_client() as client:
                 # Iterate through all groups
                 async for group_entity in self._generate_group_entities(client):
+                    groups_processed += 1
                     group_id = group_entity.entity_id
                     group_name = group_entity.display_name
 
-                    # Query group members
+                    # Query group members (direct members only, not transitive)
                     members = await self._get_group_members(client, group_id)
 
-                    self.logger.debug(f"Found {len(members)} members in group {group_name}")
+                    self.logger.info(
+                        f"📊 Group #{groups_processed}: '{group_name}' "
+                        f"has {len(members)} direct members"
+                    )
 
-                    # Yield membership tuple for each member
+                    # Yield membership tuple for each member (user OR group)
                     for member in members:
                         membership_count += 1
-                        member_email = (
-                            member.get("mail")
-                            or member.get("userPrincipalName")
-                            or member.get("id")  # Fallback to ID
-                        )
+
+                        # Determine member type from @odata.type
+                        odata_type = member.get("@odata.type", "")
+
+                        if "#microsoft.graph.group" in odata_type:
+                            # Group-to-group membership
+                            member_type = "group"
+                            member_id = member.get("id")  # Use group ID
+                            group_membership_count += 1
+                            self.logger.info(
+                                f"🔗 Group-to-group membership found: {member_id} -> {group_name} "
+                                f"(group_id: {group_id})"
+                            )
+                        else:
+                            # User-to-group membership (default)
+                            member_type = "user"
+                            member_id = (
+                                member.get("mail")
+                                or member.get("userPrincipalName")
+                                or member.get("id")  # Fallback to ID
+                            )
+                            user_membership_count += 1
+                            self.logger.debug(f"User membership: {member_id} -> {group_name}")
+
+                        # Log unrecognized @odata.type values for debugging
+                        if odata_type and not any(
+                            x in odata_type
+                            for x in ["#microsoft.graph.user", "#microsoft.graph.group"]
+                        ):
+                            self.logger.warning(
+                                f"Unrecognized @odata.type: {odata_type} for member {member_id}"
+                            )
+
                         yield AccessControlMembership(
-                            member_id=member_email,
-                            member_type="user",
+                            member_id=member_id,
+                            member_type=member_type,
                             group_id=group_id,
                             group_name=group_name,
                         )
@@ -1331,35 +1458,62 @@ class SharePointEnterpriseSource(BaseSource):
             self.logger.error(f"Error generating access control memberships: {str(e)}")
             raise
         finally:
-            self.logger.info(
-                "Access control membership extraction complete. "
-                f"Total memberships: {membership_count}"
-            )
+            self.logger.info("=" * 80)
+            self.logger.info("🔐 ACCESS CONTROL MEMBERSHIP EXTRACTION COMPLETE")
+            self.logger.info("=" * 80)
+            self.logger.info(f"📊 Groups processed: {groups_processed}")
+            self.logger.info(f"📊 Total memberships: {membership_count}")
+            self.logger.info(f"   👤 User-to-group: {user_membership_count}")
+            self.logger.info(f"   🔗 Group-to-group: {group_membership_count}")
+
+            if group_membership_count == 0 and groups_processed > 0:
+                self.logger.warning(
+                    "⚠️  NO GROUP-TO-GROUP MEMBERSHIPS FOUND - This is normal if you don't have "
+                    "nested groups in SharePoint. Check the 📋 sample logs above to verify "
+                    "@odata.type values."
+                )
+            self.logger.info("=" * 80)
 
     async def _get_group_members(self, client: httpx.AsyncClient, group_id: str) -> List[Dict]:
-        """Query /groups/{id}/transitivemembers endpoint with pagination.
+        """Query /groups/{id}/members endpoint with pagination.
 
-        Uses transitivemembers instead of members to get ALL users including
-        those in nested groups. This handles group-to-group memberships automatically
-        without needing to store group-group relationships.
+        Uses /members (not /transitivemembers) to get DIRECT members only, including
+        both users AND groups. This allows us to store group-to-group relationships
+        and handle recursive expansion at query time via the access broker.
 
         Args:
             client: HTTP client
             group_id: ID of the group
 
         Returns:
-            List of USER member objects with id, mail, userPrincipalName fields
-            (groups are automatically expanded by Microsoft Graph API)
+            List of member objects (users AND groups) with:
+            - @odata.type: identifies if member is user or group
+            - id: unique identifier
+            - mail: email address (for users)
+            - userPrincipalName: UPN (for users)
         """
-        # Use transitivemembers to handle nested groups
-        url = f"{self.GRAPH_BASE_URL}/groups/{group_id}/transitivemembers"
+        # Use /members to get direct members (not transitive)
+        url = f"{self.GRAPH_BASE_URL}/groups/{group_id}/members"
         params = {"$select": "id,mail,userPrincipalName", "$top": 100}
 
         members = []
         try:
             while url:
                 data = await self._get_with_auth(client, url, params=params)
-                members.extend(data.get("value", []))
+                # @odata.type is included by default, no need to request it
+                raw_members = data.get("value", [])
+
+                # DEBUG: Log first member from each page to see what we're getting
+                if raw_members:
+                    first_member = raw_members[0]
+                    self.logger.info(
+                        f"📋 Sample member from group {group_id}: "
+                        f"@odata.type={first_member.get('@odata.type', 'MISSING')}, "
+                        f"id={first_member.get('id', 'MISSING')[:20]}..., "
+                        f"keys={list(first_member.keys())}"
+                    )
+
+                members.extend(raw_members)
 
                 # Pagination
                 url = data.get("@odata.nextLink")

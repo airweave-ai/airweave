@@ -21,3 +21,6 @@ class BaseCursor(BaseModel):
         ser_json_timedelta="iso8601",
     )
 
+
+
+

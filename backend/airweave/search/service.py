@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud
 from airweave.api.context import ApiContext
 from airweave.core.exceptions import NotFoundException
+from airweave.platform.access_control.schemas import AccessContext
 from airweave.schemas.search import SearchRequest, SearchResponse
 from airweave.search.factory import factory
 from airweave.search.helpers import search_helpers
@@ -29,6 +30,7 @@ class SearchService:
         stream: bool,
         db: AsyncSession,
         ctx: ApiContext,
+        access_context: AccessContext | None = None,
     ) -> SearchResponse:
         """Search a collection."""
         start_time = time.monotonic()
@@ -41,7 +43,14 @@ class SearchService:
 
         ctx.logger.debug("Building search context")
         search_context = await factory.build(
-            request_id, collection.id, readable_collection_id, search_request, stream, ctx, db
+            request_id,
+            collection.id,
+            readable_collection_id,
+            search_request,
+            stream,
+            ctx,
+            db,
+            access_context,
         )
 
         ctx.logger.debug("Executing search")

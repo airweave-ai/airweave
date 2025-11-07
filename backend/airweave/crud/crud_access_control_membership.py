@@ -40,6 +40,48 @@ class CRUDAccessControlMembership(
         result = await db.execute(stmt)
         return list(result.scalars().all())
 
+    async def get_by_member_and_collection(
+        self,
+        db: AsyncSession,
+        member_id: str,
+        member_type: str,
+        readable_collection_id: str,
+        organization_id: UUID,
+    ) -> List[AccessControlMembership]:
+        """Get memberships for a user scoped to a specific collection's source connections.
+
+        This method only returns memberships from source connections that belong to the
+        specified collection, enabling collection-scoped access control.
+
+        Args:
+            db: Database session
+            member_id: Member identifier (email for users, ID for groups)
+            member_type: "user" or "group"
+            readable_collection_id: Collection readable_id (string) to scope the query
+            organization_id: Organization ID for multi-tenant isolation
+
+        Returns:
+            List of AccessControlMembership objects scoped to the collection
+        """
+        from airweave.models.source_connection import SourceConnection
+
+        # Join AccessControlMembership with SourceConnection to filter by collection
+        stmt = (
+            select(AccessControlMembership)
+            .join(
+                SourceConnection,
+                AccessControlMembership.source_connection_id == SourceConnection.id,
+            )
+            .where(
+                AccessControlMembership.organization_id == organization_id,
+                AccessControlMembership.member_id == member_id,
+                AccessControlMembership.member_type == member_type,
+                SourceConnection.readable_collection_id == readable_collection_id,
+            )
+        )
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+
     async def bulk_create(
         self,
         db: AsyncSession,

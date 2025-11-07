@@ -21,6 +21,7 @@ from airweave.core.guard_rail_service import GuardRailService
 from airweave.core.pubsub import core_pubsub
 from airweave.core.shared_models import ActionType
 from airweave.db.session import AsyncSessionLocal
+from airweave.platform.access_control.broker import access_broker
 from airweave.schemas.search import SearchRequest, SearchResponse
 from airweave.schemas.search_legacy import LegacySearchRequest, LegacySearchResponse, ResponseType
 from airweave.search.legacy_adapter import (
@@ -93,7 +94,7 @@ async def search_get_legacy(
     # Convert to new format
     new_request = convert_legacy_request_to_new(legacy_request)
 
-    # Call new search service
+    # Call new search service (without access control)
     new_response = await service.search(
         request_id=ctx.request_id,
         readable_collection_id=readable_id,
@@ -101,6 +102,7 @@ async def search_get_legacy(
         stream=False,
         db=db,
         ctx=ctx,
+        access_context=None,
     )
 
     # Convert back to legacy format
@@ -149,7 +151,7 @@ async def search(
         requested_response_type = search_request.response_type
         search_request = convert_legacy_request_to_new(search_request)
 
-    # Execute search with new service
+    # Execute search with new service (without access control for now)
     search_response = await service.search(
         request_id=ctx.request_id,
         readable_collection_id=readable_id,
@@ -157,39 +159,97 @@ async def search(
         stream=False,
         db=db,
         ctx=ctx,
+        access_context=None,  # No access control on regular search endpoint
     )
 
-    # NEW: Apply access control filtering (post-filter for MVP)
-    if ctx.has_user_context:
-        from airweave.platform.access_control import AccessBroker
-
-        access_broker = AccessBroker()
-
-        # Resolve user's access context (expand groups)
-        access_context = await access_broker.resolve_access_context(
-            db=db, user_email=ctx.user.email, organization_id=ctx.organization_id
-        )
-
-        # Filter results based on access control
-        original_count = len(search_response.results)
-        filtered_results = [
-            result
-            for result in search_response.results
-            if access_broker.check_entity_access(
-                entity_access=result.get("entity", {}).get("access"),
-                access_context=access_context,
-            )
-        ]
-
-        if original_count != len(filtered_results):
-            ctx.logger.info(
-                f"Access control filtered {original_count - len(filtered_results)} "
-                f"results (from {original_count} to {len(filtered_results)})"
-            )
-
-        search_response.results = filtered_results
-
     ctx.logger.info(f"Search completed for collection '{readable_id}'")
+    await guard_rail.increment(ActionType.QUERIES)
+
+    # Convert response back to legacy format if needed
+    if is_legacy:
+        return convert_new_response_to_legacy(search_response, requested_response_type)
+
+    return search_response
+
+
+@router.post("/{readable_id}/search/as-user")
+async def search_collection_as_user(
+    http_response: Response,
+    readable_id: str = Path(
+        ..., description="The unique readable identifier of the collection to search"
+    ),
+    user_email: str = Query(..., description="Email of user to search as"),
+    search_request: Union[SearchRequest, LegacySearchRequest] = ...,
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+    guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
+) -> Union[SearchResponse, LegacySearchResponse]:
+    """Search collection with database-level access control for a specific user.
+
+    PRIVATE ENDPOINT - For testing/admin purposes.
+    Filters results at Qdrant level based on user's group memberships scoped to
+    this collection's source connections.
+
+    This endpoint resolves the access context (user + groups) for the specified
+    user email and applies access control filtering at the database level using
+    Qdrant's filter capabilities, rather than post-processing results.
+    """
+    await guard_rail.is_allowed(ActionType.QUERIES)
+
+    ctx.logger.info(
+        f"Starting access-controlled search for collection '{readable_id}' as user '{user_email}'"
+    )
+
+    # Get collection
+    from airweave import crud
+
+    collection = await crud.collection.get_by_readable_id(
+        db, readable_id=readable_id, ctx=ctx
+    )
+    if not collection:
+        from airweave.core.exceptions import NotFoundException
+
+        raise NotFoundException(detail=f"Collection '{readable_id}' not found")
+
+    access_context = await access_broker.resolve_access_context_for_collection(
+        db=db,
+        user_email=user_email,
+        readable_collection_id=collection.readable_id,
+        organization_id=ctx.organization.id,
+    )
+
+    ctx.logger.info(
+        f"Resolved access context for {user_email}: {len(access_context.all_principals)} principals"
+    )
+
+    # Determine if this is a legacy request and convert if needed
+    is_legacy = isinstance(search_request, LegacySearchRequest)
+    requested_response_type = None
+
+    if is_legacy:
+        ctx.logger.debug("Processing legacy search request")
+        http_response.headers["X-API-Deprecation"] = "true"
+        http_response.headers["X-API-Deprecation-Message"] = (
+            "You're using the legacy SearchRequest schema. Please migrate to the new schema."
+        )
+        requested_response_type = search_request.response_type
+        search_request = convert_legacy_request_to_new(search_request)
+
+    # Execute search with access context
+    search_response = await service.search(
+        request_id=ctx.request_id,
+        readable_collection_id=readable_id,
+        search_request=search_request,
+        stream=False,
+        db=db,
+        ctx=ctx,
+        access_context=access_context,
+    )
+
+    ctx.logger.info(
+        f"Access-controlled search completed for collection '{readable_id}': "
+        f"{len(search_response.results)} results"
+    )
     await guard_rail.increment(ActionType.QUERIES)
 
     # Convert response back to legacy format if needed
@@ -238,6 +298,7 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
                     stream=True,
                     db=search_db,
                     ctx=ctx,
+                    access_context=None,  # No access control on streaming endpoint
                 )
         except Exception as e:  # noqa: BLE001 - report to stream
             await core_pubsub.publish(

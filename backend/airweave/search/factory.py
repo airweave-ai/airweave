@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
+from airweave.platform.access_control.schemas import AccessContext
 from airweave.platform.auth.schemas import BaseAuthSettings
 from airweave.platform.destinations.collection_strategy import get_default_vector_size
 from airweave.platform.locator import resource_locator
@@ -66,6 +67,7 @@ class SearchFactory:
         stream: bool,
         ctx: ApiContext,
         db: AsyncSession,
+        access_context: "AccessContext | None" = None,
     ) -> SearchContext:
         """Build SearchContext from request with validated YAML defaults."""
         if not search_request.query or not search_request.query.strip():
@@ -122,7 +124,16 @@ class SearchFactory:
             search_request,
             temporal_supporting_sources,
             vector_size,
+            access_context,
         )
+
+        # Extract access principals from access context if provided
+        access_principals = None
+        if access_context:
+            access_principals = list(access_context.all_principals)
+            ctx.logger.info(
+                f"[SearchFactory] Access control enabled with {len(access_principals)} principals"
+            )
 
         search_context = SearchContext(
             request_id=request_id,
@@ -134,6 +145,7 @@ class SearchFactory:
             limit=params["limit"],
             emitter=emitter,
             query=search_request.query,
+            access_principals=access_principals,
             **operations,
         )
 
@@ -262,23 +274,9 @@ class SearchFactory:
         search_request: SearchRequest,
         temporal_supporting_sources: Optional[List[str]] = None,
         vector_size: Optional[int] = None,
+        access_context: "AccessContext | None" = None,
     ) -> Dict[str, Any]:
-        """Build operation instances for the search context.
-
-        Args:
-            params: Validated search parameters from request with defaults applied
-            providers: Dict with:
-                - "embed": Single BaseProvider (embeddings must be consistent - no fallback)
-                - Other keys: List[BaseProvider] (with fallback support)
-            federated_sources: List of instantiated federated source objects
-            has_vector_sources: Whether collection has any vector-backed sources
-            search_request: Original search request from user
-            temporal_supporting_sources: List of source short_names to filter temporal search:
-                - Non-empty list: Filter to these sources (some don't support temporal)
-                - Empty list: Skip operation (no sources support temporal)
-                - None: No filtering needed (temporal disabled or not checked)
-            vector_size: Vector dimensions for this collection (used by EmbedQuery)
-        """
+        """Build operation instances for the search context."""
         return {
             "query_expansion": (
                 QueryExpansion(providers=providers["expansion"]) if params["expand_query"] else None
@@ -311,7 +309,10 @@ class SearchFactory:
             ),
             "user_filter": (
                 UserFilter(filter=search_request.filter)
-                if (search_request.filter and has_vector_sources)
+                if (
+                    has_vector_sources
+                    and (search_request.filter is not None or access_context is not None)
+                )
                 else None
             ),
             "retrieval": (
@@ -806,34 +807,6 @@ class SearchFactory:
         except Exception as e:
             raise ValueError(f"Error getting federated sources: {e}")
 
-    async def _build_source_connection_data(
-        self, db: AsyncSession, source_model, source_class, source_connection, ctx: ApiContext
-    ) -> dict:
-        """Build source_connection_data dict with integration credential."""
-        source_connection_data = {
-            "source_model": source_model,
-            "source_class": source_class,
-            "short_name": source_connection.short_name,
-            "config_fields": source_connection.config_fields,
-            "readable_auth_provider_id": getattr(
-                source_connection, "readable_auth_provider_id", None
-            ),
-            "auth_provider_config": getattr(source_connection, "auth_provider_config", None),
-            "connection_id": getattr(source_connection, "connection_id", None),
-            "integration_credential_id": None,  # Loaded below
-            "auth_config_class": None,  # Not used for federated search
-        }
-
-        # Load integration_credential_id from connection if exists
-        if source_connection_data["connection_id"]:
-            connection = await crud.connection.get(db, source_connection_data["connection_id"], ctx)
-            if connection:
-                source_connection_data["integration_credential_id"] = (
-                    connection.integration_credential_id
-                )
-
-        return source_connection_data
-
     async def _instantiate_federated_source(
         self, db: AsyncSession, source_connection, ctx: ApiContext
     ) -> Optional[BaseSource]:
@@ -865,9 +838,29 @@ class SearchFactory:
 
         try:
             # Step 2: Build source_connection_data dict
-            source_connection_data = await self._build_source_connection_data(
-                db, source_model, source_class, source_connection, ctx
-            )
+            source_connection_data = {
+                "source_model": source_model,
+                "source_class": source_class,
+                "short_name": source_connection.short_name,
+                "config_fields": source_connection.config_fields,
+                "readable_auth_provider_id": getattr(
+                    source_connection, "readable_auth_provider_id", None
+                ),
+                "auth_provider_config": getattr(source_connection, "auth_provider_config", None),
+                "connection_id": getattr(source_connection, "connection_id", None),
+                "integration_credential_id": None,  # Loaded below
+                "auth_config_class": None,  # Not used for federated search
+            }
+
+            # Load integration_credential_id from connection if exists
+            if source_connection_data["connection_id"]:
+                connection = await crud.connection.get(
+                    db, source_connection_data["connection_id"], ctx
+                )
+                if connection:
+                    source_connection_data["integration_credential_id"] = (
+                        connection.integration_credential_id
+                    )
 
             # Load typed auth settings for OAuth sources (required for token manager)
             auth_settings = None
@@ -897,7 +890,7 @@ class SearchFactory:
                 raw_credentials=auth_config["credentials"],
                 source_connection_data=source_connection_data,
                 logger=ctx.logger,
-                auth_settings=auth_settings,  # Pass typed schema to avoid duplicate load
+                auth_settings=auth_settings,
             )
 
             # Step 5: Create source instance

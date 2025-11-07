@@ -60,6 +60,52 @@ class AccessBroker:
             group_principals=[f"group:{g}" for g in all_groups],
         )
 
+    async def resolve_access_context_for_collection(
+        self, db: AsyncSession, user_email: str, readable_collection_id: str, organization_id: UUID
+    ) -> AccessContext:
+        """Resolve user's access context scoped to a collection's source connections.
+
+        This method only considers group memberships from source connections that belong
+        to the specified collection, enabling collection-scoped access control.
+
+        Steps:
+        1. Query database for user's group memberships within the collection
+        2. Recursively expand group-to-group relationships (if any)
+        3. Build AccessContext with user + all expanded group principals
+
+        Args:
+            db: Database session
+            user_email: User's email address
+            readable_collection_id: Collection readable_id (string) to scope the access context
+            organization_id: Organization ID
+
+        Returns:
+            AccessContext with fully expanded principals scoped to collection
+        """
+        # Query user-group memberships scoped to collection (member_type="user")
+        memberships = await crud.access_control_membership.get_by_member_and_collection(
+            db=db,
+            member_id=user_email,
+            member_type="user",
+            readable_collection_id=readable_collection_id,
+            organization_id=organization_id,
+        )
+
+        # Build principals
+        user_principals = [f"user:{user_email}"]
+
+        # Recursively expand group-to-group relationships (if any exist)
+        # Note: Group expansion is still organization-wide, not collection-scoped
+        all_groups = await self._expand_group_memberships(
+            db=db, group_ids=[m.group_id for m in memberships], organization_id=organization_id
+        )
+
+        return AccessContext(
+            user_email=user_email,
+            user_principals=user_principals,
+            group_principals=[f"group:{g}" for g in all_groups],
+        )
+
     async def _expand_group_memberships(
         self, db: AsyncSession, group_ids: List[str], organization_id: UUID
     ) -> Set[str]:
@@ -125,3 +171,7 @@ class AccessBroker:
 
         # Check if any principal matches
         return bool(access_context.all_principals & set(entity_access.viewers))
+
+
+# Singleton shared instance
+access_broker = AccessBroker()

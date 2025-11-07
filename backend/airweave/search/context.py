@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -39,6 +39,12 @@ class SearchContext(BaseModel):
     query: str = Field()
 
     emitter: EventEmitter = Field()
+
+    # Access control filtering (optional)
+    access_principals: Optional[List[str]] = Field(
+        default=None,
+        description="List of principals (user:email, group:id) for access control filtering",
+    )
 
     query_expansion: Optional[QueryExpansion] = Field()
     query_interpretation: Optional[QueryInterpretation] = Field()

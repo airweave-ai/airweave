@@ -261,6 +261,12 @@ const Collections = () => {
     const [isRefreshingAll, setIsRefreshingAll] = useState(false);
     const [refreshingSourceIds, setRefreshingSourceIds] = useState<string[]>([]);
 
+    // Test state for search-as-user endpoint
+    const [testUserEmail, setTestUserEmail] = useState('');
+    const [testSearchQuery, setTestSearchQuery] = useState('');
+    const [testSearchResults, setTestSearchResults] = useState<any>(null);
+    const [isTestSearching, setIsTestSearching] = useState(false);
+
     // Usage check from store (read-only, checking happens at app level)
     const actionChecks = useUsageStore(state => state.actionChecks);
     const isCheckingUsage = useUsageStore(state => state.isLoading);
@@ -499,6 +505,49 @@ const Collections = () => {
                 title: "Copied",
                 description: "ID copied to clipboard"
             });
+        }
+    };
+
+    // Test search-as-user endpoint
+    const handleTestSearchAsUser = async () => {
+        if (!collection?.readable_id || !testUserEmail || !testSearchQuery) {
+            toast({
+                title: "Error",
+                description: "Please enter both user email and search query",
+                variant: "destructive"
+            });
+            return;
+        }
+
+        setIsTestSearching(true);
+        setTestSearchResults(null);
+
+        try {
+            const response = await apiClient.post(
+                `/collections/${collection.readable_id}/search/as-user?user_email=${encodeURIComponent(testUserEmail)}`,
+                { query: testSearchQuery }
+            );
+
+            if (response.ok) {
+                const data = await response.json();
+                setTestSearchResults(data);
+                toast({
+                    title: "Success",
+                    description: `Found ${data.results?.length || 0} results for ${testUserEmail}`
+                });
+            } else {
+                const errorText = await response.text();
+                throw new Error(errorText);
+            }
+        } catch (error) {
+            console.error("Test search error:", error);
+            toast({
+                title: "Error",
+                description: error instanceof Error ? error.message : "Failed to search",
+                variant: "destructive"
+            });
+        } finally {
+            setIsTestSearching(false);
         }
     };
 
@@ -944,9 +993,90 @@ const Collections = () => {
 
 
 
+                    {/* TEST: Search-as-user endpoint tester */}
+                    {collection?.readable_id && (
+                        <div className="w-full max-w-[1000px] mt-8">
+                            <div className={cn(
+                                "p-4 rounded-lg border",
+                                isDark ? "bg-yellow-500/10 border-yellow-500/30" : "bg-yellow-50 border-yellow-200"
+                            )}>
+                                <div className="flex items-center gap-2 mb-3">
+                                    <AlertCircle className={cn("h-4 w-4", isDark ? "text-yellow-400" : "text-yellow-600")} />
+                                    <h3 className={cn("font-semibold text-sm", isDark ? "text-yellow-400" : "text-yellow-700")}>
+                                        Test: Search as User (Access Control)
+                                    </h3>
+                                </div>
+                                <div className="space-y-3">
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="text-xs text-muted-foreground mb-1 block">User Email</label>
+                                            <Input
+                                                placeholder="user@example.com"
+                                                value={testUserEmail}
+                                                onChange={(e) => setTestUserEmail(e.target.value)}
+                                                className="h-8 text-sm"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-muted-foreground mb-1 block">Search Query</label>
+                                            <Input
+                                                placeholder="search query..."
+                                                value={testSearchQuery}
+                                                onChange={(e) => setTestSearchQuery(e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        handleTestSearchAsUser();
+                                                    }
+                                                }}
+                                                className="h-8 text-sm"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Button
+                                            size="sm"
+                                            onClick={handleTestSearchAsUser}
+                                            disabled={isTestSearching || !testUserEmail || !testSearchQuery}
+                                            className="h-7 text-xs"
+                                        >
+                                            {isTestSearching ? (
+                                                <>
+                                                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                                    Searching...
+                                                </>
+                                            ) : (
+                                                'Test Search'
+                                            )}
+                                        </Button>
+                                        {testSearchResults && (
+                                            <span className="text-xs text-muted-foreground">
+                                                Found {testSearchResults.results?.length || 0} results
+                                            </span>
+                                        )}
+                                    </div>
+                                    {testSearchResults && (
+                                        <div className="mt-2 text-xs">
+                                            <details className="cursor-pointer">
+                                                <summary className="text-muted-foreground hover:text-foreground">
+                                                    View results JSON
+                                                </summary>
+                                                <pre className={cn(
+                                                    "mt-2 p-2 rounded text-[10px] overflow-auto max-h-60",
+                                                    isDark ? "bg-gray-900" : "bg-gray-100"
+                                                )}>
+                                                    {JSON.stringify(testSearchResults, null, 2)}
+                                                </pre>
+                                            </details>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Add Search component when collection has any synced data */}
                     {collection?.readable_id && (
-                        <div className="w-full max-w-[1000px] mt-10">
+                        <div className="w-full max-w-[1000px] mt-6">
                             <Search
                                 collectionReadableId={collection.readable_id}
                             />

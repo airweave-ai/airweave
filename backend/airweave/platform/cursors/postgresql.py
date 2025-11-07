@@ -23,3 +23,6 @@ class PostgreSQLCursor(BaseCursor):
         description="Per-table cursor values as 'schema.table' -> cursor value mapping",
     )
 
+
+
+

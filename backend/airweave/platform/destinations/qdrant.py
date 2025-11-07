@@ -1042,6 +1042,17 @@ class QdrantDestination(VectorDBDestination):
             f"decay_weight={weight}"
         )
 
+        # Log access control filters
+        if filter_conditions:
+            self.logger.info("[Qdrant] === ACCESS CONTROL FILTERS ===")
+            for i, fc in enumerate(filter_conditions):
+                if fc:
+                    self.logger.info(f"[Qdrant] Filter[{i}]: {fc}")
+                else:
+                    self.logger.info(f"[Qdrant] Filter[{i}]: None (no filter)")
+        else:
+            self.logger.warning("[Qdrant] ⚠️  NO FILTERS - searching all entities in collection")
+
         if decay_config:
             decay_weight = getattr(decay_config, "weight", 0)
             decay_field = decay_config.datetime_field

@@ -37,13 +37,25 @@ class Retrieval(SearchOperation):
         ctx: ApiContext,
     ) -> None:
         """Execute vector search against Qdrant."""
-        ctx.logger.debug("[Retrieval] Executing search against Qdrant")
+        ctx.logger.info("[Retrieval] === STARTING QDRANT SEARCH ===")
+
+        # Log access control status if enabled
+        if context.access_principals:
+            ctx.logger.info(
+                f"[Retrieval] ✓ Access control enabled: {len(context.access_principals)} principals"
+            )
+            ctx.logger.info(f"[Retrieval] Access principals: {context.access_principals}")
+        else:
+            ctx.logger.warning("[Retrieval] ⚠️  NO ACCESS CONTROL - searching all entities")
 
         # Get inputs from state (embeddings validated by EmbedQuery)
         dense_embeddings = state.get("dense_embeddings")
         sparse_embeddings = state.get("sparse_embeddings")
         filter_dict = state.get("filter")
         decay_config = state.get("decay_config")
+        
+        # Log the filter being used for Qdrant query
+        ctx.logger.info(f"[Retrieval] Filter from state (to be sent to Qdrant): {filter_dict}")
 
         # Ensure we have at least one type of embedding
         if dense_embeddings is None and sparse_embeddings is None:

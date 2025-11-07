@@ -40,3 +40,6 @@ class OutlookMailCursor(BaseCursor):
         description="Per-folder last sync timestamps as folder_id -> ISO 8601 timestamp",
     )
 
+
+
+
