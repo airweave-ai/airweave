@@ -14,11 +14,11 @@ class AsyncWorkerPool:
     preventing system overload when processing many items in parallel.
     """
 
-    def __init__(self, logger: ContextualLogger, max_workers: int = 100):
+    def __init__(self, logger: ContextualLogger, max_workers: int = 20):
         """Initialize worker pool with concurrency control.
 
         Args:
-            max_workers: Maximum number of tasks allowed to run concurrently
+            max_workers: Maximum number of tasks allowed to run concurrently (default: 20)
             logger: Optional logger instance for contextual logging
         """
         self.semaphore = asyncio.Semaphore(max_workers)

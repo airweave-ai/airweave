@@ -90,6 +90,10 @@ class DenseEmbedder(BaseEmbedder):
         Raises:
             SyncFailureError: On any error (empty texts, API failures, etc.)
         """
+        import time
+
+        batch_start = time.time()
+
         if not texts:
             return []
 
@@ -104,7 +108,10 @@ class DenseEmbedder(BaseEmbedder):
         # Count tokens for the entire batch
         total_tokens = sum(len(self._tokenizer.encode(text)) for text in texts)
 
-        sync_context.logger.debug(f"Embedding {len(texts)} texts with {total_tokens} total tokens")
+        sync_context.logger.debug(
+            f"🔸 OpenAI Embedding: Starting batch of {len(texts)} texts "
+            f"({total_tokens:,} tokens, model: {self.MODEL_NAME})"
+        )
 
         # Split into smaller batches to avoid blocking and allow heartbeats
         # Max 200 texts per sub-batch to prevent long blocking periods
@@ -142,6 +149,13 @@ class DenseEmbedder(BaseEmbedder):
             raise SyncFailureError(
                 f"PROGRAMMING ERROR: Got {len(embeddings)} embeddings for {len(texts)} texts"
             )
+
+        # Log completion with timing
+        batch_duration = time.time() - batch_start
+        sync_context.logger.debug(
+            f"🔸 OpenAI Embedding complete: {len(texts)} texts ({total_tokens:,} tokens) "
+            f"embedded in {batch_duration:.2f}s ({total_tokens / batch_duration:.0f} tokens/s)"
+        )
 
         return embeddings
 

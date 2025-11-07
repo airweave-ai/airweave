@@ -136,7 +136,7 @@ class SemanticChunker(BaseChunker):
                 chunk_overlap=0,
             )
 
-            logger.info(
+            logger.debug(
                 f"Loaded SemanticChunker (model: {self.EMBEDDING_MODEL}, "
                 f"target_size: {self.SEMANTIC_CHUNK_SIZE}, "
                 f"threshold: {self.SIMILARITY_THRESHOLD}, "
@@ -164,23 +164,48 @@ class SemanticChunker(BaseChunker):
         Raises:
             SyncFailureError: If model initialization or batch processing fails
         """
+        import time
+
+        batch_start = time.time()
         self._ensure_chunkers()
 
         # Stage 1: Semantic chunking (finds topic boundaries via embedding similarity)
+        stage_start = time.time()
         try:
             semantic_results = await run_in_thread_pool(self._semantic_chunker.chunk_batch, texts)
         except Exception as e:
             raise SyncFailureError(f"SemanticChunker batch processing failed: {e}")
 
+        stage_duration = time.time() - stage_start
+        initial_chunk_count = sum(len(chunks) for chunks in semantic_results)
+        logger.debug(
+            f"🔹 SemanticChunker: {len(texts)} texts → {initial_chunk_count} chunks "
+            f"({stage_duration:.2f}s)"
+        )
+
         # Stage 1.5: Recount tokens with tiktoken (semantic chunker uses its own tokenizer)
+        stage_start = time.time()
         semantic_results_with_tiktoken = await run_in_thread_pool(
             self._recount_tokens_with_tiktoken, semantic_results
         )
+        stage_duration = time.time() - stage_start
+        logger.debug(
+            f"🔹 Token recount (tiktoken): {initial_chunk_count} chunks ({stage_duration:.2f}s)"
+        )
 
         # Stage 2: Safety net (batched for efficiency, uses tiktoken counts)
+        stage_start = time.time()
         final_results = await run_in_thread_pool(
             self._apply_safety_net_batched, semantic_results_with_tiktoken
         )
+        stage_duration = time.time() - stage_start
+        final_chunk_count = sum(len(chunks) for chunks in final_results)
+        oversized_count = final_chunk_count - initial_chunk_count
+        if oversized_count > 0:
+            logger.debug(
+                f"🔹 TokenChunker fallback: split {oversized_count} oversized chunks → "
+                f"{final_chunk_count} total chunks ({stage_duration:.2f}s)"
+            )
 
         # Validate all chunks meet requirements
         for doc_chunks in final_results:
@@ -196,6 +221,13 @@ class SemanticChunker(BaseChunker):
                         f"after TokenChunker fallback (max: {self.MAX_TOKENS_PER_CHUNK}). "
                         "TokenChunker failed to enforce hard limit."
                     )
+
+        # Final summary
+        batch_duration = time.time() - batch_start
+        logger.debug(
+            f"🔹 Chunking complete: {len(texts)} texts → {final_chunk_count} chunks "
+            f"(total: {batch_duration:.2f}s)"
+        )
 
         return final_results
 

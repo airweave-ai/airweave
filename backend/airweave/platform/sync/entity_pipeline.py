@@ -33,6 +33,7 @@ class EntityPipeline:
         """Initialize pipeline with empty entity tracking."""
         self._entity_ids_encountered_by_type: Dict[str, Set[str]] = {}
         self._entities_printed_count: int = 0
+        self._dedup_lock = asyncio.Lock()  # CRITICAL: Prevents race conditions in dedup
 
     # ------------------------------------------------------------------------------------
     # Cleanup orphaned entities
@@ -58,7 +59,7 @@ class EntityPipeline:
         """Fetch stored entities and filter to those not encountered during sync."""
         # Log start of DB query
         query_start = time.time()
-        sync_context.logger.info(
+        sync_context.logger.debug(
             "🔍 [ORPHAN CLEANUP] Fetching all stored entities from database..."
         )
 
@@ -66,7 +67,7 @@ class EntityPipeline:
             stored_entities = await crud.entity.get_by_sync_id(db=db, sync_id=sync_context.sync.id)
 
         query_duration = time.time() - query_start
-        sync_context.logger.info(
+        sync_context.logger.debug(
             f"✅ [ORPHAN CLEANUP] Retrieved {len(stored_entities)} stored entities "
             f"in {query_duration:.2f}s"
         )
@@ -80,7 +81,7 @@ class EntityPipeline:
         orphaned = [e for e in stored_entities if e.entity_id not in encountered_ids]
         compare_duration = time.time() - compare_start
 
-        sync_context.logger.info(
+        sync_context.logger.debug(
             f"📊 [ORPHAN CLEANUP] Analysis complete in {compare_duration:.2f}s: "
             f"{len(encountered_ids)} encountered, {len(orphaned)} orphaned "
             f"out of {len(stored_entities)} total"
@@ -139,19 +140,65 @@ class EntityPipeline:
         self,
         entities: List[BaseEntity],
         sync_context: SyncContext,
+        batch_id: int = 0,
     ) -> None:
         """Process a list of entities."""
+        # Extract worker/task identification for logging
+        import asyncio
+        import threading
+
+        current_task = asyncio.current_task()
+        task_name = getattr(current_task, "task_id", "unknown") if current_task else "unknown"
+        thread_id = threading.get_ident()
+
+        batch_start = time.time()
+        sync_context.logger.debug(
+            f"🔷 [BATCH #{batch_id}] [WORKER: {task_name}] [THREAD: {thread_id}] "
+            f"Starting pipeline for {len(entities)} entities"
+        )
+
+        # Stage 1: Deduplication
+        stage_start = time.time()
         unique_entities = await self._filter_duplicates(entities, sync_context)
+        stage_duration = time.time() - stage_start
+        sync_context.logger.debug(
+            f"🔷 [BATCH #{batch_id}] [WORKER: {task_name}] Stage 1 - Deduplication: "
+            f"{len(unique_entities)}/{len(entities)} unique entities ({stage_duration:.2f}s)"
+        )
 
         if not unique_entities:
             sync_context.logger.debug("All entities in batch were duplicates, skipping processing")
             return
 
+        # Stage 2: Early metadata enrichment
+        stage_start = time.time()
         await self._enrich_early_metadata(unique_entities, sync_context)
+        stage_duration = time.time() - stage_start
+        sync_context.logger.debug(
+            f"🔷 [BATCH #{batch_id}] [WORKER: {task_name}] Stage 2 - Metadata Enrichment: "
+            f"{len(unique_entities)} entities ({stage_duration:.2f}s)"
+        )
 
+        # Stage 3: Hash computation
+        stage_start = time.time()
         await self.compute_hashes_for_batch(unique_entities, sync_context)
+        stage_duration = time.time() - stage_start
+        file_count = sum(1 for e in unique_entities if isinstance(e, (FileEntity, CodeFileEntity)))
+        sync_context.logger.debug(
+            f"🔷 [BATCH #{batch_id}] [WORKER: {task_name}] Stage 3 - Hash Computation: "
+            f"{len(unique_entities)} entities ({file_count} files) ({stage_duration:.2f}s)"
+        )
 
+        # Stage 4: Action determination
+        stage_start = time.time()
         partitions = await self._determine_actions(unique_entities, sync_context)
+        stage_duration = time.time() - stage_start
+        sync_context.logger.debug(
+            f"🔷 [BATCH #{batch_id}] [WORKER: {task_name}] Stage 4 - Action "
+            f"Determination: {len(partitions['inserts'])} inserts, "
+            f"{len(partitions['updates'])} updates, {len(partitions['keeps'])} keeps, "
+            f"{len(partitions['deletes'])} deletes ({stage_duration:.2f}s)"
+        )
 
         # Early exit: If nothing needs to be processed (only KEEP entities)
         if not any(partitions[k] for k in ("inserts", "updates", "deletes")):
@@ -162,18 +209,38 @@ class EntityPipeline:
                 )
             return
 
-        # Handle DELETES early (don't need chunking/embedding)
+        # Stage 5: Handle DELETES early (don't need chunking/embedding)
         if partitions["deletes"]:
+            stage_start = time.time()
             await self._handle_deletes(partitions, sync_context)
+            stage_duration = time.time() - stage_start
+            sync_context.logger.debug(
+                f"🔷 [BATCH #{batch_id}] [WORKER: {task_name}] Stage 5 - Delete Handling: "
+                f"{len(partitions['deletes'])} entities deleted ({stage_duration:.2f}s)"
+            )
 
         # Process INSERTS/UPDATES through full pipeline
         entities_to_process = partitions["inserts"] + partitions["updates"]
         if not entities_to_process:
             # Only deletes and/or keeps - deletes already handled, just update progress
             await self._update_progress(partitions, sync_context)
+            batch_duration = time.time() - batch_start
+            sync_context.logger.debug(
+                f"🔷 [BATCH #{batch_id}] [WORKER: {task_name}] ✅ Pipeline complete "
+                f"(total: {batch_duration:.2f}s, no inserts/updates)"
+            )
             return
 
+        # Stage 6: Build textual representations (conversion)
+        stage_start = time.time()
         await self._build_textual_representations(entities_to_process, sync_context)
+        stage_duration = time.time() - stage_start
+        file_entities_count = sum(1 for e in entities_to_process if isinstance(e, FileEntity))
+        sync_context.logger.debug(
+            f"🔷 [BATCH #{batch_id}] [WORKER: {task_name}] Stage 6 - Textual Representation "
+            f"(Conversion): {len(entities_to_process)} entities ({file_entities_count} files) "
+            f"({stage_duration:.2f}s)"
+        )
 
         for entity in entities_to_process:
             if not hasattr(entity, "textual_representation") or not entity.textual_representation:
@@ -189,22 +256,67 @@ class EntityPipeline:
             sync_context.logger.debug("No entities to chunk - all failed conversion")
             return
 
+        # Stage 7: Chunking (entity multiplication)
+        stage_start = time.time()
         chunk_entities = await self._chunk_entities(entities_to_process, sync_context)
+        stage_duration = time.time() - stage_start
+        sync_context.logger.debug(
+            f"🔷 [BATCH #{batch_id}] [WORKER: {task_name}] Stage 7 - Chunking: "
+            f"{len(entities_to_process)} entities → {len(chunk_entities)} chunks "
+            f"({stage_duration:.2f}s)"
+        )
 
-        # Embed chunk entities (sets vectors field)
+        # Stage 8: Embedding (vector computation)
+        stage_start = time.time()
         await self._embed_entities(chunk_entities, sync_context)
+        stage_duration = time.time() - stage_start
+        sync_context.logger.debug(
+            f"🔷 [BATCH #{batch_id}] [WORKER: {task_name}] Stage 8 - Embedding: "
+            f"{len(chunk_entities)} chunks embedded ({stage_duration:.2f}s)"
+        )
 
-        # Persist to destinations (COMMIT POINT)
+        # Stage 9: Persist to destinations (COMMIT POINT)
+        stage_start = time.time()
         await self._persist_to_destinations(chunk_entities, partitions, sync_context)
+        stage_duration = time.time() - stage_start
+        sync_context.logger.debug(
+            f"🔷 [BATCH #{batch_id}] [WORKER: {task_name}] Stage 9 - Vector DB Persistence: "
+            f"{len(chunk_entities)} chunks to {len(sync_context.destinations)} destination(s) "
+            f"({stage_duration:.2f}s)"
+        )
 
-        # Persist to database (only after destination success)
-        await self._persist_to_database(partitions, sync_context)
+        # Stage 10: Persist to database (only after destination success)
+        stage_start = time.time()
+        await self._persist_to_database(partitions, sync_context, batch_id)
+        stage_duration = time.time() - stage_start
+        sync_context.logger.debug(
+            f"🔷 [BATCH #{batch_id}] [WORKER: {task_name}] Stage 10 - PostgreSQL Persistence: "
+            f"{len(partitions['inserts'])} inserts, {len(partitions['updates'])} updates "
+            f"({stage_duration:.2f}s)"
+        )
 
         # Update progress
         await self._update_progress(partitions, sync_context)
 
-        # Progressive cleanup: delete temp files after successful processing
+        # Stage 11: Progressive cleanup (delete temp files)
+        stage_start = time.time()
         await self._cleanup_processed_files(partitions, sync_context)
+        stage_duration = time.time() - stage_start
+        cleaned_count = sum(
+            1 for e in (partitions["inserts"] + partitions["updates"]) if isinstance(e, FileEntity)
+        )
+        sync_context.logger.debug(
+            f"🔷 [BATCH #{batch_id}] [WORKER: {task_name}] Stage 11 - File Cleanup: "
+            f"{cleaned_count} temp files ({stage_duration:.2f}s)"
+        )
+
+        # Final summary
+        batch_duration = time.time() - batch_start
+        sync_context.logger.debug(
+            f"🔷 [BATCH #{batch_id}] [WORKER: {task_name}] ✅ Pipeline complete: "
+            f"{len(entities)} entities → {len(chunk_entities)} chunks persisted "
+            f"(total: {batch_duration:.2f}s)"
+        )
 
     # ------------------------------------------------------------------------------------
     # Deduplication
@@ -213,32 +325,42 @@ class EntityPipeline:
     async def _filter_duplicates(
         self, entities: List[BaseEntity], sync_context: SyncContext
     ) -> List[BaseEntity]:
-        """Filter out duplicate entities that have already been encountered in this sync."""
+        """Filter out duplicate entities that have already been encountered in this sync.
+
+        CRITICAL: Uses async lock to prevent race condition with concurrent batches.
+        Without the lock, multiple workers can see the same entity as "not yet seen"
+        simultaneously, leading to duplicate inserts and database deadlocks.
+        """
         unique_entities: List[BaseEntity] = []
         skipped_count = 0
 
-        for entity in entities:
-            # Track by entity type to allow same IDs across different types
-            entity_type = entity.__class__.__name__
-            self._entity_ids_encountered_by_type.setdefault(entity_type, set())
+        # CRITICAL: Lock protects the check-then-act pattern from race conditions
+        # Multiple concurrent batches could contain the same entity from the source
+        async with self._dedup_lock:
+            for entity in entities:
+                # Track by entity type to allow same IDs across different types
+                entity_type = entity.__class__.__name__
+                self._entity_ids_encountered_by_type.setdefault(entity_type, set())
 
-            # Check if we've already seen this entity ID for this type
-            if entity.entity_id in self._entity_ids_encountered_by_type[entity_type]:
-                skipped_count += 1
-                sync_context.logger.debug(
-                    f"Skipping duplicate entity: {entity_type}[{entity.entity_id}]"
-                )
-                continue
+                # Check if we've already seen this entity ID for this type
+                if entity.entity_id in self._entity_ids_encountered_by_type[entity_type]:
+                    skipped_count += 1
+                    sync_context.logger.debug(
+                        f"Skipping duplicate entity: {entity_type}[{entity.entity_id}]"
+                    )
+                    continue
 
-            # Mark as encountered and add to unique list
-            self._entity_ids_encountered_by_type[entity_type].add(entity.entity_id)
-            unique_entities.append(entity)
+                # Mark as encountered and add to unique list (ATOMIC with check above)
+                self._entity_ids_encountered_by_type[entity_type].add(entity.entity_id)
+                unique_entities.append(entity)
 
         # Update progress with skip count
         if skipped_count > 0:
             await sync_context.progress.increment("skipped", skipped_count)
-            sync_context.logger.debug(
-                f"Filtered {skipped_count} duplicate entities from batch of {len(entities)}"
+            sync_context.logger.warning(
+                f"⚠️  [RACE CONDITION DETECTED] Filtered {skipped_count} duplicate entities "
+                f"from batch of {len(entities)} - indicates source yielded duplicates or "
+                f"concurrent batches contained same entities"
             )
 
         # Update entity encounter tracking for orphan detection
@@ -501,7 +623,7 @@ class EntityPipeline:
             try:
                 lookup_start = time.time()
                 num_chunks = (len(entity_requests) + 999) // 1000
-                sync_context.logger.info(
+                sync_context.logger.debug(
                     f"🔍 [BULK LOOKUP] Starting bulk entity lookup for {len(entity_requests)} "
                     f"entities ({num_chunks} chunks of ~1000)..."
                 )
@@ -514,7 +636,7 @@ class EntityPipeline:
                     )
 
                 lookup_duration = time.time() - lookup_start
-                sync_context.logger.info(
+                sync_context.logger.debug(
                     f"✅ [BULK LOOKUP] Complete in {lookup_duration:.2f}s - "
                     f"found {len(existing_map)}/{len(entity_requests)} existing entities"
                 )
@@ -1296,6 +1418,7 @@ class EntityPipeline:
         self,
         partitions: Dict[str, Any],
         sync_context: SyncContext,
+        batch_id: int = 0,
     ) -> None:
         """Persist INSERT/UPDATE to PostgreSQL after destination success.
 
@@ -1313,23 +1436,84 @@ class EntityPipeline:
         if not inserts and not updates:
             return
 
-        # Retry wrapper for deadlock handling
-        async def _with_deadlock_retry(operation, max_retries=3):
+        # Retry wrapper for deadlock handling with jitter to prevent thundering herd
+        async def _with_deadlock_retry(operation, max_retries=5):
+            """Retry DB operations on deadlock with exponential backoff + jitter.
+
+            With high concurrency (100 workers), we need:
+            - More retries (6 total attempts: 0-5)
+            - Longer backoff: 0.5s, 1s, 2s, 4s, 8s
+            - Random jitter to prevent synchronized collisions (thundering herd)
+            """
+            import random
+
+            sync_context.logger.debug(
+                f"⚙️  [BATCH #{batch_id}] Starting DB operation with deadlock retry "
+                f"(max_retries={max_retries})"
+            )
+
             for attempt in range(max_retries + 1):
                 try:
+                    sync_context.logger.debug(
+                        f"⚙️  [BATCH #{batch_id}] DB operation attempt {attempt}/{max_retries}"
+                    )
                     return await operation()
                 except DBAPIError as e:
-                    error_msg = str(e).lower()
-                    is_deadlock = "deadlock detected" in error_msg
+                    # Check multiple ways to detect deadlock
+                    error_str = str(e)
+                    error_msg = error_str.lower()
+                    error_repr = repr(e).lower()
+                    error_type = str(type(e))
+
+                    is_deadlock = (
+                        "deadlock" in error_msg
+                        or "deadlock" in error_repr
+                        or "DeadlockDetectedError" in error_type
+                    )
+
+                    # Log what we're seeing (include first 200 chars of error for debugging)
+                    sync_context.logger.warning(
+                        f"🔴 [BATCH #{batch_id}] Database error caught in retry wrapper - "
+                        f"attempt {attempt}/{max_retries}, is_deadlock={is_deadlock}, "
+                        f"error_type={type(e).__name__}, "
+                        f"error_preview={error_str[:200]}"
+                    )
 
                     if is_deadlock and attempt < max_retries:
-                        wait_time = 0.1 * (2**attempt)
+                        # Exponential backoff with jitter to prevent thundering herd
+                        # Base: 0.5s * (2^attempt) + random jitter
+                        base_wait = 0.5 * (2**attempt)
+                        jitter = random.uniform(0, min(base_wait * 0.5, 2.0))
+                        wait_time = base_wait + jitter
+
                         sync_context.logger.warning(
-                            f"Deadlock detected, retrying in {wait_time}s "
-                            f"(attempt {attempt + 1}/{max_retries})"
+                            f"🔄 [BATCH #{batch_id}] Deadlock detected, retrying in "
+                            f"{wait_time:.2f}s (attempt {attempt + 1}/{max_retries}, "
+                            f"base={base_wait:.2f}s + jitter={jitter:.2f}s)"
                         )
                         await asyncio.sleep(wait_time)
                         continue
+                    else:
+                        # Log why we're not retrying
+                        if is_deadlock:
+                            max_backoff = 2 ** (max_retries - 1) * 0.5
+                            sync_context.logger.error(
+                                f"💥 [BATCH #{batch_id}] Deadlock persists after "
+                                f"{max_retries} retries ({max_backoff:.1f}s max backoff), "
+                                f"failing batch"
+                            )
+                        else:
+                            sync_context.logger.error(
+                                f"💥 [BATCH #{batch_id}] Non-deadlock DB error, "
+                                f"not retrying: {type(e).__name__}"
+                            )
+                        raise
+                except Exception as e:
+                    # Catch-all to see if DBAPIError catch is failing
+                    sync_context.logger.error(
+                        f"🔴 [BATCH #{batch_id}] UNEXPECTED: Non-DBAPIError exception caught - "
+                        f"type={type(e).__name__}, attempt={attempt}/{max_retries}"
+                    )
                     raise
 
         async def _execute_db_operations():  # noqa: C901
@@ -1374,6 +1558,16 @@ class EntityPipeline:
                                 hash=entity.airweave_system_metadata.hash,
                             )
                         )
+
+                    # Log entities being inserted for deadlock debugging
+                    entity_ids_preview = [
+                        f"{obj.entity_id[:20]}..." if len(obj.entity_id) > 20 else obj.entity_id
+                        for obj in create_objs[:5]
+                    ]
+                    sync_context.logger.debug(
+                        f"[BATCH #{batch_id}] Attempting bulk_create of {len(create_objs)} "
+                        f"records: {entity_ids_preview}{'...' if len(create_objs) > 5 else ''}"
+                    )
 
                     # Bulk upsert (handles cross-batch duplicates)
                     await crud.entity.bulk_create(db, objs=create_objs, ctx=sync_context.ctx)

@@ -10,15 +10,15 @@ from airweave.core.config import settings
 # Connection Pool Sizing Strategy:
 # - With proper connection management, workers only hold DB connections for milliseconds
 # - Database operations: entity lookup (~0.1s), insert/update (~0.1s)
-# - Even with 100 concurrent workers, only a few need connections at the same time
+# - Even with 20 concurrent workers, only a few need connections at the same time
 # - Pool size 15 + overflow 15 = 30 total connections available
 # - This efficiently handles bursts while preventing connection exhaustion
 # - Multiple sync jobs can run simultaneously without issues
 
-# Determine pool size based on worker count
-worker_count = getattr(settings, "SYNC_MAX_WORKERS", 100)
-# With on-demand connections: pool_size = workers * 0.15 (only 15% need DB at once)
-POOL_SIZE = min(15, max(10, int(worker_count * 0.15)))
+# Determine pool size based on worker count (default: 20 workers)
+worker_count = getattr(settings, "SYNC_MAX_WORKERS", 20)
+# With on-demand connections: pool_size = workers * 0.75 (75% coverage for peak load)
+POOL_SIZE = min(15, max(10, int(worker_count * 0.75)))
 MAX_OVERFLOW = POOL_SIZE  # Allow doubling during spikes
 
 # Connection Pool Timeout Behavior:

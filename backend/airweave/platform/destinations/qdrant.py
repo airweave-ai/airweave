@@ -121,7 +121,7 @@ class QdrantDestination(VectorDBDestination):
 
         # Map to physical shared collection
         instance.collection_name = get_physical_collection_name(vector_size=instance.vector_size)
-        instance.logger.info(f"Mapped collection {collection_id} → {instance.collection_name}")
+        instance.logger.debug(f"Mapped collection {collection_id} → {instance.collection_name}")
 
         # Extract from credentials (contains both auth and config)
         if credentials:
@@ -248,7 +248,7 @@ class QdrantDestination(VectorDBDestination):
                 self.logger.debug(f"Collection {self.collection_name} already exists.")
                 return
 
-            self.logger.info(f"Creating physical collection {self.collection_name}...")
+            self.logger.debug(f"Creating physical collection {self.collection_name}...")
 
             # Per-tenant HNSW as per Qdrant docs
             # https://qdrant.tech/documentation/guides/multiple-partitions/#calibrate-performance
@@ -294,7 +294,7 @@ class QdrantDestination(VectorDBDestination):
 
             # Tenant index for co-location and performance
             # https://qdrant.tech/documentation/guides/multiple-partitions/#calibrate-performance
-            self.logger.info("Creating tenant index on collection_id")
+            self.logger.debug("Creating tenant index on collection_id")
             await self.client.create_payload_index(
                 collection_name=self.collection_name,
                 field_name="airweave_collection_id",
@@ -306,28 +306,28 @@ class QdrantDestination(VectorDBDestination):
 
             # Indexes for delete operations (critical for WAL performance)
             # Without these, deletes become full collection scans during recovery
-            self.logger.info("Creating sync_id index for delete operations")
+            self.logger.debug("Creating sync_id index for delete operations")
             await self.client.create_payload_index(
                 collection_name=self.collection_name,
                 field_name="airweave_system_metadata.sync_id",
                 field_schema=rest.PayloadSchemaType.KEYWORD,
             )
 
-            self.logger.info("Creating db_entity_id index for delete operations")
+            self.logger.debug("Creating db_entity_id index for delete operations")
             await self.client.create_payload_index(
                 collection_name=self.collection_name,
                 field_name="airweave_system_metadata.db_entity_id",
                 field_schema=rest.PayloadSchemaType.KEYWORD,
             )
 
-            self.logger.info("Creating entity_id index for bulk delete operations")
+            self.logger.debug("Creating entity_id index for bulk delete operations")
             await self.client.create_payload_index(
                 collection_name=self.collection_name,
                 field_name="entity_id",
                 field_schema=rest.PayloadSchemaType.KEYWORD,
             )
 
-            self.logger.info("Creating original_entity_id index for parent-based deletes")
+            self.logger.debug("Creating original_entity_id index for parent-based deletes")
             await self.client.create_payload_index(
                 collection_name=self.collection_name,
                 field_name="airweave_system_metadata.original_entity_id",
@@ -349,7 +349,7 @@ class QdrantDestination(VectorDBDestination):
                 field_schema=rest.PayloadSchemaType.DATETIME,
             )
 
-            self.logger.info(f"✓ Collection {self.collection_name} created successfully")
+            self.logger.debug(f"✓ Collection {self.collection_name} created successfully")
 
         except Exception as e:
             if "already exists" not in str(e):
@@ -543,7 +543,7 @@ class QdrantDestination(VectorDBDestination):
                     f"(collection={self.collection_name}, vector_size={self.vector_size})"
                 )
             else:
-                self.logger.info(
+                self.logger.debug(
                     f"[Qdrant] ✅ Upserted {len(points)} points in {duration:.2f}s "
                     f"(collection={self.collection_name})"
                 )
@@ -643,16 +643,27 @@ class QdrantDestination(VectorDBDestination):
     # ----------------------------------------------------------------------------------
     async def bulk_insert(self, entities: list[BaseEntity]) -> None:
         """Upsert multiple chunk entities with fallback halving on write timeouts."""
+        import time
+
         if not entities:
             return
+
+        insert_start = time.time()
 
         await self.ensure_client_readiness()
         await self.ensure_collection_ready()
 
+        # Count entity types for detailed logging
+        entity_type_counts = {}
+        for entity in entities:
+            entity_type = entity.__class__.__name__
+            entity_type_counts[entity_type] = entity_type_counts.get(entity_type, 0) + 1
+
         # Log collection info before building points
-        self.logger.info(
-            f"[Qdrant] bulk_insert: {len(entities)} entities → collection={self.collection_name}, "
-            f"collection_id={self.collection_id}, vector_size={self.vector_size}"
+        self.logger.debug(
+            f"🔺 [Qdrant] Starting bulk insert: {len(entities)} entities → "
+            f"collection={self.collection_name}, collection_id={self.collection_id}, "
+            f"vector_size={self.vector_size}"
         )
 
         point_structs = [self._build_point_struct(e) for e in entities]
@@ -664,13 +675,19 @@ class QdrantDestination(VectorDBDestination):
         # Try once with the whole payload; fall back to halving on failure
         # Track semaphore contention to understand queueing behavior
         active_writes = self.DEFAULT_WRITE_CONCURRENCY - self._write_sem._value
-        self.logger.info(
-            f"[Qdrant] 🔒 Semaphore state: {active_writes}/{self.DEFAULT_WRITE_CONCURRENCY} "
+        self.logger.debug(
+            f"🔺 [Qdrant] 🔒 Semaphore state: {active_writes}/{self.DEFAULT_WRITE_CONCURRENCY} "
             f"active writes before acquiring lock for {len(point_structs)} points"
         )
 
         async with self._write_sem:
             await self._upsert_points_with_fallback(point_structs, min_batch=10)
+
+        insert_duration = time.time() - insert_start
+        self.logger.debug(
+            f"🔺 [Qdrant] Bulk insert complete: {len(entities)} entities persisted "
+            f"({insert_duration:.2f}s, {len(entities) / insert_duration:.1f} entities/s)"
+        )
 
     # ----------------------------------------------------------------------------------
     # Deletes (by parent/sync/etc.)
@@ -681,7 +698,7 @@ class QdrantDestination(VectorDBDestination):
 
         # Track semaphore + timing for delete operations
         active_writes = self.DEFAULT_WRITE_CONCURRENCY - self._write_sem._value
-        self.logger.info(
+        self.logger.debug(
             f"[Qdrant] 🗑️  Delete by db_entity_id: "
             f"{active_writes}/{self.DEFAULT_WRITE_CONCURRENCY} active"
         )
@@ -716,7 +733,7 @@ class QdrantDestination(VectorDBDestination):
                 f"(collection={self.collection_name}, on_disk_payload=True)"
             )
         else:
-            self.logger.info(
+            self.logger.debug(
                 f"[Qdrant] 🗑️  ✅ Deleted by db_entity_id in {duration:.2f}s "
                 f"(collection={self.collection_name})"
             )
@@ -752,7 +769,7 @@ class QdrantDestination(VectorDBDestination):
         await self.ensure_client_readiness()
 
         active_writes = self.DEFAULT_WRITE_CONCURRENCY - self._write_sem._value
-        self.logger.info(
+        self.logger.debug(
             f"[Qdrant] 🗑️  Bulk delete {len(entity_ids)} entities: "
             f"{active_writes}/{self.DEFAULT_WRITE_CONCURRENCY} active"
         )
@@ -783,7 +800,7 @@ class QdrantDestination(VectorDBDestination):
                 wait=True,
             )
         duration = asyncio.get_event_loop().time() - start_time
-        self.logger.info(
+        self.logger.debug(
             f"[Qdrant] 🗑️  ✅ Bulk deleted {len(entity_ids)} entities in {duration:.2f}s"
         )
 
@@ -794,7 +811,7 @@ class QdrantDestination(VectorDBDestination):
         await self.ensure_client_readiness()
 
         active_writes = self.DEFAULT_WRITE_CONCURRENCY - self._write_sem._value
-        self.logger.info(
+        self.logger.debug(
             f"[Qdrant] 🗑️  Delete by parent_id: "
             f"{active_writes}/{self.DEFAULT_WRITE_CONCURRENCY} active"
         )
@@ -825,7 +842,7 @@ class QdrantDestination(VectorDBDestination):
                 wait=True,
             )
         duration = asyncio.get_event_loop().time() - start_time
-        self.logger.info(f"[Qdrant] 🗑️  ✅ Deleted by parent_id in {duration:.2f}s")
+        self.logger.debug(f"[Qdrant] 🗑️  ✅ Deleted by parent_id in {duration:.2f}s")
 
     async def bulk_delete_by_parent_ids(self, parent_ids: list[str], sync_id: UUID) -> None:
         """Delete all points whose parent id is in the provided list and match sync id."""
@@ -1164,7 +1181,7 @@ class QdrantDestination(VectorDBDestination):
                 search_method = "neural"
 
         weight = getattr(decay_config, "weight", None) if decay_config else None
-        self.logger.info(
+        self.logger.debug(
             f"[Qdrant] Executing {search_method.upper()} search: "
             f"queries={len(query_vectors)}, limit={limit}, "
             f"has_sparse={sparse_vectors is not None}, "

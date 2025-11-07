@@ -65,33 +65,41 @@ class SyncOrchestrator:
         try:
             # Phase 1: Start sync
             phase_start = time.time()
-            self.sync_context.logger.info("🚀 PHASE 1: Starting sync initialization...")
+            self.sync_context.logger.debug("🚀 PHASE 1: Starting sync initialization...")
             await self._start_sync()
-            self.sync_context.logger.info(f"✅ PHASE 1 complete ({time.time() - phase_start:.2f}s)")
+            self.sync_context.logger.debug(
+                f"✅ PHASE 1 complete ({time.time() - phase_start:.2f}s)"
+            )
 
             # Phase 2: Process entities
             phase_start = time.time()
-            self.sync_context.logger.info("🚀 PHASE 2: Processing entities from source...")
+            self.sync_context.logger.debug("🚀 PHASE 2: Processing entities from source...")
             await self._process_entities()
-            self.sync_context.logger.info(f"✅ PHASE 2 complete ({time.time() - phase_start:.2f}s)")
+            self.sync_context.logger.debug(
+                f"✅ PHASE 2 complete ({time.time() - phase_start:.2f}s)"
+            )
 
             # Phase 3: Cleanup orphaned entities
             phase_start = time.time()
-            self.sync_context.logger.info("🚀 PHASE 3: Cleanup orphaned entities (if needed)...")
+            self.sync_context.logger.debug("🚀 PHASE 3: Cleanup orphaned entities (if needed)...")
             await self._cleanup_orphaned_entities_if_needed()
-            self.sync_context.logger.info(f"✅ PHASE 3 complete ({time.time() - phase_start:.2f}s)")
+            self.sync_context.logger.debug(
+                f"✅ PHASE 3 complete ({time.time() - phase_start:.2f}s)"
+            )
 
             # Phase 4: Complete sync
             phase_start = time.time()
-            self.sync_context.logger.info("🚀 PHASE 4: Finalizing sync...")
+            self.sync_context.logger.debug("🚀 PHASE 4: Finalizing sync...")
             await self._complete_sync()
-            self.sync_context.logger.info(f"✅ PHASE 4 complete ({time.time() - phase_start:.2f}s)")
+            self.sync_context.logger.debug(
+                f"✅ PHASE 4 complete ({time.time() - phase_start:.2f}s)"
+            )
 
             final_status = SyncJobStatus.COMPLETED
             return self.sync_context.sync
         except asyncio.CancelledError:
             # Cooperative cancellation: ensure producer and ALL pending tasks are stopped
-            self.sync_context.logger.info("Cancellation requested, handling gracefully...")
+            self.sync_context.logger.debug("Cancellation requested, handling gracefully...")
             await self._handle_cancellation()
             final_status = SyncJobStatus.CANCELLED
             raise
@@ -106,7 +114,7 @@ class SyncOrchestrator:
 
             # Always flush guard rail usage to prevent data loss
             try:
-                self.sync_context.logger.info("Flushing guard rail usage data...")
+                self.sync_context.logger.debug("Flushing guard rail usage data...")
                 await self.sync_context.guard_rail.flush_all()
             except Exception as flush_error:
                 self.sync_context.logger.error(
@@ -117,7 +125,7 @@ class SyncOrchestrator:
             # Note: This runs in finally block, so it executes even if sync failed
             # We don't raise cleanup errors to avoid masking the original sync error
             try:
-                self.sync_context.logger.info("Running final temp file cleanup...")
+                self.sync_context.logger.debug("Running final temp file cleanup...")
                 await self.entity_pipeline.cleanup_temp_files(self.sync_context)
             except Exception as cleanup_error:
                 # Never raise from cleanup - we want the original sync error to propagate
@@ -129,7 +137,7 @@ class SyncOrchestrator:
 
     async def _start_sync(self) -> None:
         """Initialize sync job and start all components."""
-        self.sync_context.logger.info("Starting sync job")
+        self.sync_context.logger.debug("Starting sync job")
 
         # Start the stream (worker pool doesn't need starting)
         await self.stream.start()
@@ -146,7 +154,7 @@ class SyncOrchestrator:
 
     async def _process_entities(self) -> None:  # noqa: C901
         """Process entities using micro-batching with bounded inner concurrency."""
-        self.sync_context.logger.info(
+        self.sync_context.logger.debug(
             f"Starting pull-based processing from source {self.sync_context.source._name} "
             f"(max workers: {self.worker_pool.max_workers}, "
             f"batch_size: {self.batch_size}, max_batch_latency_ms: {self.max_batch_latency_ms})"
@@ -158,6 +166,7 @@ class SyncOrchestrator:
         # Micro-batch aggregation state
         batch_buffer: list = []
         flush_deadline: Optional[float] = None  # event-loop time when we must flush
+        batch_counter: int = 0  # Track batch number for logging
 
         try:
             # Use the pre-created stream (already started in _start_sync)
@@ -189,7 +198,10 @@ class SyncOrchestrator:
 
                 # Size-based flush
                 if len(batch_buffer) >= self.batch_size:
-                    pending_tasks = await self._submit_batch_and_trim(batch_buffer, pending_tasks)
+                    batch_counter += 1
+                    pending_tasks = await self._submit_batch_and_trim(
+                        batch_buffer, pending_tasks, batch_counter
+                    )
                     batch_buffer = []
                     flush_deadline = None
                     continue
@@ -199,20 +211,26 @@ class SyncOrchestrator:
                     flush_deadline is not None
                     and asyncio.get_running_loop().time() >= flush_deadline
                 ):
-                    pending_tasks = await self._submit_batch_and_trim(batch_buffer, pending_tasks)
+                    batch_counter += 1
+                    pending_tasks = await self._submit_batch_and_trim(
+                        batch_buffer, pending_tasks, batch_counter
+                    )
                     batch_buffer = []
                     flush_deadline = None
 
             # End-of-stream: flush any remaining buffered entities
             if batch_buffer:
-                pending_tasks = await self._submit_batch_and_trim(batch_buffer, pending_tasks)
+                batch_counter += 1
+                pending_tasks = await self._submit_batch_and_trim(
+                    batch_buffer, pending_tasks, batch_counter
+                )
                 batch_buffer = []
                 flush_deadline = None
 
         except asyncio.CancelledError as e:
             # Propagate cancellation: set stream_error so finalize cancels tasks and stop stream
             stream_error = e
-            self.sync_context.logger.info("Cancelled during batched processing; finalizing...")
+            self.sync_context.logger.debug("Cancelled during batched processing; finalizing...")
         except Exception as e:
             stream_error = e
             self.sync_context.logger.error(f"Error during entity streaming: {get_error_message(e)}")
@@ -228,15 +246,21 @@ class SyncOrchestrator:
         self,
         batch: list,
         pending_tasks: set[asyncio.Task],
+        batch_id: int,
     ) -> set[asyncio.Task]:
         """Submit a micro-batch to the worker pool and trim to max parallelism if needed."""
         if not batch:
             return pending_tasks
 
+        self.sync_context.logger.debug(
+            f"📦 [BATCH #{batch_id}] Submitting batch with {len(batch)} entities to worker pool"
+        )
+
         task = await self.worker_pool.submit(
             self.entity_pipeline.process,
             entities=list(batch),
             sync_context=self.sync_context,
+            batch_id=batch_id,
         )
         pending_tasks.add(task)
 
@@ -325,7 +349,7 @@ class SyncOrchestrator:
         # Increment skipped count for entity failures
         if entity_failures:
             await self.sync_context.progress.increment("skipped", len(entity_failures))
-            self.sync_context.logger.info(
+            self.sync_context.logger.debug(
                 f"Skipped {len(entity_failures)} entities due to processing errors"
             )
 
@@ -345,7 +369,7 @@ class SyncOrchestrator:
             # Increment skipped count for entity failures
             if entity_failures:
                 await self.sync_context.progress.increment("skipped", len(entity_failures))
-                self.sync_context.logger.info(
+                self.sync_context.logger.debug(
                     f"Skipped {len(entity_failures)} entities due to processing errors"
                 )
 
@@ -364,7 +388,7 @@ class SyncOrchestrator:
 
         # 2. Cancel pending tasks if there was an error
         if stream_error:
-            self.sync_context.logger.info(
+            self.sync_context.logger.debug(
                 f"Cancelling {len(pending_tasks)} pending tasks due to error..."
             )
             for task in pending_tasks:
@@ -398,24 +422,24 @@ class SyncOrchestrator:
 
         if should_cleanup:
             if self.sync_context.force_full_sync:
-                self.sync_context.logger.info(
+                self.sync_context.logger.debug(
                     "🧹 Starting orphaned entity cleanup phase (FORCED FULL SYNC - "
                     "daily cleanup schedule)."
                 )
             elif not source_supports_continuous:
-                self.sync_context.logger.info(
+                self.sync_context.logger.debug(
                     "🧹 Starting orphaned entity cleanup phase (full sync - "
                     "source doesn't support incremental sync)"
                 )
             else:
-                self.sync_context.logger.info(
+                self.sync_context.logger.debug(
                     "🧹 Starting orphaned entity cleanup phase (first sync - no cursor data)"
                 )
             await self.entity_pipeline.cleanup_orphaned_entities(self.sync_context)
         elif (
             has_cursor_data and not self.sync_context.force_full_sync and source_supports_continuous
         ):
-            self.sync_context.logger.info(
+            self.sync_context.logger.debug(
                 "⏩ Skipping orphaned entity cleanup for INCREMENTAL sync "
                 "(cursor data exists, only changed entities are processed)"
             )
@@ -485,7 +509,7 @@ class SyncOrchestrator:
             duration_ms=duration_ms,
         )
 
-        self.sync_context.logger.info(
+        self.sync_context.logger.debug(
             f"Completed sync job {self.sync_context.sync_job.id} successfully. Stats: {stats}"
         )
 
@@ -493,7 +517,7 @@ class SyncOrchestrator:
         """Save cursor data to database if it exists."""
         if not hasattr(self.sync_context, "cursor") or not self.sync_context.cursor.cursor_data:
             if self.sync_context.force_full_sync:
-                self.sync_context.logger.info(
+                self.sync_context.logger.debug(
                     "📝 No cursor data to save from forced "
                     "full sync (source may not support cursor tracking)"
                 )
@@ -509,12 +533,12 @@ class SyncOrchestrator:
                     cursor_field=self.sync_context.cursor.cursor_field,
                 )
                 if self.sync_context.force_full_sync:
-                    self.sync_context.logger.info(
+                    self.sync_context.logger.debug(
                         f"💾 Saved cursor data from"
                         f"forced full sync for sync {self.sync_context.sync.id}"
                     )
                 else:
-                    self.sync_context.logger.info(
+                    self.sync_context.logger.debug(
                         f"💾 Saved cursor data for sync {self.sync_context.sync.id}"
                     )
         except Exception as e:
@@ -563,7 +587,7 @@ class SyncOrchestrator:
 
     async def _handle_cancellation(self) -> None:
         """Centralized cancellation handler - explicit and immediate."""
-        self.sync_context.logger.info("Handling cancellation...")
+        self.sync_context.logger.debug("Handling cancellation...")
 
         # 1. Cancel all pending tasks IMMEDIATELY
         if self.worker_pool:

@@ -118,12 +118,24 @@ class MistralConverter(BaseTextConverter):
         Returns:
             Dict mapping file_path -> markdown text content (None if failed)
         """
+        import time
+
+        batch_start = time.time()
+        logger.debug(f"🔶 Mistral Converter: Starting batch conversion of {len(file_paths)} files")
+
         # Ensure Mistral client is initialized before processing
         self._ensure_mistral_client()
 
         try:
             # Step 1: Prepare files (split large ones)
+            stage_start = time.time()
             file_chunks_map = await self._prepare_and_split_files(file_paths)
+            stage_duration = time.time() - stage_start
+            total_chunks = sum(len(chunks) for chunks in file_chunks_map.values())
+            logger.debug(
+                f"🔶 Mistral: File preparation complete - {len(file_chunks_map)} files → "
+                f"{total_chunks} chunks ({stage_duration:.2f}s)"
+            )
 
             # Check if all files failed during preparation
             if not file_chunks_map:
@@ -131,34 +143,78 @@ class MistralConverter(BaseTextConverter):
                 return {path: None for path in file_paths}
 
             # Step 2: Upload all chunks to Mistral
+            stage_start = time.time()
             upload_map = await self._upload_chunks_to_mistral(file_chunks_map)
+            stage_duration = time.time() - stage_start
+            logger.debug(
+                f"🔶 Mistral: Upload complete - {len(upload_map)} chunks uploaded "
+                f"({stage_duration:.2f}s)"
+            )
 
             # Step 3: Create JSONL batch file with signed URLs
+            stage_start = time.time()
             jsonl_path, custom_id_to_upload_key = await self._create_batch_jsonl(upload_map)
+            stage_duration = time.time() - stage_start
+            logger.debug(f"🔶 Mistral: JSONL created ({stage_duration:.2f}s)")
 
             # Step 4: Submit batch job
+            stage_start = time.time()
             job_id, batch_file_id = await self._submit_batch_job(jsonl_path)
+            stage_duration = time.time() - stage_start
+            logger.debug(
+                f"🔶 Mistral: Batch job submitted - job_id={job_id} ({stage_duration:.2f}s)"
+            )
 
             # Step 5: Poll for completion
+            stage_start = time.time()
             await self._poll_batch_job(job_id, timeout=600)
+            stage_duration = time.time() - stage_start
+            logger.debug(
+                f"🔶 Mistral: OCR processing complete - {len(upload_map)} chunks processed "
+                f"({stage_duration:.2f}s)"
+            )
 
             # Step 6: Download and parse results
+            stage_start = time.time()
             upload_key_results = await self._download_batch_results(job_id, custom_id_to_upload_key)
+            stage_duration = time.time() - stage_start
+            logger.debug(
+                f"🔶 Mistral: Results downloaded - {len(upload_key_results)} results "
+                f"({stage_duration:.2f}s)"
+            )
 
             # Step 7: Combine chunks back to original files
+            stage_start = time.time()
             final_results = await self._combine_chunk_results(
                 upload_key_results, file_chunks_map, file_paths
             )
+            stage_duration = time.time() - stage_start
+            success_count = sum(1 for v in final_results.values() if v is not None)
+            logger.debug(
+                f"🔶 Mistral: Chunk recombination complete - {success_count}/{len(file_paths)} "
+                f"files succeeded ({stage_duration:.2f}s)"
+            )
 
             # Step 8: Cleanup
+            stage_start = time.time()
             await self._cleanup_mistral_files(upload_map, batch_file_id)
             await self._cleanup_temp_chunks(file_chunks_map)
+            stage_duration = time.time() - stage_start
+            logger.debug(f"🔶 Mistral: Cleanup complete ({stage_duration:.2f}s)")
 
             # Step 9: Delete JSONL
             try:
                 os.unlink(jsonl_path)
             except Exception:
                 pass
+
+            # Final summary
+            batch_duration = time.time() - batch_start
+            success_count = sum(1 for v in final_results.values() if v is not None)
+            logger.debug(
+                f"🔶 Mistral Converter complete: {success_count}/{len(file_paths)} files converted "
+                f"(total: {batch_duration:.2f}s)"
+            )
 
             return final_results
 

@@ -170,8 +170,8 @@ class Settings(BaseSettings):
     ANALYTICS_ENABLED: bool = True
 
     # Sync configuration
-    SYNC_MAX_WORKERS: int = 100
-    SYNC_THREAD_POOL_SIZE: int = 100
+    SYNC_MAX_WORKERS: int = 20  # Reduced from 100 to prevent DB connection exhaustion
+    SYNC_THREAD_POOL_SIZE: int = 20  # Scale with worker count
     WEB_FETCHER_MAX_CONCURRENT: int = 10  # Max concurrent web scraping requests
     OPENAI_MAX_CONCURRENT: int = 20  # Max concurrent OpenAI API requests
     CTTI_MAX_CONCURRENT: int = 3  # Max concurrent CTTI (ClinicalTrials.gov) requests
