@@ -260,5 +260,26 @@ class ContextCacheService:
             self.logger.warning(f"Error invalidating API key cache: {e}")
             return False
 
+    async def invalidate_organization(self, org_id: UUID) -> bool:
+        """Invalidate cached organization data.
+
+        Call this when organization data changes (e.g., feature flags, billing).
+
+        Args:
+            org_id: Organization UUID
+
+        Returns:
+            True if invalidated successfully, False otherwise
+        """
+        try:
+            cache_key = self._org_cache_key(org_id)
+            await redis_client.client.delete(cache_key)
+            self.logger.debug(f"Invalidated organization cache for {org_id}")
+            return True
+
+        except Exception as e:
+            self.logger.warning(f"Error invalidating organization cache: {e}")
+            return False
+
 
 context_cache = ContextCacheService()

@@ -39,6 +39,17 @@ async def init_db(db: AsyncSession) -> None:
             password=settings.FIRST_SUPERUSER_PASSWORD,
         )
         user, organization = await crud.user.create_with_organization(db, obj_in=user_in)
+
+        # Grant superuser privileges at DB level for admin operations and tests
+        from airweave.models.user import User as UserModel
+
+        db_user = await db.get(UserModel, user.id)
+        if db_user:
+            db_user.is_superuser = True
+            db.add(db_user)
+            await db.commit()
+            await db.refresh(db_user)
+
         _ = await crud.api_key.create(
             db,
             obj_in=schemas.APIKeyCreate(

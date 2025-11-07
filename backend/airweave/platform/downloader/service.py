@@ -6,9 +6,14 @@ from typing import Callable, Optional, Tuple
 from uuid import uuid4
 
 import httpx
+from tenacity import retry, stop_after_attempt
 
 from airweave.core.logging import ContextualLogger
 from airweave.platform.entities._base import FileEntity
+from airweave.platform.sources.retry_helpers import (
+    retry_if_rate_limit_or_timeout,
+    wait_rate_limit_with_backoff,
+)
 from airweave.platform.sync.file_types import SUPPORTED_FILE_EXTENSIONS
 
 
@@ -38,6 +43,47 @@ class FileDownloadService:
     def _ensure_base_dir(self) -> None:
         """Ensure base temporary directory exists."""
         os.makedirs(self.base_temp_dir, exist_ok=True)
+
+    @retry(
+        stop=stop_after_attempt(5),  # Increased for aggressive rate limits
+        retry=retry_if_rate_limit_or_timeout,
+        wait=wait_rate_limit_with_backoff,
+        reraise=True,
+    )
+    async def _head_with_retry(
+        self,
+        client: httpx.AsyncClient,
+        url: str,
+        headers: dict,
+        logger: ContextualLogger,
+    ) -> httpx.Response:
+        """Make HEAD request with retry logic for rate limits and timeouts.
+
+        Args:
+            client: HTTP client
+            url: URL to request
+            headers: Request headers
+            logger: Logger for diagnostics
+
+        Returns:
+            HTTP response
+
+        Raises:
+            httpx.HTTPStatusError: On HTTP errors (after retries)
+        """
+        try:
+            response = await client.head(url, headers=headers, follow_redirects=True, timeout=10.0)
+            response.raise_for_status()
+            return response
+        except httpx.HTTPStatusError as e:
+            # Log rate limits (will be retried)
+            if e.response.status_code == 429:
+                retry_after = e.response.headers.get("Retry-After", "unknown")
+                logger.warning(
+                    f"Rate limit hit (429) during HEAD request for file validation "
+                    f"(will retry after {retry_after}s)"
+                )
+            raise
 
     async def _validate_file_before_download(
         self,
@@ -79,17 +125,14 @@ class FileDownloadService:
             if not token and not is_presigned_url:
                 return False, "No access token available"
 
-            # Send HEAD request to get file size
+            # Send HEAD request to get file size (with retry logic)
             async with http_client_factory(timeout=httpx.Timeout(30.0)) as client:
                 headers = {}
                 if token and not is_presigned_url:
                     headers["Authorization"] = f"Bearer {token}"
 
                 try:
-                    response = await client.head(
-                        entity.url, headers=headers, follow_redirects=True, timeout=10.0
-                    )
-                    response.raise_for_status()
+                    response = await self._head_with_retry(client, entity.url, headers, logger)
 
                     # Check Content-Length header
                     content_length = response.headers.get("Content-Length")
@@ -111,6 +154,54 @@ class FileDownloadService:
             logger.debug(f"File validation error for {entity.name}: {e}, will attempt download")
 
         return True, None
+
+    @retry(
+        stop=stop_after_attempt(5),  # Increased for aggressive rate limits
+        retry=retry_if_rate_limit_or_timeout,
+        wait=wait_rate_limit_with_backoff,
+        reraise=True,
+    )
+    async def _download_with_retry(
+        self,
+        client: httpx.AsyncClient,
+        url: str,
+        headers: dict,
+        temp_path: str,
+        logger: ContextualLogger,
+    ) -> None:
+        """Download file with retry logic for rate limits and timeouts.
+
+        Args:
+            client: HTTP client
+            url: URL to download from
+            headers: Request headers
+            temp_path: Path to save file to
+            logger: Logger for diagnostics
+
+        Raises:
+            httpx.HTTPStatusError: On HTTP errors (after retries)
+        """
+        try:
+            async with client.stream(
+                "GET", url, headers=headers, follow_redirects=True
+            ) as response:
+                response.raise_for_status()
+
+                # Ensure directory exists
+                os.makedirs(os.path.dirname(temp_path), exist_ok=True)
+
+                # Write to disk
+                with open(temp_path, "wb") as f:
+                    async for chunk in response.aiter_bytes():
+                        f.write(chunk)
+        except httpx.HTTPStatusError as e:
+            # Log rate limits (will be retried)
+            if e.response.status_code == 429:
+                retry_after = e.response.headers.get("Retry-After", "unknown")
+                logger.warning(
+                    f"Rate limit hit (429) during file download (will retry after {retry_after}s)"
+                )
+            raise
 
     async def download_from_url(
         self,
@@ -135,7 +226,7 @@ class FileDownloadService:
 
         Raises:
             ValueError: If url is missing or access token unavailable
-            httpx.HTTPStatusError: On HTTP errors
+            httpx.HTTPStatusError: On HTTP errors (after retries)
             IOError: On file write errors
         """
         # Validate file before downloading
@@ -169,24 +260,13 @@ class FileDownloadService:
         )
 
         try:
-            # Stream download to disk
+            # Stream download to disk with retry logic
             async with http_client_factory(timeout=httpx.Timeout(180.0, read=540.0)) as client:
                 headers = {}
                 if token and not is_presigned_url:
                     headers["Authorization"] = f"Bearer {token}"
 
-                async with client.stream(
-                    "GET", entity.url, headers=headers, follow_redirects=True
-                ) as response:
-                    response.raise_for_status()
-
-                    # Ensure directory exists
-                    os.makedirs(os.path.dirname(temp_path), exist_ok=True)
-
-                    # Write to disk
-                    with open(temp_path, "wb") as f:
-                        async for chunk in response.aiter_bytes():
-                            f.write(chunk)
+                await self._download_with_retry(client, entity.url, headers, temp_path, logger)
 
             logger.debug(f"Downloaded file to: {temp_path}")
 

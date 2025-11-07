@@ -42,6 +42,9 @@ class Source(Base):
     supports_temporal_relevance: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False, server_default="true"
     )
+    rate_limit_level: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )  # "org", "connection", or None
 
     __table_args__ = (UniqueConstraint("name", "organization_id", name="uq_source_name_org"),)
 

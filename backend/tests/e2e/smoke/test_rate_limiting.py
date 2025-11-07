@@ -32,8 +32,9 @@ import pytest
 from config import settings
 
 # Module-level marker - applies to all tests in this file
+# Use api_rate_limit to distinguish from source rate limiting tests
 pytestmark = [
-    pytest.mark.rate_limit,
+    pytest.mark.api_rate_limit,
     pytest.mark.asyncio,
 ]
 

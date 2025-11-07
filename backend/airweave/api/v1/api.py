@@ -19,6 +19,7 @@ from airweave.api.v1.endpoints import (
     s3,
     search,
     source_connections,
+    source_rate_limits,
     sources,
     sync,
     transformers,
@@ -46,6 +47,9 @@ api_router.include_router(search.router, prefix="/collections", tags=["collectio
 api_router.include_router(connections.router, prefix="/connections", tags=["connections"])
 api_router.include_router(
     source_connections.router, prefix="/source-connections", tags=["source-connections"]
+)
+api_router.include_router(
+    source_rate_limits.router, prefix="/source-rate-limits", tags=["source-rate-limits"]
 )
 api_router.include_router(sync.router, prefix="/sync", tags=["sync"])
 api_router.include_router(entities.router, prefix="/entities", tags=["entities"])

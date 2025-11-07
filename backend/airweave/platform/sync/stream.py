@@ -246,9 +246,14 @@ class AsyncSourceStream(Generic[T]):
         try:
             item = self.queue.get_nowait()
             self.queue.task_done()
-            # Put it back since we're just checking
+
+            # If item is None (sentinel), don't put it back - this is end of stream
+            if item is None:
+                return True  # Stream complete
+
+            # Put back real entities for consumer to process
             await self.queue.put(item)
-            return False  # Still have items
+            return False  # Still have items to process
         except asyncio.QueueEmpty:
             return True  # Queue empty and producer done
 

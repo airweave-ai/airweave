@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from airweave.models.billing_period import BillingPeriod
     from airweave.models.feature_flag import FeatureFlag
     from airweave.models.organization_billing import OrganizationBilling
+    from airweave.models.source_rate_limit import SourceRateLimit
     from airweave.models.usage import Usage
     from airweave.models.user_organization import UserOrganization
 
@@ -67,4 +68,12 @@ class Organization(Base):
         back_populates="organization",
         cascade="all, delete-orphan",
         lazy="selectin",  # Auto-load for feature checking
+    )
+
+    # Relationship with source rate limits
+    source_rate_limits: Mapped[List["SourceRateLimit"]] = relationship(
+        "SourceRateLimit",
+        back_populates="organization",
+        cascade="all, delete-orphan",
+        lazy="noload",
     )

@@ -13,9 +13,10 @@ from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
-from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
+from tenacity import retry, stop_after_attempt
 
 from airweave.core.logging import logger
+from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.cursors import OutlookMailCursor
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
@@ -27,6 +28,7 @@ from airweave.platform.entities.outlook_mail import (
     OutlookMessageEntity,
 )
 from airweave.platform.sources._base import BaseSource
+from airweave.platform.sources.retry_helpers import wait_rate_limit_with_backoff
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
@@ -55,6 +57,7 @@ def _should_retry_outlook_request(exception: Exception) -> bool:
     config_class="OutlookMailConfig",
     labels=["Communication", "Email"],
     supports_continuous=True,
+    rate_limit_level=RateLimitLevel.ORG,
     cursor_class=OutlookMailCursor,
 )
 class OutlookMailSource(BaseSource):
@@ -172,10 +175,10 @@ class OutlookMailSource(BaseSource):
         return True
 
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(5),
+        retry=_should_retry_outlook_request,
+        wait=wait_rate_limit_with_backoff,
         reraise=True,
-        retry=retry_if_exception(_should_retry_outlook_request),
     )
     async def _get_with_auth(
         self, client: httpx.AsyncClient, url: str, params: Optional[dict] = None

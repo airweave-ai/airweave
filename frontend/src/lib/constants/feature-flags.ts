@@ -15,6 +15,9 @@ export const FeatureFlags = {
 
   // Support & Services
   PRIORITY_SUPPORT: 'priority_support',
+
+  // Rate Limiting
+  SOURCE_RATE_LIMITING: 'source_rate_limiting',
 } as const;
 
 export type FeatureFlag = typeof FeatureFlags[keyof typeof FeatureFlags];

@@ -1635,10 +1635,10 @@ class SourceConnectionService:
         )
 
         # Fire-and-forget cancellation request to Temporal
-        cancel_ack = await temporal_service.cancel_sync_job_workflow(str(job_id), ctx)
-        if not cancel_ack:
-            # If we couldn't even request cancellation, revert status to RUNNING if it was running
-            # or leave as PENDING; provide a clear error to the caller
+        cancel_result = await temporal_service.cancel_sync_job_workflow(str(job_id), ctx)
+
+        if not cancel_result["success"]:
+            # Actual Temporal connectivity/availability error - revert status
             fallback_status = (
                 SyncJobStatus.RUNNING
                 if sync_job.status == SyncJobStatus.RUNNING
@@ -1651,6 +1651,19 @@ class SourceConnectionService:
             )
             raise HTTPException(
                 status_code=502, detail="Failed to request cancellation from Temporal"
+            )
+
+        # If workflow wasn't found, mark job as CANCELLED directly since there's nothing running
+        if not cancel_result["workflow_found"]:
+            ctx.logger.info(f"Workflow not found for job {job_id} - marking as CANCELLED directly")
+            from airweave.core.datetime_utils import utc_now_naive
+
+            await sync_job_service.update_status(
+                sync_job_id=job_id,
+                status=SyncJobStatus.CANCELLED,
+                ctx=ctx,
+                completed_at=utc_now_naive(),
+                error="Workflow not found in Temporal - may have already completed",
             )
 
         # Fetch the updated job from database

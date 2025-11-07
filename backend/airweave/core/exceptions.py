@@ -269,6 +269,30 @@ class RateLimitExceededException(AirweaveException):
         super().__init__(self.message)
 
 
+class SourceRateLimitExceededException(Exception):
+    """Exception raised when source API rate limit is exceeded.
+
+    This is an internal exception that gets converted to HTTP 429
+    by AirweaveHttpClient so sources see identical behavior to
+    actual API rate limits.
+    """
+
+    def __init__(self, retry_after: float, source_short_name: str):
+        """Create a new SourceRateLimitExceededException instance.
+
+        Args:
+            retry_after: Seconds until rate limit resets
+            source_short_name: Source identifier (e.g., "google_drive", "notion")
+        """
+        self.retry_after = retry_after
+        self.source_short_name = source_short_name
+        message = (
+            f"Source rate limit exceeded for {source_short_name}. "
+            f"Retry after {retry_after:.1f} seconds"
+        )
+        super().__init__(message)
+
+
 def unpack_validation_error(exc: ValidationError) -> dict:
     """Unpack a Pydantic validation error into a dictionary.
 

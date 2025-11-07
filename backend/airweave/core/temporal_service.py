@@ -82,7 +82,7 @@ class TemporalService:
             ctx: The API context
 
         Returns:
-            True if a cancellation request was sent, False otherwise
+            dict with 'success' (bool) and 'workflow_found' (bool) keys
         """
         client = await temporal_client.get_client()
         workflow_id = f"sync-{sync_job_id}"
@@ -90,11 +90,20 @@ class TemporalService:
             handle = client.get_workflow_handle(workflow_id)
             await handle.cancel()
             ctx.logger.info(f"\n\nCancellation requested for workflow {workflow_id}\n\n")
-            return True
+            return {"success": True, "workflow_found": True}
         except Exception as e:
-            # Workflow may not exist or Temporal may be unavailable
-            ctx.logger.error(f"Failed to request cancellation for {workflow_id}: {e}")
-            return False
+            error_str = str(e).lower()
+            # Check if it's a "workflow not found" error vs actual connectivity issue
+            if "not found" in error_str or "unknown" in error_str:
+                ctx.logger.warning(
+                    f"Workflow {workflow_id} not found in Temporal - may have already completed "
+                    "or never started"
+                )
+                return {"success": True, "workflow_found": False}
+            else:
+                # Actual connectivity or other Temporal error
+                ctx.logger.error(f"Failed to request cancellation for {workflow_id}: {e}")
+                return {"success": False, "workflow_found": False}
 
     async def is_temporal_enabled(self) -> bool:
         """Check if Temporal is enabled and available.

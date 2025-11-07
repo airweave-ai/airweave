@@ -5,18 +5,20 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import {
-  Plus, Settings as SettingsIcon, Key, Users, Check, Copy, Star, CreditCard, MousePointerBan, TrendingUp
+  Plus, Settings as SettingsIcon, Key, Users, Check, Copy, Star, CreditCard, MousePointerBan, TrendingUp, Gauge
 } from 'lucide-react';
 import { APIKeysSettings } from '@/components/settings/APIKeysSettings';
 import { MembersSettings } from '@/components/settings/MembersSettings';
 import { BillingSettings } from '@/components/settings/BillingSettings';
 import { UsageDashboard } from '@/components/settings/UsageDashboard';
+import { SourceRateLimits } from '@/components/settings/SourceRateLimits';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { FeatureFlags } from '@/lib/constants/feature-flags';
 
 import { OrganizationSettings } from '@/components/settings/OrganizationSettings';
 
-type TabType = 'settings' | 'api-keys' | 'members' | 'billing' | 'usage';
+type TabType = 'settings' | 'api-keys' | 'members' | 'billing' | 'usage' | 'rate-limiting';
 
 export const OrganizationSettingsUnified = () => {
   const [searchParams] = useSearchParams();
@@ -156,12 +158,20 @@ export const OrganizationSettingsUnified = () => {
     );
   }
 
+  // Check if rate limiting feature is enabled
+  const hasRateLimitingFeature = currentOrganization?.enabled_features?.includes(
+    FeatureFlags.SOURCE_RATE_LIMITING
+  );
+
   const tabs = [
     { id: 'settings' as TabType, label: 'Settings', icon: <SettingsIcon className="h-3.5 w-3.5" /> },
     { id: 'api-keys' as TabType, label: 'API Keys', icon: <Key className="h-3.5 w-3.5" /> },
     { id: 'members' as TabType, label: 'Members', icon: <Users className="h-3.5 w-3.5" /> },
     { id: 'usage' as TabType, label: 'Usage', icon: <TrendingUp className="h-3.5 w-3.5" /> },
-    { id: 'billing' as TabType, label: 'Billing', icon: <CreditCard className="h-3.5 w-3.5" /> }
+    { id: 'billing' as TabType, label: 'Billing', icon: <CreditCard className="h-3.5 w-3.5" /> },
+    ...(hasRateLimitingFeature
+      ? [{ id: 'rate-limiting' as TabType, label: 'Rate Limiting', icon: <Gauge className="h-3.5 w-3.5" /> }]
+      : []),
   ];
 
   return (
@@ -272,6 +282,13 @@ export const OrganizationSettingsUnified = () => {
               <BillingSettings
                 organizationId={currentOrganization.id}
               />
+            )}
+
+            {/* Rate Limiting Tab */}
+            {activeTab === 'rate-limiting' && hasRateLimitingFeature && (
+              <div>
+                <SourceRateLimits />
+              </div>
             )}
           </div>
         </div>

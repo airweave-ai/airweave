@@ -130,24 +130,42 @@ jobs:
           TEST_COMPOSIO_ASANA_ACCOUNT_ID: ca_ooqwRcKOwHmo
           TEST_COMPOSIO_GMAIL_AUTH_CONFIG_ID: ac_HocwjtTv-dqb
           TEST_COMPOSIO_GMAIL_ACCOUNT_ID: ca_jEA4l17nSPzN
-          # Pipedream configurations
+          # Pipedream configurations (regular tests)
           TEST_PIPEDREAM_CLIENT_ID: ${{ secrets.TEST_PIPEDREAM_CLIENT_ID }}
           TEST_PIPEDREAM_CLIENT_SECRET: ${{ secrets.TEST_PIPEDREAM_CLIENT_SECRET }}
           TEST_PIPEDREAM_PROJECT_ID: ${{ secrets.TEST_PIPEDREAM_PROJECT_ID }}
           TEST_PIPEDREAM_ACCOUNT_ID: ${{ secrets.TEST_PIPEDREAM_ACCOUNT_ID }}
           TEST_PIPEDREAM_EXTERNAL_USER_ID: ${{ secrets.TEST_PIPEDREAM_EXTERNAL_USER_ID }}
+          # Pipedream configurations (rate limit tests - separate project)
+          TEST_PIPEDREAM_RATE_LIMIT_CLIENT_ID: ${{ secrets.TEST_PIPEDREAM_RATE_LIMIT_CLIENT_ID }}
+          TEST_PIPEDREAM_RATE_LIMIT_CLIENT_SECRET: ${{ secrets.TEST_PIPEDREAM_RATE_LIMIT_CLIENT_SECRET }}
+          TEST_PIPEDREAM_RATE_LIMIT_PROJECT_ID: ${{ secrets.TEST_PIPEDREAM_RATE_LIMIT_PROJECT_ID }}
+          TEST_PIPEDREAM_GOOGLE_DRIVE_DEFAULT_OAUTH_ACCOUNT_ID: ${{ secrets.TEST_PIPEDREAM_GOOGLE_DRIVE_DEFAULT_OAUTH_ACCOUNT_ID }}
+          TEST_PIPEDREAM_GOOGLE_DRIVE_DEFAULT_OAUTH_EXTERNAL_USER_ID: ${{ secrets.TEST_PIPEDREAM_GOOGLE_DRIVE_DEFAULT_OAUTH_EXTERNAL_USER_ID }}
+          TEST_PIPEDREAM_NOTION_DEFAULT_OAUTH_ACCOUNT_ID: ${{ secrets.TEST_PIPEDREAM_NOTION_DEFAULT_OAUTH_ACCOUNT_ID }}
+          TEST_PIPEDREAM_NOTION_DEFAULT_OAUTH_EXTERNAL_USER_ID: ${{ secrets.TEST_PIPEDREAM_NOTION_DEFAULT_OAUTH_EXTERNAL_USER_ID }}
+          # Composio configurations (rate limit tests)
+          TEST_COMPOSIO_NOTION_AUTH_CONFIG_ID_1: ${{ secrets.TEST_COMPOSIO_NOTION_AUTH_CONFIG_ID_1 }}
+          TEST_COMPOSIO_NOTION_ACCOUNT_ID_1: ${{ secrets.TEST_COMPOSIO_NOTION_ACCOUNT_ID_1 }}
+          TEST_COMPOSIO_NOTION_AUTH_CONFIG_ID_2: ${{ secrets.TEST_COMPOSIO_NOTION_AUTH_CONFIG_ID_2 }}
+          TEST_COMPOSIO_NOTION_ACCOUNT_ID_2: ${{ secrets.TEST_COMPOSIO_NOTION_ACCOUNT_ID_2 }}
+          TEST_COMPOSIO_GOOGLE_DRIVE_AUTH_CONFIG_ID_1: ${{ secrets.TEST_COMPOSIO_GOOGLE_DRIVE_AUTH_CONFIG_ID_1 }}
+          TEST_COMPOSIO_GOOGLE_DRIVE_ACCOUNT_ID_1: ${{ secrets.TEST_COMPOSIO_GOOGLE_DRIVE_ACCOUNT_ID_1 }}
+          TEST_COMPOSIO_GOOGLE_DRIVE_AUTH_CONFIG_ID_2: ${{ secrets.TEST_COMPOSIO_GOOGLE_DRIVE_AUTH_CONFIG_ID_2 }}
+          TEST_COMPOSIO_GOOGLE_DRIVE_ACCOUNT_ID_2: ${{ secrets.TEST_COMPOSIO_GOOGLE_DRIVE_ACCOUNT_ID_2 }}
           # Override images to use locally built test images
           BACKEND_IMAGE: test-backend:latest
         run: |
           cd backend
-          # Exclude rate_limit tests from CI/CD - they consume quota and should run separately
-          # To run rate limit tests locally: pytest tests/e2e/smoke -m rate_limit
+          # Exclude api_rate_limit tests (general API rate limiter) from CI
+          # Source rate_limit tests run sequentially after other tests for proper Redis isolation
+          # To run only rate limit tests locally: pytest tests/e2e/smoke -m rate_limit
 
           MAX_RETRIES=2
 
-          # Run all tests first
+          # Run all non-rate-limit tests in parallel first
           set +e
-          pytest tests/e2e/smoke -m "not rate_limit" -n 3 -v --tb=short 2>&1 | tee pytest_output.txt
+          pytest tests/e2e/smoke -m "not rate_limit and not api_rate_limit" -n 3 -v --tb=short 2>&1 | tee pytest_output.txt
           EXIT_CODE=${PIPESTATUS[0]}
           set -e
 
@@ -191,6 +209,48 @@ jobs:
           # If we get here, tests failed after retries
           echo "Tests failed after $MAX_RETRIES retry attempts"
           exit 1
+
+      - name: Run Source Rate Limit Tests (Sequential)
+        if: success()
+        env:
+          TEST_ENV: local
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TEST_STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
+          # Required test environment variables (needed by TestSettings even for rate limit tests)
+          TEST_NOTION_TOKEN: ${{ secrets.TEST_NOTION_TOKEN }}
+          TEST_GOOGLE_CLIENT_ID: ${{ secrets.TEST_GOOGLE_CLIENT_ID }}
+          TEST_GOOGLE_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_CLIENT_SECRET }}
+          TEST_TRELLO_CONSUMER_KEY: ${{ secrets.TEST_TRELLO_CONSUMER_KEY }}
+          TEST_TRELLO_CONSUMER_SECRET: ${{ secrets.TEST_TRELLO_CONSUMER_SECRET }}
+          TEST_AUTH_PROVIDER_NAME: composio
+          TEST_COMPOSIO_API_KEY: ${{ secrets.TEST_COMPOSIO_API_KEY }}
+          # Pipedream configurations (regular tests - required by TestSettings)
+          TEST_PIPEDREAM_CLIENT_ID: ${{ secrets.TEST_PIPEDREAM_CLIENT_ID }}
+          TEST_PIPEDREAM_CLIENT_SECRET: ${{ secrets.TEST_PIPEDREAM_CLIENT_SECRET }}
+          TEST_PIPEDREAM_PROJECT_ID: ${{ secrets.TEST_PIPEDREAM_PROJECT_ID }}
+          TEST_PIPEDREAM_ACCOUNT_ID: ${{ secrets.TEST_PIPEDREAM_ACCOUNT_ID }}
+          TEST_PIPEDREAM_EXTERNAL_USER_ID: ${{ secrets.TEST_PIPEDREAM_EXTERNAL_USER_ID }}
+          # Composio configurations (rate limit tests)
+          TEST_COMPOSIO_NOTION_AUTH_CONFIG_ID_1: ${{ secrets.TEST_COMPOSIO_NOTION_AUTH_CONFIG_ID_1 }}
+          TEST_COMPOSIO_NOTION_ACCOUNT_ID_1: ${{ secrets.TEST_COMPOSIO_NOTION_ACCOUNT_ID_1 }}
+          TEST_COMPOSIO_NOTION_AUTH_CONFIG_ID_2: ${{ secrets.TEST_COMPOSIO_NOTION_AUTH_CONFIG_ID_2 }}
+          TEST_COMPOSIO_NOTION_ACCOUNT_ID_2: ${{ secrets.TEST_COMPOSIO_NOTION_ACCOUNT_ID_2 }}
+          TEST_COMPOSIO_GOOGLE_DRIVE_AUTH_CONFIG_ID_1: ${{ secrets.TEST_COMPOSIO_GOOGLE_DRIVE_AUTH_CONFIG_ID_1 }}
+          TEST_COMPOSIO_GOOGLE_DRIVE_ACCOUNT_ID_1: ${{ secrets.TEST_COMPOSIO_GOOGLE_DRIVE_ACCOUNT_ID_1 }}
+          TEST_COMPOSIO_GOOGLE_DRIVE_AUTH_CONFIG_ID_2: ${{ secrets.TEST_COMPOSIO_GOOGLE_DRIVE_AUTH_CONFIG_ID_2 }}
+          TEST_COMPOSIO_GOOGLE_DRIVE_ACCOUNT_ID_2: ${{ secrets.TEST_COMPOSIO_GOOGLE_DRIVE_ACCOUNT_ID_2 }}
+          # Pipedream configurations (rate limit tests - separate project)
+          TEST_PIPEDREAM_RATE_LIMIT_CLIENT_ID: ${{ secrets.TEST_PIPEDREAM_RATE_LIMIT_CLIENT_ID }}
+          TEST_PIPEDREAM_RATE_LIMIT_CLIENT_SECRET: ${{ secrets.TEST_PIPEDREAM_RATE_LIMIT_CLIENT_SECRET }}
+          TEST_PIPEDREAM_RATE_LIMIT_PROJECT_ID: ${{ secrets.TEST_PIPEDREAM_RATE_LIMIT_PROJECT_ID }}
+          TEST_PIPEDREAM_GOOGLE_DRIVE_DEFAULT_OAUTH_ACCOUNT_ID: ${{ secrets.TEST_PIPEDREAM_GOOGLE_DRIVE_DEFAULT_OAUTH_ACCOUNT_ID }}
+          TEST_PIPEDREAM_GOOGLE_DRIVE_DEFAULT_OAUTH_EXTERNAL_USER_ID: ${{ secrets.TEST_PIPEDREAM_GOOGLE_DRIVE_DEFAULT_OAUTH_EXTERNAL_USER_ID }}
+          TEST_PIPEDREAM_NOTION_DEFAULT_OAUTH_ACCOUNT_ID: ${{ secrets.TEST_PIPEDREAM_NOTION_DEFAULT_OAUTH_ACCOUNT_ID }}
+          TEST_PIPEDREAM_NOTION_DEFAULT_OAUTH_EXTERNAL_USER_ID: ${{ secrets.TEST_PIPEDREAM_NOTION_DEFAULT_OAUTH_EXTERNAL_USER_ID }}
+        run: |
+          cd backend
+          echo "Running source rate limit tests sequentially (no parallelization for Redis isolation)..."
+          pytest tests/e2e/smoke -m rate_limit -v --tb=short
 
       - name: Print service logs on failure
         if: failure()

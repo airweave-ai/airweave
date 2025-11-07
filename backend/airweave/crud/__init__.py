@@ -19,6 +19,7 @@ from .crud_redirect_session import redirect_session
 from .crud_search_query import search_query
 from .crud_source import source
 from .crud_source_connection import source_connection
+from .crud_source_rate_limit import source_rate_limit
 from .crud_sync import sync
 from .crud_sync_cursor import sync_cursor
 from .crud_sync_job import sync_job
@@ -47,6 +48,7 @@ __all__ = [
     "redirect_session",
     "source",
     "source_connection",
+    "source_rate_limit",
     "sync",
     "sync_cursor",
     "sync_job",

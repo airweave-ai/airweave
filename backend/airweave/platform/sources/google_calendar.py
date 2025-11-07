@@ -36,8 +36,9 @@ from datetime import datetime, timedelta
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, stop_after_attempt
 
+from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.google_calendar import (
@@ -47,6 +48,10 @@ from airweave.platform.entities.google_calendar import (
     GoogleCalendarListEntity,
 )
 from airweave.platform.sources._base import BaseSource
+from airweave.platform.sources.retry_helpers import (
+    retry_if_rate_limit_or_timeout,
+    wait_rate_limit_with_backoff,
+)
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
@@ -64,6 +69,7 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
     config_class="GoogleCalendarConfig",
     labels=["Productivity", "Calendar"],
     supports_continuous=False,
+    rate_limit_level=RateLimitLevel.ORG,
 )
 class GoogleCalendarSource(BaseSource):
     """Google Calendar source connector integrates with the Google Calendar API to extract data.
@@ -99,7 +105,10 @@ class GoogleCalendarSource(BaseSource):
     # HTTP helpers
     # -----------------------
     @retry(
-        stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10), reraise=True
+        stop=stop_after_attempt(5),
+        retry=retry_if_rate_limit_or_timeout,
+        wait=wait_rate_limit_with_backoff,
+        reraise=True,
     )
     async def _get_with_auth(
         self, client: httpx.AsyncClient, url: str, params: Optional[Dict] = None
@@ -127,7 +136,10 @@ class GoogleCalendarSource(BaseSource):
         return response.json()
 
     @retry(
-        stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10), reraise=True
+        stop=stop_after_attempt(5),
+        retry=retry_if_rate_limit_or_timeout,
+        wait=wait_rate_limit_with_backoff,
+        reraise=True,
     )
     async def _post_with_auth(self, client: httpx.AsyncClient, url: str, json_data: Dict) -> Dict:
         """Make an authenticated POST request to the Google Calendar API."""

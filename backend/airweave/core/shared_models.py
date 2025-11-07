@@ -67,6 +67,16 @@ class ActionType(str, Enum):
     TEAM_MEMBERS = "team_members"
 
 
+class RateLimitLevel(str, Enum):
+    """Rate limiting level for sources.
+
+    Determines how rate limits are tracked and enforced.
+    """
+
+    ORG = "org"  # Organization-wide (all users share the limit)
+    CONNECTION = "connection"  # Per-connection (each user has independent limit)
+
+
 class FeatureFlag(str, Enum):
     """Available feature flags in Airweave.
 
@@ -75,6 +85,7 @@ class FeatureFlag(str, Enum):
 
     S3_DESTINATION = "s3_destination"
     PRIORITY_SUPPORT = "priority_support"
+    SOURCE_RATE_LIMITING = "source_rate_limiting"
 
 
 class AuthMethod(str, Enum):

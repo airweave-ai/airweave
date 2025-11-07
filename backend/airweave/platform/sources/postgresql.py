@@ -13,6 +13,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional, Type, Union
 import asyncpg
 
 from airweave.core.pg_field_catalog_service import overwrite_catalog
+from airweave.core.shared_models import RateLimitLevel
 from airweave.db.session import get_db_context
 from airweave.platform.cursors.postgresql import PostgreSQLCursor
 from airweave.platform.decorators import source
@@ -51,6 +52,7 @@ PG_TYPE_MAP = {
     config_class="PostgreSQLConfig",
     labels=["Database"],
     supports_continuous=True,
+    rate_limit_level=RateLimitLevel.ORG,
     cursor_class=PostgreSQLCursor,
 )
 class PostgreSQLSource(BaseSource):

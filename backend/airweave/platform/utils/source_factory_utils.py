@@ -443,3 +443,72 @@ async def get_auth_configuration(
         "auth_provider_instance": None,
         "auth_mode": AuthProviderMode.DIRECT,
     }
+
+
+def wrap_source_with_airweave_client(
+    source: Any,
+    source_short_name: str,
+    source_connection_id: UUID,
+    ctx: ApiContext,
+    logger: ContextualLogger,
+) -> None:
+    """Wrap source HTTP client with AirweaveHttpClient for rate limiting.
+
+    Shared utility used by both SyncFactory and SearchFactory to ensure
+    consistent rate limiting across sync and search operations.
+
+    ALL sources are wrapped with AirweaveHttpClient. The client checks internally:
+    1. Is SOURCE_RATE_LIMITING feature enabled? → No = skip check
+    2. Is rate_limit_level set? → No = skip check
+    3. Is limit configured in DB? → No = skip check
+    4. Otherwise → enforce limit
+
+    This wraps whatever client is currently set (httpx.AsyncClient or PipedreamProxyClient).
+
+    Args:
+        source: Source instance to wrap
+        source_short_name: Source identifier
+        source_connection_id: Source connection ID
+        ctx: API context
+        logger: Logger for diagnostics
+    """
+    from airweave.core.shared_models import FeatureFlag
+    from airweave.platform.http_client.airweave_client import AirweaveHttpClient
+
+    # Check if feature is enabled for this organization
+    feature_enabled = ctx.has_feature(FeatureFlag.SOURCE_RATE_LIMITING)
+
+    # Get original HTTP client factory (may be None, or a factory function)
+    # NOTE: We get the FACTORY, not the property (which would cause recursion)
+    original_factory = source._http_client_factory
+
+    # Create wrapper factory
+    def airweave_client_factory(**kwargs):
+        # Create base client using original factory or httpx default
+        if original_factory:
+            # Original factory exists (Pipedream proxy or custom)
+            base_client = original_factory(**kwargs)
+        else:
+            # No factory - use vanilla httpx
+            import httpx
+
+            base_client = httpx.AsyncClient(**kwargs)
+
+        # Wrap with AirweaveHttpClient
+        # Rate limiter will read rate_limit_level from Source table
+        return AirweaveHttpClient(
+            wrapped_client=base_client,
+            org_id=ctx.organization.id,
+            source_short_name=source_short_name,
+            source_connection_id=source_connection_id,
+            feature_flag_enabled=feature_enabled,
+            logger=logger,  # Pass contextual logger with sync/search metadata
+        )
+
+    # Set wrapper factory on source
+    source.set_http_client_factory(airweave_client_factory)
+
+    logger.debug(
+        f"AirweaveHttpClient configured for {source.__class__.__name__} "
+        f"(feature_flag_enabled={feature_enabled})"
+    )

@@ -13,9 +13,10 @@ from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional, Set
 
 import httpx
-from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
+from tenacity import retry, stop_after_attempt
 
 from airweave.core.logging import logger
+from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.cursors import GmailCursor
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
@@ -26,19 +27,27 @@ from airweave.platform.entities.gmail import (
     GmailThreadEntity,
 )
 from airweave.platform.sources._base import BaseSource
+from airweave.platform.sources.retry_helpers import (
+    wait_rate_limit_with_backoff,
+)
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
 def _should_retry_gmail_request(exception: Exception) -> bool:
-    """Custom retry condition that excludes 404 errors from retrying."""
+    """Custom retry condition that excludes 404 errors but includes 429 and timeouts."""
     if isinstance(exception, httpx.HTTPStatusError):
         # Don't retry 404s - let them pass through to call-site handlers
         if exception.response.status_code == 404:
             return False
+        # Retry 429 rate limits
+        if exception.response.status_code == 429:
+            return True
         # Retry other HTTP errors
         return True
-    # Retry other exceptions (timeouts, etc.)
-    return True
+    # Retry timeouts
+    if isinstance(exception, (httpx.ConnectTimeout, httpx.ReadTimeout)):
+        return True
+    return False
 
 
 @source(
@@ -55,6 +64,7 @@ def _should_retry_gmail_request(exception: Exception) -> bool:
     config_class="GmailConfig",
     labels=["Communication", "Email"],
     supports_continuous=True,
+    rate_limit_level=RateLimitLevel.ORG,
     cursor_class=GmailCursor,
 )
 class GmailSource(BaseSource):
@@ -231,9 +241,9 @@ class GmailSource(BaseSource):
     # -----------------------
     @retry(
         stop=stop_after_attempt(5),
-        wait=wait_exponential(multiplier=1, min=2, max=60),
+        retry=_should_retry_gmail_request,
+        wait=wait_rate_limit_with_backoff,
         reraise=True,
-        retry=retry_if_exception(_should_retry_gmail_request),
     )
     async def _get_with_auth(
         self, client: httpx.AsyncClient, url: str, params: Optional[dict] = None

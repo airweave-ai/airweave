@@ -12,9 +12,10 @@ from urllib.parse import urlparse
 
 import httpx
 from httpx import HTTPStatusError, ReadTimeout, TimeoutException
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception_type, stop_after_attempt
 
 from airweave.core.logging import logger
+from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.notion import (
@@ -24,6 +25,7 @@ from airweave.platform.entities.notion import (
     NotionPropertyEntity,
 )
 from airweave.platform.sources._base import BaseSource
+from airweave.platform.sources.retry_helpers import wait_rate_limit_with_backoff
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
@@ -40,6 +42,7 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
     config_class="NotionConfig",
     labels=["Knowledge Base", "Productivity"],
     supports_continuous=False,
+    rate_limit_level=RateLimitLevel.CONNECTION,
 )
 class NotionSource(BaseSource):
     """Notion source connector integrates with the Notion API to extract and synchronize content.
@@ -167,8 +170,8 @@ class NotionSource(BaseSource):
 
     @retry(
         retry=retry_if_exception_type((TimeoutException, ReadTimeout, HTTPStatusError)),
-        stop=stop_after_attempt(MAX_RETRIES),
-        wait=wait_exponential(multiplier=2, min=10, max=60),
+        stop=stop_after_attempt(5),
+        wait=wait_rate_limit_with_backoff,
         reraise=True,
     )
     async def _get_with_auth(self, client: httpx.AsyncClient, url: str) -> dict:
@@ -224,13 +227,13 @@ class NotionSource(BaseSource):
             self.logger.warning(f"Error during GET request to {url}: {str(e)}")
             raise
         except Exception as e:
-            self.logger.error(f"Error during GET request to {url}: {str(e)}")
+            self.logger.warning(f"Error during GET request to {url}: {str(e)}")
             raise
 
     @retry(
         retry=retry_if_exception_type((TimeoutException, ReadTimeout, HTTPStatusError)),
-        stop=stop_after_attempt(MAX_RETRIES),
-        wait=wait_exponential(multiplier=2, min=10, max=60),
+        stop=stop_after_attempt(5),
+        wait=wait_rate_limit_with_backoff,
         reraise=True,
     )
     async def _post_with_auth(self, client: httpx.AsyncClient, url: str, json_data: dict) -> dict:

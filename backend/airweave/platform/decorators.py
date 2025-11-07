@@ -4,6 +4,7 @@ from typing import Callable, List, Optional, Type
 
 from pydantic import BaseModel
 
+from airweave.core.shared_models import RateLimitLevel
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
@@ -19,6 +20,7 @@ def source(
     supports_continuous: bool = False,
     federated_search: bool = False,
     supports_temporal_relevance: bool = True,
+    rate_limit_level: Optional[RateLimitLevel] = None,
     cursor_class: Optional[Type[BaseModel]] = None,
 ) -> Callable[[type], type]:
     """Enhanced source decorator with OAuth type tracking and typed cursor support.
@@ -36,6 +38,7 @@ def source(
         federated_search: Whether source uses federated search instead of syncing (default False)
         supports_temporal_relevance: Whether source entities have timestamps for (default True)
         cursor_class: Optional Pydantic model class for typed cursor (e.g., GmailCursor)
+        rate_limit_level: Rate limiting level (RateLimitLevel.ORG, RateLimitLevel.CONNECTION, or None)
 
     Example:
         # OAuth source (no auth config)
@@ -83,6 +86,7 @@ def source(
         cls._federated_search = federated_search
         cls._supports_temporal_relevance = supports_temporal_relevance
         cls._cursor_class = cursor_class
+        cls._rate_limit_level = rate_limit_level
 
         # Add validation method if not present
         if not hasattr(cls, "validate"):

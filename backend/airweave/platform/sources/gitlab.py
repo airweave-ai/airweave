@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
-import tenacity
-from tenacity import retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import retry, stop_after_attempt
 
+from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.gitlab import (
@@ -21,6 +21,10 @@ from airweave.platform.entities.gitlab import (
     GitLabUserEntity,
 )
 from airweave.platform.sources._base import BaseSource
+from airweave.platform.sources.retry_helpers import (
+    retry_if_rate_limit_or_timeout,
+    wait_rate_limit_with_backoff,
+)
 from airweave.platform.utils.file_extensions import (
     get_language_for_extension,
     is_text_file,
@@ -42,6 +46,7 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
     labels=["Code"],
     supports_continuous=False,
     supports_temporal_relevance=False,
+    rate_limit_level=RateLimitLevel.ORG,
 )
 class GitLabSource(BaseSource):
     """GitLab source connector integrates with the GitLab REST API to extract data.
@@ -80,10 +85,10 @@ class GitLabSource(BaseSource):
 
         return instance
 
-    @tenacity.retry(
-        retry=retry_if_exception_type(httpx.HTTPError),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        stop=stop_after_attempt(3),
+    @retry(
+        stop=stop_after_attempt(5),
+        retry=retry_if_rate_limit_or_timeout,
+        wait=wait_rate_limit_with_backoff,
         reraise=True,
     )
     async def _get_with_auth(

@@ -441,6 +441,13 @@ async def _sync_sources(
         if oauth_type:
             oauth_type = oauth_type.value if hasattr(oauth_type, "value") else oauth_type
 
+        # Convert rate_limit_level enum to string if present
+        rate_limit_level = getattr(source_class, "_rate_limit_level", None)
+        if rate_limit_level:
+            rate_limit_level = (
+                rate_limit_level.value if hasattr(rate_limit_level, "value") else rate_limit_level
+            )
+
         source_def = schemas.SourceCreate(
             name=source_class._name,
             description=source_class.__doc__,
@@ -456,6 +463,7 @@ async def _sync_sources(
             supports_continuous=getattr(source_class, "_supports_continuous", False),
             federated_search=getattr(source_class, "_federated_search", False),
             supports_temporal_relevance=getattr(source_class, "_supports_temporal_relevance", True),
+            rate_limit_level=rate_limit_level,
         )
         source_definitions.append(source_def)
 

@@ -5,7 +5,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://eu-assets.i.posthog.com; connect-src 'self' https://api.dev-airweave.com https://api.stg-airweave.com https://api.airweave.ai https://eu.posthog.com https://eu.i.posthog.com https://eu-assets.i.posthog.com https://*.auth0.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; frame-src 'self' https://*.auth0.com; base-uri 'self'; form-action 'self'; frame-ancestors 'none';"
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://eu-assets.i.posthog.com; connect-src 'self' http://localhost:8001 https://api.dev-airweave.com https://api.stg-airweave.com https://api.airweave.ai https://eu.posthog.com https://eu.i.posthog.com https://eu-assets.i.posthog.com https://*.auth0.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; frame-src 'self' https://*.auth0.com; base-uri 'self'; form-action 'self'; frame-ancestors 'none';"
         },
         {
           "key": "X-Frame-Options",

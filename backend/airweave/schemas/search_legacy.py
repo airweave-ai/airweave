@@ -7,7 +7,8 @@ while internally converting to the new search implementation.
 from enum import Enum
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+import tiktoken
+from pydantic import BaseModel, Field, field_validator
 from qdrant_client.http.models import Filter as QdrantFilter
 
 
@@ -40,10 +41,40 @@ class LegacySearchRequest(BaseModel):
     # Core search parameters
     query: str = Field(
         ...,
-        description="The search query text",
-        min_length=1,
-        max_length=1000,
+        description="The search query text (max 2048 tokens)",
     )
+
+    @field_validator("query")
+    @classmethod
+    def validate_query_token_length(cls, v: str) -> str:
+        """Validate that query doesn't exceed 4096 tokens.
+
+        Args:
+            v: The query string to validate
+
+        Returns:
+            The validated query string
+
+        Raises:
+            ValueError: If query exceeds 4096 tokens
+        """
+        try:
+            encoding = tiktoken.get_encoding("cl100k_base")
+            token_count = len(encoding.encode(v))
+
+            max_tokens = 2048
+            if token_count > max_tokens:
+                raise ValueError(
+                    f"Query is too long: {token_count} tokens exceeds maximum of {max_tokens} "
+                    "tokens. Please use a shorter, more focused search query."
+                )
+
+            return v
+        except Exception as e:
+            if "exceeds maximum" in str(e):
+                raise
+            # If tokenization itself fails, let it through (shouldn't happen)
+            return v
 
     # Qdrant native filter support
     filter: Optional[QdrantFilter] = Field(

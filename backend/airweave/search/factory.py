@@ -907,10 +907,29 @@ class SearchFactory:
                 ctx.logger.info(f"Proxy mode active for {source_connection.short_name}")
                 source_instance.set_http_client_factory(auth_config["http_client_factory"])
 
-            # Step 8: Setup token manager for OAuth sources that support refresh
-            if source_model.oauth_type:
-                from airweave.schemas.source_connection import OAuthType
+            # Step 8: Wrap HTTP client with AirweaveHttpClient for rate limiting
+            # This ensures federated sources respect rate limits just like sync sources
+            from airweave.platform.utils.source_factory_utils import (
+                wrap_source_with_airweave_client,
+            )
 
+            wrap_source_with_airweave_client(
+                source=source_instance,
+                source_short_name=source_connection.short_name,
+                source_connection_id=source_connection.id,
+                ctx=ctx,
+                logger=ctx.logger,
+            )
+
+            # Step 9: Setup token manager for OAuth sources that support refresh
+            # Skip for proxy mode (proxy client manages tokens internally)
+            from airweave.platform.auth_providers.auth_result import AuthProviderMode
+            from airweave.schemas.source_connection import OAuthType
+
+            auth_mode = auth_config.get("auth_mode")
+            is_proxy_mode = auth_mode == AuthProviderMode.PROXY
+
+            if source_model.oauth_type and not is_proxy_mode:
                 # Only create token manager for sources with refresh capability
                 if source_model.oauth_type in (
                     OAuthType.WITH_REFRESH,
@@ -932,6 +951,11 @@ class SearchFactory:
                         f"⏭️ Skipping token manager for {source_connection.short_name} - "
                         f"oauth_type={source_model.oauth_type} does not support token refresh"
                     )
+            elif is_proxy_mode:
+                ctx.logger.info(
+                    f"⏭️ Skipping token manager for {source_connection.short_name} - "
+                    f"proxy mode (proxy client manages tokens internally)"
+                )
 
             ctx.logger.info(
                 f"Successfully instantiated federated source: {source_connection.short_name}"

@@ -107,6 +107,13 @@ class SourceBase(BaseModel):
             "relevance for search result weighting."
         ),
     )
+    rate_limit_level: Optional[str] = Field(
+        None,
+        description=(
+            "Rate limiting level for this source: 'org' (organization-wide), "
+            "'connection' (per-connection/per-user), or None (no rate limiting)."
+        ),
+    )
 
     @field_serializer("output_entity_definition_ids")
     def serialize_output_entity_definition_ids(

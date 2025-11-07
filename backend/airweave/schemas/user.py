@@ -77,6 +77,7 @@ class UserInDBBase(UserBase):
     primary_organization_id: Optional[UUID] = None
     user_organizations: list[UserOrganization] = Field(default_factory=list)
     is_admin: bool = False
+    is_superuser: bool = False
     last_active_at: Optional[datetime] = None
 
     @field_validator("user_organizations", mode="before")

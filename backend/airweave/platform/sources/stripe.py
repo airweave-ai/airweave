@@ -20,8 +20,9 @@ from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, Optional
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, stop_after_attempt
 
+from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.configs.auth import StripeAuthConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity
@@ -39,6 +40,10 @@ from airweave.platform.entities.stripe import (
     StripeSubscriptionEntity,
 )
 from airweave.platform.sources._base import BaseSource
+from airweave.platform.sources.retry_helpers import (
+    retry_if_rate_limit_or_timeout,
+    wait_rate_limit_with_backoff,
+)
 from airweave.schemas.source_connection import AuthenticationMethod
 
 
@@ -51,6 +56,7 @@ from airweave.schemas.source_connection import AuthenticationMethod
     config_class="StripeConfig",
     labels=["Payment"],
     supports_continuous=False,
+    rate_limit_level=RateLimitLevel.ORG,
 )
 class StripeSource(BaseSource):
     """Stripe source connector integrates with the Stripe API to extract payment and financial data.
@@ -72,7 +78,8 @@ class StripeSource(BaseSource):
 
     @retry(
         stop=stop_after_attempt(5),
-        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_rate_limit_or_timeout,
+        wait=wait_rate_limit_with_backoff,
         reraise=True,
     )
     async def _get_with_auth(self, client: httpx.AsyncClient, url: str) -> dict:

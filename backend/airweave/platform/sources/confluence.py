@@ -20,11 +20,10 @@ References:
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
-import tenacity
-from tenacity import stop_after_attempt, wait_exponential
+from tenacity import retry, stop_after_attempt
 
 from airweave.core.exceptions import TokenRefreshError
-from airweave.core.logging import logger
+from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.confluence import (
@@ -37,6 +36,10 @@ from airweave.platform.entities.confluence import (
     ConfluenceSpaceEntity,
 )
 from airweave.platform.sources._base import BaseSource
+from airweave.platform.sources.retry_helpers import (
+    retry_if_rate_limit_or_timeout,
+    wait_rate_limit_with_backoff,
+)
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
@@ -53,6 +56,7 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
     config_class="ConfluenceConfig",
     labels=["Knowledge Base", "Documentation"],
     supports_continuous=False,
+    rate_limit_level=RateLimitLevel.ORG,
 )
 class ConfluenceSource(BaseSource):
     """Confluence source connector integrates with the Confluence REST API to extract content.
@@ -110,9 +114,10 @@ class ConfluenceSource(BaseSource):
         instance.access_token = access_token
         return instance
 
-    @tenacity.retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
+    @retry(
+        stop=stop_after_attempt(5),
+        retry=retry_if_rate_limit_or_timeout,
+        wait=wait_rate_limit_with_backoff,
         reraise=True,
     )
     async def _get_with_auth(self, client: httpx.AsyncClient, url: str) -> Any:
