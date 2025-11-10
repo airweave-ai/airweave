@@ -63,11 +63,13 @@ def _require_admin(ctx: ApiContext) -> None:
 
 
 @router.get("/organizations", response_model=List[schemas.OrganizationMetrics])
-async def list_all_organizations(
+async def list_all_organizations(  # noqa: C901
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
-    skip: int = 0,
-    limit: int = Query(1000, le=10000, description="Maximum number of organizations to return"),
+    skip: int = Query(0, ge=0, description="Number of organizations to skip for pagination"),
+    limit: int = Query(
+        1000, ge=1, le=10000, description="Maximum number of organizations to return"
+    ),
     search: Optional[str] = Query(None, description="Search by organization name"),
     sort_by: str = Query("created_at", description="Field to sort by"),
     sort_order: str = Query("desc", description="Sort order (asc or desc)"),
