@@ -4575,18 +4575,17 @@
             "title": "Refresh Token",
             "description": "OAuth refresh token"
           },
-          "expires_at": {
+          "expires_in": {
             "anyOf": [
               {
-                "type": "string",
-                "format": "date-time"
+                "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Expires At",
-            "description": "Token expiry time"
+            "title": "Expires In",
+            "description": "Token expiry time in seconds (standard OAuth2 format)"
           }
         },
         "type": "object",
