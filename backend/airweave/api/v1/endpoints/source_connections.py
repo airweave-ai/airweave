@@ -135,7 +135,6 @@ async def create(
         ctx=ctx,
     )
 
-
     return result
 
 
@@ -212,7 +211,6 @@ async def delete(
         id=source_connection_id,
         ctx=ctx,
     )
-
 
     return result
 

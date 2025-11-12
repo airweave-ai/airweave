@@ -173,7 +173,7 @@ def _create_usage_snapshot(
     source_connections: int,
 ) -> UsageSnapshot:
     """Create a usage snapshot from usage record and plan limits.
-    
+
     Note: source_connections and team_members are computed dynamically
     and not stored in the usage table.
     """
@@ -258,11 +258,7 @@ def _calculate_trends(
     current_usage: UsageSnapshot,
     prev_usage: Optional[Usage],
 ) -> List[UsageTrend]:
-    """Calculate usage trends by comparing current and previous periods.
-    
-    Note: Only compares entities and queries (stored metrics).
-    source_connections and team_members are current counts, not historical.
-    """
+    """Calculate usage trends by comparing current and previous periods."""
     trends = []
     if not prev_usage:
         return trends
@@ -339,7 +335,11 @@ async def _build_previous_periods(
                 status=status_str,
                 plan=plan_str,
                 usage=_create_usage_snapshot(
-                    period_usage, period_limits, period.id, team_members_count, source_connections_count
+                    period_usage,
+                    period_limits,
+                    period.id,
+                    team_members_count,
+                    source_connections_count,
                 ),
                 daily_usage=[],
                 days_remaining=None,
@@ -398,7 +398,11 @@ async def get_usage_dashboard(
 
         # Create usage snapshot
         usage_snapshot = _create_usage_snapshot(
-            usage_record, plan_limits, target_period.id, team_members_count, source_connections_count
+            usage_record,
+            plan_limits,
+            target_period.id,
+            team_members_count,
+            source_connections_count,
         )
 
         # Calculate period status
