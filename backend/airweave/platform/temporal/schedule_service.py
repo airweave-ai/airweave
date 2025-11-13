@@ -462,6 +462,70 @@ class TemporalScheduleService:
 
         logger.info(f"Resumed schedule {schedule_id}")
 
+    async def pause_sync_schedules(
+        self,
+        sync_id: UUID,
+        db: AsyncSession,
+        ctx,
+        pause_reason: str,
+    ) -> dict:
+        """Pause main and minute schedules, keep cleanup running.
+        
+        Args:
+            sync_id: The sync ID
+            db: Database session
+            ctx: Authentication context
+            pause_reason: Reason for pausing (logged in schedule note)
+            
+        Returns:
+            Dict with status for each schedule type
+        """
+        client = await self._get_client()
+        results = {}
+        
+        # Pause main schedule (sync-{id})
+        main_schedule_id = f"sync-{sync_id}"
+        try:
+            handle = client.get_schedule_handle(main_schedule_id)
+            await handle.pause(note=pause_reason)
+            results["main"] = "paused"
+            logger.info(f"Paused main schedule {main_schedule_id}")
+        except Exception as e:
+            logger.warning(f"Failed to pause main schedule {main_schedule_id}: {e}")
+            results["main"] = "error"
+        
+        # Pause minute schedule (minute-sync-{id}) if exists
+        minute_schedule_id = f"minute-sync-{sync_id}"
+        try:
+            handle = client.get_schedule_handle(minute_schedule_id)
+            await handle.pause(note=pause_reason)
+            results["minute"] = "paused"
+            logger.info(f"Paused minute schedule {minute_schedule_id}")
+        except Exception as e:
+            # Minute schedule may not exist (not all sources have continuous sync)
+            logger.debug(f"Minute schedule {minute_schedule_id} not found or error: {e}")
+            results["minute"] = "not_found"
+        
+        # Keep daily cleanup schedule (daily-cleanup-{id}) running
+        results["cleanup"] = "kept_running"
+        logger.info(f"Kept cleanup schedule daily-cleanup-{sync_id} running")
+        
+        # Update sync status to INACTIVE (paused)
+        sync_obj = await crud.sync.get(db=db, id=sync_id, ctx=ctx, with_connections=False)
+        await crud.sync.update(
+            db=db,
+            db_obj=sync_obj,
+            obj_in={"status": "INACTIVE"},
+            ctx=ctx,
+        )
+        
+        logger.info(
+            f"Paused schedules for sync {sync_id}: main={results['main']}, "
+            f"minute={results['minute']}, cleanup={results['cleanup']}"
+        )
+        
+        return results
+
     async def delete_schedule_by_id(
         self, schedule_id: str, sync_id: UUID, db: AsyncSession, ctx
     ) -> None:

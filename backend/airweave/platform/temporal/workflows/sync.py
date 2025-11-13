@@ -136,6 +136,12 @@ class RunSourceConnectionWorkflow:
             )
 
         except Exception as e:
+            # Record sync failure and check if schedules should be paused
+            from airweave.platform.temporal.activities import (
+                pause_schedules_activity,
+                record_sync_failure_activity,
+            )
+
             # Check if this is an orphaned sync error (source connection deleted mid-execution)
             # Check both str(e) and the exception's cause chain for the ORPHANED_SYNC marker
             error_str = str(e)
@@ -146,6 +152,7 @@ class RunSourceConnectionWorkflow:
             workflow.logger.debug(f"Activity exception - str: {error_str}")
             workflow.logger.debug(f"Activity exception type: {type(e).__name__}")
 
+            # Handle orphaned syncs first (don't record failures for deleted connections)
             if "ORPHANED_SYNC" in error_str:
                 workflow.logger.info(
                     f"🧹 Sync {sync_dict['id']} became orphaned during execution. "
@@ -174,6 +181,48 @@ class RunSourceConnectionWorkflow:
                     )
 
                 return  # Exit gracefully without error
+
+            # Record failure for non-orphaned syncs
+            source_connection_id = sync_dict.get("source_connection_id")
+            if source_connection_id:
+                try:
+                    # Serialize error for activity (convert to dict representation)
+                    error_dict = {
+                        "message": error_str,
+                        "type": type(e).__name__,
+                        "error_category": getattr(e, "error_category", "UNKNOWN"),
+                        "is_retryable": getattr(e, "is_retryable", True),
+                        "requires_user_action": getattr(e, "requires_user_action", False),
+                        "should_deschedule": getattr(e, "should_deschedule", False),
+                    }
+                    
+                    should_pause = await workflow.execute_activity(
+                        record_sync_failure_activity,
+                        args=[source_connection_id, error_dict, ctx_dict],
+                        start_to_close_timeout=timedelta(minutes=2),
+                        retry_policy=RetryPolicy(maximum_attempts=3),
+                    )
+                    
+                    # Pause schedules if threshold reached
+                    if should_pause:
+                        workflow.logger.warning(
+                            f"Failure threshold reached for source_connection {source_connection_id}. "
+                            f"Pausing schedules..."
+                        )
+                        await workflow.execute_activity(
+                            pause_schedules_activity,
+                            args=[sync_dict["id"], source_connection_id, ctx_dict],
+                            start_to_close_timeout=timedelta(minutes=5),
+                            retry_policy=RetryPolicy(maximum_attempts=3),
+                        )
+                        workflow.logger.info(
+                            f"✅ Schedules paused for source_connection {source_connection_id}"
+                        )
+                except Exception as failure_tracking_error:
+                    # Don't fail the workflow if failure tracking fails
+                    workflow.logger.warning(
+                        f"Failed to record sync failure or pause schedules: {failure_tracking_error}"
+                    )
 
             # For CancelledError, need to mark job as cancelled before re-raising
             if isinstance(e, asyncio.CancelledError):

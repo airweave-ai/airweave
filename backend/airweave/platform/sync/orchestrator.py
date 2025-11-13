@@ -11,11 +11,17 @@ from airweave.core.exceptions import PaymentRequiredException, UsageLimitExceede
 from airweave.core.guard_rail_service import ActionType
 from airweave.core.shared_models import SyncJobStatus
 from airweave.core.sync_cursor_service import sync_cursor_service
+from airweave.core.sync_failure_service import sync_failure_service
 from airweave.core.sync_job_service import sync_job_service
 from airweave.db.session import get_db_context
 from airweave.platform.sync.context import SyncContext
 from airweave.platform.sync.entity_pipeline import EntityPipeline
-from airweave.platform.sync.exceptions import EntityProcessingError, SyncFailureError
+from airweave.platform.sync.exceptions import (
+    AuthenticationSyncError,
+    EntityProcessingError,
+    SyncFailureError,
+    ValidationSyncError,
+)
 from airweave.platform.sync.stream import AsyncSourceStream
 from airweave.platform.sync.worker_pool import AsyncWorkerPool
 from airweave.platform.utils.error_utils import get_error_message
@@ -63,6 +69,12 @@ class SyncOrchestrator:
         final_status = SyncJobStatus.FAILED  # Default to failed, will be updated based on outcome
         error_message: Optional[str] = None  # Track error message for finalization
         try:
+            # Phase 0: Validate source connection
+            phase_start = time.time()
+            self.sync_context.logger.info("🔍 PHASE 0: Validating source connection...")
+            await self._validate_source_connection()
+            self.sync_context.logger.info(f"✅ PHASE 0 complete ({time.time() - phase_start:.2f}s)")
+
             # Phase 1: Start sync
             phase_start = time.time()
             self.sync_context.logger.info("🚀 PHASE 1: Starting sync initialization...")
@@ -126,6 +138,59 @@ class SyncOrchestrator:
                     f"Temp file cleanup failed (non-fatal in finally block): {cleanup_error}",
                     exc_info=True,
                 )
+
+    async def _validate_source_connection(self) -> None:
+        """Validate source connection before starting sync.
+        
+        Calls the source's validate() method to ensure credentials and
+        configuration are valid before processing entities.
+        
+        Raises:
+            AuthenticationSyncError: If authentication fails
+            ValidationSyncError: If validation fails for other reasons
+        """
+        source = self.sync_context.source
+        
+        # Check if source implements validate method
+        if not hasattr(source, 'validate'):
+            self.sync_context.logger.warning(
+                f"Source {source._name} does not implement validate() - skipping validation"
+            )
+            return
+        
+        self.sync_context.logger.info("Validating source connection...")
+        
+        try:
+            is_valid = await source.validate()
+            
+            if not is_valid:
+                raise ValidationSyncError(
+                    f"Source connection validation failed for {source._name}"
+                )
+            
+            # Reset failure counter on successful validation
+            async with get_db_context() as db:
+                await sync_failure_service.reset_failures(
+                    db=db,
+                    source_connection_id=self.sync_context.sync.source_connection_id,
+                    ctx=self.sync_context.ctx,
+                )
+            
+            self.sync_context.logger.info("✅ Source connection validated successfully")
+            
+        except (AuthenticationSyncError, ValidationSyncError):
+            # Re-raise already classified errors
+            raise
+        except Exception as e:
+            # Map unexpected validation errors to appropriate SyncError types
+            from airweave.platform.sources._base import map_validation_error_to_sync_error
+            
+            self.sync_context.logger.error(
+                f"Source validation failed with error: {e}",
+                exc_info=True
+            )
+            # Convert to appropriate SyncError subclass
+            raise map_validation_error_to_sync_error(e)
 
     async def _start_sync(self) -> None:
         """Initialize sync job and start all components."""

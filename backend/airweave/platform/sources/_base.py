@@ -608,6 +608,104 @@ class BaseSource:
                 next_idx += 1
 
 
+def map_validation_error_to_sync_error(error: Exception) -> "SyncError":
+    """Map common validation errors to appropriate SyncError types.
+    
+    This helper function analyzes exceptions thrown during source validation
+    and converts them to the appropriate typed SyncError subclass for proper
+    failure tracking and scheduling behavior.
+    
+    Args:
+        error: The exception that occurred during validation
+        
+    Returns:
+        Appropriate SyncError subclass with proper categorization
+        
+    Examples:
+        HTTP 401/403 → AuthenticationSyncError (pause immediately)
+        Timeout → TransientSyncError (don't count toward threshold)
+        "does not exist" → ConfigurationSyncError (engineering issue)
+    """
+    from airweave.platform.sync.exceptions import (
+        AuthenticationSyncError,
+        ConfigurationSyncError,
+        TransientSyncError,
+        ValidationSyncError,
+    )
+    
+    error_str = str(error).lower()
+    
+    # Authentication errors (401, 403, invalid credentials)
+    if isinstance(error, httpx.HTTPStatusError):
+        if error.response.status_code in (401, 403):
+            return AuthenticationSyncError(
+                f"Authentication failed: {error.response.status_code} {error.response.reason_phrase}",
+                original_error=error
+            )
+    
+    # Check for common auth error messages
+    if any(phrase in error_str for phrase in [
+        "unauthorized", "forbidden", "invalid credentials",
+        "authentication failed", "invalid token", "expired token",
+        "invalid password", "access denied"
+    ]):
+        return AuthenticationSyncError(
+            f"Authentication failed: {str(error)}",
+            original_error=error
+        )
+    
+    # Transient errors (timeouts, rate limits, temporary failures)
+    if isinstance(error, (httpx.TimeoutException, httpx.ConnectTimeout, httpx.ReadTimeout)):
+        return TransientSyncError(
+            f"Connection timeout: {str(error)}",
+            original_error=error
+        )
+    
+    if isinstance(error, httpx.HTTPStatusError):
+        # 429 = rate limit, 503 = service unavailable, 504 = gateway timeout
+        if error.response.status_code in (429, 503, 504):
+            return TransientSyncError(
+                f"Temporary service error: {error.response.status_code}",
+                original_error=error
+            )
+    
+    # Check for common transient error messages
+    if any(phrase in error_str for phrase in [
+        "rate limit", "too many requests", "temporarily unavailable",
+        "service unavailable", "connection refused", "connection reset",
+        "deadlock", "connection pool"
+    ]):
+        return TransientSyncError(
+            f"Temporary error: {str(error)}",
+            original_error=error
+        )
+    
+    # Configuration errors (deleted resources, schema changes - engineering issues)
+    if any(phrase in error_str for phrase in [
+        "does not exist", "not found", "no such table", "no such column",
+        "schema", "relation", "database", "table"
+    ]):
+        # Exceptions: 404 from API endpoints can be transient
+        if isinstance(error, httpx.HTTPStatusError) and error.response.status_code == 404:
+            # API 404s are usually transient (resource deleted by user)
+            return ValidationSyncError(
+                f"Resource not found: {str(error)}",
+                original_error=error
+            )
+        
+        # Database/schema errors are config issues
+        return ConfigurationSyncError(
+            f"Configuration error: {str(error)}",
+            original_error=error
+        )
+    
+    # Default to validation error for unknown issues
+    return ValidationSyncError(
+        f"Validation failed: {str(error)}",
+        original_error=error
+    )
+
+
 class Relation(BaseModel):
     """A relation between two entities."""
 

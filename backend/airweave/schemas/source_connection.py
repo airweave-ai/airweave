@@ -436,6 +436,13 @@ class SourceConnection(BaseModel):
     # Source configuration
     federated_search: bool = Field(False, description="Whether this source uses federated search")
 
+    # Failure tracking fields
+    consecutive_failures: int = 0
+    last_failure_at: Optional[datetime] = None
+    last_failure_reason: Optional[str] = None
+    last_failure_category: Optional[str] = None
+    health_status: str = "HEALTHY"
+
 
 class SourceConnectionJob(BaseModel):
     """Individual sync job for a source connection."""

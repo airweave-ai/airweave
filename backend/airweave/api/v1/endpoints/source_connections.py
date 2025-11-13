@@ -255,6 +255,86 @@ async def run(
     return run
 
 
+@router.post("/{source_connection_id}/resume", response_model=dict)
+async def resume_source_connection(
+    *,
+    db: AsyncSession = Depends(get_db),
+    source_connection_id: UUID,
+    ctx: ApiContext = Depends(deps.get_context),
+) -> dict:
+    """Resume paused schedules for a source connection.
+    
+    This endpoint resumes both the main and minute-level schedules that were
+    automatically paused due to repeated sync failures. The failure counters
+    are reset, and validation will run on the next scheduled sync.
+    
+    Args:
+        db: Database session
+        source_connection_id: ID of the source connection to resume
+        ctx: API context with organization and user information
+        
+    Returns:
+        Status message indicating schedules have been resumed
+        
+    Raises:
+        HTTPException: 404 if source connection or sync not found
+    """
+    from airweave import crud
+    from airweave.core.sync_failure_service import sync_failure_service
+    from airweave.platform.temporal.schedule_service import temporal_schedule_service
+    from fastapi import HTTPException
+    
+    # Get source connection
+    source_conn = await crud.source_connection.get(
+        db=db, id=source_connection_id, ctx=ctx
+    )
+    if not source_conn or not source_conn.sync_id:
+        raise HTTPException(
+            status_code=404,
+            detail="Source connection or associated sync not found"
+        )
+    
+    # Resume main schedule
+    try:
+        await temporal_schedule_service.resume_schedule(
+            f"sync-{source_conn.sync_id}",
+            source_conn.sync_id,
+            db,
+            ctx
+        )
+    except Exception as e:
+        ctx.logger.warning(f"Failed to resume main schedule: {e}")
+        # Continue to try minute schedule
+    
+    # Resume minute schedule if exists
+    try:
+        await temporal_schedule_service.resume_schedule(
+            f"minute-sync-{source_conn.sync_id}",
+            source_conn.sync_id,
+            db,
+            ctx
+        )
+    except Exception:
+        # Minute schedule may not exist
+        pass
+    
+    # Reset failure counters (validation will happen on next sync)
+    await sync_failure_service.reset_failures(
+        db=db,
+        source_connection_id=source_connection_id,
+        ctx=ctx
+    )
+    
+    ctx.logger.info(
+        f"Resumed schedules for source_connection {source_connection_id}"
+    )
+    
+    return {
+        "status": "resumed",
+        "message": "Schedules resumed successfully. Validation will run on next sync."
+    }
+
+
 @router.get("/{source_connection_id}/jobs", response_model=List[schemas.SourceConnectionJob])
 async def get_source_connection_jobs(
     *,

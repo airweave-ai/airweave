@@ -642,3 +642,155 @@ async def cleanup_stuck_sync_jobs_activity() -> None:
     except Exception as e:
         logger.error(f"Error during cleanup activity: {e}", exc_info=True)
         raise
+
+
+@activity.defn
+async def record_sync_failure_activity(
+    source_connection_id: str,
+    error_dict: Dict[str, Any],
+    ctx_dict: Dict[str, Any],
+) -> bool:
+    """Record a sync failure and return whether schedules should be paused.
+
+    Args:
+        source_connection_id: ID of the source connection that failed
+        error_dict: Serialized error information (message, type, category, attributes)
+        ctx_dict: API context as dict
+
+    Returns:
+        True if schedules should be paused, False otherwise
+    """
+    from airweave import schemas
+    from airweave.api.context import ApiContext
+    from airweave.core.logging import LoggerConfigurator
+    from airweave.core.sync_failure_service import sync_failure_service
+    from airweave.db.session import get_db_context
+    from airweave.platform.sync.exceptions import (
+        AuthenticationSyncError,
+        ConfigurationSyncError,
+        PermanentSyncError,
+        SyncError,
+        TransientSyncError,
+        ValidationSyncError,
+    )
+
+    # Reconstruct context
+    user = schemas.User(**ctx_dict["user"]) if ctx_dict.get("user") else None
+    organization = schemas.Organization(**ctx_dict["organization"])
+    
+    logger = LoggerConfigurator.configure_logger(
+        "airweave.temporal.activity",
+        dimensions={
+            "source_connection_id": source_connection_id,
+            "organization_id": str(organization.id),
+        },
+    )
+    
+    ctx = ApiContext(
+        request_id=ctx_dict["request_id"],
+        organization=organization,
+        user=user,
+        auth_method=ctx_dict["auth_method"],
+        auth_metadata=ctx_dict.get("auth_metadata"),
+        logger=logger,
+    )
+
+    # Reconstruct error from dict
+    error_category = error_dict.get("error_category", "UNKNOWN")
+    message = error_dict.get("message", "Unknown error")
+    
+    # Map error category to appropriate exception class
+    error_class_map = {
+        "AUTH": AuthenticationSyncError,
+        "VALIDATION": ValidationSyncError,
+        "CONFIG": ConfigurationSyncError,
+        "TRANSIENT": TransientSyncError,
+        "PERMANENT": PermanentSyncError,
+    }
+    
+    error_class = error_class_map.get(error_category, SyncError)
+    
+    # Create error instance
+    if error_class == SyncError:
+        # Generic error with attributes from dict
+        error = SyncError(
+            message=message,
+            is_retryable=error_dict.get("is_retryable", True),
+            requires_user_action=error_dict.get("requires_user_action", False),
+            should_deschedule=error_dict.get("should_deschedule", False),
+            error_category=error_category,
+        )
+    else:
+        # Use specific error class constructor (they only take message)
+        error = error_class(message=message)
+
+    # Record failure and check if should pause
+    async with get_db_context() as db:
+        should_pause = await sync_failure_service.record_failure(
+            db=db,
+            source_connection_id=UUID(source_connection_id),
+            error=error,
+            ctx=ctx,
+        )
+    
+    logger.info(
+        f"Recorded sync failure for source_connection {source_connection_id}: "
+        f"category={error_category}, should_pause={should_pause}"
+    )
+    
+    return should_pause
+
+
+@activity.defn
+async def pause_schedules_activity(
+    sync_id: str,
+    source_connection_id: str,
+    ctx_dict: Dict[str, Any],
+) -> None:
+    """Pause main and minute-level schedules for a source connection.
+
+    Args:
+        sync_id: ID of the sync
+        source_connection_id: ID of the source connection
+        ctx_dict: API context as dict
+    """
+    from airweave import schemas
+    from airweave.api.context import ApiContext
+    from airweave.core.logging import LoggerConfigurator
+    from airweave.db.session import get_db_context
+    from airweave.platform.temporal.schedule_service import temporal_schedule_service
+
+    # Reconstruct context
+    user = schemas.User(**ctx_dict["user"]) if ctx_dict.get("user") else None
+    organization = schemas.Organization(**ctx_dict["organization"])
+    
+    logger = LoggerConfigurator.configure_logger(
+        "airweave.temporal.activity",
+        dimensions={
+            "sync_id": sync_id,
+            "source_connection_id": source_connection_id,
+            "organization_id": str(organization.id),
+        },
+    )
+    
+    ctx = ApiContext(
+        request_id=ctx_dict["request_id"],
+        organization=organization,
+        user=user,
+        auth_method=ctx_dict["auth_method"],
+        auth_metadata=ctx_dict.get("auth_metadata"),
+        logger=logger,
+    )
+
+    # Pause schedules
+    async with get_db_context() as db:
+        results = await temporal_schedule_service.pause_sync_schedules(
+            sync_id=UUID(sync_id),
+            db=db,
+            ctx=ctx,
+            pause_reason="Automatic pause due to repeated sync failures",
+        )
+    
+    logger.info(
+        f"Paused schedules for sync {sync_id}: {results}"
+    )

@@ -90,6 +90,12 @@ interface SourceConnection {
   entities?: EntitySummary;  // Changed from entity_states array to entities object
   // Source configuration
   federated_search?: boolean;  // Whether this source uses federated search
+  // Failure tracking fields
+  consecutive_failures?: number;
+  last_failure_at?: string;
+  last_failure_reason?: string;
+  last_failure_category?: string;
+  health_status?: string;
   // Legacy fields that may still exist
   sync_id?: string;
   organization_id?: string;
@@ -510,6 +516,28 @@ const SourceConnectionStateView: React.FC<Props> = ({
     }
   };
 
+  const handleResume = async () => {
+    try {
+      const response = await apiClient.post(`/source-connections/${sourceConnectionId}/resume`);
+      if (response.ok) {
+        toast({
+          title: "Sync resumed",
+          description: "Schedules have been resumed. The next sync will validate the connection."
+        });
+        // Refresh source connection to show updated health status
+        fetchSourceConnection();
+      } else {
+        throw new Error("Failed to resume sync");
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to resume sync",
+        variant: "destructive"
+      });
+    }
+  };
+
   const handleConnectionUpdate = (updatedConnection: SourceConnection) => {
     setSourceConnection(updatedConnection);
 
@@ -626,6 +654,82 @@ const SourceConnectionStateView: React.FC<Props> = ({
           showBorder={false}
           onDelete={handleDeleteConnection}
         />
+      )}
+
+      {/* Failure Alert Banner - Show when health status is not HEALTHY */}
+      {!isNotAuthorized && sourceConnection?.health_status && sourceConnection.health_status !== 'HEALTHY' && (
+        <div className={cn(
+          "border rounded-lg p-4",
+          sourceConnection.health_status === 'REQUIRES_AUTH'
+            ? isDark ? "bg-red-900/20 border-red-800/30" : "bg-red-50 border-red-200"
+            : sourceConnection.health_status === 'BLOCKED'
+              ? isDark ? "bg-orange-900/20 border-orange-800/30" : "bg-orange-50 border-orange-200"
+              : isDark ? "bg-yellow-900/20 border-yellow-800/30" : "bg-yellow-50 border-yellow-200"
+        )}>
+          <div className="flex items-start gap-3">
+            <AlertCircle className={cn(
+              "h-5 w-5 mt-0.5",
+              sourceConnection.health_status === 'REQUIRES_AUTH'
+                ? isDark ? "text-red-400" : "text-red-600"
+                : sourceConnection.health_status === 'BLOCKED'
+                  ? isDark ? "text-orange-400" : "text-orange-600"
+                  : isDark ? "text-yellow-400" : "text-yellow-600"
+            )} />
+            <div className="flex-1 space-y-2">
+              <div>
+                <h3 className={cn(
+                  "text-sm font-medium",
+                  sourceConnection.health_status === 'REQUIRES_AUTH'
+                    ? isDark ? "text-red-200" : "text-red-900"
+                    : sourceConnection.health_status === 'BLOCKED'
+                      ? isDark ? "text-orange-200" : "text-orange-900"
+                      : isDark ? "text-yellow-200" : "text-yellow-900"
+                )}>
+                  {sourceConnection.health_status === 'REQUIRES_AUTH'
+                    ? 'Re-authentication Required'
+                    : sourceConnection.health_status === 'BLOCKED'
+                      ? 'Sync Paused Due to Failures'
+                      : 'Sync Issues Detected'}
+                </h3>
+                <p className={cn(
+                  "text-sm mt-1",
+                  sourceConnection.health_status === 'REQUIRES_AUTH'
+                    ? isDark ? "text-red-200/80" : "text-red-800/80"
+                    : sourceConnection.health_status === 'BLOCKED'
+                      ? isDark ? "text-orange-200/80" : "text-orange-800/80"
+                      : isDark ? "text-yellow-200/80" : "text-yellow-800/80"
+                )}>
+                  {sourceConnection.last_failure_reason}
+                </p>
+                {sourceConnection.consecutive_failures && sourceConnection.consecutive_failures > 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Failed {sourceConnection.consecutive_failures} consecutive {sourceConnection.consecutive_failures === 1 ? 'time' : 'times'}
+                  </p>
+                )}
+              </div>
+              <div className="flex gap-2">
+                {sourceConnection.health_status === 'REQUIRES_AUTH' && sourceConnection.auth?.auth_url && (
+                  <Button
+                    onClick={() => window.open(sourceConnection.auth?.auth_url, '_blank')}
+                    size="sm"
+                    variant="default"
+                  >
+                    Re-authenticate
+                  </Button>
+                )}
+                {sourceConnection.health_status === 'BLOCKED' && (
+                  <Button
+                    onClick={handleResume}
+                    size="sm"
+                    variant="default"
+                  >
+                    Resume Sync
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Status Dashboard with Settings - Only show when authenticated */}

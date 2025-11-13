@@ -1,10 +1,11 @@
 """Source connection model."""
 
+from datetime import datetime
 from time import sleep
 from typing import TYPE_CHECKING, Optional
 from uuid import UUID
 
-from sqlalchemy import JSON, Boolean, ForeignKey, String, Text, event
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, event
 from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 
 from airweave.models._base import OrganizationBase, UserMixin
@@ -56,6 +57,17 @@ class SourceConnection(OrganizationBase, UserMixin):
     # Status is now ephemeral - removed from database model
     is_authenticated: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
+    )
+
+    # Failure tracking fields for sync error handling
+    consecutive_failures: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    last_failure_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_failure_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    last_failure_category: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    health_status: Mapped[str] = mapped_column(
+        String, nullable=False, default="HEALTHY", server_default="HEALTHY"
     )
 
     # Relationships
