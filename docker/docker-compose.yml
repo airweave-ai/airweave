@@ -72,7 +72,9 @@ services:
       - TEMPORAL_PORT=7233
       - TEMPORAL_NAMESPACE=default
       - TEMPORAL_ENABLED=true
+      - STATE_SECRET=${STATE_SECRET}
       - AUTH_ENABLED=false
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
     depends_on:
       postgres:
         condition: service_healthy
@@ -206,6 +208,8 @@ services:
       - TEMPORAL_NAMESPACE=default
       - TEMPORAL_TASK_QUEUE=airweave-sync-queue
       - TEMPORAL_ENABLED=true
+      - STATE_SECRET=${STATE_SECRET}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
     volumes:
       - ../backend:/app
     entrypoint: [ "python", "-m", "airweave.platform.temporal.worker" ]
@@ -236,7 +240,7 @@ services:
     #           count: 1
     #           capabilities: [gpu]
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:11434/api/tags" ]
+      test: [ "CMD", "ollama", "list" ]
       interval: 30s
       timeout: 10s
       retries: 3
