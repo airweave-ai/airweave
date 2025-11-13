@@ -127,6 +127,7 @@ class Settings(BaseSettings):
     GROQ_API_KEY: Optional[str] = None
     COHERE_API_KEY: Optional[str] = None
     CEREBRAS_API_KEY: Optional[str] = None
+    OLLAMA_BASE_URL: Optional[str] = None
     AZURE_KEYVAULT_NAME: Optional[str] = None
 
     # Temporal configuration
