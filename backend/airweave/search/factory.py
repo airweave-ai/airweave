@@ -370,6 +370,7 @@ class SearchFactory:
             "groq": getattr(settings, "GROQ_API_KEY", None),
             "openai": getattr(settings, "OPENAI_API_KEY", None),
             "cohere": getattr(settings, "COHERE_API_KEY", None),
+            "azure_openai": getattr(settings, "AZURE_OPENAI_API_KEY", None),
         }
 
     def _create_provider_for_each_operation(
@@ -673,6 +674,25 @@ class SearchFactory:
                         f"[Factory] Attempting to initialize OpenAIProvider for {operation_name}"
                     )
                     provider = OpenAIProvider(api_key=api_key, model_spec=model_spec, ctx=ctx)
+                elif provider_name == "azure_openai":
+                    ctx.logger.debug(
+                        f"[Factory] Attempting to initialize Azure OpenAIProvider for {operation_name}"
+                    )
+                    # Get Azure-specific settings
+                    azure_endpoint = getattr(settings, "AZURE_OPENAI_ENDPOINT", None)
+                    azure_api_version = getattr(settings, "AZURE_OPENAI_API_VERSION", "2024-10-21")
+                    azure_embedding_deployment = getattr(settings, "AZURE_OPENAI_EMBEDDING_DEPLOYMENT", None)
+                    azure_llm_deployment = getattr(settings, "AZURE_OPENAI_LLM_DEPLOYMENT", None)
+
+                    provider = OpenAIProvider(
+                        api_key=api_key,
+                        model_spec=model_spec,
+                        ctx=ctx,
+                        azure_endpoint=azure_endpoint,
+                        azure_api_version=azure_api_version,
+                        azure_embedding_deployment=azure_embedding_deployment,
+                        azure_llm_deployment=azure_llm_deployment,
+                    )
                 elif provider_name == "cohere":
                     ctx.logger.debug(
                         f"[Factory] Attempting to initialize CohereProvider for {operation_name}"

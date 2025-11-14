@@ -187,19 +187,22 @@ Defaults are defined in `search/defaults.yml` and loaded via `SearchFactory`:
 - `offset: 0`, `limit: 1000` - Pagination defaults
 
 Provider and model configurations are also in `defaults.yml`:
-- `provider_models`: Model specs per provider (Cerebras, OpenAI, Groq, Cohere)
+- `provider_models`: Model specs per provider (Cerebras, OpenAI, Groq, Cohere, Azure OpenAI)
 - `operation_preferences`: Provider selection order for each operation with fallback support
 
 **Provider Capabilities:**
 - **Cerebras**: LLM only (llm: gpt-oss-120b, 131K context window)
-- **OpenAI**: Full stack (LLM: gpt-5/gpt-5-nano, embeddings: text-embedding-3-small, rerank: gpt-5-nano)
+- **OpenAI**: Full stack (LLM: gpt-5/gpt-5-nano, embeddings: text-embedding-3-large/small, rerank: gpt-5-nano)
+- **Azure OpenAI**: Full stack (LLM: gpt-5/gpt-5-nano, embeddings: text-embedding-3-large/small, rerank: gpt-5-nano)
+  - Uses deployment names instead of model names (configured via environment variables)
+  - Shares OpenAIProvider implementation with automatic endpoint detection
 - **Groq**: LLM and rerank (llm: openai/gpt-oss-120b/20b, rerank: openai/gpt-oss-120b)
 - **Cohere**: Rerank only (rerank: rerank-v3.5)
 
 **Default Provider Preferences** (from `defaults.yml`):
 - Query expansion: Cerebras → Groq → OpenAI
 - Query interpretation: Cerebras → Groq → OpenAI
-- Embeddings: OpenAI only (no fallback - embeddings must be consistent)
+- Embeddings: OpenAI → Azure OpenAI (fallback support for embeddings with same model)
 - Reranking: Cohere → Groq → OpenAI
 - Answer generation: Cerebras → Groq → OpenAI
 - Federated search: Cerebras → Groq → OpenAI
@@ -365,7 +368,7 @@ HTTP status mapping in endpoints:
 ### Critical Gotchas
 1. **Filter format**: Must convert to dict for Qdrant (done automatically in operations)
 2. **Offset with expansion**: Pagination applied after deduplication in bulk search
-3. **Provider dependencies**: Requires at least OpenAI API key for embeddings; other providers optional but recommended for fallback
+3. **Provider dependencies**: Requires at least OpenAI or Azure OpenAI API key for embeddings; other providers optional but recommended for fallback
 4. **Source names**: Case-sensitive in filters (e.g., "GitHub" not "github")
 5. **Embedding model**: Auto-selected from provider_models configuration; no fallback (must be consistent)
 6. **Legacy compatibility**: Both old and new schemas supported via `legacy_adapter.py`
