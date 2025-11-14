@@ -412,7 +412,7 @@ class SearchFactory:
         )
         if not providers:
             raise ValueError(
-                "Embedding provider required for vector-backed search. Configure OPENAI_API_KEY"
+                "Embedding provider required for vector-backed search. Configure OPENAI_API_KEY or AZURE_OPENAI_API_KEY"
             )
         # Return first (and only) available embedding provider
         return providers[0]
@@ -440,7 +440,7 @@ class SearchFactory:
                 api_keys,
                 ctx,
                 "Query expansion enabled but no provider available. "
-                "Configure CEREBRAS_API_KEY, GROQ_API_KEY, or OPENAI_API_KEY",
+                "Configure CEREBRAS_API_KEY, GROQ_API_KEY, OPENAI_API_KEY, or AZURE_OPENAI_API_KEY",
             )
 
         # Federated search
@@ -452,7 +452,7 @@ class SearchFactory:
                 api_keys,
                 ctx,
                 "Federated sources exist but no provider available for keyword extraction. "
-                "Configure CEREBRAS_API_KEY, GROQ_API_KEY, or OPENAI_API_KEY",
+                "Configure CEREBRAS_API_KEY, GROQ_API_KEY, OPENAI_API_KEY, or AZURE_OPENAI_API_KEY",
             )
 
         # Query interpretation
@@ -464,7 +464,7 @@ class SearchFactory:
                 api_keys,
                 ctx,
                 "Query interpretation enabled but no provider available. "
-                "Configure CEREBRAS_API_KEY, GROQ_API_KEY, or OPENAI_API_KEY",
+                "Configure CEREBRAS_API_KEY, GROQ_API_KEY, OPENAI_API_KEY, or AZURE_OPENAI_API_KEY",
             )
 
         # Reranking
@@ -476,7 +476,7 @@ class SearchFactory:
                 api_keys,
                 ctx,
                 "Reranking enabled but no provider available. "
-                "Configure COHERE_API_KEY, GROQ_API_KEY, or OPENAI_API_KEY",
+                "Configure COHERE_API_KEY, GROQ_API_KEY, OPENAI_API_KEY, or AZURE_OPENAI_API_KEY",
             )
 
         # Answer generation
@@ -488,7 +488,7 @@ class SearchFactory:
                 api_keys,
                 ctx,
                 "Answer generation enabled but no provider available. "
-                "Configure CEREBRAS_API_KEY, GROQ_API_KEY, or OPENAI_API_KEY",
+                "Configure CEREBRAS_API_KEY, GROQ_API_KEY, OPENAI_API_KEY, or AZURE_OPENAI_API_KEY",
             )
 
         return providers
@@ -683,6 +683,15 @@ class SearchFactory:
                     azure_api_version = getattr(settings, "AZURE_OPENAI_API_VERSION", "2024-10-21")
                     azure_embedding_deployment = getattr(settings, "AZURE_OPENAI_EMBEDDING_DEPLOYMENT", None)
                     azure_llm_deployment = getattr(settings, "AZURE_OPENAI_LLM_DEPLOYMENT", None)
+
+                    # Validate that Azure endpoint is configured
+                    if not azure_endpoint:
+                        ctx.logger.warning(
+                            f"[Factory] Skipping Azure OpenAI provider for {operation_name}: "
+                            "AZURE_OPENAI_API_KEY is set but AZURE_OPENAI_ENDPOINT is not configured. "
+                            "Set AZURE_OPENAI_ENDPOINT in your environment to use Azure OpenAI."
+                        )
+                        continue
 
                     provider = OpenAIProvider(
                         api_key=api_key,
