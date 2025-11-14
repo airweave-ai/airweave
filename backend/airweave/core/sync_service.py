@@ -143,6 +143,16 @@ class SyncService:
             )
             raise e
 
+        # Register worker pool with metrics for visibility
+        try:
+            from airweave.platform.temporal.worker_metrics import worker_metrics
+            activity_id = f"run_sync_activity-{sync_job.id}"
+            async with worker_metrics._lock:
+                if activity_id in worker_metrics._active_activities:
+                    worker_metrics._active_worker_pools[activity_id] = orchestrator.worker_pool
+        except Exception as e:
+            ctx.logger.debug(f"Failed to register worker pool in metrics: {e}")
+
         # Run the sync with the dedicated orchestrator instance
         return await orchestrator.run()
 

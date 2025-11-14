@@ -198,6 +198,7 @@ class TemporalWorker:
                 status = "stopped"
 
             # Update Prometheus metrics
+            pool_metrics = metrics.get("worker_pool_metrics", {})
             update_prometheus_metrics(
                 worker_id=metrics["worker_id"],
                 status=status,
@@ -207,6 +208,9 @@ class TemporalWorker:
                 task_queue=settings.TEMPORAL_TASK_QUEUE,
                 max_workflow_polls=8,
                 max_activity_polls=16,
+                internal_active_tasks=pool_metrics.get("total_active_tasks", 0),
+                internal_total_capacity=pool_metrics.get("total_capacity", 0),
+                internal_utilization_percent=pool_metrics.get("avg_utilization_percent", 0.0),
             )
 
             # Generate and return Prometheus metrics

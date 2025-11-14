@@ -19,6 +19,7 @@ class WorkerMetricsRegistry:
     def __init__(self) -> None:
         """Initialize the metrics registry."""
         self._active_activities: Dict[str, Dict[str, Any]] = {}
+        self._active_worker_pools: Dict[str, Any] = {}  # activity_id -> AsyncWorkerPool
         self._lock = asyncio.Lock()
         self._worker_start_time = datetime.now(timezone.utc)
         self._worker_id = self._generate_worker_id()
@@ -92,6 +93,7 @@ class WorkerMetricsRegistry:
         finally:
             async with self._lock:
                 self._active_activities.pop(activity_id, None)
+                self._active_worker_pools.pop(activity_id, None)
 
     async def get_active_activities(self) -> List[Dict[str, Any]]:
         """Get list of currently active activities.
@@ -139,6 +141,43 @@ class WorkerMetricsRegistry:
                 if info["sync_job_id"]
             }
 
+    async def get_worker_pool_metrics(self) -> Dict[str, int]:
+        """Get aggregated metrics from all internal worker pools.
+
+        Returns:
+            Dict with:
+            - total_active_tasks: Sum of active tasks across all pools
+            - total_capacity: Sum of capacity across all pools
+            - avg_utilization_percent: Average utilization across all pools
+        """
+        async with self._lock:
+            if not self._active_worker_pools:
+                return {
+                    "total_active_tasks": 0,
+                    "total_capacity": 0,
+                    "avg_utilization_percent": 0.0,
+                }
+
+            total_active = 0
+            total_capacity = 0
+            utilizations = []
+
+            for pool in self._active_worker_pools.values():
+                active = pool.get_active_task_count()
+                capacity = pool.max_workers
+                total_active += active
+                total_capacity += capacity
+                if capacity > 0:
+                    utilizations.append(pool.get_utilization_percent())
+
+            avg_util = sum(utilizations) / len(utilizations) if utilizations else 0.0
+
+            return {
+                "total_active_tasks": total_active,
+                "total_capacity": total_capacity,
+                "avg_utilization_percent": round(avg_util, 2),
+            }
+
     async def get_metrics_summary(self) -> Dict[str, Any]:
         """Get summary metrics about this worker.
 
@@ -149,9 +188,11 @@ class WorkerMetricsRegistry:
             - active_activities_count: Number of activities currently executing
             - active_sync_jobs: List of sync job IDs being processed
             - active_activities: Detailed list of active activities
+            - worker_pool_metrics: Internal worker pool metrics
         """
         activities = await self.get_active_activities()
         sync_job_ids = await self.get_active_sync_job_ids()
+        worker_pool_metrics = await self.get_worker_pool_metrics()
 
         return {
             "worker_id": self.worker_id,
@@ -159,6 +200,7 @@ class WorkerMetricsRegistry:
             "active_activities_count": len(activities),
             "active_sync_jobs": sorted(sync_job_ids),
             "active_activities": activities,
+            "worker_pool_metrics": worker_pool_metrics,
         }
 
 
