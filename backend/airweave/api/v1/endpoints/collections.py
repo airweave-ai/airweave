@@ -202,8 +202,8 @@ async def refresh_all_source_connections(
     collection_obj = schemas.Collection.model_validate(collection, from_attributes=True)
 
     # Get all source connections for this collection
-    source_connections = await source_connection_service.get_source_connections_by_collection(
-        db=db, collection=readable_id, ctx=ctx
+    source_connections = await crud.source_connection.get_for_collection(
+        db=db, readable_collection_id=readable_id, ctx=ctx, limit=10000
     )
 
     if not source_connections:
@@ -217,18 +217,16 @@ async def refresh_all_source_connections(
 
     for sc in source_connections:
         # Create the sync job
-        sync_job = await source_connection_service.run_source_connection(
-            db=db, source_connection_id=sc.id, ctx=ctx
-        )
+        sync_job = await source_connection_service.run(
+            db=db, id=sc.id, ctx=ctx
+            )
 
         # Get necessary objects for running the sync
-        sync = await crud.sync.get(db=db, id=sync_job.sync_id, ctx=ctx, with_connections=True)
+        sync = await crud.sync.get(db=db, id=sc.sync_id, ctx=ctx, with_connections=True)
 
-        # Get source connection with auth_fields for temporal processing
-        source_connection = await source_connection_service.get_source_connection(
+        source_connection = await source_connection_service.get(
             db=db,
-            source_connection_id=sc.id,
-            show_auth_fields=True,  # Important: Need actual auth_fields for temporal
+            id=sc.id,
             ctx=ctx,
         )
 
