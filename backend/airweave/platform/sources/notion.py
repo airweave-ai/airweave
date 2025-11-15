@@ -812,8 +812,16 @@ class NotionSource(BaseSource):
     ) -> Tuple[str, List[NotionFileEntity]]:
         """Format file blocks and return content and file entities."""
         file_entity = self._create_file_entity_from_block(block_content, block["id"])
-        files = [file_entity]
         caption = self._extract_rich_text_plain(block_content.get("caption", []))
+
+        # Handle unsupported / skipped files (e.g., videos, audio, or other types)
+        if file_entity is None:
+            content = f"[{block_type.title()} file]"
+            if caption:
+                content += f" - {caption}"
+            return content, []
+
+        files = [file_entity]
 
         # For embedding text, use simplified representation without full URLs
         # The actual URL is preserved in the file entity
@@ -1065,8 +1073,13 @@ class NotionSource(BaseSource):
 
     def _create_file_entity_from_block(
         self, block_content: dict, parent_id: str
-    ) -> NotionFileEntity:
-        """Create a file entity from block content."""
+    ) -> Optional[NotionFileEntity]:
+        """Create a file entity from block content.
+
+        Returns:
+            NotionFileEntity for supported file types, or None for unsupported types
+            (e.g., videos or other non-textual media).
+        """
         file_type_notion = block_content.get("type", "external")
 
         # Handle different file types according to Notion API
@@ -1144,6 +1157,11 @@ class NotionSource(BaseSource):
             general_file_type = mime_type.split("/")[0]  # e.g., "image", "video", "audio"
         else:
             general_file_type = "file"
+
+        # Skip unsupported media types early (videos and audio)
+        if general_file_type in ("video", "audio"):
+            self.logger.debug(f"Skipping unsupported {general_file_type} file: {name}")
+            return None
 
         return NotionFileEntity(
             # Base fields
