@@ -117,6 +117,7 @@ class Settings(BaseSettings):
     REDIS_PORT: int = 6379
     REDIS_PASSWORD: Optional[str] = None
     REDIS_DB: int = 0
+    REDIS_SENTINEL_ENABLED: bool = False  # Enables Redis Sentinel for automatic failover
 
     QDRANT_HOST: Optional[str] = None
     QDRANT_PORT: Optional[int] = None
