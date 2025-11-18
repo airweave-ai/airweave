@@ -619,7 +619,7 @@ class SharePointSource(BaseSource):
 
                 except FileSkippedException as e:
                     # File intentionally skipped (unsupported type, too large, etc.) - not an error
-                    self.logger.warning(f"Skipping file {file_entity.name}: {e.reason}")
+                    self.logger.debug(f"Skipping file {file_entity.name}: {e.reason}")
                     continue
 
                 except DownloadFailureException as e:

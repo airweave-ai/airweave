@@ -279,7 +279,7 @@ class LinearSource(BaseSource):
                     yield attachment_entity
 
                 except FileSkippedException as e:
-                    # Attachment intentionally skipped (unsupported type or size)
+                    # Attachment intentionally skipped (unsupported type, too large, etc.)
                     self.logger.debug(f"Skipping attachment {attachment_id}: {e.reason}")
                     continue
 

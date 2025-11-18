@@ -10,7 +10,7 @@ from airweave.core.exceptions import TokenRefreshError, PreSyncValidationExcepti
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
 from airweave.platform.downloader import FileSkippedException, DownloadFailureException
-from airweave.platform.entities._base import Breadcrumb
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.zendesk import (
     ZendeskAttachmentEntity,
     ZendeskCommentEntity,
@@ -503,7 +503,7 @@ class ZendeskSource(BaseSource):
 
                     except FileSkippedException as e:
                         # Attachment intentionally skipped (unsupported type, too large, etc.)
-                        self.logger.warning(
+                        self.logger.debug(
                             f"Skipping attachment {attachment_entity.name}: {e.reason}"
                         )
                         continue

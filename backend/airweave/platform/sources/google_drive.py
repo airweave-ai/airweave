@@ -919,7 +919,7 @@ class GoogleDriveSource(BaseSource):
                 return file_entity
 
             except FileSkippedException as e:
-                # Skipped unsupported or oversized file
+                # File intentionally skipped (unsupported type, too large, etc.) - not an error
                 self.logger.debug(f"Skipping file {file_entity.name}: {e.reason}")
                 return None
 
@@ -990,7 +990,7 @@ class GoogleDriveSource(BaseSource):
                             yield file_entity
 
                         except FileSkippedException as e:
-                            # Skipped unsupported or oversized file
+                            # File intentionally skipped (unsupported type, too large, etc.) - not an error
                             self.logger.debug(f"Skipping file {file_entity.name}: {e.reason}")
                             continue
 
@@ -1168,7 +1168,7 @@ class GoogleDriveSource(BaseSource):
                                             yield file_entity
 
                                         except FileSkippedException as e:
-                                            # Skipped unsupported or oversized file
+                                            # File intentionally skipped (unsupported type, too large, etc.) - not an error
                                             self.logger.debug(
                                                 f"Skipping file {file_entity.name}: {e.reason}"
                                             )
@@ -1253,7 +1253,7 @@ class GoogleDriveSource(BaseSource):
                                             yield file_entity
 
                                         except FileSkippedException as e:
-                                            # Skipped unsupported or oversized file
+                                            # File intentionally skipped (unsupported type, too large, etc.) - not an error
                                             self.logger.debug(
                                                 f"Skipping file {file_entity.name}: {e.reason}"
                                             )
@@ -1347,7 +1347,7 @@ class GoogleDriveSource(BaseSource):
                                         yield file_entity
 
                                     except FileSkippedException as e:
-                                        # Skipped unsupported or oversized file
+                                        # File intentionally skipped (unsupported type, too large, etc.) - not an error
                                         self.logger.debug(
                                             f"Skipping file {file_entity.name}: {e.reason}"
                                         )
@@ -1429,7 +1429,7 @@ class GoogleDriveSource(BaseSource):
                                         yield file_entity
 
                                     except FileSkippedException as e:
-                                        # Skipped unsupported or oversized file
+                                        # File intentionally skipped (unsupported type, too large, etc.) - not an error
                                         self.logger.debug(
                                             f"Skipping file {file_entity.name}: {e.reason}"
                                         )

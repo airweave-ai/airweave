@@ -650,7 +650,7 @@ class GitLabSource(BaseSource):
 
         except FileSkippedException as e:
             # File intentionally skipped (unsupported type, too large, etc.) - not an error
-            self.logger.warning(f"Skipping file: {e.reason}")
+            self.logger.debug(f"Skipping file: {e.reason}")
 
         except DownloadFailureException as e:
             self.logger.error(f"Failed to download file {file_path}: {e}", exc_info=True)

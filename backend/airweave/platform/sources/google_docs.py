@@ -397,7 +397,6 @@ class GoogleDocsSource(BaseSource):
 
                         except FileSkippedException as e:
                             # File intentionally skipped (unsupported type, too large, etc.)
-                            # Not an error
                             self.logger.debug(f"Skipping file: {e.reason}")
                             continue
 

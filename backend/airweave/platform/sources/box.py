@@ -516,7 +516,7 @@ class BoxSource(BaseSource):
                 yield file_entity
 
             except FileSkippedException as e:
-                self.logger.warning(f"Skipping file: {e.reason}")
+                self.logger.debug(f"Skipping file: {e.reason}")
                 yield file_entity
 
             except DownloadFailureException as e:

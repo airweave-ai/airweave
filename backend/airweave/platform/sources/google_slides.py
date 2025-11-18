@@ -172,7 +172,7 @@ class GoogleSlidesSource(BaseSource):
 
             except FileSkippedException as e:
                 # Presentation intentionally skipped (unsupported type, too large, etc.)
-                self.logger.warning(f"Skipping presentation {presentation.title}: {e.reason}")
+                self.logger.debug(f"Skipping presentation {presentation.title}: {e.reason}")
                 continue
 
             except DownloadFailureException as e:

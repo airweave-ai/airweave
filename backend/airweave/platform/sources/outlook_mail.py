@@ -596,7 +596,7 @@ class OutlookMailSource(BaseSource):
                 )
         except FileSkippedException as e:
             # Message body skipped (unsupported type, too large) - not an error
-            self.logger.warning(f"Skipping message body for {message_id}: {e.reason}")
+            self.logger.debug(f"Skipping message body for {message_id}: {e.reason}")
             return  # Skip this message if we can't save the body
 
         yield message_entity
@@ -740,7 +740,7 @@ class OutlookMailSource(BaseSource):
 
         except FileSkippedException as e:
             # Attachment intentionally skipped (unsupported type, too large, etc.) - not an error
-            self.logger.warning(f"Skipping attachment {attachment_name}: {e.reason}")
+            self.logger.debug(f"Skipping attachment {attachment_name}: {e.reason}")
             return None
 
         except DownloadFailureException as e:

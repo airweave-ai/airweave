@@ -624,7 +624,7 @@ class GmailSource(BaseSource):
                 message_entity.mime_type = "text/plain"
         except FileSkippedException as e:
             # Email body skipped (unsupported type, too large) - not an error
-            self.logger.warning(f"Skipping message body for {message_id}: {e.reason}")
+            self.logger.debug(f"Skipping message body for {message_id}: {e.reason}")
             return  # Skip this message if we can't save the body
 
         except DownloadFailureException as e:
@@ -827,7 +827,7 @@ class GmailSource(BaseSource):
 
                 except FileSkippedException as e:
                     # Attachment intentionally skipped (unsupported type, too large, etc.)
-                    self.logger.warning(f"Skipping attachment {filename}: {e.reason}")
+                    self.logger.debug(f"Skipping attachment {filename}: {e.reason}")
                     return
 
                 except DownloadFailureException as e:
