@@ -20,11 +20,11 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 import httpx
 from tenacity import retry, stop_after_attempt
 
-from airweave.core.exceptions import TokenRefreshError
+from airweave.core.exceptions import TokenRefreshError, PreSyncValidationException
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.cursors import GoogleDriveCursor
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
+from airweave.platform.downloader import FileSkippedException, DownloadFailureException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.google_drive import (
     GoogleDriveDriveEntity,
@@ -98,11 +98,15 @@ class GoogleDriveSource(BaseSource):
 
     async def validate(self) -> bool:
         """Validate the Google Drive source connection."""
-        return await self._validate_oauth2(
+        is_valid = await self._validate_oauth2(
             ping_url="https://www.googleapis.com/drive/v3/drives?pageSize=1",
             headers={"Accept": "application/json"},
             timeout=10.0,
         )
+        if not is_valid:
+            raise PreSyncValidationException(
+                "Google Drive credentials validation failed", source_name="google_drive"
+            )
 
     @retry(
         stop=stop_after_attempt(5),  # Increased for aggressive rate limits
@@ -919,6 +923,10 @@ class GoogleDriveSource(BaseSource):
                 self.logger.debug(f"Skipping file {file_entity.name}: {e.reason}")
                 return None
 
+            except DownloadFailureException as e:
+                self.logger.error(f"Failed to download file: {e}", exc_info=True)
+                return None
+
             except Exception as e:
                 self.logger.error(f"Failed to download file {file_entity.name}: {e}")
                 return None
@@ -984,6 +992,10 @@ class GoogleDriveSource(BaseSource):
                         except FileSkippedException as e:
                             # Skipped unsupported or oversized file
                             self.logger.debug(f"Skipping file {file_entity.name}: {e.reason}")
+                            continue
+
+                        except DownloadFailureException as e:
+                            self.logger.error(f"Failed to download file: {e}", exc_info=True)
                             continue
 
                         except Exception as e:
@@ -1162,6 +1174,11 @@ class GoogleDriveSource(BaseSource):
                                             )
                                             continue
 
+                                        except DownloadFailureException as e:
+                                            self.logger.error(
+                                                f"Failed to download file: {e}", exc_info=True
+                                            )
+                                            continue
                                         except Exception as e:
                                             self.logger.error(
                                                 f"Failed to download file {file_entity.name}: {e}"
@@ -1242,6 +1259,11 @@ class GoogleDriveSource(BaseSource):
                                             )
                                             continue
 
+                                        except DownloadFailureException as e:
+                                            self.logger.error(
+                                                f"Failed to download file: {e}", exc_info=True
+                                            )
+                                            continue
                                         except Exception as e:
                                             self.logger.error(
                                                 f"Failed to download file {file_entity.name}: {e}"
@@ -1331,6 +1353,11 @@ class GoogleDriveSource(BaseSource):
                                         )
                                         continue
 
+                                    except DownloadFailureException as e:
+                                        self.logger.error(
+                                            f"Failed to download file: {e}", exc_info=True
+                                        )
+                                        continue
                                     except Exception as e:
                                         self.logger.error(
                                             f"Failed to download file {file_entity.name}: {e}"
@@ -1408,6 +1435,11 @@ class GoogleDriveSource(BaseSource):
                                         )
                                         continue
 
+                                    except DownloadFailureException as e:
+                                        self.logger.error(
+                                            f"Failed to download file: {e}", exc_info=True
+                                        )
+                                        continue
                                     except Exception as e:
                                         self.logger.error(
                                             f"Failed to download file {file_entity.name}: {e}"

@@ -17,6 +17,7 @@ from airweave.platform.entities._base import Breadcrumb
 from airweave.platform.entities.ctti import CTTIWebEntity
 from airweave.platform.sources._base import BaseSource
 from airweave.schemas.source_connection import AuthenticationMethod
+from airweave.core.exceptions import PreSyncValidationException
 
 # Global connection pool for CTTI to prevent connection exhaustion
 _ctti_pool: Optional[asyncpg.Pool] = None
@@ -317,7 +318,7 @@ class CTTISource(BaseSource):
             raise
         # Note: We don't close the pool here as it's shared across all CTTI instances
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify CTTI DB credentials and basic access by running a tiny query."""
         try:
             # Ensure pool is initialized (also validates username/password)
@@ -334,12 +335,14 @@ class CTTISource(BaseSource):
 
             # A couple of retries in case of transient network hiccups
             await _retry_with_backoff(_ping, max_retries=2)
-            return True
 
         except (asyncpg.InvalidPasswordError, asyncpg.InvalidCatalogNameError, ValueError) as e:
             # Non-retryable credential/config errors
-            self.logger.error(f"CTTI validation failed (credentials/config): {e}")
-            return False
+            raise PreSyncValidationException(
+                f"CTTI validation failed (credentials/config): {e}",
+                source_name=self.__class__.__name__,
+            )
         except Exception as e:
-            self.logger.error(f"CTTI validation encountered an error: {e}")
-            return False
+            raise PreSyncValidationException(
+                f"CTTI validation encountered an error: {e}", source_name=self.__class__.__name__
+            )

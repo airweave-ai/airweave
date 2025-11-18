@@ -48,6 +48,7 @@ from airweave.schemas.source_connection import (
     AuthenticationMethod,
     SourceConnectionJob,
 )
+from airweave.core.exceptions import PreSyncValidationException
 
 
 class SourceConnectionHelpers:
@@ -285,18 +286,19 @@ class SourceConnectionHelpers:
         config_fields: Optional[ConfigValues],
         ctx: ApiContext,
     ) -> Dict[str, Any]:
-        """Validate direct authentication credentials."""
+        """Validate direct authentication credentials.
+
+        Raises:
+            PreSyncValidationException: If validation fails (caught by global handler → HTTP 400)
+            HTTPException: For other errors
+        """
         try:
             source_cls = resource_locator.get_source(source)
             source_instance = await source_cls.create(auth_fields, config=config_fields)
             source_instance.set_logger(ctx.logger)
 
             if hasattr(source_instance, "validate"):
-                is_valid = await source_instance.validate()
-                if not is_valid:
-                    raise HTTPException(
-                        status_code=400, detail="Authentication credentials are invalid"
-                    )
+                await source_instance.validate()
             else:
                 raise HTTPException(
                     status_code=400,
@@ -304,6 +306,8 @@ class SourceConnectionHelpers:
                 )
             return {"valid": True, "source": source.short_name}
         except HTTPException:
+            raise
+        except PreSyncValidationException:
             raise
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Validation failed: {str(e)}") from e
@@ -326,6 +330,10 @@ class SourceConnectionHelpers:
             config_fields: Optional config fields
             ctx: API context
             credentials: Full OAuth credentials dict (includes access_token, instance_url, etc.)
+
+        Raises:
+            PreSyncValidationException: If validation fails (caught by global handler → HTTP 400)
+            HTTPException: For other errors
         """
         try:
             source_cls = resource_locator.get_source(source)
@@ -337,11 +345,11 @@ class SourceConnectionHelpers:
             source_instance.set_logger(ctx.logger)
 
             if hasattr(source_instance, "validate"):
-                is_valid = await source_instance.validate()
-                if not is_valid:
-                    raise HTTPException(status_code=400, detail="OAuth token is invalid")
+                await source_instance.validate()
             return {"valid": True, "source": source.short_name}
         except HTTPException:
+            raise
+        except PreSyncValidationException:
             raise
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Token validation failed: {str(e)}") from e

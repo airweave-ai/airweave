@@ -29,6 +29,7 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+from airweave.core.exceptions import PreSyncValidationException
 
 
 @source(
@@ -679,13 +680,15 @@ class MondaySource(BaseSource):
                 ):
                     yield update_entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify Monday OAuth2 token by POSTing a minimal GraphQL query to /v2."""
         try:
             token = await self.get_access_token()
             if not token:
-                self.logger.error("Monday validation failed: no access token available.")
-                return False
+                raise PreSyncValidationException(
+                    "Monday validation failed: no access token available.",
+                    source_name=self.__class__.__name__,
+                )
 
             query = {"query": "query { me { id } }"}
 
@@ -709,19 +712,26 @@ class MondaySource(BaseSource):
                     self.logger.warning(
                         f"Monday validate failed: HTTP {resp.status_code} - {resp.text[:200]}"
                     )
-                    return False
+                    raise PreSyncValidationException(
+                        "Validation failed", source_name=self.__class__.__name__
+                    )
 
                 body = resp.json()
                 if body.get("errors"):
                     self.logger.warning(f"Monday validate GraphQL errors: {body['errors']}")
-                    return False
+                    raise PreSyncValidationException(
+                        "Validation failed", source_name=self.__class__.__name__
+                    )
 
                 me = (body.get("data") or {}).get("me") or {}
                 return bool(me.get("id"))
 
         except httpx.RequestError as e:
-            self.logger.error(f"Monday validation request error: {e}")
-            return False
+            raise PreSyncValidationException(
+                f"Monday validation request error: {e}", source_name=self.__class__.__name__
+            )
         except Exception as e:
-            self.logger.error(f"Unexpected error during Monday validation: {e}")
-            return False
+            raise PreSyncValidationException(
+                f"Unexpected error during Monday validation: {e}",
+                source_name=self.__class__.__name__,
+            )

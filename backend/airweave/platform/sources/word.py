@@ -24,7 +24,7 @@ from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
+from airweave.platform.downloader import FileSkippedException, DownloadFailureException
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.entities.word import WordDocumentEntity
 from airweave.platform.sources._base import BaseSource
@@ -33,6 +33,7 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+from airweave.core.exceptions import PreSyncValidationException
 
 
 @source(
@@ -420,7 +421,13 @@ class WordSource(BaseSource):
 
                     except FileSkippedException as e:
                         # Document intentionally skipped (unsupported type, too large, etc.) - not an error
-                        self.logger.debug(f"Skipping document {document_entity.title}: {e.reason}")
+                        self.logger.warning(
+                            f"Skipping document {document_entity.title}: {e.reason}"
+                        )
+                        continue
+
+                    except DownloadFailureException as e:
+                        self.logger.error(f"Failed to download file: {e}", exc_info=True)
                         continue
 
                     except Exception as e:
@@ -438,14 +445,18 @@ class WordSource(BaseSource):
                 f"===== MICROSOFT WORD ENTITY GENERATION COMPLETE: {entity_count} entities ====="
             )
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify Microsoft Word OAuth2 token by pinging the drive endpoint.
 
-        Returns:
-            True if token is valid, False otherwise
+        Raises:
+            PreSyncValidationException: If token is invalid or unreachable
         """
-        return await self._validate_oauth2(
+        is_valid = await self._validate_oauth2(
             ping_url=f"{self.GRAPH_BASE_URL}/me/drive?$select=id",
             headers={"Accept": "application/json"},
             timeout=10.0,
         )
+        if not is_valid:
+            raise PreSyncValidationException(
+                "Word credentials validation failed", source_name="word"
+            )
