@@ -19,19 +19,12 @@ from airweave.api.context import ApiContext
 from airweave.core.config import settings
 from airweave.core.exceptions import (
     AirweaveException,
-    CollectionNotFoundException,
-    ImmutableFieldError,
-    InvalidScheduleOperationException,
     InvalidStateError,
-    MinuteLevelScheduleException,
     NotFoundException,
     PaymentRequiredException,
     PermissionException,
+    PreSyncValidationException,
     RateLimitExceededException,
-    ScheduleNotExistsException,
-    ScheduleOperationException,
-    SyncJobNotFoundException,
-    SyncNotFoundException,
     TokenRefreshError,
     UsageLimitExceededException,
     unpack_validation_error,
@@ -419,21 +412,12 @@ async def airweave_exception_handler(request: Request, exc: AirweaveException) -
     """
     # Map exception types to HTTP status codes
     status_code_map = {
-        # 404 Not Found - Resource doesn't exist
-        SyncNotFoundException: 404,
-        SyncJobNotFoundException: 404,
-        CollectionNotFoundException: 404,
         # 400 Bad Request - Client error
-        InvalidScheduleOperationException: 400,
-        ScheduleNotExistsException: 400,
-        ImmutableFieldError: 400,
+        PreSyncValidationException: 400,  # Source/destination validation failures
         # 401 Unauthorized - Authentication issues
         TokenRefreshError: 401,
         # 403 Forbidden - Permission issues (already handled by permission_exception_handler)
         PermissionException: 403,
-        # 500 Internal Server Error - Server/operation failures
-        MinuteLevelScheduleException: 500,
-        ScheduleOperationException: 500,
     }
 
     # Get status code from map, checking for subclasses

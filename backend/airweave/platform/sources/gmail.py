@@ -20,7 +20,7 @@ from airweave.platform.utils.filename_utils import safe_filename
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.cursors import GmailCursor
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
+from airweave.platform.downloader import FileSkippedException, DownloadFailureException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.gmail import (
     GmailAttachmentEntity,
@@ -33,6 +33,7 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+from airweave.core.exceptions import PreSyncValidationException
 
 
 def _should_retry_gmail_request(exception: Exception) -> bool:
@@ -623,8 +624,14 @@ class GmailSource(BaseSource):
                 message_entity.mime_type = "text/plain"
         except FileSkippedException as e:
             # Email body skipped (unsupported type, too large) - not an error
-            self.logger.debug(f"Skipping message body for {message_id}: {e.reason}")
+            self.logger.warning(f"Skipping message body for {message_id}: {e.reason}")
             return  # Skip this message if we can't save the body
+
+        except DownloadFailureException as e:
+            self.logger.error(
+                f"Failed to download message body for {message_id}: {e}", exc_info=True
+            )
+            return  # Skip this message if we can't download the body
 
         yield message_entity
         self.logger.debug(f"Message entity yielded for {message_id}")
@@ -820,7 +827,13 @@ class GmailSource(BaseSource):
 
                 except FileSkippedException as e:
                     # Attachment intentionally skipped (unsupported type, too large, etc.)
-                    self.logger.debug(f"Skipping attachment {filename}: {e.reason}")
+                    self.logger.warning(f"Skipping attachment {filename}: {e.reason}")
+                    return
+
+                except DownloadFailureException as e:
+                    self.logger.error(
+                        f"Failed to download attachment {filename}: {e}", exc_info=True
+                    )
                     return
 
                 except Exception as e:
@@ -1015,10 +1028,14 @@ class GmailSource(BaseSource):
             self.logger.error(f"Error in entity generation: {str(e)}", exc_info=True)
             raise
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify Gmail OAuth2 token by pinging the users.getProfile endpoint."""
-        return await self._validate_oauth2(
+        is_valid = await self._validate_oauth2(
             ping_url="https://gmail.googleapis.com/gmail/v1/users/me/profile",
             headers={"Accept": "application/json"},
             timeout=10.0,
         )
+        if not is_valid:
+            raise PreSyncValidationException(
+                "Gmail credentials validation failed", source_name="gmail"
+            )

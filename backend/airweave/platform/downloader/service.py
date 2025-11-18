@@ -15,9 +15,10 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.platform.sync.file_types import SUPPORTED_FILE_EXTENSIONS
+from airweave.core.exceptions import AirweaveException, ErrorSeverity
 
 
-class FileSkippedException(Exception):
+class FileSkippedException(AirweaveException):
     """Exception raised when a file is intentionally skipped (not an error).
 
     This is raised when files are skipped for valid reasons like:
@@ -27,6 +28,8 @@ class FileSkippedException(Exception):
 
     This is NOT an error condition - it's expected behavior during normal sync operations.
     """
+
+    severity: ErrorSeverity = ErrorSeverity.EXPECTED
 
     def __init__(self, reason: str, filename: str):
         """Initialize file skipped exception.
@@ -38,6 +41,35 @@ class FileSkippedException(Exception):
         self.reason = reason
         self.filename = filename
         super().__init__(f"File '{filename}' skipped: {reason}")
+
+
+class DownloadFailureException(AirweaveException):
+    """Exception raised when a file download fails."""
+
+    def __init__(self, reason: str, filename: str, http_status: int):
+        """Initialize download failure exception with severity based on HTTP status.
+
+        Args:
+            reason: Human-readable reason for the failure
+            filename: Name of the file that failed to download
+            http_status: HTTP status code that caused the failure
+        """
+        self.reason = reason
+        self.filename = filename
+        self.http_status = http_status
+
+        # Determine severity based on HTTP status
+        if 400 <= http_status < 500:
+            # Client errors: bad config, permissions, file not found - EXPECTED
+            self.severity = ErrorSeverity.EXPECTED
+        elif 500 <= http_status < 600:
+            # Server errors: external service issues, retryable - OPERATIONAL
+            self.severity = ErrorSeverity.OPERATIONAL
+        else:
+            # Network errors, timeouts (status might be 0 or unexpected) - OPERATIONAL
+            self.severity = ErrorSeverity.OPERATIONAL
+
+        super().__init__(f"File '{filename}' download failed (HTTP {http_status}): {reason}")
 
 
 class FileDownloadService:
@@ -298,8 +330,22 @@ class FileDownloadService:
 
             return entity
 
-        except Exception:
+        except httpx.HTTPStatusError as e:
             # Clean up partial file
+            if os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except Exception:
+                    pass
+
+            raise DownloadFailureException(
+                reason=e.response.reason_phrase,
+                filename=entity.name,
+                http_status=e.response.status_code,
+            ) from e
+
+        except Exception as e:
+            # Non-HTTP errors (network, IO, etc.) - clean up and re-raise original
             if os.path.exists(temp_path):
                 try:
                     os.remove(temp_path)

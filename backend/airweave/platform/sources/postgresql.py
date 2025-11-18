@@ -19,6 +19,7 @@ from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, PolymorphicEntity
 from airweave.platform.sources._base import BaseSource
 from airweave.schemas.source_connection import AuthenticationMethod
+from airweave.core.exceptions import PreSyncValidationException
 
 # Mapping of PostgreSQL types to Python types
 PG_TYPE_MAP = {
@@ -850,7 +851,7 @@ class PostgreSQLSource(BaseSource):
         name_scores.sort(key=lambda x: (-x[0],))
         return name_scores[0][1] if name_scores else candidates[0]["column_name"]
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify PostgreSQL credentials, schema access, and (optionally) tables."""
         try:
             # 1) Connect (handles common connection errors and timeouts)
@@ -860,8 +861,9 @@ class PostgreSQLSource(BaseSource):
             try:
                 _ = await self.conn.fetchval("SELECT 1;")
             except Exception as e:
-                self.logger.error(f"PostgreSQL ping failed: {e}")
-                return False
+                raise PreSyncValidationException(
+                    f"PostgreSQL ping failed: {e}", source_name=self.__class__.__name__
+                )
 
             # 3) Schema existence
             schema = (self.config or {}).get("schema", "public") or "public"
@@ -870,8 +872,10 @@ class PostgreSQLSource(BaseSource):
                 schema,
             )
             if not exists:
-                self.logger.error(f"Schema '{schema}' does not exist or is inaccessible.")
-                return False
+                raise PreSyncValidationException(
+                    f"Schema '{schema}' does not exist or is inaccessible.",
+                    source_name=self.__class__.__name__,
+                )
 
             # 4) If specific tables were requested, verify they exist
             tables_cfg = (self.config or {}).get("tables", "*") or "*"
@@ -882,19 +886,21 @@ class PostgreSQLSource(BaseSource):
                     available = await self._get_tables(schema)
                     missing = [t for t in requested if t not in available]
                     if missing:
-                        self.logger.error(
-                            f"Tables not found in schema '{schema}': {', '.join(missing)}"
+                        raise PreSyncValidationException(
+                            f"PostgreSQL tables not found in schema '{schema}': {', '.join(missing)}",
+                            source_name=self.__class__.__name__,
                         )
-                        return False
-
-            return True
 
         except (asyncpg.InvalidPasswordError, asyncpg.InvalidCatalogNameError, ValueError) as e:
-            self.logger.error(f"PostgreSQL validation failed (credentials/config): {e}")
-            return False
+            raise PreSyncValidationException(
+                f"PostgreSQL validation failed (credentials/config): {e}",
+                source_name=self.__class__.__name__,
+            )
         except Exception as e:
-            self.logger.error(f"Unexpected error during PostgreSQL validation: {e}")
-            return False
+            raise PreSyncValidationException(
+                f"Unexpected error during PostgreSQL validation: {e}",
+                source_name=self.__class__.__name__,
+            )
         finally:
             if self.conn:
                 await self.conn.close()
