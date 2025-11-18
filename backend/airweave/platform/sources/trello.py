@@ -599,11 +599,11 @@ class TrelloSource(BaseSource):
 
         self.logger.info("Trello sync completed")
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify OAuth1 credentials by calling the /members/me endpoint.
 
-        Returns:
-            True if credentials are valid, False otherwise
+        Raises:
+            PreSyncValidationException: If credentials are invalid or unreachable
         """
         try:
             async with self.http_client() as client:
@@ -612,7 +612,7 @@ class TrelloSource(BaseSource):
                     f"{self.API_BASE}/members/me",
                     query_params={"fields": "id,username"},
                 )
-            return True
         except Exception as e:
-            self.logger.error(f"OAuth1 validation failed: {str(e)}")
-            return False
+            raise PreSyncValidationException(
+                f"OAuth1 validation failed: {str(e)}", source_name=self.__class__.__name__
+            )

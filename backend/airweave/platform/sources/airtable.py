@@ -5,10 +5,10 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 import httpx
 from tenacity import retry, stop_after_attempt
 
-from airweave.core.exceptions import TokenRefreshError
+from airweave.core.exceptions import TokenRefreshError, PreSyncValidationException
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
+from airweave.platform.downloader import FileSkippedException, DownloadFailureException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.airtable import (
     AirtableAttachmentEntity,
@@ -485,7 +485,11 @@ class AirtableSource(BaseSource):
 
                 except FileSkippedException as e:
                     # File intentionally skipped (unsupported type, too large, etc.) - not an error
-                    self.logger.debug(f"Skipping file: {e.reason}")
+                    self.logger.warning(f"Skipping file: {e.reason}")
+                    continue
+
+                except DownloadFailureException as e:
+                    self.logger.error(f"Failed to download file: {e}", exc_info=True)
                     continue
 
                 except Exception as e:
@@ -592,10 +596,14 @@ class AirtableSource(BaseSource):
                         ):
                             yield attachment_entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify OAuth2 token by pinging Airtable's bases endpoint."""
-        return await self._validate_oauth2(
+        is_valid = await self._validate_oauth2(
             ping_url=f"{self.API_BASE}/meta/bases",
             headers={"Accept": "application/json"},
             timeout=10.0,
         )
+        if not is_valid:
+            raise PreSyncValidationException(
+                "Airtable credentials validation failed", source_name="airtable"
+            )

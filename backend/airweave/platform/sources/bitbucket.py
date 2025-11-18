@@ -11,7 +11,7 @@ from tenacity import retry, stop_after_attempt
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.configs.auth import BitbucketAuthConfig
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
+from airweave.platform.downloader import FileSkippedException, DownloadFailureException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.bitbucket import (
     BitbucketCodeFileEntity,
@@ -29,6 +29,7 @@ from airweave.platform.utils.file_extensions import (
     is_text_file,
 )
 from airweave.schemas.source_connection import AuthenticationMethod
+from airweave.core.exceptions import PreSyncValidationException
 
 
 @source(
@@ -535,7 +536,10 @@ class BitbucketSource(BaseSource):
                 yield file_entity
         except FileSkippedException as e:
             # File intentionally skipped (unsupported type, too large, etc.) - not an error
-            self.logger.debug(f"Skipping file: {e.reason}")
+            self.logger.warning(f"Skipping file: {e.reason}")
+
+        except DownloadFailureException as e:
+            self.logger.error(f"Failed to download file {file_path}: {e}", exc_info=True)
 
         except Exception as e:
             self.logger.error(f"Error processing file {item_path}: {str(e)}")
@@ -597,7 +601,7 @@ class BitbucketSource(BaseSource):
                             entity.breadcrumbs = [workspace_breadcrumb]
                         yield entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify Bitbucket Basic Auth and (if provided) workspace access."""
         # Ensure credentials are present
         try:
@@ -612,11 +616,15 @@ class BitbucketSource(BaseSource):
                             f" {user_data.get('username', 'Unknown')}"
                         )
                     else:
-                        self.logger.warning("Bitbucket auth returned unexpected data format")
-                        return False
+                        raise PreSyncValidationException(
+                            "Bitbucket authentication failed: unexpected response format",
+                            source_name=self.__class__.__name__,
+                        )
                 except httpx.HTTPStatusError as e:
-                    self.logger.warning(f"Bitbucket /user auth failed: {e}")
-                    return False
+                    raise PreSyncValidationException(
+                        f"Bitbucket authentication failed: HTTP {e.response.status_code}",
+                        source_name=self.__class__.__name__,
+                    )
 
                 # 2) Workspace reachability (optional but recommended for this connector)
                 if getattr(self, "workspace", None):
@@ -627,20 +635,22 @@ class BitbucketSource(BaseSource):
                         if ws_data and "uuid" in ws_data:
                             self.logger.debug(f"Bitbucket workspace '{self.workspace}' verified")
                         else:
-                            self.logger.warning(
-                                f"Bitbucket workspace '{self.workspace}' returned unexpected data"
+                            raise PreSyncValidationException(
+                                f"Bitbucket workspace '{self.workspace}' validation failed: unexpected response format",
+                                source_name=self.__class__.__name__,
                             )
-                            return False
                     except httpx.HTTPStatusError as e:
-                        self.logger.warning(
-                            f"Bitbucket workspace '{self.workspace}' check failed: {e}"
+                        raise PreSyncValidationException(
+                            f"Bitbucket workspace '{self.workspace}' not accessible: HTTP {e.response.status_code}",
+                            source_name=self.__class__.__name__,
                         )
-                        return False
 
-            return True
         except httpx.RequestError as e:
-            self.logger.error(f"Bitbucket validation request error: {e}")
-            return False
+            raise PreSyncValidationException(
+                f"Bitbucket validation request error: {e}", source_name=self.__class__.__name__
+            )
         except Exception as e:
-            self.logger.error(f"Unexpected error during Bitbucket validation: {e}")
-            return False
+            raise PreSyncValidationException(
+                f"Unexpected error during Bitbucket validation: {e}",
+                source_name=self.__class__.__name__,
+            )

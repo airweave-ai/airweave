@@ -45,6 +45,7 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod
+from airweave.core.exceptions import PreSyncValidationException
 
 
 @source(
@@ -839,21 +840,23 @@ class StripeSource(BaseSource):
             async for sub_entity in self._generate_subscription_entities(client):
                 yield sub_entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify Stripe API key by pinging a lightweight endpoint (/v1/balance)."""
         if not getattr(self, "api_key", None):
-            self.logger.error("Stripe validation failed: missing API key.")
-            return False
+            raise PreSyncValidationException(
+                "Stripe validation failed: missing API key.", source_name=self.__class__.__name__
+            )
         try:
             async with self.http_client(timeout=10.0) as client:
                 # Reuse the authenticated helper for consistency
                 await self._get_with_auth(client, "https://api.stripe.com/v1/balance")
-                return True
         except httpx.HTTPStatusError as e:
-            self.logger.error(
-                f"Stripe validation failed: HTTP {e.response.status_code} - {e.response.text[:200]}"
+            raise PreSyncValidationException(
+                f"Stripe validation failed: HTTP {e.response.status_code} - {e.response.text[:200]}",
+                source_name=self.__class__.__name__,
             )
-            return False
         except Exception as e:
-            self.logger.error(f"Unexpected error during Stripe validation: {e}")
-            return False
+            raise PreSyncValidationException(
+                f"Unexpected error during Stripe validation: {e}",
+                source_name=self.__class__.__name__,
+            )

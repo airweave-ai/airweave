@@ -21,11 +21,12 @@ import httpx
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.cursors import GoogleDocsCursor
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
+from airweave.platform.downloader import FileSkippedException, DownloadFailureException
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.entities.google_docs import GoogleDocsDocumentEntity
 from airweave.platform.sources._base import BaseSource
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+from airweave.core.exceptions import PreSyncValidationException
 
 
 @source(
@@ -93,19 +94,23 @@ class GoogleDocsSource(BaseSource):
 
         return instance
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate the Google Docs source connection.
 
         Tests the connection by making a simple API call to list drives.
 
-        Returns:
-            True if connection is valid, False otherwise
+        Raises:
+            PreSyncValidationException: If connection is invalid or unreachable
         """
-        return await self._validate_oauth2(
+        is_valid = await self._validate_oauth2(
             ping_url="https://www.googleapis.com/drive/v3/about?fields=user",
             headers={"Accept": "application/json"},
             timeout=10.0,
         )
+        if not is_valid:
+            raise PreSyncValidationException(
+                "Google Docs credentials validation failed", source_name="google_docs"
+            )
 
     # --- Incremental sync support (cursor field) ---
     def get_default_cursor_field(self) -> Optional[str]:
@@ -278,6 +283,10 @@ class GoogleDocsSource(BaseSource):
                                 # File intentionally skipped (unsupported type, too large, etc.)
                                 # Not an error
                                 self.logger.debug(f"Skipping file: {e.reason}")
+
+                            except DownloadFailureException as e:
+                                self.logger.error(f"Failed to download file: {e}", exc_info=True)
+                                # Continue with other documents
                                 continue
 
                             except Exception as e:
@@ -390,6 +399,10 @@ class GoogleDocsSource(BaseSource):
                             # File intentionally skipped (unsupported type, too large, etc.)
                             # Not an error
                             self.logger.debug(f"Skipping file: {e.reason}")
+                            continue
+
+                        except DownloadFailureException as e:
+                            self.logger.error(f"Failed to download file: {e}", exc_info=True)
                             continue
 
                         except Exception as e:

@@ -232,8 +232,12 @@ class BaseSource:
         pass
 
     @abstractmethod
-    async def validate(self) -> bool:
-        """Validate that this source is reachable and credentials are usable."""
+    async def validate(self) -> None:
+        """Validate that this source is reachable and credentials are usable.
+
+        Raises:
+            PreSyncValidationException: If validation fails (bad credentials, unreachable, etc.)
+        """
         raise NotImplementedError
 
     async def search(self, query: str, limit: int) -> AsyncGenerator[BaseEntity, None]:

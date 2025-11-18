@@ -13,7 +13,7 @@ from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.configs.auth import GitHubAuthConfig
 from airweave.platform.cursors import GitHubCursor
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
+from airweave.platform.downloader import FileSkippedException, DownloadFailureException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.github import (
     GitHubCodeFileEntity,
@@ -31,6 +31,7 @@ from airweave.platform.utils.file_extensions import (
     is_text_file,
 )
 from airweave.schemas.source_connection import AuthenticationMethod
+from airweave.core.exceptions import PreSyncValidationException
 
 
 @source(
@@ -575,7 +576,10 @@ class GitHubSource(BaseSource):
 
         except FileSkippedException as e:
             # File intentionally skipped (unsupported type, too large, etc.) - not an error
-            self.logger.debug(f"Skipping file: {e.reason}")
+            self.logger.warning(f"Skipping file: {e.reason}")
+
+        except DownloadFailureException as e:
+            self.logger.error(f"Failed to download file {file_path}: {e}", exc_info=True)
 
         except Exception as e:
             self.logger.error(f"Error processing changed file {file_path}: {e}")
@@ -807,7 +811,10 @@ class GitHubSource(BaseSource):
                 yield file_entity
         except FileSkippedException as e:
             # File intentionally skipped (unsupported type, too large, etc.) - not an error
-            self.logger.debug(f"Skipping file: {e.reason}")
+            self.logger.warning(f"Skipping file: {e.reason}")
+
+        except DownloadFailureException as e:
+            self.logger.error(f"Failed to download file {item_path}: {e}", exc_info=True)
 
         except Exception as e:
             self.logger.error(f"Error processing file {item_path}: {str(e)}")
@@ -905,11 +912,13 @@ class GitHubSource(BaseSource):
                 repo_entity = await self._get_repository_info(client, self.repo_name)
                 yield repo_entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify GitHub PAT and repo/branch access with lightweight pings."""
         if not getattr(self, "personal_access_token", None):
-            self.logger.error("GitHub validation failed: missing personal_access_token.")
-            return False
+            raise PreSyncValidationException(
+                "GitHub validation failed: missing personal_access_token.",
+                source_name=self.__class__.__name__,
+            )
 
         headers = {
             "Authorization": f"token {self.personal_access_token}",
@@ -925,7 +934,9 @@ class GitHubSource(BaseSource):
                     self.logger.warning(
                         f"GitHub /user ping failed: {me.status_code} - {me.text[:200]}"
                     )
-                    return False
+                    raise PreSyncValidationException(
+                        "Validation failed", source_name=self.__class__.__name__
+                    )
 
                 # 2) Repo reachability (optional but recommended for this connector)
                 if getattr(self, "repo_name", None):
@@ -937,7 +948,9 @@ class GitHubSource(BaseSource):
                             f"GitHub repo '{self.repo_name}' check failed: "
                             f"{repo.status_code} - {repo.text[:200]}"
                         )
-                        return False
+                        raise PreSyncValidationException(
+                            "Validation failed", source_name=self.__class__.__name__
+                        )
 
                     # 3) Branch existence (only if user specified a branch)
                     if getattr(self, "branch", None):
@@ -950,13 +963,16 @@ class GitHubSource(BaseSource):
                                 f"GitHub branch '{self.branch}' not found or inaccessible in "
                                 f"'{self.repo_name}': {br.status_code} - {br.text[:200]}"
                             )
-                            return False
-
-            return True
+                            raise PreSyncValidationException(
+                                "Validation failed", source_name=self.__class__.__name__
+                            )
 
         except httpx.RequestError as e:
-            self.logger.error(f"GitHub validation request error: {e}")
-            return False
+            raise PreSyncValidationException(
+                f"GitHub validation request error: {e}", source_name=self.__class__.__name__
+            )
         except Exception as e:
-            self.logger.error(f"Unexpected error during GitHub validation: {e}")
-            return False
+            raise PreSyncValidationException(
+                f"Unexpected error during GitHub validation: {e}",
+                source_name=self.__class__.__name__,
+            )

@@ -21,7 +21,7 @@ from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
+from airweave.platform.downloader import FileSkippedException, DownloadFailureException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.sharepoint import (
     SharePointDriveEntity,
@@ -39,6 +39,7 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+from airweave.core.exceptions import PreSyncValidationException
 
 
 @source(
@@ -618,7 +619,11 @@ class SharePointSource(BaseSource):
 
                 except FileSkippedException as e:
                     # File intentionally skipped (unsupported type, too large, etc.) - not an error
-                    self.logger.debug(f"Skipping file {file_entity.name}: {e.reason}")
+                    self.logger.warning(f"Skipping file {file_entity.name}: {e.reason}")
+                    continue
+
+                except DownloadFailureException as e:
+                    self.logger.error(f"Failed to download file: {e}", exc_info=True)
                     continue
 
                 except Exception as e:
@@ -1076,10 +1081,14 @@ class SharePointSource(BaseSource):
                 f"===== SHAREPOINT ENTITY GENERATION COMPLETE: {entity_count} entities ====="
             )
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify SharePoint OAuth2 token by pinging the sites endpoint."""
-        return await self._validate_oauth2(
+        is_valid = await self._validate_oauth2(
             ping_url=f"{self.GRAPH_BASE_URL}/sites/root",
             headers={"Accept": "application/json"},
             timeout=10.0,
         )
+        if not is_valid:
+            raise PreSyncValidationException(
+                "Sharepoint credentials validation failed", source_name="sharepoint"
+            )

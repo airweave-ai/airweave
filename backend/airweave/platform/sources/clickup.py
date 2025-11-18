@@ -10,7 +10,7 @@ from airweave.core.exceptions import TokenRefreshError
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.configs.auth import ClickUpAuthConfig
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
+from airweave.platform.downloader import FileSkippedException, DownloadFailureException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.clickup import (
     ClickUpCommentEntity,
@@ -550,6 +550,11 @@ class ClickUpSource(BaseSource):
                     self.logger.debug(f"Skipping attachment {file_name}: {e.reason}")
                     # Continue with other attachments
                     continue
+
+                except DownloadFailureException as e:
+                    self.logger.error(f"Failed to download file: {e}", exc_info=True)
+                    # Still yield the file entity without processed content
+                    yield file_entity
 
                 except Exception as e:
                     self.logger.warning(f"Failed to download attachment {file_name}: {e}")

@@ -8,7 +8,7 @@ from tenacity import retry, stop_after_attempt
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.configs.auth import DropboxAuthConfig
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
+from airweave.platform.downloader import FileSkippedException, DownloadFailureException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.dropbox import (
     DropboxAccountEntity,
@@ -21,6 +21,7 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+from airweave.core.exceptions import PreSyncValidationException
 
 
 @source(
@@ -457,7 +458,12 @@ class DropboxSource(BaseSource):
                             yield file_entity
 
                     except FileSkippedException as e:
-                        self.logger.debug(f"Skipping file: {e.reason}")
+                        self.logger.warning(f"Skipping file: {e.reason}")
+                        continue
+
+                    except DownloadFailureException as e:
+                        self.logger.error(f"Failed to download file: {e}", exc_info=True)
+                        # Continue with other files even if one fails
                         continue
 
                     except Exception as e:
@@ -590,14 +596,16 @@ class DropboxSource(BaseSource):
                     ):
                         yield entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify Dropbox OAuth2 token by calling /users/get_current_account (POST, no body)."""
         try:
             # Quick sanity check before making the request
             token = await self.get_access_token()
             if not token:
-                self.logger.error("Dropbox validation failed: no access token available.")
-                return False
+                raise PreSyncValidationException(
+                    "Dropbox validation failed: no access token available.",
+                    source_name=self.__class__.__name__,
+                )
 
             async with self.http_client(timeout=10.0) as client:
                 # Uses the same auth/refresh/retry logic as the rest of the connector
@@ -606,16 +614,14 @@ class DropboxSource(BaseSource):
                     "https://api.dropboxapi.com/2/users/get_current_account",
                     None,  # no request body for this endpoint
                 )
-            return True
 
         except httpx.HTTPStatusError as e:
-            self.logger.error(
-                (
-                    f"Dropbox validation failed: HTTP"
-                    f"{e.response.status_code} - {e.response.text[:200]}"
-                )
+            raise PreSyncValidationException(
+                f"Dropbox validation failed: HTTP {e.response.status_code}",
+                source_name=self.__class__.__name__,
             )
-            return False
         except Exception as e:
-            self.logger.error(f"Unexpected error during Dropbox validation: {e}")
-            return False
+            raise PreSyncValidationException(
+                f"Unexpected error during Dropbox validation: {e}",
+                source_name=self.__class__.__name__,
+            )

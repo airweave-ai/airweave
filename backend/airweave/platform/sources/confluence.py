@@ -22,10 +22,10 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 import httpx
 from tenacity import retry, stop_after_attempt
 
-from airweave.core.exceptions import TokenRefreshError
+from airweave.core.exceptions import TokenRefreshError, PreSyncValidationException
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
+from airweave.platform.downloader import FileSkippedException, DownloadFailureException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.confluence import (
     ConfluenceBlogPostEntity,
@@ -304,7 +304,11 @@ class ConfluenceSource(BaseSource):
 
                 except FileSkippedException as e:
                     # File intentionally skipped (unsupported type, too large, etc.) - not an error
-                    self.logger.debug(f"Skipping file: {e.reason}")
+                    self.logger.warning(f"Skipping file: {e.reason}")
+                    continue
+
+                except DownloadFailureException as e:
+                    self.logger.error(f"Failed to download file: {e}", exc_info=True)
                     continue
 
                 except Exception as e:
@@ -472,7 +476,7 @@ class ConfluenceSource(BaseSource):
             next_link = data.get("_links", {}).get("next")
             url = f"{self.base_url}{next_link}" if next_link else None
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify Confluence OAuth2 token by calling accessible-resources endpoint.
 
         A successful call proves the token is valid and has necessary scopes.
@@ -482,15 +486,17 @@ class ConfluenceSource(BaseSource):
             resources = await self._get_accessible_resources()
 
             if not resources:
-                self.logger.error("Confluence validation failed: no accessible resources found")
-                return False
+                raise PreSyncValidationException(
+                    "Confluence validation failed: no accessible resources found",
+                    source_name=self.__class__.__name__,
+                )
 
             self.logger.debug("✅ Confluence validation successful")
-            return True
 
         except Exception as e:
-            self.logger.error(f"Confluence validation failed: {str(e)}")
-            return False
+            raise PreSyncValidationException(
+                f"Confluence validation failed: {str(e)}", source_name=self.__class__.__name__
+            )
 
     async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:  # noqa: C901
         """Generate all Confluence content."""

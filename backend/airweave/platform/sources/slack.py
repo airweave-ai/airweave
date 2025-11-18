@@ -6,7 +6,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 import httpx
 from tenacity import retry, stop_after_attempt
 
-from airweave.core.exceptions import TokenRefreshError
+from airweave.core.exceptions import TokenRefreshError, PreSyncValidationException
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
@@ -325,10 +325,14 @@ class SlackSource(BaseSource):
             "Slack uses federated search. Use the search() method instead of generate_entities()."
         )
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify OAuth2 token by testing Slack API access."""
-        return await self._validate_oauth2(
+        is_valid = await self._validate_oauth2(
             ping_url="https://slack.com/api/auth.test",
             headers={"Content-Type": "application/x-www-form-urlencoded"},
             timeout=10.0,
         )
+        if not is_valid:
+            raise PreSyncValidationException(
+                "Slack credentials validation failed", source_name="slack"
+            )

@@ -7,7 +7,11 @@ from typing import Optional
 from airweave import schemas
 from airweave.analytics import business_events
 from airweave.core.datetime_utils import utc_now_naive
-from airweave.core.exceptions import PaymentRequiredException, UsageLimitExceededException
+from airweave.core.exceptions import (
+    PaymentRequiredException,
+    PreSyncValidationException,
+    UsageLimitExceededException,
+)
 from airweave.core.guard_rail_service import ActionType
 from airweave.core.shared_models import SyncJobStatus
 from airweave.core.sync_cursor_service import sync_cursor_service
@@ -82,6 +86,9 @@ class SyncOrchestrator:
             )
 
         try:
+            # Pre-sync validation
+            await self.sync_context.source.validate()
+
             # Phase 1: Start sync
             phase_start = time.time()
             self.sync_context.logger.info("🚀 PHASE 1: Starting sync initialization...")
@@ -108,6 +115,11 @@ class SyncOrchestrator:
 
             final_status = SyncJobStatus.COMPLETED
             return self.sync_context.sync
+        except PreSyncValidationException as e:
+            error_message = f"Source validation failed: {e.message}"
+            self.sync_context.logger.error(error_message, exc_info=True)
+            final_status = SyncJobStatus.FAILED
+            raise
         except asyncio.CancelledError:
             # Cooperative cancellation: ensure producer and ALL pending tasks are stopped
             self.sync_context.logger.info("Cancellation requested, handling gracefully...")

@@ -11,7 +11,7 @@ from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
+from airweave.platform.downloader import FileSkippedException, DownloadFailureException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.gitlab import (
     GitLabCodeFileEntity,
@@ -140,7 +140,10 @@ class GitLabSource(BaseSource):
                 if self.token_manager:
                     try:
                         # Force refresh the token
-                        from airweave.core.exceptions import TokenRefreshError
+                        from airweave.core.exceptions import (
+                            TokenRefreshError,
+                            PreSyncValidationException,
+                        )
 
                         new_token = await self.token_manager.refresh_on_unauthorized()
                         headers = {"Authorization": f"Bearer {new_token}"}
@@ -206,7 +209,10 @@ class GitLabSource(BaseSource):
                     if self.token_manager:
                         try:
                             # Force refresh the token
-                            from airweave.core.exceptions import TokenRefreshError
+                            from airweave.core.exceptions import (
+                                TokenRefreshError,
+                                PreSyncValidationException,
+                            )
 
                             new_token = await self.token_manager.refresh_on_unauthorized()
                             headers = {
@@ -644,7 +650,10 @@ class GitLabSource(BaseSource):
 
         except FileSkippedException as e:
             # File intentionally skipped (unsupported type, too large, etc.) - not an error
-            self.logger.debug(f"Skipping file: {e.reason}")
+            self.logger.warning(f"Skipping file: {e.reason}")
+
+        except DownloadFailureException as e:
+            self.logger.error(f"Failed to download file {file_path}: {e}", exc_info=True)
 
         except Exception as e:
             self.logger.error(f"Error processing file {file_path}: {str(e)}")
@@ -761,10 +770,14 @@ class GitLabSource(BaseSource):
                 async for entity in self._process_project(client, project, project_breadcrumbs):
                     yield entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify GitLab OAuth token by pinging the /user endpoint."""
-        return await self._validate_oauth2(
+        is_valid = await self._validate_oauth2(
             ping_url=f"{self.BASE_URL}/user",
             headers={"Accept": "application/json"},
             timeout=10.0,
         )
+        if not is_valid:
+            raise PreSyncValidationException(
+                "Gitlab credentials validation failed", source_name="gitlab"
+            )
