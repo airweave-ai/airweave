@@ -92,6 +92,17 @@ class JSONFormatter(logging.Formatter):
             "line": record.lineno,
         }
 
+        # Add exception info if present
+        if record.exc_info:
+            # Extract error_severity from exception class
+            if record.exc_info[0] and hasattr(record.exc_info[0], "severity"):
+                severity = record.exc_info[0].severity
+                if hasattr(severity, "value"):
+                    log_entry["error_severity"] = severity.value
+
+            # Add stack trace
+            log_entry["exception"] = self.formatException(record.exc_info)
+
         # Add custom dimensions if they exist
         if hasattr(record, "custom_dimensions") and record.custom_dimensions:
             log_entry["custom_dimensions"] = record.custom_dimensions
@@ -129,10 +140,6 @@ class JSONFormatter(logging.Formatter):
                         log_entry[key] = value
                     except (TypeError, ValueError):
                         log_entry[key] = str(value)
-
-        # Add exception info if present
-        if record.exc_info:
-            log_entry["exception"] = self.formatException(record.exc_info)
 
         return json.dumps(log_entry, default=str)
 
