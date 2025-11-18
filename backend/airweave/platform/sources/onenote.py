@@ -503,8 +503,7 @@ class OneNoteSource(BaseSource):
                         yield file_entity
 
                     except FileSkippedException as e:
-                        # Page intentionally skipped (unsupported type, too large, etc.).
-                        # Not an error – continue with other pages.
+                        # Page intentionally skipped (unsupported type, too large, etc.)
                         self.logger.debug(f"Skipping page {title}: {e.reason}")
                         continue
 

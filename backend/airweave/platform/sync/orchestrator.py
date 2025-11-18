@@ -116,7 +116,7 @@ class SyncOrchestrator:
             final_status = SyncJobStatus.COMPLETED
             return self.sync_context.sync
         except PreSyncValidationException as e:
-            error_message = f"Source validation failed: {e.message}"
+            error_message = f"Source validation failed: {str(e)}"
             self.sync_context.logger.error(error_message, exc_info=True)
             final_status = SyncJobStatus.FAILED
             raise

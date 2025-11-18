@@ -520,7 +520,7 @@ class AsanaSource(BaseSource):
 
             except FileSkippedException as e:
                 # File intentionally skipped (unsupported type, too large, etc.) - not an error
-                self.logger.warning(f"Skipping attachment {attachment_detail['gid']}: {e.reason}")
+                self.logger.debug(f"Skipping attachment {attachment_detail['gid']}: {e.reason}")
                 continue
 
             except DownloadFailureException as e:
