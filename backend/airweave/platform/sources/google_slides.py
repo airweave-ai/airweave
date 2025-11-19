@@ -23,6 +23,7 @@ from tenacity import retry, stop_after_attempt
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.cursors import GoogleSlidesCursor
 from airweave.platform.decorators import source
+from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.entities.google_slides import (
     GoogleSlidesPresentationEntity,
@@ -152,6 +153,11 @@ class GoogleSlidesSource(BaseSource):
 
                 self.logger.debug(f"Successfully downloaded presentation: {presentation.name}")
                 yield presentation
+
+            except FileSkippedException as e:
+                # Presentation intentionally skipped (unsupported type, too large, etc.)
+                self.logger.debug(f"Skipping presentation {presentation.title}: {e.reason}")
+                continue
 
             except Exception as e:
                 self.logger.error(f"Failed to download presentation {presentation.title}: {e}")

@@ -10,6 +10,7 @@ from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
+from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import Breadcrumb
 from airweave.platform.entities.linear import (
     LinearAttachmentEntity,
@@ -204,7 +205,7 @@ class LinearSource(BaseSource):
         markdown_link_pattern = r"\[([^\]]+)\]\(([^)]+)\)"
         matches = re.findall(markdown_link_pattern, issue_description)
 
-        self.logger.info(
+        self.logger.debug(
             f"Found {len(matches)} potential attachments in description "
             f"for issue {issue_identifier}"
         )
@@ -212,7 +213,7 @@ class LinearSource(BaseSource):
         for file_name, url in matches:
             # Only process Linear upload URLs
             if "uploads.linear.app" in url:
-                self.logger.info(
+                self.logger.debug(
                     f"Processing attachment from description: {file_name} - URL: {url}"
                 )
 
@@ -272,6 +273,11 @@ class LinearSource(BaseSource):
                         f"Successfully downloaded attachment: {attachment_entity.name}"
                     )
                     yield attachment_entity
+
+                except FileSkippedException as e:
+                    # Attachment intentionally skipped (unsupported type, too large, etc.) - not an error
+                    self.logger.debug(f"Skipping attachment {attachment_id}: {e.reason}")
+                    continue
 
                 except Exception as e:
                     self.logger.error(
@@ -415,7 +421,7 @@ class LinearSource(BaseSource):
 
             # Skip issues matching exclude_path
             if self.exclude_path and issue_identifier and self.exclude_path in issue_identifier:
-                self.logger.info(f"Skipping excluded issue: {issue_identifier}")
+                self.logger.debug(f"Skipping excluded issue: {issue_identifier}")
                 return
 
             # Defensive check: skip archived issues (should already be filtered by GraphQL query)
@@ -428,7 +434,7 @@ class LinearSource(BaseSource):
             issue_title = issue.get("title")
             issue_description = issue.get("description", "")
 
-            self.logger.info(f"Processing issue: {issue_identifier} - '{issue_title}'")
+            self.logger.debug(f"Processing issue: {issue_identifier} - '{issue_title}'")
 
             # Build breadcrumbs list
             breadcrumbs = []
@@ -490,7 +496,7 @@ class LinearSource(BaseSource):
 
             # Process and yield comment entities
             comments = issue.get("comments", {}).get("nodes", [])
-            self.logger.info(f"Processing {len(comments)} comments for issue {issue_identifier}")
+            self.logger.debug(f"Processing {len(comments)} comments for issue {issue_identifier}")
 
             async for comment_entity in self._process_issue_comments(
                 comments,
@@ -570,7 +576,7 @@ class LinearSource(BaseSource):
             project_id = project.get("id")
             project_name = project.get("name")
 
-            self.logger.info(f"Processing project: {project_name}")
+            self.logger.debug(f"Processing project: {project_name}")
 
             # Extract team data
             team_ids = []
@@ -674,7 +680,7 @@ class LinearSource(BaseSource):
             team_parent_id = parent.get("id", "") if parent else ""
             team_parent_name = parent.get("name", "") if parent else ""
 
-            self.logger.info(f"Processing team: {team_name} ({team_key})")
+            self.logger.debug(f"Processing team: {team_name} ({team_key})")
 
             # Create team URL
             team_url = f"https://linear.app/team/{team.get('key')}"
@@ -767,7 +773,7 @@ class LinearSource(BaseSource):
             user_name = user.get("name")
             display_name = user.get("displayName")
 
-            self.logger.info(f"Processing user: {user_name} ({display_name})")
+            self.logger.debug(f"Processing user: {user_name} ({display_name})")
 
             # Extract team data
             team_ids = []
@@ -875,7 +881,7 @@ class LinearSource(BaseSource):
                 # Log the batch
                 batch_count = len(nodes)
                 items_processed += batch_count
-                self.logger.info(
+                self.logger.debug(
                     f"Processing batch of {batch_count} {entity_type} (total: {items_processed})"
                 )
 
@@ -923,16 +929,16 @@ class LinearSource(BaseSource):
         async with self.http_client() as client:
             # Generate team entities
             try:
-                self.logger.info("Starting team entity generation")
+                self.logger.debug("Starting team entity generation")
                 async for team_entity in self._generate_team_entities(client):
                     yield team_entity
             except Exception as e:
                 self.logger.error(f"Failed to generate team entities: {str(e)}")
-                self.logger.info("Continuing with other entity types")
+                self.logger.debug("Continuing with other entity types")
 
             # Generate project entities
             try:
-                self.logger.info("Starting project entity generation")
+                self.logger.debug("Starting project entity generation")
                 async for project_entity in self._generate_project_entities(client):
                     yield project_entity
             except Exception as e:
@@ -940,7 +946,7 @@ class LinearSource(BaseSource):
 
             # Generate user entities
             try:
-                self.logger.info("Starting user entity generation")
+                self.logger.debug("Starting user entity generation")
                 async for user_entity in self._generate_user_entities(client):
                     yield user_entity
             except Exception as e:
@@ -948,7 +954,7 @@ class LinearSource(BaseSource):
 
             # Generate issue, comment, and attachment entities
             try:
-                self.logger.info("Starting issue, comment, and attachment entity generation")
+                self.logger.debug("Starting issue, comment, and attachment entity generation")
                 async for entity in self._generate_issue_entities(client):
                     yield entity
             except Exception as e:
@@ -976,7 +982,9 @@ class LinearSource(BaseSource):
 
                 # Handle 401 by attempting a one-time refresh
                 if resp.status_code == 401:
-                    self.logger.info("Linear validate: 401 Unauthorized; attempting token refresh.")
+                    self.logger.debug(
+                        "Linear validate: 401 Unauthorized; attempting token refresh."
+                    )
                     new_token = await self.refresh_on_unauthorized()
                     if new_token:
                         headers["Authorization"] = f"Bearer {new_token}"

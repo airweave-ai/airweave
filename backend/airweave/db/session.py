@@ -30,6 +30,19 @@ MAX_OVERFLOW = POOL_SIZE  # Allow doubling during spikes
 # - pool_timeout=0: Don't wait at all, fail immediately if no connections
 # - pool_timeout=None: Wait forever (NOT RECOMMENDED - can cause deadlocks)
 
+# Build connect_args based on environment
+connect_args_config = {
+    "server_settings": {
+        # Kill idle transactions after 5 minutes
+        "idle_in_transaction_session_timeout": "300000",
+    },
+    "command_timeout": 60,
+}
+
+# Disable SSL for PgBouncer connections (internal cluster traffic)
+if settings.POSTGRES_SSLMODE == "disable":
+    connect_args_config["ssl"] = False
+
 async_engine = create_async_engine(
     str(settings.SQLALCHEMY_ASYNC_DATABASE_URI),
     pool_size=POOL_SIZE,
@@ -40,13 +53,7 @@ async_engine = create_async_engine(
     isolation_level="READ COMMITTED",
     # Note: async engines automatically use AsyncAdaptedQueuePool
     # Settings to prevent connection buildup:
-    connect_args={
-        "server_settings": {
-            # Kill idle transactions after 5 minutes
-            "idle_in_transaction_session_timeout": "300000",
-        },
-        "command_timeout": 60,
-    },
+    connect_args=connect_args_config,
 )
 
 AsyncSessionLocal = async_sessionmaker(autocommit=False, autoflush=False, bind=async_engine)

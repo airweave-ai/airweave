@@ -9,6 +9,7 @@ from tenacity import retry, stop_after_attempt
 from airweave.core.exceptions import TokenRefreshError
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
+from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.clickup import (
     ClickUpCommentEntity,
@@ -139,7 +140,7 @@ class ClickUpSource(BaseSource):
                         headers = {"Authorization": f"Bearer {new_token}"}
 
                         # Retry the request with the new token
-                        self.logger.info(f"Retrying request with refreshed token: {url}")
+                        self.logger.debug(f"Retrying request with refreshed token: {url}")
                         response = await client.get(url, headers=headers, params=params)
 
                     except TokenRefreshError as e:
@@ -584,6 +585,12 @@ class ClickUpSource(BaseSource):
 
                     self.logger.debug(f"Successfully downloaded attachment: {file_entity.name}")
                     yield file_entity
+
+                except FileSkippedException as e:
+                    # Attachment intentionally skipped (unsupported type, too large, etc.) - not an error
+                    self.logger.debug(f"Skipping attachment {file_name}: {e.reason}")
+                    # Continue with other attachments
+                    continue
 
                 except Exception as e:
                     self.logger.warning(f"Failed to download attachment {file_name}: {e}")

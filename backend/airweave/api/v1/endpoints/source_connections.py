@@ -135,9 +135,6 @@ async def create(
         ctx=ctx,
     )
 
-    # Increment source connection usage after successful creation
-    await guard_rail.increment(ActionType.SOURCE_CONNECTIONS)
-
     return result
 
 
@@ -214,9 +211,6 @@ async def delete(
         id=source_connection_id,
         ctx=ctx,
     )
-
-    # Decrement source connection usage after successful deletion
-    await guard_rail.decrement(ActionType.SOURCE_CONNECTIONS)
 
     return result
 

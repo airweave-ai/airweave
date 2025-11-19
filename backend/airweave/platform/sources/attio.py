@@ -71,6 +71,12 @@ class AttioSource(BaseSource):
         instance.api_key = attio_auth_config.api_key
         return instance
 
+    @retry(
+        stop=stop_after_attempt(5),
+        retry=retry_if_rate_limit_or_timeout,
+        wait=wait_rate_limit_with_backoff,
+        reraise=True,
+    )
     async def _get_with_auth(
         self, client: httpx.AsyncClient, url: str, params: Optional[Dict[str, Any]] = None
     ) -> Dict:
@@ -525,13 +531,12 @@ class AttioSource(BaseSource):
         self.logger.debug(f"Fetching records for list: {list_id}")
         url = f"{self.BASE_URL}/lists/{list_id}/records/query"
 
-        try:
-            records = await self._query_all_pages(client, url, data_key="data")
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                self.logger.warning(f"List {list_id} not found or not accessible, skipping")
-                return
-            raise
+        # Use optional query to handle 404s gracefully without error logs
+        records = await self._query_all_pages_optional(client, url, data_key="data")
+
+        if not records:
+            self.logger.debug(f"List {list_id} has no records or is not accessible")
+            return
 
         for record in records:
             record_id = record.get("id", {}).get("record_id")

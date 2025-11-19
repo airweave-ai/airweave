@@ -38,7 +38,8 @@ def source(
         federated_search: Whether source uses federated search instead of syncing (default False)
         supports_temporal_relevance: Whether source entities have timestamps for (default True)
         cursor_class: Optional Pydantic model class for typed cursor (e.g., GmailCursor)
-        rate_limit_level: Rate limiting level (RateLimitLevel.ORG, RateLimitLevel.CONNECTION, or None)
+        rate_limit_level: Rate limiting level (RateLimitLevel.ORG, RateLimitLevel.CONNECTION,
+            or None)
 
     Example:
         # OAuth source (no auth config)

@@ -73,9 +73,10 @@ class SyncProgress:
 
     async def _publish(self) -> None:
         """Publish current progress to pubsub and store snapshot for cleanup job."""
-        from datetime import datetime, timezone
-        from airweave.core.redis_client import redis_client
         import json
+        from datetime import datetime, timezone
+
+        from airweave.core.redis_client import redis_client
 
         self.stats.last_update_timestamp = datetime.now(timezone.utc).isoformat()
         data = self.stats.model_dump()
@@ -129,7 +130,7 @@ class SyncProgress:
             )
 
             if log_level == "error":
-                self.logger.error(message)
+                self.logger.warning(message)
             elif log_level == "warning":
                 self.logger.warning(message)
             else:

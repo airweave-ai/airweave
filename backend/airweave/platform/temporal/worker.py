@@ -12,6 +12,10 @@ from airweave.core.config import settings
 from airweave.core.logging import logger
 from airweave.platform.temporal.client import temporal_client
 from airweave.platform.temporal.worker_metrics import worker_metrics
+from airweave.platform.temporal.prometheus_metrics import (
+    get_prometheus_metrics,
+    update_worker_metrics as update_prometheus_metrics,
+)
 
 
 class TemporalWorker:
@@ -121,7 +125,8 @@ class TemporalWorker:
         app = web.Application()
         app.router.add_post("/drain", self._handle_drain)
         app.router.add_get("/health", self._handle_health)
-        app.router.add_get("/metrics", self._handle_metrics)
+        app.router.add_get("/metrics", self._handle_prometheus_metrics)
+        app.router.add_get("/status", self._handle_json_status)
 
         runner = web.AppRunner(app)
         await runner.setup()
@@ -175,10 +180,51 @@ class TemporalWorker:
             return web.Response(text="DRAINING", status=503)
         return web.Response(text="OK", status=200)
 
-    async def _handle_metrics(self, request):
-        """Metrics endpoint exposing worker statistics.
+    async def _handle_prometheus_metrics(self, request):
+        """Prometheus metrics endpoint.
 
-        Returns JSON with:
+        Returns Prometheus-formatted metrics that can be scraped by Prometheus.
+        Exposes worker status, uptime, active activities, and capacity metrics.
+        """
+        try:
+            # Get current metrics from the registry
+            metrics = await worker_metrics.get_metrics_summary()
+
+            # Determine worker status
+            status = "running"
+            if self.draining:
+                status = "draining"
+            elif not self.running:
+                status = "stopped"
+
+            # Update Prometheus metrics
+            update_prometheus_metrics(
+                worker_id=metrics["worker_id"],
+                status=status,
+                uptime_seconds=metrics["uptime_seconds"],
+                active_activities_count=metrics["active_activities_count"],
+                active_sync_jobs_count=len(metrics["active_sync_jobs"]),
+                task_queue=settings.TEMPORAL_TASK_QUEUE,
+                max_workflow_polls=8,
+                max_activity_polls=16,
+            )
+
+            # Generate and return Prometheus metrics
+            prometheus_data = get_prometheus_metrics()
+            return web.Response(
+                body=prometheus_data,
+                content_type="text/plain; version=0.0.4",
+                charset="utf-8",
+            )
+
+        except Exception as e:
+            logger.error(f"Error generating Prometheus metrics: {e}", exc_info=True)
+            return web.Response(text=f"Error: {str(e)}", status=500)
+
+    async def _handle_json_status(self, request):
+        """JSON status endpoint for debugging and monitoring.
+
+        Returns JSON with detailed worker information:
         - worker_id: Unique identifier for this worker
         - status: Current worker status (running, draining, stopped)
         - uptime_seconds: How long the worker has been running
@@ -227,9 +273,9 @@ class TemporalWorker:
             return web.json_response(response_data)
 
         except Exception as e:
-            logger.error(f"Error generating metrics: {e}", exc_info=True)
+            logger.error(f"Error generating JSON status: {e}", exc_info=True)
             return web.json_response(
-                {"error": "Failed to generate metrics", "detail": str(e)}, status=500
+                {"error": "Failed to generate status", "detail": str(e)}, status=500
             )
 
     def _get_sandbox_config(self):

@@ -54,15 +54,16 @@ import { UsageChecker } from "@/components/UsageChecker"; // App-level usage che
 const CollectionsSection = memo(() => {
   const location = useLocation();
   const [isOpen, setIsOpen] = useState(true);
-  const { collections, isLoading: isLoadingCollections, error: collectionError, fetchCollections } = useCollectionsStore();
+  const { collections, totalCount, isLoading: isLoadingCollections, error: collectionError, fetchCollections, fetchCollectionsCount } = useCollectionsStore();
   const { currentOrganization } = useOrganizationStore();
 
   // Initialize collections and event listeners
   useEffect(() => {
     fetchCollections();
+    fetchCollectionsCount();
     const unsubscribe = useCollectionsStore.getState().subscribeToEvents();
     return unsubscribe;
-  }, [fetchCollections]);
+  }, [fetchCollections, fetchCollectionsCount]);
 
   // Active status for nav items
   const isActive = useCallback((path: string) => {
@@ -136,7 +137,7 @@ const CollectionsSection = memo(() => {
                 className="flex items-center px-3 py-2.5 text-sm rounded-lg text-primary hover:text-primary/80 hover:bg-primary/10 mt-3 mb-2 transition-all duration-200"
               >
                 <ExternalLink className="mr-2 h-3.5 w-3.5 opacity-70" />
-                <span>See all{collections.length > 0 ? ` (${collections.length})` : ''}</span>
+                <span>See all{totalCount !== null ? ` (${totalCount})` : collections.length > 0 ? ` (${collections.length})` : ''}</span>
               </Link>
 
             </>

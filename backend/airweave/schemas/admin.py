@@ -36,7 +36,7 @@ class OrganizationMetrics(BaseModel):
     # Usage metrics - sourced from Usage model (usage.py)
     user_count: int = Field(0, description="Number of users in organization")
     source_connection_count: int = Field(
-        0, description="Number of source connections (from Usage.source_connections)"
+        0, description="Number of source connections (computed from source_connection table)"
     )
     entity_count: int = Field(0, description="Total number of entities (from Usage.entities)")
     query_count: int = Field(0, description="Total number of queries (from Usage.queries)")

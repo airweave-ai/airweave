@@ -17,12 +17,14 @@ interface AuthProviderSelectorProps {
   selectedProvider?: string;
   onProviderSelect: (providerId: string) => void;
   onConfigChange: (config: Record<string, any>) => void;
+  supportedAuthProviders?: string[]; // List of provider short names that support this source
 }
 
 export const AuthProviderSelector: React.FC<AuthProviderSelectorProps> = ({
   selectedProvider,
   onProviderSelect,
   onConfigChange,
+  supportedAuthProviders,
 }) => {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
@@ -32,6 +34,11 @@ export const AuthProviderSelector: React.FC<AuthProviderSelectorProps> = ({
     isLoadingConnections,
     fetchAuthProviderConnections,
   } = useAuthProvidersStore();
+
+  // Filter connections to only show providers that are supported by this source
+  const filteredAuthProviderConnections = authProviderConnections.filter(
+    (conn) => !supportedAuthProviders || supportedAuthProviders.includes(conn.short_name)
+  );
 
   const [providerConfig, setProviderConfig] = useState<Record<string, any>>({});
 
@@ -79,7 +86,12 @@ export const AuthProviderSelector: React.FC<AuthProviderSelectorProps> = ({
     );
   }
 
-  if (authProviderConnections.length === 0) {
+  if (filteredAuthProviderConnections.length === 0) {
+    const hasConnections = authProviderConnections.length > 0;
+    const message = hasConnections 
+      ? "This source is not supported by your connected auth providers."
+      : "No auth providers connected.";
+    
     return (
       <div className={cn(
         "p-3 rounded-lg border text-center",
@@ -89,23 +101,25 @@ export const AuthProviderSelector: React.FC<AuthProviderSelectorProps> = ({
           "text-xs",
           isDark ? "text-gray-500" : "text-gray-500"
         )}>
-          No auth providers connected.
-          <a
-            href="/organization/settings"
-            target="_blank"
-            className={cn(
-              "ml-1 hover:underline",
-              isDark ? "text-blue-400" : "text-blue-600"
-            )}
-          >
-            Connect one →
-          </a>
+          {message}
+          {!hasConnections && (
+            <a
+              href="/organization/settings"
+              target="_blank"
+              className={cn(
+                "ml-1 hover:underline",
+                isDark ? "text-blue-400" : "text-blue-600"
+              )}
+            >
+              Connect one →
+            </a>
+          )}
         </p>
       </div>
     );
   }
 
-  const selectedProviderConnection = authProviderConnections.find(
+  const selectedProviderConnection = filteredAuthProviderConnections.find(
     p => p.readable_id === selectedProvider
   );
 
@@ -117,7 +131,7 @@ export const AuthProviderSelector: React.FC<AuthProviderSelectorProps> = ({
           Select Provider
         </label>
         <div className="space-y-2">
-          {authProviderConnections.map((provider) => (
+          {filteredAuthProviderConnections.map((provider) => (
             <button
               key={provider.readable_id}
               onClick={() => onProviderSelect(provider.readable_id)}

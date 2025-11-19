@@ -19,6 +19,7 @@ from airweave.core.logging import logger
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.cursors import GmailCursor
 from airweave.platform.decorators import source
+from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.gmail import (
     GmailAttachmentEntity,
@@ -83,7 +84,7 @@ class GmailSource(BaseSource):
         cls, access_token: str, config: Optional[Dict[str, Any]] = None
     ) -> "GmailSource":
         """Create a new Gmail source instance with the provided OAuth access token."""
-        logger.info("Creating new GmailSource instance")
+        logger.debug("Creating new GmailSource instance")
         instance = cls()
         instance.access_token = access_token
 
@@ -101,7 +102,7 @@ class GmailSource(BaseSource):
         instance.excluded_categories = config.get("excluded_categories", ["promotions", "social"])
         instance.gmail_query = config.get("gmail_query")
 
-        logger.info(f"GmailSource instance created with config: {config}")
+        logger.debug(f"GmailSource instance created with config: {config}")
         return instance
 
     def _build_gmail_query(self) -> Optional[str]:
@@ -112,7 +113,7 @@ class GmailSource(BaseSource):
         """
         # If custom query provided, use it directly
         if getattr(self, "gmail_query", None):
-            self.logger.info(f"Using custom Gmail query: {self.gmail_query}")
+            self.logger.debug(f"Using custom Gmail query: {self.gmail_query}")
             return self.gmail_query
 
         query_parts = self._build_query_parts()
@@ -121,7 +122,7 @@ class GmailSource(BaseSource):
             return None
 
         query = " ".join(query_parts)
-        self.logger.info(f"Built Gmail query: {query}")
+        self.logger.debug(f"Built Gmail query: {query}")
         return query
 
     def _build_query_parts(self) -> List[str]:
@@ -249,7 +250,7 @@ class GmailSource(BaseSource):
         self, client: httpx.AsyncClient, url: str, params: Optional[dict] = None
     ) -> dict:
         """Make an authenticated GET request to the Gmail API with proper 429 handling."""
-        self.logger.info(f"Making authenticated GET request to: {url} with params: {params}")
+        self.logger.debug(f"Making authenticated GET request to: {url} with params: {params}")
 
         # Get fresh token (will refresh if needed)
         access_token = await self.get_access_token()
@@ -278,7 +279,7 @@ class GmailSource(BaseSource):
 
         response.raise_for_status()
         data = response.json()
-        self.logger.info(f"Received response from {url} - Status: {response.status_code}")
+        self.logger.debug(f"Received response from {url} - Status: {response.status_code}")
         self.logger.debug(f"Response data keys: {list(data.keys())}")
         return data
 
@@ -302,23 +303,23 @@ class GmailSource(BaseSource):
         query = self._build_gmail_query()
         if query:
             params["q"] = query
-            self.logger.info(f"Filtering threads with query: {query}")
+            self.logger.debug(f"Filtering threads with query: {query}")
 
         page_count = 0
 
         while True:
             page_count += 1
-            self.logger.info(f"Fetching thread list page #{page_count} with params: {params}")
+            self.logger.debug(f"Fetching thread list page #{page_count} with params: {params}")
             data = await self._get_with_auth(client, base_url, params=params)
             threads = data.get("threads", []) or []
-            self.logger.info(f"Found {len(threads)} threads on page {page_count}")
+            self.logger.debug(f"Found {len(threads)} threads on page {page_count}")
 
             for thread_info in threads:
                 yield thread_info
 
             next_page_token = data.get("nextPageToken")
             if not next_page_token:
-                self.logger.info(f"No more thread pages after page {page_count}")
+                self.logger.debug(f"No more thread pages after page {page_count}")
                 break
             params["pageToken"] = next_page_token
 
@@ -326,7 +327,7 @@ class GmailSource(BaseSource):
         """Fetch full thread details including messages."""
         base_url = "https://gmail.googleapis.com/gmail/v1/users/me/threads"
         detail_url = f"{base_url}/{thread_id}"
-        self.logger.info(f"Fetching full thread details from: {detail_url}")
+        self.logger.debug(f"Fetching full thread details from: {detail_url}")
         try:
             thread_data = await self._get_with_auth(client, detail_url)
             return thread_data
@@ -456,7 +457,7 @@ class GmailSource(BaseSource):
         """
         # Create and yield thread entity
         thread_entity = await self._create_thread_entity(thread_id, thread_data)
-        self.logger.info(f"Yielding thread entity: {thread_id}")
+        self.logger.debug(f"Yielding thread entity: {thread_id}")
         yield thread_entity
 
         # Breadcrumb for messages under this thread
@@ -477,13 +478,13 @@ class GmailSource(BaseSource):
             return True
         if lock is None:
             if msg_id in processed_message_ids:
-                self.logger.info(f"Skipping message {msg_id} - already processed")
+                self.logger.debug(f"Skipping message {msg_id} - already processed")
                 return True
             processed_message_ids.add(msg_id)
             return False
         async with lock:
             if msg_id in processed_message_ids:
-                self.logger.info(f"Skipping message {msg_id} - already processed")
+                self.logger.debug(f"Skipping message {msg_id} - already processed")
                 return True
             processed_message_ids.add(msg_id)
             return False
@@ -498,10 +499,10 @@ class GmailSource(BaseSource):
         """Process a message and its attachments."""
         # Get detailed message data if needed
         message_id = message_data.get("id")
-        self.logger.info(f"Processing message ID: {message_id} in thread: {thread_id}")
+        self.logger.debug(f"Processing message ID: {message_id} in thread: {thread_id}")
 
         if "payload" not in message_data:
-            self.logger.info(
+            self.logger.debug(
                 f"Payload not in message data, fetching full message details for {message_id}"
             )
             message_url = f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}"
@@ -519,7 +520,7 @@ class GmailSource(BaseSource):
             self.logger.debug("Message already contains payload data")
 
         # Extract message fields
-        self.logger.info(f"Extracting fields for message {message_id}")
+        self.logger.debug(f"Extracting fields for message {message_id}")
         internal_date_ms = message_data.get("internalDate")
         internal_date = None
         if internal_date_ms:
@@ -530,7 +531,7 @@ class GmailSource(BaseSource):
         headers = payload.get("headers", []) or []
 
         # Parse headers
-        self.logger.info(f"Parsing headers for message {message_id}")
+        self.logger.debug(f"Parsing headers for message {message_id}")
         subject = None
         sender = None
         to_list: List[str] = []
@@ -560,11 +561,11 @@ class GmailSource(BaseSource):
                     self.logger.warning(f"Failed to parse date header: {value}")
 
         # Extract message body
-        self.logger.info(f"Extracting body content for message {message_id}")
+        self.logger.debug(f"Extracting body content for message {message_id}")
         body_plain, body_html = self._extract_body_content(payload)
 
         # Create message entity
-        self.logger.info(f"Creating message entity for message {message_id}")
+        self.logger.debug(f"Creating message entity for message {message_id}")
         message_entity = GmailMessageEntity(
             # Base fields
             entity_id=f"msg_{message_id}",
@@ -594,27 +595,32 @@ class GmailSource(BaseSource):
 
         # Download email body to file (NOT stored in entity fields)
         # Email content is only in the local file for conversion
-        if body_html:
-            await self.file_downloader.save_bytes(
-                entity=message_entity,
-                content=body_html.encode("utf-8"),
-                filename_with_extension=message_entity.name + ".html",  # Has .html extension
-                logger=self.logger,
-            )
-        elif body_plain:
-            # Save plain-text emails as .txt files for conversion
-            await self.file_downloader.save_bytes(
-                entity=message_entity,
-                content=body_plain.encode("utf-8"),
-                filename_with_extension=message_entity.name + ".txt",  # Plain text
-                logger=self.logger,
-            )
-            # Update file metadata to match plain text
-            message_entity.file_type = "text"
-            message_entity.mime_type = "text/plain"
+        try:
+            if body_html:
+                await self.file_downloader.save_bytes(
+                    entity=message_entity,
+                    content=body_html.encode("utf-8"),
+                    filename_with_extension=message_entity.name + ".html",  # Has .html extension
+                    logger=self.logger,
+                )
+            elif body_plain:
+                # Save plain-text emails as .txt files for conversion
+                await self.file_downloader.save_bytes(
+                    entity=message_entity,
+                    content=body_plain.encode("utf-8"),
+                    filename_with_extension=message_entity.name + ".txt",  # Plain text
+                    logger=self.logger,
+                )
+                # Update file metadata to match plain text
+                message_entity.file_type = "text"
+                message_entity.mime_type = "text/plain"
+        except FileSkippedException as e:
+            # Email body skipped (unsupported type, too large) - not an error
+            self.logger.debug(f"Skipping message body for {message_id}: {e.reason}")
+            return  # Skip this message if we can't save the body
 
         yield message_entity
-        self.logger.info(f"Message entity yielded for {message_id}")
+        self.logger.debug(f"Message entity yielded for {message_id}")
 
         # Breadcrumb for attachments
         message_breadcrumb = Breadcrumb(entity_id=f"msg_{message_id}")
@@ -627,7 +633,7 @@ class GmailSource(BaseSource):
 
     def _extract_body_content(self, payload: Dict) -> tuple:  # noqa: C901
         """Extract plain text and HTML body content from message payload."""
-        self.logger.info("Extracting body content from message payload")
+        self.logger.debug("Extracting body content from message payload")
         body_plain = None
         body_html = None
 
@@ -680,7 +686,7 @@ class GmailSource(BaseSource):
                 except Exception as e:
                     self.logger.error(f"Error decoding single part body: {str(e)}")
 
-        self.logger.info(
+        self.logger.debug(
             f"Body extraction complete: found_text={bool(body_plain)}, found_html={bool(body_html)}"
         )
         return body_plain, body_html
@@ -804,6 +810,11 @@ class GmailSource(BaseSource):
 
                     yield file_entity
 
+                except FileSkippedException as e:
+                    # Attachment intentionally skipped (unsupported type, too large, etc.)
+                    self.logger.debug(f"Skipping attachment {filename}: {e.reason}")
+                    return
+
                 except Exception as e:
                     self.logger.error(f"Failed to save attachment {filename}: {e}")
                     return
@@ -842,6 +853,8 @@ class GmailSource(BaseSource):
             "maxResults": 500,
         }
         latest_history_id: Optional[str] = None
+        processed_message_ids: Set[str] = set()
+        lock = asyncio.Lock()
 
         while True:
             data = await self._get_with_auth(client, base_url, params=params)
@@ -851,7 +864,9 @@ class GmailSource(BaseSource):
                 yield deletion
 
             # Additions: potentially heavy (network per message); support concurrency
-            async for addition in self._yield_history_additions(client, data):
+            async for addition in self._yield_history_additions(
+                client, data, processed_message_ids, lock
+            ):
                 yield addition
 
             latest_history_id = data.get("historyId") or latest_history_id
@@ -864,7 +879,7 @@ class GmailSource(BaseSource):
 
         if latest_history_id and self.cursor:
             self.cursor.update(history_id=str(latest_history_id))
-            self.logger.info("Updated Gmail cursor with latest historyId for next run")
+            self.logger.debug("Updated Gmail cursor with latest historyId for next run")
 
     async def _yield_history_deletions(
         self, data: Dict[str, Any]
@@ -891,7 +906,11 @@ class GmailSource(BaseSource):
                 )
 
     async def _yield_history_additions(  # noqa: C901
-        self, client: httpx.AsyncClient, data: Dict[str, Any]
+        self,
+        client: httpx.AsyncClient,
+        data: Dict[str, Any],
+        processed_message_ids: Set[str],
+        lock: asyncio.Lock,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Yield entities for added/changed messages from a history page.
 
@@ -914,6 +933,9 @@ class GmailSource(BaseSource):
             msg_id = item["msg_id"]
             thread_id = item.get("thread_id") or "unknown"
             try:
+                if await self._should_skip_message(msg_id, processed_message_ids, lock):
+                    return
+
                 detail_url = f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{msg_id}"
                 try:
                     message_data = await self._get_with_auth(client, detail_url)
@@ -978,7 +1000,7 @@ class GmailSource(BaseSource):
                             history_id = detail.get("historyId")
                             if history_id and self.cursor:
                                 self.cursor.update(history_id=str(history_id))
-                                self.logger.info(
+                                self.logger.debug(
                                     "Stored Gmail historyId after full sync "
                                     "for next incremental run"
                                 )

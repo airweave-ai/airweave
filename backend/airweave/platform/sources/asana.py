@@ -8,6 +8,7 @@ from tenacity import retry, stop_after_attempt
 from airweave.core.exceptions import TokenRefreshError
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
+from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.asana import (
     AsanaCommentEntity,
@@ -116,7 +117,7 @@ class AsanaSource(BaseSource):
                         headers = {"Authorization": f"Bearer {new_token}"}
 
                         # Retry the request with the new token
-                        self.logger.info(f"Retrying request with refreshed token: {url}")
+                        self.logger.debug(f"Retrying request with refreshed token: {url}")
                         response = await client.get(url, headers=headers, params=params)
 
                     except TokenRefreshError as e:
@@ -210,7 +211,7 @@ class AsanaSource(BaseSource):
 
             # Skip projects matching exclude_path
             if self.exclude_path and self.exclude_path in project_name:
-                self.logger.info(f"Skipping excluded project: {project_name}")
+                self.logger.debug(f"Skipping excluded project: {project_name}")
                 continue
 
             yield AsanaProjectEntity(
@@ -527,6 +528,11 @@ class AsanaSource(BaseSource):
                     raise ValueError(f"Download failed - no local path set for {file_entity.name}")
 
                 yield file_entity
+
+            except FileSkippedException as e:
+                # File intentionally skipped (unsupported type, too large, etc.) - not an error
+                self.logger.debug(f"Skipping attachment {attachment_detail['gid']}: {e.reason}")
+                continue
 
             except Exception as e:
                 self.logger.error(

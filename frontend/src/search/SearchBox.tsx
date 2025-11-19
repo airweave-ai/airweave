@@ -8,7 +8,7 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ArrowUp, CodeXml, X, Loader2, Square, ClockArrowUp, ListStart, ChartScatter } from "lucide-react";
+import { ArrowUp, CodeXml, X, Loader2, Square, ClockArrowUp, ListStart, ChartScatter, RefreshCw } from "lucide-react";
 import { FiGitMerge, FiType, FiLayers, FiFilter, FiSliders, FiClock, FiList, FiMessageSquare, FiBox } from "react-icons/fi";
 import { ApiIntegrationDoc } from "@/search/CodeBlock";
 import { JsonFilterEditor } from "@/search/JsonFilterEditor";
@@ -53,6 +53,13 @@ interface SearchBoxProps {
     onStreamEvent?: (event: SearchEvent) => void;
     onStreamUpdate?: (partial: PartialStreamUpdate) => void;
     onCancel?: () => void;
+}
+
+class TransientStreamError extends Error {
+    constructor(message?: string) {
+        super(message);
+        this.name = "TransientStreamError";
+    }
 }
 
 /**
@@ -120,6 +127,11 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
     const [queriesCheckDetails, setQueriesCheckDetails] = useState<SingleActionCheckResponse | null>(null);
     const [isCheckingUsage, setIsCheckingUsage] = useState(true);
 
+    const [transientIssue, setTransientIssue] = useState<{
+        message: string;
+        detail?: string | null;
+    } | null>(null);
+
     // Fetch API key on mount
     useEffect(() => {
         const fetchApiKey = async () => {
@@ -169,6 +181,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
     // (Removed) Manage periodic halo pulses when eligible
 
     const hasQuery = query.trim().length > 0;
+    const canRetrySearch = Boolean(transientIssue) && !isSearching;
 
     // Streaming controls
     const abortRef = useRef<AbortController | null>(null);
@@ -228,6 +241,8 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
             abortRef.current = null;
         }
 
+        setTransientIssue(null);
+
         const mySeq = ++searchSeqRef.current;
         const abortController = new AbortController();
         abortRef.current = abortController;
@@ -284,9 +299,21 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
 
             console.log("Sending search request:", requestBody);
 
+            const debugParams = new URLSearchParams();
+            if (typeof window !== 'undefined') {
+                if (window.localStorage.getItem('airweave-debug-force-transient-search-error') === 'true') {
+                    debugParams.set('debug_force_transient_error', 'true');
+                }
+                if (window.localStorage.getItem('airweave-debug-force-search-error') === 'true') {
+                    debugParams.set('debug_force_search_error', 'true');
+                }
+            }
+            const debugQuery = debugParams.toString();
+            const streamUrl = `/collections/${collectionId}/search/stream${debugQuery ? `?${debugQuery}` : ''}`;
+
             // Make the streaming API call
             const response = await apiClient.post(
-                `/collections/${collectionId}/search/stream`,
+                streamUrl,
                 requestBody,
                 { signal: abortController.signal, extraHeaders: {} }
             );
@@ -362,8 +389,25 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                         case 'error': {
                             const endTime = performance.now();
                             const responseTime = Math.round(endTime - startTime);
-                            onSearch({ error: event.message || 'Streaming error' }, currentResponseType, responseTime);
-                            throw new Error(event.message || 'Streaming error');
+                            const errorMessage = event.message || 'Streaming error';
+                            if (event.transient === true) {
+                                onSearch(
+                                    {
+                                        error: "Something went wrong, please try again.",
+                                        errorIsTransient: true,
+                                    },
+                                    currentResponseType,
+                                    responseTime
+                                );
+                                setTransientIssue({
+                                    message: errorMessage || 'Search connection interrupted. Please try again.',
+                                    detail: event.detail,
+                                });
+                                throw new TransientStreamError(errorMessage);
+                            }
+                            setTransientIssue(null);
+                            onSearch({ error: errorMessage, errorIsTransient: false }, currentResponseType, responseTime);
+                            throw new Error(errorMessage);
                         }
                         case 'done': {
                             const endTime = performance.now();
@@ -392,15 +436,27 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
         } catch (error) {
             // Ignore AbortError from cancellations
             const err = error as any;
-            if (err && (err.name === 'AbortError' || err.message === 'AbortError')) {
+            if (err instanceof TransientStreamError) {
+                console.warn("Transient search stream issue:", err.message);
+            } else if (err && (err.name === 'AbortError' || err.message === 'AbortError')) {
                 // noop
             } else {
                 const endTime = performance.now();
                 const responseTime = Math.round(endTime - startTime);
                 console.error("Search stream failed:", error);
-                onSearch({
-                    error: error instanceof Error ? error.message : "An unexpected error occurred"
-                }, currentResponseType, responseTime);
+                const fallbackMessage =
+                    error instanceof Error ? error.message : "Search connection interrupted. Please try again.";
+                setTransientIssue({
+                    message: fallbackMessage,
+                });
+                onSearch(
+                    {
+                        error: "Something went wrong, please try again.",
+                        errorIsTransient: true,
+                    },
+                    currentResponseType,
+                    responseTime
+                );
             }
         } finally {
             // Only end if this is still the active stream
@@ -1172,7 +1228,16 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                     <TooltipTrigger asChild>
                                         <button
                                             type="button"
-                                            onClick={isSearching ? handleCancelSearch : handleSendQuery}
+                                            onClick={() => {
+                                                if (isSearching) {
+                                                    handleCancelSearch();
+                                                    return;
+                                                }
+                                                if (canRetrySearch) {
+                                                    setTransientIssue(null);
+                                                }
+                                                void handleSendQuery();
+                                            }}
                                             disabled={isSearching ? false : (!hasQuery || !queriesAllowed || isCheckingUsage)}
                                             className={cn(
                                                 "h-8 w-8 rounded-md border shadow-sm flex items-center justify-center transition-all",
@@ -1180,24 +1245,32 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                                     ? isDark
                                                         ? "bg-red-900/30 border-red-700 hover:bg-red-900/50 cursor-pointer"
                                                         : "bg-red-50 border-red-200 hover:bg-red-100 cursor-pointer"
-                                                    : (hasQuery && queriesAllowed && !isCheckingUsage)
+                                                    : canRetrySearch
                                                         ? (isDark
                                                             ? "bg-gray-800 border-border hover:bg-muted text-foreground border-gray-700"
                                                             : "bg-white border-border hover:bg-muted text-foreground")
-                                                        : (isDark
-                                                            ? "bg-muted text-muted-foreground cursor-not-allowed"
-                                                            : "bg-muted text-muted-foreground cursor-not-allowed")
+                                                        : (hasQuery && queriesAllowed && !isCheckingUsage)
+                                                            ? (isDark
+                                                                ? "bg-gray-800 border-border hover:bg-muted text-foreground border-gray-700"
+                                                                : "bg-white border-border hover:bg-muted text-foreground")
+                                                            : (isDark
+                                                                ? "bg-muted text-muted-foreground cursor-not-allowed"
+                                                                : "bg-muted text-muted-foreground cursor-not-allowed")
                                             )}
                                             title={isSearching
                                                 ? "Stop search"
-                                                : (!hasQuery
-                                                    ? "Type a question to enable"
-                                                    : (!queriesAllowed
-                                                        ? "Query limit reached — upgrade to run searches"
-                                                        : (isCheckingUsage ? "Checking usage..." : "Send query")))}
+                                                : canRetrySearch
+                                                    ? (transientIssue?.message || "Connection interrupted. Click to retry.")
+                                                    : (!hasQuery
+                                                        ? "Type a question to enable"
+                                                        : (!queriesAllowed
+                                                            ? "Query limit reached — upgrade to run searches"
+                                                            : (isCheckingUsage ? "Checking usage..." : "Send query")))}
                                         >
                                             {isSearching ? (
                                                 <Square className={cn(DESIGN_SYSTEM.icons.button, "text-red-500")} />
+                                            ) : canRetrySearch ? (
+                                                <RefreshCw className={cn(DESIGN_SYSTEM.icons.button, "text-muted-foreground")} />
                                             ) : (
                                                 <ArrowUp className={DESIGN_SYSTEM.icons.button} />
                                             )}

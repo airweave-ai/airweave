@@ -82,7 +82,8 @@ class JiraSource(BaseSource):
                 return resources
             except httpx.HTTPStatusError as e:
                 self.logger.error(
-                    f"HTTP error getting accessible resources: {e.response.status_code} - {e.response.text}"
+                    f"HTTP error getting accessible resources: "
+                    f"{e.response.status_code} - {e.response.text}"
                 )
                 return []
             except Exception as e:
@@ -297,7 +298,8 @@ class JiraSource(BaseSource):
 
         if not project_keys_filter:
             raise ValueError(
-                "Project keys configuration is required. Please specify which Jira projects to sync by editing the source connection details."
+                "Project keys configuration is required. Please specify which Jira projects "
+                "to sync by editing the source connection details."
             )
 
         # Convert to uppercase for case-insensitive matching (Jira keys are uppercase)
@@ -351,13 +353,15 @@ class JiraSource(BaseSource):
                 missing_keys = project_keys_filter_set - found_project_keys
                 if missing_keys:
                     self.logger.warning(
-                        f"⚠️ Some requested projects were not found or not accessible: {sorted(missing_keys)}"
+                        f"⚠️ Some requested projects were not found or not accessible: "
+                        f"{sorted(missing_keys)}"
                     )
 
                 if matched_count == 0:
                     self.logger.error(
                         f"❌ No projects matched the filter! Requested: {project_keys_filter}, "
-                        f"but none were found. Please check that the project keys are correct and accessible."
+                        f"but none were found. Please check that the project keys are correct "
+                        f"and accessible."
                     )
                     # Don't raise - let sync continue with 0 projects (user can see in logs/UI)
                 else:

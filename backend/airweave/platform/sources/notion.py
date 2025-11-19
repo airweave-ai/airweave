@@ -17,6 +17,7 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt
 from airweave.core.logging import logger
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
+from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.notion import (
     NotionDatabaseEntity,
@@ -82,7 +83,7 @@ class NotionSource(BaseSource):
     @classmethod
     async def create(cls, access_token, config: Optional[Dict[str, Any]] = None) -> "NotionSource":
         """Create a new Notion source."""
-        logger.info("Creating new Notion source")
+        logger.debug("Creating new Notion source")
         instance = cls()
         instance.access_token = access_token
 
@@ -129,7 +130,7 @@ class NotionSource(BaseSource):
             "total_files_found": 0,
             "max_page_depth": 0,
         }
-        logger.info("Initialized comprehensive Notion source with content aggregation")
+        logger.debug("Initialized comprehensive Notion source with content aggregation")
 
     async def _wait_for_rate_limit(self):
         """Implement rate limiting for Notion API requests."""
@@ -338,7 +339,7 @@ class NotionSource(BaseSource):
         self, client: httpx.AsyncClient
     ) -> AsyncGenerator[BaseEntity, None]:
         """Process child databases discovered during page content extraction."""
-        self.logger.info("Processing child databases")
+        self.logger.debug("Processing child databases")
 
         # Process child databases until no new ones are discovered
         while self._child_databases_to_process:
@@ -352,11 +353,11 @@ class NotionSource(BaseSource):
             if not unprocessed_databases:
                 break
 
-            self.logger.info(f"Processing {len(unprocessed_databases)} child databases")
+            self.logger.debug(f"Processing {len(unprocessed_databases)} child databases")
 
             for database_id in unprocessed_databases:
                 try:
-                    self.logger.info(f"Processing child database: {database_id}")
+                    self.logger.debug(f"Processing child database: {database_id}")
 
                     # Get database schema
                     schema = await self._get_with_auth(
@@ -488,7 +489,7 @@ class NotionSource(BaseSource):
         page_id = page["id"]
         title = self._extract_page_title(page)
 
-        self.logger.info(f"Creating comprehensive page entity: {title} ({page_id})")
+        self.logger.debug(f"Creating comprehensive page entity: {title} ({page_id})")
 
         # Reset child database tracking for this page
         self._child_databases_to_process.clear()
@@ -545,7 +546,7 @@ class NotionSource(BaseSource):
             file_entity.breadcrumbs = breadcrumbs.copy()
             files_with_breadcrumbs.append(file_entity)
 
-        self.logger.info(
+        self.logger.debug(
             f"Page entity created: {len(content_result['content'])} chars, "
             f"{content_result['blocks_count']} blocks, "
             f"{len(files_with_breadcrumbs)} files, "
@@ -845,7 +846,7 @@ class NotionSource(BaseSource):
 
         self._stats["child_databases_found"] += 1
         breadcrumb_names = [b.name for b in child_db_breadcrumbs]
-        self.logger.info(
+        self.logger.debug(
             f"Found child database: {title} ({database_id}) in page breadcrumbs: {breadcrumb_names}"
         )
 
@@ -1392,7 +1393,7 @@ class NotionSource(BaseSource):
     # Main Entry Point
     async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate all entities from Notion using streaming discovery."""
-        self.logger.info("Starting streaming Notion entity generation with content aggregation")
+        self.logger.debug("Starting streaming Notion entity generation with content aggregation")
         self._stats = {
             "api_calls": 0,
             "rate_limit_waits": 0,
@@ -1407,21 +1408,21 @@ class NotionSource(BaseSource):
         try:
             async with self.http_client() as client:
                 # Phase 1 & 2: Discover and yield databases with their schemas
-                self.logger.info("Phase 1 & 2: Streaming database discovery and schema analysis")
+                self.logger.debug("Phase 1 & 2: Streaming database discovery and schema analysis")
                 async for entity in self._stream_database_discovery(client):
                     yield entity
 
                 # Phase 3: Discover and yield standalone pages
-                self.logger.info("Phase 3: Streaming standalone page discovery")
+                self.logger.debug("Phase 3: Streaming standalone page discovery")
                 async for entity in self._stream_page_discovery(client):
                     yield entity
 
                 # Phase 4: Process any remaining child databases found during page processing
-                self.logger.info("Phase 4: Processing child databases")
+                self.logger.debug("Phase 4: Processing child databases")
                 async for entity in self._process_child_databases(client):
                     yield entity
 
-            self.logger.info(f"Notion sync complete. Final stats: {self._stats}")
+            self.logger.debug(f"Notion sync complete. Final stats: {self._stats}")
 
         except Exception as e:
             self.logger.error(
@@ -1436,7 +1437,7 @@ class NotionSource(BaseSource):
 
         Keeping this wrapper minimal satisfies complexity limits while preserving logic.
         """
-        self.logger.info("Streaming database discovery...")
+        self.logger.debug("Streaming database discovery...")
 
         async for database in self._search_objects(client, "database"):
             database_id = database["id"]
@@ -1451,7 +1452,7 @@ class NotionSource(BaseSource):
     ) -> AsyncGenerator[BaseEntity, None]:
         """Process one database: fetch schema, emit DB entity, pages, files, child DBs."""
         try:
-            self.logger.info(f"Fetching schema for database: {database_id}")
+            self.logger.debug(f"Fetching schema for database: {database_id}")
             schema = await self._get_with_auth(
                 client, f"https://api.notion.com/v1/databases/{database_id}"
             )
@@ -1461,7 +1462,7 @@ class NotionSource(BaseSource):
             yield database_entity
 
             database_title = self._extract_rich_text_plain(schema.get("title", []))
-            self.logger.info(f"Processing pages in database: {database_title}")
+            self.logger.debug(f"Processing pages in database: {database_title}")
 
             async for page in self._query_database_pages(client, database_id):
                 page_id = page["id"]
@@ -1499,7 +1500,7 @@ class NotionSource(BaseSource):
         self, client: httpx.AsyncClient
     ) -> AsyncGenerator[BaseEntity, None]:
         """Stream page discovery and immediately yield page entities."""
-        self.logger.info("Streaming page discovery...")
+        self.logger.debug("Streaming page discovery...")
 
         # Search for pages and process them one by one
         async for page in self._search_objects(client, "page"):
@@ -1562,7 +1563,7 @@ class NotionSource(BaseSource):
             # Skip external files (can't be downloaded)
             # Check the general file_type field (not the Notion-specific one)
             if not file_entity.url or file_entity.url.startswith("http") is False:
-                self.logger.info(f"Skipping file {file_entity.name} - no valid download URL")
+                self.logger.debug(f"Skipping file {file_entity.name} - no valid download URL")
                 return None
 
             # Download the file using file downloader
@@ -1578,11 +1579,16 @@ class NotionSource(BaseSource):
                 if not file_entity.local_path:
                     raise ValueError(f"Download failed - no local path set for {file_entity.name}")
 
-                self.logger.info(
+                self.logger.debug(
                     f"Successfully downloaded file {file_entity.name} "
                     f"to local_path: {file_entity.local_path}"
                 )
                 return file_entity
+
+            except FileSkippedException as e:
+                # File intentionally skipped (unsupported type, too large, etc.) - not an error
+                self.logger.debug(f"Skipping file {file_entity.name}: {e.reason}")
+                return None
 
             except Exception as e:
                 self.logger.error(f"Failed to download file {file_entity.name}: {e}")

@@ -19,6 +19,7 @@ from airweave.core.logging import logger
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.cursors import OutlookMailCursor
 from airweave.platform.decorators import source
+from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.outlook_mail import (
     OutlookAttachmentEntity,
@@ -108,7 +109,7 @@ class OutlookMailSource(BaseSource):
         cls, access_token: str, config: Optional[Dict[str, Any]] = None
     ) -> "OutlookMailSource":
         """Create a new Outlook Mail source instance with the provided OAuth access token."""
-        logger.info("Creating new OutlookMailSource instance")
+        logger.debug("Creating new OutlookMailSource instance")
         instance = cls()
         instance.access_token = access_token
 
@@ -118,7 +119,7 @@ class OutlookMailSource(BaseSource):
         instance.included_folders = config.get("included_folders", ["inbox", "sentitems"])
         instance.excluded_folders = config.get("excluded_folders", ["junkemail", "deleteditems"])
 
-        logger.info(f"OutlookMailSource instance created with config: {config}")
+        logger.debug(f"OutlookMailSource instance created with config: {config}")
         return instance
 
     def _should_process_folder(self, folder_data: Dict[str, Any]) -> bool:
@@ -220,7 +221,7 @@ class OutlookMailSource(BaseSource):
         folder_breadcrumb: Breadcrumb,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Process messages in a folder and handle errors gracefully."""
-        self.logger.info(f"Processing messages in folder: {folder_entity.display_name}")
+        self.logger.debug(f"Processing messages in folder: {folder_entity.display_name}")
         try:
             async for entity in self._generate_message_entities(
                 client, folder_entity, folder_breadcrumb
@@ -241,7 +242,7 @@ class OutlookMailSource(BaseSource):
     ) -> AsyncGenerator[OutlookMailFolderEntity, None]:
         """Process child folders recursively and handle errors gracefully."""
         if folder_entity.child_folder_count > 0:
-            self.logger.info(
+            self.logger.debug(
                 f"Folder {folder_entity.display_name} has "
                 f"{folder_entity.child_folder_count} child folders, recursively processing"
             )
@@ -275,7 +276,9 @@ class OutlookMailSource(BaseSource):
                 attempts += 1
                 if isinstance(delta_data, dict) and "@odata.deltaLink" in delta_data:
                     delta_link = delta_data["@odata.deltaLink"]
-                    self.logger.info(f"Storing delta link for folder: {folder_entity.display_name}")
+                    self.logger.debug(
+                        f"Storing delta link for folder: {folder_entity.display_name}"
+                    )
                     self._update_folder_cursor(
                         delta_link, folder_entity.entity_id, folder_entity.display_name
                     )
@@ -325,7 +328,7 @@ class OutlookMailSource(BaseSource):
             well_known_name=folder.get("wellKnownName"),
         )
 
-        self.logger.info(
+        self.logger.debug(
             f"Processing folder: {folder_entity.display_name} "
             f"(ID: {folder_entity.entity_id}, Items: {folder_entity.total_item_count})"
         )
@@ -366,18 +369,18 @@ class OutlookMailSource(BaseSource):
         # Decide the endpoint: top-level vs. child folders
         if folder_id:
             url = f"{self.GRAPH_BASE_URL}/me/mailFolders/{folder_id}/childFolders"
-            self.logger.info(f"Fetching child folders for folder ID: {folder_id}")
+            self.logger.debug(f"Fetching child folders for folder ID: {folder_id}")
         else:
             # top-level mail folders
             url = f"{self.GRAPH_BASE_URL}/me/mailFolders"
-            self.logger.info("Fetching top-level mail folders")
+            self.logger.debug("Fetching top-level mail folders")
 
         try:
             while url:
                 self.logger.debug(f"Making request to: {url}")
                 data = await self._get_with_auth(client, url)
                 folders = data.get("value", [])
-                self.logger.info(f"Retrieved {len(folders)} folders")
+                self.logger.debug(f"Retrieved {len(folders)} folders")
 
                 for folder in folders:
                     async for entity in self._process_single_folder_tree(
@@ -407,7 +410,7 @@ class OutlookMailSource(BaseSource):
             self.logger.debug(f"Skipping folder {folder_entity.display_name} - no messages")
             return
 
-        self.logger.info(
+        self.logger.debug(
             f"Starting message generation for folder: {folder_entity.display_name} "
             f"({folder_entity.total_item_count} items)"
         )
@@ -421,13 +424,13 @@ class OutlookMailSource(BaseSource):
         try:
             while url:
                 page_count += 1
-                self.logger.info(
+                self.logger.debug(
                     f"Fetching message list page #{page_count} for folder "
                     f"{folder_entity.display_name}"
                 )
                 data = await self._get_with_auth(client, url, params=params)
                 messages = data.get("value", [])
-                self.logger.info(
+                self.logger.debug(
                     f"Found {len(messages)} messages on page {page_count} in folder "
                     f"{folder_entity.display_name}"
                 )
@@ -477,7 +480,7 @@ class OutlookMailSource(BaseSource):
                     self.logger.debug("Following pagination to next page")
                     params = None  # params are included in the nextLink
                 else:
-                    self.logger.info(
+                    self.logger.debug(
                         f"Completed folder {folder_entity.display_name}. "
                         f"Processed {message_count} messages in {page_count} pages."
                     )
@@ -580,14 +583,19 @@ class OutlookMailSource(BaseSource):
 
         # Download email body to file (NOT stored in entity fields)
         # Email content is only in the local file for conversion
-        if body_content:
-            file_extension = ".txt" if is_plain_text else ".html"
-            await self.file_downloader.save_bytes(
-                entity=message_entity,
-                content=body_content.encode("utf-8"),
-                filename_with_extension=message_entity.name + file_extension,
-                logger=self.logger,
-            )
+        try:
+            if body_content:
+                file_extension = ".txt" if is_plain_text else ".html"
+                await self.file_downloader.save_bytes(
+                    entity=message_entity,
+                    content=body_content.encode("utf-8"),
+                    filename_with_extension=message_entity.name + file_extension,
+                    logger=self.logger,
+                )
+        except FileSkippedException as e:
+            # Message body skipped (unsupported type, too large) - not an error
+            self.logger.debug(f"Skipping message body for {message_id}: {e.reason}")
+            return  # Skip this message if we can't save the body
 
         yield message_entity
         self.logger.debug(f"Message entity yielded for {message_id}")
@@ -722,6 +730,11 @@ class OutlookMailSource(BaseSource):
             self.logger.debug(f"Successfully processed attachment: {attachment_name}")
             return file_entity
 
+        except FileSkippedException as e:
+            # Attachment intentionally skipped (unsupported type, too large, etc.) - not an error
+            self.logger.debug(f"Skipping attachment {attachment_name}: {e.reason}")
+            return None
+
         except Exception as e:
             self.logger.error(f"Error processing attachment {attachment_id}: {str(e)}")
             return None
@@ -780,7 +793,7 @@ class OutlookMailSource(BaseSource):
         Yields:
             BaseEntity objects for changed messages and attachments
         """
-        self.logger.info(f"Processing delta changes for folder: {folder_name}")
+        self.logger.debug(f"Processing delta changes for folder: {folder_name}")
 
         try:
             # Construct the delta URL using the token (pass via params to ensure proper encoding)
@@ -794,7 +807,7 @@ class OutlookMailSource(BaseSource):
 
                 # Process changes
                 changes = data.get("value", [])
-                self.logger.info(f"Found {len(changes)} changes in delta response")
+                self.logger.debug(f"Found {len(changes)} changes in delta response")
 
                 for change in changes:
                     # Apply date filter to delta changes
@@ -880,7 +893,7 @@ class OutlookMailSource(BaseSource):
                 if delta_link:
                     if self.cursor:
                         self.cursor.update(folders_delta_link=delta_link)
-                    self.logger.info("Stored folders_delta_link for future incremental syncs")
+                    self.logger.debug("Stored folders_delta_link for future incremental syncs")
                     break
 
                 next_link = data.get("@odata.nextLink")
@@ -911,7 +924,7 @@ class OutlookMailSource(BaseSource):
         try:
             async for data in self._iterate_delta_pages(client, delta_url):
                 changes = data.get("value", [])
-                self.logger.info(f"Found {len(changes)} folder changes in delta response")
+                self.logger.debug(f"Found {len(changes)} folder changes in delta response")
 
                 async for entity in self._yield_folder_changes(client, changes):
                     yield entity
@@ -954,7 +967,7 @@ class OutlookMailSource(BaseSource):
 
     async def _emit_folder_removal(self, folder_id: str) -> AsyncGenerator[BaseEntity, None]:
         """Emit a folder deletion entity and clean up stored links/names."""
-        self.logger.info(f"Folder removed: {folder_id}")
+        self.logger.debug(f"Folder removed: {folder_id}")
         deletion_entity = OutlookMailFolderDeletionEntity(
             entity_id=folder_id,
             breadcrumbs=[],
@@ -1078,7 +1091,7 @@ class OutlookMailSource(BaseSource):
         Reuses the URL returned by Microsoft Graph and follows @odata.nextLink until
         an @odata.deltaLink is returned, which is then stored for the next round.
         """
-        self.logger.info(f"Processing delta changes (URL) for folder: {folder_name}")
+        self.logger.debug(f"Processing delta changes (URL) for folder: {folder_name}")
 
         try:
             url = delta_url
@@ -1087,7 +1100,7 @@ class OutlookMailSource(BaseSource):
                 data = await self._get_with_auth(client, url)
 
                 changes = data.get("value", [])
-                self.logger.info(f"Found {len(changes)} changes in delta response")
+                self.logger.debug(f"Found {len(changes)} changes in delta response")
 
                 for change in changes:
                     change_type = change.get("@odata.type", "")
@@ -1162,7 +1175,7 @@ class OutlookMailSource(BaseSource):
         Yields:
             BaseEntity objects for changed messages and attachments
         """
-        self.logger.info("Starting incremental sync")
+        self.logger.debug("Starting incremental sync")
 
         # Prefer per-folder delta links (opaque URLs) if available
         cursor_data = self.cursor.data if self.cursor else {}
@@ -1195,7 +1208,7 @@ class OutlookMailSource(BaseSource):
         Supports both full sync (first run) and incremental sync (subsequent runs)
         using Microsoft Graph delta API.
         """
-        self.logger.info("===== STARTING OUTLOOK MAIL ENTITY GENERATION =====")
+        self.logger.debug("===== STARTING OUTLOOK MAIL ENTITY GENERATION =====")
         entity_count = 0
 
         try:
@@ -1204,24 +1217,24 @@ class OutlookMailSource(BaseSource):
             delta_token = cursor_data.get("delta_link")
 
             if delta_token:
-                self.logger.info("📊 Incremental sync from cursor")
+                self.logger.debug("📊 Incremental sync from cursor")
             else:
-                self.logger.info("🔄 Full sync (no cursor)")
+                self.logger.debug("🔄 Full sync (no cursor)")
 
             async with self.http_client() as client:
-                self.logger.info("HTTP client created, starting entity generation")
+                self.logger.debug("HTTP client created, starting entity generation")
 
                 has_folder_links = bool(cursor_data.get("folder_delta_links"))
 
                 if has_folder_links or delta_token:
                     # INCREMENTAL SYNC: Prefer per-folder delta links; fall back to legacy token
-                    self.logger.info("Performing INCREMENTAL sync")
+                    self.logger.debug("Performing INCREMENTAL sync")
                     async for entity in self._generate_folder_entities_incremental(
                         client, delta_token
                     ):
                         entity_count += 1
                         entity_type = type(entity).__name__
-                        self.logger.info(
+                        self.logger.debug(
                             (
                                 f"Yielding delta entity #{entity_count}: {entity_type} "
                                 f"with ID {entity.entity_id}"
@@ -1230,14 +1243,14 @@ class OutlookMailSource(BaseSource):
                         yield entity
                 else:
                     # FULL SYNC: Process all folders and messages
-                    self.logger.info("Performing FULL sync (first sync or cursor reset)")
+                    self.logger.debug("Performing FULL sync (first sync or cursor reset)")
                     # Initialize folders delta link up front for next incremental run
                     await self._initialize_folders_delta_link(client)
 
                     async for entity in self._generate_folder_entities(client):
                         entity_count += 1
                         entity_type = type(entity).__name__
-                        self.logger.info(
+                        self.logger.debug(
                             (
                                 f"Yielding full sync entity #{entity_count}: {entity_type} "
                                 f"with ID {entity.entity_id}"
@@ -1249,7 +1262,7 @@ class OutlookMailSource(BaseSource):
             self.logger.error(f"Error in entity generation: {str(e)}", exc_info=True)
             raise
         finally:
-            self.logger.info(
+            self.logger.debug(
                 f"===== OUTLOOK MAIL ENTITY GENERATION COMPLETE: {entity_count} entities ====="
             )
 

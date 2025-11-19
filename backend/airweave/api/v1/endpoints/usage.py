@@ -170,12 +170,17 @@ def _create_usage_snapshot(
     plan_limits: dict,
     billing_period_id: UUID,
     team_members: int,
+    source_connections: int,
 ) -> UsageSnapshot:
-    """Create a usage snapshot from usage record and plan limits."""
+    """Create a usage snapshot from usage record and plan limits.
+
+    Note: source_connections and team_members are computed dynamically
+    and not stored in the usage table.
+    """
     return UsageSnapshot(
         entities=usage_record.entities if usage_record else 0,
         queries=usage_record.queries if usage_record else 0,
-        source_connections=usage_record.source_connections if usage_record else 0,
+        source_connections=source_connections,
         team_members=team_members,
         max_entities=plan_limits.get("max_entities"),
         max_queries=plan_limits.get("max_queries"),
@@ -261,7 +266,6 @@ def _calculate_trends(
     metrics = [
         ("entities", current_usage.entities, prev_usage.entities),
         ("queries", current_usage.queries, prev_usage.queries),
-        ("source_connections", current_usage.source_connections, prev_usage.source_connections),
     ]
 
     for metric_name, current_val, prev_val in metrics:
@@ -296,11 +300,12 @@ async def _build_previous_periods(
         db, organization_id=organization_id, limit=limit
     )
 
-    # Get team member count from guard rail service
+    # Get team member and source connections count from guard rail service
     team_guard_rail = GuardRailService(
         organization_id=organization_id, logger=ctx.logger.with_context(component="guardrail")
     )
     team_members_count = await team_guard_rail.get_team_member_count()
+    source_connections_count = await team_guard_rail.get_source_connection_count()
 
     previous_periods = []
     for period in previous_periods_data:
@@ -330,7 +335,11 @@ async def _build_previous_periods(
                 status=status_str,
                 plan=plan_str,
                 usage=_create_usage_snapshot(
-                    period_usage, period_limits, period.id, team_members_count
+                    period_usage,
+                    period_limits,
+                    period.id,
+                    team_members_count,
+                    source_connections_count,
                 ),
                 daily_usage=[],
                 days_remaining=None,
@@ -385,10 +394,15 @@ async def get_usage_dashboard(
             logger=ctx.logger.with_context(component="guardrail"),
         )
         team_members_count = await usage_guard_rail.get_team_member_count()
+        source_connections_count = await usage_guard_rail.get_source_connection_count()
 
         # Create usage snapshot
         usage_snapshot = _create_usage_snapshot(
-            usage_record, plan_limits, target_period.id, team_members_count
+            usage_record,
+            plan_limits,
+            target_period.id,
+            team_members_count,
+            source_connections_count,
         )
 
         # Calculate period status

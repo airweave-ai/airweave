@@ -23,6 +23,7 @@ from airweave.core.exceptions import TokenRefreshError
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.cursors import GoogleDriveCursor
 from airweave.platform.decorators import source
+from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.entities.google_drive import (
     GoogleDriveDriveEntity,
@@ -779,6 +780,11 @@ class GoogleDriveSource(BaseSource):
                 self.logger.debug(f"Successfully downloaded file: {file_entity.name}")
                 return file_entity
 
+            except FileSkippedException as e:
+                # File intentionally skipped (unsupported type, too large, etc.) - not an error
+                self.logger.debug(f"Skipping file {file_entity.name}: {e.reason}")
+                return None
+
             except Exception as e:
                 self.logger.error(f"Failed to download file {file_entity.name}: {e}")
                 return None
@@ -839,6 +845,11 @@ class GoogleDriveSource(BaseSource):
                                 )
 
                             yield file_entity
+
+                        except FileSkippedException as e:
+                            # File intentionally skipped (unsupported type, too large, etc.) - not an error
+                            self.logger.debug(f"Skipping file {file_entity.name}: {e.reason}")
+                            continue
 
                         except Exception as e:
                             self.logger.error(f"Failed to download file {file_entity.name}: {e}")
@@ -983,6 +994,13 @@ class GoogleDriveSource(BaseSource):
 
                                             yield file_entity
 
+                                        except FileSkippedException as e:
+                                            # File intentionally skipped (unsupported type, too large, etc.) - not an error
+                                            self.logger.debug(
+                                                f"Skipping file {file_entity.name}: {e.reason}"
+                                            )
+                                            continue
+
                                         except Exception as e:
                                             self.logger.error(
                                                 f"Failed to download file {file_entity.name}: {e}"
@@ -1049,6 +1067,13 @@ class GoogleDriveSource(BaseSource):
                                                 )
 
                                             yield file_entity
+
+                                        except FileSkippedException as e:
+                                            # File intentionally skipped (unsupported type, too large, etc.) - not an error
+                                            self.logger.debug(
+                                                f"Skipping file {file_entity.name}: {e.reason}"
+                                            )
+                                            continue
 
                                         except Exception as e:
                                             self.logger.error(
@@ -1128,6 +1153,13 @@ class GoogleDriveSource(BaseSource):
 
                                         yield file_entity
 
+                                    except FileSkippedException as e:
+                                        # File intentionally skipped (unsupported type, too large, etc.) - not an error
+                                        self.logger.debug(
+                                            f"Skipping file {file_entity.name}: {e.reason}"
+                                        )
+                                        continue
+
                                     except Exception as e:
                                         self.logger.error(
                                             f"Failed to download file {file_entity.name}: {e}"
@@ -1193,6 +1225,13 @@ class GoogleDriveSource(BaseSource):
                                             )
 
                                         yield file_entity
+
+                                    except FileSkippedException as e:
+                                        # File intentionally skipped (unsupported type, too large, etc.) - not an error
+                                        self.logger.debug(
+                                            f"Skipping file {file_entity.name}: {e.reason}"
+                                        )
+                                        continue
 
                                     except Exception as e:
                                         self.logger.error(

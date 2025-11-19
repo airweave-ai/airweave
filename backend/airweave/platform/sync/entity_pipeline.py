@@ -19,8 +19,15 @@ from tenacity import (
 )
 
 from airweave import crud, models
+from airweave.core.constants.reserved_ids import RESERVED_TABLE_ENTITY_ID
+from airweave.core.shared_models import ActionType
 from airweave.db.session import get_db_context
-from airweave.platform.entities._base import BaseEntity, CodeFileEntity, FileEntity
+from airweave.platform.entities._base import (
+    BaseEntity,
+    CodeFileEntity,
+    FileEntity,
+    PolymorphicEntity,
+)
 from airweave.platform.sync.context import SyncContext
 from airweave.platform.sync.exceptions import EntityProcessingError, SyncFailureError
 from airweave.platform.sync.file_types import SUPPORTED_FILE_EXTENSIONS
@@ -32,6 +39,7 @@ class EntityPipeline:
     def __init__(self):
         """Initialize pipeline with empty entity tracking."""
         self._entity_ids_encountered_by_type: Dict[str, Set[str]] = {}
+        self._dedupe_lock = asyncio.Lock()
         self._entities_printed_count: int = 0
 
     # ------------------------------------------------------------------------------------
@@ -191,11 +199,22 @@ class EntityPipeline:
 
         chunk_entities = await self._chunk_entities(entities_to_process, sync_context)
 
+        # Release large textual bodies on parent entities once chunks are created
+        for entity in entities_to_process:
+            entity.textual_representation = None
+
         # Embed chunk entities (sets vectors field)
         await self._embed_entities(chunk_entities, sync_context)
 
         # Persist to destinations (COMMIT POINT)
         await self._persist_to_destinations(chunk_entities, partitions, sync_context)
+
+        # Drop chunk payloads/vectors ASAP to minimise concurrent memory footprint
+        for chunk in chunk_entities:
+            chunk.textual_representation = None
+            if chunk.airweave_system_metadata:
+                chunk.airweave_system_metadata.vectors = None
+        chunk_entities.clear()
 
         # Persist to database (only after destination success)
         await self._persist_to_database(partitions, sync_context)
@@ -220,18 +239,25 @@ class EntityPipeline:
         for entity in entities:
             # Track by entity type to allow same IDs across different types
             entity_type = entity.__class__.__name__
-            self._entity_ids_encountered_by_type.setdefault(entity_type, set())
 
-            # Check if we've already seen this entity ID for this type
-            if entity.entity_id in self._entity_ids_encountered_by_type[entity_type]:
+            is_duplicate = False
+            async with self._dedupe_lock:
+                entity_ids = self._entity_ids_encountered_by_type.setdefault(entity_type, set())
+
+                # Check if we've already seen this entity ID for this type
+                if entity.entity_id in entity_ids:
+                    is_duplicate = True
+                else:
+                    # Mark as encountered
+                    entity_ids.add(entity.entity_id)
+
+            if is_duplicate:
                 skipped_count += 1
                 sync_context.logger.debug(
                     f"Skipping duplicate entity: {entity_type}[{entity.entity_id}]"
                 )
                 continue
 
-            # Mark as encountered and add to unique list
-            self._entity_ids_encountered_by_type[entity_type].add(entity.entity_id)
             unique_entities.append(entity)
 
         # Update progress with skip count
@@ -475,7 +501,7 @@ class EntityPipeline:
         # Step 2: Build entity requests with definition IDs
         entity_requests = []
         for entity in non_deletes:
-            entity_definition_id = sync_context.entity_map.get(entity.__class__)
+            entity_definition_id = self._resolve_entity_definition_id(entity, sync_context)
             if entity_definition_id is None:
                 # Entity type not in map → fatal error
                 sync_context.logger.error(
@@ -488,7 +514,7 @@ class EntityPipeline:
 
         # Also add deletes to lookup (need existing_map for _handle_deletes)
         for entity in deletes:
-            entity_definition_id = sync_context.entity_map.get(entity.__class__)
+            entity_definition_id = self._resolve_entity_definition_id(entity, sync_context)
             if entity_definition_id is None:
                 raise SyncFailureError(
                     f"DELETE entity type {entity.__class__.__name__} not in entity_map"
@@ -545,7 +571,11 @@ class EntityPipeline:
             entity_hash = entity.airweave_system_metadata.hash
 
             # Get entity_definition_id (already validated in Step 2)
-            entity_definition_id = sync_context.entity_map[entity.__class__]
+            entity_definition_id = self._resolve_entity_definition_id(entity, sync_context)
+            if entity_definition_id is None:
+                raise SyncFailureError(
+                    f"Entity type {entity.__class__.__name__} not in sync_context.entity_map"
+                )
 
             # Get existing DB record using composite key
             db_key = (entity.entity_id, entity_definition_id)
@@ -569,6 +599,21 @@ class EntityPipeline:
         )
 
         return partitions
+
+    def _resolve_entity_definition_id(
+        self, entity: BaseEntity, sync_context: SyncContext
+    ) -> Optional[UUID]:
+        """Resolve entity definition ID with polymorphic fallback."""
+        entity_class = entity.__class__
+
+        definition_id = sync_context.entity_map.get(entity_class)
+        if definition_id:
+            return definition_id
+
+        if issubclass(entity_class, PolymorphicEntity):
+            return RESERVED_TABLE_ENTITY_ID
+
+        return None
 
     # ------------------------------------------------------------------------------------
     # Delete Handling
@@ -610,7 +655,7 @@ class EntityPipeline:
         db_ids = []
 
         for entity in deletes:
-            entity_def_id = sync_context.entity_map.get(entity.__class__)
+            entity_def_id = self._resolve_entity_definition_id(entity, sync_context)
             if not entity_def_id:
                 raise SyncFailureError(
                     f"PROGRAMMING ERROR: DELETE entity {entity.entity_id} type "
@@ -635,7 +680,7 @@ class EntityPipeline:
             if hasattr(sync_context, "entity_state_tracker") and sync_context.entity_state_tracker:
                 counts_by_def: Dict[UUID, int] = defaultdict(int)
                 for entity in deletes:
-                    entity_def_id = sync_context.entity_map.get(entity.__class__)
+                    entity_def_id = self._resolve_entity_definition_id(entity, sync_context)
                     key = (entity.entity_id, entity_def_id) if entity_def_id else None
                     if key and key in existing_map:
                         counts_by_def[entity_def_id] += 1
@@ -793,6 +838,8 @@ class EntityPipeline:
             ".swift": converters.code_converter,
             ".kt": converters.code_converter,
             ".kts": converters.code_converter,
+            ".tf": converters.code_converter,
+            ".tfvars": converters.code_converter,
         }
 
         converter = converter_map.get(ext)
@@ -1354,10 +1401,10 @@ class EntityPipeline:
                             f"Deduplicated {len(inserts)} → {len(deduped)} inserts"
                         )
 
-                    # Build create objects
-                    create_objs = []
+                    # Build create objects (with deterministic ordering to avoid deadlock cycles)
+                    ordered_entities: List[Tuple[UUID, BaseEntity]] = []
                     for entity in deduped:
-                        entity_def_id = sync_context.entity_map.get(entity.__class__)
+                        entity_def_id = self._resolve_entity_definition_id(entity, sync_context)
                         if not entity_def_id:
                             raise SyncFailureError(
                                 f"Entity type {entity.__class__.__name__} not in entity_map"
@@ -1365,15 +1412,38 @@ class EntityPipeline:
                         if not entity.airweave_system_metadata.hash:
                             raise SyncFailureError(f"Entity {entity.entity_id} missing hash")
 
-                        create_objs.append(
-                            schemas.EntityCreate(
-                                sync_job_id=sync_context.sync_job.id,
-                                sync_id=sync_context.sync.id,
-                                entity_id=entity.entity_id,
-                                entity_definition_id=entity_def_id,
-                                hash=entity.airweave_system_metadata.hash,
-                            )
+                        ordered_entities.append((entity_def_id, entity))
+
+                    if ordered_entities:
+                        ordered_entities.sort(
+                            key=lambda item: (item[0].int if item[0] else 0, item[1].entity_id)
                         )
+
+                    create_objs = [
+                        schemas.EntityCreate(
+                            sync_job_id=sync_context.sync_job.id,
+                            sync_id=sync_context.sync.id,
+                            entity_id=entity.entity_id,
+                            entity_definition_id=entity_def_id,
+                            hash=entity.airweave_system_metadata.hash,
+                        )
+                        for entity_def_id, entity in ordered_entities
+                    ]
+
+                    # Diagnostics: record which worker is performing this DB batch
+                    current_task = asyncio.current_task()
+                    task_name = (
+                        current_task.get_name()
+                        if current_task and current_task.get_name()
+                        else "unknown"
+                    )
+                    sample_ids = [entity.entity_id for _, entity in ordered_entities[:10]]
+                    sync_context.logger.debug(
+                        "[DB] Task %s upserting %d inserts (sample: %s)",
+                        task_name,
+                        len(create_objs),
+                        sample_ids,
+                    )
 
                     # Bulk upsert (handles cross-batch duplicates)
                     await crud.entity.bulk_create(db, objs=create_objs, ctx=sync_context.ctx)
@@ -1381,9 +1451,14 @@ class EntityPipeline:
 
                 # Handle UPDATEs
                 if updates:
-                    update_pairs = []
+                    update_records = []
                     for entity in updates:
-                        entity_def_id = sync_context.entity_map[entity.__class__]
+                        entity_def_id = self._resolve_entity_definition_id(entity, sync_context)
+                        if entity_def_id is None:
+                            raise SyncFailureError(
+                                f"PROGRAMMING ERROR: UPDATE entity {entity.entity_id} "
+                                f"type {entity.__class__.__name__} not in entity_map"
+                            )
                         key = (entity.entity_id, entity_def_id)
 
                         if key not in existing_map:
@@ -1398,9 +1473,27 @@ class EntityPipeline:
 
                         db_id = existing_map[key].id
                         new_hash = entity.airweave_system_metadata.hash
-                        update_pairs.append((db_id, new_hash))
+                        update_records.append((db_id, new_hash, entity))
 
-                    if update_pairs:
+                    if update_records:
+                        update_records.sort(key=lambda item: item[0])
+                        update_pairs = [(db_id, new_hash) for db_id, new_hash, _ in update_records]
+                        current_task = asyncio.current_task()
+                        task_name = (
+                            current_task.get_name()
+                            if current_task and current_task.get_name()
+                            else "unknown"
+                        )
+                        sample_update_ids = [
+                            entity.entity_id for _, _, entity in update_records[:10]
+                        ]
+                        sync_context.logger.debug(
+                            "[DB] Task %s updating %d hashes (sample: %s)",
+                            task_name,
+                            len(update_pairs),
+                            sample_update_ids,
+                        )
+
                         await crud.entity.bulk_update_hash(db, rows=update_pairs)
                         sync_context.logger.debug(f"Updated {len(update_pairs)} hashes")
 
@@ -1410,6 +1503,16 @@ class EntityPipeline:
         # Execute with deadlock retry
         await _with_deadlock_retry(_execute_db_operations)
 
+        # Increment guard rail usage for synced entities (inserts + updates)
+        # Both count as "entities synced" since they represent work done
+        total_synced = len(inserts) + len(updates)
+        if total_synced > 0:
+            await sync_context.guard_rail.increment(ActionType.ENTITIES, amount=total_synced)
+            sync_context.logger.debug(
+                f"Incremented guard_rail ENTITIES usage by {total_synced} "
+                f"({len(inserts)} inserts + {len(updates)} updates)"
+            )
+
         # Update entity state tracker for real-time UI updates via pubsub
         if hasattr(sync_context, "entity_state_tracker") and sync_context.entity_state_tracker:
             # Track inserts
@@ -1417,7 +1520,7 @@ class EntityPipeline:
                 counts_by_def: Dict[UUID, int] = defaultdict(int)
                 sample_name_by_def: Dict[UUID, str] = {}
                 for entity in inserts:
-                    entity_def_id = sync_context.entity_map.get(entity.__class__)
+                    entity_def_id = self._resolve_entity_definition_id(entity, sync_context)
                     if entity_def_id:
                         counts_by_def[entity_def_id] += 1
                         sample_name_by_def.setdefault(entity_def_id, entity.__class__.__name__)
@@ -1435,7 +1538,7 @@ class EntityPipeline:
             if updates:
                 counts_by_def_updates: Dict[UUID, int] = defaultdict(int)
                 for entity in updates:
-                    entity_def_id = sync_context.entity_map.get(entity.__class__)
+                    entity_def_id = self._resolve_entity_definition_id(entity, sync_context)
                     if entity_def_id:
                         counts_by_def_updates[entity_def_id] += 1
 
@@ -1468,33 +1571,17 @@ class EntityPipeline:
                 await sync_context.progress.increment(stat, count)
 
     # ------------------------------------------------------------------------------------
-    # Retry Logic for Destination Operations
+    # Retry Logic for Destination Operations - Helper Methods
     # ------------------------------------------------------------------------------------
 
-    async def _retry_destination_operation(
-        self,
-        operation: Callable,
-        operation_name: str,
-        sync_context: SyncContext,
-    ):
-        """Retry a destination operation with exponential backoff for transient errors.
-
-        Uses tenacity to retry specific exception types (timeouts, disconnections, rate limits).
-        Permanent errors (auth, not found) fail immediately without retry.
-
-        Args:
-            operation: Async callable to retry
-            operation_name: Human-readable operation name for logging
-            sync_context: Sync context with logger
+    def _get_retryable_exception_types(self) -> tuple[type[Exception], ...]:
+        """Get tuple of exception types that should be retried.
 
         Returns:
-            Result of the operation
-
-        Raises:
-            SyncFailureError: After all retries exhausted or on permanent errors
+            Tuple of exception classes for transient errors (timeouts, connections, etc.)
         """
-        # Build exception tuple for retryable errors
         retry_exception_types: tuple[type[Exception], ...] = (ConnectionError, TimeoutError)
+
         try:
             import httpcore
             import httpx
@@ -1523,6 +1610,234 @@ class EntityPipeline:
         except ImportError:
             pass
 
+        return retry_exception_types
+
+    def _build_base_error_context(
+        self,
+        e: Exception,
+        operation_name: str,
+        attempt_count: int,
+        sync_context: SyncContext,
+    ) -> dict:
+        """Build base error context with operation and sync details.
+
+        Args:
+            e: Exception that occurred
+            operation_name: Human-readable operation name
+            attempt_count: Current attempt number
+            sync_context: Sync context with sync/job IDs and source
+
+        Returns:
+            Dict with base error context
+        """
+        return {
+            "operation_name": operation_name,
+            "exception_type": type(e).__name__,
+            "exception_message": str(e)[:500],
+            "attempt": attempt_count,
+            "max_attempts": 4,
+            "sync_id": str(sync_context.sync.id),
+            "sync_job_id": str(sync_context.sync_job.id),
+            "source_name": sync_context.source._short_name,
+        }
+
+    async def _add_destination_details_to_error_context(
+        self,
+        error_context: dict,
+        sync_context: SyncContext,
+        attempt_count: int,
+    ) -> None:
+        """Add destination details and health info to error context.
+
+        Args:
+            error_context: Error context dict to enrich
+            sync_context: Sync context with destinations
+            attempt_count: Current attempt number (health fetched on attempt 1)
+        """
+        if not sync_context.destinations:
+            return
+
+        dest = sync_context.destinations[0]
+        error_context["destination_type"] = dest.__class__.__name__
+
+        if hasattr(dest, "collection_name"):
+            error_context["collection_name"] = dest.collection_name
+        if hasattr(dest, "collection_id"):
+            error_context["collection_id"] = str(dest.collection_id)
+        if hasattr(dest, "url"):
+            error_context["destination_url"] = dest.url or "native"
+
+        # Fetch collection health info on first retry attempt for diagnostics
+        if attempt_count == 1 and hasattr(dest, "get_collection_health_info"):
+            try:
+                health_info = await dest.get_collection_health_info()
+                error_context["collection_health"] = health_info
+            except Exception:
+                pass  # Don't fail on diagnostics
+
+    def _extract_qdrant_error_details(self, e: Exception, error_context: dict) -> None:
+        """Extract Qdrant-specific error details from exception.
+
+        Args:
+            e: Exception to extract from
+            error_context: Error context dict to enrich
+        """
+        try:
+            from qdrant_client.http.exceptions import UnexpectedResponse
+
+            if not isinstance(e, UnexpectedResponse):
+                return
+
+            error_context["http_status"] = e.status_code
+            error_context["reason_phrase"] = e.reason_phrase
+
+            # Try to extract structured error from Qdrant
+            try:
+                error_data = e.structured()
+                if isinstance(error_data.get("status"), dict):
+                    error_context["qdrant_error"] = error_data["status"].get("error")
+                else:
+                    qdrant_status = error_data.get("status")
+                    qdrant_msg = error_data.get("message")
+                    error_context["qdrant_error"] = qdrant_status or qdrant_msg
+                error_context["qdrant_full_response"] = error_data
+            except Exception:
+                # Fallback to raw content
+                if e.content:
+                    raw_content = e.content.decode("utf-8")[:500]
+                    error_context["qdrant_raw_response"] = raw_content
+        except ImportError:
+            pass
+
+    def _extract_http_error_details(self, e: Exception, error_context: dict) -> None:
+        """Extract HTTP request details from exception if available.
+
+        Args:
+            e: Exception to extract from
+            error_context: Error context dict to enrich
+        """
+        if hasattr(e, "request"):
+            try:
+                error_context["request_method"] = e.request.method
+                error_context["request_url"] = str(e.request.url)
+            except Exception:
+                pass
+
+    def _is_permanent_error(
+        self,
+        e: Exception,
+        operation_name: str,
+        error_context: dict,
+        sync_context: SyncContext,
+    ) -> bool:
+        """Check if error is permanent (auth, not found) and log accordingly.
+
+        Args:
+            e: Exception to check
+            operation_name: Human-readable operation name
+            error_context: Error context dict for logging
+            sync_context: Sync context with logger
+
+        Returns:
+            True if error is permanent (should not retry)
+        """
+        error_msg = str(e).lower()
+        permanent_indicators = ["401", "403", "404", "400", "unauthorized", "forbidden"]
+
+        if any(indicator in error_msg for indicator in permanent_indicators):
+            error_context["is_permanent"] = True
+            sync_context.logger.error(
+                f"🚫 Destination '{operation_name}' permanent error: {type(e).__name__}",
+                extra={"error_context": error_context},
+            )
+            # Log full error details
+            sync_context.logger.error(f"[Destination] Error context: {error_context}")
+            return True
+
+        return False
+
+    async def _build_final_error_context(
+        self,
+        e: Exception,
+        operation_name: str,
+        attempt_count: int,
+        total_time: float,
+        sync_context: SyncContext,
+    ) -> dict:
+        """Build comprehensive error context for final failure logging.
+
+        Args:
+            e: Exception that occurred
+            operation_name: Human-readable operation name
+            attempt_count: Total attempts made
+            total_time: Total time elapsed across all retries
+            sync_context: Sync context
+
+        Returns:
+            Dict with comprehensive final error context
+        """
+        final_error_context = {
+            "operation_name": operation_name,
+            "exception_type": type(e).__name__,
+            "exception_message": str(e)[:500],
+            "total_attempts": attempt_count,
+            "total_time_seconds": round(total_time, 2),
+            "sync_id": str(sync_context.sync.id),
+            "sync_job_id": str(sync_context.sync_job.id),
+            "source_name": sync_context.source._short_name,
+            "retries_exhausted": True,
+        }
+
+        # Add destination details and health info
+        if sync_context.destinations:
+            dest = sync_context.destinations[0]
+            final_error_context["destination_type"] = dest.__class__.__name__
+            if hasattr(dest, "collection_name"):
+                final_error_context["collection_name"] = dest.collection_name
+
+            # Fetch collection health for final error diagnostics
+            if hasattr(dest, "get_collection_health_info"):
+                try:
+                    health_info = await dest.get_collection_health_info()
+                    final_error_context["collection_health"] = health_info
+                except Exception:
+                    pass  # Don't fail on diagnostics
+
+        return final_error_context
+
+    # ------------------------------------------------------------------------------------
+    # Retry Logic for Destination Operations - Main Method
+    # ------------------------------------------------------------------------------------
+
+    async def _retry_destination_operation(
+        self,
+        operation: Callable,
+        operation_name: str,
+        sync_context: SyncContext,
+    ):
+        """Retry a destination operation with exponential backoff for transient errors.
+
+        Uses tenacity to retry specific exception types (timeouts, disconnections, rate limits).
+        Permanent errors (auth, not found) fail immediately without retry.
+
+        Args:
+            operation: Async callable to retry
+            operation_name: Human-readable operation name for logging
+            sync_context: Sync context with logger
+
+        Returns:
+            Result of the operation
+
+        Raises:
+            SyncFailureError: After all retries exhausted or on permanent errors
+        """
+        # Get retryable exception types
+        retry_exception_types = self._get_retryable_exception_types()
+
+        # Track retry attempts and timing for detailed logging
+        attempt_count = 0
+        first_error_time = None
+
         @retry(
             retry=retry_if_exception_type(retry_exception_types),
             stop=stop_after_attempt(4),  # 1 initial + 3 retries = 4 total
@@ -1530,19 +1845,39 @@ class EntityPipeline:
             reraise=True,
         )
         async def _execute_with_retry():
+            nonlocal attempt_count, first_error_time
+            attempt_count += 1
+
             try:
                 return await operation()
             except Exception as e:
-                # Detect permanent errors (auth, not found) and fail without retry
-                error_msg = str(e).lower()
-                permanent_indicators = ["401", "403", "404", "400", "unauthorized", "forbidden"]
+                # Track first error time
+                if first_error_time is None:
+                    first_error_time = time.time()
 
-                if any(indicator in error_msg for indicator in permanent_indicators):
-                    sync_context.logger.error(
-                        f"🚫 Destination '{operation_name}' permanent error: {e}"
-                    )
-                    # Raise SyncFailureError (NOT in retry_exception_types) to stop retries
+                # Build error context using helper methods
+                error_context = self._build_base_error_context(
+                    e, operation_name, attempt_count, sync_context
+                )
+                await self._add_destination_details_to_error_context(
+                    error_context, sync_context, attempt_count
+                )
+                self._extract_qdrant_error_details(e, error_context)
+                self._extract_http_error_details(e, error_context)
+
+                # Check for permanent errors and handle accordingly
+                if self._is_permanent_error(e, operation_name, error_context, sync_context):
                     raise SyncFailureError(f"Destination {operation_name} failed: {e}")
+
+                # Log retry attempt with full context
+                if attempt_count < 4:
+                    next_wait = 2 * (2 ** (attempt_count - 1))
+                    sync_context.logger.warning(
+                        f"⚠️  Destination '{operation_name}' retry {attempt_count}/4: "
+                        f"{type(e).__name__} - retrying in {next_wait}s",
+                        extra={"error_context": error_context},
+                    )
+
                 # Let other exceptions bubble up for tenacity to handle
                 raise
 
@@ -1551,10 +1886,19 @@ class EntityPipeline:
         except SyncFailureError:
             raise  # Already wrapped
         except Exception as e:
-            # Retries exhausted or non-retryable error
-            sync_context.logger.error(
-                f"💥 Destination '{operation_name}' failed after retries: {e}"
+            # Retries exhausted - build final error context
+            total_time = time.time() - first_error_time if first_error_time else 0
+            final_error_context = await self._build_final_error_context(
+                e, operation_name, attempt_count, total_time, sync_context
             )
+
+            sync_context.logger.error(
+                f"💥 Destination '{operation_name}' failed after {attempt_count} attempts "
+                f"over {total_time:.1f}s: {type(e).__name__}",
+                extra={"error_context": final_error_context},
+                exc_info=True,
+            )
+            sync_context.logger.error(f"[Destination] Final error context: {final_error_context}")
             raise SyncFailureError(f"Destination {operation_name} failed: {e}")
 
     # ------------------------------------------------------------------------------------

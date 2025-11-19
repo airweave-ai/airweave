@@ -10,6 +10,7 @@ from tenacity import retry, stop_after_attempt
 from airweave.core.exceptions import TokenRefreshError
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
+from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.box import (
     BoxCollaborationEntity,
@@ -158,7 +159,7 @@ class BoxSource(BaseSource):
                         }
 
                         # Retry the request with the new token
-                        self.logger.info(f"Retrying request with refreshed token: {url}")
+                        self.logger.debug(f"Retrying request with refreshed token: {url}")
                         response = await client.get(url, headers=headers, params=params)
 
                     except TokenRefreshError as e:
@@ -337,7 +338,7 @@ class BoxSource(BaseSource):
 
                 # Skip trashed items (deleted but still returned by API)
                 if item.get("item_status") == "trashed":
-                    self.logger.info(f"Skipping trashed {item_type}: {item.get('name')}")
+                    self.logger.debug(f"Skipping trashed {item_type}: {item.get('name')}")
                     continue
 
                 if item_type == "folder":
@@ -519,6 +520,11 @@ class BoxSource(BaseSource):
                 self.logger.debug(f"Successfully downloaded file: {file_entity.name}")
                 yield file_entity
 
+            except FileSkippedException as e:
+                # File intentionally skipped (unsupported type, too large, etc.) - not an error
+                self.logger.debug(f"Skipping file: {e.reason}")
+                yield file_entity
+
             except Exception as e:
                 self.logger.warning(f"Failed to download file {file_name} ({file_data['id']}): {e}")
                 # Still yield the file entity without processed content
@@ -671,7 +677,7 @@ class BoxSource(BaseSource):
         2. Recursively sync folders and files starting from root or specified folder
         3. For each file, sync comments and collaborations
         """
-        self.logger.info("Starting Box sync")
+        self.logger.debug("Starting Box sync")
 
         async with self.http_client() as client:
             # Get current user
@@ -679,15 +685,15 @@ class BoxSource(BaseSource):
             if current_user:
                 user_entity = await self._generate_user_entity(client, current_user["id"])
                 if user_entity:
-                    self.logger.info(f"Syncing Box for user: {current_user.get('name')}")
+                    self.logger.debug(f"Syncing Box for user: {current_user.get('name')}")
                     yield user_entity
 
             # Start recursive sync from the specified folder (default is root "0")
-            self.logger.info(f"Starting folder sync from folder ID: {self.folder_id}")
+            self.logger.debug(f"Starting folder sync from folder ID: {self.folder_id}")
             async for entity in self._generate_folder_entities(client, self.folder_id, []):
                 yield entity
 
-        self.logger.info("Box sync completed")
+        self.logger.debug("Box sync completed")
 
     async def validate(self) -> bool:
         """Verify OAuth2 token by pinging Box's /users/me endpoint.

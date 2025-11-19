@@ -45,7 +45,9 @@ class AsyncWorkerPool:
             f"(pending: {len(self.pending_tasks)}/{self.max_workers})"
         )
 
-        task = asyncio.create_task(self._run_with_semaphore(coro, task_id, *args, **kwargs))
+        task = asyncio.create_task(
+            self._run_with_semaphore(coro, task_id, *args, **kwargs), name=task_id
+        )
         task.task_id = task_id  # Store task ID for logging
         self.pending_tasks.add(task)
         task.add_done_callback(self._handle_task_completion)

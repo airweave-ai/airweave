@@ -9,6 +9,7 @@ from tenacity import retry, stop_after_attempt
 from airweave.core.exceptions import TokenRefreshError
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
+from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.entities.zendesk import (
     ZendeskAttachmentEntity,
@@ -114,7 +115,7 @@ class ZendeskSource(BaseSource):
                         headers = {"Authorization": f"Bearer {new_token}"}
 
                         # Retry the request with the new token
-                        self.logger.info(f"Retrying request with refreshed token: {url}")
+                        self.logger.debug(f"Retrying request with refreshed token: {url}")
                         response = await client.get(url, headers=headers, params=params)
 
                     except TokenRefreshError as e:
@@ -442,6 +443,13 @@ class ZendeskSource(BaseSource):
                             f"Successfully downloaded attachment: {attachment_entity.name}"
                         )
                         yield attachment_entity
+
+                    except FileSkippedException as e:
+                        # Attachment intentionally skipped (unsupported type, too large, etc.)
+                        self.logger.debug(
+                            f"Skipping attachment {attachment_entity.name}: {e.reason}"
+                        )
+                        continue
 
                     except Exception as e:
                         self.logger.error(

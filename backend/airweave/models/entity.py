@@ -19,6 +19,13 @@ class Entity(OrganizationBase):
 
     __tablename__ = "entity"
 
+    # Override organization_id to disable index (table too large, better indexes exist)
+    organization_id: Mapped[UUID] = mapped_column(
+        ForeignKey("organization.id", ondelete="CASCADE"),
+        nullable=False,
+        index=False,  # Disabled: billions of rows, not selective, better indexes on sync_id
+    )
+
     sync_job_id: Mapped[UUID] = mapped_column(
         ForeignKey("sync_job.id", ondelete="CASCADE", name="fk_entity_sync_job_id"), nullable=False
     )

@@ -1,8 +1,10 @@
 import httpx
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 BASE_URL = "http://localhost:8001"  # default
 
 
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
 async def connect_composio_provider_polyfill(body_api_key: str) -> dict:
     """
     POST /auth-providers/connect with only the body api_key configurable.

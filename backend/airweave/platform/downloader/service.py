@@ -17,6 +17,29 @@ from airweave.platform.sources.retry_helpers import (
 from airweave.platform.sync.file_types import SUPPORTED_FILE_EXTENSIONS
 
 
+class FileSkippedException(Exception):
+    """Exception raised when a file is intentionally skipped (not an error).
+
+    This is raised when files are skipped for valid reasons like:
+    - Unsupported file extension
+    - File too large
+    - No download URL available
+
+    This is NOT an error condition - it's expected behavior during normal sync operations.
+    """
+
+    def __init__(self, reason: str, filename: str):
+        """Initialize file skipped exception.
+
+        Args:
+            reason: Human-readable reason why file was skipped
+            filename: Name of the file that was skipped
+        """
+        self.reason = reason
+        self.filename = filename
+        super().__init__(f"File '{filename}' skipped: {reason}")
+
+
 class FileDownloadService:
     """Simple file download service that writes files to local disk.
 
@@ -104,7 +127,14 @@ class FileDownloadService:
             Tuple of (should_download, skip_reason)
             - should_download: True if file should be downloaded
             - skip_reason: Reason for skipping (if should_download is False)
+
+        Raises:
+            ValueError: If URL or access token is unavailable (actual errors, not intentional skips)
         """
+        # Check for missing URL (actual error, not intentional skip)
+        if not entity.url:
+            raise ValueError(f"No download URL for file {entity.name}")
+
         # Check file extension against supported types
         _, ext = os.path.splitext(entity.name)
         ext = ext.lower()
@@ -112,18 +142,14 @@ class FileDownloadService:
         if ext not in SUPPORTED_FILE_EXTENSIONS:
             return False, f"Unsupported file extension: {ext}"
 
-        # Check file size via HEAD request
-        if not entity.url:
-            return False, "No download URL"
-
         # Check if pre-signed URL (no auth header needed)
         is_presigned_url = "X-Amz-Algorithm" in entity.url
 
         try:
-            # Get access token
+            # Get access token (raise ValueError if missing - this is an actual error)
             token = await access_token_provider()
             if not token and not is_presigned_url:
-                return False, "No access token available"
+                raise ValueError(f"No access token available for downloading {entity.name}")
 
             # Send HEAD request to get file size (with retry logic)
             async with http_client_factory(timeout=httpx.Timeout(30.0)) as client:
@@ -209,11 +235,10 @@ class FileDownloadService:
         http_client_factory: Callable,
         access_token_provider: Callable,
         logger: ContextualLogger,
-    ) -> Optional[FileEntity]:
+    ) -> FileEntity:
         """Download file from URL to local disk with pre-download validation.
 
-        Validates file extension and size before downloading. Returns None if file
-        should be skipped (unsupported type or too large).
+        Validates file extension and size before downloading.
 
         Args:
             entity: FileEntity with url to fetch
@@ -222,24 +247,22 @@ class FileDownloadService:
             logger: Logger for diagnostics
 
         Returns:
-            FileEntity with local_path set, or None if file should be skipped
+            FileEntity with local_path set
 
         Raises:
-            ValueError: If url is missing or access token unavailable
+            FileSkippedException: If file should be skipped (unsupported type, too large)
+            ValueError: If url is missing or access token unavailable (actual errors)
             httpx.HTTPStatusError: On HTTP errors (after retries)
             IOError: On file write errors
         """
-        # Validate file before downloading
+        # Validate file before downloading (raises ValueError for actual errors)
         should_download, skip_reason = await self._validate_file_before_download(
             entity, http_client_factory, access_token_provider, logger
         )
 
         if not should_download:
             logger.info(f"Skipping download of {entity.name}: {skip_reason}")
-            return None
-
-        if not entity.url:
-            raise ValueError(f"No download URL for file {entity.name}")
+            raise FileSkippedException(reason=skip_reason, filename=entity.name)
 
         # Generate temp path
         file_uuid = uuid4()
@@ -293,12 +316,12 @@ class FileDownloadService:
     ) -> FileEntity:
         """Save in-memory bytes directly to local disk with EXPLICIT validation.
 
-        EXPLICIT validation - raises ValueError for ALL validation failures:
-        - Missing extension (programming error)
-        - Unsupported extension (file will be skipped)
-        - File too large (file will be skipped)
+        EXPLICIT validation - raises exceptions for validation failures:
+        - Missing extension (programming error) → ValueError
+        - Unsupported extension (file will be skipped) → FileSkippedException
+        - File too large (file will be skipped) → FileSkippedException
 
-        This makes failures immediately visible and prevents implicit behavior.
+        This makes failures immediately visible and distinguishes intentional skips from errors.
 
         Args:
             entity: FileEntity to save
@@ -313,7 +336,8 @@ class FileDownloadService:
             FileEntity with local_path set
 
         Raises:
-            ValueError: If validation fails (missing/unsupported extension, or file too large)
+            FileSkippedException: If file should be skipped (unsupported extension or too large)
+            ValueError: If filename missing extension (programming error)
             IOError: On file write errors
         """
         # EXPLICIT validation: filename MUST have extension
@@ -328,21 +352,19 @@ class FileDownloadService:
 
         ext = ext.lower()
 
-        # Validate extension is supported - RAISE for explicit failure
+        # Validate extension is supported - raise FileSkippedException (not an error)
         if ext not in SUPPORTED_FILE_EXTENSIONS:
-            raise ValueError(
-                f"Unsupported file extension: {ext} for file '{filename_with_extension}'. "
-                f"File will be skipped."
-            )
+            skip_reason = f"Unsupported file extension: {ext}"
+            logger.info(f"Skipping file {filename_with_extension}: {skip_reason}")
+            raise FileSkippedException(reason=skip_reason, filename=filename_with_extension)
 
-        # Validate file size - RAISE for explicit failure
+        # Validate file size - raise FileSkippedException (not an error)
         content_size = len(content)
         if content_size > self.MAX_FILE_SIZE_BYTES:
             size_mb = content_size / (1024 * 1024)
-            raise ValueError(
-                f"File too large: {size_mb:.1f}MB (max 1GB) for '{filename_with_extension}'. "
-                f"File will be skipped."
-            )
+            skip_reason = f"File too large: {size_mb:.1f}MB (max 1GB)"
+            logger.info(f"Skipping file {filename_with_extension}: {skip_reason}")
+            raise FileSkippedException(reason=skip_reason, filename=filename_with_extension)
 
         # Generate temp path using explicit filename
         file_uuid = uuid4()

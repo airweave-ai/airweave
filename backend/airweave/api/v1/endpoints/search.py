@@ -9,7 +9,7 @@ import asyncio
 import json
 from typing import Any, Dict, Union
 
-from fastapi import Depends, Path, Query, Response
+from fastapi import Depends, HTTPException, Path, Query, Response
 from fastapi.responses import StreamingResponse
 from qdrant_client.http.models import Filter as QdrantFilter
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -203,9 +203,7 @@ async def search_collection_as_user(
     # Get collection
     from airweave import crud
 
-    collection = await crud.collection.get_by_readable_id(
-        db, readable_id=readable_id, ctx=ctx
-    )
+    collection = await crud.collection.get_by_readable_id(db, readable_id=readable_id, ctx=ctx)
     if not collection:
         from airweave.core.exceptions import NotFoundException
 
@@ -288,6 +286,18 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
 
     pubsub = await core_pubsub.subscribe("search", request_id)
 
+    async def _publish_stream_error(
+        *, message: str, transient: bool, detail: str | None = None
+    ) -> None:
+        payload: dict[str, Any] = {
+            "type": "error",
+            "message": message,
+            "transient": transient,
+        }
+        if detail:
+            payload["detail"] = detail
+        await core_pubsub.publish("search", request_id, payload)
+
     async def _run_search() -> None:
         try:
             async with AsyncSessionLocal() as search_db:
@@ -300,11 +310,22 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
                     ctx=ctx,
                     access_context=None,  # No access control on streaming endpoint
                 )
+        except ValueError as e:
+            await _publish_stream_error(message=str(e), transient=False)
+        except HTTPException as e:
+            detail = e.detail if isinstance(e.detail, str) else "Search failed"
+            await _publish_stream_error(
+                message=detail,
+                transient=e.status_code >= 500,
+            )
         except Exception as e:  # noqa: BLE001 - report to stream
-            await core_pubsub.publish(
-                "search",
-                request_id,
-                {"type": "error", "message": str(e)},
+            ctx.logger.exception(
+                "[SearchStream] Unexpected failure while executing search %s", request_id
+            )
+            await _publish_stream_error(
+                message="Search stream disconnected. Please retry your search.",
+                transient=True,
+                detail=str(e),
             )
 
     search_task = asyncio.create_task(_run_search())
@@ -372,7 +393,9 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
 
             error_event = {
                 "type": "error",
-                "message": str(e),
+                "transient": True,
+                "message": "Search connection interrupted. Please try again.",
+                "detail": str(e),
                 "ts": _dt.datetime.now(_dt.timezone.utc).isoformat(),
             }
             yield f"data: {json.dumps(error_event)}\n\n"

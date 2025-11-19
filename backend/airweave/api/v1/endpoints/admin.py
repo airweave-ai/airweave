@@ -83,7 +83,7 @@ async def list_all_organizations(
         skip: Number of organizations to skip
         limit: Maximum number of organizations to return (default 1000, max 10000)
         search: Optional search term to filter by organization name
-        sort_by: Field to sort by (name, created_at, billing_plan, user_count, etc.)
+        sort_by: Field to sort by (name, created_at, billing_plan, user_count, source_connection_count, entity_count, query_count, last_active_at, etc.)
         sort_order: Sort order (asc or desc)
 
     Returns:
@@ -109,7 +109,7 @@ async def list_all_organizations(
 
     # For usage-based sorting, we need to join Usage and BillingPeriod
     # Only add these joins if sorting by usage fields
-    usage_sort_fields = ["entity_count", "source_connection_count", "query_count"]
+    usage_sort_fields = ["entity_count", "query_count"]
     if sort_by in usage_sort_fields:
         now = datetime.utcnow()
         query = query.outerjoin(
@@ -127,6 +127,42 @@ async def list_all_organizations(
                 ),
             ),
         ).outerjoin(Usage, Usage.billing_period_id == BillingPeriod.id)
+
+    # For user_count sorting, create subquery
+    if sort_by == "user_count":
+        from sqlalchemy import select as sa_select
+
+        user_count_subq = (
+            sa_select(
+                UserOrganization.organization_id,
+                func.count(UserOrganization.user_id).label("user_count"),
+            )
+            .group_by(UserOrganization.organization_id)
+            .subquery()
+        )
+
+        query = query.outerjoin(
+            user_count_subq, Organization.id == user_count_subq.c.organization_id
+        )
+
+    # For source_connection_count sorting, create subquery
+    if sort_by == "source_connection_count":
+        from sqlalchemy import select as sa_select
+        from airweave.models.source_connection import SourceConnection
+
+        source_connection_count_subq = (
+            sa_select(
+                SourceConnection.organization_id,
+                func.count(SourceConnection.id).label("source_connection_count"),
+            )
+            .group_by(SourceConnection.organization_id)
+            .subquery()
+        )
+
+        query = query.outerjoin(
+            source_connection_count_subq,
+            Organization.id == source_connection_count_subq.c.organization_id,
+        )
 
     # For last_active_at sorting, join with User through UserOrganization
     if sort_by == "last_active_at":
@@ -160,10 +196,12 @@ async def list_all_organizations(
         sort_column = OrganizationBilling.billing_status
     elif sort_by == "entity_count":
         sort_column = Usage.entities
-    elif sort_by == "source_connection_count":
-        sort_column = Usage.source_connections
     elif sort_by == "query_count":
         sort_column = Usage.queries
+    elif sort_by == "user_count":
+        sort_column = user_count_subq.c.user_count
+    elif sort_by == "source_connection_count":
+        sort_column = source_connection_count_subq.c.source_connection_count
     elif sort_by == "last_active_at":
         sort_column = max_active_subq.c.max_last_active
     elif sort_by == "is_member":
@@ -239,6 +277,20 @@ async def list_all_organizations(
     # Fetch current usage for all organizations using CRUD layer
     usage_map = await crud.usage.get_current_usage_for_orgs(db, organization_ids=org_ids)
 
+    # Fetch source connection counts in one query (dynamically counted, not stored in usage)
+    from airweave.models.source_connection import SourceConnection
+
+    source_connection_count_query = (
+        select(
+            SourceConnection.organization_id,
+            func.count(SourceConnection.id).label("count"),
+        )
+        .where(SourceConnection.organization_id.in_(org_ids))
+        .group_by(SourceConnection.organization_id)
+    )
+    source_connection_result = await db.execute(source_connection_count_query)
+    source_connection_map = {row.organization_id: row.count for row in source_connection_result}
+
     # Build response with all metrics
     org_metrics = []
     for org in orgs:
@@ -262,7 +314,7 @@ async def list_all_organizations(
                 stripe_customer_id=billing.stripe_customer_id if billing else None,
                 trial_ends_at=billing.trial_ends_at if billing else None,
                 user_count=user_count_map.get(org.id, 0),
-                source_connection_count=usage_record.source_connections if usage_record else 0,
+                source_connection_count=source_connection_map.get(org.id, 0),
                 entity_count=usage_record.entities if usage_record else 0,
                 query_count=usage_record.queries if usage_record else 0,
                 last_active_at=last_active_map.get(org.id),

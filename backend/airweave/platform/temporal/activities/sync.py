@@ -466,9 +466,10 @@ async def cleanup_stuck_sync_jobs_activity() -> None:
     try:
         async with get_db_context() as db:
             # Import CRUD layer inside to avoid sandbox issues
+            import json
+
             from airweave import crud
             from airweave.core.redis_client import redis_client
-            import json
 
             # Query 1: Find CANCELLING/PENDING jobs stuck for > 3 minutes
             cancelling_pending_jobs = await crud.sync_job.get_stuck_jobs_by_status(

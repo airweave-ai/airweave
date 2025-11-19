@@ -56,7 +56,7 @@ class QdrantDestination(VectorDBDestination):
     """Qdrant destination with multi-tenant support and legacy compatibility."""
 
     # Default write concurrency (simple, code-local tuning)
-    DEFAULT_WRITE_CONCURRENCY: int = 32
+    DEFAULT_WRITE_CONCURRENCY: int = 16
 
     def __init__(self):
         """Initialize defaults and placeholders for connection and collection state."""
@@ -75,7 +75,8 @@ class QdrantDestination(VectorDBDestination):
         self.vector_size: int = 384  # Default dense vector size
 
         # Write concurrency control (caps concurrent writes per destination)
-        self._write_sem = asyncio.Semaphore(self.DEFAULT_WRITE_CONCURRENCY)
+        self._write_limit = self._compute_write_concurrency()
+        self._write_sem = asyncio.Semaphore(self._write_limit)
 
         # One-time collection readiness cache
         self._collection_ready: bool = False
@@ -131,6 +132,16 @@ class QdrantDestination(VectorDBDestination):
             # Fall back to settings for native connection
             instance.url = None  # Will use settings.qdrant_url in connect_to_qdrant()
             instance.api_key = None
+
+        # Reconfigure concurrency after we know the true vector size
+        instance._write_limit = instance._compute_write_concurrency()
+        instance._write_sem = asyncio.Semaphore(instance._write_limit)
+        instance.logger.info(
+            "[Qdrant] Write concurrency configured to %s/%s (vector_size=%s)",
+            instance._write_sem._value,
+            instance._write_limit,
+            instance.vector_size,
+        )
 
         await instance.connect_to_qdrant()
         return instance
@@ -207,6 +218,17 @@ class QdrantDestination(VectorDBDestination):
             self.logger.debug("Closing Qdrant client connection...")
             self.client = None
 
+    def _compute_write_concurrency(self) -> int:
+        """Derive write concurrency based on embedding dimensionality."""
+        concurrency = self.DEFAULT_WRITE_CONCURRENCY
+
+        if self.vector_size >= 3000:
+            concurrency = max(2, concurrency // 4)
+        elif self.vector_size >= 1024:
+            concurrency = max(4, concurrency // 2)
+
+        return concurrency
+
     # ----------------------------------------------------------------------------------
     # Collection management
     # ----------------------------------------------------------------------------------
@@ -234,6 +256,8 @@ class QdrantDestination(VectorDBDestination):
         """
         if vector_size:
             self.vector_size = vector_size
+            self._write_limit = self._compute_write_concurrency()
+            self._write_sem = asyncio.Semaphore(self._write_limit)
 
         await self.ensure_client_readiness()
 
@@ -483,6 +507,14 @@ class QdrantDestination(VectorDBDestination):
             payload=entity_data,
         )
 
+    def _max_points_per_batch(self) -> int:
+        """Determine the maximum points to send in a single upsert request."""
+        if self.vector_size >= 3000:
+            return 40
+        if self.vector_size >= 1024:
+            return 60
+        return 100
+
     async def _upsert_points_with_fallback(  # noqa: C901
         self, points: list[rest.PointStruct], *, min_batch: int = 50
     ) -> None:
@@ -506,12 +538,12 @@ class QdrantDestination(VectorDBDestination):
             timeout_errors = ()
 
         # Proactively batch large upserts to prevent timeouts and allow heartbeats
-        MAX_BATCH_SIZE = 100
+        MAX_BATCH_SIZE = self._max_points_per_batch()
 
         if len(points) > MAX_BATCH_SIZE:
             self.logger.debug(
                 f"[Qdrant] Batching {len(points)} points into chunks of {MAX_BATCH_SIZE} "
-                f"to prevent timeout and allow heartbeats"
+                f"(vector_size={self.vector_size}) to prevent timeout and allow heartbeats"
             )
             for i in range(0, len(points), MAX_BATCH_SIZE):
                 batch = points[i : i + MAX_BATCH_SIZE]
@@ -552,10 +584,12 @@ class QdrantDestination(VectorDBDestination):
             # Qdrant returned an HTTP error (503, 429, etc.)
             n = len(points)
 
-            # Extract structured error details from Qdrant
+            # Extract ALL available error details from Qdrant response
             error_detail = None
+            full_error_data = None
             try:
                 error_data = e.structured()
+                full_error_data = error_data  # Keep for detailed logging
                 # Qdrant error format: {"status": {"error": "message"}} or {"status": "message"}
                 if isinstance(error_data.get("status"), dict):
                     error_detail = error_data["status"].get("error")
@@ -563,7 +597,32 @@ class QdrantDestination(VectorDBDestination):
                     error_detail = error_data.get("status") or error_data.get("message")
             except Exception:
                 # Fallback to raw content if JSON parsing fails
-                error_detail = e.content.decode("utf-8")[:200] if e.content else e.reason_phrase
+                error_detail = e.content.decode("utf-8")[:500] if e.content else e.reason_phrase
+
+            # Build comprehensive error context
+            error_context = {
+                "http_status": e.status_code,
+                "reason_phrase": e.reason_phrase,
+                "error_detail": error_detail,
+                "collection_name": self.collection_name,
+                "collection_id": str(self.collection_id),
+                "vector_size": self.vector_size,
+                "num_points": n,
+                "min_batch": min_batch,
+                "url": self.url or "native",
+            }
+
+            # Add full structured error if available
+            if full_error_data:
+                error_context["qdrant_response"] = full_error_data
+
+            # Add request sample (first point payload keys)
+            if points:
+                try:
+                    sample_payload_keys = list(points[0].payload.keys())[:10]
+                    error_context["sample_payload_keys"] = sample_payload_keys
+                except Exception:
+                    pass
 
             error_summary = f"HTTP {e.status_code} {e.reason_phrase}" + (
                 f": {error_detail}" if error_detail else ""
@@ -572,11 +631,13 @@ class QdrantDestination(VectorDBDestination):
             if n <= 1 or n <= min_batch:
                 self.logger.error(
                     f"[Qdrant] 💥 FATAL rejection: Cannot split further "
-                    f"- {n} points ≤ min_batch={min_batch} "
-                    f"(collection={self.collection_name}, vector_size={self.vector_size}). "
+                    f"- {n} points ≤ min_batch={min_batch}. "
                     f"Error: {error_summary}",
+                    extra={"error_context": error_context},
                     exc_info=True,
                 )
+                # Log full error details on separate line for easier parsing
+                self.logger.error(f"[Qdrant] Error context: {error_context}")
                 raise
 
             mid = n // 2
@@ -584,25 +645,54 @@ class QdrantDestination(VectorDBDestination):
             self.logger.warning(
                 f"[Qdrant] ⚠️  Rejection for {n} points; "
                 f"splitting into {len(left)} + {len(right)} and retrying... "
-                f"({error_summary})"
+                f"({error_summary})",
+                extra={"error_context": error_context},
             )
+            await asyncio.sleep(0.2)
             await self._upsert_points_with_fallback(left, min_batch=min_batch)
+            await asyncio.sleep(0.2)
             await self._upsert_points_with_fallback(right, min_batch=min_batch)
 
         except ResponseHandlingException as e:
             # Wrapper for underlying network/parsing errors
             n = len(points)
             source_error = e.source
+
+            # Build comprehensive error context
+            error_context = {
+                "wrapper_exception": "ResponseHandlingException",
+                "source_exception_type": type(source_error).__name__,
+                "source_exception_message": str(source_error),
+                "collection_name": self.collection_name,
+                "collection_id": str(self.collection_id),
+                "vector_size": self.vector_size,
+                "num_points": n,
+                "min_batch": min_batch,
+                "url": self.url or "native",
+            }
+
+            # Extract any HTTP-related details from source error
+            if hasattr(source_error, "status_code"):
+                error_context["http_status"] = source_error.status_code
+            if hasattr(source_error, "request"):
+                try:
+                    error_context["request_method"] = source_error.request.method
+                    error_context["request_url"] = str(source_error.request.url)
+                except Exception:
+                    pass
+
             error_summary = f"{type(source_error).__name__}: {source_error}"
 
             if n <= 1 or n <= min_batch:
                 self.logger.error(
                     f"[Qdrant] 💥 FATAL error: Cannot split further "
-                    f"- {n} points ≤ min_batch={min_batch} "
-                    f"(collection={self.collection_name}, vector_size={self.vector_size}). "
+                    f"- {n} points ≤ min_batch={min_batch}. "
                     f"Error: {error_summary}",
+                    extra={"error_context": error_context},
                     exc_info=True,
                 )
+                # Log full error details on separate line for easier parsing
+                self.logger.error(f"[Qdrant] Error context: {error_context}")
                 raise
 
             mid = n // 2
@@ -610,24 +700,60 @@ class QdrantDestination(VectorDBDestination):
             self.logger.warning(
                 f"[Qdrant] ⚠️  Response handling error for {n} points; "
                 f"splitting into {len(left)} + {len(right)} and retrying... "
-                f"({error_summary})"
+                f"({error_summary})",
+                extra={"error_context": error_context},
             )
+            await asyncio.sleep(0.2)
             await self._upsert_points_with_fallback(left, min_batch=min_batch)
+            await asyncio.sleep(0.2)
             await self._upsert_points_with_fallback(right, min_batch=min_batch)
 
         except timeout_errors as e:  # type: ignore[misc]
             # Network timeout (httpx/httpcore)
             n = len(points)
+
+            # Build comprehensive timeout error context
+            error_context = {
+                "exception_type": type(e).__name__,
+                "exception_message": str(e),
+                "collection_name": self.collection_name,
+                "collection_id": str(self.collection_id),
+                "vector_size": self.vector_size,
+                "num_points": n,
+                "min_batch": min_batch,
+                "url": self.url or "native",
+                "client_timeout_setting": 120.0,  # From connect_to_qdrant
+            }
+
+            # Try to extract request details if available
+            if hasattr(e, "request"):
+                try:
+                    error_context["request_method"] = e.request.method
+                    error_context["request_url"] = str(e.request.url)
+                except Exception:
+                    pass
+
+            # Estimate payload size
+            try:
+                import sys
+
+                total_size_mb = sys.getsizeof(points) / (1024 * 1024)
+                error_context["estimated_payload_size_mb"] = round(total_size_mb, 2)
+            except Exception:
+                pass
+
             error_summary = f"{type(e).__name__}: {e}"
 
             if n <= 1 or n <= min_batch:
                 self.logger.error(
                     f"[Qdrant] 💥 FATAL timeout: Cannot split further "
-                    f"- {n} points ≤ min_batch={min_batch} "
-                    f"(collection={self.collection_name}, vector_size={self.vector_size}). "
+                    f"- {n} points ≤ min_batch={min_batch}. "
                     f"Error: {error_summary}",
+                    extra={"error_context": error_context},
                     exc_info=True,
                 )
+                # Log full error details on separate line for easier parsing
+                self.logger.error(f"[Qdrant] Error context: {error_context}")
                 raise
 
             mid = n // 2
@@ -635,9 +761,12 @@ class QdrantDestination(VectorDBDestination):
             self.logger.warning(
                 f"[Qdrant] ⚠️  Timeout for {n} points; "
                 f"splitting into {len(left)} + {len(right)} and retrying... "
-                f"({error_summary})"
+                f"({error_summary})",
+                extra={"error_context": error_context},
             )
+            await asyncio.sleep(0.2)
             await self._upsert_points_with_fallback(left, min_batch=min_batch)
+            await asyncio.sleep(0.2)
             await self._upsert_points_with_fallback(right, min_batch=min_batch)
 
     # ----------------------------------------------------------------------------------
@@ -663,14 +792,19 @@ class QdrantDestination(VectorDBDestination):
 
         # Try once with the whole payload; fall back to halving on failure
         # Track semaphore contention to understand queueing behavior
-        active_writes = self.DEFAULT_WRITE_CONCURRENCY - self._write_sem._value
+        available_slots = self._write_sem._value
+        total_slots = self._write_limit
+        active_writes = max(0, total_slots - available_slots)
         self.logger.info(
-            f"[Qdrant] 🔒 Semaphore state: {active_writes}/{self.DEFAULT_WRITE_CONCURRENCY} "
+            f"[Qdrant] 🔒 Semaphore state: {active_writes}/{total_slots} "
             f"active writes before acquiring lock for {len(point_structs)} points"
         )
 
+        max_batch = self._max_points_per_batch()
+        adaptive_min_batch = max(2, min(8, max_batch // 8 if max_batch >= 8 else max_batch))
+
         async with self._write_sem:
-            await self._upsert_points_with_fallback(point_structs, min_batch=10)
+            await self._upsert_points_with_fallback(point_structs, min_batch=adaptive_min_batch)
 
     # ----------------------------------------------------------------------------------
     # Deletes (by parent/sync/etc.)
@@ -1233,6 +1367,53 @@ class QdrantDestination(VectorDBDestination):
         except Exception as e:
             self.logger.error(f"Error performing batch search with Qdrant: {e}")
             raise
+
+    # ----------------------------------------------------------------------------------
+    # Health & Diagnostics
+    # ----------------------------------------------------------------------------------
+    async def get_collection_health_info(self) -> dict:
+        """Get comprehensive collection health and statistics for diagnostics.
+
+        Returns:
+            Dict with collection size, segment count, indexing status, etc.
+        """
+        await self.ensure_client_readiness()
+        health_info = {
+            "collection_name": self.collection_name,
+            "collection_id": str(self.collection_id),
+            "vector_size": self.vector_size,
+        }
+
+        try:
+            # Get collection info
+            info = await self.client.get_collection(collection_name=self.collection_name)
+
+            # Extract key metrics
+            health_info["points_count"] = info.points_count
+            health_info["indexed_vectors_count"] = info.indexed_vectors_count
+            health_info["vectors_count"] = info.vectors_count
+            health_info["status"] = (
+                info.status.value if hasattr(info.status, "value") else str(info.status)
+            )
+
+            # Segment info
+            if hasattr(info, "segments_count"):
+                health_info["segments_count"] = info.segments_count
+
+            # Optimizer status
+            if info.optimizer_status:
+                health_info["optimizer_ok"] = info.optimizer_status.ok
+                if hasattr(info.optimizer_status, "error"):
+                    health_info["optimizer_error"] = info.optimizer_status.error
+
+            # Payload schema
+            if info.payload_schema:
+                health_info["indexed_fields"] = list(info.payload_schema.keys())
+
+        except Exception as e:
+            health_info["error"] = f"Failed to fetch collection info: {type(e).__name__}: {str(e)}"
+
+        return health_info
 
     # ----------------------------------------------------------------------------------
     # Introspection

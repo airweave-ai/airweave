@@ -1,9 +1,9 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Type
 from uuid import UUID
 
 from fastembed import SparseEmbedding
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, create_model
 
 
 class Breadcrumb(BaseModel):
@@ -19,7 +19,7 @@ class AccessControl(BaseModel):
     Principals are NOT expanded - groups stored as-is.
 
     Format:
-        - Users: "user:john@acme.com" 
+        - Users: "user:john@acme.com"
         - Groups: "group:<group_id>" (e.g., "group:engineering" or "group:uuid-123")
     """
 
@@ -123,11 +123,46 @@ class FileEntity(BaseEntity):
 
 
 class PolymorphicEntity(BaseEntity):
-    """Polymorphic entity schema."""
+    """Base class for entities that are generated dynamically from table schemas."""
 
     table_name: str = Field(..., description="Name of the table this entity belongs to.")
-    schema_name: str = Field(..., description="Name of the schema this entity belongs to.")
-    primary_key_columns: List[str] = Field(..., description="List of primary key columns.")
+    schema_name: Optional[str] = Field(
+        None, description="Name of the schema this entity belongs to."
+    )
+    primary_key_columns: List[str] = Field(
+        default_factory=list, description="List of primary key columns."
+    )
+
+    @classmethod
+    def create_table_entity_class(
+        cls,
+        table_name: str,
+        schema_name: Optional[str],
+        columns: Dict[str, Dict[str, Any]],
+        primary_keys: List[str],
+    ) -> Type["PolymorphicEntity"]:
+        """Create a polymorphic entity subclass for the given table definition."""
+
+        def _pk_default_factory() -> List[str]:
+            return list(primary_keys)
+
+        fields: Dict[str, tuple[Any, Field]] = {
+            "table_name": (str, Field(default=table_name)),
+            "schema_name": (Optional[str], Field(default=schema_name)),
+            "primary_key_columns": (List[str], Field(default_factory=_pk_default_factory)),
+        }
+
+        for column_name, column_info in columns.items():
+            field_name = f"{column_name}_" if column_name == "id" else column_name
+            python_type = column_info.get("python_type", Any)
+            fields[field_name] = (Optional[python_type], Field(default=None))
+
+        model_name = f"{table_name.title().replace('_', '')}TableEntity"
+        return create_model(
+            model_name,
+            __base__=cls,
+            **fields,
+        )
 
 
 class CodeFileEntity(FileEntity):

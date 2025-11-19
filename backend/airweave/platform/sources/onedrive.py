@@ -22,6 +22,7 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
+from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.onedrive import OneDriveDriveEntity, OneDriveDriveItemEntity
 from airweave.platform.sources._base import BaseSource
@@ -90,7 +91,7 @@ class OneDriveSource(BaseSource):
                 headers = {"Authorization": f"Bearer {access_token}"}
                 resp = await client.get(url, headers=headers, params=params, timeout=30.0)
 
-            self.logger.info(f"Request URL: {url}")
+            self.logger.debug(f"Request URL: {url}")
             resp.raise_for_status()
             return resp.json()
         except httpx.ConnectTimeout:
@@ -148,10 +149,10 @@ class OneDriveSource(BaseSource):
                     # Try to get drives list instead
                     drives = await self._get_available_drives(client)
                     if drives:
-                        self.logger.info(f"Found {len(drives)} drives via /me/drives")
+                        self.logger.debug(f"Found {len(drives)} drives via /me/drives")
                         return drives[0]  # Return first available drive
                     else:
-                        self.logger.info("No drives found, will create virtual app folder drive")
+                        self.logger.debug("No drives found, will create virtual app folder drive")
                         return None
             raise
 
@@ -179,9 +180,9 @@ class OneDriveSource(BaseSource):
         if not drive_obj:
             # Fallback to app folder if no drive is accessible
             drive_obj = await self._create_app_folder_drive()
-            self.logger.info("Using app folder access mode")
+            self.logger.debug("Using app folder access mode")
 
-        self.logger.info(f"Drive: {drive_obj}")
+        self.logger.debug(f"Drive: {drive_obj}")
 
         # Get drive name from API or use drive_type as fallback
         drive_name = drive_obj.get("name") or drive_obj.get("driveType", "OneDrive")
@@ -233,7 +234,7 @@ class OneDriveSource(BaseSource):
                 data = await self._get_with_auth(client, url, params=params)
 
                 for item in data.get("value", []):
-                    self.logger.info(f"DriveItem: {item}")
+                    self.logger.debug(f"DriveItem: {item}")
                     yield item
 
                 # Handle pagination using @odata.nextLink
@@ -303,7 +304,7 @@ class OneDriveSource(BaseSource):
         """
         # Skip if this is a folder without downloadable content
         if "folder" in item:
-            self.logger.info(f"Skipping folder: {item.get('name', 'Untitled')}")
+            self.logger.debug(f"Skipping folder: {item.get('name', 'Untitled')}")
             return None
 
         # Skip if no download URL provided
@@ -390,8 +391,13 @@ class OneDriveSource(BaseSource):
                         )
 
                     file_count += 1
-                    self.logger.info(f"Processed file {file_count}: {file_entity.name}")
+                    self.logger.debug(f"Processed file {file_count}: {file_entity.name}")
                     yield file_entity
+
+                except FileSkippedException as e:
+                    # File intentionally skipped (unsupported type, too large, etc.) - not an error
+                    self.logger.debug(f"Skipping file {file_entity.name}: {e.reason}")
+                    continue
 
                 except Exception as e:
                     self.logger.error(f"Failed to download file {file_entity.name}: {e}")
@@ -403,7 +409,7 @@ class OneDriveSource(BaseSource):
                 # Continue processing other items
                 continue
 
-        self.logger.info(f"Total files processed: {file_count}")
+        self.logger.debug(f"Total files processed: {file_count}")
 
     async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate all OneDrive entities.
@@ -428,7 +434,7 @@ class OneDriveSource(BaseSource):
             drive_id = drive_entity.entity_id
             drive_name = drive_entity.drive_type or "OneDrive"
 
-            self.logger.info(f"Starting to process files from drive: {drive_id} ({drive_name})")
+            self.logger.debug(f"Starting to process files from drive: {drive_id} ({drive_name})")
 
             async for file_entity in self._generate_drive_item_entities(
                 client, drive_id, drive_name

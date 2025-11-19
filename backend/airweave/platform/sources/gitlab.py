@@ -11,6 +11,7 @@ from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
+from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.gitlab import (
     GitLabCodeFileEntity,
@@ -130,7 +131,7 @@ class GitLabSource(BaseSource):
                         headers = {"Authorization": f"Bearer {new_token}"}
 
                         # Retry with new token
-                        self.logger.info(f"Retrying request with refreshed token: {url}")
+                        self.logger.debug(f"Retrying request with refreshed token: {url}")
                         response = await client.get(url, headers=headers, params=params)
 
                     except TokenRefreshError as e:
@@ -199,7 +200,7 @@ class GitLabSource(BaseSource):
                             }
 
                             # Retry with new token
-                            self.logger.info(
+                            self.logger.debug(
                                 f"Retrying paginated request with refreshed token: {url}"
                             )
                             response = await client.get(url, headers=headers, params=params)
@@ -647,6 +648,10 @@ class GitLabSource(BaseSource):
 
                 yield file_entity
 
+        except FileSkippedException as e:
+            # File intentionally skipped (unsupported type, too large, etc.) - not an error
+            self.logger.debug(f"Skipping file: {e.reason}")
+
         except Exception as e:
             self.logger.error(f"Error processing file {file_path}: {str(e)}")
 
@@ -697,7 +702,7 @@ class GitLabSource(BaseSource):
             else project.default_branch or "main"
         )
 
-        self.logger.info(f"Processing project {project.path_with_namespace} on branch {branch}")
+        self.logger.debug(f"Processing project {project.path_with_namespace} on branch {branch}")
 
         # Traverse repository files if not empty
         if not project.empty_repo:

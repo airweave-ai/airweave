@@ -13,6 +13,7 @@ from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.configs.auth import GitHubAuthConfig
 from airweave.platform.cursors import GitHubCursor
 from airweave.platform.decorators import source
+from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.github import (
     GitHubCodeFileEntity,
@@ -219,17 +220,17 @@ class GitHubSource(BaseSource):
             True if repository has updates, False otherwise
         """
         if last_pushed_at:
-            self.logger.info(
+            self.logger.debug(
                 f"Repository {repo_name} pushed_at: {last_pushed_at} -> {current_pushed_at}"
             )
             has_updates = current_pushed_at > last_pushed_at
             if has_updates:
-                self.logger.info(f"Repository {repo_name} has new commits since last sync")
+                self.logger.debug(f"Repository {repo_name} has new commits since last sync")
             else:
-                self.logger.info(f"Repository {repo_name} has no new commits since last sync")
+                self.logger.debug(f"Repository {repo_name} has no new commits since last sync")
             return has_updates
         else:
-            self.logger.info(f"First sync for repository {repo_name}")
+            self.logger.debug(f"First sync for repository {repo_name}")
             return True
 
     async def _get_repository_info(
@@ -353,10 +354,10 @@ class GitHubSource(BaseSource):
         commits = await self._get_commits_since(client, repo_name, since_timestamp, branch)
 
         if not commits:
-            self.logger.info(f"No new commits found since {since_timestamp}")
+            self.logger.debug(f"No new commits found since {since_timestamp}")
             return
 
-        self.logger.info(f"Found {len(commits)} new commits since {since_timestamp}")
+        self.logger.debug(f"Found {len(commits)} new commits since {since_timestamp}")
 
         # Track processed files to avoid duplicates
         processed_files = set()
@@ -382,7 +383,7 @@ class GitHubSource(BaseSource):
 
                 # Handle deleted files
                 if file_info["status"] == "removed":
-                    self.logger.info(f"Processing deleted file: {file_path}")
+                    self.logger.debug(f"Processing deleted file: {file_path}")
                     # Create a special deletion entity
                     deletion_entity = GitHubFileDeletionEntity(
                         # Base fields
@@ -431,7 +432,7 @@ class GitHubSource(BaseSource):
         }
 
         commits = await self._get_paginated_results(client, url, params)
-        self.logger.info(f"Retrieved {len(commits)} commits since {since_timestamp}")
+        self.logger.debug(f"Retrieved {len(commits)} commits since {since_timestamp}")
         return commits
 
     async def _get_commit_files(
@@ -566,6 +567,10 @@ class GitHubSource(BaseSource):
                 raise ValueError(f"Save failed - no local path set for {file_entity.name}")
 
             yield file_entity
+
+        except FileSkippedException as e:
+            # File intentionally skipped (unsupported type, too large, etc.) - not an error
+            self.logger.debug(f"Skipping file: {e.reason}")
 
         except Exception as e:
             self.logger.error(f"Error processing changed file {file_path}: {e}")
@@ -796,6 +801,10 @@ class GitHubSource(BaseSource):
                     raise ValueError(f"Save failed - no local path set for {file_entity.name}")
 
                 yield file_entity
+        except FileSkippedException as e:
+            # File intentionally skipped (unsupported type, too large, etc.) - not an error
+            self.logger.debug(f"Skipping file: {e.reason}")
+
         except Exception as e:
             self.logger.error(f"Error processing file {item_path}: {str(e)}")
 
@@ -809,9 +818,9 @@ class GitHubSource(BaseSource):
         last_pushed_at = cursor_data.get("last_repository_pushed_at")
 
         if last_pushed_at:
-            self.logger.info(f"📊 Incremental sync from cursor: {last_pushed_at}")
+            self.logger.debug(f"📊 Incremental sync from cursor: {last_pushed_at}")
         else:
-            self.logger.info("🔄 Full sync (no cursor)")
+            self.logger.debug("🔄 Full sync (no cursor)")
 
         return last_pushed_at
 
@@ -865,18 +874,18 @@ class GitHubSource(BaseSource):
             # Check if we should perform incremental sync
             should_sync = True
             if last_pushed_at and current_pushed_at <= last_pushed_at:
-                self.logger.info(
+                self.logger.debug(
                     f"Repository {self.repo_name} has no new commits since last sync, "
                     "skipping file traversal"
                 )
                 should_sync = False
 
             if should_sync:
-                self.logger.info(f"Using branch: {branch} for repo {self.repo_name}")
+                self.logger.debug(f"Using branch: {branch} for repo {self.repo_name}")
 
                 # Check if this is an incremental sync (we have a cursor value)
                 if last_pushed_at:
-                    self.logger.info(
+                    self.logger.debug(
                         f"Performing INCREMENTAL sync - changes since {last_pushed_at}"
                     )
                     async for entity in self._traverse_repository_incremental(
@@ -884,7 +893,7 @@ class GitHubSource(BaseSource):
                     ):
                         yield entity
                 else:
-                    self.logger.info("Performing FULL sync - no previous cursor data")
+                    self.logger.debug("Performing FULL sync - no previous cursor data")
                     async for entity in self._traverse_repository(client, self.repo_name, branch):
                         yield entity
             else:

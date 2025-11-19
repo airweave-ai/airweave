@@ -426,7 +426,6 @@ class DbInspector:
                     snapshot["current_usage"] = {
                         "entities": usage_cur.entities,
                         "queries": usage_cur.queries,
-                        "source_connections": usage_cur.source_connections,
                     }
 
             prev_list = await self._crud.billing_period.get_previous_periods(
@@ -448,7 +447,6 @@ class DbInspector:
                     snapshot["previous_usage"] = {
                         "entities": usage_prev.entities,
                         "queries": usage_prev.queries,
-                        "source_connections": usage_prev.source_connections,
                     }
 
         return snapshot

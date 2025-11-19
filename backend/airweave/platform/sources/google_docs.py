@@ -20,6 +20,7 @@ import httpx
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.cursors import GoogleDocsCursor
 from airweave.platform.decorators import source
+from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.entities.google_docs import GoogleDocsDocumentEntity
 from airweave.platform.sources._base import BaseSource
@@ -176,13 +177,13 @@ class GoogleDocsSource(BaseSource):
             # If we have a cursor, do incremental sync via changes API
             if existing_cursor_value and "start_page_token" in existing_cursor_value:
                 start_token = existing_cursor_value["start_page_token"]
-                self.logger.info(f"Starting incremental sync from page token: {start_token}")
+                self.logger.debug(f"Starting incremental sync from page token: {start_token}")
 
                 async for entity in self._process_changes(client, start_token):
                     yield entity
             else:
                 # Full sync: list all Google Docs
-                self.logger.info("Starting full sync of Google Docs")
+                self.logger.debug("Starting full sync of Google Docs")
 
                 async for entity in self._list_and_process_documents(client):
                     yield entity
@@ -262,6 +263,11 @@ class GoogleDocsSource(BaseSource):
                                 )
                                 yield entity
 
+                            except FileSkippedException as e:
+                                # File intentionally skipped (unsupported type, too large, etc.) - not an error
+                                self.logger.debug(f"Skipping file: {e.reason}")
+                                continue
+
                             except Exception as e:
                                 self.logger.error(
                                     f"Failed to download document {entity.title}: {e}"
@@ -340,7 +346,7 @@ class GoogleDocsSource(BaseSource):
             page_count += 1
             total_docs += len(files)
 
-            self.logger.info(
+            self.logger.debug(
                 f"Page {page_count}: Found {len(files)} documents (total: {total_docs})"
             )
 
@@ -368,6 +374,11 @@ class GoogleDocsSource(BaseSource):
                             self.logger.debug(f"Successfully downloaded document: {entity.name}")
                             yield entity
 
+                        except FileSkippedException as e:
+                            # File intentionally skipped (unsupported type, too large, etc.) - not an error
+                            self.logger.debug(f"Skipping file: {e.reason}")
+                            continue
+
                         except Exception as e:
                             self.logger.error(f"Failed to download document {entity.title}: {e}")
                             # Continue with other documents
@@ -380,7 +391,7 @@ class GoogleDocsSource(BaseSource):
             else:
                 url = None
 
-        self.logger.info(f"Completed document listing: {total_docs} total documents found")
+        self.logger.debug(f"Completed document listing: {total_docs} total documents found")
 
     def _should_filter_document(self, file_data: Dict[str, Any]) -> bool:
         """Determine if a document should be filtered out.

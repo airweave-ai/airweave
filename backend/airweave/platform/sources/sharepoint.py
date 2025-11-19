@@ -21,6 +21,7 @@ from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
+from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.sharepoint import (
     SharePointDriveEntity,
@@ -613,6 +614,11 @@ class SharePointSource(BaseSource):
                     file_count += 1
                     self.logger.debug(f"Processed file {file_count}: {file_entity.name}")
                     yield file_entity
+
+                except FileSkippedException as e:
+                    # File intentionally skipped (unsupported type, too large, etc.) - not an error
+                    self.logger.debug(f"Skipping file {file_entity.name}: {e.reason}")
+                    continue
 
                 except Exception as e:
                     self.logger.error(f"Failed to download file {file_entity.name}: {e}")

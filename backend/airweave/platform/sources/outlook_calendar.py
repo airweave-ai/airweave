@@ -18,6 +18,7 @@ from tenacity import retry, stop_after_attempt
 from airweave.core.logging import logger
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
+from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.outlook_calendar import (
     OutlookCalendarAttachmentEntity,
@@ -498,6 +499,11 @@ class OutlookCalendarSource(BaseSource):
 
                 self.logger.debug(f"Successfully processed attachment: {attachment_name}")
                 return file_entity
+
+            except FileSkippedException as e:
+                # File intentionally skipped (unsupported type, too large, etc.) - not an error
+                self.logger.debug(f"Skipping attachment {attachment_name}: {e.reason}")
+                return None
 
             except Exception as e:
                 self.logger.error(f"Failed to save attachment {attachment_name}: {e}")

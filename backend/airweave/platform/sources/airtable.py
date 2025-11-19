@@ -8,6 +8,7 @@ from tenacity import retry, stop_after_attempt
 from airweave.core.exceptions import TokenRefreshError
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
+from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.airtable import (
     AirtableAttachmentEntity,
@@ -494,6 +495,11 @@ class AirtableSource(BaseSource):
 
                     self.logger.debug(f"Successfully downloaded attachment: {file_entity.name}")
                     yield file_entity
+
+                except FileSkippedException as e:
+                    # File intentionally skipped (unsupported type, too large, etc.) - not an error
+                    self.logger.debug(f"Skipping file: {e.reason}")
+                    continue
 
                 except Exception as e:
                     self.logger.error(f"Error downloading attachment {file_entity.name}: {e}")

@@ -24,8 +24,13 @@ class OrganizationBase(Base):
 
     @declared_attr
     def organization_id(cls):
-        """Organization ID column."""
-        return Column(UUID, ForeignKey("organization.id", ondelete="CASCADE"), nullable=False)
+        """Organization ID column with index for efficient org-scoped queries."""
+        return Column(
+            UUID,
+            ForeignKey("organization.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,  # Index by default for all org-scoped tables
+        )
 
 
 class UserMixin:

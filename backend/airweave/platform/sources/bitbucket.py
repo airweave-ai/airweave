@@ -11,6 +11,7 @@ from tenacity import retry, stop_after_attempt
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.configs.auth import BitbucketAuthConfig
 from airweave.platform.decorators import source
+from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.bitbucket import (
     BitbucketCodeFileEntity,
@@ -513,6 +514,10 @@ class BitbucketSource(BaseSource):
                     raise ValueError(f"Save failed - no local path set for {file_entity.name}")
 
                 yield file_entity
+        except FileSkippedException as e:
+            # File intentionally skipped (unsupported type, too large, etc.) - not an error
+            self.logger.debug(f"Skipping file: {e.reason}")
+
         except Exception as e:
             self.logger.error(f"Error processing file {item_path}: {str(e)}")
 
@@ -538,7 +543,7 @@ class BitbucketSource(BaseSource):
 
                 # Use specified branch or default branch
                 branch = self.branch or repo_data.mainbranch or "master"
-                self.logger.info(f"Using branch: {branch} for repo {self.repo_slug}")
+                self.logger.debug(f"Using branch: {branch} for repo {self.repo_slug}")
 
                 async for entity in self._traverse_repository(
                     client, self.workspace, self.repo_slug, branch
@@ -559,7 +564,7 @@ class BitbucketSource(BaseSource):
 
                     # Use specified branch or default branch
                     branch = self.branch or repo_entity.mainbranch or "master"
-                    self.logger.info(f"Using branch: {branch} for repo {repo_slug}")
+                    self.logger.debug(f"Using branch: {branch} for repo {repo_slug}")
 
                     async for entity in self._traverse_repository(
                         client, self.workspace, repo_slug, branch
@@ -579,7 +584,7 @@ class BitbucketSource(BaseSource):
                     user_data = await self._get_with_auth(client, f"{self.BASE_URL}/user")
                     # If we get here, auth is successful (would have raised on error)
                     if user_data and "uuid" in user_data:
-                        self.logger.info(
+                        self.logger.debug(
                             "Bitbucket auth validated for user: "
                             f" {user_data.get('username', 'Unknown')}"
                         )
@@ -597,7 +602,7 @@ class BitbucketSource(BaseSource):
                             client, f"{self.BASE_URL}/workspaces/{self.workspace}"
                         )
                         if ws_data and "uuid" in ws_data:
-                            self.logger.info(f"Bitbucket workspace '{self.workspace}' verified")
+                            self.logger.debug(f"Bitbucket workspace '{self.workspace}' verified")
                         else:
                             self.logger.warning(
                                 f"Bitbucket workspace '{self.workspace}' returned unexpected data"

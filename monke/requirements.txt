@@ -7,6 +7,7 @@ python-dotenv>=1.0.0
 rich>=13.7.0
 structlog>=23.2.0
 pyyaml>=6.0
+tenacity>=8.2.0
 
 # Async support
 asyncio-mqtt>=0.16.0

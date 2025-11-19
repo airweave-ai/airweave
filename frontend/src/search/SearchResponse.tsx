@@ -102,7 +102,11 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
     const responseTime = searchResponse?.responseTime || null;
     const completion = searchResponse?.completion || '';
     const results = searchResponse?.results || [];
-    const hasError = searchResponse?.error;
+    const hasError = Boolean(searchResponse?.error);
+    const isTransientError = Boolean(searchResponse?.errorIsTransient);
+    const errorDisplayMessage = isTransientError
+        ? "Something went wrong, please try again."
+        : searchResponse?.error;
 
     // Debug logging
     useEffect(() => {
@@ -1383,12 +1387,16 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                     )}></div>
                 </>
             ) : (
-                <div className={cn(
-                    "absolute inset-0 h-1.5 bg-gradient-to-r",
-                    hasError
-                        ? "from-red-500 to-red-600"
-                        : "from-green-500 to-emerald-500"
-                )}></div>
+                <div
+                    className={cn(
+                        "absolute inset-0 h-1.5 bg-gradient-to-r",
+                        hasError
+                            ? isTransientError
+                                ? "from-gray-200 to-gray-300 dark:from-gray-700 dark:to-gray-600"
+                                : "from-red-500 to-red-600"
+                            : "from-green-500 to-emerald-500"
+                    )}
+                ></div>
             )}
         </div>
     );
@@ -1410,13 +1418,25 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                 {hasError && (
                     <div className={cn(
                         "border-t p-4",
-                        isDark ? "border-gray-800/50 bg-red-950/20" : "border-gray-200/50 bg-red-50"
+                        isTransientError
+                            ? isDark
+                                ? "border-gray-800/50 bg-gray-900/40"
+                                : "border-gray-200/70 bg-gray-50"
+                            : isDark
+                                ? "border-gray-800/50 bg-red-950/20"
+                                : "border-gray-200/50 bg-red-50"
                     )}>
                         <div className={cn(
                             "text-sm",
-                            isDark ? "text-red-300" : "text-red-700"
+                            isTransientError
+                                ? isDark
+                                    ? "text-gray-100"
+                                    : "text-gray-700"
+                                : isDark
+                                    ? "text-red-300"
+                                    : "text-red-700"
                         )}>
-                            {searchResponse.error}
+                            {errorDisplayMessage}
                         </div>
                     </div>
                 )}

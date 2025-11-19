@@ -46,4 +46,6 @@ SUPPORTED_FILE_EXTENSIONS = {
     ".swift",
     ".kt",
     ".kts",
+    ".tf",
+    ".tfvars",
 }

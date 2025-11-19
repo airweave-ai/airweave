@@ -28,15 +28,15 @@ class UsageBase(BaseModel):
         ge=0,
         description="Number of search queries executed.",
     )
-    source_connections: int = Field(
-        0,
+    source_connections: Optional[int] = Field(
+        None,
         ge=0,
-        description="Number of source connections configured.",
+        description="Number of source connections configured. Computed dynamically from source_connection table.",
     )
     team_members: Optional[int] = Field(
         None,
         ge=0,
-        description="Current number of team members in the organization.",
+        description="Current number of team members in the organization. Computed dynamically from user_organization table.",
     )
 
     class Config:
@@ -60,6 +60,7 @@ class UsageUpdate(BaseModel):
     """Schema for updating usage counters.
 
     All fields are optional, allowing partial updates of specific counters.
+    Note: source_connections and team_members are computed dynamically and not stored in DB.
     """
 
     entities: Optional[int] = Field(
@@ -71,11 +72,6 @@ class UsageUpdate(BaseModel):
         None,
         ge=0,
         description="Updated query count.",
-    )
-    source_connections: Optional[int] = Field(
-        None,
-        ge=0,
-        description="Updated source connection count.",
     )
 
 

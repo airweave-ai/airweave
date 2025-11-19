@@ -7,6 +7,7 @@ from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
+from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.dropbox import (
     DropboxAccountEntity,
@@ -96,12 +97,12 @@ class DropboxSource(BaseSource):
         except httpx.HTTPStatusError as e:
             # Handle 401 Unauthorized - try refreshing token
             if e.response.status_code == 401 and self._token_manager:
-                self.logger.info("Received 401 error, attempting to refresh token")
+                self.logger.debug("Received 401 error, attempting to refresh token")
                 refreshed = await self._token_manager.refresh_on_unauthorized()
 
                 if refreshed:
                     # Retry with new token (the retry decorator will handle this)
-                    self.logger.info("Token refreshed, retrying request")
+                    self.logger.debug("Token refreshed, retrying request")
                     raise  # Let tenacity retry with the refreshed token
 
             self.logger.error(f"HTTP Error in Dropbox API call: {e}")
@@ -406,7 +407,7 @@ class DropboxSource(BaseSource):
                 if entry.get(".tag") == "file":
                     # Skip non-downloadable files
                     if not entry.get("is_downloadable", True):
-                        self.logger.info(
+                        self.logger.debug(
                             f"Skipping non-downloadable file: "
                             f"{entry.get('path_display', 'unknown path')}"
                         )
@@ -453,6 +454,10 @@ class DropboxSource(BaseSource):
 
                             self.logger.debug(f"Successfully downloaded file: {file_entity.name}")
                             yield file_entity
+
+                    except FileSkippedException as e:
+                        self.logger.debug(f"Skipping file: {e.reason}")
+                        continue
 
                     except Exception as e:
                         self.logger.error(f"Failed to download file {file_entity.name}: {e}")
@@ -558,7 +563,7 @@ class DropboxSource(BaseSource):
                         and folder_entity.path_lower
                         and self.exclude_path in folder_entity.path_lower
                     ):
-                        self.logger.info(f"Skipping excluded folder: {folder_entity.path_lower}")
+                        self.logger.debug(f"Skipping excluded folder: {folder_entity.path_lower}")
                         continue
 
                     yield folder_entity

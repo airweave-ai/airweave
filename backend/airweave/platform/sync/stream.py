@@ -109,7 +109,7 @@ class AsyncSourceStream(Generic[T]):
                     self._state = StreamState.CANCELLED
             raise
         except Exception as e:
-            self.logger.error(f"Error in producer: {get_error_message(e)}")
+            self.logger.warning(f"Error in producer: {get_error_message(e)}")
             self.producer_exception = e
             async with self._state_lock:
                 self._state = StreamState.FAILED
@@ -260,7 +260,7 @@ class AsyncSourceStream(Generic[T]):
     def _check_producer_exception(self) -> None:
         """Check and raise any producer exception."""
         if self.producer_exception:
-            self.logger.error("Producer encountered an error")
+            self.logger.warning("Producer encountered an error")
             raise self.producer_exception
 
     async def _drain_queue(self) -> None:

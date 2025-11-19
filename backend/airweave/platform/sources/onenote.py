@@ -23,6 +23,7 @@ from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
+from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.onenote import (
     OneNoteNotebookEntity,
@@ -251,7 +252,7 @@ class OneNoteSource(BaseSource):
         Yields:
             Tuple of (OneNoteNotebookEntity, sections_data_list)
         """
-        self.logger.info("Starting notebook entity generation with sections")
+        self.logger.debug("Starting notebook entity generation with sections")
         url = f"{self.GRAPH_BASE_URL}/me/onenote/notebooks"
         # Use $expand to get sections in the same call, and $select to reduce payload
         params = {
@@ -269,7 +270,7 @@ class OneNoteSource(BaseSource):
                 self.logger.debug(f"Fetching notebooks from: {url}")
                 data = await self._get_with_auth(client, url, params=params)
                 notebooks = data.get("value", [])
-                self.logger.info(f"Retrieved {len(notebooks)} notebooks with sections")
+                self.logger.debug(f"Retrieved {len(notebooks)} notebooks with sections")
 
                 for notebook_data in notebooks:
                     notebook_count += 1
@@ -307,7 +308,7 @@ class OneNoteSource(BaseSource):
                     self.logger.debug("Following pagination to next page")
                     params = None  # params are included in the nextLink
 
-            self.logger.info(f"Completed notebook generation. Total notebooks: {notebook_count}")
+            self.logger.debug(f"Completed notebook generation. Total notebooks: {notebook_count}")
 
         except Exception as e:
             self.logger.error(f"Error generating notebook entities: {str(e)}")
@@ -331,7 +332,7 @@ class OneNoteSource(BaseSource):
         Yields:
             OneNoteSectionEntity objects
         """
-        self.logger.info(f"Starting section entity generation for notebook: {notebook_name}")
+        self.logger.debug(f"Starting section entity generation for notebook: {notebook_name}")
         url = f"{self.GRAPH_BASE_URL}/me/onenote/notebooks/{notebook_id}/sections"
         params = {"$top": 100}
 
@@ -341,7 +342,9 @@ class OneNoteSource(BaseSource):
                 self.logger.debug(f"Fetching sections from: {url}")
                 data = await self._get_with_auth(client, url, params=params)
                 sections = data.get("value", [])
-                self.logger.info(f"Retrieved {len(sections)} sections for notebook {notebook_name}")
+                self.logger.debug(
+                    f"Retrieved {len(sections)} sections for notebook {notebook_name}"
+                )
 
                 for section_data in sections:
                     section_count += 1
@@ -373,7 +376,7 @@ class OneNoteSource(BaseSource):
                     self.logger.debug("Following pagination to next page")
                     params = None
 
-            self.logger.info(
+            self.logger.debug(
                 f"Completed section generation for notebook {notebook_name}. "
                 f"Total sections: {section_count}"
             )
@@ -404,7 +407,7 @@ class OneNoteSource(BaseSource):
         Yields:
             Processed BaseEntity objects (HTML content converted to text)
         """
-        self.logger.info(f"Starting page generation for section: {section_name}")
+        self.logger.debug(f"Starting page generation for section: {section_name}")
         url = f"{self.GRAPH_BASE_URL}/me/onenote/sections/{section_id}/pages"
         # Use $select to reduce payload size and improve performance
         params = {
@@ -418,7 +421,7 @@ class OneNoteSource(BaseSource):
                 self.logger.debug(f"Fetching pages from: {url}")
                 data = await self._get_with_auth(client, url, params=params)
                 pages = data.get("value", [])
-                self.logger.info(f"Retrieved {len(pages)} pages for section {section_name}")
+                self.logger.debug(f"Retrieved {len(pages)} pages for section {section_name}")
 
                 for page_data in pages:
                     page_count += 1
@@ -428,7 +431,7 @@ class OneNoteSource(BaseSource):
 
                     # Skip deleted pages (OneNote API may return deleted items in some cases)
                     if page_data.get("isDeleted") or page_data.get("deleted"):
-                        self.logger.info(f"Skipping deleted page: {title}")
+                        self.logger.debug(f"Skipping deleted page: {title}")
                         continue
 
                     self.logger.debug(f"Processing page #{page_count}: {title}")
@@ -440,10 +443,10 @@ class OneNoteSource(BaseSource):
 
                     # Skip empty pages (no title)
                     if not title or title == "Untitled Page":
-                        self.logger.info(f"Skipping empty page '{title}'")
+                        self.logger.debug(f"Skipping empty page '{title}'")
                         continue
 
-                    self.logger.info(f"Page '{title}': {content_url}")
+                    self.logger.debug(f"Page '{title}': {content_url}")
 
                     # Add .html extension to title for proper file processing
                     page_name = f"{title}.html" if not title.endswith(".html") else title
@@ -493,6 +496,11 @@ class OneNoteSource(BaseSource):
                         self.logger.debug(f"Successfully downloaded page: {file_entity.name}")
                         yield file_entity
 
+                    except FileSkippedException as e:
+                        # Page intentionally skipped (unsupported type, too large, etc.) - not an error
+                        self.logger.debug(f"Skipping page {title}: {e.reason}")
+                        continue
+
                     except Exception as e:
                         self.logger.error(f"Failed to download page {title}: {e}")
                         # Continue with other pages
@@ -504,7 +512,7 @@ class OneNoteSource(BaseSource):
                     self.logger.debug("Following pagination to next page")
                     params = None
 
-            self.logger.info(
+            self.logger.debug(
                 f"Completed page generation for section {section_name}. Total pages: {page_count}"
             )
 
@@ -520,21 +528,21 @@ class OneNoteSource(BaseSource):
           - OneNoteSectionEntity for sections in each notebook
           - OneNotePageFileEntity for pages in each section (processed as HTML files)
         """
-        self.logger.info("===== STARTING MICROSOFT ONENOTE ENTITY GENERATION =====")
+        self.logger.debug("===== STARTING MICROSOFT ONENOTE ENTITY GENERATION =====")
         entity_count = 0
 
         try:
             async with self.http_client() as client:
-                self.logger.info("HTTP client created, starting entity generation")
+                self.logger.debug("HTTP client created, starting entity generation")
 
                 # 1) Generate notebook entities with sections (performance optimized)
-                self.logger.info("Generating notebook entities with sections...")
+                self.logger.debug("Generating notebook entities with sections...")
                 async for (
                     notebook_entity,
                     sections_data,
                 ) in self._generate_notebook_entities_with_sections(client):
                     entity_count += 1
-                    self.logger.info(
+                    self.logger.debug(
                         f"Yielding entity #{entity_count}: Notebook - "
                         f"{notebook_entity.display_name}"
                     )
@@ -546,7 +554,7 @@ class OneNoteSource(BaseSource):
 
                     # 3) Process sections from expanded data with concurrent processing
                     if sections_data:
-                        self.logger.info(
+                        self.logger.debug(
                             f"Processing {len(sections_data)} sections from expanded data "
                             f"(concurrent)"
                         )
@@ -608,7 +616,7 @@ class OneNoteSource(BaseSource):
                         ):
                             entity_count += 1
                             if hasattr(entity, "display_name"):
-                                self.logger.info(
+                                self.logger.debug(
                                     f"Yielding entity #{entity_count}: Section - "
                                     f"{entity.display_name}"
                                 )
@@ -622,7 +630,7 @@ class OneNoteSource(BaseSource):
             self.logger.error(f"Error in entity generation: {str(e)}", exc_info=True)
             raise
         finally:
-            self.logger.info(
+            self.logger.debug(
                 f"===== MICROSOFT ONENOTE ENTITY GENERATION COMPLETE: {entity_count} entities ====="
             )
 

@@ -24,6 +24,7 @@ from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
+from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.entities.word import WordDocumentEntity
 from airweave.platform.sources._base import BaseSource
@@ -256,7 +257,7 @@ class WordSource(BaseSource):
 
                     # Skip deleted items (trashed but still returned by API)
                     if item.get("deleted"):
-                        self.logger.info(f"Skipping deleted item: {file_name}")
+                        self.logger.debug(f"Skipping deleted item: {file_name}")
                         continue
 
                     # Check if it's a Word document
@@ -296,7 +297,7 @@ class WordSource(BaseSource):
         Yields:
             WordDocumentEntity objects (FileEntity subclass)
         """
-        self.logger.info("Starting Word document discovery")
+        self.logger.debug("Starting Word document discovery")
         document_count = 0
 
         try:
@@ -315,7 +316,7 @@ class WordSource(BaseSource):
 
                 if document_count <= 10 or document_count % 50 == 0:
                     # Log first 10 and then every 50th document to reduce noise
-                    self.logger.info(f"Found Word document #{document_count}: {title}")
+                    self.logger.debug(f"Found Word document #{document_count}: {title}")
 
                 # Build download URL for the document content
                 content_download_url = f"{self.GRAPH_BASE_URL}/me/drive/items/{document_id}/content"
@@ -367,7 +368,7 @@ class WordSource(BaseSource):
                     "No Word documents found in OneDrive (searched root and subfolders)"
                 )
             else:
-                self.logger.info(f"Discovered {document_count} Word documents")
+                self.logger.debug(f"Discovered {document_count} Word documents")
 
         except Exception as e:
             self.logger.error(f"Error generating Word document entities: {str(e)}", exc_info=True)
@@ -383,18 +384,18 @@ class WordSource(BaseSource):
         3. Chunked into searchable pieces
         4. Indexed with embeddings for semantic search
         """
-        self.logger.info("===== STARTING MICROSOFT WORD ENTITY GENERATION =====")
+        self.logger.debug("===== STARTING MICROSOFT WORD ENTITY GENERATION =====")
         entity_count = 0
 
         try:
             async with self.http_client() as client:
-                self.logger.info("HTTP client created, starting entity generation")
+                self.logger.debug("HTTP client created, starting entity generation")
 
                 # Generate Word document entities
-                self.logger.info("Generating Word document entities...")
+                self.logger.debug("Generating Word document entities...")
                 async for document_entity in self._generate_word_document_entities(client):
                     entity_count += 1
-                    self.logger.info(
+                    self.logger.debug(
                         f"Yielding entity #{entity_count}: Word Document - {document_entity.title}"
                     )
 
@@ -418,6 +419,11 @@ class WordSource(BaseSource):
                         )
                         yield document_entity
 
+                    except FileSkippedException as e:
+                        # Document intentionally skipped (unsupported type, too large, etc.) - not an error
+                        self.logger.debug(f"Skipping document {document_entity.title}: {e.reason}")
+                        continue
+
                     except Exception as e:
                         self.logger.error(
                             f"Failed to download document {document_entity.title}: {e}"
@@ -429,7 +435,7 @@ class WordSource(BaseSource):
             self.logger.error(f"Error in entity generation: {str(e)}", exc_info=True)
             raise
         finally:
-            self.logger.info(
+            self.logger.debug(
                 f"===== MICROSOFT WORD ENTITY GENERATION COMPLETE: {entity_count} entities ====="
             )
 
