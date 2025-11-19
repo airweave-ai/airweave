@@ -211,7 +211,7 @@ parent_directory = current_file_path.parent
 environment = core_settings.ENVIRONMENT
 if environment == "local":
     env_prefix = "dev"
-elif environment == "production":
+elif environment == "prd":
     env_prefix = "prd"
 else:
     env_prefix = environment

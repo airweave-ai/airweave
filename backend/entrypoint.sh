@@ -58,7 +58,7 @@ echo "Starting application..."
 RELOAD_FLAG=""
 ENVIRONMENT=${ENVIRONMENT:-local}
 
-if [ "$ENVIRONMENT" = "local" ] || [ "$ENVIRONMENT" = "development" ]; then
+if [ "$ENVIRONMENT" = "local" ] || [ "$ENVIRONMENT" = "dev" ]; then
     RELOAD_FLAG="--reload"
     echo "Environment: $ENVIRONMENT - Hot reload ENABLED"
 else
