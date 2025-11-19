@@ -561,7 +561,7 @@ class QdrantDestination(VectorDBDestination):
             op = await self.client.upsert(
                 collection_name=self.collection_name,
                 points=points,
-                wait=True,
+                wait=False,  # Pipeline requests - don't block for indexing completion
             )
             duration = asyncio.get_event_loop().time() - start_time
 
@@ -791,20 +791,11 @@ class QdrantDestination(VectorDBDestination):
             return
 
         # Try once with the whole payload; fall back to halving on failure
-        # Track semaphore contention to understand queueing behavior
-        available_slots = self._write_sem._value
-        total_slots = self._write_limit
-        active_writes = max(0, total_slots - available_slots)
-        self.logger.info(
-            f"[Qdrant] 🔒 Semaphore state: {active_writes}/{total_slots} "
-            f"active writes before acquiring lock for {len(point_structs)} points"
-        )
-
+        # No semaphore - allow concurrent workers to proceed without blocking
         max_batch = self._max_points_per_batch()
         adaptive_min_batch = max(2, min(8, max_batch // 8 if max_batch >= 8 else max_batch))
 
-        async with self._write_sem:
-            await self._upsert_points_with_fallback(point_structs, min_batch=adaptive_min_batch)
+        await self._upsert_points_with_fallback(point_structs, min_batch=adaptive_min_batch)
 
     # ----------------------------------------------------------------------------------
     # Deletes (by parent/sync/etc.)
