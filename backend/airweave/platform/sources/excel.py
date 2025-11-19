@@ -15,6 +15,7 @@ Reference:
 import asyncio
 from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, Optional
+from urllib.parse import quote
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -308,15 +309,15 @@ class ExcelSource(BaseSource):
                     self.logger.info(f"Found workbook #{workbook_count}: {display_name}")
 
                 yield ExcelWorkbookEntity(
-                    # Base fields
-                    entity_id=workbook_id,
                     breadcrumbs=[],
+                    id=workbook_id,
                     name=display_name,
-                    created_at=self._parse_datetime(item_data.get("createdDateTime")),
-                    updated_at=self._parse_datetime(item_data.get("lastModifiedDateTime")),
-                    # API fields
+                    created_datetime=self._parse_datetime(item_data.get("createdDateTime")),
+                    last_modified_datetime=self._parse_datetime(
+                        item_data.get("lastModifiedDateTime")
+                    ),
                     file_name=file_name,
-                    web_url=item_data.get("webUrl"),
+                    web_url_override=item_data.get("webUrl"),
                     size=item_data.get("size"),
                     created_by=item_data.get("createdBy"),
                     last_modified_by=item_data.get("lastModifiedBy"),
@@ -342,6 +343,7 @@ class ExcelSource(BaseSource):
         workbook_id: str,
         workbook_name: str,
         workbook_breadcrumb: Breadcrumb,
+        workbook_web_url: Optional[str],
     ) -> AsyncGenerator[ExcelWorksheetEntity, None]:
         """Generate ExcelWorksheetEntity objects for worksheets in a workbook.
 
@@ -394,6 +396,15 @@ class ExcelSource(BaseSource):
                 for worksheet_data, cell_data in zip(batch, content_results, strict=True):
                     worksheet_id = worksheet_data.get("id")
                     worksheet_name = worksheet_data.get("name", "Unknown Worksheet")
+                    worksheet_web_url = None
+                    if workbook_web_url and worksheet_name:
+                        # Excel sheet names escape single quotes by doubling them inside the
+                        # quoted sheet reference, e.g. "Bob's Sheet" -> 'Bob''s Sheet'!A1.
+                        # We must perform this escaping before URL-encoding the activeCell.
+                        safe_worksheet_name = worksheet_name.replace("'", "''")
+                        worksheet_web_url = (
+                            f"{workbook_web_url}&activeCell='{quote(safe_worksheet_name)}'!A1"
+                        )
 
                     # Handle exceptions from content fetch
                     if isinstance(cell_data, Exception):
@@ -403,13 +414,9 @@ class ExcelSource(BaseSource):
                         cell_data = None
 
                     yield ExcelWorksheetEntity(
-                        # Base fields
-                        entity_id=worksheet_id,
                         breadcrumbs=[workbook_breadcrumb],
+                        id=worksheet_id,
                         name=worksheet_name,
-                        created_at=None,  # Worksheets don't have creation timestamp
-                        updated_at=self._parse_datetime(worksheet_data.get("lastModifiedDateTime")),
-                        # API fields
                         workbook_id=workbook_id,
                         workbook_name=workbook_name,
                         position=worksheet_data.get("position"),
@@ -421,6 +428,7 @@ class ExcelSource(BaseSource):
                         last_modified_datetime=self._parse_datetime(
                             worksheet_data.get("lastModifiedDateTime")
                         ),
+                        web_url_override=worksheet_web_url,
                     )
 
             self.logger.debug(
@@ -441,6 +449,7 @@ class ExcelSource(BaseSource):
         worksheet_id: str,
         worksheet_name: str,
         worksheet_breadcrumbs: list[Breadcrumb],
+        worksheet_web_url: Optional[str],
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate table entities for tables in a worksheet.
 
@@ -497,13 +506,9 @@ class ExcelSource(BaseSource):
                         ]
 
                     yield ExcelTableEntity(
-                        # Base fields
-                        entity_id=table_id,
                         breadcrumbs=worksheet_breadcrumbs,
+                        id=table_id,
                         name=table_name,
-                        created_at=None,  # Tables don't have creation timestamp
-                        updated_at=self._parse_datetime(table_data.get("lastModifiedDateTime")),
-                        # API fields
                         workbook_id=workbook_id,
                         workbook_name=workbook_name,
                         worksheet_id=worksheet_id,
@@ -521,6 +526,7 @@ class ExcelSource(BaseSource):
                         last_modified_datetime=self._parse_datetime(
                             table_data.get("lastModifiedDateTime")
                         ),
+                        web_url_override=worksheet_web_url,
                     )
 
                 # Handle pagination
@@ -670,13 +676,22 @@ class ExcelSource(BaseSource):
                     yield workbook_entity
 
                     # Create workbook breadcrumb
-                    workbook_id = workbook_entity.entity_id
+                    workbook_id = workbook_entity.id
                     workbook_name = workbook_entity.name
-                    workbook_breadcrumb = Breadcrumb(entity_id=workbook_id)
+                    workbook_breadcrumb = Breadcrumb(
+                        entity_id=workbook_id,
+                        name=workbook_name,
+                        entity_type="ExcelWorkbookEntity",
+                    )
+                    workbook_web_url = workbook_entity.web_url
 
                     # 2) Generate worksheet entities for this workbook
                     async for worksheet_entity in self._generate_worksheet_entities(
-                        client, workbook_id, workbook_name, workbook_breadcrumb
+                        client,
+                        workbook_id,
+                        workbook_name,
+                        workbook_breadcrumb,
+                        workbook_web_url,
                     ):
                         entity_count += 1
                         self.logger.info(
@@ -685,9 +700,13 @@ class ExcelSource(BaseSource):
                         yield worksheet_entity
 
                         # Create worksheet breadcrumb
-                        worksheet_id = worksheet_entity.entity_id
+                        worksheet_id = worksheet_entity.id
                         worksheet_name = worksheet_entity.name
-                        worksheet_breadcrumb = Breadcrumb(entity_id=worksheet_id)
+                        worksheet_breadcrumb = Breadcrumb(
+                            entity_id=worksheet_id,
+                            name=worksheet_name,
+                            entity_type="ExcelWorksheetEntity",
+                        )
                         worksheet_breadcrumbs = [workbook_breadcrumb, worksheet_breadcrumb]
 
                         # 3) Generate table entities for this worksheet
@@ -698,6 +717,7 @@ class ExcelSource(BaseSource):
                             worksheet_id,
                             worksheet_name,
                             worksheet_breadcrumbs,
+                            worksheet_entity.web_url,
                         ):
                             entity_count += 1
                             self.logger.info(

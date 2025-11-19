@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Plus } from "lucide-react";
+import { Search, Plus, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { CollectionCard } from "@/components/dashboard";
-import { useCollectionsStore, useSourcesStore } from "@/lib/stores";
+import { useCollectionsStore } from "@/lib/stores";
 import { useCollectionCreationStore } from "@/stores/collectionCreationStore";
 import { apiClient } from "@/lib/api";
 import { useUsageStore } from "@/lib/stores/usage";
@@ -16,18 +16,23 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { SingleActionCheckResponse } from "@/types";
+import type { Collection } from "@/lib/stores/collections";
 
 const CollectionsView = () => {
   const navigate = useNavigate();
   const {
-    collections,
-    isLoading: isLoadingCollections,
-    fetchCollections
+    totalCount,
+    fetchCollectionsPaginated,
+    fetchCollectionsCount,
   } = useCollectionsStore();
 
-  const { fetchSources } = useSourcesStore();
-  const [filteredCollections, setFilteredCollections] = useState([]);
+  const [collections, setCollections] = useState<Collection[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [filteredCount, setFilteredCount] = useState<number | null>(null);
+  const itemsPerPage = 24; // 4 cols × 6 rows
 
   // Modal state
   const { openModal } = useCollectionCreationStore();
@@ -45,64 +50,110 @@ const CollectionsView = () => {
     entities: actionChecks.entities
   };
 
-  // Usage checking is now handled by UsageChecker component at app level
+  // Calculate pagination (use filtered count when searching, otherwise total)
+  const displayCount = filteredCount !== null ? filteredCount : (totalCount || 0);
+  const totalPages = Math.ceil(displayCount / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
 
-  // Initialize collections and event listeners
-  useEffect(() => {
-    console.log("🔄 [CollectionsView] Initializing");
-
-    // Subscribe to collection events
-    const unsubscribe = useCollectionsStore.getState().subscribeToEvents();
-
-    // Load collections (will use cache if available)
-    fetchCollections().then(collections => {
-      console.log(`🔄 [CollectionsView] Collections loaded: ${collections.length} collections available`);
-    });
-
-    return unsubscribe;
-  }, [fetchCollections]);
-
-  // Usage limits are now checked by UsageChecker component
-
-  // Filter collections based on search query
-  useEffect(() => {
-    if (searchQuery.trim() === "") {
-      setFilteredCollections(collections);
-    } else {
-      const query = searchQuery.toLowerCase();
-      const filtered = collections.filter(
-        (collection) =>
-          collection.name.toLowerCase().includes(query) ||
-          collection.readable_id.toLowerCase().includes(query)
-      );
-      setFilteredCollections(filtered);
+  // Helper: Fetch filtered count
+  const updateFilteredCount = useCallback(async (query: string) => {
+    const params = new URLSearchParams({ search: query });
+    const response = await apiClient.get(`/collections/count?${params}`);
+    if (response.ok) {
+      const count = await response.json();
+      setFilteredCount(count);
     }
-  }, [searchQuery, collections]);
+  }, []);
+
+  // Debounce search query (300ms)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+      setCurrentPage(1); // Reset to first page on search
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Fetch collections (with search support)
+  useEffect(() => {
+    const loadCollections = async () => {
+      setIsLoading(true);
+      const data = await fetchCollectionsPaginated(
+        startIndex,
+        itemsPerPage,
+        debouncedSearchQuery || undefined
+      );
+      setCollections(data);
+      setIsLoading(false);
+    };
+
+    loadCollections();
+  }, [currentPage, debouncedSearchQuery, fetchCollectionsPaginated, startIndex, itemsPerPage]);
+
+  // Fetch total count on mount (never filtered)
+  useEffect(() => {
+    fetchCollectionsCount();
+  }, [fetchCollectionsCount]);
+
+  // Fetch filtered count when searching
+  useEffect(() => {
+    if (debouncedSearchQuery) {
+      updateFilteredCount(debouncedSearchQuery);
+    } else {
+      setFilteredCount(null);
+    }
+  }, [debouncedSearchQuery, updateFilteredCount]);
+
+  // Handle collection events
+  useEffect(() => {
+    const handleRefresh = async () => {
+      // Refresh total count
+      await fetchCollectionsCount();
+
+      // Refresh filtered count if searching
+      if (debouncedSearchQuery) {
+        await updateFilteredCount(debouncedSearchQuery);
+      }
+
+      // Refresh collections
+      const data = await fetchCollectionsPaginated(
+        startIndex,
+        itemsPerPage,
+        debouncedSearchQuery || undefined
+      );
+      setCollections(data);
+    };
+
+    window.addEventListener('collection-created', handleRefresh);
+    window.addEventListener('collection-updated', handleRefresh);
+    window.addEventListener('collection-deleted', handleRefresh);
+
+    return () => {
+      window.removeEventListener('collection-created', handleRefresh);
+      window.removeEventListener('collection-updated', handleRefresh);
+      window.removeEventListener('collection-deleted', handleRefresh);
+    };
+  }, [fetchCollectionsCount, fetchCollectionsPaginated, startIndex, itemsPerPage, debouncedSearchQuery, updateFilteredCount]);
 
   // Open create collection modal
   const handleCreateCollection = () => {
     openModal();
   };
 
-  // Refresh collections when modal closes
-  useEffect(() => {
-    const handleCollectionCreated = () => {
-      fetchCollections(true);
-      // Usage will be checked automatically by UsageChecker
-    };
-
-    window.addEventListener('collection-created', handleCollectionCreated);
-    return () => {
-      window.removeEventListener('collection-created', handleCollectionCreated);
-    };
-  }, [fetchCollections]);
-
   return (
     <div className="mx-auto w-full max-w-[1800px] px-6 py-6 pb-8">
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
         <div>
-          <h1 className="text-3xl font-bold mb-1">Collections</h1>
+          <div className="flex items-center gap-3 mb-1">
+            <h1 className="text-3xl font-bold">Collections</h1>
+            {totalCount !== null && (
+              <span className="px-2.5 py-1 text-xs font-medium bg-muted text-muted-foreground rounded-full">
+                {totalCount}
+              </span>
+            )}
+          </div>
           <p className="text-sm text-muted-foreground">
             View and manage all your collections
           </p>
@@ -175,34 +226,119 @@ const CollectionsView = () => {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
+        {searchQuery && filteredCount !== null && (
+          <div className="mt-2 text-sm text-muted-foreground">
+            Found {filteredCount} collection{filteredCount !== 1 ? 's' : ''}
+          </div>
+        )}
       </div>
 
       {/* Collections Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-6 sm:gap-8 auto-rows-fr">
-        {isLoadingCollections ? (
-          Array.from({ length: 8 }).map((_, index) => (
-            <div
-              key={index}
-              className="h-[220px] rounded-xl animate-pulse bg-slate-100 dark:bg-slate-800/50"
-            />
-          ))
-        ) : filteredCollections.length === 0 ? (
-          <div className="col-span-full text-center py-20 text-muted-foreground">
-            {searchQuery ? "No collections found matching your search" : "No collections found"}
+      <div className="relative">
+        {/* Loading overlay */}
+        {isLoading && collections.length > 0 && (
+          <div className="absolute inset-0 bg-background/60 backdrop-blur-sm z-10 flex items-center justify-center rounded-xl">
+            <div className="flex flex-col items-center gap-2">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="text-sm text-muted-foreground">
+                {searchQuery ? 'Searching collections...' : 'Loading collections...'}
+              </p>
+            </div>
           </div>
-        ) : (
-          filteredCollections.map((collection) => (
-            <CollectionCard
-              key={collection.id}
-              id={collection.id}
-              name={collection.name}
-              readableId={collection.readable_id}
-              status={collection.status}
-              onClick={() => navigate(`/collections/${collection.readable_id}`)}
-            />
-          ))
         )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-6 sm:gap-8 auto-rows-fr">
+          {isLoading && collections.length === 0 ? (
+            Array.from({ length: 8 }).map((_, index) => (
+              <div
+                key={index}
+                className="h-[220px] rounded-xl animate-pulse bg-slate-100 dark:bg-slate-800/50"
+              />
+            ))
+          ) : collections.length === 0 ? (
+            <div className="col-span-full text-center py-20 text-muted-foreground">
+              {searchQuery ? `No collections found matching "${searchQuery}"` : "No collections found"}
+            </div>
+          ) : (
+            collections.map((collection) => (
+              <CollectionCard
+                key={collection.id}
+                id={collection.id}
+                name={collection.name}
+                readableId={collection.readable_id}
+                status={collection.status}
+                onClick={() => navigate(`/collections/${collection.readable_id}`)}
+              />
+            ))
+          )}
+        </div>
       </div>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="mt-8 flex items-center justify-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            disabled={currentPage === 1 || isLoading}
+            className={cn(
+              "gap-1 hover:bg-accent",
+              currentPage === 1 && "opacity-40 cursor-not-allowed"
+            )}
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Previous
+          </Button>
+
+          <div className="flex items-center gap-1.5">
+            {[...Array(totalPages)].map((_, i) => {
+              const page = i + 1;
+              // Show first, last, current, and adjacent pages
+              if (
+                page === 1 ||
+                page === totalPages ||
+                (page >= currentPage - 1 && page <= currentPage + 1)
+              ) {
+                return (
+                  <Button
+                    key={page}
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setCurrentPage(page)}
+                    disabled={isLoading}
+                    className={cn(
+                      "min-w-[40px] hover:bg-accent transition-colors",
+                      currentPage === page
+                        ? "bg-muted font-medium text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {page}
+                  </Button>
+                );
+              } else if (page === currentPage - 2 || page === currentPage + 2) {
+                return <span key={page} className="px-2 text-muted-foreground">...</span>;
+              }
+              return null;
+            })}
+          </div>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages || isLoading}
+            className={cn(
+              "gap-1 hover:bg-accent",
+              currentPage === totalPages && "opacity-40 cursor-not-allowed"
+            )}
+          >
+            Next
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 };

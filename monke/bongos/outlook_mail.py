@@ -96,7 +96,7 @@ class OutlookMailBongo(BaseBongo):
         async with httpx.AsyncClient(base_url=GRAPH, timeout=30) as client:
             user_email = await self._get_user_email(client)
 
-            for ent in self._messages[:min(3, len(self._messages))]:
+            for ent in self._messages[: min(3, len(self._messages))]:
                 await self._pace()
 
                 # Generate updated content with same token
@@ -115,20 +115,26 @@ class OutlookMailBongo(BaseBongo):
                     "saveToSentItems": "true",
                 }
 
-                r = await client.post("/me/sendMail", headers=self._hdrs(), json=payload)
+                r = await client.post(
+                    "/me/sendMail", headers=self._hdrs(), json=payload
+                )
 
                 if r.status_code in (200, 202):
                     updated.append({**ent, "updated": True, "updated_subject": subject})
                     self.logger.info(f"📧 Sent updated email for token: {ent['token']}")
                 else:
-                    self.logger.warning(f"Failed to send updated email: {r.status_code}")
+                    self.logger.warning(
+                        f"Failed to send updated email: {r.status_code}"
+                    )
 
         return updated
 
     async def delete_entities(self) -> List[str]:
         return await self.delete_specific_entities(self._messages)
 
-    async def delete_specific_entities(self, entities: List[Dict[str, Any]]) -> List[str]:
+    async def delete_specific_entities(
+        self, entities: List[Dict[str, Any]]
+    ) -> List[str]:
         """Delete specific entities by searching for them by token."""
         self.logger.info(f"🥁 Deleting {len(entities)} Outlook emails")
         deleted: List[str] = []
@@ -154,16 +160,46 @@ class OutlookMailBongo(BaseBongo):
 
                     if r.status_code == 200:
                         messages = r.json().get("value", [])
-                        self.logger.info(f"🔍 Found {len(messages)} messages matching token '{token}'")
+                        self.logger.info(
+                            f"🔍 Found {len(messages)} messages matching token '{token}'"
+                        )
 
                         # Filter messages that actually contain the token
-                        # (search can be imprecise, so verify)
+                        # (search can be imprecise, so verify by fetching full body)
                         matching_messages = []
                         for msg in messages:
                             subject = msg.get("subject", "")
-                            body_preview = msg.get("bodyPreview", "")
-                            if token in subject or token in body_preview:
+                            # Check subject first (quick check)
+                            if token in subject:
                                 matching_messages.append(msg)
+                                continue
+
+                            # Check bodyPreview (may be truncated, so not definitive)
+                            body_preview = msg.get("bodyPreview", "")
+                            if token in body_preview:
+                                matching_messages.append(msg)
+                                continue
+
+                            # Fetch full body to verify (needed because bodyPreview is truncated)
+                            try:
+                                await self._pace()
+                                full_msg_r = await client.get(
+                                    f"/me/messages/{msg['id']}",
+                                    headers=self._hdrs(),
+                                    params={"$select": "body"},
+                                )
+                                if full_msg_r.status_code == 200:
+                                    full_body = (
+                                        full_msg_r.json()
+                                        .get("body", {})
+                                        .get("content", "")
+                                    )
+                                    if token in full_body:
+                                        matching_messages.append(msg)
+                            except Exception as e:
+                                self.logger.warning(
+                                    f"⚠️ Failed to fetch full body for {msg['id']}: {e}"
+                                )
 
                         self.logger.info(
                             f"🎯 {len(matching_messages)} messages verified to contain token '{token}'"
@@ -186,14 +222,18 @@ class OutlookMailBongo(BaseBongo):
                                         f"Delete failed for {msg['id']}: {del_r.status_code}"
                                     )
                             except Exception as e:
-                                self.logger.warning(f"Error deleting message {msg['id']}: {e}")
+                                self.logger.warning(
+                                    f"Error deleting message {msg['id']}: {e}"
+                                )
                     else:
                         self.logger.warning(
                             f"Search failed for token {token}: {r.status_code} - {r.text[:200]}"
                         )
 
                 except Exception as e:
-                    self.logger.warning(f"Delete error for entity {ent.get('token', 'unknown')}: {e}")
+                    self.logger.warning(
+                        f"Delete error for entity {ent.get('token', 'unknown')}: {e}"
+                    )
 
         return deleted
 
@@ -206,7 +246,9 @@ class OutlookMailBongo(BaseBongo):
         try:
             # First, delete current session messages
             if self._messages:
-                self.logger.info(f"🗑️ Cleaning up {len(self._messages)} current session messages")
+                self.logger.info(
+                    f"🗑️ Cleaning up {len(self._messages)} current session messages"
+                )
                 deleted = await self.delete_specific_entities(self._messages)
                 cleanup_stats["messages_deleted"] += len(deleted)
                 self._messages.clear()
@@ -236,13 +278,17 @@ class OutlookMailBongo(BaseBongo):
                             "/me/messages",
                             headers=self._hdrs(),
                             params={"$search": f'"{term}"', "$top": 100},
-                        )\
-
+                        )
                         if r.status_code == 200:
                             messages = r.json().get("value", [])
 
                             # Filter for messages that look like test emails
-                            test_patterns = ["product", "tech", "reference:", "synthetic"]
+                            test_patterns = [
+                                "product",
+                                "tech",
+                                "reference:",
+                                "synthetic",
+                            ]
                             test_messages = [
                                 m
                                 for m in messages
@@ -265,7 +311,8 @@ class OutlookMailBongo(BaseBongo):
                                     try:
                                         await self._pace()
                                         del_r = await client.delete(
-                                            f"/me/messages/{msg['id']}", headers=self._hdrs()
+                                            f"/me/messages/{msg['id']}",
+                                            headers=self._hdrs(),
                                         )
                                         if del_r.status_code == 204:
                                             stats["messages_deleted"] += 1
@@ -293,7 +340,10 @@ class OutlookMailBongo(BaseBongo):
         return data.get("mail") or data.get("userPrincipalName")
 
     def _hdrs(self) -> Dict[str, str]:
-        return {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
+        return {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+        }
 
     async def _pace(self):
         now = time.time()

@@ -2,6 +2,8 @@
 
 from typing import Any, Dict, List, Optional
 
+from pydantic import computed_field
+
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity, FileEntity
 
@@ -13,14 +15,17 @@ class DropboxAccountEntity(BaseEntity):
         https://www.dropbox.com/developers/documentation/http/documentation#users-get_current_account
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the Dropbox account ID)
-    # - breadcrumbs (empty - accounts are top-level)
-    # - name (from display_name)
-    # - created_at (None - accounts don't have creation timestamp in API)
-    # - updated_at (None - accounts don't have update timestamp in API)
-
-    # API fields
+    account_id: str = AirweaveField(
+        ...,
+        description="Dropbox account ID",
+        is_entity_id=True,
+    )
+    display_name: str = AirweaveField(
+        ...,
+        description="Display name for the account",
+        is_name=True,
+        embeddable=True,
+    )
     abbreviated_name: Optional[str] = AirweaveField(
         None,
         description="Abbreviated form of the person's name (typically initials)",
@@ -87,6 +92,11 @@ class DropboxAccountEntity(BaseEntity):
         None, description="Information about the user's root namespace", embeddable=False
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Link to Dropbox home."""
+        return "https://www.dropbox.com/home"
+
 
 class DropboxFolderEntity(BaseEntity):
     """Schema for Dropbox folder entities matching the Dropbox API.
@@ -95,16 +105,21 @@ class DropboxFolderEntity(BaseEntity):
         https://www.dropbox.com/developers/documentation/http/documentation#files-list_folder
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the folder ID)
-    # - breadcrumbs (account breadcrumb)
-    # - name (from folder name)
-    # - created_at (None - folders don't have creation timestamp in API)
-    # - updated_at (None - folders don't have update timestamp in API)
-
-    # API fields
+    id: str = AirweaveField(
+        ...,
+        description="Dropbox folder ID",
+        is_entity_id=True,
+    )
+    name: str = AirweaveField(
+        ...,
+        description="Folder name",
+        is_name=True,
+        embeddable=True,
+    )
     path_lower: Optional[str] = AirweaveField(
-        None, description="Lowercase full path starting with slash", embeddable=False
+        None,
+        description="Lowercase full path starting with slash",
+        embeddable=False,
     )
     path_display: Optional[str] = AirweaveField(
         None, description="Display path with proper casing", embeddable=True
@@ -125,6 +140,12 @@ class DropboxFolderEntity(BaseEntity):
         None, description="Custom properties and tags", embeddable=False
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Web URL pointing to the folder in Dropbox."""
+        path = self.path_display or ""
+        return f"https://www.dropbox.com/home{path}"
+
 
 class DropboxFileEntity(FileEntity):
     """Schema for Dropbox file entities matching the Dropbox API.
@@ -133,21 +154,17 @@ class DropboxFileEntity(FileEntity):
         https://www.dropbox.com/developers/documentation/http/documentation#files-list_folder
     """
 
-    # Base fields are inherited from BaseEntity:
-    # - entity_id (the file ID)
-    # - breadcrumbs (account and folder breadcrumbs)
-    # - name (from file name)
-    # - created_at (None - uses server_modified)
-    # - updated_at (from server_modified timestamp)
-
-    # File fields are inherited from FileEntity:
-    # - url (download URL)
-    # - size (file size in bytes)
-    # - file_type (determined from name/mime_type)
-    # - mime_type (None - not provided by Dropbox API)
-    # - local_path (set after download)
-
-    # API fields (Dropbox-specific)
+    id: str = AirweaveField(
+        ...,
+        description="Dropbox file ID",
+        is_entity_id=True,
+    )
+    name: str = AirweaveField(
+        ...,
+        description="File name",
+        is_name=True,
+        embeddable=True,
+    )
     path_lower: Optional[str] = AirweaveField(
         None, description="Lowercase full path in Dropbox", embeddable=False
     )
@@ -158,10 +175,16 @@ class DropboxFileEntity(FileEntity):
         None, description="Unique identifier for the file revision", embeddable=False
     )
     client_modified: Optional[Any] = AirweaveField(
-        None, description="When file was modified by client", embeddable=False
+        None,
+        description="When file was modified by client",
+        embeddable=False,
+        is_created_at=True,
     )
     server_modified: Optional[Any] = AirweaveField(
-        None, description="When file was modified on server", embeddable=False
+        None,
+        description="When file was modified on server",
+        embeddable=False,
+        is_updated_at=True,
     )
     is_downloadable: bool = AirweaveField(
         True, description="Whether file can be downloaded directly", embeddable=False
@@ -175,3 +198,9 @@ class DropboxFileEntity(FileEntity):
     has_explicit_shared_members: Optional[bool] = AirweaveField(
         None, description="Whether file has explicit shared members", embeddable=False
     )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Web URL that opens the file in Dropbox."""
+        path = self.path_display or ""
+        return f"https://www.dropbox.com/home{path}"

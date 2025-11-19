@@ -281,5 +281,27 @@ class ContextCacheService:
             self.logger.warning(f"Error invalidating organization cache: {e}")
             return False
 
+    async def invalidate_user(self, user_email: str) -> bool:
+        """Invalidate cached user data.
+
+        Call this when user attributes or organization memberships change so the
+        next request reloads fresh data from the database.
+
+        Args:
+            user_email: User email address
+
+        Returns:
+            True if invalidated successfully, False otherwise
+        """
+        try:
+            cache_key = self._user_cache_key(user_email)
+            await redis_client.client.delete(cache_key)
+            self.logger.debug(f"Invalidated user cache for {user_email}")
+            return True
+
+        except Exception as e:
+            self.logger.warning(f"Error invalidating user cache: {e}")
+            return False
+
 
 context_cache = ContextCacheService()

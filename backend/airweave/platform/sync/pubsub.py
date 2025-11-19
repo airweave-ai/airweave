@@ -130,7 +130,7 @@ class SyncProgress:
             )
 
             if log_level == "error":
-                self.logger.error(message)
+                self.logger.warning(message)
             elif log_level == "warning":
                 self.logger.warning(message)
             else:

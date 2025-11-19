@@ -197,9 +197,8 @@ class TeamsSource(BaseSource):
                     self.logger.debug(f"Processing user #{user_count}: {display_name}")
 
                     yield TeamsUserEntity(
-                        # Base fields
-                        entity_id=user_id,
                         breadcrumbs=[],
+                        id=user_id,
                         name=display_name,
                         created_at=None,  # Users don't have creation timestamp in Teams API
                         updated_at=None,  # Users don't have update timestamp in Teams API
@@ -254,9 +253,8 @@ class TeamsSource(BaseSource):
                     self.logger.debug(f"Processing team #{team_count}: {display_name}")
 
                     yield TeamsTeamEntity(
-                        # Base fields
-                        entity_id=team_id,
                         breadcrumbs=[],
+                        id=team_id,
                         name=display_name,
                         created_at=self._parse_datetime(team_data.get("createdDateTime")),
                         updated_at=None,  # Teams don't have update timestamp
@@ -266,6 +264,7 @@ class TeamsSource(BaseSource):
                         visibility=team_data.get("visibility"),
                         is_archived=team_data.get("isArchived"),
                         web_url=team_data.get("webUrl"),
+                        web_url_override=team_data.get("webUrl"),
                         classification=team_data.get("classification"),
                         specialization=team_data.get("specialization"),
                         internal_id=team_data.get("internalId"),
@@ -314,9 +313,14 @@ class TeamsSource(BaseSource):
                     self.logger.debug(f"Processing channel #{channel_count}: {display_name}")
 
                     yield TeamsChannelEntity(
-                        # Base fields
-                        entity_id=channel_id,
-                        breadcrumbs=[Breadcrumb(entity_id=team_id)],
+                        breadcrumbs=[
+                            Breadcrumb(
+                                entity_id=team_id,
+                                name=team_name,
+                                entity_type="TeamsTeamEntity",
+                            )
+                        ],
+                        id=channel_id,
                         name=display_name,
                         created_at=self._parse_datetime(channel_data.get("createdDateTime")),
                         updated_at=None,  # Channels don't have update timestamp
@@ -328,7 +332,7 @@ class TeamsSource(BaseSource):
                         membership_type=channel_data.get("membershipType"),
                         is_archived=channel_data.get("isArchived"),
                         is_favorite_by_default=channel_data.get("isFavoriteByDefault"),
-                        web_url=channel_data.get("webUrl"),
+                        web_url_override=channel_data.get("webUrl"),
                     )
 
                 # Handle pagination
@@ -404,20 +408,22 @@ class TeamsSource(BaseSource):
                     else:
                         name = f"Message {message_id}"
 
+                    created_dt = self._parse_datetime(message_data.get("createdDateTime"))
+                    updated_dt = self._parse_datetime(message_data.get("lastModifiedDateTime"))
+                    subject_value = subject or name
+
                     yield TeamsMessageEntity(
-                        # Base fields
-                        entity_id=message_id,
                         breadcrumbs=[team_breadcrumb, channel_breadcrumb],
+                        id=message_id,
                         name=name,
-                        created_at=self._parse_datetime(message_data.get("createdDateTime")),
-                        updated_at=self._parse_datetime(message_data.get("lastModifiedDateTime")),
-                        # API fields
+                        created_at=created_dt,
+                        updated_at=updated_dt,
                         team_id=team_id,
                         channel_id=channel_id,
                         chat_id=None,
                         reply_to_id=message_data.get("replyToId"),
                         message_type=message_data.get("messageType"),
-                        subject=subject,
+                        subject=subject_value,
                         body_content=body_content,
                         body_content_type=body.get("contentType"),
                         from_user=from_info,
@@ -429,7 +435,8 @@ class TeamsSource(BaseSource):
                         mentions=message_data.get("mentions", []),
                         attachments=message_data.get("attachments", []),
                         reactions=message_data.get("reactions", []),
-                        web_url=message_data.get("webUrl"),
+                        web_url_override=message_data.get("webUrl"),
+                        created_datetime=created_dt,
                     )
 
                 # Handle pagination
@@ -482,16 +489,16 @@ class TeamsSource(BaseSource):
                     name = topic if topic else f"{chat_type} chat"
 
                     yield TeamsChatEntity(
-                        # Base fields
-                        entity_id=chat_id,
                         breadcrumbs=[],
+                        id=chat_id,
                         name=name,
                         created_at=self._parse_datetime(chat_data.get("createdDateTime")),
                         updated_at=self._parse_datetime(chat_data.get("lastUpdatedDateTime")),
                         # API fields
                         chat_type=chat_type,
+                        topic_label=name,
                         topic=topic if topic else None,
-                        web_url=chat_data.get("webUrl"),
+                        web_url_override=chat_data.get("webUrl"),
                     )
 
                 # Handle pagination
@@ -560,20 +567,22 @@ class TeamsSource(BaseSource):
                     else:
                         name = f"Message {message_id}"
 
+                    created_dt = self._parse_datetime(message_data.get("createdDateTime"))
+                    updated_dt = self._parse_datetime(message_data.get("lastModifiedDateTime"))
+                    subject_value = subject or name
+
                     yield TeamsMessageEntity(
-                        # Base fields
-                        entity_id=message_id,
                         breadcrumbs=[chat_breadcrumb],
+                        id=message_id,
                         name=name,
-                        created_at=self._parse_datetime(message_data.get("createdDateTime")),
-                        updated_at=self._parse_datetime(message_data.get("lastModifiedDateTime")),
-                        # API fields
+                        created_at=created_dt,
+                        updated_at=updated_dt,
                         team_id=None,
                         channel_id=None,
                         chat_id=chat_id,
                         reply_to_id=message_data.get("replyToId"),
                         message_type=message_data.get("messageType"),
-                        subject=subject,
+                        subject=subject_value,
                         body_content=body_content,
                         body_content_type=body.get("contentType"),
                         from_user=from_info,
@@ -585,7 +594,8 @@ class TeamsSource(BaseSource):
                         mentions=message_data.get("mentions", []),
                         attachments=message_data.get("attachments", []),
                         reactions=message_data.get("reactions", []),
-                        web_url=message_data.get("webUrl"),
+                        web_url_override=message_data.get("webUrl"),
+                        created_datetime=created_dt,
                     )
 
                 # Handle pagination
@@ -640,9 +650,13 @@ class TeamsSource(BaseSource):
                     yield team_entity
 
                     # Create team breadcrumb
-                    team_id = team_entity.entity_id
+                    team_id = team_entity.id
                     team_name = team_entity.display_name
-                    team_breadcrumb = Breadcrumb(entity_id=team_id)
+                    team_breadcrumb = Breadcrumb(
+                        entity_id=team_id,
+                        name=team_entity.display_name,
+                        entity_type="TeamsTeamEntity",
+                    )
 
                     # 3) Generate channels for this team
                     async for channel_entity in self._generate_channel_entities(
@@ -656,9 +670,13 @@ class TeamsSource(BaseSource):
                         yield channel_entity
 
                         # Create channel breadcrumb
-                        channel_id = channel_entity.entity_id
+                        channel_id = channel_entity.id
                         channel_name = channel_entity.display_name
-                        channel_breadcrumb = Breadcrumb(entity_id=channel_id)
+                        channel_breadcrumb = Breadcrumb(
+                            entity_id=channel_id,
+                            name=channel_entity.display_name,
+                            entity_type="TeamsChannelEntity",
+                        )
 
                         # 4) Generate messages for this channel
                         async for message_entity in self._generate_channel_message_entities(
@@ -671,7 +689,7 @@ class TeamsSource(BaseSource):
                             channel_breadcrumb,
                         ):
                             entity_count += 1
-                            msg_id = message_entity.entity_id
+                            msg_id = message_entity.id
                             self.logger.debug(
                                 f"Yielding entity #{entity_count}: ChannelMessage - {msg_id}"
                             )
@@ -687,15 +705,19 @@ class TeamsSource(BaseSource):
                     yield chat_entity
 
                     # Create chat breadcrumb
-                    chat_id = chat_entity.entity_id
-                    chat_breadcrumb = Breadcrumb(entity_id=chat_id)
+                    chat_id = chat_entity.id
+                    chat_breadcrumb = Breadcrumb(
+                        entity_id=chat_id,
+                        name=chat_entity.name,
+                        entity_type="TeamsChatEntity",
+                    )
 
                     # 6) Generate messages for this chat
                     async for message_entity in self._generate_chat_message_entities(
                         client, chat_id, chat_entity.topic, chat_breadcrumb
                     ):
                         entity_count += 1
-                        msg_id = message_entity.entity_id
+                        msg_id = message_entity.id
                         self.logger.debug(
                             f"Yielding entity #{entity_count}: ChatMessage - {msg_id}"
                         )

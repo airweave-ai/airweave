@@ -81,7 +81,10 @@ const EntityResultCardComponent: React.FC<EntityResultCardProps> = ({
     const sourceIconUrl = getAppIconUrl(sourceName, resolvedTheme);
     const textualRepresentation = payload.textual_representation || '';
     const breadcrumbs = payload.breadcrumbs || [];
+    const webUrl = payload.web_url;
     const url = payload.url;
+    const openUrl = webUrl || url;
+    const hasDownloadUrl = Boolean(url && webUrl && url !== webUrl);
 
     // Use textual_representation directly - it's already formatted by entity_pipeline.py
     const formattedContent = useMemo(() => {
@@ -90,7 +93,22 @@ const EntityResultCardComponent: React.FC<EntityResultCardProps> = ({
 
     // Extract title and metadata from payload
     const title = payload.name || 'Untitled';
-    const entityType = payload.airweave_system_metadata?.entity_type?.replace('Entity', '').replace(/([A-Z])/g, ' $1').trim() || 'Document';
+    const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const rawEntityType = payload.airweave_system_metadata?.entity_type || '';
+    let entityTypeCore = rawEntityType.replace(/Entity$/, '');
+    if (entityTypeCore && sourceName) {
+        const normalizedSource = sourceName.replace(/[\s_-]/g, '');
+        if (normalizedSource) {
+            const prefixRegex = new RegExp(`^${escapeRegex(normalizedSource)}`, 'i');
+            const condensedEntity = entityTypeCore.replace(/[\s_-]/g, '');
+            if (prefixRegex.test(condensedEntity)) {
+                entityTypeCore = entityTypeCore.slice(normalizedSource.length);
+            }
+        }
+    }
+    const entityType = entityTypeCore
+        ? entityTypeCore.replace(/([A-Z])/g, ' $1').trim() || 'Document'
+        : 'Document';
     const context = breadcrumbs.length > 0 ? breadcrumbs.map((b: any) =>
         typeof b === 'string' ? b : b.name || ''
     ).filter(Boolean).join(' > ') : '';
@@ -115,7 +133,7 @@ const EntityResultCardComponent: React.FC<EntityResultCardProps> = ({
         const excludeKeys = [
             'entity_id', 'id', '_id',
             'textual_representation',  // Already displayed in preview
-            'name', 'breadcrumbs', 'url',
+            'name', 'breadcrumbs', 'url', 'web_url',
             'airweave_system_metadata', 'source_name',
             'created_at', 'updated_at',  // Displayed in timestamp badge
             'vector', 'vectors'
@@ -320,26 +338,62 @@ const EntityResultCardComponent: React.FC<EntityResultCardProps> = ({
                                 />
                             </div>
                             <div className="flex-1 min-w-0 pt-0.5">
+                                <div className="flex flex-wrap items-center gap-2 mb-1.5">
                                 <h3 className={cn(
-                                    "text-[14px] font-semibold mb-1.5 break-words leading-snug tracking-tight",
+                                        "text-[14px] font-semibold break-words leading-snug tracking-tight",
                                     isDark ? "text-gray-50" : "text-gray-900"
                                 )}>
                                     {title}
                                 </h3>
+                                    {openUrl && (
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <a
+                                                href={openUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className={cn(
+                                                    "inline-flex items-center gap-1.5 text-[12px] font-medium transition-all duration-200 hover:gap-2",
+                                                    isDark
+                                                        ? "text-blue-400 hover:text-blue-300"
+                                                        : "text-blue-600 hover:text-blue-700"
+                                                )}
+                                            >
+                                                <ExternalLink className="h-3 w-3" />
+                                                Open in {formattedSourceName}
+                                            </a>
+                                            {hasDownloadUrl && (
+                                                <a
+                                                    href={url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className={cn(
+                                                        "inline-flex items-center gap-1 text-[11px] font-medium transition-all duration-200 hover:gap-1.5",
+                                                        isDark
+                                                            ? "text-blue-400 hover:text-blue-300"
+                                                            : "text-blue-600 hover:text-blue-700"
+                                                    )}
+                                                >
+                                                    <LinkIcon className="h-3 w-3" />
+                                                    Download original
+                                                </a>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
 
                                 {/* Context and Type */}
-                                <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
-                                    {/* Source Badge */}
-                                    <span className={cn(
-                                        "inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium",
-                                        isDark
-                                            ? "bg-gray-800/40 border border-gray-700/40 text-gray-400"
-                                            : "bg-gray-50/60 border border-gray-200/50 text-gray-600"
-                                    )}>
-                                        {formattedSourceName}
-                                    </span>
+                                <div className="flex flex-wrap items-center gap-1 mb-0">
 
-                                    {context && (
+
+                                    <span className={cn(
+                                        "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium",
+                                        isDark
+                                            ? "bg-gray-800/60 text-gray-200 border border-gray-700/50"
+                                            : "bg-gray-100 text-gray-700 border border-gray-200/60"
+                                    )}>
+                                        {entityType}
+                                    </span>
+                                    {context && context.length > 0 && (
                                         <span className={cn(
                                             "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium",
                                             isDark
@@ -349,14 +403,6 @@ const EntityResultCardComponent: React.FC<EntityResultCardProps> = ({
                                             {context}
                                         </span>
                                     )}
-                                    <span className={cn(
-                                        "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium",
-                                        isDark
-                                            ? "bg-blue-950/40 text-blue-300 border border-blue-900/50"
-                                            : "bg-blue-50/80 text-blue-700 border border-blue-200/60"
-                                    )}>
-                                        {entityType}
-                                    </span>
 
                                     {/* Last Updated Timestamp */}
                                     {relevantTimestamp && (
@@ -410,23 +456,6 @@ const EntityResultCardComponent: React.FC<EntityResultCardProps> = ({
                                     )}
                                 </div>
 
-                                {/* URL Link */}
-                                {url && (
-                                    <a
-                                        href={url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className={cn(
-                                            "inline-flex items-center gap-1.5 text-[12px] font-medium transition-all duration-200 hover:gap-2",
-                                            isDark
-                                                ? "text-blue-400 hover:text-blue-300"
-                                                : "text-blue-600 hover:text-blue-700"
-                                        )}
-                                    >
-                                        <ExternalLink className="h-3 w-3" />
-                                        Open in {formattedSourceName}
-                                    </a>
-                                )}
                             </div>
                         </div>
                     </div>

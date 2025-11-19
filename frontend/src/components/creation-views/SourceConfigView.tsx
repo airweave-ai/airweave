@@ -569,6 +569,7 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
                       selectedProvider={selectedAuthProvider}
                       onProviderSelect={setSelectedAuthProvider}
                       onConfigChange={setAuthProviderConfig}
+                      supportedAuthProviders={sourceDetails?.supported_auth_providers}
                     />
                   )}
 

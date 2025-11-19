@@ -21,6 +21,7 @@ export interface SourceConnection {
 
 interface CollectionsState {
   collections: Collection[];
+  totalCount: number | null;
   isLoading: boolean;
   error: string | null;
   // Cache for source connections by collection ID
@@ -34,6 +35,8 @@ interface CollectionsState {
   lastSourceFetch: Record<string, number>;
 
   fetchCollections: (forceRefresh?: boolean) => Promise<Collection[]>;
+  fetchCollectionsCount: (searchQuery?: string) => Promise<number>;
+  fetchCollectionsPaginated: (skip: number, limit: number, searchQuery?: string) => Promise<Collection[]>;
   fetchSourceConnections: (collectionId: string, forceRefresh?: boolean) => Promise<SourceConnection[]>;
   subscribeToEvents: () => () => void;
   clearCollections: () => void;
@@ -41,6 +44,7 @@ interface CollectionsState {
 
 export const useCollectionsStore = create<CollectionsState>((set, get) => ({
   collections: [],
+  totalCount: null,
   isLoading: false,
   error: null,
   sourceConnections: {},
@@ -97,6 +101,50 @@ export const useCollectionsStore = create<CollectionsState>((set, get) => ({
 
     set({ inflightCollectionsRequest: request });
     return request;
+  },
+
+  fetchCollectionsCount: async (searchQuery?: string) => {
+    try {
+      const params = new URLSearchParams();
+      if (searchQuery) {
+        params.set('search', searchQuery);
+      }
+      const url = params.toString() ? `/collections/count?${params}` : '/collections/count';
+      const response = await apiClient.get(url);
+      if (response.ok) {
+        const count = await response.json();
+        set({ totalCount: count });
+        return count;
+      }
+    } catch (err) {
+      console.error('Failed to fetch collections count:', err);
+    }
+    return get().totalCount || 0;
+  },
+
+  fetchCollectionsPaginated: async (skip: number, limit: number, searchQuery?: string) => {
+    try {
+      const params = new URLSearchParams({
+        skip: skip.toString(),
+        limit: limit.toString(),
+      });
+
+      if (searchQuery) {
+        params.set('search', searchQuery);
+      }
+
+      const response = await apiClient.get(`/collections?${params}`);
+
+      if (response.ok) {
+        const data = await response.json();
+        return data;
+      } else {
+        throw new Error('Failed to fetch collections');
+      }
+    } catch (err) {
+      console.error('Failed to load paginated collections:', err);
+      return [];
+    }
   },
 
   fetchSourceConnections: async (collectionId: string, forceRefresh = false) => {

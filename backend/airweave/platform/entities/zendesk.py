@@ -1,6 +1,9 @@
 """Zendesk entity schemas."""
 
+from datetime import datetime
 from typing import Any, Dict, List, Optional
+
+from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity, FileEntity
@@ -13,18 +16,26 @@ class ZendeskTicketEntity(BaseEntity):
         https://developer.zendesk.com/api-reference/ticketing/tickets/tickets/
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the Zendesk ticket ID)
-    # - breadcrumbs (empty - tickets are top-level)
-    # - name (from ticket subject)
-    # - created_at (from created_at timestamp)
-    # - updated_at (from updated_at timestamp)
+    ticket_id: int = AirweaveField(
+        ..., description="Unique identifier of the ticket", embeddable=False, is_entity_id=True
+    )
+    subject: str = AirweaveField(
+        ..., description="The subject of the ticket", embeddable=True, is_name=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the ticket was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="When the ticket was last updated.", is_updated_at=True
+    )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="UI URL to open the ticket in Zendesk.",
+        embeddable=False,
+        unhashable=True,
+    )
 
     # API fields
-    ticket_id: int = AirweaveField(
-        ..., description="Unique identifier of the ticket", embeddable=False
-    )
-    subject: str = AirweaveField(..., description="The subject of the ticket", embeddable=True)
     description: Optional[str] = AirweaveField(
         None, description="The description of the ticket (first comment)", embeddable=True
     )
@@ -72,8 +83,13 @@ class ZendeskTicketEntity(BaseEntity):
         None, description="Type of the ticket (question, incident, problem, task)", embeddable=True
     )
     url: Optional[str] = AirweaveField(
-        None, description="URL to view the ticket in Zendesk", embeddable=False
+        None, description="URL to view the ticket in Zendesk", embeddable=False, unhashable=True
     )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Return the Zendesk ticket URL."""
+        return self.web_url_value or self.url or ""
 
 
 class ZendeskCommentEntity(BaseEntity):
@@ -83,16 +99,8 @@ class ZendeskCommentEntity(BaseEntity):
         https://developer.zendesk.com/api-reference/ticketing/tickets/ticket-comments/
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (ticket_id_comment_id composite)
-    # - breadcrumbs (empty - comments are standalone)
-    # - name (from body preview)
-    # - created_at (from created_at timestamp)
-    # - updated_at (None - comments don't have update timestamp)
-
-    # API fields
     comment_id: int = AirweaveField(
-        ..., description="Unique identifier of the comment", embeddable=False
+        ..., description="Unique identifier of the comment", embeddable=False, is_entity_id=True
     )
     ticket_id: int = AirweaveField(
         ..., description="ID of the ticket this comment belongs to", embeddable=False
@@ -109,7 +117,9 @@ class ZendeskCommentEntity(BaseEntity):
     author_email: Optional[str] = AirweaveField(
         None, description="Email of the user who wrote the comment", embeddable=True
     )
-    body: str = AirweaveField(..., description="The content of the comment", embeddable=True)
+    body: str = AirweaveField(
+        ..., description="The content of the comment", embeddable=True, is_name=True
+    )
     html_body: Optional[str] = AirweaveField(
         None, description="HTML formatted content of the comment", embeddable=True
     )
@@ -121,6 +131,20 @@ class ZendeskCommentEntity(BaseEntity):
         description="Attachments associated with this comment",
         embeddable=False,
     )
+    created_time: datetime = AirweaveField(
+        ..., description="When the comment was created.", is_created_at=True
+    )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="URL to view this comment (falls back to ticket).",
+        embeddable=False,
+        unhashable=True,
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Return the Zendesk comment URL."""
+        return self.web_url_value or ""
 
 
 class ZendeskUserEntity(BaseEntity):
@@ -130,15 +154,26 @@ class ZendeskUserEntity(BaseEntity):
         https://developer.zendesk.com/api-reference/ticketing/users/users/
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the Zendesk user ID)
-    # - breadcrumbs (empty - users are top-level)
-    # - name (from user name)
-    # - created_at (from created_at timestamp)
-    # - updated_at (from updated_at timestamp)
+    user_id: int = AirweaveField(
+        ..., description="Unique identifier of the user", embeddable=False, is_entity_id=True
+    )
+    display_name: str = AirweaveField(
+        ..., description="Display name of the user.", embeddable=True, is_name=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the user was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="When the user was last updated.", is_updated_at=True
+    )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="URL to the user's profile in Zendesk.",
+        embeddable=False,
+        unhashable=True,
+    )
 
     # API fields
-    user_id: int = AirweaveField(..., description="Unique identifier of the user", embeddable=False)
     email: str = AirweaveField(..., description="Email address of the user", embeddable=True)
     role: str = AirweaveField(
         ..., description="Role of the user (end-user, agent, admin)", embeddable=True
@@ -175,6 +210,14 @@ class ZendeskUserEntity(BaseEntity):
     user_fields: Dict[str, Any] = AirweaveField(
         default_factory=dict, description="User-specific custom fields", embeddable=False
     )
+    profile_url: Optional[str] = AirweaveField(
+        None, description="API URL to the user resource", embeddable=False, unhashable=True
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Return the Zendesk user URL."""
+        return self.web_url_value or self.profile_url or ""
 
 
 class ZendeskOrganizationEntity(BaseEntity):
@@ -184,17 +227,29 @@ class ZendeskOrganizationEntity(BaseEntity):
         https://developer.zendesk.com/api-reference/ticketing/organizations/organizations/
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the Zendesk organization ID)
-    # - breadcrumbs (empty - organizations are top-level)
-    # - name (from organization name)
-    # - created_at (from created_at timestamp)
-    # - updated_at (from updated_at timestamp)
+    organization_id: int = AirweaveField(
+        ...,
+        description="Unique identifier of the organization",
+        embeddable=False,
+        is_entity_id=True,
+    )
+    organization_name: str = AirweaveField(
+        ..., description="Display name of the organization.", embeddable=True, is_name=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the organization was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="When the organization was last updated.", is_updated_at=True
+    )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="URL to view the organization in Zendesk.",
+        embeddable=False,
+        unhashable=True,
+    )
 
     # API fields
-    organization_id: int = AirweaveField(
-        ..., description="Unique identifier of the organization", embeddable=False
-    )
     domain_names: List[str] = AirweaveField(
         default_factory=list,
         description="Domain names associated with the organization",
@@ -221,6 +276,17 @@ class ZendeskOrganizationEntity(BaseEntity):
         description="Organization-specific custom fields",
         embeddable=False,
     )
+    api_url: Optional[str] = AirweaveField(
+        None,
+        description="API URL for this organization resource.",
+        embeddable=False,
+        unhashable=True,
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Return the Zendesk organization URL."""
+        return self.web_url_value or self.api_url or ""
 
 
 class ZendeskAttachmentEntity(FileEntity):
@@ -246,7 +312,7 @@ class ZendeskAttachmentEntity(FileEntity):
 
     # API fields (Zendesk-specific)
     attachment_id: int = AirweaveField(
-        ..., description="Unique identifier of the attachment", embeddable=False
+        ..., description="Unique identifier of the attachment", embeddable=False, is_entity_id=True
     )
     ticket_id: Optional[int] = AirweaveField(
         None, description="ID of the ticket this attachment belongs to", embeddable=False
@@ -263,10 +329,27 @@ class ZendeskAttachmentEntity(FileEntity):
         ..., description="MIME type of the attachment", embeddable=False
     )
     file_name: str = AirweaveField(
-        ..., description="Original filename of the attachment", embeddable=True
+        ..., description="Original filename of the attachment", embeddable=True, is_name=True
     )
     thumbnails: List[Dict[str, Any]] = AirweaveField(
         default_factory=list,
         description="Thumbnail information for the attachment",
         embeddable=False,
     )
+    created_time: datetime = AirweaveField(
+        ..., description="When the attachment was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="When the attachment metadata was updated.", is_updated_at=True
+    )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="URL to download the attachment.",
+        embeddable=False,
+        unhashable=True,
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Return the Zendesk attachment URL."""
+        return self.web_url_value or self.url or ""

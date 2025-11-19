@@ -7,7 +7,7 @@ HubSpot objects like Contacts, Companies, Deals, and Tickets.
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from pydantic import field_validator
+from pydantic import computed_field, field_validator
 
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity
@@ -45,14 +45,21 @@ class HubspotContactEntity(BaseEntity):
         https://developers.hubspot.com/docs/api/crm/contacts
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the HubSpot contact ID)
-    # - breadcrumbs (empty - contacts are top-level)
-    # - name (from first_name + last_name or email)
-    # - created_at (from createdAt timestamp)
-    # - updated_at (from updatedAt timestamp)
-
-    # API fields (HubSpot-specific)
+    contact_id: str = AirweaveField(
+        ..., description="The HubSpot contact ID.", is_entity_id=True
+    )
+    display_name: str = AirweaveField(
+        ...,
+        description="Display name derived from first/last name or email.",
+        embeddable=True,
+        is_name=True,
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the contact was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="When the contact was last updated.", is_updated_at=True
+    )
     first_name: Optional[str] = AirweaveField(
         default=None, description="The contact's first name", embeddable=True
     )
@@ -70,12 +77,20 @@ class HubspotContactEntity(BaseEntity):
     archived: bool = AirweaveField(
         default=False, description="Whether the contact is archived", embeddable=False
     )
+    web_url_value: Optional[str] = AirweaveField(
+        None, description="URL to view this contact in HubSpot.", embeddable=False, unhashable=True
+    )
 
-    @field_validator("created_at", "updated_at", mode="before")
+    @field_validator("created_time", "updated_time", mode="before")
     @classmethod
-    def parse_datetime_fields(cls, v):
-        """Parse datetime fields."""
-        return parse_hubspot_datetime(v)
+    def parse_datetime_fields(cls, value: Any) -> Optional[datetime]:
+        """Normalize HubSpot datetime inputs to timezone-aware datetimes."""
+        return parse_hubspot_datetime(value)
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Link to the HubSpot contact UI."""
+        return self.web_url_value or ""
 
 
 class HubspotCompanyEntity(BaseEntity):
@@ -85,14 +100,16 @@ class HubspotCompanyEntity(BaseEntity):
         https://developers.hubspot.com/docs/api/crm/companies
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the HubSpot company ID)
-    # - breadcrumbs (empty - companies are top-level)
-    # - name (from company name property)
-    # - created_at (from createdAt timestamp)
-    # - updated_at (from updatedAt timestamp)
-
-    # API fields (HubSpot-specific)
+    company_id: str = AirweaveField(..., description="The HubSpot company ID.", is_entity_id=True)
+    company_name: str = AirweaveField(
+        ..., description="Display name of the company.", embeddable=True, is_name=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the company was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="When the company was last updated.", is_updated_at=True
+    )
     domain: Optional[str] = AirweaveField(
         default=None, description="The company's domain name", embeddable=True
     )
@@ -104,12 +121,20 @@ class HubspotCompanyEntity(BaseEntity):
     archived: bool = AirweaveField(
         default=False, description="Whether the company is archived", embeddable=False
     )
+    web_url_value: Optional[str] = AirweaveField(
+        None, description="URL to view this company in HubSpot.", embeddable=False, unhashable=True
+    )
 
-    @field_validator("created_at", "updated_at", mode="before")
+    @field_validator("created_time", "updated_time", mode="before")
     @classmethod
-    def parse_datetime_fields(cls, v):
-        """Parse datetime fields."""
-        return parse_hubspot_datetime(v)
+    def parse_datetime_fields(cls, value: Any) -> Optional[datetime]:
+        """Normalize HubSpot datetime inputs to timezone-aware datetimes."""
+        return parse_hubspot_datetime(value)
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Link to the HubSpot company UI."""
+        return self.web_url_value or ""
 
 
 class HubspotDealEntity(BaseEntity):
@@ -119,16 +144,15 @@ class HubspotDealEntity(BaseEntity):
         https://developers.hubspot.com/docs/api/crm/deals
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the HubSpot deal ID)
-    # - breadcrumbs (empty - deals are top-level)
-    # - name (from deal_name property)
-    # - created_at (from createdAt timestamp)
-    # - updated_at (from updatedAt timestamp)
-
-    # API fields (HubSpot-specific)
-    deal_name: Optional[str] = AirweaveField(
-        default=None, description="The name of the deal", embeddable=True
+    deal_id: str = AirweaveField(..., description="The HubSpot deal ID.", is_entity_id=True)
+    deal_name: str = AirweaveField(
+        ..., description="The name of the deal.", embeddable=True, is_name=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the deal was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="When the deal was last updated.", is_updated_at=True
     )
     amount: Optional[float] = AirweaveField(
         default=None, description="The monetary value of the deal", embeddable=True
@@ -139,12 +163,20 @@ class HubspotDealEntity(BaseEntity):
     archived: bool = AirweaveField(
         default=False, description="Whether the deal is archived", embeddable=False
     )
+    web_url_value: Optional[str] = AirweaveField(
+        None, description="URL to view this deal in HubSpot.", embeddable=False, unhashable=True
+    )
 
-    @field_validator("created_at", "updated_at", mode="before")
+    @field_validator("created_time", "updated_time", mode="before")
     @classmethod
-    def parse_datetime_fields(cls, v):
-        """Parse datetime fields."""
-        return parse_hubspot_datetime(v)
+    def parse_datetime_fields(cls, value: Any) -> Optional[datetime]:
+        """Normalize HubSpot datetime inputs to timezone-aware datetimes."""
+        return parse_hubspot_datetime(value)
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Link to the HubSpot deal UI."""
+        return self.web_url_value or ""
 
 
 class HubspotTicketEntity(BaseEntity):
@@ -154,14 +186,16 @@ class HubspotTicketEntity(BaseEntity):
         https://developers.hubspot.com/docs/api/crm/tickets
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the HubSpot ticket ID)
-    # - breadcrumbs (empty - tickets are top-level)
-    # - name (from subject)
-    # - created_at (from createdAt timestamp)
-    # - updated_at (from updatedAt timestamp)
-
-    # API fields (HubSpot-specific)
+    ticket_id: str = AirweaveField(..., description="The HubSpot ticket ID.", is_entity_id=True)
+    ticket_name: str = AirweaveField(
+        ..., description="Display name for the ticket.", embeddable=True, is_name=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the ticket was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="When the ticket was last updated.", is_updated_at=True
+    )
     subject: Optional[str] = AirweaveField(
         default=None, description="The subject of the support ticket", embeddable=True
     )
@@ -176,9 +210,17 @@ class HubspotTicketEntity(BaseEntity):
     archived: bool = AirweaveField(
         default=False, description="Whether the ticket is archived", embeddable=False
     )
+    web_url_value: Optional[str] = AirweaveField(
+        None, description="URL to view this ticket in HubSpot.", embeddable=False, unhashable=True
+    )
 
-    @field_validator("created_at", "updated_at", mode="before")
+    @field_validator("created_time", "updated_time", mode="before")
     @classmethod
-    def parse_datetime_fields(cls, v):
-        """Parse datetime fields."""
-        return parse_hubspot_datetime(v)
+    def parse_datetime_fields(cls, value: Any) -> Optional[datetime]:
+        """Normalize HubSpot datetime inputs to timezone-aware datetimes."""
+        return parse_hubspot_datetime(value)
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Link to the HubSpot ticket UI."""
+        return self.web_url_value or ""

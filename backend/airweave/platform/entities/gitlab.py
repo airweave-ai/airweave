@@ -13,7 +13,10 @@ References:
   • https://docs.gitlab.com/ee/api/repository_files.html
 """
 
+from datetime import datetime
 from typing import Any, Dict, List, Optional
+
+from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity, CodeFileEntity
@@ -26,14 +29,27 @@ class GitLabProjectEntity(BaseEntity):
         https://docs.gitlab.com/ee/api/projects.html
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the project ID)
-    # - breadcrumbs (empty - projects are top-level)
-    # - name (from project name)
-    # - created_at (from created_at timestamp)
-    # - updated_at (from last_activity_at timestamp)
-
-    # API fields
+    project_id: int = AirweaveField(
+        ...,
+        description="GitLab project ID",
+        is_entity_id=True,
+    )
+    name: str = AirweaveField(
+        ...,
+        description="Project name",
+        is_name=True,
+        embeddable=True,
+    )
+    created_at: datetime = AirweaveField(
+        ...,
+        description="Creation timestamp",
+        is_created_at=True,
+    )
+    last_activity_at: datetime = AirweaveField(
+        ...,
+        description="Timestamp of last activity",
+        is_updated_at=True,
+    )
     path: str = AirweaveField(..., description="Project path", embeddable=True)
     path_with_namespace: str = AirweaveField(
         ..., description="Full path with namespace", embeddable=True
@@ -60,7 +76,17 @@ class GitLabProjectEntity(BaseEntity):
     empty_repo: bool = AirweaveField(
         False, description="Whether the repository is empty", embeddable=False
     )
-    url: Optional[str] = AirweaveField(None, description="Web URL to the project", embeddable=False)
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="Web URL to the project",
+        embeddable=False,
+        unhashable=True,
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Clickable project URL."""
+        return self.web_url_value or f"https://gitlab.com/{self.path_with_namespace}"
 
 
 class GitLabUserEntity(BaseEntity):
@@ -70,20 +96,33 @@ class GitLabUserEntity(BaseEntity):
         https://docs.gitlab.com/ee/api/users.html
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the user ID)
-    # - breadcrumbs (empty - users are top-level)
-    # - name (from user's display name)
-    # - created_at (from created_at timestamp)
-    # - updated_at (None - users don't have update timestamp in API)
-
-    # API fields
+    user_id: int = AirweaveField(
+        ...,
+        description="GitLab user ID",
+        is_entity_id=True,
+    )
+    name: str = AirweaveField(
+        ...,
+        description="User's display name",
+        is_name=True,
+        embeddable=True,
+    )
+    created_at: datetime = AirweaveField(
+        ...,
+        description="Account creation timestamp",
+        is_created_at=True,
+    )
     username: str = AirweaveField(..., description="User's username", embeddable=True)
     state: str = AirweaveField(..., description="User account state", embeddable=False)
     avatar_url: Optional[str] = AirweaveField(
         None, description="User's avatar URL", embeddable=False
     )
-    web_url: str = AirweaveField(..., description="User's profile URL", embeddable=False)
+    profile_url: Optional[str] = AirweaveField(
+        None,
+        description="User's profile URL",
+        embeddable=False,
+        unhashable=True,
+    )
     bio: Optional[str] = AirweaveField(None, description="User's biography", embeddable=True)
     location: Optional[str] = AirweaveField(None, description="User's location", embeddable=True)
     public_email: Optional[str] = AirweaveField(
@@ -95,6 +134,11 @@ class GitLabUserEntity(BaseEntity):
     job_title: Optional[str] = AirweaveField(None, description="User's job title", embeddable=True)
     pronouns: Optional[str] = AirweaveField(None, description="User's pronouns", embeddable=True)
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Clickable profile URL."""
+        return self.profile_url or f"https://gitlab.com/{self.username}"
+
 
 class GitLabDirectoryEntity(BaseEntity):
     """Schema for GitLab directory entity.
@@ -103,14 +147,17 @@ class GitLabDirectoryEntity(BaseEntity):
         https://docs.gitlab.com/ee/api/repositories.html
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (project_id/path)
-    # - breadcrumbs (project and parent directory breadcrumbs)
-    # - name (directory name from path)
-    # - created_at (None - directories don't have timestamps)
-    # - updated_at (None - directories don't have timestamps)
-
-    # API fields
+    full_path: str = AirweaveField(
+        ...,
+        description="Project-qualified directory path (project_id/path)",
+        is_entity_id=True,
+    )
+    name: str = AirweaveField(
+        ...,
+        description="Directory name",
+        is_name=True,
+        embeddable=True,
+    )
     path: str = AirweaveField(
         ..., description="Path of the directory within the repository", embeddable=True
     )
@@ -118,9 +165,24 @@ class GitLabDirectoryEntity(BaseEntity):
         ..., description="ID of the project containing this directory", embeddable=False
     )
     project_path: str = AirweaveField(..., description="Path of the project", embeddable=True)
-    url: Optional[str] = AirweaveField(
-        None, description="Web URL to the directory", embeddable=False
+    branch: str = AirweaveField(
+        ..., description="Branch used when traversing this directory", embeddable=True
     )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="Web URL to the directory",
+        embeddable=False,
+        unhashable=True,
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Clickable directory URL."""
+        if self.web_url_value:
+            return self.web_url_value
+        if not self.path:
+            return f"https://gitlab.com/{self.project_path}"
+        return f"https://gitlab.com/{self.project_path}/-/tree/{self.branch}/{self.path}"
 
 
 class GitLabCodeFileEntity(CodeFileEntity):
@@ -130,33 +192,38 @@ class GitLabCodeFileEntity(CodeFileEntity):
         https://docs.gitlab.com/ee/api/repository_files.html
     """
 
-    # Base fields are inherited from BaseEntity:
-    # - entity_id (project_id/path)
-    # - breadcrumbs (project and directory breadcrumbs)
-    # - name (filename)
-    # - created_at (None - files have commit timestamps, not creation)
-    # - updated_at (None - files have commit timestamps, not update)
-
-    # File fields are inherited from FileEntity:
-    # - url (GitLab web view URL)
-    # - size (file size in bytes)
-    # - file_type (determined from mime_type)
-    # - mime_type
-    # - local_path (set after saving content)
-
-    # Code file fields are inherited from CodeFileEntity:
-    # - repo_name (project name)
-    # - path_in_repo (file path within repository)
-    # - repo_owner (namespace)
-    # - language (programming language)
-    # - commit_id (blob ID)
-
-    # API fields (GitLab-specific)
+    full_path: str = AirweaveField(
+        ...,
+        description="Project-qualified file path (project_id/path)",
+        is_entity_id=True,
+    )
+    name: str = AirweaveField(
+        ...,
+        description="Filename",
+        is_name=True,
+        embeddable=True,
+    )
+    branch: str = AirweaveField(
+        ..., description="Branch used when fetching the file", embeddable=True
+    )
     blob_id: str = AirweaveField(..., description="Blob ID of the file content", embeddable=False)
     project_id: str = AirweaveField(..., description="ID of the project", embeddable=False)
     project_path: str = AirweaveField(..., description="Path of the project", embeddable=True)
     line_count: Optional[int] = AirweaveField(
         None, description="Number of lines in the file", embeddable=False
+    )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="Web URL to view the file",
+        embeddable=False,
+        unhashable=True,
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Clickable file URL."""
+        return self.web_url_value or (
+            f"https://gitlab.com/{self.project_path}/-/blob/{self.branch}/{self.path_in_repo}"
     )
 
 
@@ -167,15 +234,27 @@ class GitLabIssueEntity(BaseEntity):
         https://docs.gitlab.com/ee/api/issues.html
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (project_id/issues/iid)
-    # - breadcrumbs (project breadcrumb)
-    # - name (from issue title)
-    # - created_at (from created_at timestamp)
-    # - updated_at (from updated_at timestamp)
-
-    # API fields
-    title: str = AirweaveField(..., description="Issue title", embeddable=True)
+    issue_id: int = AirweaveField(
+        ...,
+        description="Global GitLab issue ID",
+        is_entity_id=True,
+    )
+    title: str = AirweaveField(
+        ...,
+        description="Issue title",
+        is_name=True,
+        embeddable=True,
+    )
+    created_at: datetime = AirweaveField(
+        ...,
+        description="Issue creation timestamp",
+        is_created_at=True,
+    )
+    updated_at: datetime = AirweaveField(
+        ...,
+        description="Issue update timestamp",
+        is_updated_at=True,
+    )
     description: Optional[str] = AirweaveField(
         None, description="Issue description", embeddable=True
     )
@@ -197,12 +276,22 @@ class GitLabIssueEntity(BaseEntity):
     )
     project_id: str = AirweaveField(..., description="ID of the project", embeddable=False)
     iid: int = AirweaveField(..., description="Internal issue ID", embeddable=False)
-    web_url: str = AirweaveField(..., description="Web URL to the issue", embeddable=False)
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="Web URL to the issue",
+        embeddable=False,
+        unhashable=True,
+    )
     user_notes_count: int = AirweaveField(
         0, description="Number of user notes/comments", embeddable=False
     )
     upvotes: int = AirweaveField(0, description="Number of upvotes", embeddable=False)
     downvotes: int = AirweaveField(0, description="Number of downvotes", embeddable=False)
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Clickable issue URL."""
+        return self.web_url_value or f"https://gitlab.com/projects/{self.project_id}/-/issues/{self.iid}"
 
 
 class GitLabMergeRequestEntity(BaseEntity):
@@ -212,15 +301,27 @@ class GitLabMergeRequestEntity(BaseEntity):
         https://docs.gitlab.com/ee/api/merge_requests.html
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (project_id/merge_requests/iid)
-    # - breadcrumbs (project breadcrumb)
-    # - name (from merge request title)
-    # - created_at (from created_at timestamp)
-    # - updated_at (from updated_at timestamp)
-
-    # API fields
-    title: str = AirweaveField(..., description="Merge request title", embeddable=True)
+    merge_request_id: int = AirweaveField(
+        ...,
+        description="Global GitLab merge request ID",
+        is_entity_id=True,
+    )
+    title: str = AirweaveField(
+        ...,
+        description="Merge request title",
+        is_name=True,
+        embeddable=True,
+    )
+    created_at: datetime = AirweaveField(
+        ...,
+        description="Merge request creation timestamp",
+        is_created_at=True,
+    )
+    updated_at: datetime = AirweaveField(
+        ...,
+        description="Merge request update timestamp",
+        is_updated_at=True,
+    )
     description: Optional[str] = AirweaveField(
         None, description="Merge request description", embeddable=True
     )
@@ -252,7 +353,12 @@ class GitLabMergeRequestEntity(BaseEntity):
     )
     project_id: str = AirweaveField(..., description="ID of the project", embeddable=False)
     iid: int = AirweaveField(..., description="Internal merge request ID", embeddable=False)
-    web_url: str = AirweaveField(..., description="Web URL to the merge request", embeddable=False)
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="Web URL to the merge request",
+        embeddable=False,
+        unhashable=True,
+    )
     merge_status: str = AirweaveField(
         ..., description="Merge status (can_be_merged, cannot_be_merged)", embeddable=True
     )
@@ -267,3 +373,10 @@ class GitLabMergeRequestEntity(BaseEntity):
     user_notes_count: int = AirweaveField(
         0, description="Number of user notes/comments", embeddable=False
     )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Clickable merge request URL."""
+        if self.web_url_value:
+            return self.web_url_value
+        return f"https://gitlab.com/projects/{self.project_id}/-/merge_requests/{self.iid}"

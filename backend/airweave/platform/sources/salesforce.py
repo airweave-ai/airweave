@@ -10,6 +10,7 @@ Then, we yield them as entities using the respective entity schemas defined
 in entities/salesforce.py.
 """
 
+from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, Optional
 
 import httpx
@@ -17,7 +18,7 @@ from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import BaseEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.salesforce import (
     SalesforceAccountEntity,
     SalesforceContactEntity,
@@ -110,6 +111,24 @@ class SalesforceSource(BaseSource):
             )
         return f"https://{self.instance_url}/services/data/v{self.api_version}"
 
+    def _build_record_url(self, object_api_name: str, record_id: Optional[str]) -> Optional[str]:
+        """Construct a Lightning record URL for the given object."""
+        if not record_id or not getattr(self, "instance_url", None):
+            return None
+        if getattr(self, "_is_validation_mode", False):
+            return None
+        return f"https://{self.instance_url}/lightning/r/{object_api_name}/{record_id}/view"
+
+    @staticmethod
+    def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
+        """Parse Salesforce ISO datetimes."""
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+
     @retry(
         stop=stop_after_attempt(5),
         retry=retry_if_rate_limit_or_timeout,
@@ -163,14 +182,27 @@ class SalesforceSource(BaseSource):
             data = await self._get_with_auth(client, url, params)
 
             for account in data.get("records", []):
+                account_id = account["Id"]
+                account_name = account.get("Name") or f"Account {account_id}"
+                created_time = self._parse_datetime(account.get("CreatedDate")) or datetime.utcnow()
+                updated_time = (
+                    self._parse_datetime(account.get("LastModifiedDate")) or created_time
+                )
+                web_url = self._build_record_url("Account", account_id)
+
                 yield SalesforceAccountEntity(
                     # Base fields
-                    entity_id=account["Id"],
+                    entity_id=account_id,
                     breadcrumbs=[],
-                    name=account.get("Name"),
-                    created_at=account.get("CreatedDate"),
-                    updated_at=account.get("LastModifiedDate"),
+                    name=account_name,
+                    created_at=created_time,
+                    updated_at=updated_time,
                     # API fields
+                    account_id=account_id,
+                    account_name=account_name,
+                    created_time=created_time,
+                    updated_time=updated_time,
+                    web_url_value=web_url,
                     account_number=account.get("AccountNumber"),
                     website=account.get("Website"),
                     phone=account.get("Phone"),
@@ -231,7 +263,7 @@ class SalesforceSource(BaseSource):
         # Build SOQL query with core standard fields
         soql_query = """
             SELECT Id, FirstName, LastName, Name, Email, Phone, MobilePhone, Fax,
-                   Title, Department, AccountId, Birthdate, Description, OwnerId,
+                   Title, Department, AccountId, Account.Name, Birthdate, Description, OwnerId,
                    CreatedDate, LastModifiedDate, IsDeleted,
                    MailingStreet, MailingCity, MailingState, MailingPostalCode, MailingCountry,
                    OtherStreet, OtherCity, OtherState, OtherPostalCode, OtherCountry
@@ -245,14 +277,39 @@ class SalesforceSource(BaseSource):
             data = await self._get_with_auth(client, url, params)
 
             for contact in data.get("records", []):
+                contact_id = contact["Id"]
+                contact_name = contact.get("Name") or f"Contact {contact_id}"
+                created_time = self._parse_datetime(contact.get("CreatedDate")) or datetime.utcnow()
+                updated_time = (
+                    self._parse_datetime(contact.get("LastModifiedDate")) or created_time
+                )
+                account_id = contact.get("AccountId")
+                account_obj = contact.get("Account") or {}
+                account_name = account_obj.get("Name")
+                breadcrumbs = []
+                if account_id:
+                    breadcrumbs.append(
+                        Breadcrumb(
+                            entity_id=account_id,
+                            name=account_name or f"Account {account_id}",
+                            entity_type=SalesforceAccountEntity.__name__,
+                        )
+                    )
+                web_url = self._build_record_url("Contact", contact_id)
+
                 yield SalesforceContactEntity(
                     # Base fields
-                    entity_id=contact["Id"],
-                    breadcrumbs=[],
-                    name=contact.get("Name"),
-                    created_at=contact.get("CreatedDate"),
-                    updated_at=contact.get("LastModifiedDate"),
+                    entity_id=contact_id,
+                    breadcrumbs=breadcrumbs,
+                    name=contact_name,
+                    created_at=created_time,
+                    updated_at=updated_time,
                     # API fields
+                    contact_id=contact_id,
+                    contact_name=contact_name,
+                    created_time=created_time,
+                    updated_time=updated_time,
+                    web_url_value=web_url,
                     first_name=contact.get("FirstName"),
                     last_name=contact.get("LastName"),
                     email=contact.get("Email"),
@@ -317,7 +374,7 @@ class SalesforceSource(BaseSource):
         """
         # Build SOQL query with core standard fields
         soql_query = """
-            SELECT Id, Name, AccountId, Amount, CloseDate, StageName, Probability,
+            SELECT Id, Name, AccountId, Account.Name, Amount, CloseDate, StageName, Probability,
                    OwnerId, CreatedDate, LastModifiedDate,
                    IsDeleted, IsWon, IsClosed,
                    Description, Type, NextStep
@@ -331,14 +388,41 @@ class SalesforceSource(BaseSource):
             data = await self._get_with_auth(client, url, params)
 
             for opportunity in data.get("records", []):
+                opportunity_id = opportunity["Id"]
+                opportunity_name = opportunity.get("Name") or f"Opportunity {opportunity_id}"
+                created_time = (
+                    self._parse_datetime(opportunity.get("CreatedDate")) or datetime.utcnow()
+                )
+                updated_time = (
+                    self._parse_datetime(opportunity.get("LastModifiedDate")) or created_time
+                )
+                account_id = opportunity.get("AccountId")
+                account_obj = opportunity.get("Account") or {}
+                account_name = account_obj.get("Name")
+                breadcrumbs = []
+                if account_id:
+                    breadcrumbs.append(
+                        Breadcrumb(
+                            entity_id=account_id,
+                            name=account_name or f"Account {account_id}",
+                            entity_type=SalesforceAccountEntity.__name__,
+                        )
+                    )
+                web_url = self._build_record_url("Opportunity", opportunity_id)
+
                 yield SalesforceOpportunityEntity(
                     # Base fields
-                    entity_id=opportunity["Id"],
-                    breadcrumbs=[],
-                    name=opportunity.get("Name"),
-                    created_at=opportunity.get("CreatedDate"),
-                    updated_at=opportunity.get("LastModifiedDate"),
+                    entity_id=opportunity_id,
+                    breadcrumbs=breadcrumbs,
+                    name=opportunity_name,
+                    created_at=created_time,
+                    updated_at=updated_time,
                     # API fields
+                    opportunity_id=opportunity_id,
+                    opportunity_name=opportunity_name,
+                    created_time=created_time,
+                    updated_time=updated_time,
+                    web_url_value=web_url,
                     account_id=opportunity.get("AccountId"),
                     amount=opportunity.get("Amount"),
                     close_date=opportunity.get("CloseDate"),

@@ -12,6 +12,8 @@ References:
 
 from typing import Any, Dict, Optional
 
+from pydantic import computed_field
+
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity, FileEntity
 
@@ -23,14 +25,17 @@ class OneDriveDriveEntity(BaseEntity):
         https://learn.microsoft.com/en-us/graph/api/resources/drive?view=graph-rest-1.0
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the drive ID)
-    # - breadcrumbs (empty - drives are top-level)
-    # - name (from drive name or drive_type)
-    # - created_at (from createdDateTime timestamp)
-    # - updated_at (from lastModifiedDateTime timestamp)
-
-    # API fields
+    id: str = AirweaveField(
+        ...,
+        description="Drive ID.",
+        is_entity_id=True,
+    )
+    name: str = AirweaveField(
+        ...,
+        description="Drive name or drive type.",
+        embeddable=True,
+        is_name=True,
+    )
     drive_type: Optional[str] = AirweaveField(
         None,
         description=(
@@ -49,6 +54,18 @@ class OneDriveDriveEntity(BaseEntity):
         description="Information about the drive's storage quota (total, used, remaining, etc.).",
         embeddable=False,
     )
+    web_url_override: Optional[str] = AirweaveField(
+        None,
+        description="URL to open the drive.",
+        embeddable=False,
+        unhashable=True,
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        if self.web_url_override:
+            return self.web_url_override
+        return f"https://onedrive.live.com/?id={self.id}"
 
 
 class OneDriveDriveItemEntity(FileEntity):
@@ -60,21 +77,17 @@ class OneDriveDriveItemEntity(FileEntity):
         https://learn.microsoft.com/en-us/graph/api/resources/driveitem?view=graph-rest-1.0
     """
 
-    # Base fields are inherited from BaseEntity:
-    # - entity_id (the DriveItem ID)
-    # - breadcrumbs (drive breadcrumb)
-    # - name (from item name)
-    # - created_at (from createdDateTime timestamp)
-    # - updated_at (from lastModifiedDateTime timestamp)
-
-    # File fields are inherited from FileEntity:
-    # - url (download URL)
-    # - size (file size in bytes)
-    # - file_type (determined from mime_type)
-    # - mime_type
-    # - local_path (set after download)
-
-    # API fields (OneDrive-specific)
+    id: str = AirweaveField(
+        ...,
+        description="Drive item ID.",
+        is_entity_id=True,
+    )
+    name: str = AirweaveField(
+        ...,
+        description="Item name.",
+        embeddable=True,
+        is_name=True,
+    )
     description: Optional[str] = AirweaveField(
         None, description="Description of the item (if available).", embeddable=True
     )
@@ -88,7 +101,7 @@ class OneDriveDriveItemEntity(FileEntity):
         description="A cTag for the content of the item. Used for internal sync.",
         embeddable=False,
     )
-    web_url: Optional[str] = AirweaveField(
+    web_url_override: Optional[str] = AirweaveField(
         None, description="URL that displays the resource in the browser.", embeddable=False
     )
     file: Optional[Dict[str, Any]] = AirweaveField(
@@ -108,3 +121,9 @@ class OneDriveDriveItemEntity(FileEntity):
         ),
         embeddable=False,
     )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        if self.web_url_override:
+            return self.web_url_override
+        return f"https://onedrive.live.com/?id={self.id}"

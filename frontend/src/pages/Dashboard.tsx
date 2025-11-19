@@ -62,8 +62,10 @@ const Dashboard = () => {
   // Use collections store
   const {
     collections,
+    totalCount,
     isLoading: isLoadingCollections,
     fetchCollections,
+    fetchCollectionsCount,
     sourceConnections,
     fetchSourceConnections
   } = useCollectionsStore();
@@ -117,6 +119,9 @@ const Dashboard = () => {
       console.log(`🔄 [Dashboard] Collections loaded: ${collections.length} collections available`);
     });
 
+    // Load collections count
+    fetchCollectionsCount();
+
     // Load sources - will use cached data if available
     fetchSources().then(sources => {
       console.log(`🔄 [Dashboard] Sources loaded: ${sources.length} sources available`);
@@ -125,7 +130,7 @@ const Dashboard = () => {
     return () => {
       unsubscribeCollections();
     };
-  }, [fetchCollections, fetchSources]);
+  }, [fetchCollections, fetchCollectionsCount, fetchSources]);
 
   // Usage limits are now checked by UsageChecker component
 
@@ -169,7 +174,7 @@ const Dashboard = () => {
                   className="flex items-center text-sm text-primary hover:text-primary/80 hover:bg-accent/30 px-2 py-1.5 rounded-md"
                 >
                   <ExternalLink className="mr-2 h-3.5 w-3.5 opacity-70" />
-                  <span>See all {collections.length > 0 ? `(${collections.length})` : ''}</span>
+                  <span>See all {totalCount !== null ? `(${totalCount})` : collections.length > 0 ? `(${collections.length})` : ''}</span>
                 </Link>
               </div>
 

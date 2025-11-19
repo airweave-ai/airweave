@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
-from tenacity import retry, stop_after_attempt
+from tenacity import retry, retry_if_exception, stop_after_attempt
 
 from airweave.core.logging import logger
 from airweave.core.shared_models import RateLimitLevel
@@ -177,7 +177,7 @@ class OutlookMailSource(BaseSource):
 
     @retry(
         stop=stop_after_attempt(5),
-        retry=_should_retry_outlook_request,
+        retry=retry_if_exception(_should_retry_outlook_request),
         wait=wait_rate_limit_with_backoff,
         reraise=True,
     )
@@ -249,7 +249,7 @@ class OutlookMailSource(BaseSource):
             try:
                 async for child_entity in self._generate_folder_entities(
                     client,
-                    folder_entity.entity_id,
+                    folder_entity.id,
                     parent_breadcrumbs + [folder_breadcrumb],
                 ):
                     yield child_entity
@@ -264,9 +264,7 @@ class OutlookMailSource(BaseSource):
     ) -> None:
         """Initialize the per-folder message delta link and store it in the cursor."""
         try:
-            delta_url = (
-                f"{self.GRAPH_BASE_URL}/me/mailFolders/{folder_entity.entity_id}/messages/delta"
-            )
+            delta_url = f"{self.GRAPH_BASE_URL}/me/mailFolders/{folder_entity.id}/messages/delta"
             self.logger.debug(f"Calling delta endpoint: {delta_url}")
             delta_data = await self._get_with_auth(client, delta_url)
 
@@ -280,7 +278,7 @@ class OutlookMailSource(BaseSource):
                         f"Storing delta link for folder: {folder_entity.display_name}"
                     )
                     self._update_folder_cursor(
-                        delta_link, folder_entity.entity_id, folder_entity.display_name
+                        delta_link, folder_entity.id, folder_entity.display_name
                     )
                     break
 
@@ -317,9 +315,8 @@ class OutlookMailSource(BaseSource):
             return
 
         folder_entity = OutlookMailFolderEntity(
-            entity_id=folder["id"],
+            id=folder["id"],
             breadcrumbs=parent_breadcrumbs,
-            name=folder["displayName"],  # Required by BaseEntity
             display_name=folder["displayName"],
             parent_folder_id=folder.get("parentFolderId"),
             child_folder_count=folder.get("childFolderCount", 0),
@@ -330,14 +327,14 @@ class OutlookMailSource(BaseSource):
 
         self.logger.debug(
             f"Processing folder: {folder_entity.display_name} "
-            f"(ID: {folder_entity.entity_id}, Items: {folder_entity.total_item_count})"
+            f"(ID: {folder_entity.id}, Items: {folder_entity.total_item_count})"
         )
         yield folder_entity
 
         folder_breadcrumb = Breadcrumb(
-            entity_id=folder_entity.entity_id,
+            entity_id=folder_entity.id,
             name=folder_entity.display_name,
-            type="folder",
+            entity_type="OutlookMailFolderEntity",
         )
 
         # Process messages in this folder
@@ -415,7 +412,7 @@ class OutlookMailSource(BaseSource):
             f"({folder_entity.total_item_count} items)"
         )
 
-        url = f"{self.GRAPH_BASE_URL}/me/mailFolders/{folder_entity.entity_id}/messages"
+        url = f"{self.GRAPH_BASE_URL}/me/mailFolders/{folder_entity.id}/messages"
         params = {"$top": 50}  # Fetch 50 messages at a time
 
         page_count = 0
@@ -552,33 +549,35 @@ class OutlookMailSource(BaseSource):
         file_type = "text" if is_plain_text else "html"
         mime_type = "text/plain" if is_plain_text else "text/html"
 
+        subject_value = subject or f"Message {message_id}"
+        message_url = f"https://outlook.office.com/mail/inbox/id/{message_id}"
+
         # Create message entity
         message_entity = OutlookMessageEntity(
-            entity_id=message_id,
+            id=message_id,
             breadcrumbs=[folder_breadcrumb],
-            name=(subject or f"Message {message_id}"),
-            created_at=sent_date,
-            updated_at=received_date,
+            name=subject_value,
+            sent_date=sent_date,
+            received_date=received_date,
             # File fields (required for FileEntity)
-            url=f"https://outlook.office.com/mail/inbox/id/{message_id}",
+            url=message_url,
             size=len(body_content.encode("utf-8")) if body_content else 0,
             file_type=file_type,
             mime_type=mime_type,
             local_path=None,  # Will be set after downloading body
             # Outlook API fields
             folder_name=folder_name,
-            subject=subject,
+            subject=subject_value,
             sender=sender,
             to_recipients=to_recipients,
             cc_recipients=cc_recipients,
-            sent_date=sent_date,
-            received_date=received_date,
             body_preview=body_preview,
             is_read=message_data.get("isRead", False),
             is_draft=message_data.get("isDraft", False),
             importance=message_data.get("importance"),
             has_attachments=message_data.get("hasAttachments", False),
             internet_message_id=message_data.get("internetMessageId"),
+            web_url_override=message_data.get("webLink") or message_url,
         )
 
         # Download email body to file (NOT stored in entity fields)
@@ -603,8 +602,8 @@ class OutlookMailSource(BaseSource):
         # Create message breadcrumb for attachments
         message_breadcrumb = Breadcrumb(
             entity_id=message_id,
-            name=subject or f"Message {message_id}",
-            type="message",
+            name=subject_value,
+            entity_type="OutlookMessageEntity",
         )
 
         # Process attachments if the message has any
@@ -613,7 +612,10 @@ class OutlookMailSource(BaseSource):
             attachment_count = 0
             try:
                 async for attachment_entity in self._process_attachments(
-                    client, message_id, [folder_breadcrumb, message_breadcrumb]
+                    client,
+                    message_id,
+                    [folder_breadcrumb, message_breadcrumb],
+                    message_entity.web_url,
                 ):
                     attachment_count += 1
                     self.logger.debug(
@@ -648,6 +650,7 @@ class OutlookMailSource(BaseSource):
         breadcrumbs: List[Breadcrumb],
         att_idx: int,
         total_attachments: int,
+        message_web_url: Optional[str],
     ) -> Optional[OutlookAttachmentEntity]:
         """Process a single attachment and return the processed entity."""
         attachment_id = attachment["id"]
@@ -687,14 +690,14 @@ class OutlookMailSource(BaseSource):
                     return None
 
             # Create file entity
+            composite_id = f"{message_id}_attachment_{attachment_id}"
             file_entity = OutlookAttachmentEntity(
-                entity_id=f"{message_id}_attachment_{attachment_id}",
+                composite_id=composite_id,
                 breadcrumbs=breadcrumbs,
-                file_id=attachment_id,
                 name=attachment_name,
+                url=f"outlook://attachment/{message_id}/{attachment_id}",
                 mime_type=attachment.get("contentType"),
                 size=attachment.get("size", 0),
-                download_url=f"outlook://attachment/{message_id}/{attachment_id}",
                 message_id=message_id,
                 attachment_id=attachment_id,
                 content_type=attachment.get("contentType"),
@@ -705,6 +708,7 @@ class OutlookMailSource(BaseSource):
                     "message_id": message_id,
                     "attachment_id": attachment_id,
                 },
+                message_web_url=message_web_url,
             )
 
             # Decode the base64 data
@@ -744,6 +748,7 @@ class OutlookMailSource(BaseSource):
         client: httpx.AsyncClient,
         message_id: str,
         breadcrumbs: List[Breadcrumb],
+        message_web_url: Optional[str],
     ) -> AsyncGenerator[OutlookAttachmentEntity, None]:
         """Process message attachments using the standard file processing pipeline."""
         self.logger.debug(f"Processing attachments for message {message_id}")
@@ -761,7 +766,13 @@ class OutlookMailSource(BaseSource):
 
                 for att_idx, attachment in enumerate(attachments):
                     processed_entity = await self._process_single_attachment(
-                        client, attachment, message_id, breadcrumbs, att_idx, len(attachments)
+                        client,
+                        attachment,
+                        message_id,
+                        breadcrumbs,
+                        att_idx,
+                        len(attachments),
+                        message_web_url,
                     )
                     if processed_entity:
                         yield processed_entity
@@ -857,12 +868,9 @@ class OutlookMailSource(BaseSource):
             message_id = change.get("id")
             if message_id:
                 deletion_entity = OutlookMessageDeletionEntity(
-                    name=f"Deleted message {message_id}",
-                    created_at=None,
-                    updated_at=None,
                     breadcrumbs=[],
-                    entity_id=message_id,
                     message_id=message_id,
+                    label=f"Deleted message {message_id}",
                     deletion_status="removed",
                 )
                 yield deletion_entity
@@ -872,7 +880,7 @@ class OutlookMailSource(BaseSource):
             folder_breadcrumb = Breadcrumb(
                 entity_id=folder_id,
                 name=folder_name,
-                type="folder",
+                entity_type="OutlookMailFolderEntity",
             )
             async for entity in self._process_message(
                 client, change, folder_name, folder_breadcrumb
@@ -969,11 +977,10 @@ class OutlookMailSource(BaseSource):
         """Emit a folder deletion entity and clean up stored links/names."""
         self.logger.debug(f"Folder removed: {folder_id}")
         deletion_entity = OutlookMailFolderDeletionEntity(
-            entity_id=folder_id,
             breadcrumbs=[],
-            name=f"Deleted folder {folder_id}",
-            created_at=None,
-            updated_at=None,
+            folder_id=folder_id,
+            label=f"Deleted folder {folder_id}",
+            deletion_status="removed",
         )
         if self.cursor:
             cursor_data = self.cursor.data
@@ -1005,9 +1012,8 @@ class OutlookMailSource(BaseSource):
         well_known_name = folder.get("wellKnownName")
 
         folder_entity = OutlookMailFolderEntity(
-            entity_id=folder_id,
+            id=folder_id,
             breadcrumbs=[],
-            name=display_name,  # Required by BaseEntity
             display_name=display_name,
             parent_folder_id=parent_folder_id,
             child_folder_count=child_folder_count,
@@ -1030,19 +1036,16 @@ class OutlookMailSource(BaseSource):
                 folder_breadcrumb = Breadcrumb(
                     entity_id=folder_id,
                     name=display_name or folder_id,
-                    type="folder",
+                    entity_type="OutlookMailFolderEntity",
                 )
                 for change in messages:
                     if "@removed" in change:
                         message_id = change.get("id")
                         if message_id:
                             deletion_entity = OutlookMessageDeletionEntity(
-                                entity_id=message_id,
                                 breadcrumbs=[],
-                                name=f"Deleted message {message_id}",
-                                created_at=None,
-                                updated_at=None,
                                 message_id=message_id,
+                                label=f"Deleted message {message_id}",
                                 deletion_status="removed",
                             )
                             yield deletion_entity
@@ -1110,12 +1113,9 @@ class OutlookMailSource(BaseSource):
                         message_id = change.get("id")
                         if message_id:
                             deletion_entity = OutlookMessageDeletionEntity(
-                                entity_id=message_id,
                                 breadcrumbs=[],
-                                name=f"Deleted message {message_id}",
-                                created_at=None,
-                                updated_at=None,
                                 message_id=message_id,
+                                label=f"Deleted message {message_id}",
                                 deletion_status="removed",
                             )
                             yield deletion_entity
@@ -1132,7 +1132,7 @@ class OutlookMailSource(BaseSource):
                         folder_breadcrumb = Breadcrumb(
                             entity_id=folder_id,
                             name=folder_name,
-                            type="folder",
+                            entity_type="OutlookMailFolderEntity",
                         )
                         async for entity in self._process_message(
                             client, change, folder_name, folder_breadcrumb
@@ -1237,7 +1237,7 @@ class OutlookMailSource(BaseSource):
                         self.logger.debug(
                             (
                                 f"Yielding delta entity #{entity_count}: {entity_type} "
-                                f"with ID {entity.entity_id}"
+                                f"with ID {entity.id}"
                             )
                         )
                         yield entity
@@ -1253,7 +1253,7 @@ class OutlookMailSource(BaseSource):
                         self.logger.debug(
                             (
                                 f"Yielding full sync entity #{entity_count}: {entity_type} "
-                                f"with ID {entity.entity_id}"
+                                f"with ID {entity.id}"
                             )
                         )
                         yield entity

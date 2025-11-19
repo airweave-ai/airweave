@@ -19,9 +19,15 @@ from tenacity import (
 )
 
 from airweave import crud, models
-from airweave.core.shared_models import ActionType
+from airweave.core.constants.reserved_ids import RESERVED_TABLE_ENTITY_ID
+from airweave.core.shared_models import ActionType, AirweaveFieldFlag
 from airweave.db.session import get_db_context
-from airweave.platform.entities._base import BaseEntity, CodeFileEntity, FileEntity
+from airweave.platform.entities._base import (
+    BaseEntity,
+    CodeFileEntity,
+    FileEntity,
+    PolymorphicEntity,
+)
 from airweave.platform.sync.context import SyncContext
 from airweave.platform.sync.exceptions import EntityProcessingError, SyncFailureError
 from airweave.platform.sync.file_types import SUPPORTED_FILE_EXTENSIONS
@@ -143,6 +149,10 @@ class EntityPipeline:
         sync_context: SyncContext,
     ) -> None:
         """Process a list of entities."""
+        # Populate BaseEntity fields from flagged fields BEFORE duplicate detection
+        for entity in entities:
+            self._populate_base_entity_fields_from_flags(entity)
+
         unique_entities = await self._filter_duplicates(entities, sync_context)
 
         if not unique_entities:
@@ -272,6 +282,46 @@ class EntityPipeline:
     # Early Metadata Enrichment
     # ------------------------------------------------------------------------------------
 
+    def _get_flagged_field_value(self, entity: BaseEntity, flag_name: str) -> Any:
+        """Extract value of field marked with specified flag."""
+        # Support both raw string keys ("is_entity_id") and AirweaveFieldFlag enum values
+        flag_key = flag_name.value if hasattr(flag_name, "value") else flag_name
+
+        # Iterate through entity's model fields
+        for field_name, field_info in entity.model_fields.items():
+            # Check if field has json_schema_extra with the flag
+            json_extra = field_info.json_schema_extra
+            if json_extra and isinstance(json_extra, dict):
+                if json_extra.get(flag_key):
+                    return getattr(entity, field_name, None)
+
+        return None
+
+    def _populate_base_entity_fields_from_flags(self, entity: BaseEntity) -> None:
+        """Populate BaseEntity fields from flagged fields."""
+        # Extract entity_id from is_entity_id flag if not already set
+        if not entity.entity_id:
+            flagged_value = self._get_flagged_field_value(entity, AirweaveFieldFlag.IS_ENTITY_ID)
+            if flagged_value:
+                entity.entity_id = str(flagged_value)
+
+        # Extract name from is_name flag if not already set
+        if not entity.name:
+            flagged_value = self._get_flagged_field_value(entity, AirweaveFieldFlag.IS_NAME)
+            if flagged_value:
+                entity.name = str(flagged_value)
+
+        # Extract timestamps (Optional - no error if missing)
+        if not entity.created_at:
+            flagged_value = self._get_flagged_field_value(entity, AirweaveFieldFlag.IS_CREATED_AT)
+            if flagged_value is not None:
+                entity.created_at = flagged_value
+
+        if not entity.updated_at:
+            flagged_value = self._get_flagged_field_value(entity, AirweaveFieldFlag.IS_UPDATED_AT)
+            if flagged_value is not None:
+                entity.updated_at = flagged_value
+
     async def _enrich_early_metadata(
         self,
         entities: List[BaseEntity],
@@ -371,6 +421,18 @@ class EntityPipeline:
                 "local_path",  # Temp path changes per run
                 "url",  # Contains access tokens
             }
+
+            # Add fields marked with unhashable=True (composition over inheritance)
+            for field_name, field_info in entity.__class__.model_fields.items():
+                json_extra = field_info.json_schema_extra
+                if json_extra and isinstance(json_extra, dict):
+                    if json_extra.get(
+                        AirweaveFieldFlag.UNHASHABLE.value
+                        if hasattr(AirweaveFieldFlag.UNHASHABLE, "value")
+                        else AirweaveFieldFlag.UNHASHABLE
+                    ):
+                        excluded_fields.add(field_name)
+
             content_dict = {k: v for k, v in entity_dict.items() if k not in excluded_fields}
 
             # Step 4: Stable serialize
@@ -495,7 +557,7 @@ class EntityPipeline:
         # Step 2: Build entity requests with definition IDs
         entity_requests = []
         for entity in non_deletes:
-            entity_definition_id = sync_context.entity_map.get(entity.__class__)
+            entity_definition_id = self._resolve_entity_definition_id(entity, sync_context)
             if entity_definition_id is None:
                 # Entity type not in map → fatal error
                 sync_context.logger.error(
@@ -508,7 +570,7 @@ class EntityPipeline:
 
         # Also add deletes to lookup (need existing_map for _handle_deletes)
         for entity in deletes:
-            entity_definition_id = sync_context.entity_map.get(entity.__class__)
+            entity_definition_id = self._resolve_entity_definition_id(entity, sync_context)
             if entity_definition_id is None:
                 raise SyncFailureError(
                     f"DELETE entity type {entity.__class__.__name__} not in entity_map"
@@ -565,7 +627,11 @@ class EntityPipeline:
             entity_hash = entity.airweave_system_metadata.hash
 
             # Get entity_definition_id (already validated in Step 2)
-            entity_definition_id = sync_context.entity_map[entity.__class__]
+            entity_definition_id = self._resolve_entity_definition_id(entity, sync_context)
+            if entity_definition_id is None:
+                raise SyncFailureError(
+                    f"Entity type {entity.__class__.__name__} not in sync_context.entity_map"
+                )
 
             # Get existing DB record using composite key
             db_key = (entity.entity_id, entity_definition_id)
@@ -589,6 +655,21 @@ class EntityPipeline:
         )
 
         return partitions
+
+    def _resolve_entity_definition_id(
+        self, entity: BaseEntity, sync_context: SyncContext
+    ) -> Optional[UUID]:
+        """Resolve entity definition ID with polymorphic fallback."""
+        entity_class = entity.__class__
+
+        definition_id = sync_context.entity_map.get(entity_class)
+        if definition_id:
+            return definition_id
+
+        if issubclass(entity_class, PolymorphicEntity):
+            return RESERVED_TABLE_ENTITY_ID
+
+        return None
 
     # ------------------------------------------------------------------------------------
     # Delete Handling
@@ -630,7 +711,7 @@ class EntityPipeline:
         db_ids = []
 
         for entity in deletes:
-            entity_def_id = sync_context.entity_map.get(entity.__class__)
+            entity_def_id = self._resolve_entity_definition_id(entity, sync_context)
             if not entity_def_id:
                 raise SyncFailureError(
                     f"PROGRAMMING ERROR: DELETE entity {entity.entity_id} type "
@@ -655,7 +736,7 @@ class EntityPipeline:
             if hasattr(sync_context, "entity_state_tracker") and sync_context.entity_state_tracker:
                 counts_by_def: Dict[UUID, int] = defaultdict(int)
                 for entity in deletes:
-                    entity_def_id = sync_context.entity_map.get(entity.__class__)
+                    entity_def_id = self._resolve_entity_definition_id(entity, sync_context)
                     key = (entity.entity_id, entity_def_id) if entity_def_id else None
                     if key and key in existing_map:
                         counts_by_def[entity_def_id] += 1
@@ -681,9 +762,14 @@ class EntityPipeline:
             Dict mapping field names to their values
         """
         fields = {}
-        for field_name, field_info in entity.model_fields.items():
-            if field_info.json_schema_extra and isinstance(field_info.json_schema_extra, dict):
-                if field_info.json_schema_extra.get("embeddable"):
+        for field_name, field_info in entity.__class__.model_fields.items():
+            json_extra = field_info.json_schema_extra
+            if json_extra and isinstance(json_extra, dict):
+                if json_extra.get(
+                    AirweaveFieldFlag.EMBEDDABLE.value
+                    if hasattr(AirweaveFieldFlag.EMBEDDABLE, "value")
+                    else AirweaveFieldFlag.EMBEDDABLE
+                ):
                     value = getattr(entity, field_name, None)
                     if value is not None:
                         fields[field_name] = value
@@ -742,6 +828,26 @@ class EntityPipeline:
             f"**Type**: {entity_type}",
             f"**Name**: {entity.name}",
         ]
+
+        # Add breadcrumb path if present (shows hierarchy with types)
+        if entity.breadcrumbs and len(entity.breadcrumbs) > 0:
+            # Format: "Type: Name → Type: Name" (strip source prefix and "Entity" suffix)
+            path_parts = []
+            for bc in entity.breadcrumbs:
+                # Clean entity type: "AsanaProjectEntity" → "Project"
+                clean_type = bc.entity_type
+                # Remove "Entity" suffix
+                if clean_type.endswith("Entity"):
+                    clean_type = clean_type[:-6]  # Remove last 6 chars ("Entity")
+                # Remove source prefix (e.g., "Asana", "Jira", "GitHub")
+                # Look for capital letter after first one as delimiter
+                for i in range(1, len(clean_type)):
+                    if clean_type[i].isupper():
+                        clean_type = clean_type[i:]
+                        break
+                path_parts.append(f"{clean_type}: {bc.name}")
+            path_str = " → ".join(path_parts)
+            lines.append(f"**Path**: {path_str}")
 
         embeddable_fields = self._extract_embeddable_fields(entity)
         if embeddable_fields:
@@ -813,6 +919,8 @@ class EntityPipeline:
             ".swift": converters.code_converter,
             ".kt": converters.code_converter,
             ".kts": converters.code_converter,
+            ".tf": converters.code_converter,
+            ".tfvars": converters.code_converter,
         }
 
         converter = converter_map.get(ext)
@@ -1377,7 +1485,7 @@ class EntityPipeline:
                     # Build create objects (with deterministic ordering to avoid deadlock cycles)
                     ordered_entities: List[Tuple[UUID, BaseEntity]] = []
                     for entity in deduped:
-                        entity_def_id = sync_context.entity_map.get(entity.__class__)
+                        entity_def_id = self._resolve_entity_definition_id(entity, sync_context)
                         if not entity_def_id:
                             raise SyncFailureError(
                                 f"Entity type {entity.__class__.__name__} not in entity_map"
@@ -1426,7 +1534,12 @@ class EntityPipeline:
                 if updates:
                     update_records = []
                     for entity in updates:
-                        entity_def_id = sync_context.entity_map[entity.__class__]
+                        entity_def_id = self._resolve_entity_definition_id(entity, sync_context)
+                        if entity_def_id is None:
+                            raise SyncFailureError(
+                                f"PROGRAMMING ERROR: UPDATE entity {entity.entity_id} "
+                                f"type {entity.__class__.__name__} not in entity_map"
+                            )
                         key = (entity.entity_id, entity_def_id)
 
                         if key not in existing_map:
@@ -1488,7 +1601,7 @@ class EntityPipeline:
                 counts_by_def: Dict[UUID, int] = defaultdict(int)
                 sample_name_by_def: Dict[UUID, str] = {}
                 for entity in inserts:
-                    entity_def_id = sync_context.entity_map.get(entity.__class__)
+                    entity_def_id = self._resolve_entity_definition_id(entity, sync_context)
                     if entity_def_id:
                         counts_by_def[entity_def_id] += 1
                         sample_name_by_def.setdefault(entity_def_id, entity.__class__.__name__)
@@ -1506,7 +1619,7 @@ class EntityPipeline:
             if updates:
                 counts_by_def_updates: Dict[UUID, int] = defaultdict(int)
                 for entity in updates:
-                    entity_def_id = sync_context.entity_map.get(entity.__class__)
+                    entity_def_id = self._resolve_entity_definition_id(entity, sync_context)
                     if entity_def_id:
                         counts_by_def_updates[entity_def_id] += 1
 

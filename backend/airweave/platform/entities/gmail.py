@@ -9,6 +9,8 @@ Defines entity schemas for Gmail resources:
 from datetime import datetime
 from typing import List, Optional
 
+from pydantic import computed_field
+
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity, DeletionEntity, EmailEntity, FileEntity
 
@@ -19,14 +21,25 @@ class GmailThreadEntity(BaseEntity):
     Reference: https://developers.google.com/gmail/api/reference/rest/v1/users.threads
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (thread_{thread_id})
-    # - breadcrumbs (empty - threads are top-level)
-    # - name (from snippet preview)
-    # - created_at (None - threads don't have creation timestamp)
-    # - updated_at (from last_message_date)
-
-    # API fields
+    thread_key: str = AirweaveField(
+        ...,
+        description="Stable Airweave thread key (thread_<gmail_id>)",
+        is_entity_id=True,
+    )
+    gmail_thread_id: str = AirweaveField(
+        ..., description="Native Gmail thread ID", embeddable=False
+    )
+    title: str = AirweaveField(
+        ...,
+        description="Display title derived from snippet",
+        is_name=True,
+        embeddable=True,
+    )
+    last_message_at: Optional[datetime] = AirweaveField(
+        None,
+        description="Timestamp of the most recent message in the thread",
+        is_updated_at=True,
+    )
     snippet: Optional[str] = AirweaveField(
         None, description="A short snippet from the thread", embeddable=True
     )
@@ -40,6 +53,11 @@ class GmailThreadEntity(BaseEntity):
         default_factory=list, description="Labels applied to this thread", embeddable=True
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Direct link to open the thread in Gmail."""
+        return f"https://mail.google.com/mail/u/0/#inbox/{self.gmail_thread_id}"
+
 
 class GmailMessageEntity(EmailEntity):
     """Schema for Gmail message entities.
@@ -47,29 +65,30 @@ class GmailMessageEntity(EmailEntity):
     Reference: https://developers.google.com/gmail/api/reference/rest/v1/users.messages
     """
 
-    # Base fields are inherited from BaseEntity:
-    # - entity_id (msg_{message_id})
-    # - breadcrumbs (thread breadcrumb)
-    # - name (from subject)
-    # - created_at (from date)
-    # - updated_at (from internal_date)
-
-    # File fields are inherited from FileEntity (required):
-    # - url (link to message in Gmail)
-    # - size (message size in bytes)
-    # - file_type (set to "html")
-    # - mime_type (set to "text/html")
-    # - local_path (set after downloading HTML body)
-
-    # Email body content is NOT stored in entity fields
-    # It is saved to local_path file for conversion
-
-    # API fields
+    message_key: str = AirweaveField(
+        ...,
+        description="Stable Airweave message key (msg_<gmail_id>)",
+        is_entity_id=True,
+    )
+    message_id: str = AirweaveField(..., description="Native Gmail message ID", embeddable=False)
+    subject: str = AirweaveField(
+        ...,
+        description="Subject line (fallback applied if missing)",
+        is_name=True,
+        embeddable=True,
+    )
+    sent_at: datetime = AirweaveField(
+        ...,
+        description="Timestamp from the Date header (or internal date fallback)",
+        is_created_at=True,
+    )
+    internal_timestamp: datetime = AirweaveField(
+        ...,
+        description="Gmail internal timestamp representing last modification",
+        is_updated_at=True,
+    )
     thread_id: str = AirweaveField(
         ..., description="ID of the thread this message belongs to", embeddable=False
-    )
-    subject: Optional[str] = AirweaveField(
-        None, description="Subject line of the message", embeddable=True
     )
     sender: Optional[str] = AirweaveField(
         None, description="Email address of the sender", embeddable=True
@@ -95,6 +114,17 @@ class GmailMessageEntity(EmailEntity):
     internal_date: Optional[datetime] = AirweaveField(
         None, description="Internal Gmail timestamp", embeddable=False
     )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="Direct Gmail URL for the message",
+        embeddable=False,
+        unhashable=True,
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Direct link to open the message in Gmail."""
+        return self.web_url_value or f"https://mail.google.com/mail/u/0/#inbox/{self.message_id}"
 
 
 class GmailAttachmentEntity(FileEntity):
@@ -103,21 +133,14 @@ class GmailAttachmentEntity(FileEntity):
     Reference: https://developers.google.com/gmail/api/reference/rest/v1/users.messages.attachments
     """
 
-    # Base fields are inherited from BaseEntity:
-    # - entity_id (attach_{message_id}_{attachment_id})
-    # - breadcrumbs (thread and message breadcrumbs)
-    # - name (filename)
-    # - created_at (None - attachments don't have timestamps)
-    # - updated_at (None - attachments don't have timestamps)
-
-    # File fields are inherited from FileEntity:
-    # - url (dummy URL for Gmail attachments)
-    # - size (from attachment size)
-    # - file_type (determined from mime_type)
-    # - mime_type
-    # - local_path (set after processing bytes)
-
-    # API fields (Gmail-specific)
+    attachment_key: str = AirweaveField(
+        ...,
+        description="Stable Airweave attachment key (attach_<message>_<filename>)",
+        is_entity_id=True,
+    )
+    filename: str = AirweaveField(
+        ..., description="Attachment filename", is_name=True, embeddable=True
+    )
     message_id: str = AirweaveField(
         ..., description="ID of the message this attachment belongs to", embeddable=False
     )
@@ -125,6 +148,17 @@ class GmailAttachmentEntity(FileEntity):
     thread_id: str = AirweaveField(
         ..., description="ID of the thread containing the message", embeddable=False
     )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="URL to view the parent message in Gmail",
+        embeddable=False,
+        unhashable=True,
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Link to the parent message view in Gmail."""
+        return self.web_url_value or f"https://mail.google.com/mail/u/0/#inbox/{self.message_id}"
 
 
 class GmailMessageDeletionEntity(DeletionEntity):
@@ -135,15 +169,17 @@ class GmailMessageDeletionEntity(DeletionEntity):
     correct parent/children.
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (msg_{message_id})
-    # - breadcrumbs (empty - deletions are top-level signals)
-    # - name (generic deletion name)
-    # - created_at (None - deletions don't have timestamps)
-    # - updated_at (None - deletions don't have timestamps)
-    # - deletion_status (inherited from DeletionEntity)
-
-    # API fields
+    message_key: str = AirweaveField(
+        ...,
+        description="Stable Airweave message key (msg_<gmail_id>)",
+        is_entity_id=True,
+    )
+    label: str = AirweaveField(
+        ...,
+        description="Human-readable deletion label",
+        is_name=True,
+        embeddable=True,
+    )
     message_id: str = AirweaveField(
         ..., description="The Gmail message ID that was deleted", embeddable=False
     )
@@ -152,3 +188,8 @@ class GmailMessageDeletionEntity(DeletionEntity):
         description="Thread ID (optional if not provided by change record)",
         embeddable=False,
     )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Fallback link to Gmail inbox for the deleted message."""
+        return f"https://mail.google.com/mail/u/0/#inbox/{self.message_id}"

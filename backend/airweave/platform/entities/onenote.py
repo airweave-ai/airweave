@@ -14,6 +14,8 @@ Reference:
 
 from typing import Any, Dict, List, Optional
 
+from pydantic import computed_field
+
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity, FileEntity
 
@@ -33,7 +35,17 @@ class OneNoteNotebookEntity(BaseEntity):
     # - updated_at (from last_modified_datetime)
 
     # API fields
-    display_name: str = AirweaveField(..., description="The name of the notebook.", embeddable=True)
+    id: str = AirweaveField(
+        ...,
+        description="Notebook ID.",
+        is_entity_id=True,
+    )
+    display_name: str = AirweaveField(
+        ...,
+        description="The name of the notebook.",
+        embeddable=True,
+        is_name=True,
+    )
     is_default: Optional[bool] = AirweaveField(
         None, description="Indicates whether this is the user's default notebook.", embeddable=False
     )
@@ -63,6 +75,22 @@ class OneNoteNotebookEntity(BaseEntity):
         description="The endpoint URL where you can get details about the notebook.",
         embeddable=False,
     )
+    web_url_override: Optional[str] = AirweaveField(
+        None,
+        description="Direct URL to open the notebook in OneNote.",
+        embeddable=False,
+        unhashable=True,
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        if self.web_url_override:
+            return self.web_url_override
+        if self.links and isinstance(self.links, dict):
+            web_link = self.links.get("oneNoteWebUrl", {}).get("href")
+            if web_link:
+                return web_link
+        return f"https://www.onenote.com/notebooks/{self.id}"
 
 
 class OneNoteSectionGroupEntity(BaseEntity):
@@ -137,7 +165,17 @@ class OneNoteSectionEntity(BaseEntity):
     parent_section_group_id: Optional[str] = AirweaveField(
         None, description="ID of the parent section group, if any.", embeddable=False
     )
-    display_name: str = AirweaveField(..., description="The name of the section.", embeddable=True)
+    id: str = AirweaveField(
+        ...,
+        description="Section ID.",
+        is_entity_id=True,
+    )
+    display_name: str = AirweaveField(
+        ...,
+        description="The name of the section.",
+        embeddable=True,
+        is_name=True,
+    )
     is_default: Optional[bool] = AirweaveField(
         None, description="Indicates whether this is the user's default section.", embeddable=False
     )
@@ -154,6 +192,20 @@ class OneNoteSectionEntity(BaseEntity):
         description="The endpoint URL where you can get all the pages in the section.",
         embeddable=False,
     )
+    web_url_override: Optional[str] = AirweaveField(
+        None,
+        description="Direct URL to open the section.",
+        embeddable=False,
+        unhashable=True,
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        if self.web_url_override:
+            return self.web_url_override
+        if self.pages_url:
+            return self.pages_url
+        return f"https://www.onenote.com/section/{self.id}"
 
 
 class OneNotePageFileEntity(FileEntity):
@@ -181,13 +233,23 @@ class OneNotePageFileEntity(FileEntity):
     # - local_path (set after download)
 
     # API fields (OneNote-specific)
+    id: str = AirweaveField(
+        ...,
+        description="Page ID.",
+        is_entity_id=True,
+    )
     notebook_id: str = AirweaveField(
         ..., description="ID of the notebook this page belongs to.", embeddable=False
     )
     section_id: str = AirweaveField(
         ..., description="ID of the section this page belongs to.", embeddable=False
     )
-    title: str = AirweaveField(..., description="The title of the page.", embeddable=True)
+    title: str = AirweaveField(
+        ...,
+        description="The title of the page.",
+        embeddable=True,
+        is_name=True,
+    )
     content_url: Optional[str] = AirweaveField(
         None, description="The URL for the page's HTML content.", embeddable=False
     )
@@ -213,3 +275,21 @@ class OneNotePageFileEntity(FileEntity):
         description="User-defined tags associated with the page.",
         embeddable=True,
     )
+    web_url_override: Optional[str] = AirweaveField(
+        None,
+        description="Direct URL to open the page in OneNote.",
+        embeddable=False,
+        unhashable=True,
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        if self.web_url_override:
+            return self.web_url_override
+        if self.links and isinstance(self.links, dict):
+            web_link = self.links.get("oneNoteWebUrl", {}).get("href")
+            if web_link:
+                return web_link
+        if self.content_url:
+            return self.content_url
+        return f"https://www.onenote.com/page/{self.id}"

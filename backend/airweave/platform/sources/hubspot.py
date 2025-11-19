@@ -1,6 +1,7 @@
 """HubSpot source implementation."""
 
 import time
+from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
@@ -55,6 +56,7 @@ class HubspotSource(BaseSource):
         super().__init__()
         # Cache for property names to avoid repeated API calls
         self._property_cache: Dict[str, List[str]] = {}
+        self._portal_id: Optional[str] = None
 
     @classmethod
     async def create(
@@ -307,6 +309,28 @@ class HubspotSource(BaseSource):
                     cleaned[key] = value
         return cleaned
 
+    async def _ensure_portal_id(self, client: httpx.AsyncClient) -> Optional[str]:
+        """Fetch and cache the HubSpot portal ID for building record URLs."""
+        if self._portal_id:
+            return self._portal_id
+        info_url = "https://api.hubapi.com/integrations/v1/me"
+        try:
+            data = await self._get_with_auth(client, info_url)
+            portal_id = data.get("portalId")
+            if portal_id:
+                self._portal_id = str(portal_id)
+            else:
+                self.logger.warning("HubSpot response missing portalId; web URLs will be disabled.")
+        except Exception as exc:  # pragma: no cover - network failure
+            self.logger.warning("Failed to fetch HubSpot portal ID: %s", exc)
+        return self._portal_id
+
+    def _build_record_url(self, object_type: str, object_id: str) -> Optional[str]:
+        """Build a HubSpot UI URL for the given object."""
+        if not self._portal_id:
+            return None
+        return f"https://app.hubspot.com/contacts/{self._portal_id}/record/{object_type}/{object_id}"
+
     async def _generate_contact_entities(
         self, client: httpx.AsyncClient
     ) -> AsyncGenerator[BaseEntity, None]:
@@ -376,19 +400,26 @@ class HubspotSource(BaseSource):
                 else:
                     contact_name = f"Contact {contact['id']}"
 
+                created_time = parse_hubspot_datetime(contact.get("createdAt")) or datetime.utcnow()
+                updated_time = (
+                    parse_hubspot_datetime(contact.get("updatedAt")) or created_time
+                )
                 yield HubspotContactEntity(
-                    # Base fields
                     entity_id=contact["id"],
                     breadcrumbs=[],
                     name=contact_name,
-                    created_at=parse_hubspot_datetime(contact.get("createdAt")),
-                    updated_at=parse_hubspot_datetime(contact.get("updatedAt")),
-                    # API fields
+                    created_at=created_time,
+                    updated_at=updated_time,
+                    contact_id=contact["id"],
+                    display_name=contact_name,
+                    created_time=created_time,
+                    updated_time=updated_time,
                     first_name=first_name,
                     last_name=last_name,
                     email=email,
                     properties=cleaned_properties,
                     archived=contact.get("archived", False),
+                    web_url_value=self._build_record_url("0-1", contact["id"]),
                 )
 
     async def _generate_company_entities(
@@ -447,17 +478,24 @@ class HubspotSource(BaseSource):
                 # Get company name
                 company_name = cleaned_properties.get("name") or f"Company {company['id']}"
 
+                created_time = parse_hubspot_datetime(company.get("createdAt")) or datetime.utcnow()
+                updated_time = (
+                    parse_hubspot_datetime(company.get("updatedAt")) or created_time
+                )
                 yield HubspotCompanyEntity(
-                    # Base fields
                     entity_id=company["id"],
                     breadcrumbs=[],
                     name=company_name,
-                    created_at=parse_hubspot_datetime(company.get("createdAt")),
-                    updated_at=parse_hubspot_datetime(company.get("updatedAt")),
-                    # API fields
+                    created_at=created_time,
+                    updated_at=updated_time,
+                    company_id=company["id"],
+                    company_name=company_name,
+                    created_time=created_time,
+                    updated_time=updated_time,
                     domain=cleaned_properties.get("domain"),
                     properties=cleaned_properties,
                     archived=company.get("archived", False),
+                    web_url_value=self._build_record_url("0-2", company["id"]),
                 )
 
     async def _generate_deal_entities(
@@ -512,18 +550,22 @@ class HubspotSource(BaseSource):
                 # Get deal name
                 deal_name = cleaned_properties.get("dealname") or f"Deal {deal['id']}"
 
+                created_time = parse_hubspot_datetime(deal.get("createdAt")) or datetime.utcnow()
+                updated_time = parse_hubspot_datetime(deal.get("updatedAt")) or created_time
                 yield HubspotDealEntity(
-                    # Base fields
                     entity_id=deal["id"],
                     breadcrumbs=[],
                     name=deal_name,
-                    created_at=parse_hubspot_datetime(deal.get("createdAt")),
-                    updated_at=parse_hubspot_datetime(deal.get("updatedAt")),
-                    # API fields
-                    deal_name=cleaned_properties.get("dealname"),
+                    created_at=created_time,
+                    updated_at=updated_time,
+                    deal_id=deal["id"],
+                    deal_name=deal_name,
+                    created_time=created_time,
+                    updated_time=updated_time,
                     amount=self._safe_float_conversion(cleaned_properties.get("amount")),
                     properties=cleaned_properties,
                     archived=deal.get("archived", False),
+                    web_url_value=self._build_record_url("0-3", deal["id"]),
                 )
 
     async def _generate_ticket_entities(
@@ -580,18 +622,25 @@ class HubspotSource(BaseSource):
                 # Get ticket name (from subject)
                 ticket_name = cleaned_properties.get("subject") or f"Ticket {ticket['id']}"
 
+                created_time = parse_hubspot_datetime(ticket.get("createdAt")) or datetime.utcnow()
+                updated_time = (
+                    parse_hubspot_datetime(ticket.get("updatedAt")) or created_time
+                )
                 yield HubspotTicketEntity(
-                    # Base fields
                     entity_id=ticket["id"],
                     breadcrumbs=[],
                     name=ticket_name,
-                    created_at=parse_hubspot_datetime(ticket.get("createdAt")),
-                    updated_at=parse_hubspot_datetime(ticket.get("updatedAt")),
-                    # API fields
+                    created_at=created_time,
+                    updated_at=updated_time,
+                    ticket_id=ticket["id"],
+                    ticket_name=ticket_name,
+                    created_time=created_time,
+                    updated_time=updated_time,
                     subject=cleaned_properties.get("subject"),
                     content=cleaned_properties.get("content"),
                     properties=cleaned_properties,
                     archived=ticket.get("archived", False),
+                    web_url_value=self._build_record_url("0-5", ticket["id"]),
                 )
 
     async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
@@ -601,6 +650,7 @@ class HubspotSource(BaseSource):
             HubSpot entities: Contacts, Companies, Deals, and Tickets.
         """
         async with self.http_client() as client:
+            await self._ensure_portal_id(client)
             # Yield contact entities
             async for contact_entity in self._generate_contact_entities(client):
                 yield contact_entity

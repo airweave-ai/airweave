@@ -38,17 +38,32 @@ async def list(
     limit: int = Query(
         100, description="Maximum number of collections to return (1-1000)", le=1000, ge=1
     ),
+    search: str = Query(None, description="Search term to filter by name or readable_id"),
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
 ) -> List[schemas.Collection]:
-    """List all collections that belong to your organization."""
+    """List all collections that belong to your organization with optional search filtering.
+
+    Collections are always sorted by creation date (newest first).
+    """
     collections = await crud.collection.get_multi(
         db,
         ctx=ctx,
         skip=skip,
         limit=limit,
+        search_query=search,
     )
     return collections
+
+
+@router.get("/count", response_model=int)
+async def count(
+    search: str = Query(None, description="Search term to filter by name or readable_id"),
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+) -> int:
+    """Get total count of collections for the organization with optional search filtering."""
+    return await crud.collection.count(db, ctx=ctx, search_query=search)
 
 
 @router.post("/", response_model=schemas.Collection)

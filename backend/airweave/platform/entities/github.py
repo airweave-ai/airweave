@@ -12,6 +12,8 @@ References:
 from datetime import datetime
 from typing import List, Optional
 
+from pydantic import computed_field
+
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity, CodeFileEntity, DeletionEntity
 
@@ -19,14 +21,27 @@ from airweave.platform.entities._base import BaseEntity, CodeFileEntity, Deletio
 class GitHubRepositoryEntity(BaseEntity):
     """Schema for GitHub repository entity."""
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the repository ID)
-    # - breadcrumbs (empty - repositories are top-level)
-    # - name (from repository name)
-    # - created_at (from created_at timestamp)
-    # - updated_at (from updated_at timestamp)
-
-    # API fields
+    repo_id: int = AirweaveField(
+        ...,
+        description="Unique GitHub repository ID",
+        is_entity_id=True,
+    )
+    name: str = AirweaveField(
+        ...,
+        description="Repository short name",
+        is_name=True,
+        embeddable=True,
+    )
+    created_at: datetime = AirweaveField(
+        ...,
+        description="Timestamp when the repository was created",
+        is_created_at=True,
+    )
+    updated_at: datetime = AirweaveField(
+        ...,
+        description="Timestamp when the repository was last updated",
+        is_updated_at=True,
+    )
     full_name: str = AirweaveField(
         ..., description="Full repository name including owner", embeddable=True
     )
@@ -56,18 +71,26 @@ class GitHubRepositoryEntity(BaseEntity):
         None, description="Number of open issues", embeddable=False
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Clickable GitHub page for the repository."""
+        return f"https://github.com/{self.full_name}"
+
 
 class GitHubDirectoryEntity(BaseEntity):
     """Schema for GitHub directory entity."""
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (repo_name/path)
-    # - breadcrumbs (repository and parent directory breadcrumbs)
-    # - name (directory name)
-    # - created_at (None - directories don't have timestamps)
-    # - updated_at (None - directories don't have timestamps)
-
-    # API fields
+    full_path: str = AirweaveField(
+        ...,
+        description="Repository-qualified directory path (owner/repo/path)",
+        is_entity_id=True,
+    )
+    name: str = AirweaveField(
+        ...,
+        description="Directory name",
+        is_name=True,
+        embeddable=True,
+    )
     path: str = AirweaveField(
         ..., description="Path of the directory within the repository", embeddable=True
     )
@@ -75,33 +98,37 @@ class GitHubDirectoryEntity(BaseEntity):
         ..., description="Name of the repository containing this directory", embeddable=True
     )
     repo_owner: str = AirweaveField(..., description="Owner of the repository", embeddable=True)
+    branch: str = AirweaveField(
+        ..., description="Branch that was traversed for this directory", embeddable=True
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Clickable URL for the directory."""
+        if not self.path:
+            return f"https://github.com/{self.repo_owner}/{self.repo_name}"
+        return (
+            f"https://github.com/{self.repo_owner}/{self.repo_name}/tree/{self.branch}/{self.path}"
+        )
 
 
 class GitHubCodeFileEntity(CodeFileEntity):
     """Schema for GitHub code file entity."""
 
-    # Base fields are inherited from BaseEntity:
-    # - entity_id (repo_name/path)
-    # - breadcrumbs (repository and directory breadcrumbs)
-    # - name (filename)
-    # - created_at (None - files have commit timestamps, not creation)
-    # - updated_at (None - files have commit timestamps, not update)
-
-    # File fields are inherited from FileEntity:
-    # - url (GitHub html_url)
-    # - size (file size in bytes)
-    # - file_type (determined from mime_type)
-    # - mime_type
-    # - local_path (None for code files - content is inline)
-
-    # Code file fields are inherited from CodeFileEntity:
-    # - repo_name (repository name)
-    # - path_in_repo (file path within repository)
-    # - repo_owner (repository owner)
-    # - language (programming language)
-    # - commit_id (SHA of the commit)
-
-    # API fields (GitHub-specific)
+    full_path: str = AirweaveField(
+        ...,
+        description="Repository-qualified file path (owner/repo/path)",
+        is_entity_id=True,
+    )
+    name: str = AirweaveField(
+        ...,
+        description="Filename",
+        is_name=True,
+        embeddable=True,
+    )
+    branch: str = AirweaveField(
+        ..., description="Branch that was traversed for this file", embeddable=True
+    )
     sha: str = AirweaveField(..., description="SHA hash of the file content", embeddable=False)
     line_count: Optional[int] = AirweaveField(
         None, description="Number of lines in the file", embeddable=False
@@ -109,6 +136,19 @@ class GitHubCodeFileEntity(CodeFileEntity):
     is_binary: bool = AirweaveField(
         False, description="Flag indicating if file is binary", embeddable=False
     )
+    html_url: Optional[str] = AirweaveField(
+        None,
+        description="HTML URL for viewing this content on GitHub.",
+        embeddable=False,
+        unhashable=True,
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Clickable URL for viewing the file on GitHub."""
+        if self.html_url:
+            return self.html_url
+        return f"https://github.com/{self.repo_owner}/{self.repo_name}/blob/{self.branch}/{self.path_in_repo}"
 
 
 class GithubRepoEntity(BaseEntity):
@@ -241,15 +281,17 @@ class GitHubFileDeletionEntity(DeletionEntity):
     and should be deleted from the destination.
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (repo_name/file_path - matches the original file's entity_id)
-    # - breadcrumbs (empty - deletion signals are top-level)
-    # - name (generic deletion name)
-    # - created_at (None - deletions don't have timestamps)
-    # - updated_at (None - deletions don't have timestamps)
-    # - deletion_status (inherited from DeletionEntity)
-
-    # API fields
+    full_path: str = AirweaveField(
+        ...,
+        description="Repository-qualified file path (owner/repo/path)",
+        is_entity_id=True,
+    )
+    deletion_label: str = AirweaveField(
+        ...,
+        description="Human-readable deletion label",
+        is_name=True,
+        embeddable=True,
+    )
     file_path: str = AirweaveField(
         ..., description="Path of the deleted file within the repository", embeddable=False
     )
@@ -257,3 +299,11 @@ class GitHubFileDeletionEntity(DeletionEntity):
         ..., description="Name of the repository containing the deleted file", embeddable=False
     )
     repo_owner: str = AirweaveField(..., description="Owner of the repository", embeddable=False)
+    branch: Optional[str] = AirweaveField(
+        None, description="Branch context for the deleted file", embeddable=False
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Fallback to repository page since deleted files have no direct URLs."""
+        return f"https://github.com/{self.repo_owner}/{self.repo_name}"

@@ -13,6 +13,8 @@ shared or per-resource metadata as needed.
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from pydantic import computed_field
+
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity
 
@@ -23,12 +25,21 @@ class StripeBalanceEntity(BaseEntity):
     https://stripe.com/docs/api/balance/balance_object
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id ("balance" - single resource)
-    # - breadcrumbs (empty - balance is top-level)
-    # - name ("Account Balance")
-    # - created_at (None - balance is a snapshot, not created)
-    # - updated_at (None - balance is a snapshot, not updated)
+    balance_id: str = AirweaveField(
+        ..., description="Synthetic ID for the balance snapshot.", is_entity_id=True
+    )
+    balance_name: str = AirweaveField(
+        ..., description="Display label for this balance snapshot.", embeddable=True, is_name=True
+    )
+    snapshot_time: datetime = AirweaveField(
+        ..., description="Timestamp when the balance snapshot was taken.", is_created_at=True
+    )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="Dashboard URL for viewing the balance.",
+        embeddable=False,
+        unhashable=True,
+    )
 
     # API fields
     available: List[Dict[str, Any]] = AirweaveField(
@@ -55,6 +66,11 @@ class StripeBalanceEntity(BaseEntity):
         False, description="Whether this balance is in live mode (vs test mode)", embeddable=False
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Dashboard URL for the balance snapshot."""
+        return self.web_url_value or ""
+
 
 class StripeBalanceTransactionEntity(BaseEntity):
     """Schema for Stripe Balance Transaction resource.
@@ -62,12 +78,21 @@ class StripeBalanceTransactionEntity(BaseEntity):
     https://stripe.com/docs/api/balance_transactions
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (transaction ID)
-    # - breadcrumbs (empty - transactions are top-level)
-    # - name (from description or "Transaction {id}")
-    # - created_at (from created timestamp)
-    # - updated_at (None - transactions don't update)
+    transaction_id: str = AirweaveField(
+        ..., description="Stripe ID of the balance transaction.", is_entity_id=True
+    )
+    transaction_name: str = AirweaveField(
+        ..., description="Display name of the transaction.", embeddable=True, is_name=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the transaction was created.", is_created_at=True
+    )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="Dashboard URL for viewing the transaction.",
+        embeddable=False,
+        unhashable=True,
+    )
 
     # API fields
     amount: Optional[int] = AirweaveField(
@@ -107,6 +132,11 @@ class StripeBalanceTransactionEntity(BaseEntity):
         None, description="Transaction type (e.g., 'charge', 'refund', 'payout')", embeddable=True
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Dashboard URL for the balance transaction."""
+        return self.web_url_value or ""
+
 
 class StripeChargeEntity(BaseEntity):
     """Schema for Stripe Charge entities.
@@ -114,12 +144,22 @@ class StripeChargeEntity(BaseEntity):
     https://stripe.com/docs/api/charges
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (charge ID)
-    # - breadcrumbs (empty - charges are top-level)
-    # - name (from description or "Charge {id}")
-    # - created_at (from created timestamp)
-    # - updated_at (None - charges don't update)
+    charge_id: str = AirweaveField(..., description="Stripe charge ID.", is_entity_id=True)
+    charge_name: str = AirweaveField(
+        ..., description="Display name of the charge.", embeddable=True, is_name=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the charge was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="Last activity timestamp for the charge.", is_updated_at=True
+    )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="Dashboard URL for the charge.",
+        embeddable=False,
+        unhashable=True,
+    )
 
     # API fields
     amount: Optional[int] = AirweaveField(
@@ -153,6 +193,11 @@ class StripeChargeEntity(BaseEntity):
         embeddable=False,
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Dashboard URL for the charge."""
+        return self.web_url_value or ""
+
 
 class StripeCustomerEntity(BaseEntity):
     """Schema for Stripe Customer entities.
@@ -160,12 +205,22 @@ class StripeCustomerEntity(BaseEntity):
     https://stripe.com/docs/api/customers
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (customer ID)
-    # - breadcrumbs (empty - customers are top-level)
-    # - name (from name field or email)
-    # - created_at (from created timestamp)
-    # - updated_at (None - customers don't have update timestamp)
+    customer_id: str = AirweaveField(..., description="Stripe customer ID.", is_entity_id=True)
+    customer_name: str = AirweaveField(
+        ..., description="Display name of the customer.", embeddable=True, is_name=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the customer was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="Timestamp of the latest update.", is_updated_at=True
+    )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="Dashboard URL for the customer.",
+        embeddable=False,
+        unhashable=True,
+    )
 
     # API fields
     email: Optional[str] = AirweaveField(
@@ -199,6 +254,11 @@ class StripeCustomerEntity(BaseEntity):
         embeddable=False,
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Dashboard URL for the customer."""
+        return self.web_url_value or ""
+
 
 class StripeEventEntity(BaseEntity):
     """Schema for Stripe Event resource.
@@ -206,12 +266,19 @@ class StripeEventEntity(BaseEntity):
     https://stripe.com/docs/api/events
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (event ID)
-    # - breadcrumbs (empty - events are top-level)
-    # - name (from event_type)
-    # - created_at (from created timestamp)
-    # - updated_at (None - events don't update)
+    event_id: str = AirweaveField(..., description="Stripe event ID.", is_entity_id=True)
+    event_name: str = AirweaveField(
+        ..., description="Display name of the event.", embeddable=True, is_name=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the event was created.", is_created_at=True
+    )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="Dashboard URL for the event.",
+        embeddable=False,
+        unhashable=True,
+    )
 
     # API fields
     event_type: Optional[str] = AirweaveField(
@@ -239,6 +306,11 @@ class StripeEventEntity(BaseEntity):
         embeddable=False,
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Dashboard URL for the event."""
+        return self.web_url_value or ""
+
 
 class StripeInvoiceEntity(BaseEntity):
     """Schema for Stripe Invoice entities.
@@ -246,12 +318,22 @@ class StripeInvoiceEntity(BaseEntity):
     https://stripe.com/docs/api/invoices
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (invoice ID)
-    # - breadcrumbs (empty - invoices are top-level)
-    # - name (from number or "Invoice {id}")
-    # - created_at (from created timestamp)
-    # - updated_at (None - invoices don't have update timestamp)
+    invoice_id: str = AirweaveField(..., description="Stripe invoice ID.", is_entity_id=True)
+    invoice_name: str = AirweaveField(
+        ..., description="Display name of the invoice.", embeddable=True, is_name=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the invoice was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="When the invoice was last updated.", is_updated_at=True
+    )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="Dashboard URL for the invoice.",
+        embeddable=False,
+        unhashable=True,
+    )
 
     # API fields
     customer_id: Optional[str] = AirweaveField(
@@ -289,6 +371,11 @@ class StripeInvoiceEntity(BaseEntity):
         embeddable=False,
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Dashboard URL for the invoice."""
+        return self.web_url_value or ""
+
 
 class StripePaymentIntentEntity(BaseEntity):
     """Schema for Stripe PaymentIntent entities.
@@ -296,12 +383,24 @@ class StripePaymentIntentEntity(BaseEntity):
     https://stripe.com/docs/api/payment_intents
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (payment intent ID)
-    # - breadcrumbs (empty - payment intents are top-level)
-    # - name (from description or "Payment Intent {id}")
-    # - created_at (from created timestamp)
-    # - updated_at (None - payment intents don't have update timestamp)
+    payment_intent_id: str = AirweaveField(
+        ..., description="Stripe payment intent ID.", is_entity_id=True
+    )
+    payment_intent_name: str = AirweaveField(
+        ..., description="Display name of the payment intent.", embeddable=True, is_name=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the payment intent was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="Last update timestamp for the payment intent.", is_updated_at=True
+    )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="Dashboard URL for the payment intent.",
+        embeddable=False,
+        unhashable=True,
+    )
 
     # API fields
     amount: Optional[int] = AirweaveField(
@@ -329,6 +428,11 @@ class StripePaymentIntentEntity(BaseEntity):
         embeddable=False,
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Dashboard URL for the payment intent."""
+        return self.web_url_value or ""
+
 
 class StripePaymentMethodEntity(BaseEntity):
     """Schema for Stripe PaymentMethod resource.
@@ -336,12 +440,21 @@ class StripePaymentMethodEntity(BaseEntity):
     https://stripe.com/docs/api/payment_methods
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (payment method ID)
-    # - breadcrumbs (empty - payment methods are top-level)
-    # - name (from type or "Payment Method {id}")
-    # - created_at (from created timestamp)
-    # - updated_at (None - payment methods don't have update timestamp)
+    payment_method_id: str = AirweaveField(
+        ..., description="Stripe payment method ID.", is_entity_id=True
+    )
+    payment_method_name: str = AirweaveField(
+        ..., description="Display name of the payment method.", embeddable=True, is_name=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the payment method was created.", is_created_at=True
+    )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="Dashboard URL for the payment method.",
+        embeddable=False,
+        unhashable=True,
+    )
 
     # API fields
     type: Optional[str] = AirweaveField(
@@ -370,6 +483,11 @@ class StripePaymentMethodEntity(BaseEntity):
         embeddable=False,
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Dashboard URL for the payment method."""
+        return self.web_url_value or ""
+
 
 class StripePayoutEntity(BaseEntity):
     """Schema for Stripe Payout resource.
@@ -377,12 +495,22 @@ class StripePayoutEntity(BaseEntity):
     https://stripe.com/docs/api/payouts
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (payout ID)
-    # - breadcrumbs (empty - payouts are top-level)
-    # - name (from description or "Payout {id}")
-    # - created_at (from created timestamp)
-    # - updated_at (None - payouts don't have update timestamp)
+    payout_id: str = AirweaveField(..., description="Stripe payout ID.", is_entity_id=True)
+    payout_name: str = AirweaveField(
+        ..., description="Display name of the payout.", embeddable=True, is_name=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the payout was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="Last update timestamp for the payout.", is_updated_at=True
+    )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="Dashboard URL for the payout.",
+        embeddable=False,
+        unhashable=True,
+    )
 
     # API fields
     amount: Optional[int] = AirweaveField(
@@ -421,6 +549,11 @@ class StripePayoutEntity(BaseEntity):
         embeddable=False,
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Dashboard URL for the payout."""
+        return self.web_url_value or ""
+
 
 class StripeRefundEntity(BaseEntity):
     """Schema for Stripe Refund resource.
@@ -428,12 +561,19 @@ class StripeRefundEntity(BaseEntity):
     https://stripe.com/docs/api/refunds
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (refund ID)
-    # - breadcrumbs (empty - refunds are top-level)
-    # - name ("Refund {id}")
-    # - created_at (from created timestamp)
-    # - updated_at (None - refunds don't have update timestamp)
+    refund_id: str = AirweaveField(..., description="Stripe refund ID.", is_entity_id=True)
+    refund_name: str = AirweaveField(
+        ..., description="Display name of the refund.", embeddable=True, is_name=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the refund was created.", is_created_at=True
+    )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="Dashboard URL for the refund.",
+        embeddable=False,
+        unhashable=True,
+    )
 
     # API fields
     amount: Optional[int] = AirweaveField(
@@ -469,6 +609,11 @@ class StripeRefundEntity(BaseEntity):
         embeddable=False,
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Dashboard URL for the refund."""
+        return self.web_url_value or ""
+
 
 class StripeSubscriptionEntity(BaseEntity):
     """Schema for Stripe Subscription entities.
@@ -476,12 +621,24 @@ class StripeSubscriptionEntity(BaseEntity):
     https://stripe.com/docs/api/subscriptions
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (subscription ID)
-    # - breadcrumbs (empty - subscriptions are top-level)
-    # - name ("Subscription {id}")
-    # - created_at (from created timestamp)
-    # - updated_at (None - subscriptions don't have update timestamp)
+    subscription_id: str = AirweaveField(
+        ..., description="Stripe subscription ID.", is_entity_id=True
+    )
+    subscription_name: str = AirweaveField(
+        ..., description="Display name of the subscription.", embeddable=True, is_name=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the subscription was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="Last update timestamp for the subscription.", is_updated_at=True
+    )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="Dashboard URL for the subscription.",
+        embeddable=False,
+        unhashable=True,
+    )
 
     # API fields
     customer_id: Optional[str] = AirweaveField(
@@ -515,3 +672,8 @@ class StripeSubscriptionEntity(BaseEntity):
         description="Set of key-value pairs attached to the subscription",
         embeddable=False,
     )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Dashboard URL for the subscription."""
+        return self.web_url_value or ""

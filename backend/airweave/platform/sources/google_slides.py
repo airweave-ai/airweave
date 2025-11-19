@@ -15,6 +15,7 @@ Reference:
     https://developers.google.com/drive/api/v3/reference/files
 """
 
+from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
@@ -88,6 +89,16 @@ class GoogleSlidesSource(BaseSource):
         instance.include_shared = bool(config.get("include_shared", True))
 
         return instance
+
+    @staticmethod
+    def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
+        """Parse RFC3339 timestamps into aware datetime objects."""
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
 
     # -----------------------
     # HTTP helpers
@@ -255,12 +266,17 @@ class GoogleSlidesSource(BaseSource):
                 f"?mimeType=application/pdf"
             )
 
-            # Parse timestamps (keep as strings for flexibility)
-            created_time = file_data.get("createdTime")
-            modified_time = file_data.get("modifiedTime")
-            modified_by_me_time = file_data.get("modifiedByMeTime")
-            viewed_by_me_time = file_data.get("viewedByMeTime")
-            shared_with_me_time = file_data.get("sharedWithMeTime")
+            created_time = self._parse_datetime(file_data.get("createdTime"))
+            modified_time = self._parse_datetime(file_data.get("modifiedTime"))
+            modified_by_me_time = self._parse_datetime(file_data.get("modifiedByMeTime"))
+            viewed_by_me_time = self._parse_datetime(file_data.get("viewedByMeTime"))
+            shared_with_me_time = self._parse_datetime(file_data.get("sharedWithMeTime"))
+
+            # Ensure required timestamps are present
+            now = datetime.utcnow()
+            fallback_modified = modified_time or created_time or now
+            created_time = created_time or fallback_modified
+            modified_time = fallback_modified
 
             # Prepare name with .pdf extension for file processing
             pres_name = file_data.get("name", "Untitled Presentation")
@@ -269,21 +285,21 @@ class GoogleSlidesSource(BaseSource):
             else:
                 pres_name_with_ext = pres_name
 
+            size_value = int(file_data.get("size") or 0)
+            title_value = file_data.get("name") or "Untitled Presentation"
+
             return GoogleSlidesPresentationEntity(
-                # Base fields
-                entity_id=file_id,
                 breadcrumbs=[],
                 name=pres_name_with_ext,
                 created_at=created_time,
                 updated_at=modified_time,
-                # File fields
                 url=download_url,
-                size=file_data.get("size", 0),
+                size=size_value,
                 file_type="google_slides",
-                mime_type="application/pdf",  # Standard PDF export
-                local_path=None,  # Will be set after download
-                # API fields
-                title=file_data.get("name", "Untitled Presentation"),
+                mime_type="application/pdf",
+                local_path=None,
+                presentation_id=file_id,
+                title=title_value,
                 description=file_data.get("description"),
                 starred=file_data.get("starred", False),
                 trashed=file_data.get("trashed", False),
@@ -301,9 +317,7 @@ class GoogleSlidesSource(BaseSource):
                 modified_by_me_time=modified_by_me_time,
                 viewed_by_me_time=viewed_by_me_time,
                 version=file_data.get("version"),
-                export_mime_type="application/pdf",  # Standard PDF export
-                # Set download_url for the export URL
-                download_url=download_url,
+                export_mime_type="application/pdf",
             )
 
         except Exception as e:

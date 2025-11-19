@@ -60,6 +60,21 @@ class GitLabSource(BaseSource):
 
     BASE_URL = "https://gitlab.com/api/v4"
 
+    @staticmethod
+    def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
+        """Parse GitLab ISO8601 timestamps into aware datetimes."""
+        if not value:
+            return None
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+    @classmethod
+    def _require_datetime(cls, value: Optional[str], field_name: str) -> datetime:
+        """Parse a required timestamp, raising if it's missing."""
+        parsed = cls._parse_datetime(value)
+        if parsed is None:
+            raise ValueError(f"GitLab response missing required datetime '{field_name}'.")
+        return parsed
+
     @classmethod
     async def create(
         cls, access_token: str, config: Optional[Dict[str, Any]] = None
@@ -260,21 +275,14 @@ class GitLabSource(BaseSource):
         user_data = await self._get_with_auth(client, url)
 
         return GitLabUserEntity(
-            # Base fields
-            entity_id=str(user_data["id"]),
             breadcrumbs=[],
+            user_id=user_data["id"],
             name=user_data["name"],
-            created_at=(
-                datetime.fromisoformat(user_data["created_at"].replace("Z", "+00:00"))
-                if user_data.get("created_at")
-                else None
-            ),
-            updated_at=None,  # Users don't have update timestamp
-            # API fields
+            created_at=self._require_datetime(user_data.get("created_at"), "user.created_at"),
             username=user_data["username"],
             state=user_data["state"],
             avatar_url=user_data.get("avatar_url"),
-            web_url=user_data["web_url"],
+            profile_url=user_data.get("web_url"),
             bio=user_data.get("bio"),
             location=user_data.get("location"),
             public_email=user_data.get("public_email"),
@@ -299,17 +307,18 @@ class GitLabSource(BaseSource):
         project_data = await self._get_with_auth(client, url)
 
         return GitLabProjectEntity(
-            # Base fields
-            entity_id=str(project_data["id"]),
             breadcrumbs=[],
+            project_id=project_data["id"],
             name=project_data["name"],
-            created_at=datetime.fromisoformat(project_data["created_at"].replace("Z", "+00:00")),
-            updated_at=(
-                datetime.fromisoformat(project_data["last_activity_at"].replace("Z", "+00:00"))
-                if project_data.get("last_activity_at")
-                else None
+            created_at=self._require_datetime(
+                project_data.get("created_at"), "project.created_at"
             ),
-            # API fields
+            last_activity_at=self._require_datetime(
+                project_data.get("last_activity_at")
+                or project_data.get("updated_at")
+                or project_data.get("created_at"),
+                "project.last_activity_at",
+            ),
             path=project_data["path"],
             path_with_namespace=project_data["path_with_namespace"],
             description=project_data.get("description"),
@@ -322,7 +331,7 @@ class GitLabSource(BaseSource):
             open_issues_count=project_data.get("open_issues_count", 0),
             archived=project_data.get("archived", False),
             empty_repo=project_data.get("empty_repo", False),
-            url=project_data["web_url"],
+            web_url_value=project_data.get("web_url"),
         )
 
     async def _get_project_issues(
@@ -343,28 +352,24 @@ class GitLabSource(BaseSource):
 
         for issue in issues:
             yield GitLabIssueEntity(
-                # Base fields
-                entity_id=f"{project_id}/issues/{issue['iid']}",
                 breadcrumbs=project_breadcrumbs,
-                name=issue["title"],
-                created_at=datetime.fromisoformat(issue["created_at"].replace("Z", "+00:00")),
-                updated_at=datetime.fromisoformat(issue["updated_at"].replace("Z", "+00:00")),
-                # API fields
+                issue_id=issue["id"],
                 title=issue["title"],
+                created_at=self._require_datetime(issue.get("created_at"), "issue.created_at"),
+                updated_at=self._require_datetime(
+                    issue.get("updated_at") or issue.get("created_at"),
+                    "issue.updated_at",
+                ),
                 description=issue.get("description"),
                 state=issue["state"],
-                closed_at=(
-                    datetime.fromisoformat(issue["closed_at"].replace("Z", "+00:00"))
-                    if issue.get("closed_at")
-                    else None
-                ),
+                closed_at=self._parse_datetime(issue.get("closed_at")),
                 labels=issue.get("labels", []),
                 author=issue.get("author", {}),
                 assignees=issue.get("assignees", []),
                 milestone=issue.get("milestone"),
                 project_id=str(project_id),
                 iid=issue["iid"],
-                web_url=issue["web_url"],
+                web_url_value=issue.get("web_url"),
                 user_notes_count=issue.get("user_notes_count", 0),
                 upvotes=issue.get("upvotes", 0),
                 downvotes=issue.get("downvotes", 0),
@@ -388,26 +393,20 @@ class GitLabSource(BaseSource):
 
         for mr in merge_requests:
             yield GitLabMergeRequestEntity(
-                # Base fields
-                entity_id=f"{project_id}/merge_requests/{mr['iid']}",
                 breadcrumbs=project_breadcrumbs,
-                name=mr["title"],
-                created_at=datetime.fromisoformat(mr["created_at"].replace("Z", "+00:00")),
-                updated_at=datetime.fromisoformat(mr["updated_at"].replace("Z", "+00:00")),
-                # API fields
+                merge_request_id=mr["id"],
                 title=mr["title"],
+                created_at=self._require_datetime(
+                    mr.get("created_at"), "merge_request.created_at"
+                ),
+                updated_at=self._require_datetime(
+                    mr.get("updated_at") or mr.get("created_at"),
+                    "merge_request.updated_at",
+                ),
                 description=mr.get("description"),
                 state=mr["state"],
-                merged_at=(
-                    datetime.fromisoformat(mr["merged_at"].replace("Z", "+00:00"))
-                    if mr.get("merged_at")
-                    else None
-                ),
-                closed_at=(
-                    datetime.fromisoformat(mr["closed_at"].replace("Z", "+00:00"))
-                    if mr.get("closed_at")
-                    else None
-                ),
+                merged_at=self._parse_datetime(mr.get("merged_at")),
+                closed_at=self._parse_datetime(mr.get("closed_at")),
                 labels=mr.get("labels", []),
                 author=mr.get("author", {}),
                 assignees=mr.get("assignees", []),
@@ -417,7 +416,7 @@ class GitLabSource(BaseSource):
                 milestone=mr.get("milestone"),
                 project_id=str(project_id),
                 iid=mr["iid"],
-                web_url=mr["web_url"],
+                web_url_value=mr.get("web_url"),
                 merge_status=mr.get("merge_status", "unchecked"),
                 draft=mr.get("draft", False),
                 work_in_progress=mr.get("work_in_progress", False),
@@ -499,21 +498,22 @@ class GitLabSource(BaseSource):
                 if item_type == "tree":  # Directory
                     # Create directory entity
                     dir_entity = GitLabDirectoryEntity(
-                        # Base fields
-                        entity_id=f"{project_id}/{item_path}",
                         breadcrumbs=breadcrumbs.copy(),
-                        name=Path(item_path).name,
-                        created_at=None,  # Directories don't have timestamps
-                        updated_at=None,  # Directories don't have timestamps
-                        # API fields
+                        full_path=f"{project_id}/{item_path}",
+                        name=Path(item_path).name or item_path,
                         path=item_path,
                         project_id=str(project_id),
                         project_path=project_path,
-                        url=f"https://gitlab.com/{project_path}/-/tree/{branch}/{item_path}",
+                        branch=branch,
+                        web_url_value=f"https://gitlab.com/{project_path}/-/tree/{branch}/{item_path}",
                     )
 
                     # Create breadcrumb for this directory
-                    dir_breadcrumb = Breadcrumb(entity_id=dir_entity.entity_id)
+                    dir_breadcrumb = Breadcrumb(
+                        entity_id=dir_entity.full_path,
+                        name=dir_entity.name,
+                        entity_type=GitLabDirectoryEntity.__name__,
+                    )
 
                     # Yield the directory entity
                     yield dir_entity
@@ -609,14 +609,11 @@ class GitLabSource(BaseSource):
 
                 # Create file entity (without content field)
                 file_entity = GitLabCodeFileEntity(
-                    # Base fields
-                    entity_id=f"{project_id}/{file_path}",
                     breadcrumbs=breadcrumbs.copy(),
+                    full_path=f"{project_id}/{file_path}",
                     name=file_name,
-                    created_at=None,  # GitLab files don't have creation timestamp
-                    updated_at=None,  # GitLab files don't have update timestamp
-                    # File fields
-                    url=f"https://gitlab.com/{project_path}/-/blob/{branch}/{file_path}",
+                    branch=branch,
+                    url=f"https://gitlab.com/{project_path}/-/raw/{branch}/{file_path}",
                     size=file_size,
                     file_type=file_type,
                     mime_type=mime_type,
@@ -624,7 +621,7 @@ class GitLabSource(BaseSource):
                     # Code file fields
                     repo_name=project_path.split("/")[-1],
                     path_in_repo=file_path,
-                    repo_owner=project_path.split("/")[0],
+                    repo_owner="/".join(project_path.split("/")[:-1]) or project_path,
                     language=language,
                     commit_id=file_data["blob_id"],
                     # API fields (GitLab-specific)
@@ -632,6 +629,7 @@ class GitLabSource(BaseSource):
                     project_id=str(project_id),
                     project_path=project_path,
                     line_count=line_count,
+                    web_url_value=f"https://gitlab.com/{project_path}/-/blob/{branch}/{file_path}",
                 )
 
                 # Write content to disk for uniform file handling
@@ -704,12 +702,14 @@ class GitLabSource(BaseSource):
 
         self.logger.debug(f"Processing project {project.path_with_namespace} on branch {branch}")
 
+        project_id = str(project.project_id)
+
         # Traverse repository files if not empty
         if not project.empty_repo:
             try:
                 async for entity in self._traverse_repository(
                     client,
-                    project.entity_id,
+                    project_id,
                     project.path_with_namespace,
                     branch,
                     project_breadcrumbs,
@@ -723,7 +723,7 @@ class GitLabSource(BaseSource):
         # Get issues
         try:
             async for issue in self._get_project_issues(
-                client, project.entity_id, project_breadcrumbs
+                client, project_id, project_breadcrumbs
             ):
                 yield issue
         except Exception as e:
@@ -732,7 +732,7 @@ class GitLabSource(BaseSource):
         # Get merge requests
         try:
             async for mr in self._get_project_merge_requests(
-                client, project.entity_id, project_breadcrumbs
+                client, project_id, project_breadcrumbs
             ):
                 yield mr
         except Exception as e:
@@ -756,7 +756,11 @@ class GitLabSource(BaseSource):
             for project in projects:
                 yield project
 
-                project_breadcrumb = Breadcrumb(entity_id=project.entity_id)
+                project_breadcrumb = Breadcrumb(
+                    entity_id=str(project.project_id),
+                    name=project.name,
+                    entity_type=GitLabProjectEntity.__name__,
+                )
                 project_breadcrumbs = [project_breadcrumb]
 
                 # Process all entities within the project

@@ -236,10 +236,16 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ context }) =
                         </div>
                         {useExternalAuthProvider && (
                             <div className="pt-4 border-t">
-                                {isLoadingConnections ? <Loader2 className="animate-spin" /> :
-                                    authProviderConnections.length > 0 ? (
+                                {isLoadingConnections ? <Loader2 className="animate-spin" /> : (() => {
+                                    // Filter connections to only show providers supported by this source
+                                    const supportedAuthProviders = sourceDetails?.supported_auth_providers || [];
+                                    const filteredConnections = authProviderConnections.filter(
+                                        conn => supportedAuthProviders.includes(conn.short_name)
+                                    );
+                                    
+                                    return filteredConnections.length > 0 ? (
                                         <div className="space-y-2">
-                                            {authProviderConnections.map(conn => (
+                                            {filteredConnections.map(conn => (
                                                 <div
                                                     key={conn.id}
                                                     onClick={() => setSelectedAuthProviderConnection(conn)}
@@ -253,9 +259,13 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ context }) =
                                             ))}
                                         </div>
                                     ) : (
-                                        <p className="text-sm text-muted-foreground">No auth providers connected.</p>
-                                    )
-                                }
+                                        <p className="text-sm text-muted-foreground">
+                                            {authProviderConnections.length > 0 
+                                                ? "This source is not supported by your connected auth providers."
+                                                : "No auth providers connected."}
+                                        </p>
+                                    );
+                                })()}
                             </div>
                         )}
                     </div>

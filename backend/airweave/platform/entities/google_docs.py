@@ -9,7 +9,10 @@ References:
     https://developers.google.com/drive/api/guides/manage-downloads
 """
 
+from datetime import datetime
 from typing import Any, Dict, List, Optional
+
+from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import FileEntity
@@ -27,25 +30,26 @@ class GoogleDocsDocumentEntity(FileEntity):
         https://developers.google.com/drive/api/guides/manage-downloads
     """
 
-    # Base fields are inherited from BaseEntity:
-    # - entity_id (the Google Doc file ID)
-    # - breadcrumbs (empty - documents are top-level)
-    # - name (filename with .docx extension for processing)
-    # - created_at (from created_time)
-    # - updated_at (from modified_time)
-
-    # File fields are inherited from FileEntity:
-    # - url (web view link)
-    # - size (document size in bytes)
-    # - file_type (set to "google_doc")
-    # - mime_type (DOCX MIME type for export)
-    # - local_path (set after download)
-
-    # API fields (Google Docs/Drive-specific)
-    title: Optional[str] = AirweaveField(
-        None,
+    document_key: str = AirweaveField(
+        ...,
+        description="Stable Google Docs file ID.",
+        is_entity_id=True,
+    )
+    title: str = AirweaveField(
+        ...,
         description="Display title of the document (without .docx extension).",
         embeddable=True,
+        is_name=True,
+    )
+    created_timestamp: datetime = AirweaveField(
+        ...,
+        description="Document creation timestamp.",
+        is_created_at=True,
+    )
+    modified_timestamp: datetime = AirweaveField(
+        ...,
+        description="Last modification timestamp.",
+        is_updated_at=True,
     )
     description: Optional[str] = AirweaveField(
         None, description="Optional description of the document.", embeddable=True
@@ -64,7 +68,7 @@ class GoogleDocsDocumentEntity(FileEntity):
     shared: bool = AirweaveField(
         False, description="Whether the document is shared with others.", embeddable=True
     )
-    shared_with_me_time: Optional[Any] = AirweaveField(
+    shared_with_me_time: Optional[datetime] = AirweaveField(
         None, description="Time when this document was shared with the user.", embeddable=False
     )
     sharing_user: Optional[Dict[str, Any]] = AirweaveField(
@@ -87,16 +91,16 @@ class GoogleDocsDocumentEntity(FileEntity):
     icon_link: Optional[str] = AirweaveField(
         None, description="Link to the document's icon.", embeddable=False
     )
-    created_time: Optional[Any] = AirweaveField(
+    created_time: Optional[datetime] = AirweaveField(
         None, description="When the document was created.", embeddable=False
     )
-    modified_time: Optional[Any] = AirweaveField(
+    modified_time: Optional[datetime] = AirweaveField(
         None, description="When the document was last modified.", embeddable=False
     )
-    modified_by_me_time: Optional[Any] = AirweaveField(
+    modified_by_me_time: Optional[datetime] = AirweaveField(
         None, description="Last time the user modified the document.", embeddable=False
     )
-    viewed_by_me_time: Optional[Any] = AirweaveField(
+    viewed_by_me_time: Optional[datetime] = AirweaveField(
         None, description="Last time the user viewed the document.", embeddable=False
     )
     version: Optional[int] = AirweaveField(
@@ -107,3 +111,16 @@ class GoogleDocsDocumentEntity(FileEntity):
         description="MIME type used for exporting the document content (DOCX).",
         embeddable=False,
     )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="Direct link to the Google Docs editor.",
+        embeddable=False,
+        unhashable=True,
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Link to open the document in Google Docs."""
+        if self.web_url_value:
+            return self.web_url_value
+        return f"https://docs.google.com/document/d/{self.document_key}/edit"

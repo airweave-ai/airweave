@@ -226,13 +226,11 @@ class BoxSource(BaseSource):
                 return None
 
             return BoxUserEntity(
-                # Base fields
-                entity_id=user_data["id"],
+                user_id=user_data["id"],
                 breadcrumbs=[],
-                name=user_data.get("name", ""),
+                name=user_data.get("name", user_data.get("login", "")),
                 created_at=user_data.get("created_at"),
                 updated_at=user_data.get("modified_at"),
-                # API fields
                 login=user_data.get("login"),
                 status=user_data.get("status"),
                 job_title=user_data.get("job_title"),
@@ -271,13 +269,11 @@ class BoxSource(BaseSource):
         path_entries = path_collection_data.get("entries") or []
 
         return BoxFolderEntity(
-            # Base fields
-            entity_id=folder_data["id"],
+            folder_id=folder_data["id"],
             breadcrumbs=breadcrumbs,
             name=folder_data.get("name", ""),
             created_at=folder_data.get("created_at"),
             updated_at=folder_data.get("modified_at"),
-            # API fields
             description=folder_data.get("description"),
             size=folder_data.get("size"),
             path_collection=[
@@ -394,8 +390,11 @@ class BoxSource(BaseSource):
         folder_entity = self._create_folder_entity(folder_data, breadcrumbs)
         yield folder_entity
 
-        # Create breadcrumb for this folder
-        folder_breadcrumb = Breadcrumb(entity_id=folder_data["id"])
+        folder_breadcrumb = Breadcrumb(
+            entity_id=folder_entity.folder_id,
+            name=folder_entity.name,
+            entity_type="BoxFolderEntity",
+        )
         folder_breadcrumbs = [*breadcrumbs, folder_breadcrumb]
 
         # Generate collaborations for this folder (skip root folder - ID 0)
@@ -447,21 +446,17 @@ class BoxSource(BaseSource):
         else:
             file_type = "file"
 
-        # Create file entity
         file_entity = BoxFileEntity(
-            # Base fields
-            entity_id=file_data["id"],
+            file_id=file_data["id"],
             breadcrumbs=breadcrumbs,
             name=file_name,
             created_at=file_data.get("created_at"),
             updated_at=file_data.get("modified_at"),
-            # File fields
             url=f"{self.API_BASE}/files/{file_data['id']}/content",
             size=size,
             file_type=file_type,
             mime_type=mime_type,
-            local_path=None,  # Will be set after download
-            # API fields
+            local_path=None,
             description=file_data.get("description"),
             parent_folder_id=parent_folder_id,
             parent_folder_name=parent_folder_name,
@@ -530,8 +525,11 @@ class BoxSource(BaseSource):
                 # Still yield the file entity without processed content
                 yield file_entity
 
-        # Create breadcrumb for this file
-        file_breadcrumb = Breadcrumb(entity_id=file_data["id"])
+        file_breadcrumb = Breadcrumb(
+            entity_id=file_entity.file_id,
+            name=file_entity.name,
+            entity_type="BoxFileEntity",
+        )
         file_breadcrumbs = [*breadcrumbs, file_breadcrumb]
 
         # Generate comments for this file
@@ -585,13 +583,11 @@ class BoxSource(BaseSource):
                     comment_name = f"Comment {comment['id']}"
 
                 yield BoxCommentEntity(
-                    # Base fields
-                    entity_id=comment["id"],
+                    comment_id=comment["id"],
                     breadcrumbs=breadcrumbs,
                     name=comment_name,
                     created_at=comment.get("created_at"),
                     updated_at=comment.get("modified_at"),
-                    # API fields
                     file_id=file_id,
                     file_name=file_name,
                     message=message,
@@ -645,13 +641,11 @@ class BoxSource(BaseSource):
                 collab_name = f"{role} - {accessible_name}"
 
                 yield BoxCollaborationEntity(
-                    # Base fields
-                    entity_id=collab["id"],
+                    collaboration_id=collab["id"],
                     breadcrumbs=breadcrumbs,
                     name=collab_name,
                     created_at=collab.get("created_at"),
                     updated_at=collab.get("modified_at"),
-                    # API fields
                     role=role,
                     accessible_by=accessible_by,
                     item=collab.get("item", {}),

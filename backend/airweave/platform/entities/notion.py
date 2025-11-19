@@ -3,6 +3,8 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from pydantic import computed_field
+
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity, FileEntity
@@ -11,15 +13,18 @@ from airweave.platform.entities._base import BaseEntity, FileEntity
 class NotionDatabaseEntity(BaseEntity):
     """Schema for a Notion database."""
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the database ID)
-    # - breadcrumbs
-    # - name (from title)
-    # - created_at (from created_time)
-    # - updated_at (from last_edited_time)
-
-    # API fields
-    title: str = AirweaveField(..., description="The title of the database", embeddable=True)
+    database_id: str = AirweaveField(
+        ..., description="The ID of the database.", is_entity_id=True
+    )
+    title: str = AirweaveField(
+        ..., description="The title of the database", embeddable=True, is_name=True
+    )
+    created_time: Optional[datetime] = AirweaveField(
+        None, description="When the database was created.", is_created_at=True
+    )
+    updated_time: Optional[datetime] = AirweaveField(
+        None, description="When the database was last edited.", is_updated_at=True
+    )
     description: str = AirweaveField(
         default="", description="The description of the database", embeddable=True
     )
@@ -45,7 +50,14 @@ class NotionDatabaseEntity(BaseEntity):
     is_inline: bool = AirweaveField(
         default=False, description="Whether the database is inline", embeddable=False
     )
-    url: str = AirweaveField(..., description="The URL of the database", embeddable=False)
+    url: str = AirweaveField(
+        ..., description="The URL of the database", embeddable=False, unhashable=True
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Browser URL for the database."""
+        return self.url or ""
 
     def model_post_init(self, __context) -> None:
         """Post-init hook to generate properties_text from schema."""
@@ -91,21 +103,22 @@ class NotionDatabaseEntity(BaseEntity):
 class NotionPageEntity(BaseEntity):
     """Schema for a Notion page with aggregated content."""
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the page ID)
-    # - breadcrumbs
-    # - name (from title)
-    # - created_at (from created_time)
-    # - updated_at (from last_edited_time)
-
-    # API fields
+    page_id: str = AirweaveField(..., description="The ID of the page.", is_entity_id=True)
     parent_id: str = AirweaveField(..., description="The ID of the parent", embeddable=False)
     parent_type: str = AirweaveField(
         ...,
         description="The type of the parent (workspace, page_id, database_id, etc.)",
         embeddable=False,
     )
-    title: str = AirweaveField(..., description="The title of the page", embeddable=True)
+    title: str = AirweaveField(
+        ..., description="The title of the page", embeddable=True, is_name=True
+    )
+    created_time: Optional[datetime] = AirweaveField(
+        None, description="When the page was created.", is_created_at=True
+    )
+    updated_time: Optional[datetime] = AirweaveField(
+        None, description="When the page was last edited.", is_updated_at=True
+    )
     content: Optional[str] = AirweaveField(
         default=None, description="Full aggregated content", embeddable=True
     )
@@ -133,13 +146,20 @@ class NotionPageEntity(BaseEntity):
     in_trash: bool = AirweaveField(
         default=False, description="Whether the page is in trash", embeddable=False
     )
-    url: str = AirweaveField(..., description="The URL of the page", embeddable=False)
+    url: str = AirweaveField(
+        ..., description="The URL of the page", embeddable=False, unhashable=True
+    )
     content_blocks_count: int = AirweaveField(
         default=0, description="Number of blocks processed", embeddable=False
     )
     max_depth: int = AirweaveField(
         default=0, description="Maximum nesting depth of blocks", embeddable=False
     )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Browser URL for the page."""
+        return self.url or ""
 
     # Lazy mechanics removed; eager-only entity
 
@@ -206,8 +226,18 @@ class NotionPropertyEntity(BaseEntity):
     # - updated_at (None - properties don't have timestamps)
 
     # API fields
-    property_id: str = AirweaveField(..., description="The ID of the property", embeddable=False)
-    property_name: str = AirweaveField(..., description="The name of the property", embeddable=True)
+    property_key: str = AirweaveField(
+        ...,
+        description="Stable unique identifier for the property entity.",
+        embeddable=False,
+        is_entity_id=True,
+    )
+    property_id: str = AirweaveField(
+        ..., description="The ID of the property", embeddable=False
+    )
+    property_name: str = AirweaveField(
+        ..., description="The name of the property", embeddable=True, is_name=True
+    )
     property_type: str = AirweaveField(..., description="The type of the property", embeddable=True)
     page_id: str = AirweaveField(
         ..., description="The ID of the page this property belongs to", embeddable=False
@@ -245,14 +275,29 @@ class NotionFileEntity(FileEntity):
     # - local_path (set after download)
 
     # API fields (Notion-specific)
-    file_id: str = AirweaveField(..., description="ID of the file in Notion", embeddable=False)
+    file_id: str = AirweaveField(
+        ..., description="ID of the file in Notion", embeddable=False, is_entity_id=True
+    )
+    file_name: str = AirweaveField(
+        ..., description="Display name of the file", embeddable=True, is_name=True
+    )
     expiry_time: Optional[datetime] = AirweaveField(
         None, description="When the file URL expires (for Notion-hosted files)", embeddable=False
     )
     caption: str = AirweaveField(default="", description="The caption of the file", embeddable=True)
+    web_url_value: Optional[str] = AirweaveField(
+        None, description="Link to view/download the file.", embeddable=False, unhashable=True
+    )
 
     def needs_refresh(self) -> bool:
         """Check if the file URL needs to be refreshed (for Notion-hosted files)."""
         if self.file_type == "file" and self.expiry_time:
             return utc_now_naive() >= self.expiry_time
         return False
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Browser URL for the file."""
+        if self.web_url_value:
+            return self.web_url_value
+        return self.url

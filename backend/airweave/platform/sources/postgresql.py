@@ -15,7 +15,6 @@ import asyncpg
 from airweave.core.pg_field_catalog_service import overwrite_catalog
 from airweave.core.shared_models import RateLimitLevel
 from airweave.db.session import get_db_context
-from airweave.platform.cursors.postgresql import PostgreSQLCursor
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, PolymorphicEntity
 from airweave.platform.sources._base import BaseSource
@@ -51,9 +50,7 @@ PG_TYPE_MAP = {
     auth_config_class="PostgreSQLAuthConfig",
     config_class="PostgreSQLConfig",
     labels=["Database"],
-    supports_continuous=True,
     rate_limit_level=RateLimitLevel.ORG,
-    cursor_class=PostgreSQLCursor,
 )
 class PostgreSQLSource(BaseSource):
     """PostgreSQL source connector integrates with PostgreSQL databases to extract structured data.
@@ -64,11 +61,25 @@ class PostgreSQLSource(BaseSource):
     and provides comprehensive access to relational data with proper type mapping and relationships.
     """
 
+    _RESERVED_ENTITY_FIELDS = {
+        "entity_id",
+        "breadcrumbs",
+        "name",
+        "created_at",
+        "updated_at",
+        "textual_representation",
+        "airweave_system_metadata",
+        "schema_name",
+        "table_name",
+        "primary_key_columns",
+    }
+
     def __init__(self):
         """Initialize the PostgreSQL source."""
         super().__init__()  # Initialize BaseSource to get cursor support
         self.conn: Optional[asyncpg.Connection] = None
         self.entity_classes: Dict[str, Type[PolymorphicEntity]] = {}
+        self.column_field_mappings: Dict[str, Dict[str, str]] = {}
 
     @classmethod
     async def create(
@@ -88,139 +99,22 @@ class PostgreSQLSource(BaseSource):
             config: Optional configuration parameters for the PostgreSQL source.
         """
         instance = cls()
-        instance.config = credentials.model_dump()
+        instance.config = (
+            credentials.model_dump() if hasattr(credentials, "model_dump") else dict(credentials)
+        )
         return instance
-
-    def get_default_cursor_field(self) -> Optional[str]:
-        """Get the default cursor field for PostgreSQL source.
-
-        PostgreSQL doesn't have a universal default cursor field since it depends
-        on the table schema. Common patterns are 'updated_at' or 'modified_at'.
-
-        Returns:
-            None - user must specify cursor field for PostgreSQL
-        """
-        # PostgreSQL requires user to specify cursor field
-        # since table schemas vary widely
-
-        # NOTE: the fact that the source does not have a default cursor field
-        # indicates that it should be set by the user
-
-        return None
-
-    def validate_cursor_field(self, cursor_field: str) -> None:
-        """Validate if the given cursor field is valid for PostgreSQL.
-
-        For PostgreSQL, we accept a JSON structure that maps tables to cursor fields.
-        Format: {"schema.table": "cursor_column", ...}
-        Or a single field name to use for all tables.
-
-        Args:
-            cursor_field: The cursor field specification to validate
-        """
-        # PostgreSQL accepts either:
-        # 1. A single column name (applies to all tables)
-        # 2. A JSON string mapping tables to columns
-        if cursor_field.startswith("{") and cursor_field.endswith("}"):
-            # Validate JSON format
-            try:
-                import json
-
-                cursor_map = json.loads(cursor_field)
-                if not isinstance(cursor_map, dict):
-                    raise ValueError(
-                        "Cursor field mapping must be a JSON object like: "
-                        '{"public.users": "updated_at", "public.orders": "modified_at"}'
-                    )
-            except json.JSONDecodeError as e:
-                raise ValueError(f"Invalid JSON in cursor field mapping: {e}") from e
-        # Otherwise accept any string as a column name
 
     def _get_table_key(self, schema: str, table: str) -> str:
         """Generate consistent table key for identification."""
         return f"{schema}.{table}"
 
-    def _get_cursor_data(self) -> Dict[str, Any]:
-        """Get cursor data from cursor.
-
-        Returns:
-            Cursor data dictionary, empty dict if no cursor exists
-        """
-        if self.cursor:
-            return self.cursor.cursor_data or {}
-        return {}
-
-    def _get_cursor_field_for_table(self, schema: str, table: str) -> Optional[str]:
-        """Get the cursor field to use for a specific table.
-
-        Args:
-            schema: Schema name
-            table: Table name
-
-        Returns:
-            The cursor field for this table, or None if not specified
-        """
-        cursor_field = self.get_effective_cursor_field()
-        if not cursor_field:
-            return None
-
-        # Check if cursor_field is a JSON mapping
-        if cursor_field.startswith("{") and cursor_field.endswith("}"):
-            try:
-                import json
-
-                cursor_map = json.loads(cursor_field)
-                # Try exact match first
-                table_key = self._get_table_key(schema, table)
-                if table_key in cursor_map:
-                    return cursor_map[table_key]
-                # Fall back to table name without schema
-                if table in cursor_map:
-                    return cursor_map[table]
-            except json.JSONDecodeError:
-                # If JSON parsing fails, treat as single field
-                pass
-
-        # Single field applies to all tables
-        return cursor_field
-
-    def _update_cursor_data(self, schema: str, table: str, cursor_value: Any):
-        """Update cursor data with the latest cursor value for a table.
-
-        Args:
-            schema: Schema name
-            table: Table name
-            cursor_value: Latest cursor value from the table
-        """
-        if not self.cursor:
-            return
-
-        # Store cursor value per table
-        cursor_key = self._get_table_key(schema, table)
-        if not self.cursor.cursor_data:
-            self.cursor.cursor_data = {}
-
-        # Convert datetime to ISO format string for JSON serialization
-        if isinstance(cursor_value, datetime):
-            cursor_value = cursor_value.isoformat()
-
-        # Store the maximum value seen for this table
-        existing_value = self.cursor.cursor_data.get(cursor_key)
-
-        # Handle comparison when existing value might be a string (ISO format)
-        if existing_value is not None:
-            # Convert existing string back to datetime for comparison if needed
-            if isinstance(existing_value, str) and isinstance(cursor_value, str):
-                # Both are ISO strings, compare as strings (works for ISO format)
-                should_update = cursor_value > existing_value
-            else:
-                should_update = cursor_value > existing_value
-        else:
-            should_update = True
-
-        if should_update:
-            self.cursor.cursor_data[cursor_key] = cursor_value
-            self.logger.debug(f"Updated cursor for table '{cursor_key}': {cursor_value}")
+    def _normalize_model_field_name(self, column_name: str) -> str:
+        """Normalize column names to avoid collisions with entity base fields."""
+        if column_name == "id":
+            return "id_"
+        if column_name in self._RESERVED_ENTITY_FIELDS:
+            return f"{column_name}_field"
+        return column_name
 
     async def _connect(self) -> None:
         """Establish database connection with timeout and error handling."""
@@ -401,11 +295,26 @@ class PostgreSQLSource(BaseSource):
             Dynamically created entity class for the table/view
         """
         table_info = await self._get_table_info(schema, table)
+        table_key = self._get_table_key(schema, table)
+
+        normalized_columns: Dict[str, Dict[str, Any]] = {}
+        column_mapping: Dict[str, str] = {}
+        for original_name, column_meta in table_info["columns"].items():
+            base_name = self._normalize_model_field_name(original_name)
+            candidate = base_name
+            suffix = 1
+            while candidate in normalized_columns:
+                suffix += 1
+                candidate = f"{base_name}_{suffix}"
+            normalized_columns[candidate] = column_meta
+            column_mapping[original_name] = candidate
+
+        self.column_field_mappings[table_key] = column_mapping
 
         return PolymorphicEntity.create_table_entity_class(
             table_name=table,
             schema_name=schema,
-            columns=table_info["columns"],
+            columns=normalized_columns,
             primary_keys=table_info["primary_keys"],
         )
 
@@ -482,21 +391,24 @@ class PostgreSQLSource(BaseSource):
         return tables
 
     async def _convert_field_values(
-        self, data: Dict[str, Any], model_fields: Dict[str, Any]
+        self, data: Dict[str, Any], model_fields: Dict[str, Any], table_key: str
     ) -> Dict[str, Any]:
         """Convert field values to the expected types based on the entity model.
 
         Args:
             data: The raw data dictionary from the database record
             model_fields: The model fields from the entity class
+            table_key: Unique identifier for the table to resolve column mappings
 
         Returns:
             Dict with processed field values matching the expected types
         """
         processed_data = {}
+        column_mapping = self.column_field_mappings.get(table_key, {})
         for field_name, field_value in data.items():
-            # Handle the case where the field name is 'id' in the database
-            model_field_name = field_name + "_" if field_name == "id" else field_name
+            model_field_name = column_mapping.get(field_name)
+            if not model_field_name:
+                model_field_name = self._normalize_model_field_name(field_name)
 
             # Skip if the field doesn't exist in the model
             if model_field_name not in model_fields:
@@ -607,69 +519,39 @@ class PostgreSQLSource(BaseSource):
         table: str,
         entity_class: Type[PolymorphicEntity],
         primary_keys: List[str],
-        cursor_field: Optional[str] = None,
-    ) -> tuple[BaseEntity, Any]:
+    ) -> BaseEntity:
         """Process a database record into an entity."""
         data = dict(record)
-        cursor_value = data.get(cursor_field) if cursor_field else None
 
         self._parse_json_fields(data)
 
         entity_id = self._generate_entity_id(schema, table, data, primary_keys)
         entity_id = self._ensure_entity_id_length(entity_id, schema, table)
 
-        processed_data = await self._convert_field_values(data, entity_class.model_fields)
-
-        # Create entity with all base fields
-        return (
-            entity_class(
-                entity_id=entity_id,
-                breadcrumbs=[],  # Tables are top-level
-                name=table,
-                created_at=None,
-                updated_at=None,
-                **processed_data,
-            ),
-            cursor_value,
+        table_key = self._get_table_key(schema, table)
+        processed_data = await self._convert_field_values(
+            data, entity_class.model_fields, table_key
         )
 
-    def _prepare_cursor_value(self, last_cursor_value: Any) -> Any:
-        """Convert ISO string back to datetime for PostgreSQL query if needed."""
-        if last_cursor_value and isinstance(last_cursor_value, str):
-            try:
-                # Try to parse as ISO datetime string
-                from datetime import datetime
+        entity_name_field = self.column_field_mappings.get(table_key, {}).get("name")
+        entity_name = processed_data.get(entity_name_field) if entity_name_field else None
+        if not entity_name:
+            entity_name = table
 
-                return datetime.fromisoformat(last_cursor_value)
-            except (ValueError, TypeError):
-                # If not a datetime string, use as-is (could be an integer ID, etc.)
-                pass
-        return last_cursor_value
-
-    def _log_sync_type(
-        self, schema: str, table: str, cursor_field: Optional[str], last_cursor_value: Any
-    ):
-        """Log the type of sync being performed for a table."""
-        table_key = self._get_table_key(schema, table)
-        if cursor_field and last_cursor_value:
-            self.logger.info(
-                f"Table {table_key}: INCREMENTAL sync using field '{cursor_field}' "
-                f"(changes after {last_cursor_value})"
-            )
-        elif cursor_field:
-            self.logger.info(
-                f"Table {table_key}: FULL sync (will track '{cursor_field}' for next sync)"
-            )
-        else:
-            self.logger.debug(f"Table {table_key}: FULL sync (no cursor field configured)")
+        return entity_class(
+            entity_id=entity_id,
+            breadcrumbs=[],  # Tables are top-level
+            name=entity_name,
+            created_at=None,
+            updated_at=None,
+            **processed_data,
+        )
 
     async def _process_table_with_streaming(  # noqa: C901
         self,
         schema: str,
         table: str,
         entity_class: Type[PolymorphicEntity],
-        cursor_field: Optional[str],
-        last_cursor_value: Any,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Process table using server-side cursor for efficient streaming.
 
@@ -680,8 +562,6 @@ class PostgreSQLSource(BaseSource):
             schema: Schema name
             table: Table name
             entity_class: Entity class for the table
-            cursor_field: Field to track for cursor updates
-            last_cursor_value: Last cursor value for incremental sync
 
         Yields:
             Entities from the table
@@ -689,7 +569,6 @@ class PostgreSQLSource(BaseSource):
         table_key = self._get_table_key(schema, table)
 
         total_records = 0
-        max_cursor_value = None
         primary_keys = entity_class.model_fields["primary_key_columns"].default_factory()
 
         try:
@@ -700,28 +579,10 @@ class PostgreSQLSource(BaseSource):
             buffer = []
             BUFFER_SIZE = 1000  # Process in chunks for progress updates
 
-            # Build query for server-side cursor
-            if cursor_field and last_cursor_value:
-                # Incremental: SELECT with WHERE clause
-                query = f"""
-                    SELECT * FROM "{schema}"."{table}"
-                    WHERE "{cursor_field}" > $1
-                    ORDER BY "{cursor_field}"
-                """
-                query_args = [last_cursor_value]
-            elif cursor_field:
-                # Full sync with cursor ordering
-                query = f"""
-                    SELECT * FROM "{schema}"."{table}"
-                    ORDER BY "{cursor_field}"
-                """
-                query_args = []
-            else:
-                # Full sync without ordering
-                query = f"""
-                    SELECT * FROM "{schema}"."{table}"
-                """
-                query_args = []
+            query = f"""
+                SELECT * FROM "{schema}"."{table}"
+            """
+            query_args: list[Any] = []
 
             # Use server-side cursor with prefetch for efficient streaming
             # This streams data from PostgreSQL without loading all into memory
@@ -730,14 +591,9 @@ class PostgreSQLSource(BaseSource):
 
                 async for record in cursor:
                     # Process record to entity using consolidated logic
-                    entity, cursor_value = await self._process_record_to_entity(
-                        record, schema, table, entity_class, primary_keys, cursor_field
+                    entity = await self._process_record_to_entity(
+                        record, schema, table, entity_class, primary_keys
                     )
-
-                    # Track max cursor value
-                    if cursor_value is not None:
-                        if max_cursor_value is None or cursor_value > max_cursor_value:
-                            max_cursor_value = cursor_value
 
                     # Buffer entity
                     buffer.append(entity)
@@ -761,10 +617,6 @@ class PostgreSQLSource(BaseSource):
                 f"Table {table_key}: Completed server-side cursor stream, {total_records} records"
             )
 
-            # Update cursor with max value
-            if cursor_field and max_cursor_value is not None:
-                self._update_cursor_data(schema, table, max_cursor_value)
-
         except Exception as e:
             self.logger.error(f"Server-side cursor failed for {table_key}: {e}")
             # Re-raise the exception since we don't have a fallback
@@ -775,9 +627,8 @@ class PostgreSQLSource(BaseSource):
         self,
         schema: str,
         table: str,
-        cursor_data: Dict[str, Any],
     ) -> AsyncGenerator[BaseEntity, None]:
-        """Process a single table with incremental support using server-side cursor.
+        """Process a single table using server-side cursor streaming.
 
         Uses PostgreSQL's server-side cursor for efficient streaming of data,
         maintaining transaction consistency and avoiding OFFSET penalties.
@@ -785,7 +636,6 @@ class PostgreSQLSource(BaseSource):
         Args:
             schema: Schema name
             table: Table name
-            cursor_data: Cursor data from previous syncs
 
         Yields:
             Entities from the table
@@ -797,21 +647,10 @@ class PostgreSQLSource(BaseSource):
             self.entity_classes[table_key] = await self._create_entity_class(schema, table)
 
         entity_class = self.entity_classes[table_key]
-        cursor_field = self._get_cursor_field_for_table(schema, table)
-
-        # Get and prepare last cursor value
-        last_cursor_value = cursor_data.get(table_key) if cursor_data else None
-        last_cursor_value = self._prepare_cursor_value(last_cursor_value)
-
-        # Log sync type
-        self._log_sync_type(schema, table, cursor_field, last_cursor_value)
-
         # Always use server-side cursor for efficient streaming
         # This provides consistent snapshot isolation and better performance
         self.logger.info(f"Using server-side cursor for streaming {table_key}")
-        async for entity in self._process_table_with_streaming(
-            schema, table, entity_class, cursor_field, last_cursor_value
-        ):
+        async for entity in self._process_table_with_streaming(schema, table, entity_class):
             yield entity
 
     async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
@@ -824,18 +663,6 @@ class PostgreSQLSource(BaseSource):
             self.logger.info(
                 f"Found {len(tables)} table(s) to sync in schema '{schema}': {', '.join(tables)}"
             )
-
-            # Get cursor data for incremental sync
-            cursor_data = self._get_cursor_data()
-
-            # Log sync type
-            if cursor_data:
-                self.logger.info(
-                    f"Found cursor data with {len(cursor_data)} table(s). "
-                    f"Will perform INCREMENTAL sync for changed records."
-                )
-            else:
-                self.logger.info("No cursor data found. Will perform FULL sync (first sync).")
 
             # Persist field catalog snapshot for this connection before streaming
             try:
@@ -865,7 +692,7 @@ class PostgreSQLSource(BaseSource):
                 # Check connection health before processing each table
                 await self._ensure_connection()
 
-                async for entity in self._process_table(schema, table, cursor_data):
+                async for entity in self._process_table(schema, table):
                     yield entity
 
             self.logger.info(f"Successfully completed sync for all {len(tables)} table(s)")

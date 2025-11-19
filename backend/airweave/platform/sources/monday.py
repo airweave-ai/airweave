@@ -5,6 +5,7 @@ Groups, Columns, Items, Subitems, and Updates. Uses a stepwise pattern to issue
 GraphQL queries for retrieving these objects.
 """
 
+from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
@@ -55,6 +56,11 @@ class MondaySource(BaseSource):
     """
 
     GRAPHQL_ENDPOINT = "https://api.monday.com/v2"
+
+    def __init__(self) -> None:
+        """Initialize Monday source with account metadata cache."""
+        super().__init__()
+        self._account_slug: Optional[str] = None
 
     @classmethod
     async def create(
@@ -139,6 +145,67 @@ class MondaySource(BaseSource):
                 self.logger.error(f"Variables: {variables}")
             raise
 
+    async def _ensure_account_slug(self, client: httpx.AsyncClient) -> Optional[str]:
+        """Fetch and cache the Monday account slug for building UI URLs."""
+        if self._account_slug:
+            return self._account_slug
+
+        slug_query = """
+        query {
+          me {
+            account {
+              slug
+            }
+          }
+        }
+        """
+        try:
+            data = await self._graphql_query(client, slug_query)
+            account = ((data.get("me") or {}).get("account")) or {}
+            slug = account.get("slug")
+            if slug:
+                self._account_slug = slug
+            else:
+                self.logger.warning("Monday account slug not available; web URLs will be disabled.")
+        except Exception as exc:  # pragma: no cover - network call
+            self.logger.warning("Failed to fetch Monday account slug: %s", exc)
+        return self._account_slug
+
+    def _build_board_url(self, board_id: str) -> Optional[str]:
+        if not self._account_slug:
+            return None
+        return f"https://{self._account_slug}.monday.com/boards/{board_id}"
+
+    def _build_group_url(self, board_id: str, group_id: str) -> Optional[str]:
+        board_url = self._build_board_url(board_id)
+        if not board_url:
+            return None
+        return f"{board_url}?groupIds={group_id}"
+
+    def _build_item_url(self, board_id: str, item_id: str) -> Optional[str]:
+        board_url = self._build_board_url(board_id)
+        if not board_url:
+            return None
+        return f"{board_url}/pulses/{item_id}"
+
+    def _build_update_url(
+        self, board_id: str, item_id: Optional[str], update_id: str
+    ) -> Optional[str]:
+        if item_id:
+            item_url = self._build_item_url(board_id, item_id)
+            if not item_url:
+                return None
+            return f"{item_url}?postId={update_id}"
+        return self._build_board_url(board_id)
+
+    def _parse_datetime(self, value: Optional[str]) -> Optional[datetime]:
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+
     async def _generate_board_entities(
         self, client: httpx.AsyncClient
     ) -> AsyncGenerator[MondayBoardEntity, None]:
@@ -172,14 +239,22 @@ class MondaySource(BaseSource):
         boards = result.get("boards", [])
 
         for board in boards:
+            board_id = str(board["id"])
+            board_name = board.get("name") or f"Board {board_id}"
+            updated_time = self._parse_datetime(board.get("updated_at"))
+            board_url = self._build_board_url(board_id)
             yield MondayBoardEntity(
                 # Base fields
-                entity_id=str(board["id"]),
+                entity_id=board_id,
                 breadcrumbs=[],
-                name=board.get("name"),
-                created_at=None,  # Boards don't have creation timestamp in API
-                updated_at=board.get("updated_at"),
+                name=board_name,
+                created_at=None,
+                updated_at=updated_time,
                 # API fields
+                board_id=board_id,
+                board_name=board_name,
+                created_time=None,
+                updated_time=updated_time,
                 board_kind=board.get("type"),
                 columns=board.get("columns", []),
                 description=None,  # Not provided in this query
@@ -187,6 +262,7 @@ class MondaySource(BaseSource):
                 owners=board.get("owners", []),
                 state=board.get("state"),
                 workspace_id=str(board.get("workspace_id")) if board.get("workspace_id") else None,
+                web_url_value=board_url,
             )
 
     async def _generate_group_entities(
@@ -216,20 +292,27 @@ class MondaySource(BaseSource):
 
         groups = boards_data[0].get("groups", [])
         for group in groups:
+            native_group_id = str(group["id"])
+            group_title = group.get("title") or f"Group {native_group_id}"
+            # Use a composite entity_id for uniqueness but keep the native Monday
+            # group ID in the API-facing group_id field for downstream consumers.
+            group_entity_id = f"{board_id}-{native_group_id}"
+            group_url = self._build_group_url(board_id, native_group_id)
             yield MondayGroupEntity(
                 # Base fields
-                entity_id=f"{board_id}-{group['id']}",
+                entity_id=group_entity_id,
                 breadcrumbs=[board_breadcrumb],
-                name=group.get("title", f"Group {group['id']}"),
+                name=group_title,
                 created_at=None,  # Groups don't have creation timestamp
                 updated_at=None,  # Groups don't have update timestamp
                 # API fields
-                group_id=group["id"],
+                group_id=native_group_id,
                 board_id=board_id,
-                title=group.get("title"),
+                title=group_title,
                 color=group.get("color"),
                 archived=group.get("archived", False),
                 items=[],
+                web_url_value=group_url,
             )
 
     async def _generate_column_entities(
@@ -261,21 +344,26 @@ class MondaySource(BaseSource):
 
         columns = boards_data[0].get("columns", [])
         for col in columns:
+            native_column_id = str(col["id"])
+            column_entity_id = f"{board_id}-{native_column_id}"
+            column_title = col.get("title") or f"Column {native_column_id}"
+            column_url = self._build_board_url(board_id)
             yield MondayColumnEntity(
                 # Base fields
-                entity_id=f"{board_id}-{col['id']}",
+                entity_id=column_entity_id,
                 breadcrumbs=[board_breadcrumb],
-                name=col.get("title", f"Column {col['id']}"),
+                name=column_title,
                 created_at=None,  # Columns don't have creation timestamp
                 updated_at=None,  # Columns don't have update timestamp
                 # API fields
-                column_id=col["id"],
+                column_id=native_column_id,
                 board_id=board_id,
-                title=col.get("title"),
+                title=column_title,
                 column_type=col.get("type"),
                 description=None,  # Not provided in this query
                 settings_str=None,  # Not provided in this query
                 archived=False,  # Not provided in this query
+                web_url_value=column_url,
             )
 
     async def _generate_item_entities(
@@ -326,20 +414,29 @@ class MondaySource(BaseSource):
         items = items_page.get("items", [])
 
         for item in items:
+            item_id = str(item["id"])
+            item_name = item.get("name") or f"Item {item_id}"
+            created_time = self._parse_datetime(item.get("created_at")) or datetime.utcnow()
+            updated_time = self._parse_datetime(item.get("updated_at")) or created_time
+            item_url = self._build_item_url(board_id, item_id)
             yield MondayItemEntity(
                 # Base fields
-                entity_id=str(item["id"]),
+                entity_id=item_id,
                 breadcrumbs=[board_breadcrumb],
-                name=item.get("name"),
-                created_at=item.get("created_at"),
-                updated_at=item.get("updated_at"),
+                name=item_name,
+                created_at=created_time,
+                updated_at=updated_time,
                 # API fields
-                item_id=str(item["id"]),
+                item_id=item_id,
+                item_name=item_name,
+                created_time=created_time,
+                updated_time=updated_time,
                 board_id=board_id,
                 group_id=item["group"]["id"] if item["group"] else None,
                 state=item.get("state"),
                 column_values=item.get("column_values", []),
                 creator=item.get("creator"),
+                web_url_value=item_url,
             )
 
     async def _generate_subitem_entities(
@@ -388,21 +485,31 @@ class MondaySource(BaseSource):
 
         subitems = items_data[0].get("subitems", [])
         for subitem in subitems:
+            subitem_id = str(subitem["id"])
+            subitem_name = subitem.get("name") or f"Subitem {subitem_id}"
+            created_time = self._parse_datetime(subitem.get("created_at")) or datetime.utcnow()
+            updated_time = self._parse_datetime(subitem.get("updated_at")) or created_time
+            board_id = str(subitem["board"]["id"]) if subitem.get("board") else ""
+            subitem_url = self._build_item_url(board_id, subitem_id) if board_id else None
             yield MondaySubitemEntity(
                 # Base fields
-                entity_id=str(subitem["id"]),
+                entity_id=subitem_id,
                 breadcrumbs=item_breadcrumbs,
-                name=subitem.get("name"),
-                created_at=subitem.get("created_at"),
-                updated_at=subitem.get("updated_at"),
+                name=subitem_name,
+                created_at=created_time,
+                updated_at=updated_time,
                 # API fields
-                subitem_id=str(subitem["id"]),
+                subitem_id=subitem_id,
+                subitem_name=subitem_name,
+                created_time=created_time,
+                updated_time=updated_time,
                 parent_item_id=parent_item_id,
-                board_id=str(subitem["board"]["id"]) if subitem.get("board") else "",
+                board_id=board_id,
                 group_id=subitem["group"]["id"] if subitem.get("group") else None,
                 state=subitem.get("state"),
                 column_values=subitem.get("column_values", []),
                 creator=subitem.get("creator"),
+                web_url_value=subitem_url,
             )
 
     async def _generate_update_entities(
@@ -476,21 +583,26 @@ class MondaySource(BaseSource):
             update_name = body[:50] + "..." if len(body) > 50 else body
             if not update_name:
                 update_name = f"Update {upd['id']}"
+            created_time = self._parse_datetime(upd.get("created_at")) or datetime.utcnow()
+            update_url = self._build_update_url(board_id, item_id, str(upd["id"]))
 
             yield MondayUpdateEntity(
                 # Base fields
                 entity_id=str(upd["id"]),
                 breadcrumbs=item_breadcrumbs or [],
                 name=update_name,
-                created_at=upd.get("created_at"),
+                created_at=created_time,
                 updated_at=None,  # Updates don't have update timestamp
                 # API fields
                 update_id=str(upd["id"]),
+                update_preview=update_name,
+                created_time=created_time,
                 item_id=item_id,
                 board_id=board_id if item_id is None else None,
                 creator_id=str(upd["creator"]["id"]) if upd.get("creator") else None,
                 body=body,
                 assets=upd.get("assets", []),
+                web_url_value=update_url,
             )
 
     async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
@@ -506,10 +618,16 @@ class MondaySource(BaseSource):
         """
         async with self.http_client() as client:
             # 1) Boards
+            await self._ensure_account_slug(client)
+
             async for board_entity in self._generate_board_entities(client):
                 yield board_entity
 
-                board_breadcrumb = Breadcrumb(entity_id=board_entity.entity_id)
+                board_breadcrumb = Breadcrumb(
+                    entity_id=board_entity.board_id,
+                    name=board_entity.board_name,
+                    entity_type=MondayBoardEntity.__name__,
+                )
 
                 # 2) Groups
                 async for group_entity in self._generate_group_entities(
@@ -529,7 +647,11 @@ class MondaySource(BaseSource):
                 ):
                     yield item_entity
 
-                    item_breadcrumb = Breadcrumb(entity_id=item_entity.entity_id)
+                    item_breadcrumb = Breadcrumb(
+                        entity_id=item_entity.item_id,
+                        name=item_entity.item_name,
+                        entity_type=MondayItemEntity.__name__,
+                    )
                     item_breadcrumbs = [board_breadcrumb, item_breadcrumb]
 
                     # 4a) Subitems for each item

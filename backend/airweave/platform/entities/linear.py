@@ -1,33 +1,32 @@
 """Linear entity schemas."""
 
+from datetime import datetime
 from typing import Any, Dict, List, Optional
+
+from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity, FileEntity
 
 
 class LinearIssueEntity(BaseEntity):
-    """Schema for Linear issue entities.
+    """Schema for Linear issue entities."""
 
-    This entity represents an issue from Linear, containing all relevant
-    metadata and content from the Linear API.
-
-    Reference:
-        https://developers.linear.app/docs/graphql/working-with-the-graphql-api
-    """
-
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the Linear issue ID)
-    # - breadcrumbs (team and optionally project breadcrumbs)
-    # - name (from title)
-    # - created_at (from createdAt timestamp)
-    # - updated_at (from updatedAt timestamp)
-
-    # API fields
-    identifier: str = AirweaveField(
-        ..., description="The unique identifier of the issue (e.g., 'ENG-123')", embeddable=True
+    issue_id: str = AirweaveField(
+        ..., description="Unique Linear ID of the issue.", is_entity_id=True
     )
-    title: str = AirweaveField(..., description="The title of the issue", embeddable=True)
+    identifier: str = AirweaveField(
+        ..., description="The unique identifier of the issue (e.g., 'ENG-123').", embeddable=True
+    )
+    title: str = AirweaveField(
+        ..., description="The title of the issue.", embeddable=True, is_name=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the issue was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="When the issue was last updated.", is_updated_at=True
+    )
     description: Optional[str] = AirweaveField(
         None, description="The description/content of the issue", embeddable=True
     )
@@ -58,9 +57,14 @@ class LinearIssueEntity(BaseEntity):
     assignee: Optional[str] = AirweaveField(
         None, description="Name of the user assigned to this issue, if any", embeddable=True
     )
-    url: Optional[str] = AirweaveField(
-        None, description="URL to view the issue in Linear", embeddable=False
+    web_url_value: Optional[str] = AirweaveField(
+        None, description="URL to view the issue in Linear.", embeddable=False, unhashable=True
     )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Browser URL for the issue."""
+        return self.web_url_value or ""
 
 
 class LinearAttachmentEntity(FileEntity):
@@ -87,14 +91,17 @@ class LinearAttachmentEntity(FileEntity):
     # - local_path (set after download)
 
     # API fields (Linear-specific)
+    attachment_id: str = AirweaveField(
+        ..., description="Unique identifier for the attachment.", is_entity_id=True
+    )
     issue_id: str = AirweaveField(
         ..., description="ID of the issue this attachment belongs to", embeddable=False
     )
     issue_identifier: str = AirweaveField(
         ..., description="Identifier of the issue (e.g., 'ENG-123')", embeddable=True
     )
-    title: Optional[str] = AirweaveField(
-        None, description="Title of the attachment", embeddable=True
+    title: str = AirweaveField(
+        ..., description="Title of the attachment", embeddable=True, is_name=True
     )
     subtitle: Optional[str] = AirweaveField(
         None, description="Subtitle of the attachment", embeddable=True
@@ -102,6 +109,16 @@ class LinearAttachmentEntity(FileEntity):
     source: Optional[Dict[str, Any]] = AirweaveField(
         None, description="Source information about the attachment", embeddable=False
     )
+    web_url_value: Optional[str] = AirweaveField(
+        None, description="Viewer URL for the attachment.", embeddable=False, unhashable=True
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Browser URL for the attachment (falls back to download URL)."""
+        if self.web_url_value:
+            return self.web_url_value
+        return self.url
 
 
 class LinearProjectEntity(BaseEntity):
@@ -122,6 +139,18 @@ class LinearProjectEntity(BaseEntity):
     # - updated_at (from updatedAt timestamp)
 
     # API fields
+    project_id: str = AirweaveField(
+        ..., description="Unique Linear ID of the project.", is_entity_id=True
+    )
+    project_name: str = AirweaveField(
+        ..., description="Display name of the project.", embeddable=True, is_name=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the project was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="When the project was last updated.", is_updated_at=True
+    )
     slug_id: str = AirweaveField(..., description="The project's unique URL slug", embeddable=True)
     description: Optional[str] = AirweaveField(
         None, description="The project's description", embeddable=True
@@ -156,9 +185,14 @@ class LinearProjectEntity(BaseEntity):
     lead: Optional[str] = AirweaveField(
         None, description="Name of the project lead, if any", embeddable=True
     )
-    url: Optional[str] = AirweaveField(
-        None, description="URL to view the project in Linear", embeddable=False
+    web_url_value: Optional[str] = AirweaveField(
+        None, description="URL to view the project in Linear", embeddable=False, unhashable=True
     )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Browser URL for the project."""
+        return self.web_url_value or ""
 
 
 class LinearTeamEntity(BaseEntity):
@@ -179,6 +213,18 @@ class LinearTeamEntity(BaseEntity):
     # - updated_at (from updatedAt timestamp)
 
     # API fields
+    team_id: str = AirweaveField(
+        ..., description="Unique Linear ID for the team.", is_entity_id=True
+    )
+    team_name: str = AirweaveField(
+        ..., description="Display name of the team.", embeddable=True, is_name=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the team was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="When the team was last updated.", is_updated_at=True
+    )
     key: str = AirweaveField(..., description="The team's unique key used in URLs", embeddable=True)
     description: Optional[str] = AirweaveField(
         None, description="The team's description", embeddable=True
@@ -200,9 +246,14 @@ class LinearTeamEntity(BaseEntity):
     issue_count: Optional[int] = AirweaveField(
         None, description="Number of issues in the team", embeddable=False
     )
-    url: Optional[str] = AirweaveField(
-        None, description="URL to view the team in Linear", embeddable=False
+    web_url_value: Optional[str] = AirweaveField(
+        None, description="URL to view the team in Linear", embeddable=False, unhashable=True
     )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Browser URL for the team."""
+        return self.web_url_value or ""
 
 
 class LinearCommentEntity(BaseEntity):
@@ -223,6 +274,16 @@ class LinearCommentEntity(BaseEntity):
     # - updated_at (from updatedAt timestamp)
 
     # API fields
+    comment_id: str = AirweaveField(..., description="Unique ID of the comment.", is_entity_id=True)
+    body_preview: str = AirweaveField(
+        ..., description="Preview of the comment body for display.", embeddable=True, is_name=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the comment was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="When the comment was last updated.", is_updated_at=True
+    )
     issue_id: str = AirweaveField(
         ..., description="ID of the issue this comment belongs to", embeddable=False
     )
@@ -248,9 +309,14 @@ class LinearCommentEntity(BaseEntity):
     project_name: Optional[str] = AirweaveField(
         None, description="Name of the project this comment belongs to, if any", embeddable=True
     )
-    url: Optional[str] = AirweaveField(
-        None, description="URL to view the comment in Linear", embeddable=False
+    web_url_value: Optional[str] = AirweaveField(
+        None, description="URL to view the comment in Linear", embeddable=False, unhashable=True
     )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Browser URL for the comment."""
+        return self.web_url_value or ""
 
 
 class LinearUserEntity(BaseEntity):
@@ -271,8 +337,20 @@ class LinearUserEntity(BaseEntity):
     # - updated_at (from updatedAt timestamp)
 
     # API fields
+    user_id: str = AirweaveField(
+        ..., description="Unique Linear ID for the user.", is_entity_id=True
+    )
     display_name: str = AirweaveField(
-        ..., description="The user's display name, unique within the organization", embeddable=True
+        ...,
+        description="The user's display name, unique within the organization.",
+        embeddable=True,
+        is_name=True,
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the user account was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="When the user account was last updated.", is_updated_at=True
     )
     email: str = AirweaveField(..., description="The user's email address", embeddable=True)
     avatar_url: Optional[str] = AirweaveField(
@@ -314,6 +392,11 @@ class LinearUserEntity(BaseEntity):
     team_names: Optional[List[str]] = AirweaveField(
         None, description="Names of the teams this user belongs to", embeddable=True
     )
-    url: Optional[str] = AirweaveField(
-        None, description="URL to view the user in Linear", embeddable=False
+    web_url_value: Optional[str] = AirweaveField(
+        None, description="URL to view the user in Linear", embeddable=False, unhashable=True
     )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Browser URL for the user."""
+        return self.web_url_value or ""

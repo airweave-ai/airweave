@@ -1,5 +1,6 @@
 """Todoist source implementation."""
 
+from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
@@ -83,6 +84,16 @@ class TodoistSource(BaseSource):
             # Re-raise other HTTP errors
             raise
 
+    @staticmethod
+    def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
+        """Parse Todoist ISO8601 timestamp strings into datetime objects."""
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+
     async def _generate_project_entities(
         self, client: httpx.AsyncClient
     ) -> AsyncGenerator[TodoistProjectEntity, None]:
@@ -97,14 +108,21 @@ class TodoistSource(BaseSource):
 
         # 'projects' should be a list of project objects
         for project in projects:
+            now = datetime.utcnow()
+            project_url = project.get("url")
             yield TodoistProjectEntity(
                 # Base fields
                 entity_id=project["id"],
                 breadcrumbs=[],
                 name=project["name"],
-                created_at=None,  # Projects don't have creation timestamp
-                updated_at=None,  # Projects don't have update timestamp
+                created_at=now,
+                updated_at=now,
                 # API fields
+                project_id=project["id"],
+                project_name=project["name"],
+                created_time=now,
+                updated_time=now,
+                web_url_value=project_url,
                 color=project.get("color"),
                 comment_count=project.get("comment_count", 0),
                 order=project.get("order", 0),
@@ -113,7 +131,7 @@ class TodoistSource(BaseSource):
                 is_inbox_project=project.get("is_inbox_project", False),
                 is_team_inbox=project.get("is_team_inbox", False),
                 view_style=project.get("view_style"),
-                url=project.get("url"),
+                url=project_url,
                 parent_id=project.get("parent_id"),
             )
 
@@ -134,14 +152,17 @@ class TodoistSource(BaseSource):
             return
 
         for section in sections:
+            now = datetime.utcnow()
             yield TodoistSectionEntity(
                 # Base fields
                 entity_id=section["id"],
                 breadcrumbs=[project_breadcrumb],
                 name=section["name"],
-                created_at=None,  # Sections don't have creation timestamp
-                updated_at=None,  # Sections don't have update timestamp
+                created_at=now,
+                updated_at=now,
                 # API fields
+                section_id=section["id"],
+                section_name=section["name"],
                 project_id=section["project_id"],
                 order=section.get("order", 0),
             )
@@ -198,15 +219,25 @@ class TodoistSource(BaseSource):
             if task.get("deadline"):
                 deadline_date = task["deadline"].get("date")
 
+            task_id = task["id"]
+            task_name = task.get("content") or f"Task {task_id}"
+            created_time = self._parse_datetime(task.get("created_at")) or datetime.utcnow()
+            updated_time = created_time
+            task_url = task.get("url")
+
             yield TodoistTaskEntity(
                 # Base fields
-                entity_id=task["id"],
+                entity_id=task_id,
                 breadcrumbs=breadcrumbs,
-                name=task["content"],
-                created_at=task.get("created_at"),
-                updated_at=None,  # Tasks don't have update timestamp
+                name=task_name,
+                created_at=created_time,
+                updated_at=updated_time,
                 # API fields
-                content=task["content"],
+                task_id=task_id,
+                content=task_name,
+                created_time=created_time,
+                updated_time=updated_time,
+                web_url_value=task_url,
                 description=task.get("description"),
                 comment_count=task.get("comment_count", 0),
                 is_completed=task.get("is_completed", False),
@@ -235,7 +266,7 @@ class TodoistSource(BaseSource):
                 deadline_date=deadline_date,
                 duration_amount=duration_amount,
                 duration_unit=duration_unit,
-                url=task.get("url"),
+                url=task_url,
             )
 
     async def _generate_comment_entities(
@@ -261,17 +292,20 @@ class TodoistSource(BaseSource):
             if not comment_name:
                 comment_name = f"Comment {comment['id']}"
 
+            posted_at_dt = self._parse_datetime(comment.get("posted_at")) or datetime.utcnow()
+
             yield TodoistCommentEntity(
                 # Base fields
                 entity_id=comment["id"],
                 breadcrumbs=task_breadcrumbs,
                 name=comment_name,
-                created_at=comment["posted_at"],
-                updated_at=None,  # Comments don't have update timestamp
+                created_at=posted_at_dt,
+                updated_at=posted_at_dt,
                 # API fields
+                comment_id=comment["id"],
                 task_id=str(comment.get("task_id") or ""),
                 content=content,
-                posted_at=comment["posted_at"],
+                posted_at=posted_at_dt,
             )
 
     async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
@@ -291,7 +325,11 @@ class TodoistSource(BaseSource):
                 yield project_entity
 
                 # Create a breadcrumb for this project
-                project_breadcrumb = Breadcrumb(entity_id=project_entity.entity_id)
+                project_breadcrumb = Breadcrumb(
+                    entity_id=project_entity.entity_id,
+                    name=project_entity.name,
+                    entity_type=TodoistProjectEntity.__name__,
+                )
 
                 # 2) Generate (and yield) all Sections for this project
                 async for section_entity in self._generate_section_entities(
@@ -316,7 +354,11 @@ class TodoistSource(BaseSource):
 
                 # 3) For each section, yield tasks that belong to it, plus comments
                 for section_data in sections:
-                    section_breadcrumb = Breadcrumb(entity_id=section_data["id"])
+                    section_breadcrumb = Breadcrumb(
+                        entity_id=section_data["id"],
+                        name=section_data.get("name", "Section"),
+                        entity_type=TodoistSectionEntity.__name__,
+                    )
                     project_section_breadcrumbs = [project_breadcrumb, section_breadcrumb]
 
                     async for task_entity in self._generate_task_entities(
@@ -328,7 +370,11 @@ class TodoistSource(BaseSource):
                     ):
                         yield task_entity
                         # generate comments for each task
-                        task_breadcrumb = Breadcrumb(entity_id=task_entity.entity_id)
+                        task_breadcrumb = Breadcrumb(
+                            entity_id=task_entity.entity_id,
+                            name=task_entity.name,
+                            entity_type=TodoistTaskEntity.__name__,
+                        )
                         async for comment_entity in self._generate_comment_entities(
                             client,
                             task_entity,
@@ -346,7 +392,11 @@ class TodoistSource(BaseSource):
                 ):
                     yield task_entity
                     # generate comments for each of these tasks as well
-                    task_breadcrumb = Breadcrumb(entity_id=task_entity.entity_id)
+                    task_breadcrumb = Breadcrumb(
+                        entity_id=task_entity.entity_id,
+                        name=task_entity.name,
+                        entity_type=TodoistTaskEntity.__name__,
+                    )
                     async for comment_entity in self._generate_comment_entities(
                         client,
                         task_entity,

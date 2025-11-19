@@ -38,6 +38,8 @@ export interface ErrorEvent extends BaseEvent {
     type: 'error';
     message: string;
     operation?: string;
+    transient?: boolean;
+    detail?: string;
 }
 
 export interface HeartbeatEvent extends BaseEvent {

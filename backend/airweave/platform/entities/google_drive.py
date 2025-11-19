@@ -12,7 +12,10 @@ References:
     https://developers.google.com/drive/api/v3/reference/files  (File)
 """
 
+from datetime import datetime
 from typing import Any, List, Optional
+
+from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity, DeletionEntity, FileEntity
@@ -26,14 +29,22 @@ class GoogleDriveDriveEntity(BaseEntity):
       https://developers.google.com/drive/api/v3/reference/drives
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the drive ID)
-    # - breadcrumbs
-    # - name
-    # - created_at (from created_time)
-    # - updated_at (None - drives don't have modified time)
-
-    # API fields
+    drive_id: str = AirweaveField(
+        ...,
+        description="Unique identifier for the shared drive.",
+        is_entity_id=True,
+    )
+    title: str = AirweaveField(
+        ...,
+        description="Display name of the shared drive.",
+        is_name=True,
+        embeddable=True,
+    )
+    created_time: Optional[datetime] = AirweaveField(
+        None,
+        description="Creation timestamp of the shared drive.",
+        is_created_at=True,
+    )
     kind: Optional[str] = AirweaveField(
         None,
         description='Identifies what kind of resource this is; typically "drive#drive".',
@@ -51,6 +62,11 @@ class GoogleDriveDriveEntity(BaseEntity):
         embeddable=False,
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Link to open the shared drive in Google Drive."""
+        return f"https://drive.google.com/drive/folders/{self.drive_id}"
+
 
 class GoogleDriveFileEntity(FileEntity):
     """Schema for a File resource (in a user's or shared drive).
@@ -59,21 +75,27 @@ class GoogleDriveFileEntity(FileEntity):
       https://developers.google.com/drive/api/v3/reference/files
     """
 
-    # Base fields are inherited from BaseEntity:
-    # - entity_id (the file ID)
-    # - breadcrumbs
-    # - name
-    # - created_at (from created_time)
-    # - updated_at (from modified_time)
-
-    # File fields are inherited from FileEntity:
-    # - url (download_url or export URL)
-    # - size (from file size in bytes)
-    # - file_type (determined from mime_type)
-    # - mime_type
-    # - local_path (set after download)
-
-    # API fields (Google Drive-specific)
+    file_id: str = AirweaveField(
+        ...,
+        description="Unique identifier for the file.",
+        is_entity_id=True,
+    )
+    title: str = AirweaveField(
+        ...,
+        description="Display title of the file.",
+        is_name=True,
+        embeddable=True,
+    )
+    created_time: datetime = AirweaveField(
+        ...,
+        description="Timestamp when the file was created.",
+        is_created_at=True,
+    )
+    modified_time: datetime = AirweaveField(
+        ...,
+        description="Timestamp when the file was last modified.",
+        is_updated_at=True,
+    )
     description: Optional[str] = AirweaveField(
         None, description="Optional description of the file.", embeddable=True
     )
@@ -99,12 +121,22 @@ class GoogleDriveFileEntity(FileEntity):
         None,
         description="Link for opening the file in a relevant Google editor or viewer.",
         embeddable=False,
+        unhashable=True,
     )
     icon_link: Optional[str] = AirweaveField(
         None, description="A static, far-reaching URL to the file's icon.", embeddable=False
     )
     md5_checksum: Optional[str] = AirweaveField(
         None, description="MD5 checksum for the content of the file.", embeddable=False
+    )
+    shared_with_me_time: Optional[datetime] = AirweaveField(
+        None, description="Time when this file was shared with the user.", embeddable=False
+    )
+    modified_by_me_time: Optional[datetime] = AirweaveField(
+        None, description="Last time the user modified the file.", embeddable=False
+    )
+    viewed_by_me_time: Optional[datetime] = AirweaveField(
+        None, description="Last time the user viewed the file.", embeddable=False
     )
 
     def __init__(self, **data):
@@ -120,19 +152,35 @@ class GoogleDriveFileEntity(FileEntity):
             data["size"] = str(data["size"])
         return data
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Link to open the file in Google Drive."""
+        if self.web_view_link:
+            return self.web_view_link
+        return f"https://drive.google.com/file/d/{self.file_id}/view"
+
 
 class GoogleDriveFileDeletionEntity(DeletionEntity):
-    """Deletion signal for a Google Drive file.
+    """Deletion signal for a Google Drive file."""
 
-    Emitted when the Drive Changes API reports a file was removed (deleted or access lost).
-    The `entity_id` matches the original file's ID so downstream deletion can target
-    the correct parent/children.
-    """
+    file_id: str = AirweaveField(
+        ...,
+        description="ID of the file that was deleted.",
+        is_entity_id=True,
+    )
+    label: str = AirweaveField(
+        ...,
+        description="Human-readable deletion label.",
+        is_name=True,
+        embeddable=True,
+    )
+    drive_id: Optional[str] = AirweaveField(
+        None, description="Drive identifier that contained the file.", embeddable=False
+    )
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the file ID)
-    # - breadcrumbs
-    # - name (generic deletion name)
-    # - created_at (None - deletions don't have timestamps)
-    # - updated_at (None - deletions don't have timestamps)
-    # - deletion_status (inherited from DeletionEntity)
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Fallback drive link for deleted files."""
+        if self.drive_id:
+            return f"https://drive.google.com/drive/folders/{self.drive_id}"
+        return "https://drive.google.com/drive/my-drive"

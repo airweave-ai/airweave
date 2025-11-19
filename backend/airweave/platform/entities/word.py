@@ -8,7 +8,10 @@ Reference:
   https://learn.microsoft.com/en-us/graph/api/driveitem-get-content
 """
 
+from datetime import datetime
 from typing import Any, Dict, Optional
+
+from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import FileEntity
@@ -27,27 +30,40 @@ class WordDocumentEntity(FileEntity):
         https://learn.microsoft.com/en-us/graph/api/resources/driveitem
     """
 
-    # Base fields are inherited from BaseEntity:
-    # - entity_id (the Word document ID)
-    # - breadcrumbs (empty - documents are top-level)
-    # - name (from filename with extension)
-    # - created_at (from created_datetime)
-    # - updated_at (from last_modified_datetime)
-
-    # File fields are inherited from FileEntity:
-    # - url (download URL)
-    # - size (file size in bytes)
-    # - file_type (set to "microsoft_word_doc")
-    # - mime_type (Word MIME type)
-    # - local_path (set after download)
-
-    # API fields (Word/OneDrive-specific)
-    title: str = AirweaveField(..., description="The title/name of the document.", embeddable=True)
-    web_url: Optional[str] = AirweaveField(
-        None, description="URL to open the document in Word Online.", embeddable=False
+    id: str = AirweaveField(
+        ...,
+        description="Drive item ID for the Word document.",
+        is_entity_id=True,
+    )
+    title: str = AirweaveField(
+        ...,
+        description="Human-readable title for the document.",
+        is_name=True,
+        embeddable=True,
+    )
+    created_datetime: Optional[datetime] = AirweaveField(
+        None,
+        description="When the document was created.",
+        embeddable=False,
+        is_created_at=True,
+    )
+    last_modified_datetime: Optional[datetime] = AirweaveField(
+        None,
+        description="When the document was last modified.",
+        embeddable=False,
+        is_updated_at=True,
+    )
+    web_url_override: Optional[str] = AirweaveField(
+        None,
+        description="URL to open the document in Word Online.",
+        embeddable=False,
+        unhashable=True,
     )
     content_download_url: Optional[str] = AirweaveField(
-        None, description="Direct download URL for the document content.", embeddable=False
+        None,
+        description="Direct download URL for the document content.",
+        embeddable=False,
+        unhashable=True,
     )
     created_by: Optional[Dict[str, Any]] = AirweaveField(
         None, description="Identity of the user who created the document.", embeddable=True
@@ -72,3 +88,12 @@ class WordDocumentEntity(FileEntity):
     shared: Optional[Dict[str, Any]] = AirweaveField(
         None, description="Information about sharing status of the document.", embeddable=True
     )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """URL exposed to the UI to open the document."""
+        if self.web_url_override:
+            return self.web_url_override
+        if self.url:
+            return self.url
+        return f"https://graph.microsoft.com/v1.0/me/drive/items/{self.id}"

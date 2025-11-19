@@ -2,10 +2,10 @@
 
 """CRUD operations for collections."""
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud
@@ -14,16 +14,17 @@ from airweave.core.exceptions import NotFoundException, PermissionException
 from airweave.core.shared_models import CollectionStatus
 from airweave.crud._base_organization import CRUDBaseOrganization
 from airweave.models.collection import Collection
+from airweave.models.source_connection import SourceConnection
 from airweave.schemas.collection import CollectionCreate, CollectionUpdate
 
 
 class CRUDCollection(CRUDBaseOrganization[Collection, CollectionCreate, CollectionUpdate]):
     """CRUD operations for collections."""
 
-    async def _compute_collection_status(
-        self, db: AsyncSession, collection: Collection, ctx: ApiContext
+    def _compute_collection_status(
+        self, connections_with_stats: List[Dict[str, Any]]
     ) -> CollectionStatus:
-        """Compute the ephemeral status of a collection based on its source connections.
+        """Compute collection status from pre-fetched connection data.
 
         Logic:
         - If no authenticated source connections or no syncs completed yet: NEEDS_SOURCE
@@ -31,18 +32,11 @@ class CRUDCollection(CRUDBaseOrganization[Collection, CollectionCreate, Collecti
         - If all connections have failed: ERROR
 
         Args:
-            db: The database session
-            collection: The collection
-            ctx: The API context
+            connections_with_stats: List of connection dicts with stats already fetched
 
         Returns:
             The computed ephemeral status
         """
-        # Get source connections with their stats to compute proper status
-        connections_with_stats = await crud.source_connection.get_multi_with_stats(
-            db, ctx=ctx, collection_id=collection.readable_id
-        )
-
         if not connections_with_stats:
             return CollectionStatus.NEEDS_SOURCE
 
@@ -106,9 +100,52 @@ class CRUDCollection(CRUDBaseOrganization[Collection, CollectionCreate, Collecti
         if not collections:
             return []
 
+        # Fetch all data in ~5 queries total to avoid N+1 problem
+        collection_ids = [c.readable_id for c in collections]
+
+        # 1. Get ALL source connections for ALL collections (1 query)
+        query = select(SourceConnection).where(
+            and_(
+                SourceConnection.organization_id == ctx.organization.id,
+                SourceConnection.readable_collection_id.in_(collection_ids),
+            )
+        )
+        result = await db.execute(query)
+        all_connections = list(result.scalars().all())
+
+        if not all_connections:
+            # All collections have no sources
+            for collection in collections:
+                collection.status = CollectionStatus.NEEDS_SOURCE
+            return collections
+
+        # 2. Bulk fetch all related data using existing optimized methods (4 queries)
+        auth_methods = await crud.source_connection._fetch_auth_methods(db, all_connections)
+        last_jobs = await crud.source_connection._fetch_last_jobs(db, all_connections)
+        entity_counts = await crud.source_connection._fetch_entity_counts(db, all_connections)
+        federated_flags = await crud.source_connection._fetch_federated_search_flags(
+            db, all_connections
+        )
+
+        # 3. Group connections by collection (in-memory operation)
+        connections_by_collection: Dict[str, List[Dict[str, Any]]] = {}
+        for sc in all_connections:
+            if sc.readable_collection_id not in connections_by_collection:
+                connections_by_collection[sc.readable_collection_id] = []
+
+            # Build same data structure that get_multi_with_stats returns
+            connections_by_collection[sc.readable_collection_id].append(
+                {
+                    "is_authenticated": sc.is_authenticated,
+                    "federated_search": federated_flags.get(sc.short_name, False),
+                    "last_job": last_jobs.get(sc.id),
+                }
+            )
+
+        # 4. Compute status for each collection using pre-fetched data (no DB calls)
         for collection in collections:
-            # Compute and set the ephemeral status
-            collection.status = await self._compute_collection_status(db, collection, ctx)
+            conn_data = connections_by_collection.get(collection.readable_id, [])
+            collection.status = self._compute_collection_status(conn_data)
 
         return collections
 
@@ -147,16 +184,81 @@ class CRUDCollection(CRUDBaseOrganization[Collection, CollectionCreate, Collecti
         return collection
 
     async def get_multi(
-        self, db: AsyncSession, *, skip: int = 0, limit: int = 100, ctx: ApiContext
+        self,
+        db: AsyncSession,
+        *,
+        skip: int = 0,
+        limit: int = 100,
+        ctx: ApiContext,
+        search_query: Optional[str] = None,
     ) -> List[Collection]:
-        """Get multiple collections with computed ephemeral statuses."""
-        # Get collections using the parent method
-        collections = await super().get_multi(db, skip=skip, limit=limit, ctx=ctx)
+        """Get multiple collections with computed ephemeral statuses and search.
+
+        Args:
+            db: Database session
+            skip: Number of records to skip
+            limit: Maximum number of records to return
+            ctx: API context
+            search_query: Optional search term to filter by name or readable_id
+
+        Returns:
+            List of collections with computed statuses
+        """
+        # Build query with org scope
+        query = select(Collection).where(Collection.organization_id == ctx.organization.id)
+
+        # Apply search filter if provided
+        if search_query:
+            search_pattern = f"%{search_query.lower()}%"
+            query = query.where(
+                (func.lower(Collection.name).like(search_pattern))
+                | (func.lower(Collection.readable_id).like(search_pattern))
+            )
+
+        # Apply sorting (always by created_at desc)
+        query = query.order_by(Collection.created_at.desc())
+
+        # Apply pagination
+        query = query.offset(skip).limit(limit)
+
+        # Execute query
+        result = await db.execute(query)
+        collections = list(result.scalars().all())
 
         # Compute and set the ephemeral status for each collection
         collections = await self._attach_ephemeral_status(db, collections, ctx)
 
         return collections
+
+    async def count(
+        self, db: AsyncSession, ctx: ApiContext, search_query: Optional[str] = None
+    ) -> int:
+        """Get total count of collections for the organization.
+
+        Args:
+            db: Database session
+            ctx: API context
+            search_query: Optional search term to filter by name or readable_id
+
+        Returns:
+            Count of collections matching criteria
+        """
+        query = (
+            select(func.count())
+            .select_from(Collection)
+            .where(Collection.organization_id == ctx.organization.id)
+        )
+
+        # Apply search filter if provided
+        if search_query:
+            search_pattern = f"%{search_query.lower()}%"
+            query = query.where(
+                (func.lower(Collection.name).like(search_pattern))
+                | (func.lower(Collection.readable_id).like(search_pattern))
+            )
+
+        result = await db.execute(query)
+        return result.scalar_one()
 
 
 collection = CRUDCollection(Collection)

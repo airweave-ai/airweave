@@ -188,9 +188,8 @@ class OneDriveSource(BaseSource):
         drive_name = drive_obj.get("name") or drive_obj.get("driveType", "OneDrive")
 
         yield OneDriveDriveEntity(
-            # Base fields
-            entity_id=drive_obj["id"],
             breadcrumbs=[],
+            id=drive_obj["id"],
             name=drive_name,
             created_at=drive_obj.get("createdDateTime"),
             updated_at=drive_obj.get("lastModifiedDateTime"),
@@ -198,6 +197,7 @@ class OneDriveSource(BaseSource):
             drive_type=drive_obj.get("driveType"),
             owner=drive_obj.get("owner"),
             quota=drive_obj.get("quota"),
+            web_url_override=drive_obj.get("webUrl"),
         )
 
     async def _list_drive_items(
@@ -313,7 +313,11 @@ class OneDriveSource(BaseSource):
             return None
 
         # Create drive breadcrumb
-        drive_breadcrumb = Breadcrumb(entity_id=drive_id)
+        drive_breadcrumb = Breadcrumb(
+            entity_id=drive_id,
+            name=drive_name,
+            entity_type="OneDriveDriveEntity",
+        )
 
         # Extract file information
         file_info = item.get("file", {})
@@ -331,23 +335,20 @@ class OneDriveSource(BaseSource):
             file_type = ext if ext else "file"
 
         entity = OneDriveDriveItemEntity(
-            # Base fields
-            entity_id=item["id"],
+            id=item["id"],
             breadcrumbs=[drive_breadcrumb],
             name=item.get("name"),
             created_at=item.get("createdDateTime"),
             updated_at=item.get("lastModifiedDateTime"),
-            # File fields
             url=download_url,
             size=size,
             file_type=file_type,
             mime_type=mime_type,
             local_path=None,  # Will be set after download
-            # API fields
             description=None,  # Not provided in basic listing
             etag=item.get("eTag"),
             ctag=item.get("cTag"),
-            web_url=item.get("webUrl"),
+            web_url_override=item.get("webUrl"),
             file=file_info,
             folder=item.get("folder"),
             parent_reference=parent_ref,
@@ -431,8 +432,9 @@ class OneDriveSource(BaseSource):
                 return
 
             # 2) Generate file entities for the drive
-            drive_id = drive_entity.entity_id
-            drive_name = drive_entity.drive_type or "OneDrive"
+            drive_id = drive_entity.id
+            # Use the human-friendly drive name for breadcrumbs; fall back to drive_type/name.
+            drive_name = drive_entity.name or drive_entity.drive_type or "OneDrive"
 
             self.logger.debug(f"Starting to process files from drive: {drive_id} ({drive_name})")
 

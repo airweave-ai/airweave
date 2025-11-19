@@ -4,27 +4,30 @@ Based on the Monday.com API (GraphQL-based), we define entity schemas for
 commonly used Monday resources: Boards, Groups, Columns, Items, Subitems, and Updates.
 """
 
+from datetime import datetime
 from typing import Dict, List, Optional
+
+from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity
 
 
 class MondayBoardEntity(BaseEntity):
-    """Schema for Monday Board objects.
+    """Schema for Monday Board objects."""
 
-    Reference:
-        https://developer.monday.com/api-reference/reference/boards
-    """
-
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the board ID)
-    # - breadcrumbs (empty - boards are top-level)
-    # - name (from board name)
-    # - created_at (None - boards don't have creation timestamp in API)
-    # - updated_at (from updated_at timestamp)
-
-    # API fields
+    board_id: str = AirweaveField(
+        ..., description="Unique identifier for the board.", is_entity_id=True
+    )
+    board_name: str = AirweaveField(
+        ..., description="Display name of the board.", embeddable=True, is_name=True
+    )
+    created_time: Optional[datetime] = AirweaveField(
+        None, description="Board creation timestamp (if available).", is_created_at=True
+    )
+    updated_time: Optional[datetime] = AirweaveField(
+        None, description="Board update timestamp.", is_updated_at=True
+    )
     board_kind: Optional[str] = AirweaveField(
         None,
         description="The board's kind/type: 'public', 'private', or 'share'.",
@@ -58,33 +61,30 @@ class MondayBoardEntity(BaseEntity):
         description="The unique identifier of the workspace containing this board (if any).",
         embeddable=False,
     )
+    web_url_value: Optional[str] = AirweaveField(
+        None, description="URL to view the board in Monday.", embeddable=False, unhashable=True
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Browser URL for the board."""
+        return self.web_url_value or ""
 
 
 class MondayGroupEntity(BaseEntity):
-    """Schema for Monday Group objects.
+    """Schema for Monday Group objects."""
 
-    Groups are collections of items (rows) within a board.
-
-    Reference:
-        https://developer.monday.com/api-reference/reference/boards
-    """
-
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (board_id-group_id composite)
-    # - breadcrumbs (board breadcrumb)
-    # - name (from group title)
-    # - created_at (None - groups don't have creation timestamp)
-    # - updated_at (None - groups don't have update timestamp)
-
-    # API fields
     group_id: str = AirweaveField(
-        ..., description="The unique identifier (ID) of the group.", embeddable=False
+        ...,
+        description="The unique identifier (ID) of the group.",
+        embeddable=False,
+        is_entity_id=True,
     )
     board_id: str = AirweaveField(
         ..., description="ID of the board this group belongs to.", embeddable=False
     )
-    title: Optional[str] = AirweaveField(
-        None, description="Title or display name of the group.", embeddable=True
+    title: str = AirweaveField(
+        ..., description="Title or display name of the group.", embeddable=True, is_name=True
     )
     color: Optional[str] = AirweaveField(
         None, description="Group color code (e.g., 'red', 'green', 'blue', etc.).", embeddable=False
@@ -97,33 +97,30 @@ class MondayGroupEntity(BaseEntity):
         description="List of items (rows) contained within this group.",
         embeddable=False,
     )
+    web_url_value: Optional[str] = AirweaveField(
+        None, description="URL to view the group in Monday.", embeddable=False, unhashable=True
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Browser URL for the group."""
+        return self.web_url_value or ""
 
 
 class MondayColumnEntity(BaseEntity):
-    """Schema for Monday Column objects.
+    """Schema for Monday Column objects."""
 
-    Columns define the structure of data on a Monday board.
-
-    Reference:
-        https://developer.monday.com/api-reference/reference/column-types-reference
-    """
-
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (board_id-column_id composite)
-    # - breadcrumbs (board breadcrumb)
-    # - name (from column title)
-    # - created_at (None - columns don't have creation timestamp)
-    # - updated_at (None - columns don't have update timestamp)
-
-    # API fields
     column_id: str = AirweaveField(
-        ..., description="The unique identifier (ID) of the column.", embeddable=False
+        ...,
+        description="The unique identifier (ID) of the column.",
+        embeddable=False,
+        is_entity_id=True,
     )
     board_id: str = AirweaveField(
         ..., description="ID of the board this column belongs to.", embeddable=False
     )
-    title: Optional[str] = AirweaveField(
-        None, description="The display title of the column.", embeddable=True
+    title: str = AirweaveField(
+        ..., description="The display title of the column.", embeddable=True, is_name=True
     )
     column_type: Optional[str] = AirweaveField(
         None,
@@ -141,25 +138,33 @@ class MondayColumnEntity(BaseEntity):
     archived: bool = AirweaveField(
         False, description="Whether this column is archived or hidden.", embeddable=False
     )
+    web_url_value: Optional[str] = AirweaveField(
+        None, description="URL to view the column in Monday.", embeddable=False, unhashable=True
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Browser URL for the column."""
+        return self.web_url_value or ""
 
 
 class MondayItemEntity(BaseEntity):
-    """Schema for Monday Item objects (rows on a board).
+    """Schema for Monday Item objects (rows on a board)."""
 
-    Reference:
-        https://developer.monday.com/api-reference/reference/boards
-    """
-
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the item ID)
-    # - breadcrumbs (board breadcrumb)
-    # - name (from item name)
-    # - created_at (from created_at timestamp)
-    # - updated_at (from updated_at timestamp)
-
-    # API fields
     item_id: str = AirweaveField(
-        ..., description="The unique identifier (ID) of the item.", embeddable=False
+        ...,
+        description="The unique identifier (ID) of the item.",
+        embeddable=False,
+        is_entity_id=True,
+    )
+    item_name: str = AirweaveField(
+        ..., description="Display name of the item.", embeddable=True, is_name=True
+    )
+    created_time: Optional[datetime] = AirweaveField(
+        None, description="When the item was created.", is_created_at=True
+    )
+    updated_time: Optional[datetime] = AirweaveField(
+        None, description="When the item was updated.", is_updated_at=True
     )
     board_id: str = AirweaveField(
         ..., description="ID of the board this item belongs to.", embeddable=False
@@ -180,27 +185,33 @@ class MondayItemEntity(BaseEntity):
     creator: Optional[Dict] = AirweaveField(
         None, description="Information about the user/team who created this item.", embeddable=True
     )
+    web_url_value: Optional[str] = AirweaveField(
+        None, description="URL to view the item in Monday.", embeddable=False, unhashable=True
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Browser URL for the item."""
+        return self.web_url_value or ""
 
 
 class MondaySubitemEntity(BaseEntity):
-    """Schema for Monday Subitem objects.
+    """Schema for Monday Subitem objects."""
 
-    Subitems are items nested under a parent item, often in a dedicated 'Subitems' column.
-
-    Reference:
-        https://developer.monday.com/api-reference/reference/boards
-    """
-
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the subitem ID)
-    # - breadcrumbs (board and item breadcrumbs)
-    # - name (from subitem name)
-    # - created_at (from created_at timestamp)
-    # - updated_at (from updated_at timestamp)
-
-    # API fields
     subitem_id: str = AirweaveField(
-        ..., description="The unique identifier (ID) of the subitem.", embeddable=False
+        ...,
+        description="The unique identifier (ID) of the subitem.",
+        embeddable=False,
+        is_entity_id=True,
+    )
+    subitem_name: str = AirweaveField(
+        ..., description="Display name of the subitem.", embeddable=True, is_name=True
+    )
+    created_time: Optional[datetime] = AirweaveField(
+        None, description="When the subitem was created.", is_created_at=True
+    )
+    updated_time: Optional[datetime] = AirweaveField(
+        None, description="When the subitem was updated.", is_updated_at=True
     )
     parent_item_id: str = AirweaveField(
         ..., description="ID of the parent item this subitem belongs to.", embeddable=False
@@ -226,27 +237,30 @@ class MondaySubitemEntity(BaseEntity):
         description="Information about the user/team who created this subitem.",
         embeddable=True,
     )
+    web_url_value: Optional[str] = AirweaveField(
+        None, description="URL to view the subitem in Monday.", embeddable=False, unhashable=True
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Browser URL for the subitem."""
+        return self.web_url_value or ""
 
 
 class MondayUpdateEntity(BaseEntity):
-    """Schema for Monday Update objects.
+    """Schema for Monday Update objects."""
 
-    monday.com updates add notes and discussions to items outside of their column data.
-
-    Reference:
-        https://developer.monday.com/api-reference/reference/updates
-    """
-
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the update ID)
-    # - breadcrumbs (board and optionally item breadcrumbs)
-    # - name (from body preview)
-    # - created_at (from created_at timestamp)
-    # - updated_at (None - updates don't have update timestamp)
-
-    # API fields
     update_id: str = AirweaveField(
-        ..., description="The unique identifier (ID) of the update.", embeddable=False
+        ...,
+        description="The unique identifier (ID) of the update.",
+        embeddable=False,
+        is_entity_id=True,
+    )
+    update_preview: str = AirweaveField(
+        ..., description="Preview text for the update body.", embeddable=True, is_name=True
+    )
+    created_time: Optional[datetime] = AirweaveField(
+        None, description="When the update was created.", is_created_at=True
     )
     item_id: Optional[str] = AirweaveField(
         None,
@@ -273,3 +287,11 @@ class MondayUpdateEntity(BaseEntity):
         description="Assets (e.g. images, attachments) associated with this update.",
         embeddable=False,
     )
+    web_url_value: Optional[str] = AirweaveField(
+        None, description="URL to view the update in Monday.", embeddable=False, unhashable=True
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Browser URL for the update."""
+        return self.web_url_value or ""

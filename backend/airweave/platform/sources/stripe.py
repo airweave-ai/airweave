@@ -17,7 +17,7 @@ Then, we yield them as entities using the respective entity schemas defined in e
 """
 
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -25,7 +25,7 @@ from tenacity import retry, stop_after_attempt
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.configs.auth import StripeAuthConfig
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import BaseEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.stripe import (
     StripeBalanceEntity,
     StripeBalanceTransactionEntity,
@@ -97,6 +97,38 @@ class StripeSource(BaseSource):
         response.raise_for_status()
         return response.json()
 
+    @staticmethod
+    def _parse_unix_timestamp(value: Optional[int]) -> Optional[datetime]:
+        """Convert a unix timestamp (seconds) into a UTC datetime."""
+        if value is None:
+            return None
+        try:
+            return datetime.utcfromtimestamp(value)
+        except (OSError, ValueError):
+            return None
+
+    def _dashboard_base(self, livemode: Optional[bool]) -> str:
+        """Return the base Stripe dashboard URL for live/test mode."""
+        prefix = "" if livemode else "test/"
+        return f"https://dashboard.stripe.com/{prefix}"
+
+    def _build_dashboard_url(
+        self,
+        resource: str,
+        record_id: Optional[str],
+        livemode: Optional[bool],
+        trailing: Optional[str] = None,
+    ) -> Optional[str]:
+        """Construct a Stripe dashboard URL for a resource."""
+        base = self._dashboard_base(livemode)
+        segments = [resource]
+        if record_id:
+            segments.append(record_id)
+        if trailing:
+            segments.append(trailing)
+        path = "/".join(seg for seg in segments if seg)
+        return f"{base}{path}"
+
     async def _generate_balance_entity(
         self, client: httpx.AsyncClient
     ) -> AsyncGenerator[StripeBalanceEntity, None]:
@@ -108,6 +140,10 @@ class StripeSource(BaseSource):
         url = "https://api.stripe.com/v1/balance"
         data = await self._get_with_auth(client, url)
 
+        snapshot_time = datetime.utcnow()
+        livemode = data.get("livemode", False)
+        web_url = self._build_dashboard_url("balance", None, livemode)
+
         # Create the entity with the raw data structures from Stripe
         # This avoids any issues with nested dictionaries like source_types
         # We don't manually extract nested fields but pass them directly as they are
@@ -116,14 +152,18 @@ class StripeSource(BaseSource):
             entity_id="balance",
             breadcrumbs=[],
             name="Account Balance",
-            created_at=None,  # Balance is a snapshot
-            updated_at=None,  # Balance is a snapshot
+            created_at=snapshot_time,
+            updated_at=snapshot_time,
             # API fields
+            balance_id="balance",
+            balance_name="Account Balance",
+            snapshot_time=snapshot_time,
+            web_url_value=web_url,
             available=data.get("available", []),
             pending=data.get("pending", []),
             instant_available=data.get("instant_available"),
             connect_reserved=data.get("connect_reserved"),
-            livemode=data.get("livemode", False),
+            livemode=livemode,
         )
 
     async def _generate_balance_transaction_entities(
@@ -141,22 +181,27 @@ class StripeSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for txn in data.get("data", []):
                 # Convert unix timestamp to datetime
-                created_timestamp = txn.get("created")
-                created_at = (
-                    datetime.utcfromtimestamp(created_timestamp) if created_timestamp else None
-                )
+                created_time = self._parse_unix_timestamp(txn.get("created")) or datetime.utcnow()
 
                 # Create name from description or fallback
-                name = txn.get("description") or f"Transaction {txn['id']}"
+                transaction_id = txn["id"]
+                name = txn.get("description") or f"Transaction {transaction_id}"
+                web_url = self._build_dashboard_url(
+                    "balance/history", transaction_id, txn.get("livemode")
+                )
 
                 yield StripeBalanceTransactionEntity(
                     # Base fields
-                    entity_id=txn["id"],
+                    entity_id=transaction_id,
                     breadcrumbs=[],
                     name=name,
-                    created_at=created_at,
+                    created_at=created_time,
                     updated_at=None,  # Transactions don't update
                     # API fields
+                    transaction_id=transaction_id,
+                    transaction_name=name,
+                    created_time=created_time,
+                    web_url_value=web_url,
                     amount=txn.get("amount"),
                     currency=txn.get("currency"),
                     description=txn.get("description"),
@@ -191,22 +236,38 @@ class StripeSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for charge in data.get("data", []):
                 # Convert unix timestamp to datetime
-                created_timestamp = charge.get("created")
-                created_at = (
-                    datetime.utcfromtimestamp(created_timestamp) if created_timestamp else None
+                created_time = (
+                    self._parse_unix_timestamp(charge.get("created")) or datetime.utcnow()
                 )
 
                 # Create name from description or fallback
-                name = charge.get("description") or f"Charge {charge['id']}"
+                charge_id = charge["id"]
+                name = charge.get("description") or f"Charge {charge_id}"
+                web_url = self._build_dashboard_url("payments", charge_id, charge.get("livemode"))
+                customer_id = charge.get("customer")
+                breadcrumbs: list[Breadcrumb] = []
+                if customer_id:
+                    breadcrumbs.append(
+                        Breadcrumb(
+                            entity_id=customer_id,
+                            name=f"Customer {customer_id}",
+                            entity_type=StripeCustomerEntity.__name__,
+                        )
+                    )
 
                 yield StripeChargeEntity(
                     # Base fields
-                    entity_id=charge["id"],
-                    breadcrumbs=[],
+                    entity_id=charge_id,
+                    breadcrumbs=breadcrumbs,
                     name=name,
-                    created_at=created_at,
-                    updated_at=None,  # Charges don't update
+                    created_at=created_time,
+                    updated_at=created_time,
                     # API fields
+                    charge_id=charge_id,
+                    charge_name=name,
+                    created_time=created_time,
+                    updated_time=created_time,
+                    web_url_value=web_url,
                     amount=charge.get("amount"),
                     currency=charge.get("currency"),
                     captured=charge.get("captured", False),
@@ -241,22 +302,26 @@ class StripeSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for cust in data.get("data", []):
                 # Convert unix timestamp to datetime
-                created_timestamp = cust.get("created")
-                created_at = (
-                    datetime.utcfromtimestamp(created_timestamp) if created_timestamp else None
-                )
+                created_time = self._parse_unix_timestamp(cust.get("created")) or datetime.utcnow()
 
                 # Create name from name field or email
-                name = cust.get("name") or cust.get("email") or f"Customer {cust['id']}"
+                customer_id = cust["id"]
+                name = cust.get("name") or cust.get("email") or f"Customer {customer_id}"
+                web_url = self._build_dashboard_url("customers", customer_id, cust.get("livemode"))
 
                 yield StripeCustomerEntity(
                     # Base fields
-                    entity_id=cust["id"],
+                    entity_id=customer_id,
                     breadcrumbs=[],
                     name=name,
-                    created_at=created_at,
-                    updated_at=None,  # Customers don't have update timestamp
+                    created_at=created_time,
+                    updated_at=created_time,
                     # API fields
+                    customer_id=customer_id,
+                    customer_name=name,
+                    created_time=created_time,
+                    updated_time=created_time,
+                    web_url_value=web_url,
                     email=cust.get("email"),
                     phone=cust.get("phone"),
                     description=cust.get("description"),
@@ -289,22 +354,25 @@ class StripeSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for evt in data.get("data", []):
                 # Convert unix timestamp to datetime
-                created_timestamp = evt.get("created")
-                created_at = (
-                    datetime.utcfromtimestamp(created_timestamp) if created_timestamp else None
-                )
+                created_time = self._parse_unix_timestamp(evt.get("created")) or datetime.utcnow()
 
                 # Create name from event type
-                name = evt.get("type") or f"Event {evt['id']}"
+                event_id = evt["id"]
+                name = evt.get("type") or f"Event {event_id}"
+                web_url = self._build_dashboard_url("events", event_id, evt.get("livemode"))
 
                 yield StripeEventEntity(
                     # Base fields
-                    entity_id=evt["id"],
+                    entity_id=event_id,
                     breadcrumbs=[],
                     name=name,
-                    created_at=created_at,
-                    updated_at=None,  # Events don't update
+                    created_at=created_time,
+                    updated_at=created_time,
                     # API fields
+                    event_id=event_id,
+                    event_name=name,
+                    created_time=created_time,
+                    web_url_value=web_url,
                     event_type=evt.get("type"),
                     api_version=evt.get("api_version"),
                     data=evt.get("data", {}),
@@ -335,10 +403,7 @@ class StripeSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for inv in data.get("data", []):
                 # Convert unix timestamps to datetime
-                created_timestamp = inv.get("created")
-                created_at = (
-                    datetime.utcfromtimestamp(created_timestamp) if created_timestamp else None
-                )
+                created_time = self._parse_unix_timestamp(inv.get("created")) or datetime.utcnow()
 
                 due_date_timestamp = inv.get("due_date")
                 due_date = (
@@ -346,16 +411,33 @@ class StripeSource(BaseSource):
                 )
 
                 # Create name from number or fallback
-                name = inv.get("number") or f"Invoice {inv['id']}"
+                invoice_id = inv["id"]
+                name = inv.get("number") or f"Invoice {invoice_id}"
+                web_url = self._build_dashboard_url("invoices", invoice_id, inv.get("livemode"))
+                customer_id = inv.get("customer")
+                breadcrumbs: List[Breadcrumb] = []
+                if customer_id:
+                    breadcrumbs.append(
+                        Breadcrumb(
+                            entity_id=customer_id,
+                            name=f"Customer {customer_id}",
+                            entity_type=StripeCustomerEntity.__name__,
+                        )
+                    )
 
                 yield StripeInvoiceEntity(
                     # Base fields
-                    entity_id=inv["id"],
-                    breadcrumbs=[],
+                    entity_id=invoice_id,
+                    breadcrumbs=breadcrumbs,
                     name=name,
-                    created_at=created_at,
-                    updated_at=None,  # Invoices don't have update timestamp
+                    created_at=created_time,
+                    updated_at=created_time,
                     # API fields
+                    invoice_id=invoice_id,
+                    invoice_name=name,
+                    created_time=created_time,
+                    updated_time=created_time,
+                    web_url_value=web_url,
                     customer_id=inv.get("customer"),
                     number=inv.get("number"),
                     status=inv.get("status"),
@@ -390,22 +472,38 @@ class StripeSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for pi in data.get("data", []):
                 # Convert unix timestamp to datetime
-                created_timestamp = pi.get("created")
-                created_at = (
-                    datetime.utcfromtimestamp(created_timestamp) if created_timestamp else None
-                )
+                created_time = self._parse_unix_timestamp(pi.get("created")) or datetime.utcnow()
 
                 # Create name from description or fallback
-                name = pi.get("description") or f"Payment Intent {pi['id']}"
+                payment_intent_id = pi["id"]
+                name = pi.get("description") or f"Payment Intent {payment_intent_id}"
+                web_url = self._build_dashboard_url(
+                    "payments", payment_intent_id, pi.get("livemode")
+                )
+                customer_id = pi.get("customer")
+                breadcrumbs: List[Breadcrumb] = []
+                if customer_id:
+                    breadcrumbs.append(
+                        Breadcrumb(
+                            entity_id=customer_id,
+                            name=f"Customer {customer_id}",
+                            entity_type=StripeCustomerEntity.__name__,
+                        )
+                    )
 
                 yield StripePaymentIntentEntity(
                     # Base fields
-                    entity_id=pi["id"],
-                    breadcrumbs=[],
+                    entity_id=payment_intent_id,
+                    breadcrumbs=breadcrumbs,
                     name=name,
-                    created_at=created_at,
-                    updated_at=None,  # Payment intents don't have update timestamp
+                    created_at=created_time,
+                    updated_at=created_time,
                     # API fields
+                    payment_intent_id=payment_intent_id,
+                    payment_intent_name=name,
+                    created_time=created_time,
+                    updated_time=created_time,
+                    web_url_value=web_url,
                     amount=pi.get("amount"),
                     currency=pi.get("currency"),
                     status=pi.get("status"),
@@ -438,22 +536,37 @@ class StripeSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for pm in data.get("data", []):
                 # Convert unix timestamp to datetime
-                created_timestamp = pm.get("created")
-                created_at = (
-                    datetime.utcfromtimestamp(created_timestamp) if created_timestamp else None
-                )
+                created_time = self._parse_unix_timestamp(pm.get("created")) or datetime.utcnow()
 
                 # Create name from type
-                name = pm.get("type") or f"Payment Method {pm['id']}"
+                payment_method_id = pm["id"]
+                name = pm.get("type") or f"Payment Method {payment_method_id}"
+                web_url = self._build_dashboard_url(
+                    "payment_methods", payment_method_id, pm.get("livemode")
+                )
+                customer_id = pm.get("customer")
+                breadcrumbs: List[Breadcrumb] = []
+                if customer_id:
+                    breadcrumbs.append(
+                        Breadcrumb(
+                            entity_id=customer_id,
+                            name=f"Customer {customer_id}",
+                            entity_type=StripeCustomerEntity.__name__,
+                        )
+                    )
 
                 yield StripePaymentMethodEntity(
                     # Base fields
-                    entity_id=pm["id"],
-                    breadcrumbs=[],
+                    entity_id=payment_method_id,
+                    breadcrumbs=breadcrumbs,
                     name=name,
-                    created_at=created_at,
-                    updated_at=None,  # Payment methods don't have update timestamp
+                    created_at=created_time,
+                    updated_at=created_time,
                     # API fields
+                    payment_method_id=payment_method_id,
+                    payment_method_name=name,
+                    created_time=created_time,
+                    web_url_value=web_url,
                     type=pm.get("type"),
                     billing_details=pm.get("billing_details", {}),
                     customer_id=pm.get("customer"),
@@ -483,9 +596,8 @@ class StripeSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for payout in data.get("data", []):
                 # Convert unix timestamps to datetime
-                created_timestamp = payout.get("created")
-                created_at = (
-                    datetime.utcfromtimestamp(created_timestamp) if created_timestamp else None
+                created_time = (
+                    self._parse_unix_timestamp(payout.get("created")) or datetime.utcnow()
                 )
 
                 arrival_date_timestamp = payout.get("arrival_date")
@@ -496,16 +608,23 @@ class StripeSource(BaseSource):
                 )
 
                 # Create name from description or fallback
-                name = payout.get("description") or f"Payout {payout['id']}"
+                payout_id = payout["id"]
+                name = payout.get("description") or f"Payout {payout_id}"
+                web_url = self._build_dashboard_url("payouts", payout_id, payout.get("livemode"))
 
                 yield StripePayoutEntity(
                     # Base fields
-                    entity_id=payout["id"],
+                    entity_id=payout_id,
                     breadcrumbs=[],
                     name=name,
-                    created_at=created_at,
-                    updated_at=None,  # Payouts don't have update timestamp
+                    created_at=created_time,
+                    updated_at=created_time,
                     # API fields
+                    payout_id=payout_id,
+                    payout_name=name,
+                    created_time=created_time,
+                    updated_time=created_time,
+                    web_url_value=web_url,
                     amount=payout.get("amount"),
                     currency=payout.get("currency"),
                     arrival_date=arrival_date,
@@ -538,22 +657,27 @@ class StripeSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for refund in data.get("data", []):
                 # Convert unix timestamp to datetime
-                created_timestamp = refund.get("created")
-                created_at = (
-                    datetime.utcfromtimestamp(created_timestamp) if created_timestamp else None
+                created_time = (
+                    self._parse_unix_timestamp(refund.get("created")) or datetime.utcnow()
                 )
 
                 # Create name
-                name = f"Refund {refund['id']}"
+                refund_id = refund["id"]
+                name = f"Refund {refund_id}"
+                web_url = self._build_dashboard_url("refunds", refund_id, refund.get("livemode"))
 
                 yield StripeRefundEntity(
                     # Base fields
-                    entity_id=refund["id"],
+                    entity_id=refund_id,
                     breadcrumbs=[],
                     name=name,
-                    created_at=created_at,
-                    updated_at=None,  # Refunds don't have update timestamp
+                    created_at=created_time,
+                    updated_at=created_time,
                     # API fields
+                    refund_id=refund_id,
+                    refund_name=name,
+                    created_time=created_time,
+                    web_url_value=web_url,
                     amount=refund.get("amount"),
                     currency=refund.get("currency"),
                     status=refund.get("status"),
@@ -585,10 +709,7 @@ class StripeSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for sub in data.get("data", []):
                 # Convert unix timestamps to datetime
-                created_timestamp = sub.get("created")
-                created_at = (
-                    datetime.utcfromtimestamp(created_timestamp) if created_timestamp else None
-                )
+                created_time = self._parse_unix_timestamp(sub.get("created")) or datetime.utcnow()
 
                 current_period_start_timestamp = sub.get("current_period_start")
                 current_period_start = (
@@ -612,16 +733,35 @@ class StripeSource(BaseSource):
                 )
 
                 # Create name
-                name = f"Subscription {sub['id']}"
+                subscription_id = sub["id"]
+                name = f"Subscription {subscription_id}"
+                web_url = self._build_dashboard_url(
+                    "subscriptions", subscription_id, sub.get("livemode")
+                )
+                customer_id = sub.get("customer")
+                breadcrumbs: List[Breadcrumb] = []
+                if customer_id:
+                    breadcrumbs.append(
+                        Breadcrumb(
+                            entity_id=customer_id,
+                            name=f"Customer {customer_id}",
+                            entity_type=StripeCustomerEntity.__name__,
+                        )
+                    )
 
                 yield StripeSubscriptionEntity(
                     # Base fields
-                    entity_id=sub["id"],
-                    breadcrumbs=[],
+                    entity_id=subscription_id,
+                    breadcrumbs=breadcrumbs,
                     name=name,
-                    created_at=created_at,
-                    updated_at=None,  # Subscriptions don't have update timestamp
+                    created_at=created_time,
+                    updated_at=created_time,
                     # API fields
+                    subscription_id=subscription_id,
+                    subscription_name=name,
+                    created_time=created_time,
+                    updated_time=created_time,
+                    web_url_value=web_url,
                     customer_id=sub.get("customer"),
                     status=sub.get("status"),
                     current_period_start=current_period_start,

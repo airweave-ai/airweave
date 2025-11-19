@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import secrets
 import time
+from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional
 from urllib.parse import quote
 
@@ -255,6 +256,16 @@ class TrelloSource(BaseSource):
             self.logger.error(f"Unexpected error accessing Trello API: {url}, {str(e)}")
             raise
 
+    @staticmethod
+    def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
+        """Parse Trello ISO8601 timestamps."""
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+
     async def _generate_board_entities(
         self, client: httpx.AsyncClient
     ) -> AsyncGenerator[BaseEntity, None]:
@@ -274,15 +285,23 @@ class TrelloSource(BaseSource):
                 self.logger.info(f"Skipping filtered board: {board.get('name')}")
                 continue
 
+            snapshot_time = datetime.utcnow()
+            board_name = board.get("name", "Untitled Board")
+            web_url = board.get("url") or board.get("shortUrl")
+
             yield TrelloBoardEntity(
                 # Base fields
                 entity_id=board["id"],
                 breadcrumbs=[],
-                name=board.get("name", "Untitled Board"),
-                created_at=None,  # Boards don't have creation timestamp
-                updated_at=None,  # Boards don't have update timestamp
+                name=board_name,
+                created_at=snapshot_time,
+                updated_at=snapshot_time,
                 # API fields
                 trello_id=board["id"],
+                board_name=board_name,
+                created_time=snapshot_time,
+                updated_time=snapshot_time,
+                web_url_value=web_url,
                 desc=board.get("desc"),
                 closed=board.get("closed", False),
                 url=board.get("url"),
@@ -303,15 +322,23 @@ class TrelloSource(BaseSource):
         )
 
         for list_item in lists_data:
+            snapshot_time = datetime.utcnow()
+            list_name = list_item.get("name", "Untitled List")
+            board_url = board.get("shortUrl") or board.get("url")
+
             yield TrelloListEntity(
                 # Base fields
                 entity_id=list_item["id"],
                 breadcrumbs=[board_breadcrumb],
-                name=list_item.get("name", "Untitled List"),
-                created_at=None,  # Lists don't have creation timestamp
-                updated_at=None,  # Lists don't have update timestamp
+                name=list_name,
+                created_at=snapshot_time,
+                updated_at=snapshot_time,
                 # API fields
                 trello_id=list_item["id"],
+                list_name=list_name,
+                created_time=snapshot_time,
+                updated_time=snapshot_time,
+                web_url_value=board_url,
                 id_board=list_item["idBoard"],
                 board_name=board.get("name", ""),
                 closed=list_item.get("closed", False),
@@ -364,15 +391,28 @@ class TrelloSource(BaseSource):
             # Fetch member details for the card
             members = await self._get_members_for_card(client, card["id"])
 
+            updated_time = self._parse_datetime(card.get("dateLastActivity")) or datetime.utcnow()
+            created_time = (
+                self._parse_datetime(card.get("start"))
+                or self._parse_datetime(card.get("due"))
+                or updated_time
+            )
+            card_name = card.get("name", "Untitled Card")
+            card_web_url = card.get("url") or card.get("shortUrl")
+
             yield TrelloCardEntity(
                 # Base fields
                 entity_id=card["id"],
                 breadcrumbs=list_breadcrumbs,
-                name=card.get("name", "Untitled Card"),
-                created_at=None,  # Cards don't have creation timestamp
-                updated_at=card.get("dateLastActivity"),
+                name=card_name,
+                created_at=created_time,
+                updated_at=updated_time,
                 # API fields
                 trello_id=card["id"],
+                card_name=card_name,
+                created_time=created_time,
+                updated_time=updated_time,
+                web_url_value=card_web_url,
                 desc=card.get("desc"),
                 id_board=card["idBoard"],
                 board_name=board.get("name", ""),
@@ -411,15 +451,23 @@ class TrelloSource(BaseSource):
         )
 
         for checklist in checklists_data:
+            snapshot_time = datetime.utcnow()
+            checklist_name = checklist.get("name", "Checklist")
+            web_url = card.get("url") or card.get("shortUrl")
+
             yield TrelloChecklistEntity(
                 # Base fields
                 entity_id=checklist["id"],
                 breadcrumbs=card_breadcrumbs,
-                name=checklist.get("name", "Checklist"),
-                created_at=None,  # Checklists don't have creation timestamp
-                updated_at=None,  # Checklists don't have update timestamp
+                name=checklist_name,
+                created_at=snapshot_time,
+                updated_at=snapshot_time,
                 # API fields
                 trello_id=checklist["id"],
+                checklist_name=checklist_name,
+                created_time=snapshot_time,
+                updated_time=snapshot_time,
+                web_url_value=web_url,
                 id_board=checklist.get("idBoard", card.get("idBoard", "")),
                 id_card=checklist["idCard"],
                 card_name=card.get("name", ""),
@@ -442,22 +490,28 @@ class TrelloSource(BaseSource):
 
         # Get member name from full_name or username
         member_name = member_data.get("fullName") or member_data.get("username", "unknown")
+        snapshot_time = datetime.utcnow()
+        member_url = member_data.get("url")
 
         yield TrelloMemberEntity(
             # Base fields
             entity_id=member_data["id"],
             breadcrumbs=[],
             name=member_name,
-            created_at=None,  # Members don't have creation timestamp
-            updated_at=None,  # Members don't have update timestamp
+            created_at=snapshot_time,
+            updated_at=snapshot_time,
             # API fields
             username=member_data.get("username", "unknown"),
             trello_id=member_data["id"],
+            display_name=member_name,
+            created_time=snapshot_time,
+            updated_time=snapshot_time,
+            web_url_value=member_url,
             full_name=member_data.get("fullName"),
             initials=member_data.get("initials"),
             avatar_url=member_data.get("avatarUrl"),
             bio=member_data.get("bio"),
-            url=member_data.get("url"),
+            url=member_url,
             id_boards=member_data.get("idBoards", []),
             member_type=member_data.get("memberType"),
         )
@@ -480,32 +534,53 @@ class TrelloSource(BaseSource):
                 self.logger.debug(f"Processing board: {board_entity.name}")
                 yield board_entity
 
-                board_breadcrumb = Breadcrumb(entity_id=board_entity.entity_id)
+                board_breadcrumb = Breadcrumb(
+                    entity_id=board_entity.entity_id,
+                    name=board_entity.name,
+                    entity_type=TrelloBoardEntity.__name__,
+                )
 
                 # Generate lists for this board
                 async for list_entity in self._generate_list_entities(
                     client,
-                    {"id": board_entity.entity_id, "name": board_entity.name},
+                    {
+                        "id": board_entity.entity_id,
+                        "name": board_entity.name,
+                        "url": getattr(board_entity, "url", None),
+                        "shortUrl": getattr(board_entity, "short_url", None),
+                    },
                     board_breadcrumb,
                 ):
                     self.logger.debug(f"Processing list: {list_entity.name}")
                     yield list_entity
 
-                    list_breadcrumb = Breadcrumb(entity_id=list_entity.entity_id)
+                    list_breadcrumb = Breadcrumb(
+                        entity_id=list_entity.entity_id,
+                        name=list_entity.name,
+                        entity_type=TrelloListEntity.__name__,
+                    )
                     list_breadcrumbs = [board_breadcrumb, list_breadcrumb]
 
                     # Generate cards for this list
                     async for card_entity in self._generate_card_entities(
                         client,
                         {"id": board_entity.entity_id, "name": board_entity.name},
-                        {"id": list_entity.entity_id, "name": list_entity.name},
+                        {
+                            "id": list_entity.entity_id,
+                            "name": list_entity.name,
+                            "url": getattr(list_entity, "web_url", None),
+                        },
                         list_breadcrumbs,
                     ):
                         self.logger.debug(f"Processing card: {card_entity.name}")
                         yield card_entity
 
                         # Generate checklists for this card
-                        card_breadcrumb = Breadcrumb(entity_id=card_entity.entity_id)
+                        card_breadcrumb = Breadcrumb(
+                            entity_id=card_entity.entity_id,
+                            name=card_entity.name,
+                            entity_type=TrelloCardEntity.__name__,
+                        )
                         card_breadcrumbs = [*list_breadcrumbs, card_breadcrumb]
 
                         async for checklist_entity in self._generate_checklist_entities(
@@ -514,6 +589,8 @@ class TrelloSource(BaseSource):
                                 "id": card_entity.entity_id,
                                 "name": card_entity.name,
                                 "idBoard": card_entity.id_board,
+                                "url": getattr(card_entity, "web_url", None),
+                                "shortUrl": getattr(card_entity, "short_url", None),
                             },
                             card_breadcrumbs,
                         ):

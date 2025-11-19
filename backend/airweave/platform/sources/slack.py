@@ -258,7 +258,7 @@ class SlackSource(BaseSource):
         try:
             channel_info = message.get("channel", {})
             channel_id = channel_info.get("id", "unknown")
-            channel_name = channel_info.get("name", "unknown")
+            channel_name = channel_info.get("name")
 
             # Parse timestamp to datetime
             ts = message.get("ts", "0")
@@ -274,7 +274,15 @@ class SlackSource(BaseSource):
                 message_name = f"Slack message {ts}"
 
             # Build breadcrumbs
-            breadcrumbs = [Breadcrumb(entity_id=channel_id)]
+            breadcrumbs = [
+                Breadcrumb(
+                    entity_id=channel_id,
+                    name=f"#{channel_name}" if channel_name else channel_id,
+                    entity_type="SlackChannel",
+                )
+            ]
+
+            message_text = text or message_name
 
             return SlackMessageEntity(
                 # Base fields
@@ -284,7 +292,7 @@ class SlackSource(BaseSource):
                 created_at=created_at,
                 updated_at=None,  # Messages don't have update timestamp
                 # API fields
-                text=text,
+                text=message_text,
                 user=message.get("user"),
                 username=message.get("username"),
                 ts=message.get("ts", ""),
@@ -299,6 +307,8 @@ class SlackSource(BaseSource):
                 score=float(message.get("score", 0)),
                 iid=message.get("iid"),
                 url=message.get("permalink"),
+                message_time=created_at or datetime.utcnow(),
+                web_url_value=message.get("permalink"),
             )
         except Exception as e:
             self.logger.error(f"Error creating message entity: {e}")

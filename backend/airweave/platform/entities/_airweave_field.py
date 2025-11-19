@@ -37,30 +37,60 @@ def AirweaveField(  # noqa: D417
     kw_only: Optional[bool] = None,
     # Airweave-specific metadata
     embeddable: bool = False,
+    is_entity_id: bool = False,
+    is_name: bool = False,
+    is_created_at: bool = False,
+    is_updated_at: bool = False,
+    unhashable: bool = False,
     **extra: Any,
 ) -> FieldInfo:
     """Create a Pydantic Field with Airweave-specific metadata.
 
     This extends the standard Pydantic Field to include metadata for:
     - embeddable: Whether this field should be included in embeddable text generation
+    - is_entity_id: Marks this field as the entity's unique identifier
+    - is_name: Marks this field as the entity's display name
+    - is_created_at: Marks this field as the creation timestamp
+    - is_updated_at: Marks this field as the last update timestamp
+    - unhashable: Marks this field as volatile (excluded from hash computation)
 
     Args:
         default: Default value for the field
         embeddable: Whether this field should be included in neural embedding
+        is_entity_id: True if this field is the entity's unique identifier
+        is_name: True if this field is the entity's display name
+        is_created_at: True if this field is the creation timestamp
+        is_updated_at: True if this field is the last update timestamp
+        unhashable: True if this field should be excluded from hash computation
         **extra: Any additional metadata to be added to the field
 
     Returns:
         FieldInfo object with Airweave metadata in json_schema_extra
 
     Example:
-        >>> class MyEntity(BaseEntity):
-        ...     name: str = AirweaveField(..., description="Name", embeddable=True)
-        ...     description: str = AirweaveField(..., description="Description", embeddable=True)
+        >>> class AsanaTaskEntity(BaseEntity):
+        ...     gid: str = AirweaveField(..., description="Asana GID", is_entity_id=True)
+        ...     title: str = AirweaveField(
+        ...         ..., description="Task name", is_name=True, embeddable=True
+        ...     )
+        ...     created_at: Optional[datetime] = AirweaveField(None, is_created_at=True)
+        ...     modified_at: Optional[datetime] = AirweaveField(None, is_updated_at=True)
+        ...     permalink_url: Optional[str] = AirweaveField(None, unhashable=True)
     """
     # Build json_schema_extra with Airweave metadata
     airweave_metadata = {}
     if embeddable:
         airweave_metadata["embeddable"] = True
+    if is_entity_id:
+        airweave_metadata["is_entity_id"] = True
+    if is_name:
+        airweave_metadata["is_name"] = True
+    if is_created_at:
+        airweave_metadata["is_created_at"] = True
+    if is_updated_at:
+        airweave_metadata["is_updated_at"] = True
+    if unhashable:
+        airweave_metadata["unhashable"] = True
 
     # Merge with existing json_schema_extra if provided
     if json_schema_extra:

@@ -9,6 +9,8 @@ Reference:
 
 from typing import Any, Dict, List, Optional
 
+from pydantic import computed_field
+
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity, FileEntity
 
@@ -20,14 +22,17 @@ class OutlookCalendarCalendarEntity(BaseEntity):
         https://learn.microsoft.com/en-us/graph/api/resources/calendar?view=graph-rest-1.0
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the calendar ID)
-    # - breadcrumbs (empty - calendars are top-level)
-    # - name (from calendar name)
-    # - created_at (None - calendars don't have creation timestamp)
-    # - updated_at (None - calendars don't have update timestamp)
-
-    # API fields
+    id: str = AirweaveField(
+        ...,
+        description="Calendar ID from Microsoft Graph.",
+        is_entity_id=True,
+    )
+    name: str = AirweaveField(
+        ...,
+        description="Calendar display name.",
+        is_name=True,
+        embeddable=True,
+    )
     color: Optional[str] = AirweaveField(
         None,
         description="Color theme to distinguish the calendar (auto, lightBlue, etc.).",
@@ -74,6 +79,19 @@ class OutlookCalendarCalendarEntity(BaseEntity):
     default_online_meeting_provider: Optional[str] = AirweaveField(
         None, description="Default online meeting provider for this calendar.", embeddable=False
     )
+    web_url_override: Optional[str] = AirweaveField(
+        None,
+        description="URL to open this calendar in Outlook on the web.",
+        embeddable=False,
+        unhashable=True,
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Best-effort calendar URL."""
+        if self.web_url_override:
+            return self.web_url_override
+        return "https://outlook.office.com/calendar/"
 
 
 class OutlookCalendarEventEntity(BaseEntity):
@@ -83,16 +101,16 @@ class OutlookCalendarEventEntity(BaseEntity):
         https://learn.microsoft.com/en-us/graph/api/resources/event?view=graph-rest-1.0
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the event ID)
-    # - breadcrumbs (calendar breadcrumb)
-    # - name (from subject)
-    # - created_at (from createdDateTime timestamp)
-    # - updated_at (from lastModifiedDateTime timestamp)
-
-    # API fields
-    subject: Optional[str] = AirweaveField(
-        None, description="The subject/title of the event.", embeddable=True
+    id: str = AirweaveField(
+        ...,
+        description="Event ID from Microsoft Graph.",
+        is_entity_id=True,
+    )
+    subject: str = AirweaveField(
+        ...,
+        description="The subject/title of the event.",
+        embeddable=True,
+        is_name=True,
     )
     body_preview: Optional[str] = AirweaveField(
         None, description="Preview of the event body content.", embeddable=True
@@ -210,6 +228,35 @@ class OutlookCalendarEventEntity(BaseEntity):
     hide_attendees: bool = AirweaveField(
         False, description="Whether attendees are hidden from each other.", embeddable=False
     )
+    created_datetime: Optional[Any] = AirweaveField(
+        None,
+        description="When the event was created.",
+        embeddable=False,
+        is_created_at=True,
+    )
+    last_modified_datetime: Optional[Any] = AirweaveField(
+        None,
+        description="When the event was last modified.",
+        embeddable=False,
+        is_updated_at=True,
+    )
+    web_url_override: Optional[str] = AirweaveField(
+        None,
+        description="URL to open the event in Outlook on the web.",
+        embeddable=False,
+        unhashable=True,
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """URL exposed to clients for opening the event."""
+        if self.web_url_override:
+            return self.web_url_override
+        if self.online_meeting_url:
+            return self.online_meeting_url
+        if self.web_link:
+            return self.web_link
+        return f"https://outlook.office.com/calendar/item/{self.id}"
 
 
 class OutlookCalendarAttachmentEntity(FileEntity):
@@ -221,21 +268,17 @@ class OutlookCalendarAttachmentEntity(FileEntity):
         https://learn.microsoft.com/en-us/graph/api/resources/attachment?view=graph-rest-1.0
     """
 
-    # Base fields are inherited from BaseEntity:
-    # - entity_id (event_id_attachment_attachment_id)
-    # - breadcrumbs (calendar and event breadcrumbs)
-    # - name (from attachment name)
-    # - created_at (None - attachments don't have creation timestamp)
-    # - updated_at (None - attachments don't have update timestamp)
-
-    # File fields are inherited from FileEntity:
-    # - url (dummy URL for Graph attachments)
-    # - size (attachment size in bytes)
-    # - file_type (determined from mime_type)
-    # - mime_type (from content_type)
-    # - local_path (set after saving bytes)
-
-    # API fields (Outlook Calendar-specific)
+    composite_id: str = AirweaveField(
+        ...,
+        description="Composite attachment ID (event + attachment).",
+        is_entity_id=True,
+    )
+    name: str = AirweaveField(
+        ...,
+        description="Attachment display name.",
+        embeddable=True,
+        is_name=True,
+    )
     event_id: str = AirweaveField(
         ..., description="ID of the event this attachment belongs to", embeddable=False
     )
@@ -254,3 +297,16 @@ class OutlookCalendarAttachmentEntity(FileEntity):
     last_modified_at: Optional[str] = AirweaveField(
         None, description="When the attachment was last modified", embeddable=False
     )
+    event_web_url: Optional[str] = AirweaveField(
+        None,
+        description="URL to the parent event.",
+        embeddable=False,
+        unhashable=True,
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Link to the parent event."""
+        if self.event_web_url:
+            return self.event_web_url
+        return f"https://outlook.office.com/calendar/item/{self.event_id}"

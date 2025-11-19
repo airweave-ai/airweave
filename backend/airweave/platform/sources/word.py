@@ -338,21 +338,20 @@ class WordSource(BaseSource):
                 )
 
                 yield WordDocumentEntity(
-                    # Base fields
-                    entity_id=document_id,
                     breadcrumbs=[],
                     name=file_name,
-                    created_at=self._parse_datetime(item_data.get("createdDateTime")),
-                    updated_at=self._parse_datetime(item_data.get("lastModifiedDateTime")),
-                    # File fields
+                    id=document_id,
+                    title=title,
+                    created_datetime=self._parse_datetime(item_data.get("createdDateTime")),
+                    last_modified_datetime=self._parse_datetime(
+                        item_data.get("lastModifiedDateTime")
+                    ),
                     url=content_download_url,
                     size=item_data.get("size", 0),
                     file_type="microsoft_word_doc",
                     mime_type=mime_type,
                     local_path=None,  # Will be set after download
-                    # API fields
-                    title=title,
-                    web_url=item_data.get("webUrl"),
+                    web_url_override=item_data.get("webUrl"),
                     content_download_url=content_download_url,
                     created_by=item_data.get("createdBy"),
                     last_modified_by=item_data.get("lastModifiedBy"),

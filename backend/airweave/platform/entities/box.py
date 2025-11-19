@@ -2,25 +2,26 @@
 
 from typing import Any, Dict, List, Optional
 
+from pydantic import computed_field
+
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity, FileEntity
 
 
 class BoxUserEntity(BaseEntity):
-    """Schema for Box user entities.
+    """Schema for Box user entities."""
 
-    Reference:
-        https://developer.box.com/reference/resources/user/
-    """
+    user_id: str = AirweaveField(..., description="Box user ID", is_entity_id=True)
+    name: str = AirweaveField(
+        ..., description="Display name of the user", is_name=True, embeddable=True
+    )
+    created_at: Optional[str] = AirweaveField(
+        None, description="When the user was created", is_created_at=True
+    )
+    updated_at: Optional[str] = AirweaveField(
+        None, description="When the user was last modified", is_updated_at=True
+    )
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the Box user ID)
-    # - breadcrumbs (empty - users are top-level)
-    # - name (from display name)
-    # - created_at (from created_at timestamp)
-    # - updated_at (from modified_at timestamp)
-
-    # API fields
     login: Optional[str] = AirweaveField(
         None, description="Login email address of the user", embeddable=True
     )
@@ -50,25 +51,27 @@ class BoxUserEntity(BaseEntity):
         None, description="Maximum file size the user can upload in bytes", embeddable=False
     )
     avatar_url: Optional[str] = AirweaveField(
-        None, description="URL to the user's avatar image", embeddable=False
+        None, description="URL to the user's avatar image", embeddable=False, unhashable=True
     )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Link to the user's Box profile."""
+        return f"https://app.box.com/profile/{self.user_id}"
 
 
 class BoxFolderEntity(BaseEntity):
-    """Schema for Box folder entities.
+    """Schema for Box folder entities."""
 
-    Reference:
-        https://developer.box.com/reference/resources/folder/
-    """
+    folder_id: str = AirweaveField(..., description="Box folder ID", is_entity_id=True)
+    name: str = AirweaveField(..., description="Folder name", is_name=True, embeddable=True)
+    created_at: Optional[str] = AirweaveField(
+        None, description="When the folder was created", is_created_at=True
+    )
+    updated_at: Optional[str] = AirweaveField(
+        None, description="When the folder was last modified", is_updated_at=True
+    )
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the Box folder ID)
-    # - breadcrumbs (parent folder breadcrumbs)
-    # - name (from folder name)
-    # - created_at (from created_at timestamp)
-    # - updated_at (from modified_at timestamp)
-
-    # API fields
     description: Optional[str] = AirweaveField(
         None, description="Description of the folder", embeddable=True
     )
@@ -128,7 +131,10 @@ class BoxFolderEntity(BaseEntity):
         None, description="Permissions the current user has on this folder", embeddable=False
     )
     permalink_url: Optional[str] = AirweaveField(
-        None, description="Direct link to view the folder in Box", embeddable=False
+        None,
+        description="Direct link to view the folder in Box",
+        embeddable=False,
+        unhashable=True,
     )
     etag: Optional[str] = AirweaveField(
         None, description="Entity tag for versioning", embeddable=False
@@ -137,29 +143,26 @@ class BoxFolderEntity(BaseEntity):
         None, description="Sequence ID for the most recent user event", embeddable=False
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Direct link to the folder."""
+        if self.permalink_url:
+            return self.permalink_url
+        return f"https://app.box.com/folder/{self.folder_id}"
+
 
 class BoxFileEntity(FileEntity):
-    """Schema for Box file entities.
+    """Schema for Box file entities."""
 
-    Reference:
-        https://developer.box.com/reference/resources/file/
-    """
+    file_id: str = AirweaveField(..., description="Box file ID", is_entity_id=True)
+    name: str = AirweaveField(..., description="File name", is_name=True, embeddable=True)
+    created_at: Optional[str] = AirweaveField(
+        None, description="When the file was created", is_created_at=True
+    )
+    updated_at: Optional[str] = AirweaveField(
+        None, description="When the file was last modified", is_updated_at=True
+    )
 
-    # Base fields are inherited from BaseEntity:
-    # - entity_id (the Box file ID)
-    # - breadcrumbs (parent folder breadcrumbs)
-    # - name (from file name)
-    # - created_at (from created_at timestamp)
-    # - updated_at (from modified_at timestamp)
-
-    # File fields are inherited from FileEntity:
-    # - url (download URL)
-    # - size (file size in bytes)
-    # - file_type (determined from mime_type or extension)
-    # - mime_type
-    # - local_path (set after download)
-
-    # API fields (Box-specific)
     description: Optional[str] = AirweaveField(
         None, description="Description of the file", embeddable=True
     )
@@ -222,7 +225,10 @@ class BoxFileEntity(FileEntity):
         None, description="Lock information if the file is locked", embeddable=False
     )
     permalink_url: Optional[str] = AirweaveField(
-        None, description="Direct link to view the file in Box", embeddable=False
+        None,
+        description="Direct link to view the file in Box",
+        embeddable=False,
+        unhashable=True,
     )
     etag: Optional[str] = AirweaveField(
         None, description="Entity tag for versioning", embeddable=False
@@ -231,22 +237,28 @@ class BoxFileEntity(FileEntity):
         None, description="Sequence ID for the most recent user event", embeddable=False
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Direct link to the file."""
+        if self.permalink_url:
+            return self.permalink_url
+        return f"https://app.box.com/file/{self.file_id}"
+
 
 class BoxCommentEntity(BaseEntity):
-    """Schema for Box comment entities.
+    """Schema for Box comment entities."""
 
-    Reference:
-        https://developer.box.com/reference/resources/comment/
-    """
+    comment_id: str = AirweaveField(..., description="Box comment ID", is_entity_id=True)
+    name: str = AirweaveField(
+        ..., description="Comment preview or identifier", is_name=True, embeddable=True
+    )
+    created_at: Optional[str] = AirweaveField(
+        None, description="When the comment was created", is_created_at=True
+    )
+    updated_at: Optional[str] = AirweaveField(
+        None, description="When the comment was last modified", is_updated_at=True
+    )
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the Box comment ID)
-    # - breadcrumbs (folder and file breadcrumbs)
-    # - name (from message preview)
-    # - created_at (from created_at timestamp)
-    # - updated_at (from modified_at timestamp)
-
-    # API fields
     file_id: str = AirweaveField(
         ..., description="ID of the file this comment is on", embeddable=False
     )
@@ -264,22 +276,28 @@ class BoxCommentEntity(BaseEntity):
         embeddable=True,
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Link back to the file that hosts this comment."""
+        return f"https://app.box.com/file/{self.file_id}"
+
 
 class BoxCollaborationEntity(BaseEntity):
-    """Schema for Box collaboration entities.
+    """Schema for Box collaboration entities."""
 
-    Reference:
-        https://developer.box.com/reference/resources/collaboration/
-    """
+    collaboration_id: str = AirweaveField(
+        ..., description="Box collaboration ID", is_entity_id=True
+    )
+    name: str = AirweaveField(
+        ..., description="Collaboration display label", is_name=True, embeddable=True
+    )
+    created_at: Optional[str] = AirweaveField(
+        None, description="When the collaboration was created", is_created_at=True
+    )
+    updated_at: Optional[str] = AirweaveField(
+        None, description="When the collaboration was last modified", is_updated_at=True
+    )
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the Box collaboration ID)
-    # - breadcrumbs (folder/file breadcrumbs)
-    # - name (from role and accessible_by info)
-    # - created_at (from created_at timestamp)
-    # - updated_at (from modified_at timestamp)
-
-    # API fields
     role: str = AirweaveField(
         ...,
         description="Role of the collaborator (editor, viewer, previewer, etc.)",
@@ -320,3 +338,12 @@ class BoxCollaborationEntity(BaseEntity):
     acknowledged_at: Optional[Any] = AirweaveField(
         None, description="When the collaboration was acknowledged", embeddable=False
     )
+
+    @computed_field(return_type=Optional[str])
+    def web_url(self) -> Optional[str]:
+        """Link back to the collaborated item."""
+        if self.item_type == "file":
+            return f"https://app.box.com/file/{self.item_id}"
+        if self.item_type == "folder":
+            return f"https://app.box.com/folder/{self.item_id}"
+        return None
