@@ -7,10 +7,10 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 import httpx
 from tenacity import retry, stop_after_attempt
 
-from airweave.core.exceptions import TokenRefreshError
+from airweave.core.exceptions import TokenRefreshError, PreSyncValidationException
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
+from airweave.platform.downloader import FileSkippedException, DownloadFailureException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.box import (
     BoxCollaborationEntity,
@@ -516,13 +516,15 @@ class BoxSource(BaseSource):
                 yield file_entity
 
             except FileSkippedException as e:
-                # File intentionally skipped (unsupported type, too large, etc.) - not an error
                 self.logger.debug(f"Skipping file: {e.reason}")
+                yield file_entity
+
+            except DownloadFailureException as e:
+                self.logger.error(f"Failed to download file {file_name}: {e}", exc_info=True)
                 yield file_entity
 
             except Exception as e:
                 self.logger.warning(f"Failed to download file {file_name} ({file_data['id']}): {e}")
-                # Still yield the file entity without processed content
                 yield file_entity
 
         file_breadcrumb = Breadcrumb(
@@ -689,14 +691,16 @@ class BoxSource(BaseSource):
 
         self.logger.debug("Box sync completed")
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify OAuth2 token by pinging Box's /users/me endpoint.
 
-        Returns:
-            True if credentials are valid, False otherwise
+        Raises:
+            PreSyncValidationException: If credentials are invalid
         """
-        return await self._validate_oauth2(
+        is_valid = await self._validate_oauth2(
             ping_url=f"{self.API_BASE}/users/me",
             headers={"Accept": "application/json"},
             timeout=10.0,
         )
+        if not is_valid:
+            raise PreSyncValidationException("Box credentials validation failed", source_name="box")

@@ -24,7 +24,7 @@ from tenacity import retry, stop_after_attempt
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.cursors import GoogleSlidesCursor
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
+from airweave.platform.downloader import FileSkippedException, DownloadFailureException
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.entities.google_slides import (
     GoogleSlidesPresentationEntity,
@@ -35,6 +35,7 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+from airweave.core.exceptions import PreSyncValidationException
 
 
 @source(
@@ -127,13 +128,17 @@ class GoogleSlidesSource(BaseSource):
     # -----------------------
     # Validation
     # -----------------------
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate the Google Slides source connection."""
-        return await self._validate_oauth2(
+        is_valid = await self._validate_oauth2(
             ping_url="https://www.googleapis.com/drive/v3/files?pageSize=1&q=mimeType='application/vnd.google-apps.presentation'",
             headers={"Accept": "application/json"},
             timeout=10.0,
         )
+        if not is_valid:
+            raise PreSyncValidationException(
+                "Google Slides credentials validation failed", source_name="google_slides"
+            )
 
     # --- Incremental sync support (cursor field) ---
     def get_default_cursor_field(self) -> Optional[str]:
@@ -168,6 +173,11 @@ class GoogleSlidesSource(BaseSource):
             except FileSkippedException as e:
                 # Presentation intentionally skipped (unsupported type, too large, etc.)
                 self.logger.debug(f"Skipping presentation {presentation.title}: {e.reason}")
+                continue
+
+            except DownloadFailureException as e:
+                self.logger.error(f"Failed to download file: {e}", exc_info=True)
+                # Continue with other presentations
                 continue
 
             except Exception as e:

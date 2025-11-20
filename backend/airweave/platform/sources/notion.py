@@ -17,7 +17,7 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt
 from airweave.core.logging import logger
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
+from airweave.platform.downloader import FileSkippedException, DownloadFailureException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.notion import (
     NotionDatabaseEntity,
@@ -28,6 +28,7 @@ from airweave.platform.entities.notion import (
 from airweave.platform.sources._base import BaseSource
 from airweave.platform.sources.retry_helpers import wait_rate_limit_with_backoff
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+from airweave.core.exceptions import PreSyncValidationException
 
 
 @source(
@@ -104,12 +105,16 @@ class NotionSource(BaseSource):
 
         return instance
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate the Notion source."""
-        return await self._validate_oauth2(
+        is_valid = await self._validate_oauth2(
             ping_url="https://api.notion.com/v1/users/me",
             headers={"Notion-Version": "2022-06-28"},
         )
+        if not is_valid:
+            raise PreSyncValidationException(
+                "Notion credentials validation failed", source_name="notion"
+            )
 
     def __init__(self):
         """Initialize rate limiting state and tracking."""
@@ -1793,6 +1798,10 @@ class NotionSource(BaseSource):
             except FileSkippedException as e:
                 # File intentionally skipped (unsupported type, too large, etc.) - not an error
                 self.logger.debug(f"Skipping file {file_entity.name}: {e.reason}")
+                return None
+
+            except DownloadFailureException as e:
+                self.logger.error(f"Failed to download file {file_entity.name}: {e}", exc_info=True)
                 return None
 
             except Exception as e:

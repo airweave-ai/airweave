@@ -23,6 +23,7 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+from airweave.core.exceptions import PreSyncValidationException
 
 
 @source(
@@ -663,10 +664,14 @@ class HubspotSource(BaseSource):
             async for ticket_entity in self._generate_ticket_entities(client):
                 yield ticket_entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify HubSpot OAuth2 token by pinging a lightweight CRM endpoint."""
-        return await self._validate_oauth2(
+        is_valid = await self._validate_oauth2(
             ping_url="https://api.hubapi.com/crm/v3/objects/contacts?limit=1",
             headers={"Accept": "application/json"},
             timeout=10.0,
         )
+        if not is_valid:
+            raise PreSyncValidationException(
+                "Hubspot credentials validation failed", source_name="hubspot"
+            )

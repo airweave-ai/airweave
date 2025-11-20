@@ -13,7 +13,7 @@ from typing import Any, AsyncGenerator, Dict, Optional
 import httpx
 from tenacity import retry, stop_after_attempt
 
-from airweave.core.exceptions import TokenRefreshError
+from airweave.core.exceptions import TokenRefreshError, PreSyncValidationException
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
@@ -513,7 +513,7 @@ class JiraSource(BaseSource):
                 f"{issue_count} issues total"
             )
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify Jira OAuth2 token by calling accessible-resources endpoint.
 
         A successful call proves the token is valid and has necessary scopes.
@@ -523,15 +523,17 @@ class JiraSource(BaseSource):
             resources = await self._get_accessible_resources()
 
             if not resources:
-                self.logger.error("Jira validation failed: no accessible resources found")
-                return False
+                raise PreSyncValidationException(
+                    "Jira validation failed: no accessible resources found",
+                    source_name=self.__class__.__name__,
+                )
 
             self.logger.info("✅ Jira OAuth validation successful")
-            return True
 
         except Exception as e:
-            self.logger.error(f"Jira validation failed: {str(e)}")
-            return False
+            raise PreSyncValidationException(
+                f"Jira validation failed: {str(e)}", source_name=self.__class__.__name__
+            )
 
     @staticmethod
     def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
