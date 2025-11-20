@@ -119,6 +119,7 @@ class SyncOrchestrator:
             error_message = f"Source validation failed: {str(e)}"
             self.sync_context.logger.error(error_message, exc_info=True)
             final_status = SyncJobStatus.FAILED
+            await self._handle_sync_failure(e, error_message)
             raise
         except asyncio.CancelledError:
             # Cooperative cancellation: ensure producer and ALL pending tasks are stopped
@@ -128,7 +129,7 @@ class SyncOrchestrator:
             raise
         except Exception as e:
             error_message = get_error_message(e)
-            await self._handle_sync_failure(e)
+            await self._handle_sync_failure(e, error_message)
             final_status = SyncJobStatus.FAILED
             raise
         finally:
@@ -573,9 +574,18 @@ class SyncOrchestrator:
                 exc_info=True,
             )
 
-    async def _handle_sync_failure(self, error: Exception) -> None:
-        """Handle sync failure by updating job status with error details."""
-        error_message = get_error_message(error)
+    async def _handle_sync_failure(
+        self, error: Exception, error_message: Optional[str] = None
+    ) -> None:
+        """Handle sync failure by updating job status with error details.
+        
+        Args:
+            error: The exception that caused the failure
+            error_message: Optional pre-formatted error message. If not provided, 
+                          will extract from exception using get_error_message()
+        """
+        if error_message is None:
+            error_message = get_error_message(error)
         self.sync_context.logger.error(
             f"Sync job {self.sync_context.sync_job.id} failed: {error_message}", exc_info=True
         )
