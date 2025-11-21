@@ -55,8 +55,14 @@ export const SourceButton = ({ id, name, shortName, onClick, disabled, usageChec
         onError={(e) => {
           // Fallback to initials if icon fails to load
           e.currentTarget.style.display = 'none';
-          e.currentTarget.parentElement!.classList.add(getColorClass(shortName));
-          e.currentTarget.parentElement!.innerHTML = `<span class="text-white font-semibold text-xs sm:text-sm">${shortName.substring(0, 2).toUpperCase()}</span>`;
+          const parent = e.currentTarget.parentElement!;
+          parent.classList.add(getColorClass(shortName));
+
+          // Create span element safely without innerHTML to prevent XSS
+          const span = document.createElement('span');
+          span.className = 'text-white font-semibold text-xs sm:text-sm';
+          span.textContent = shortName.substring(0, 2).toUpperCase();
+          parent.appendChild(span);
         }}
       />
     </div>
