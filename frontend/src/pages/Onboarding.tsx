@@ -25,6 +25,7 @@ import { toast } from 'sonner';
 import { useOrganizationStore } from '@/lib/stores/organizations';
 import { useAuth } from '@/lib/auth-context';
 import authConfig from '@/config/auth';
+import { posthog } from '@/lib/posthog-provider';
 
 interface OnboardingData {
   organizationName: string;
@@ -257,6 +258,13 @@ export const Onboarding = () => {
     }
 
     if (currentStep < totalSteps && isStepValid()) {
+      // Track step completion
+      posthog.capture('onboarding_step_completed', {
+        step: currentStep,
+        step_name: getStepName(currentStep),
+        ...getStepData(currentStep),
+      });
+
       setIsTransitioning(true);
       setTimeout(() => {
         setCurrentStep(prev => prev + 1);
@@ -276,6 +284,13 @@ export const Onboarding = () => {
   };
 
   const handleComplete = async () => {
+    // Track final step completion
+    posthog.capture('onboarding_step_completed', {
+      step: currentStep,
+      step_name: getStepName(currentStep),
+      ...getStepData(currentStep),
+    });
+
     // Update formData with team emails
     const emails = teamMembers.map(member => member.email);
 
@@ -416,6 +431,14 @@ export const Onboarding = () => {
     updateFormData(field, value);
     // Auto-progress for steps 2-5
     if (currentStep >= 2 && currentStep <= 5) {
+      // Track step completion
+      const stepData = { ...getStepData(currentStep), [field]: value };
+      posthog.capture('onboarding_step_completed', {
+        step: currentStep,
+        step_name: getStepName(currentStep),
+        ...stepData,
+      });
+
       setTimeout(() => {
         setIsTransitioning(true);
         setTimeout(() => {
@@ -526,6 +549,13 @@ export const Onboarding = () => {
   };
 
   const handleLogout = () => {
+    // Track abandonment
+    posthog.capture('onboarding_abandoned', {
+      step: currentStep,
+      step_name: getStepName(currentStep),
+      ...getStepData(currentStep),
+    });
+
     // Clear token from localStorage
     apiClient.clearToken();
 
@@ -553,6 +583,33 @@ export const Onboarding = () => {
   };
 
   const isValidEmail = inviteEmail && !emailError && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteEmail);
+
+  // PostHog tracking helpers
+  const getStepName = (step: number): string => {
+    const names = ['org_name', 'org_size', 'user_role', 'org_type', 'subscription', 'team_invites'];
+    return names[step - 1] || 'unknown';
+  };
+
+  const getStepData = (step: number): Record<string, any> => {
+    switch (step) {
+      case 1: return { org_name: formData.organizationName };
+      case 2: return { org_size: formData.organizationSize };
+      case 3: return { user_role: formData.userRole };
+      case 4: return { org_type: formData.organizationType };
+      case 5: return { subscription_plan: formData.subscriptionPlan, billing_period: billingPeriod };
+      case 6: return { team_members_count: teamMembers.length };
+      default: return {};
+    }
+  };
+
+  // Track step views
+  useEffect(() => {
+    posthog.capture('onboarding_step_viewed', {
+      step: currentStep,
+      step_name: getStepName(currentStep),
+      has_existing_orgs: hasOrganizations,
+    });
+  }, [currentStep, hasOrganizations]);
 
   const renderStep = () => {
     switch (currentStep) {

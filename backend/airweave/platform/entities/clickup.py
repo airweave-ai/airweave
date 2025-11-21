@@ -2,49 +2,36 @@
 
 from typing import Any, Dict, List, Optional
 
+from pydantic import computed_field
+
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity, FileEntity
 
 
 class ClickUpWorkspaceEntity(BaseEntity):
-    """Schema for ClickUp workspace entities.
+    """Schema for ClickUp workspace entities."""
 
-    Reference:
-        https://clickup.com/api/clickupreference/operation/GetAuthorizedTeams/
-    """
-
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the workspace ID)
-    # - breadcrumbs (empty - workspaces are top-level)
-    # - name (from workspace name)
-    # - created_at (None - workspaces don't have creation timestamp in API)
-    # - updated_at (None - workspaces don't have update timestamp in API)
-
-    # API fields
+    workspace_id: str = AirweaveField(..., description="Workspace ID", is_entity_id=True)
+    name: str = AirweaveField(..., description="Workspace name", is_name=True, embeddable=True)
     color: Optional[str] = AirweaveField(None, description="Workspace color", embeddable=False)
     avatar: Optional[str] = AirweaveField(
-        None, description="Workspace avatar URL", embeddable=False
+        None, description="Workspace avatar URL", embeddable=False, unhashable=True
     )
     members: List[Dict[str, Any]] = AirweaveField(
         default_factory=list, description="List of workspace members", embeddable=True
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        return f"https://app.clickup.com/{self.workspace_id}"
+
 
 class ClickUpSpaceEntity(BaseEntity):
-    """Schema for ClickUp space entities.
+    """Schema for ClickUp space entities."""
 
-    Reference:
-        https://clickup.com/api/clickupreference/operation/GetSpaces/
-    """
-
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the space ID)
-    # - breadcrumbs (workspace breadcrumb)
-    # - name (from space name)
-    # - created_at (None - spaces don't have creation timestamp in API)
-    # - updated_at (None - spaces don't have update timestamp in API)
-
-    # API fields
+    space_id: str = AirweaveField(..., description="Space ID", is_entity_id=True)
+    name: str = AirweaveField(..., description="Space name", is_name=True, embeddable=True)
+    workspace_id: str = AirweaveField(..., description="Parent workspace ID", embeddable=False)
     private: bool = AirweaveField(
         False, description="Whether the space is private", embeddable=False
     )
@@ -58,50 +45,40 @@ class ClickUpSpaceEntity(BaseEntity):
         default_factory=dict, description="Space features configuration", embeddable=False
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        return f"https://app.clickup.com/{self.workspace_id}/v/b/{self.space_id}"
+
 
 class ClickUpFolderEntity(BaseEntity):
-    """Schema for ClickUp folder entities.
+    """Schema for ClickUp folder entities."""
 
-    Reference:
-        https://clickup.com/api/clickupreference/operation/GetFolders/
-    """
-
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the folder ID)
-    # - breadcrumbs (workspace and space breadcrumbs)
-    # - name (from folder name)
-    # - created_at (None - folders don't have creation timestamp in API)
-    # - updated_at (None - folders don't have update timestamp in API)
-
-    # API fields
+    folder_id: str = AirweaveField(..., description="Folder ID", is_entity_id=True)
+    name: str = AirweaveField(..., description="Folder name", is_name=True, embeddable=True)
+    workspace_id: str = AirweaveField(..., description="Parent workspace ID", embeddable=False)
+    space_id: str = AirweaveField(..., description="Parent space ID", embeddable=False)
     hidden: bool = AirweaveField(
         False, description="Whether the folder is hidden", embeddable=False
     )
-    space_id: str = AirweaveField(..., description="Parent space ID", embeddable=False)
     task_count: Optional[int] = AirweaveField(
         None, description="Number of tasks in the folder", embeddable=False
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        return f"https://app.clickup.com/{self.workspace_id}/v/f/{self.folder_id}"
+
 
 class ClickUpListEntity(BaseEntity):
-    """Schema for ClickUp list entities.
+    """Schema for ClickUp list entities."""
 
-    Reference:
-        https://clickup.com/api/clickupreference/operation/GetLists/
-    """
-
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the list ID)
-    # - breadcrumbs (workspace, space, and optionally folder breadcrumbs)
-    # - name (from list name)
-    # - created_at (None - lists don't have creation timestamp in API)
-    # - updated_at (None - lists don't have update timestamp in API)
-
-    # API fields
+    list_id: str = AirweaveField(..., description="List ID", is_entity_id=True)
+    name: str = AirweaveField(..., description="List name", is_name=True, embeddable=True)
+    workspace_id: str = AirweaveField(..., description="Parent workspace ID", embeddable=False)
+    space_id: str = AirweaveField(..., description="Parent space ID", embeddable=False)
     folder_id: Optional[str] = AirweaveField(
         None, description="Parent folder ID (optional)", embeddable=False
     )
-    space_id: str = AirweaveField(..., description="Parent space ID", embeddable=False)
     content: Optional[str] = AirweaveField(
         None, description="List content/description", embeddable=True
     )
@@ -124,22 +101,22 @@ class ClickUpListEntity(BaseEntity):
     )
     space_name: str = AirweaveField(..., description="Parent space name", embeddable=True)
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        return f"https://app.clickup.com/{self.workspace_id}/v/li/{self.list_id}"
+
 
 class ClickUpTaskEntity(BaseEntity):
-    """Schema for ClickUp task entities.
+    """Schema for ClickUp task entities."""
 
-    Reference:
-        https://clickup.com/api/clickupreference/operation/GetTasks/
-    """
-
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the task ID)
-    # - breadcrumbs (workspace, space, folder, and list breadcrumbs)
-    # - name (from task name)
-    # - created_at (None - tasks don't have creation timestamp in API)
-    # - updated_at (None - tasks don't have update timestamp in API)
-
-    # API fields
+    task_id: str = AirweaveField(..., description="Task ID", is_entity_id=True)
+    name: str = AirweaveField(..., description="Task name", is_name=True, embeddable=True)
+    created_at: Optional[Any] = AirweaveField(
+        None, description="Task creation timestamp", is_created_at=True
+    )
+    updated_at: Optional[Any] = AirweaveField(
+        None, description="Task update timestamp", is_updated_at=True
+    )
     status: Dict[str, Any] = AirweaveField(
         default_factory=dict, description="Task status configuration", embeddable=True
     )
@@ -164,9 +141,10 @@ class ClickUpTaskEntity(BaseEntity):
         default_factory=list, description="List of custom fields", embeddable=True
     )
     list_id: str = AirweaveField(..., description="Parent list ID", embeddable=False)
-    folder_id: str = AirweaveField(..., description="Parent folder ID", embeddable=False)
+    folder_id: Optional[str] = AirweaveField(None, description="Parent folder ID", embeddable=False)
     space_id: str = AirweaveField(..., description="Parent space ID", embeddable=False)
-    url: str = AirweaveField(..., description="Task URL", embeddable=False)
+    workspace_id: str = AirweaveField(..., description="Parent workspace ID", embeddable=False)
+    url: str = AirweaveField(..., description="Task URL", embeddable=False, unhashable=True)
     description: Optional[str] = AirweaveField(
         None, description="Task description", embeddable=True
     )
@@ -174,22 +152,19 @@ class ClickUpTaskEntity(BaseEntity):
         None, description="Parent task ID if this is a subtask", embeddable=False
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        return self.url
+
 
 class ClickUpCommentEntity(BaseEntity):
-    """Schema for ClickUp comment entities.
+    """Schema for ClickUp comment entities."""
 
-    Reference:
-        https://clickup.com/api/clickupreference/operation/GetTaskComments/
-    """
-
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the comment ID)
-    # - breadcrumbs (workspace, space, folder, list, and task breadcrumbs)
-    # - name (from text content preview)
-    # - created_at (from date timestamp)
-    # - updated_at (None - comments don't have update timestamp in API)
-
-    # API fields
+    comment_id: str = AirweaveField(..., description="Comment ID", is_entity_id=True)
+    name: str = AirweaveField(..., description="Comment preview", is_name=True, embeddable=True)
+    created_at: Optional[Any] = AirweaveField(
+        None, description="When the comment was created", is_created_at=True
+    )
     task_id: str = AirweaveField(..., description="Parent task ID", embeddable=False)
     user: Dict[str, Any] = AirweaveField(
         ..., description="Comment author information", embeddable=True
@@ -210,25 +185,22 @@ class ClickUpCommentEntity(BaseEntity):
         default_factory=list, description="List of reactions to the comment", embeddable=True
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        return f"https://app.clickup.com/t/{self.task_id}"
+
 
 class ClickUpSubtaskEntity(BaseEntity):
-    """Schema for ClickUp subtask entities.
+    """Schema for ClickUp subtask entities."""
 
-    Supports nested subtasks where subtasks can have their own subtasks.
-    The parent_task_id points to the immediate parent (task or subtask).
-
-    Reference:
-        https://clickup.com/api/clickupreference/operation/GetTasks/
-    """
-
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the subtask ID)
-    # - breadcrumbs (includes all parent tasks in the chain)
-    # - name (from subtask name)
-    # - created_at (None - subtasks don't have creation timestamp in API)
-    # - updated_at (None - subtasks don't have update timestamp in API)
-
-    # API fields
+    subtask_id: str = AirweaveField(..., description="Subtask ID", is_entity_id=True)
+    name: str = AirweaveField(..., description="Subtask name", is_name=True, embeddable=True)
+    created_at: Optional[Any] = AirweaveField(
+        None, description="Subtask creation timestamp", is_created_at=True
+    )
+    updated_at: Optional[Any] = AirweaveField(
+        None, description="Subtask update timestamp", is_updated_at=True
+    )
     parent_task_id: str = AirweaveField(
         ..., description="Immediate parent task/subtask ID", embeddable=False
     )
@@ -247,32 +219,20 @@ class ClickUpSubtaskEntity(BaseEntity):
         description="Nesting level (1 = direct subtask, 2 = nested subtask, etc.)",
         embeddable=False,
     )
+    url: Optional[str] = AirweaveField(
+        None, description="Subtask URL", embeddable=False, unhashable=True
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        return self.url or f"https://app.clickup.com/t/{self.subtask_id}"
 
 
 class ClickUpFileEntity(FileEntity):
-    """Schema for ClickUp file attachments.
+    """Schema for ClickUp file attachments."""
 
-    Represents files attached to ClickUp tasks.
-
-    Reference:
-        https://api.clickup.com/api/v2/task/{task_id}
-    """
-
-    # Base fields are inherited from BaseEntity:
-    # - entity_id (the attachment ID)
-    # - breadcrumbs (workspace, space, folder, list, and task breadcrumbs)
-    # - name (from title or filename)
-    # - created_at (from date timestamp)
-    # - updated_at (None - attachments don't have update timestamp)
-
-    # File fields are inherited from FileEntity:
-    # - url (download URL)
-    # - size (file size in bytes)
-    # - file_type (determined from mime_type or extension)
-    # - mime_type
-    # - local_path (set after download)
-
-    # API fields (ClickUp-specific)
+    attachment_id: str = AirweaveField(..., description="Attachment ID", is_entity_id=True)
+    name: str = AirweaveField(..., description="Attachment name", is_name=True, embeddable=True)
     task_id: str = AirweaveField(
         ..., description="ID of the task this file is attached to", embeddable=False
     )
@@ -293,13 +253,13 @@ class ClickUpFileEntity(FileEntity):
         None, description="Parent attachment ID if applicable", embeddable=False
     )
     thumbnail_small: Optional[str] = AirweaveField(
-        None, description="URL for small thumbnail", embeddable=False
+        None, description="URL for small thumbnail", embeddable=False, unhashable=True
     )
     thumbnail_medium: Optional[str] = AirweaveField(
-        None, description="URL for medium thumbnail", embeddable=False
+        None, description="URL for medium thumbnail", embeddable=False, unhashable=True
     )
     thumbnail_large: Optional[str] = AirweaveField(
-        None, description="URL for large thumbnail", embeddable=False
+        None, description="URL for large thumbnail", embeddable=False, unhashable=True
     )
     is_folder: Optional[bool] = AirweaveField(
         None, description="Whether this is a folder attachment", embeddable=False
@@ -308,10 +268,10 @@ class ClickUpFileEntity(FileEntity):
         None, description="Number of comments on this attachment", embeddable=False
     )
     url_w_query: Optional[str] = AirweaveField(
-        None, description="URL with query parameters", embeddable=False
+        None, description="URL with query parameters", embeddable=False, unhashable=True
     )
     url_w_host: Optional[str] = AirweaveField(
-        None, description="URL with host parameters", embeddable=False
+        None, description="URL with host parameters", embeddable=False, unhashable=True
     )
     email_data: Optional[Dict[str, Any]] = AirweaveField(
         None, description="Email data if attachment is from email", embeddable=False
@@ -339,3 +299,7 @@ class ClickUpFileEntity(FileEntity):
         None, description="Whether the attachment is deleted", embeddable=False
     )
     workspace_id: Optional[str] = AirweaveField(None, description="Workspace ID", embeddable=False)
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        return f"https://app.clickup.com/t/{self.task_id}"

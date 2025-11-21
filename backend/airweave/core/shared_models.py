@@ -31,6 +31,21 @@ class IntegrationType(str, Enum):
     AUTH_PROVIDER = "auth_provider"
 
 
+class AirweaveFieldFlag(str, Enum):
+    """Flags for AirweaveField metadata (composition over inheritance).
+
+    These flags mark fields with semantic meaning that the entity pipeline
+    extracts to populate BaseEntity fields uniformly across all sources.
+    """
+
+    IS_ENTITY_ID = "is_entity_id"
+    IS_NAME = "is_name"
+    IS_CREATED_AT = "is_created_at"
+    IS_UPDATED_AT = "is_updated_at"
+    EMBEDDABLE = "embeddable"
+    UNHASHABLE = "unhashable"
+
+
 class SyncStatus(str, Enum):
     """Sync status enum."""
 

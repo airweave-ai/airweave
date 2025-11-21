@@ -10,7 +10,10 @@ References:
     https://developers.google.com/drive/api/guides/manage-downloads
 """
 
+from datetime import datetime
 from typing import Any, Dict, List, Optional
+
+from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity, FileEntity
@@ -28,25 +31,26 @@ class GoogleSlidesPresentationEntity(FileEntity):
         https://developers.google.com/drive/api/v3/reference/files
     """
 
-    # Base fields are inherited from BaseEntity:
-    # - entity_id (the Google Slides presentation file ID)
-    # - breadcrumbs (empty - presentations are top-level)
-    # - name (filename with .pdf extension for processing)
-    # - created_at (from created_time)
-    # - updated_at (from modified_time)
-
-    # File fields are inherited from FileEntity:
-    # - url (web view link)
-    # - size (presentation size in bytes)
-    # - file_type (set to "google_slides")
-    # - mime_type (PDF MIME type for export)
-    # - local_path (set after download)
-
-    # API fields (Google Slides/Drive-specific)
-    title: Optional[str] = AirweaveField(
-        None,
+    presentation_id: str = AirweaveField(
+        ...,
+        description="Unique Google Drive file ID of the presentation.",
+        is_entity_id=True,
+    )
+    title: str = AirweaveField(
+        ...,
         description="Display title of the presentation (without file extension).",
         embeddable=True,
+        is_name=True,
+    )
+    created_time: datetime = AirweaveField(
+        ...,
+        description="When the presentation was created.",
+        is_created_at=True,
+    )
+    modified_time: datetime = AirweaveField(
+        ...,
+        description="When the presentation was last modified.",
+        is_updated_at=True,
     )
     description: Optional[str] = AirweaveField(
         None, description="Optional description of the presentation.", embeddable=True
@@ -65,7 +69,7 @@ class GoogleSlidesPresentationEntity(FileEntity):
     shared: bool = AirweaveField(
         False, description="Whether the presentation is shared with others.", embeddable=True
     )
-    shared_with_me_time: Optional[Any] = AirweaveField(
+    shared_with_me_time: Optional[datetime] = AirweaveField(
         None, description="Time when this presentation was shared with the user.", embeddable=False
     )
     sharing_user: Optional[Dict[str, Any]] = AirweaveField(
@@ -83,21 +87,18 @@ class GoogleSlidesPresentationEntity(FileEntity):
         embeddable=False,
     )
     web_view_link: Optional[str] = AirweaveField(
-        None, description="Link to open the presentation in Google Slides editor.", embeddable=False
+        None,
+        description="Link to open the presentation in Google Slides editor.",
+        embeddable=False,
+        unhashable=True,
     )
     icon_link: Optional[str] = AirweaveField(
         None, description="Link to the presentation's icon.", embeddable=False
     )
-    created_time: Optional[Any] = AirweaveField(
-        None, description="When the presentation was created.", embeddable=False
-    )
-    modified_time: Optional[Any] = AirweaveField(
-        None, description="When the presentation was last modified.", embeddable=False
-    )
-    modified_by_me_time: Optional[Any] = AirweaveField(
+    modified_by_me_time: Optional[datetime] = AirweaveField(
         None, description="Last time the user modified the presentation.", embeddable=False
     )
-    viewed_by_me_time: Optional[Any] = AirweaveField(
+    viewed_by_me_time: Optional[datetime] = AirweaveField(
         None, description="Last time the user viewed the presentation.", embeddable=False
     )
     version: Optional[int] = AirweaveField(
@@ -117,6 +118,13 @@ class GoogleSlidesPresentationEntity(FileEntity):
         description="MIME type used for exporting the presentation content (PDF).",
         embeddable=False,
     )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Link to open the presentation in Google Slides."""
+        if self.web_view_link:
+            return self.web_view_link
+        return f"https://docs.google.com/presentation/d/{self.presentation_id}/edit"
 
 
 class GoogleSlidesSlideEntity(BaseEntity):
@@ -139,7 +147,10 @@ class GoogleSlidesSlideEntity(BaseEntity):
 
     # API fields
     slide_id: str = AirweaveField(
-        ..., description="Unique ID of the slide within the presentation.", embeddable=False
+        ...,
+        description="Unique ID of the slide within the presentation.",
+        embeddable=False,
+        is_entity_id=True,
     )
     presentation_id: str = AirweaveField(
         ..., description="ID of the parent presentation containing this slide.", embeddable=False
@@ -147,8 +158,11 @@ class GoogleSlidesSlideEntity(BaseEntity):
     slide_number: int = AirweaveField(
         ..., description="The zero-based index of the slide in the presentation.", embeddable=True
     )
-    title: Optional[str] = AirweaveField(
-        None, description="Title of the slide if available.", embeddable=True
+    title: str = AirweaveField(
+        ...,
+        description="Title of the slide (or generated fallback).",
+        embeddable=True,
+        is_name=True,
     )
     notes: Optional[str] = AirweaveField(
         None, description="Speaker notes for the slide.", embeddable=True
@@ -171,15 +185,28 @@ class GoogleSlidesSlideEntity(BaseEntity):
     color_scheme: Optional[Dict[str, Any]] = AirweaveField(
         None, description="Color scheme of the slide.", embeddable=False
     )
-    created_time: Optional[Any] = AirweaveField(
+    created_time: Optional[datetime] = AirweaveField(
         None, description="When the slide was created.", embeddable=False
     )
-    modified_time: Optional[Any] = AirweaveField(
+    modified_time: Optional[datetime] = AirweaveField(
         None, description="When the slide was last modified.", embeddable=False
     )
     presentation_title: Optional[str] = AirweaveField(
         None, description="Title of the parent presentation.", embeddable=True
     )
     presentation_url: Optional[str] = AirweaveField(
-        None, description="URL to view the parent presentation.", embeddable=False
+        None,
+        description="URL to view the parent presentation.",
+        embeddable=False,
+        unhashable=True,
     )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """URL to view this slide within its presentation."""
+        if self.presentation_url:
+            return self.presentation_url
+        return (
+            f"https://docs.google.com/presentation/d/{self.presentation_id}/edit"
+            f"#slide=id.{self.slide_id}"
+        )

@@ -269,13 +269,11 @@ class GitHubSource(BaseSource):
             )
 
         return GitHubRepositoryEntity(
-            # Base fields
-            entity_id=str(repo_data["id"]),
             breadcrumbs=[],
+            repo_id=repo_data["id"],
             name=repo_data["name"],
             created_at=datetime.fromisoformat(repo_data["created_at"].replace("Z", "+00:00")),
             updated_at=datetime.fromisoformat(repo_data["updated_at"].replace("Z", "+00:00")),
-            # API fields
             full_name=repo_data["full_name"],
             description=repo_data.get("description"),
             default_branch=repo_data["default_branch"],
@@ -309,7 +307,11 @@ class GitHubSource(BaseSource):
         owner, repo = repo_name.split("/")
 
         # Create breadcrumb for the repo
-        repo_breadcrumb = Breadcrumb(entity_id=repo_entity.entity_id)
+        repo_breadcrumb = Breadcrumb(
+            entity_id=str(repo_entity.repo_id),
+            name=repo_entity.name,
+            entity_type=GitHubRepositoryEntity.__name__,
+        )
 
         # Track processed paths to avoid duplicates
         processed_paths = set()
@@ -350,6 +352,12 @@ class GitHubSource(BaseSource):
         # Parse owner and repo
         owner, repo = repo_name.split("/")
 
+        repo_breadcrumb = Breadcrumb(
+            entity_id=str(repo_entity.repo_id),
+            name=repo_entity.name,
+            entity_type=GitHubRepositoryEntity.__name__,
+        )
+
         # Get commits since the last sync timestamp
         commits = await self._get_commits_since(client, repo_name, since_timestamp, branch)
 
@@ -386,16 +394,13 @@ class GitHubSource(BaseSource):
                     self.logger.debug(f"Processing deleted file: {file_path}")
                     # Create a special deletion entity
                     deletion_entity = GitHubFileDeletionEntity(
-                        # Base fields
-                        entity_id=f"{repo_name}/{file_path}",
                         breadcrumbs=[],
-                        name=f"Deleted file {file_path}",
-                        created_at=None,  # Deletions don't have timestamps
-                        updated_at=None,  # Deletions don't have timestamps
-                        # API fields
+                        full_path=f"{repo_name}/{file_path}",
+                        deletion_label=f"Deleted file {file_path}",
                         file_path=file_path,
                         repo_name=repo,
                         repo_owner=owner,
+                        branch=branch,
                         deletion_status="removed",
                     )
                     yield deletion_entity
@@ -404,7 +409,7 @@ class GitHubSource(BaseSource):
                 # Process the changed file
                 try:
                     async for entity in self._process_changed_file(
-                        client, repo_name, file_path, owner, repo, branch
+                        client, repo_name, file_path, owner, repo, branch, repo_breadcrumb
                     ):
                         yield entity
                 except Exception as e:
@@ -467,6 +472,7 @@ class GitHubSource(BaseSource):
         owner: str,
         repo: str,
         branch: str,
+        repo_breadcrumb: Breadcrumb,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Process a single changed file.
 
@@ -477,23 +483,24 @@ class GitHubSource(BaseSource):
             owner: Repository owner
             repo: Repository name
             branch: Branch name
+            repo_breadcrumb: Breadcrumb representing the parent repository
 
         Yields:
             File entity if it's a text file
         """
         # Create breadcrumbs for the file
         path_parts = file_path.split("/")
-        breadcrumbs = []
-
-        # Add repository breadcrumb
-        repo_breadcrumb = Breadcrumb(entity_id=f"{owner}/{repo}")
-        breadcrumbs.append(repo_breadcrumb)
+        breadcrumbs = [repo_breadcrumb]
 
         # Add directory breadcrumbs
         current_path = ""
         for _i, part in enumerate(path_parts[:-1]):  # Exclude the filename
             current_path = f"{current_path}/{part}" if current_path else part
-            dir_breadcrumb = Breadcrumb(entity_id=f"{repo_name}/{current_path}")
+            dir_breadcrumb = Breadcrumb(
+                entity_id=f"{repo_name}/{current_path}",
+                name=part,
+                entity_type=GitHubDirectoryEntity.__name__,
+            )
             breadcrumbs.append(dir_breadcrumb)
 
         # Get file content
@@ -530,14 +537,11 @@ class GitHubSource(BaseSource):
 
             # Create file entity (without content field)
             file_entity = GitHubCodeFileEntity(
-                # Base fields
-                entity_id=f"{repo_name}/{file_path}",
                 breadcrumbs=breadcrumbs,
-                name=path_parts[-1],  # Filename
-                created_at=None,  # GitHub files don't have creation timestamp
-                updated_at=None,  # GitHub files don't have update timestamp
-                # File fields
-                url=file_data.get("html_url", ""),
+                full_path=f"{repo_name}/{file_path}",
+                name=path_parts[-1],
+                branch=branch,
+                url=file_data.get("download_url") or file_data.get("html_url", ""),
                 size=file_size,
                 file_type=file_type,
                 mime_type=mime_type,
@@ -549,6 +553,7 @@ class GitHubSource(BaseSource):
                 language=language,
                 commit_id=file_data["sha"],
                 # API fields
+                html_url=file_data.get("html_url"),
                 sha=file_data["sha"],
                 line_count=line_count,
                 is_binary=False,
@@ -648,20 +653,21 @@ class GitHubSource(BaseSource):
                 if item_type == "dir":
                     # Create directory entity
                     dir_entity = GitHubDirectoryEntity(
-                        # Base fields
-                        entity_id=f"{repo_name}/{item_path}",
                         breadcrumbs=breadcrumbs.copy(),
+                        full_path=f"{repo_name}/{item_path}",
                         name=Path(item_path).name,
-                        created_at=None,  # Directories don't have timestamps
-                        updated_at=None,  # Directories don't have timestamps
-                        # API fields
                         path=item_path,
                         repo_name=repo,
                         repo_owner=owner,
+                        branch=branch,
                     )
 
                     # Create breadcrumb for this directory
-                    dir_breadcrumb = Breadcrumb(entity_id=dir_entity.entity_id)
+                    dir_breadcrumb = Breadcrumb(
+                        entity_id=dir_entity.full_path,
+                        name=dir_entity.name,
+                        entity_type=GitHubDirectoryEntity.__name__,
+                    )
 
                     # Yield the directory entity
                     yield dir_entity
@@ -764,14 +770,11 @@ class GitHubSource(BaseSource):
 
                 # Create file entity (without content field)
                 file_entity = GitHubCodeFileEntity(
-                    # Base fields
-                    entity_id=f"{repo_name}/{item_path}",
                     breadcrumbs=breadcrumbs.copy(),
+                    full_path=f"{repo_name}/{item_path}",
                     name=file_name,
-                    created_at=None,  # GitHub files don't have creation timestamp
-                    updated_at=None,  # GitHub files don't have update timestamp
-                    # File fields
-                    url=file_data["html_url"],
+                    branch=branch,
+                    url=file_data.get("download_url") or file_data["html_url"],
                     size=file_size,
                     file_type=file_type,
                     mime_type=mime_type,
@@ -783,6 +786,7 @@ class GitHubSource(BaseSource):
                     language=language,
                     commit_id=file_data["sha"],
                     # API fields
+                    html_url=file_data.get("html_url"),
                     sha=file_data["sha"],
                     line_count=line_count,
                     is_binary=False,

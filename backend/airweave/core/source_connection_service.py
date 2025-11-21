@@ -459,6 +459,15 @@ class SourceConnectionService:
             # Update fields
             update_data = obj_in.model_dump(exclude_unset=True)
 
+            # Normalize nested authentication payloads (Direct auth updates)
+            if "authentication" in update_data:
+                auth_payload = update_data.get("authentication") or {}
+                credentials = auth_payload.get("credentials")
+                if credentials:
+                    update_data["credentials"] = credentials
+                # Remove authentication object so we don't try to persist it on the model
+                del update_data["authentication"]
+
             # Handle config update
             if "config" in update_data:
                 validated_config = await self._validate_config_fields(

@@ -13,6 +13,7 @@ References:
     https://developers.google.com/drive/api/guides/manage-downloads
 """
 
+from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, Optional
 
 import httpx
@@ -161,6 +162,16 @@ class GoogleDocsSource(BaseSource):
             data = response.json()
             return {"start_page_token": data.get("startPageToken")}
 
+    @staticmethod
+    def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
+        """Parse RFC3339 timestamps returned by Google Drive."""
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+
     # --- Main sync method ---
     async def generate_entities(
         self, existing_cursor_value: Optional[Dict[str, Any]] = None
@@ -264,7 +275,8 @@ class GoogleDocsSource(BaseSource):
                                 yield entity
 
                             except FileSkippedException as e:
-                                # File intentionally skipped (unsupported type, too large, etc.) - not an error
+                                # File intentionally skipped (unsupported type, too large, etc.)
+                                # Not an error
                                 self.logger.debug(f"Skipping file: {e.reason}")
                                 continue
 
@@ -288,7 +300,7 @@ class GoogleDocsSource(BaseSource):
             self._latest_new_start_page_token = latest_new_start
 
     # --- Full sync: list all documents ---
-    async def _list_and_process_documents(
+    async def _list_and_process_documents(  # noqa: C901
         self, client: httpx.AsyncClient
     ) -> AsyncGenerator[GoogleDocsDocumentEntity, None]:
         """List all Google Docs documents and create entities.
@@ -375,7 +387,8 @@ class GoogleDocsSource(BaseSource):
                             yield entity
 
                         except FileSkippedException as e:
-                            # File intentionally skipped (unsupported type, too large, etc.) - not an error
+                            # File intentionally skipped (unsupported type, too large, etc.)
+                            # Not an error
                             self.logger.debug(f"Skipping file: {e.reason}")
                             continue
 
@@ -436,25 +449,11 @@ class GoogleDocsSource(BaseSource):
             )
 
             # Parse timestamps
-            created_time = None
-            if file_data.get("createdTime"):
-                created_time = file_data["createdTime"]
-
-            modified_time = None
-            if file_data.get("modifiedTime"):
-                modified_time = file_data["modifiedTime"]
-
-            modified_by_me_time = None
-            if file_data.get("modifiedByMeTime"):
-                modified_by_me_time = file_data["modifiedByMeTime"]
-
-            viewed_by_me_time = None
-            if file_data.get("viewedByMeTime"):
-                viewed_by_me_time = file_data["viewedByMeTime"]
-
-            shared_with_me_time = None
-            if file_data.get("sharedWithMeTime"):
-                shared_with_me_time = file_data["sharedWithMeTime"]
+            created_time = self._parse_datetime(file_data.get("createdTime")) or datetime.utcnow()
+            modified_time = self._parse_datetime(file_data.get("modifiedTime")) or created_time
+            modified_by_me_time = self._parse_datetime(file_data.get("modifiedByMeTime"))
+            viewed_by_me_time = self._parse_datetime(file_data.get("viewedByMeTime"))
+            shared_with_me_time = self._parse_datetime(file_data.get("sharedWithMeTime"))
 
             # Prepare name with .docx extension for file processing
             doc_name = file_data.get("name", "Untitled Document")
@@ -465,20 +464,19 @@ class GoogleDocsSource(BaseSource):
 
             # Create entity
             entity = GoogleDocsDocumentEntity(
-                # Base fields
-                entity_id=file_id,
                 breadcrumbs=[],
+                document_key=file_id,
+                title=doc_name,
+                created_timestamp=created_time,
+                modified_timestamp=modified_time,
                 name=doc_name_with_ext,
                 created_at=created_time,
                 updated_at=modified_time,
-                # File fields
                 url=export_url,  # Use export URL for downloading (file downloader uses entity.url)
-                size=file_data.get("size", 0),
+                size=int(file_data.get("size") or 0),
                 file_type="google_doc",
                 mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 local_path=None,  # Will be set after download
-                # API fields
-                title=file_data.get("name", "Untitled Document"),
                 description=file_data.get("description"),
                 starred=file_data.get("starred", False),
                 trashed=file_data.get("trashed", False),
@@ -497,8 +495,7 @@ class GoogleDocsSource(BaseSource):
                 viewed_by_me_time=viewed_by_me_time,
                 version=file_data.get("version"),
                 export_mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                # Set download_url for the export URL
-                download_url=export_url,
+                web_url_value=file_data.get("webViewLink"),
             )
 
             return entity

@@ -12,7 +12,7 @@ from tiktoken import Encoding
 
 from airweave.api.context import ApiContext
 
-from ._base import BaseProvider
+from ._base import BaseProvider, ProviderError
 from .schemas import ProviderModelSpec
 
 
@@ -83,7 +83,7 @@ class OpenAIProvider(BaseProvider):
 
         content = response.choices[0].message.content
         if not content:
-            raise ValueError("OpenAI returned empty completion content")
+            raise ProviderError("OpenAI returned empty completion content")
 
         return content
 
@@ -112,7 +112,7 @@ class OpenAIProvider(BaseProvider):
 
         parsed = response.output_parsed
         if not parsed:
-            raise RuntimeError("OpenAI returned empty structured output")
+            raise ProviderError("OpenAI returned empty structured output")
 
         return parsed
 
@@ -157,7 +157,7 @@ class OpenAIProvider(BaseProvider):
             all_embeddings.extend(batch_result)
 
         if len(all_embeddings) != len(texts):
-            raise RuntimeError(
+            raise ProviderError(
                 f"Embedding count mismatch: got {len(all_embeddings)} for {len(texts)} texts"
             )
 
@@ -176,10 +176,10 @@ class OpenAIProvider(BaseProvider):
             ) from e
 
         if not response.data:
-            raise RuntimeError(f"OpenAI returned no embeddings for batch at {batch_start}")
+            raise ProviderError(f"OpenAI returned no embeddings for batch at {batch_start}")
 
         if len(response.data) != len(batch):
-            raise RuntimeError(
+            raise ProviderError(
                 f"OpenAI returned {len(response.data)} embeddings but expected {len(batch)}"
             )
 
@@ -219,7 +219,7 @@ class OpenAIProvider(BaseProvider):
         )
 
         if not rerank_result.rankings:
-            raise RuntimeError("OpenAI returned empty rankings")
+            raise ProviderError("OpenAI returned empty rankings")
 
         # Map rankings relative to chosen subset back to original indices
         mapped: List[Dict[str, Any]] = []

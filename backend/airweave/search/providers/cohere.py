@@ -16,7 +16,7 @@ from tiktoken import Encoding
 
 from airweave.api.context import ApiContext
 
-from ._base import BaseProvider
+from ._base import BaseProvider, ProviderError
 from .schemas import ProviderModelSpec
 
 
@@ -109,7 +109,7 @@ class CohereProvider(BaseProvider):
             raise RuntimeError(f"Cohere rerank API call failed: {e}") from e
 
         if not response.results:
-            raise RuntimeError("Cohere returned empty rerank results")
+            raise ProviderError("Cohere returned empty rerank results")
 
         return [
             {"index": result.index, "relevance_score": result.relevance_score}

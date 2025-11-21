@@ -20,11 +20,12 @@ from tenacity import (
 
 from airweave import crud, models
 from airweave.core.constants.reserved_ids import RESERVED_TABLE_ENTITY_ID
-from airweave.core.shared_models import ActionType
+from airweave.core.shared_models import ActionType, AirweaveFieldFlag
 from airweave.db.session import get_db_context
 from airweave.platform.entities._base import (
     BaseEntity,
     CodeFileEntity,
+    DeletionEntity,
     FileEntity,
     PolymorphicEntity,
 )
@@ -149,6 +150,10 @@ class EntityPipeline:
         sync_context: SyncContext,
     ) -> None:
         """Process a list of entities."""
+        # Populate BaseEntity fields from flagged fields BEFORE duplicate detection
+        for entity in entities:
+            self._populate_base_entity_fields_from_flags(entity)
+
         unique_entities = await self._filter_duplicates(entities, sync_context)
 
         if not unique_entities:
@@ -278,6 +283,46 @@ class EntityPipeline:
     # Early Metadata Enrichment
     # ------------------------------------------------------------------------------------
 
+    def _get_flagged_field_value(self, entity: BaseEntity, flag_name: str) -> Any:
+        """Extract value of field marked with specified flag."""
+        # Support both raw string keys ("is_entity_id") and AirweaveFieldFlag enum values
+        flag_key = flag_name.value if hasattr(flag_name, "value") else flag_name
+
+        # Iterate through entity's model fields
+        for field_name, field_info in entity.model_fields.items():
+            # Check if field has json_schema_extra with the flag
+            json_extra = field_info.json_schema_extra
+            if json_extra and isinstance(json_extra, dict):
+                if json_extra.get(flag_key):
+                    return getattr(entity, field_name, None)
+
+        return None
+
+    def _populate_base_entity_fields_from_flags(self, entity: BaseEntity) -> None:
+        """Populate BaseEntity fields from flagged fields."""
+        # Extract entity_id from is_entity_id flag if not already set
+        if not entity.entity_id:
+            flagged_value = self._get_flagged_field_value(entity, AirweaveFieldFlag.IS_ENTITY_ID)
+            if flagged_value:
+                entity.entity_id = str(flagged_value)
+
+        # Extract name from is_name flag if not already set
+        if not entity.name:
+            flagged_value = self._get_flagged_field_value(entity, AirweaveFieldFlag.IS_NAME)
+            if flagged_value:
+                entity.name = str(flagged_value)
+
+        # Extract timestamps (Optional - no error if missing)
+        if not entity.created_at:
+            flagged_value = self._get_flagged_field_value(entity, AirweaveFieldFlag.IS_CREATED_AT)
+            if flagged_value is not None:
+                entity.created_at = flagged_value
+
+        if not entity.updated_at:
+            flagged_value = self._get_flagged_field_value(entity, AirweaveFieldFlag.IS_UPDATED_AT)
+            if flagged_value is not None:
+                entity.updated_at = flagged_value
+
     async def _enrich_early_metadata(
         self,
         entities: List[BaseEntity],
@@ -377,6 +422,18 @@ class EntityPipeline:
                 "local_path",  # Temp path changes per run
                 "url",  # Contains access tokens
             }
+
+            # Add fields marked with unhashable=True (composition over inheritance)
+            for field_name, field_info in entity.__class__.model_fields.items():
+                json_extra = field_info.json_schema_extra
+                if json_extra and isinstance(json_extra, dict):
+                    if json_extra.get(
+                        AirweaveFieldFlag.UNHASHABLE.value
+                        if hasattr(AirweaveFieldFlag.UNHASHABLE, "value")
+                        else AirweaveFieldFlag.UNHASHABLE
+                    ):
+                        excluded_fields.add(field_name)
+
             content_dict = {k: v for k, v in entity_dict.items() if k not in excluded_fields}
 
             # Step 4: Stable serialize
@@ -606,6 +663,11 @@ class EntityPipeline:
         """Resolve entity definition ID with polymorphic fallback."""
         entity_class = entity.__class__
 
+        if issubclass(entity_class, DeletionEntity):
+            target_class = getattr(entity_class, "deletes_entity_class", None)
+            if target_class:
+                entity_class = target_class
+
         definition_id = sync_context.entity_map.get(entity_class)
         if definition_id:
             return definition_id
@@ -706,9 +768,14 @@ class EntityPipeline:
             Dict mapping field names to their values
         """
         fields = {}
-        for field_name, field_info in entity.model_fields.items():
-            if field_info.json_schema_extra and isinstance(field_info.json_schema_extra, dict):
-                if field_info.json_schema_extra.get("embeddable"):
+        for field_name, field_info in entity.__class__.model_fields.items():
+            json_extra = field_info.json_schema_extra
+            if json_extra and isinstance(json_extra, dict):
+                if json_extra.get(
+                    AirweaveFieldFlag.EMBEDDABLE.value
+                    if hasattr(AirweaveFieldFlag.EMBEDDABLE, "value")
+                    else AirweaveFieldFlag.EMBEDDABLE
+                ):
                     value = getattr(entity, field_name, None)
                     if value is not None:
                         fields[field_name] = value
@@ -767,6 +834,26 @@ class EntityPipeline:
             f"**Type**: {entity_type}",
             f"**Name**: {entity.name}",
         ]
+
+        # Add breadcrumb path if present (shows hierarchy with types)
+        if entity.breadcrumbs and len(entity.breadcrumbs) > 0:
+            # Format: "Type: Name → Type: Name" (strip source prefix and "Entity" suffix)
+            path_parts = []
+            for bc in entity.breadcrumbs:
+                # Clean entity type: "AsanaProjectEntity" → "Project"
+                clean_type = bc.entity_type
+                # Remove "Entity" suffix
+                if clean_type.endswith("Entity"):
+                    clean_type = clean_type[:-6]  # Remove last 6 chars ("Entity")
+                # Remove source prefix (e.g., "Asana", "Jira", "GitHub")
+                # Look for capital letter after first one as delimiter
+                for i in range(1, len(clean_type)):
+                    if clean_type[i].isupper():
+                        clean_type = clean_type[i:]
+                        break
+                path_parts.append(f"{clean_type}: {bc.name}")
+            path_str = " → ".join(path_parts)
+            lines.append(f"**Path**: {path_str}")
 
         embeddable_fields = self._extract_embeddable_fields(entity)
         if embeddable_fields:
@@ -927,6 +1014,18 @@ class EntityPipeline:
                 except SyncFailureError:
                     # Infrastructure failure from converter - propagate to fail entire sync
                     raise
+                except EntityProcessingError as e:
+                    # Recoverable converter issue - skip sub-batch without error log
+                    converter_name = converter.__class__.__name__
+                    sync_context.logger.warning(
+                        f"Batch conversion skipped for {converter_name} sub-batch: {e}"
+                    )
+                    failed_entities.extend(sub_batch)
+                    for entity in sub_batch:
+                        sync_context.logger.warning(
+                            f"Skipping {entity.__class__.__name__}[{entity.entity_id}] "
+                            f"due to recoverable converter error"
+                        )
                 except Exception as e:
                     # Unexpected errors - mark entire sub-batch as failed but continue
                     converter_name = converter.__class__.__name__

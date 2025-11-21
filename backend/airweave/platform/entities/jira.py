@@ -4,7 +4,10 @@ Simplified entity schemas for Jira Projects and Issues to demonstrate
 Airweave's capabilities with minimal complexity.
 """
 
+from datetime import datetime
 from typing import Optional
+
+from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity
@@ -17,20 +20,26 @@ class JiraProjectEntity(BaseEntity):
         https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-projects/
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (project-{id})
-    # - breadcrumbs (empty - projects are top-level)
-    # - name (from project name)
-    # - created_at (None - projects don't have creation timestamp in API)
-    # - updated_at (None - projects don't have update timestamp in API)
-
-    # API fields
+    project_id: str = AirweaveField(
+        ..., description="Unique numeric identifier for the project.", is_entity_id=True
+    )
+    project_name: str = AirweaveField(
+        ..., description="Display name of the project.", embeddable=True, is_name=True
+    )
     project_key: str = AirweaveField(
         ..., description="Unique key of the project (e.g., 'PROJ').", embeddable=True
     )
     description: Optional[str] = AirweaveField(
         None, description="Description of the project.", embeddable=True
     )
+    web_url_value: Optional[str] = AirweaveField(
+        None, description="Link to the project in Jira.", embeddable=False, unhashable=True
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """UI link for the Jira project."""
+        return self.web_url_value or ""
 
 
 class JiraIssueEntity(BaseEntity):
@@ -40,19 +49,14 @@ class JiraIssueEntity(BaseEntity):
         https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issues/
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (issue-{id})
-    # - breadcrumbs (project breadcrumb)
-    # - name (from summary)
-    # - created_at (from created timestamp)
-    # - updated_at (from updated timestamp)
-
-    # API fields
+    issue_id: str = AirweaveField(
+        ..., description="Unique identifier for the issue.", is_entity_id=True
+    )
     issue_key: str = AirweaveField(
         ..., description="Jira key for the issue (e.g. 'PROJ-123').", embeddable=True
     )
-    summary: Optional[str] = AirweaveField(
-        None, description="Short summary field of the issue.", embeddable=True
+    summary: str = AirweaveField(
+        ..., description="Short summary field of the issue.", embeddable=True, is_name=True
     )
     description: Optional[str] = AirweaveField(
         None, description="Detailed description of the issue.", embeddable=True
@@ -63,3 +67,20 @@ class JiraIssueEntity(BaseEntity):
     issue_type: Optional[str] = AirweaveField(
         None, description="Type of the issue (bug, task, story, etc.).", embeddable=True
     )
+    project_key: str = AirweaveField(
+        ..., description="Key of the project that owns this issue.", embeddable=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="Timestamp when the issue was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="Timestamp when the issue was last updated.", is_updated_at=True
+    )
+    web_url_value: Optional[str] = AirweaveField(
+        None, description="Link to the issue in Jira.", embeddable=False, unhashable=True
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """UI link for the Jira issue."""
+        return self.web_url_value or ""

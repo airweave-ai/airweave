@@ -12,6 +12,7 @@ from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.router import TrailingSlashRouter
 from airweave.billing.service import billing_service
+from airweave.core.context_cache_service import context_cache
 from airweave.core.exceptions import InvalidStateError, NotFoundException
 from airweave.core.organization_service import organization_service
 from airweave.core.shared_models import FeatureFlag as FeatureFlagEnum
@@ -83,7 +84,8 @@ async def list_all_organizations(
         skip: Number of organizations to skip
         limit: Maximum number of organizations to return (default 1000, max 10000)
         search: Optional search term to filter by organization name
-        sort_by: Field to sort by (name, created_at, billing_plan, user_count, source_connection_count, entity_count, query_count, last_active_at, etc.)
+        sort_by: Field to sort by (name, created_at, billing_plan, user_count,
+            source_connection_count, entity_count, query_count, last_active_at)
         sort_order: Sort order (asc or desc)
 
     Returns:
@@ -148,6 +150,7 @@ async def list_all_organizations(
     # For source_connection_count sorting, create subquery
     if sort_by == "source_connection_count":
         from sqlalchemy import select as sa_select
+
         from airweave.models.source_connection import SourceConnection
 
         source_connection_count_subq = (
@@ -380,6 +383,8 @@ async def add_self_to_organization(
         "org_metadata": org.org_metadata,
     }
 
+    membership_changed = False
+
     # Check if user is already a member
     existing_user_org = None
     for user_org in ctx.user.user_organizations:
@@ -402,6 +407,7 @@ async def add_self_to_organization(
             )
             await db.execute(stmt)
             await db.commit()
+            membership_changed = True
             ctx.logger.info(
                 f"Admin {ctx.user.email} updated role in org {organization_id} to {role}"
             )
@@ -420,6 +426,7 @@ async def add_self_to_organization(
             )
             db.add(user_org)
             await db.commit()
+            membership_changed = True
             ctx.logger.info(
                 f"Admin {ctx.user.email} added self to org {organization_id} with role {role}"
             )
@@ -441,6 +448,9 @@ async def add_self_to_organization(
     except Exception as e:
         ctx.logger.warning(f"Failed to add admin to Auth0 organization: {e}")
         # Don't fail the request if Auth0 fails
+
+    if membership_changed and ctx.user and ctx.user.email:
+        await context_cache.invalidate_user(ctx.user.email)
 
     return schemas.OrganizationWithRole(
         id=org_data["id"],
@@ -592,6 +602,7 @@ async def upgrade_organization_to_enterprise(  # noqa: C901
 
     # Refresh and return
     await db.refresh(org)
+    await context_cache.invalidate_organization(organization_id)
     return schemas.Organization.model_validate(org)
 
 
@@ -710,6 +721,8 @@ async def create_enterprise_organization(
         ctx.logger.warning(f"Failed to create Auth0 organization: {e}")
         # Don't fail the request if Auth0 fails
 
+    await context_cache.invalidate_user(owner_user.email)
+
     return schemas.Organization.model_validate(org)
 
 
@@ -751,8 +764,6 @@ async def enable_feature_flag(
     await crud.organization.enable_feature(db, organization_id, feature_flag)
 
     # Invalidate organization cache so next request sees updated feature flags
-    from airweave.core.context_cache_service import context_cache
-
     await context_cache.invalidate_organization(organization_id)
 
     ctx.logger.info(f"Admin enabled feature flag {flag} for org {organization_id}")
@@ -798,8 +809,6 @@ async def disable_feature_flag(
     await crud.organization.disable_feature(db, organization_id, feature_flag)
 
     # Invalidate organization cache so next request sees updated feature flags
-    from airweave.core.context_cache_service import context_cache
-
     await context_cache.invalidate_organization(organization_id)
 
     ctx.logger.info(f"Admin disabled feature flag {flag} for org {organization_id}")

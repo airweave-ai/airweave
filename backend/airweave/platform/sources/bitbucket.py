@@ -213,22 +213,20 @@ class BitbucketSource(BaseSource):
         url = f"{self.BASE_URL}/workspaces/{workspace_slug}"
         workspace_data = await self._get_with_auth(client, url)
 
+        created_on = (
+            datetime.fromisoformat(workspace_data["created_on"].replace("Z", "+00:00"))
+            if workspace_data.get("created_on")
+            else None
+        )
+
         return BitbucketWorkspaceEntity(
-            # Base fields
-            entity_id=workspace_data["uuid"],
-            breadcrumbs=[],
-            name=workspace_data["name"],
-            created_at=(
-                datetime.fromisoformat(workspace_data["created_on"].replace("Z", "+00:00"))
-                if workspace_data.get("created_on")
-                else None
-            ),
-            updated_at=None,  # Workspaces don't have update timestamp
-            # API fields
-            slug=workspace_data["slug"],
             uuid=workspace_data["uuid"],
+            display_name=workspace_data.get("name") or workspace_data["slug"],
+            created_on=created_on,
+            breadcrumbs=[],
+            slug=workspace_data["slug"],
             is_private=workspace_data.get("is_private", True),
-            url=workspace_data["links"]["html"]["href"],
+            html_url=workspace_data["links"]["html"]["href"],
         )
 
     async def _get_repository_info(
@@ -248,13 +246,11 @@ class BitbucketSource(BaseSource):
         repo_data = await self._get_with_auth(client, url)
 
         return BitbucketRepositoryEntity(
-            # Base fields
-            entity_id=repo_data["uuid"],
-            breadcrumbs=[],  # Will be set by caller
-            name=repo_data["name"],
-            created_at=datetime.fromisoformat(repo_data["created_on"].replace("Z", "+00:00")),
-            updated_at=datetime.fromisoformat(repo_data["updated_on"].replace("Z", "+00:00")),
-            # API fields
+            uuid=repo_data["uuid"],
+            repo_name=repo_data.get("name") or repo_data["slug"],
+            created_on=datetime.fromisoformat(repo_data["created_on"].replace("Z", "+00:00")),
+            updated_on=datetime.fromisoformat(repo_data["updated_on"].replace("Z", "+00:00")),
+            breadcrumbs=[],
             slug=repo_data["slug"],
             full_name=repo_data["full_name"],
             description=repo_data.get("description"),
@@ -266,7 +262,7 @@ class BitbucketSource(BaseSource):
                 repo_data.get("mainbranch", {}).get("name") if repo_data.get("mainbranch") else None
             ),
             workspace_slug=workspace_slug,
-            url=repo_data["links"]["html"]["href"],
+            html_url=repo_data["links"]["html"]["href"],
         )
 
     async def _get_repositories(
@@ -285,7 +281,12 @@ class BitbucketSource(BaseSource):
         return await self._get_paginated_results(client, url)
 
     async def _traverse_repository(
-        self, client: httpx.AsyncClient, workspace_slug: str, repo_slug: str, branch: str
+        self,
+        client: httpx.AsyncClient,
+        workspace_slug: str,
+        repo_slug: str,
+        branch: str,
+        parent_breadcrumbs: List[Breadcrumb],
     ) -> AsyncGenerator[BaseEntity, None]:
         """Traverse repository contents using DFS.
 
@@ -300,17 +301,29 @@ class BitbucketSource(BaseSource):
         """
         # Get repository info first
         repo_entity = await self._get_repository_info(client, workspace_slug, repo_slug)
+        repo_entity.breadcrumbs = parent_breadcrumbs.copy()
         yield repo_entity
 
-        # Create breadcrumb for the repo
-        repo_breadcrumb = Breadcrumb(entity_id=repo_entity.entity_id)
+        repo_breadcrumb = Breadcrumb(
+            entity_id=repo_entity.uuid,
+            name=repo_entity.repo_name,
+            entity_type="BitbucketRepositoryEntity",
+        )
 
         # Track processed paths to avoid duplicates
         processed_paths = set()
 
         # Start DFS traversal from root
+        initial_breadcrumbs = parent_breadcrumbs + [repo_breadcrumb]
+
         async for entity in self._traverse_directory(
-            client, workspace_slug, repo_slug, "", [repo_breadcrumb], branch, processed_paths
+            client,
+            workspace_slug,
+            repo_slug,
+            "",
+            initial_breadcrumbs,
+            branch,
+            processed_paths,
         ):
             yield entity
 
@@ -356,23 +369,28 @@ class BitbucketSource(BaseSource):
 
                 if item_type == "commit_directory":
                     # Create directory entity
+                    dir_name = Path(item_path).name or repo_slug
+                    path_id = f"{workspace_slug}/{repo_slug}/{branch}/{item_path or '.'}"
                     dir_entity = BitbucketDirectoryEntity(
-                        # Base fields
-                        entity_id=f"{workspace_slug}/{repo_slug}/{item_path}",
+                        path_id=path_id,
+                        directory_name=dir_name,
                         breadcrumbs=breadcrumbs.copy(),
-                        name=Path(item_path).name,
-                        created_at=None,  # Directories don't have timestamps
-                        updated_at=None,  # Directories don't have timestamps
-                        # API fields
                         path=item_path,
+                        branch=branch,
                         repo_slug=repo_slug,
                         repo_full_name=f"{workspace_slug}/{repo_slug}",
                         workspace_slug=workspace_slug,
-                        url=f"https://bitbucket.org/{workspace_slug}/{repo_slug}/src/{branch}/{item_path}",
+                        html_url=(
+                            f"https://bitbucket.org/{workspace_slug}/{repo_slug}/src/"
+                            f"{branch}/{item_path}"
+                        ),
                     )
 
-                    # Create breadcrumb for this directory
-                    dir_breadcrumb = Breadcrumb(entity_id=dir_entity.entity_id)
+                    dir_breadcrumb = Breadcrumb(
+                        entity_id=dir_entity.path_id,
+                        name=dir_entity.directory_name,
+                        entity_type="BitbucketDirectoryEntity",
+                    )
 
                     # Yield the directory entity
                     yield dir_entity
@@ -397,7 +415,13 @@ class BitbucketSource(BaseSource):
                     if self._should_include_file(item_path):
                         # Process the file and yield entities
                         async for file_entity in self._process_file(
-                            client, workspace_slug, repo_slug, item_path, item, breadcrumbs, branch
+                            client,
+                            workspace_slug,
+                            repo_slug,
+                            item_path,
+                            item,
+                            breadcrumbs,
+                            branch,
                         ):
                             yield file_entity
 
@@ -475,25 +499,20 @@ class BitbucketSource(BaseSource):
 
                 # Create file entity (without content field)
                 file_entity = BitbucketCodeFileEntity(
-                    # Base fields
-                    entity_id=f"{workspace_slug}/{repo_slug}/{item_path}",
+                    file_id=f"{workspace_slug}/{repo_slug}/{branch}/{item_path}",
+                    file_name=file_name,
+                    branch=branch,
                     breadcrumbs=breadcrumbs.copy(),
-                    name=file_name,
-                    created_at=None,  # Bitbucket files don't have creation timestamp
-                    updated_at=None,  # Bitbucket files don't have update timestamp
-                    # File fields
                     url=f"https://bitbucket.org/{workspace_slug}/{repo_slug}/src/{branch}/{item_path}",
                     size=file_size,
                     file_type=file_type,
                     mime_type=mime_type,
-                    local_path=None,  # Will be set by file_downloader
-                    # Code file fields
+                    local_path=None,
                     repo_name=repo_slug,
                     path_in_repo=item_path,
                     repo_owner=workspace_slug,
                     language=language,
                     commit_id=commit_hash,
-                    # API fields (Bitbucket-specific)
                     commit_hash=commit_hash,
                     repo_slug=repo_slug,
                     repo_full_name=f"{workspace_slug}/{repo_slug}",
@@ -535,7 +554,11 @@ class BitbucketSource(BaseSource):
             workspace_entity = await self._get_workspace_info(client, self.workspace)
             yield workspace_entity
 
-            workspace_breadcrumb = Breadcrumb(entity_id=workspace_entity.entity_id)
+            workspace_breadcrumb = Breadcrumb(
+                entity_id=workspace_entity.uuid,
+                name=workspace_entity.display_name,
+                entity_type="BitbucketWorkspaceEntity",
+            )
 
             # If a specific repository is specified, only process that one
             if hasattr(self, "repo_slug") and self.repo_slug:
@@ -546,7 +569,7 @@ class BitbucketSource(BaseSource):
                 self.logger.debug(f"Using branch: {branch} for repo {self.repo_slug}")
 
                 async for entity in self._traverse_repository(
-                    client, self.workspace, self.repo_slug, branch
+                    client, self.workspace, self.repo_slug, branch, [workspace_breadcrumb]
                 ):
                     # Add workspace breadcrumb to repository entities
                     if isinstance(entity, BitbucketRepositoryEntity):
@@ -567,7 +590,7 @@ class BitbucketSource(BaseSource):
                     self.logger.debug(f"Using branch: {branch} for repo {repo_slug}")
 
                     async for entity in self._traverse_repository(
-                        client, self.workspace, repo_slug, branch
+                        client, self.workspace, repo_slug, branch, [workspace_breadcrumb]
                     ):
                         # Add workspace breadcrumb to repository entities
                         if isinstance(entity, BitbucketRepositoryEntity):

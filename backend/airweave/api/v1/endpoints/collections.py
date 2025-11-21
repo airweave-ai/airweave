@@ -1,8 +1,9 @@
 """API endpoints for collections."""
 
-from typing import List
+from typing import List, Sequence
 
 from fastapi import BackgroundTasks, Depends, HTTPException, Path, Query
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
@@ -21,6 +22,8 @@ from airweave.core.source_connection_service import source_connection_service
 from airweave.core.source_connection_service_helpers import source_connection_helpers
 from airweave.core.sync_service import sync_service
 from airweave.core.temporal_service import temporal_service
+from airweave.models.source_connection import SourceConnection
+from airweave.platform.temporal.schedule_service import temporal_schedule_service
 
 router = TrailingSlashRouter()
 
@@ -146,6 +149,36 @@ async def delete(
     db_obj = await crud.collection.get_by_readable_id(db, readable_id=readable_id, ctx=ctx)
     if db_obj is None:
         raise HTTPException(status_code=404, detail="Collection not found")
+
+    # Collect sync IDs before cascading deletes remove the rows
+    sync_id_rows: Sequence = await db.execute(
+        select(SourceConnection.sync_id)
+        .where(
+            SourceConnection.organization_id == ctx.organization.id,
+            SourceConnection.readable_collection_id == db_obj.readable_id,
+            SourceConnection.sync_id.is_not(None),
+        )
+        .distinct()
+    )
+    sync_ids = [row[0] for row in sync_id_rows if row[0]]
+
+    if sync_ids:
+        ctx.logger.info(
+            "Deleting Temporal schedules for %d syncs before removing collection %s",
+            len(sync_ids),
+            readable_id,
+        )
+        for sync_id in sync_ids:
+            for prefix in ("sync", "minute-sync", "daily-cleanup"):
+                schedule_id = f"{prefix}-{sync_id}"
+                try:
+                    await temporal_schedule_service.delete_schedule_handle(schedule_id)
+                except Exception as e:
+                    ctx.logger.info(
+                        "Schedule %s not deleted during collection cleanup: %s",
+                        schedule_id,
+                        e,
+                    )
 
     # Delete collection data from shared Qdrant collection
     try:

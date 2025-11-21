@@ -1,6 +1,9 @@
 """Trello entity schemas."""
 
+from datetime import datetime
 from typing import Any, Dict, List, Optional
+
+from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity
@@ -13,26 +16,40 @@ class TrelloBoardEntity(BaseEntity):
         https://developer.atlassian.com/cloud/trello/rest/api-group-boards/
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the Trello board ID)
-    # - breadcrumbs (empty - boards are top-level)
-    # - name (from board name)
-    # - created_at (None - boards don't have creation timestamp)
-    # - updated_at (None - boards don't have update timestamp)
+    trello_id: str = AirweaveField(
+        ...,
+        description="Trello's unique identifier for the board",
+        embeddable=False,
+        is_entity_id=True,
+    )
+    board_name: str = AirweaveField(
+        ..., description="Display name of the board.", embeddable=True, is_name=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When this board snapshot was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="When this board snapshot was last updated.", is_updated_at=True
+    )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="URL to open the board in Trello.",
+        embeddable=False,
+        unhashable=True,
+    )
 
     # API fields
-    trello_id: str = AirweaveField(
-        ..., description="Trello's unique identifier for the board", embeddable=False
-    )
     desc: Optional[str] = AirweaveField(
         None, description="Description of the board", embeddable=True
     )
     closed: bool = AirweaveField(
         False, description="Whether the board is closed/archived", embeddable=False
     )
-    url: Optional[str] = AirweaveField(None, description="URL to the board", embeddable=False)
+    url: Optional[str] = AirweaveField(
+        None, description="URL to the board", embeddable=False, unhashable=True
+    )
     short_url: Optional[str] = AirweaveField(
-        None, description="Short URL to the board", embeddable=False
+        None, description="Short URL to the board", embeddable=False, unhashable=True
     )
     prefs: Optional[Dict[str, Any]] = AirweaveField(
         None, description="Board preferences and settings", embeddable=False
@@ -42,6 +59,11 @@ class TrelloBoardEntity(BaseEntity):
     )
     pinned: bool = AirweaveField(False, description="Whether the board is pinned", embeddable=False)
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Return the Trello board URL."""
+        return self.web_url_value or self.url or self.short_url or ""
+
 
 class TrelloListEntity(BaseEntity):
     """Schema for Trello list entities (columns on a board).
@@ -50,17 +72,29 @@ class TrelloListEntity(BaseEntity):
         https://developer.atlassian.com/cloud/trello/rest/api-group-lists/
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the Trello list ID)
-    # - breadcrumbs (board breadcrumb)
-    # - name (from list name)
-    # - created_at (None - lists don't have creation timestamp)
-    # - updated_at (None - lists don't have update timestamp)
+    trello_id: str = AirweaveField(
+        ...,
+        description="Trello's unique identifier for the list",
+        embeddable=False,
+        is_entity_id=True,
+    )
+    list_name: str = AirweaveField(
+        ..., description="Display name of the list.", embeddable=True, is_name=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When this list snapshot was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="When this list snapshot was updated.", is_updated_at=True
+    )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="URL to view this list (falls back to board URL).",
+        embeddable=False,
+        unhashable=True,
+    )
 
     # API fields
-    trello_id: str = AirweaveField(
-        ..., description="Trello's unique identifier for the list", embeddable=False
-    )
     id_board: str = AirweaveField(
         ..., description="ID of the board this list belongs to", embeddable=False
     )
@@ -77,6 +111,11 @@ class TrelloListEntity(BaseEntity):
         None, description="Whether the user is subscribed to this list", embeddable=False
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Return URL to open this list (defaults to board URL)."""
+        return self.web_url_value or ""
+
 
 class TrelloCardEntity(BaseEntity):
     """Schema for Trello card entities.
@@ -85,17 +124,29 @@ class TrelloCardEntity(BaseEntity):
         https://developer.atlassian.com/cloud/trello/rest/api-group-cards/
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the Trello card ID)
-    # - breadcrumbs (board and list breadcrumbs)
-    # - name (from card name)
-    # - created_at (None - cards don't have creation timestamp)
-    # - updated_at (from date_last_activity)
+    trello_id: str = AirweaveField(
+        ...,
+        description="Trello's unique identifier for the card",
+        embeddable=False,
+        is_entity_id=True,
+    )
+    card_name: str = AirweaveField(
+        ..., description="Display name of the card.", embeddable=True, is_name=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the card snapshot was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="When the card snapshot was last updated.", is_updated_at=True
+    )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="URL to open the card in Trello.",
+        embeddable=False,
+        unhashable=True,
+    )
 
     # API fields
-    trello_id: str = AirweaveField(
-        ..., description="Trello's unique identifier for the card", embeddable=False
-    )
     desc: Optional[str] = AirweaveField(
         None, description="Description/notes on the card", embeddable=True
     )
@@ -148,15 +199,22 @@ class TrelloCardEntity(BaseEntity):
         None, description="Short link to the card", embeddable=False
     )
     short_url: Optional[str] = AirweaveField(
-        None, description="Short URL to the card", embeddable=False
+        None, description="Short URL to the card", embeddable=False, unhashable=True
     )
-    url: Optional[str] = AirweaveField(None, description="Full URL to the card", embeddable=False)
+    url: Optional[str] = AirweaveField(
+        None, description="Full URL to the card", embeddable=False, unhashable=True
+    )
     start: Optional[str] = AirweaveField(
         None, description="Start date for the card", embeddable=True
     )
     subscribed: Optional[bool] = AirweaveField(
         None, description="Whether the user is subscribed to this card", embeddable=False
     )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Return the Trello card URL."""
+        return self.web_url_value or self.url or self.short_url or ""
 
 
 class TrelloChecklistEntity(BaseEntity):
@@ -166,17 +224,29 @@ class TrelloChecklistEntity(BaseEntity):
         https://developer.atlassian.com/cloud/trello/rest/api-group-checklists/
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the Trello checklist ID)
-    # - breadcrumbs (board, list, and card breadcrumbs)
-    # - name (from checklist name)
-    # - created_at (None - checklists don't have creation timestamp)
-    # - updated_at (None - checklists don't have update timestamp)
+    trello_id: str = AirweaveField(
+        ...,
+        description="Trello's unique identifier for the checklist",
+        embeddable=False,
+        is_entity_id=True,
+    )
+    checklist_name: str = AirweaveField(
+        ..., description="Display name of the checklist.", embeddable=True, is_name=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the checklist snapshot was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="When the checklist snapshot was updated.", is_updated_at=True
+    )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="URL to open the checklist in Trello (card URL).",
+        embeddable=False,
+        unhashable=True,
+    )
 
     # API fields
-    trello_id: str = AirweaveField(
-        ..., description="Trello's unique identifier for the checklist", embeddable=False
-    )
     id_board: str = AirweaveField(
         ..., description="ID of the board this checklist belongs to", embeddable=False
     )
@@ -193,6 +263,11 @@ class TrelloChecklistEntity(BaseEntity):
         embeddable=True,
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Return the Trello checklist URL (falls back to card URL)."""
+        return self.web_url_value or ""
+
 
 class TrelloMemberEntity(BaseEntity):
     """Schema for Trello member (user) entities.
@@ -201,18 +276,30 @@ class TrelloMemberEntity(BaseEntity):
         https://developer.atlassian.com/cloud/trello/rest/api-group-members/
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the Trello member ID)
-    # - breadcrumbs (empty - members are top-level)
-    # - name (from full_name or username)
-    # - created_at (None - members don't have creation timestamp)
-    # - updated_at (None - members don't have update timestamp)
+    trello_id: str = AirweaveField(
+        ...,
+        description="Trello's unique identifier for the member",
+        embeddable=False,
+        is_entity_id=True,
+    )
+    display_name: str = AirweaveField(
+        ..., description="Display name of the member.", embeddable=True, is_name=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the member snapshot was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="When the member snapshot was updated.", is_updated_at=True
+    )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="URL to open the member profile.",
+        embeddable=False,
+        unhashable=True,
+    )
 
     # API fields
     username: str = AirweaveField(..., description="The username of the member", embeddable=True)
-    trello_id: str = AirweaveField(
-        ..., description="Trello's unique identifier for the member", embeddable=False
-    )
     full_name: Optional[str] = AirweaveField(
         None, description="Full name of the member", embeddable=True
     )
@@ -222,7 +309,7 @@ class TrelloMemberEntity(BaseEntity):
     )
     bio: Optional[str] = AirweaveField(None, description="Member's bio", embeddable=True)
     url: Optional[str] = AirweaveField(
-        None, description="URL to the member's profile", embeddable=False
+        None, description="URL to the member's profile", embeddable=False, unhashable=True
     )
     id_boards: List[str] = AirweaveField(
         default_factory=list,
@@ -232,3 +319,8 @@ class TrelloMemberEntity(BaseEntity):
     member_type: Optional[str] = AirweaveField(
         None, description="Type of member (normal, admin, etc.)", embeddable=False
     )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Return the Trello member profile URL."""
+        return self.web_url_value or self.url or ""

@@ -16,6 +16,7 @@ import httpx
 from tenacity import retry, stop_after_attempt
 
 from airweave.core.logging import logger
+from airweave.platform.utils.filename_utils import safe_filename
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.cursors import GmailCursor
 from airweave.platform.decorators import source
@@ -399,13 +400,11 @@ class GmailSource(BaseSource):
         thread_name = snippet[:50] + "..." if len(snippet) > 50 else snippet or "Thread"
 
         return GmailThreadEntity(
-            # Base fields
-            entity_id=f"thread_{thread_id}",
             breadcrumbs=[],
-            name=thread_name,
-            created_at=None,  # Threads don't have creation timestamp
-            updated_at=last_message_date,
-            # API fields
+            thread_key=f"thread_{thread_id}",
+            gmail_thread_id=thread_id,
+            title=thread_name,
+            last_message_at=last_message_date,
             snippet=snippet,
             history_id=history_id,
             message_count=message_count,
@@ -461,7 +460,11 @@ class GmailSource(BaseSource):
         yield thread_entity
 
         # Breadcrumb for messages under this thread
-        thread_breadcrumb = Breadcrumb(entity_id=f"thread_{thread_id}")
+        thread_breadcrumb = Breadcrumb(
+            entity_id=thread_entity.thread_key,
+            name=thread_entity.title,
+            entity_type=GmailThreadEntity.__name__,
+        )
 
         # Process messages
         message_list = thread_data.get("messages", []) or []
@@ -566,22 +569,23 @@ class GmailSource(BaseSource):
 
         # Create message entity
         self.logger.debug(f"Creating message entity for message {message_id}")
+        subject_value = subject or f"Message {message_id}"
+        sent_at = date or internal_date or datetime.utcfromtimestamp(0)
+        internal_ts = internal_date or sent_at
+
         message_entity = GmailMessageEntity(
-            # Base fields
-            entity_id=f"msg_{message_id}",
             breadcrumbs=[thread_breadcrumb],
-            name=(subject or f"Message {message_id}"),
-            created_at=date,
-            updated_at=internal_date,
-            # File fields (required for FileEntity)
+            message_key=f"msg_{message_id}",
+            message_id=message_id,
+            subject=subject_value,
+            sent_at=sent_at,
+            internal_timestamp=internal_ts,
             url=f"https://mail.google.com/mail/u/0/#inbox/{message_id}",
             size=message_data.get("sizeEstimate", 0),
             file_type="html",
             mime_type="text/html",
             local_path=None,  # Will be set after downloading HTML body
-            # Gmail API fields
             thread_id=thread_id,
-            subject=subject,
             sender=sender,
             to=to_list,
             cc=cc_list,
@@ -590,25 +594,28 @@ class GmailSource(BaseSource):
             snippet=message_data.get("snippet"),
             label_ids=message_data.get("labelIds", []),
             internal_date=internal_date,
+            web_url_value=f"https://mail.google.com/mail/u/0/#inbox/{message_id}",
         )
-        self.logger.debug(f"Message entity created with ID: {message_entity.entity_id}")
+        self.logger.debug(f"Message entity created with key: {message_entity.message_key}")
 
         # Download email body to file (NOT stored in entity fields)
         # Email content is only in the local file for conversion
         try:
             if body_html:
+                filename = safe_filename(message_entity.name, ".html")
                 await self.file_downloader.save_bytes(
                     entity=message_entity,
                     content=body_html.encode("utf-8"),
-                    filename_with_extension=message_entity.name + ".html",  # Has .html extension
+                    filename_with_extension=filename,
                     logger=self.logger,
                 )
             elif body_plain:
                 # Save plain-text emails as .txt files for conversion
+                filename = safe_filename(message_entity.name, ".txt")
                 await self.file_downloader.save_bytes(
                     entity=message_entity,
                     content=body_plain.encode("utf-8"),
-                    filename_with_extension=message_entity.name + ".txt",  # Plain text
+                    filename_with_extension=filename,
                     logger=self.logger,
                 )
                 # Update file metadata to match plain text
@@ -623,7 +630,11 @@ class GmailSource(BaseSource):
         self.logger.debug(f"Message entity yielded for {message_id}")
 
         # Breadcrumb for attachments
-        message_breadcrumb = Breadcrumb(entity_id=f"msg_{message_id}")
+        message_breadcrumb = Breadcrumb(
+            entity_id=message_entity.message_key,
+            name=message_entity.subject,
+            entity_type=GmailMessageEntity.__name__,
+        )
 
         # Process attachments (sequential vs concurrent)
         async for attachment_entity in self._process_attachments(
@@ -765,27 +776,24 @@ class GmailSource(BaseSource):
                 # Create stable entity_id using message_id + filename
                 # Note: attachment_id is ephemeral and changes between API calls
                 # Using filename ensures same attachment has same entity_id across syncs
-                safe_filename = self._safe_filename(filename)
-                stable_entity_id = f"attach_{message_id}_{safe_filename}"
+                sanitized_filename = safe_filename(filename)
+                stable_entity_id = f"attach_{message_id}_{sanitized_filename}"
 
                 # Create FileEntity wrapper
+                attachment_name = filename or f"Attachment {attachment_id}"
                 file_entity = GmailAttachmentEntity(
-                    # Base fields
-                    entity_id=stable_entity_id,
                     breadcrumbs=breadcrumbs,
-                    name=filename,
-                    created_at=None,  # Attachments don't have timestamps
-                    updated_at=None,  # Attachments don't have timestamps
-                    # File fields
+                    attachment_key=stable_entity_id,
+                    filename=attachment_name,
                     url=f"gmail://attachment/{message_id}/{attachment_id}",  # dummy URL
                     size=size,
                     file_type=file_type,
                     mime_type=mime_type,
                     local_path=None,
-                    # API fields
                     message_id=message_id,
                     attachment_id=attachment_id,
                     thread_id=thread_id,
+                    web_url_value=f"https://mail.google.com/mail/u/0/#inbox/{message_id}",
                 )
 
                 base64_data = attachment_data.get("data", "")
@@ -833,12 +841,6 @@ class GmailSource(BaseSource):
         ):
             if ent is not None:
                 yield ent
-
-    def _safe_filename(self, filename: str) -> str:
-        """Create a safe version of a filename."""
-        # Replace potentially problematic characters
-        safe_name = "".join(c for c in filename if c.isalnum() or c in "._- ")
-        return safe_name.strip()
 
     # -----------------------
     # Incremental sync
@@ -893,13 +895,9 @@ class GmailSource(BaseSource):
                 if not msg_id:
                     continue
                 yield GmailMessageDeletionEntity(
-                    # Base fields
-                    entity_id=f"msg_{msg_id}",
                     breadcrumbs=[],
-                    name=f"Deleted message {msg_id}",
-                    created_at=None,  # Deletions don't have timestamps
-                    updated_at=None,  # Deletions don't have timestamps
-                    # API fields
+                    message_key=f"msg_{msg_id}",
+                    label=f"Deleted message {msg_id}",
                     message_id=msg_id,
                     thread_id=thread_id,
                     deletion_status="removed",
@@ -950,7 +948,13 @@ class GmailSource(BaseSource):
                     self.logger.debug(f"Skipping message {msg_id} - doesn't match filters")
                     return
 
-                thread_breadcrumb = Breadcrumb(entity_id=f"thread_{thread_id}")
+                thread_key = f"thread_{thread_id}"
+                thread_name = (message_data.get("snippet") or "").strip() or f"Thread {thread_id}"
+                thread_breadcrumb = Breadcrumb(
+                    entity_id=thread_key,
+                    name=thread_name[:50] + "..." if len(thread_name) > 50 else thread_name,
+                    entity_type=GmailThreadEntity.__name__,
+                )
                 async for ent in self._process_message(
                     client, message_data, thread_id, thread_breadcrumb
                 ):

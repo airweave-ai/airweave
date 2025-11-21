@@ -14,6 +14,7 @@ References:
     https://developers.google.com/drive/api/v3/reference/files  (Files)
 """
 
+from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
@@ -24,9 +25,10 @@ from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.cursors import GoogleDriveCursor
 from airweave.platform.decorators import source
 from airweave.platform.downloader import FileSkippedException
-from airweave.platform.entities._base import BaseEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.google_drive import (
     GoogleDriveDriveEntity,
+    GoogleDriveFileDeletionEntity,
     GoogleDriveFileEntity,
 )
 from airweave.platform.sources._base import BaseSource
@@ -83,6 +85,16 @@ class GoogleDriveSource(BaseSource):
         instance.stop_on_error = bool(config.get("stop_on_error", False))
 
         return instance
+
+    @staticmethod
+    def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
+        """Parse Google Drive RFC3339 timestamps into aware datetimes."""
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
 
     async def validate(self) -> bool:
         """Validate the Google Drive source connection."""
@@ -201,6 +213,20 @@ class GoogleDriveSource(BaseSource):
             params["pageToken"] = next_page_token
             url = "https://www.googleapis.com/drive/v3/drives"  # keep the same base URL
 
+    def _build_drive_entity(self, drive_obj: Dict) -> GoogleDriveDriveEntity:
+        """Build a GoogleDriveDriveEntity from API response."""
+        created_time = self._parse_datetime(drive_obj.get("createdTime"))
+        return GoogleDriveDriveEntity(
+            breadcrumbs=[],
+            drive_id=drive_obj["id"],
+            title=drive_obj.get("name", "Untitled Drive"),
+            created_time=created_time,
+            kind=drive_obj.get("kind"),
+            color_rgb=drive_obj.get("colorRgb"),
+            hidden=drive_obj.get("hidden", False),
+            org_unit_id=drive_obj.get("orgUnitId"),
+        )
+
     async def _generate_drive_entities(
         self, client: httpx.AsyncClient
     ) -> AsyncGenerator[GoogleDriveDriveEntity, None]:
@@ -273,6 +299,99 @@ class GoogleDriveSource(BaseSource):
 
         # Persist for caller
         self._latest_new_start_page_token = latest_new_start
+
+    def _get_cursor_start_page_token(self) -> Optional[str]:
+        """Return the stored startPageToken if available."""
+        if not self.cursor:
+            return None
+        token = self.cursor.data.get("start_page_token")
+        if not token:
+            return None
+        return token
+
+    async def _emit_changes_since_token(
+        self, client: httpx.AsyncClient, start_token: str
+    ) -> AsyncGenerator[BaseEntity, None]:
+        """Emit change entities (currently deletions) since the given token."""
+        self.logger.info(
+            f"📊 Processing Drive changes since token {start_token} to capture deletions"
+        )
+        # Reset token tracker before iterating
+        self._latest_new_start_page_token = None
+        try:
+            async for change in self._iterate_changes(client, start_token):
+                entity = await self._build_entity_from_change(change)
+                if entity:
+                    yield entity
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 410:
+                # Token expired or invalid
+                self.logger.warning(
+                    "Stored startPageToken is no longer valid (410). Fetching a fresh token."
+                )
+                if self.cursor:
+                    try:
+                        fresh_token = await self._get_start_page_token(client)
+                        if fresh_token:
+                            self.cursor.update(start_page_token=fresh_token)
+                    except Exception as token_error:
+                        self.logger.error(
+                            f"Failed to refresh startPageToken after 410: {token_error}"
+                        )
+            else:
+                raise
+
+    async def _build_entity_from_change(
+        self, change: Dict
+    ) -> Optional[GoogleDriveFileDeletionEntity]:
+        """Convert a Drive change object into an entity (currently deletions only)."""
+        file_obj = change.get("file") or {}
+        removed = change.get("removed", False)
+        trashed = bool(file_obj.get("trashed")) or bool(file_obj.get("explicitlyTrashed"))
+        change_type = change.get("changeType")
+
+        is_deletion = removed or trashed or (change_type and change_type.lower() == "removed")
+        if not is_deletion:
+            return None
+
+        file_id = change.get("fileId") or file_obj.get("id")
+        if not file_id:
+            self.logger.debug(
+                "Drive change marked as deletion but missing fileId. Raw change: %s", change
+            )
+            return None
+
+        label = file_obj.get("name") or file_id
+
+        drive_id = file_obj.get("driveId") or change.get("driveId")
+        parents = file_obj.get("parents") or []
+        if not drive_id and parents:
+            drive_id = parents[0]
+
+        return GoogleDriveFileDeletionEntity(
+            breadcrumbs=[],
+            file_id=file_id,
+            label=f"Deleted file {label}",
+            drive_id=drive_id,
+            deletion_status="removed",
+        )
+
+    async def _store_next_start_page_token(self, client: httpx.AsyncClient) -> None:
+        """Persist the next startPageToken for future incremental runs."""
+        if not self.cursor:
+            return
+
+        next_token = getattr(self, "_latest_new_start_page_token", None)
+        if not next_token:
+            try:
+                next_token = await self._get_start_page_token(client)
+            except Exception as exc:
+                self.logger.error(f"Failed to fetch startPageToken: {exc}")
+                return
+
+        if next_token:
+            self.cursor.update(start_page_token=next_token)
+            self.logger.debug(f"Saved startPageToken for next run: {next_token}")
 
     async def _list_files(
         self,
@@ -682,7 +801,9 @@ class GoogleDriveSource(BaseSource):
         # Return the specific format if available, otherwise fallback to PDF
         return google_export_map.get(mime_type, ("application/pdf", ".pdf"))
 
-    def _build_file_entity(self, file_obj: Dict) -> Optional[GoogleDriveFileEntity]:
+    def _build_file_entity(
+        self, file_obj: Dict, parent_breadcrumb: Optional[Breadcrumb]
+    ) -> Optional[GoogleDriveFileEntity]:
         """Helper to build a GoogleDriveFileEntity from a file API response object.
 
         Returns None for files that should be skipped (e.g., trashed files, videos).
@@ -725,20 +846,30 @@ class GoogleDriveSource(BaseSource):
 
         file_type = _determine_file_type_from_mime(mime_type)
 
+        created_time = self._parse_datetime(file_obj.get("createdTime")) or datetime.utcnow()
+        modified_time = self._parse_datetime(file_obj.get("modifiedTime")) or created_time
+        modified_by_me_time = self._parse_datetime(file_obj.get("modifiedByMeTime"))
+        viewed_by_me_time = self._parse_datetime(file_obj.get("viewedByMeTime"))
+        shared_with_me_time = self._parse_datetime(file_obj.get("sharedWithMeTime"))
+
+        breadcrumbs = [parent_breadcrumb] if parent_breadcrumb else []
+        if not breadcrumbs and getattr(self, "_my_drive_breadcrumb", None):
+            breadcrumbs = [self._my_drive_breadcrumb]
+
         return GoogleDriveFileEntity(
-            # Base fields
-            entity_id=file_obj["id"],
-            breadcrumbs=[],
+            breadcrumbs=breadcrumbs,
+            file_id=file_obj["id"],
+            title=file_obj.get("name", "Untitled"),
+            created_time=created_time,
+            modified_time=modified_time,
             name=file_name,  # Use the modified name with extension
-            created_at=file_obj.get("createdTime"),
-            updated_at=file_obj.get("modifiedTime"),
-            # File fields
+            created_at=created_time,
+            updated_at=modified_time,
             url=download_url,
             size=int(file_obj["size"]) if file_obj.get("size") else 0,
             file_type=file_type,
             mime_type=mime_type or "application/octet-stream",
             local_path=None,
-            # API fields
             description=file_obj.get("description"),
             starred=file_obj.get("starred", False),
             trashed=file_obj.get("trashed", False),
@@ -749,20 +880,23 @@ class GoogleDriveSource(BaseSource):
             web_view_link=file_obj.get("webViewLink"),
             icon_link=file_obj.get("iconLink"),
             md5_checksum=file_obj.get("md5Checksum"),
+            shared_with_me_time=shared_with_me_time,
+            modified_by_me_time=modified_by_me_time,
+            viewed_by_me_time=viewed_by_me_time,
         )
 
     # ------------------------------
     # Concurrency-aware processing
     # ------------------------------
-    async def _process_file_batch(self, file_obj: Dict) -> Optional[GoogleDriveFileEntity]:
+    async def _process_file_batch(
+        self, file_obj: Dict, parent_breadcrumb: Optional[Breadcrumb]
+    ) -> Optional[GoogleDriveFileEntity]:
         """Build & process a single file (used by concurrent driver)."""
         try:
-            file_entity = self._build_file_entity(file_obj)
+            file_entity = self._build_file_entity(file_obj, parent_breadcrumb)
             if not file_entity:
                 return None
-            self.logger.debug(
-                f"Processing file entity: {file_entity.entity_id} '{file_entity.name}'"
-            )
+            self.logger.debug(f"Processing file entity: {file_entity.file_id} '{file_entity.name}'")
 
             # Download file using downloader
             try:
@@ -781,7 +915,7 @@ class GoogleDriveSource(BaseSource):
                 return file_entity
 
             except FileSkippedException as e:
-                # File intentionally skipped (unsupported type, too large, etc.) - not an error
+                # Skipped unsupported or oversized file
                 self.logger.debug(f"Skipping file {file_entity.name}: {e.reason}")
                 return None
 
@@ -800,13 +934,14 @@ class GoogleDriveSource(BaseSource):
         include_all_drives: bool,
         drive_id: Optional[str] = None,
         context: str = "",
+        parent_breadcrumb: Optional[Breadcrumb] = None,
     ) -> AsyncGenerator[GoogleDriveFileEntity, None]:
         """Generate file entities from a file listing."""
         try:
             if getattr(self, "batch_generation", False):
                 # Concurrent flow
                 async def _worker(file_obj: Dict):
-                    ent = await self._process_file_batch(file_obj)
+                    ent = await self._process_file_batch(file_obj, parent_breadcrumb)
                     if ent is not None:
                         yield ent
 
@@ -825,7 +960,7 @@ class GoogleDriveSource(BaseSource):
                     client, corpora, include_all_drives, drive_id, context
                 ):
                     try:
-                        file_entity = self._build_file_entity(file_obj)
+                        file_entity = self._build_file_entity(file_obj, parent_breadcrumb)
                         if not file_entity:
                             continue
 
@@ -847,7 +982,7 @@ class GoogleDriveSource(BaseSource):
                             yield file_entity
 
                         except FileSkippedException as e:
-                            # File intentionally skipped (unsupported type, too large, etc.) - not an error
+                            # Skipped unsupported or oversized file
                             self.logger.debug(f"Skipping file {file_entity.name}: {e.reason}")
                             continue
 
@@ -877,35 +1012,53 @@ class GoogleDriveSource(BaseSource):
           deletion entities for removed files and upsert entities for changed files.
         """
         try:
+            start_page_token = self._get_cursor_start_page_token()
+            if start_page_token:
+                self.logger.debug(f"📊 Incremental sync using startPageToken={start_page_token}")
+            else:
+                self.logger.debug("🔄 Full sync (no stored startPageToken)")
+
             async with self.http_client() as client:
                 patterns: List[str] = getattr(self, "include_patterns", []) or []
                 self.logger.debug(f"Include patterns: {patterns}")
 
-                # 1) Always yield shared drives as entities
+                drive_objs: List[Dict[str, Any]] = []
                 try:
-                    async for drive_entity in self._generate_drive_entities(client):
-                        yield drive_entity
+                    async for drive_obj in self._list_drives(client):
+                        drive_objs.append(drive_obj)
+                        yield self._build_drive_entity(drive_obj)
                 except Exception as e:
                     self.logger.error(f"Error generating drive entities: {str(e)}")
 
-                # Prepare shared drive IDs for file processing
-                drive_ids: List[str] = []
-                try:
-                    async for drive_obj in self._list_drives(client):
-                        drive_ids.append(drive_obj["id"])
-                except Exception as e:
-                    self.logger.error(f"Error listing shared drives: {str(e)}")
+                drive_breadcrumbs: Dict[str, Breadcrumb] = {}
+                for drive_obj in drive_objs:
+                    drive_breadcrumbs[drive_obj["id"]] = Breadcrumb(
+                        entity_id=drive_obj["id"],
+                        name=drive_obj.get("name", "Untitled Drive"),
+                        entity_type=GoogleDriveDriveEntity.__name__,
+                    )
+
+                self._drive_breadcrumbs = drive_breadcrumbs
+                self._my_drive_breadcrumb = Breadcrumb(
+                    entity_id="my_drive",
+                    name="My Drive",
+                    entity_type=GoogleDriveDriveEntity.__name__,
+                )
+
+                drive_ids = [drive["id"] for drive in drive_objs]
 
                 # If no include patterns: default behavior (all files in drives + My Drive)
                 if not patterns:
                     for drive_id in drive_ids:
                         try:
+                            drive_breadcrumb = drive_breadcrumbs.get(drive_id)
                             async for file_entity in self._generate_file_entities(
                                 client,
                                 corpora="drive",
                                 include_all_drives=True,
                                 drive_id=drive_id,
                                 context=f"drive {drive_id}",
+                                parent_breadcrumb=drive_breadcrumb,
                             ):
                                 yield file_entity
                         except Exception as e:
@@ -914,17 +1067,21 @@ class GoogleDriveSource(BaseSource):
 
                     try:
                         async for mydrive_file_entity in self._generate_file_entities(
-                            client, corpora="user", include_all_drives=False, context="MY DRIVE"
+                            client,
+                            corpora="user",
+                            include_all_drives=False,
+                            context="MY DRIVE",
+                            parent_breadcrumb=self._my_drive_breadcrumb,
                         ):
                             yield mydrive_file_entity
                     except Exception as e:
                         self.logger.error(f"Error processing My Drive files: {str(e)}")
-                    return
 
                 # INCLUDE MODE: Resolve patterns and traverse only matched subtrees
                 # Shared drives first
                 for drive_id in drive_ids:
                     try:
+                        drive_breadcrumb = drive_breadcrumbs.get(drive_id)
                         # Resolve and traverse per pattern to keep logic simple and precise
                         for p in patterns:
                             roots, fname_glob = await self._resolve_pattern_to_roots(
@@ -937,8 +1094,10 @@ class GoogleDriveSource(BaseSource):
                             if roots:
                                 if getattr(self, "batch_generation", False):
                                     # Concurrent traversal
-                                    async def _worker_traverse(file_obj: Dict):
-                                        ent = await self._process_file_batch(file_obj)
+                                    async def _worker_traverse(
+                                        file_obj: Dict, breadcrumb=drive_breadcrumb
+                                    ):
+                                        ent = await self._process_file_batch(file_obj, breadcrumb)
                                         if ent is not None:
                                             yield ent
 
@@ -972,7 +1131,9 @@ class GoogleDriveSource(BaseSource):
                                         filename_glob=fname_glob,
                                         context=f"drive {drive_id}",
                                     ):
-                                        file_entity = self._build_file_entity(file_obj)
+                                        file_entity = self._build_file_entity(
+                                            file_obj, drive_breadcrumb
+                                        )
                                         if not file_entity:
                                             continue
 
@@ -995,7 +1156,7 @@ class GoogleDriveSource(BaseSource):
                                             yield file_entity
 
                                         except FileSkippedException as e:
-                                            # File intentionally skipped (unsupported type, too large, etc.) - not an error
+                                            # Skipped unsupported or oversized file
                                             self.logger.debug(
                                                 f"Skipping file {file_entity.name}: {e.reason}"
                                             )
@@ -1014,10 +1175,14 @@ class GoogleDriveSource(BaseSource):
                         for pat in filename_only_patterns:
                             if getattr(self, "batch_generation", False):
 
-                                async def _worker_match(file_obj: Dict, pattern=pat):
+                                async def _worker_match(
+                                    file_obj: Dict,
+                                    pattern=pat,
+                                    breadcrumb=drive_breadcrumb,
+                                ):
                                     name = file_obj.get("name", "")
                                     if _fn.fnmatch(name, pattern):
-                                        ent = await self._process_file_batch(file_obj)
+                                        ent = await self._process_file_batch(file_obj, breadcrumb)
                                         if ent is not None:
                                             yield ent
 
@@ -1046,7 +1211,9 @@ class GoogleDriveSource(BaseSource):
                                 ):
                                     name = file_obj.get("name", "")
                                     if _fn.fnmatch(name, pat):
-                                        file_entity = self._build_file_entity(file_obj)
+                                        file_entity = self._build_file_entity(
+                                            file_obj, drive_breadcrumb
+                                        )
                                         if not file_entity:
                                             continue
 
@@ -1069,7 +1236,7 @@ class GoogleDriveSource(BaseSource):
                                             yield file_entity
 
                                         except FileSkippedException as e:
-                                            # File intentionally skipped (unsupported type, too large, etc.) - not an error
+                                            # Skipped unsupported or oversized file
                                             self.logger.debug(
                                                 f"Skipping file {file_entity.name}: {e.reason}"
                                             )
@@ -1097,8 +1264,10 @@ class GoogleDriveSource(BaseSource):
                         if roots:
                             if getattr(self, "batch_generation", False):
 
-                                async def _worker_traverse_user(file_obj: Dict):
-                                    ent = await self._process_file_batch(file_obj)
+                                async def _worker_traverse_user(
+                                    file_obj: Dict, breadcrumb=self._my_drive_breadcrumb
+                                ):
+                                    ent = await self._process_file_batch(file_obj, breadcrumb)
                                     if ent is not None:
                                         yield ent
 
@@ -1131,7 +1300,9 @@ class GoogleDriveSource(BaseSource):
                                     filename_glob=fname_glob,
                                     context="MY DRIVE",
                                 ):
-                                    file_entity = self._build_file_entity(file_obj)
+                                    file_entity = self._build_file_entity(
+                                        file_obj, self._my_drive_breadcrumb
+                                    )
                                     if not file_entity:
                                         continue
 
@@ -1154,7 +1325,7 @@ class GoogleDriveSource(BaseSource):
                                         yield file_entity
 
                                     except FileSkippedException as e:
-                                        # File intentionally skipped (unsupported type, too large, etc.) - not an error
+                                        # Skipped unsupported or oversized file
                                         self.logger.debug(
                                             f"Skipping file {file_entity.name}: {e.reason}"
                                         )
@@ -1172,10 +1343,12 @@ class GoogleDriveSource(BaseSource):
                     for pat in filename_only_patterns:
                         if getattr(self, "batch_generation", False):
 
-                            async def _worker_match_user(file_obj: Dict, pattern=pat):
+                            async def _worker_match_user(
+                                file_obj: Dict, pattern=pat, breadcrumb=self._my_drive_breadcrumb
+                            ):
                                 name = file_obj.get("name", "")
                                 if _fn.fnmatch(name, pattern):
-                                    ent = await self._process_file_batch(file_obj)
+                                    ent = await self._process_file_batch(file_obj, breadcrumb)
                                     if ent is not None:
                                         yield ent
 
@@ -1204,7 +1377,9 @@ class GoogleDriveSource(BaseSource):
                             ):
                                 name = file_obj.get("name", "")
                                 if _fn.fnmatch(name, pat):
-                                    file_entity = self._build_file_entity(file_obj)
+                                    file_entity = self._build_file_entity(
+                                        file_obj, self._my_drive_breadcrumb
+                                    )
                                     if not file_entity:
                                         continue
 
@@ -1227,7 +1402,7 @@ class GoogleDriveSource(BaseSource):
                                         yield file_entity
 
                                     except FileSkippedException as e:
-                                        # File intentionally skipped (unsupported type, too large, etc.) - not an error
+                                        # Skipped unsupported or oversized file
                                         self.logger.debug(
                                             f"Skipping file {file_entity.name}: {e.reason}"
                                         )
@@ -1241,6 +1416,14 @@ class GoogleDriveSource(BaseSource):
 
                 except Exception as e:
                     self.logger.error(f"Include mode error for My Drive: {str(e)}")
+
+                if start_page_token:
+                    async for change_entity in self._emit_changes_since_token(
+                        client, start_page_token
+                    ):
+                        yield change_entity
+
+                await self._store_next_start_page_token(client)
 
         except Exception as e:
             self.logger.error(f"Critical error in generate_entities: {str(e)}")

@@ -1,11 +1,12 @@
 """Dropbox source implementation."""
 
-from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
+from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, Union
 
 import httpx
 from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
+from airweave.platform.configs.auth import DropboxAuthConfig
 from airweave.platform.decorators import source
 from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
@@ -48,7 +49,7 @@ class DropboxSource(BaseSource):
 
     @classmethod
     async def create(
-        cls, access_token: str, config: Optional[Dict[str, Any]] = None
+        cls, access_token: Union[str, DropboxAuthConfig], config: Optional[Dict[str, Any]] = None
     ) -> "DropboxSource":
         """Create a new Dropbox source with credentials and config.
 
@@ -60,7 +61,17 @@ class DropboxSource(BaseSource):
             A configured DropboxSource instance
         """
         instance = cls()
-        instance.access_token = access_token
+
+        token_value: Optional[str] = None
+        if isinstance(access_token, DropboxAuthConfig):
+            token_value = access_token.access_token
+        elif isinstance(access_token, str):
+            token_value = access_token
+
+        if not token_value or not token_value.strip():
+            raise ValueError("Dropbox access token is required")
+
+        instance.access_token = token_value.strip()
 
         # Store config values as instance attributes
         if config:
@@ -133,16 +144,14 @@ class DropboxSource(BaseSource):
 
             # Process name information
             name_data = account_data.get("name", {})
+            display_name = name_data.get("display_name") or "Dropbox Account"
+            account_id = account_data.get("account_id") or "dropbox-account"
 
             # Create and yield the account entity
             yield DropboxAccountEntity(
-                # Base fields
-                entity_id=account_data.get("account_id", "dropbox-account"),
+                account_id=account_id,
+                display_name=display_name,
                 breadcrumbs=[],
-                name=name_data.get("display_name", "Dropbox Account"),
-                created_at=None,  # Accounts don't have creation timestamp
-                updated_at=None,  # Accounts don't have update timestamp
-                # API fields
                 abbreviated_name=name_data.get("abbreviated_name"),
                 familiar_name=name_data.get("familiar_name"),
                 given_name=name_data.get("given_name"),
@@ -199,13 +208,9 @@ class DropboxSource(BaseSource):
         sharing_info = entry.get("sharing_info", {})
 
         folder_entity = DropboxFolderEntity(
-            # Base fields
-            entity_id=folder_id if folder_id else f"folder-{folder_path}",
+            id=folder_id if folder_id else f"folder-{folder_path}",
             breadcrumbs=[account_breadcrumb],
             name=folder_name,
-            created_at=None,  # Folders don't have creation timestamp
-            updated_at=None,  # Folders don't have update timestamp
-            # API fields
             path_lower=entry.get("path_lower"),
             path_display=entry.get("path_display"),
             sharing_info=sharing_info,
@@ -359,13 +364,9 @@ class DropboxSource(BaseSource):
             file_type = ext if ext else "file"
 
         return DropboxFileEntity(
-            # Base fields
-            entity_id=file_id if file_id else f"file-{file_path}",
+            id=file_id if file_id else f"file-{file_path}",
             breadcrumbs=folder_breadcrumbs,
             name=file_name,
-            created_at=None,  # Dropbox doesn't have creation timestamp
-            updated_at=server_modified,
-            # File fields
             url="https://content.dropboxapi.com/2/files/download",
             size=entry.get("size", 0),
             file_type=file_type,
@@ -515,7 +516,11 @@ class DropboxSource(BaseSource):
                     yield folder_entity
 
                     # Create new breadcrumb for this folder
-                    folder_breadcrumb = Breadcrumb(entity_id=folder_entity.entity_id)
+                    folder_breadcrumb = Breadcrumb(
+                        entity_id=folder_entity.id,
+                        name=folder_entity.name,
+                        entity_type="DropboxFolderEntity",
+                    )
                     # Build complete breadcrumb path to this folder
                     new_breadcrumbs = folder_breadcrumbs + [folder_breadcrumb]
 
@@ -542,7 +547,11 @@ class DropboxSource(BaseSource):
             async for account_entity in self._generate_account_entities(client):
                 yield account_entity
 
-                account_breadcrumb = Breadcrumb(entity_id=account_entity.entity_id)
+                account_breadcrumb = Breadcrumb(
+                    entity_id=account_entity.account_id,
+                    name=account_entity.display_name,
+                    entity_type="DropboxAccountEntity",
+                )
 
                 # Create breadcrumbs list with just the account
                 account_breadcrumbs = [account_breadcrumb]
@@ -568,7 +577,11 @@ class DropboxSource(BaseSource):
 
                     yield folder_entity
 
-                    folder_breadcrumb = Breadcrumb(entity_id=folder_entity.entity_id)
+                    folder_breadcrumb = Breadcrumb(
+                        entity_id=folder_entity.id,
+                        name=folder_entity.name,
+                        entity_type="DropboxFolderEntity",
+                    )
                     folder_breadcrumbs = [account_breadcrumb, folder_breadcrumb]
 
                     # Process all subfolders and their files recursively

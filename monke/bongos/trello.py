@@ -43,8 +43,10 @@ class TrelloBongo(BaseBongo):
         self.oauth_token_secret: str = credentials["oauth_token_secret"]
 
         # OAuth1 consumer credentials
-        # Try to get from Composio credentials first (they might provide api_key)
-        # If not, fall back to config
+        # Try multiple sources in order of preference:
+        # 1. Composio credentials (api_key, key)
+        # 2. Config fields from YAML
+        # 3. Integration settings from backend
         self.consumer_key: str = (
             credentials.get("api_key")
             or credentials.get("key")
@@ -57,6 +59,18 @@ class TrelloBongo(BaseBongo):
         # Debug: Log ALL fields from Composio to see what's available
         self.logger.info(f"🔍 All fields from Composio: {list(credentials.keys())}")
 
+        # If consumer credentials look like unresolved env vars, try integration settings
+        if (
+            self.consumer_key.startswith("${")
+            or self.consumer_secret.startswith("${")
+            or not self.consumer_key
+            or not self.consumer_secret
+        ):
+            self.logger.info(
+                "🔍 Consumer credentials not resolved from config, trying integration settings..."
+            )
+            self._load_from_integration_settings()
+
         # Debug: Log what we're using
         self.logger.info("🔑 OAuth1 Credentials Check:")
         self.logger.info(
@@ -66,21 +80,28 @@ class TrelloBongo(BaseBongo):
             f"  oauth_token_secret: {'✅ Present' if self.oauth_token_secret else '❌ MISSING'}"
         )
         self.logger.info(
-            f"  consumer_key: {self.consumer_key[:10] + '...' if self.consumer_key else '❌ MISSING'}"
+            f"  consumer_key: {self.consumer_key[:10] + '...' if self.consumer_key and not self.consumer_key.startswith('${') else '❌ MISSING'}"
         )
         self.logger.info(
-            f"  consumer_secret: {'✅ Present' if self.consumer_secret else '❌ MISSING'}"
+            f"  consumer_secret: {'✅ Present' if self.consumer_secret and not self.consumer_secret.startswith('${') else '❌ MISSING'}"
         )
 
-        if not self.consumer_key or not self.consumer_secret:
+        if (
+            not self.consumer_key
+            or not self.consumer_secret
+            or self.consumer_key.startswith("${")
+            or self.consumer_secret.startswith("${")
+        ):
             raise ValueError(
-                "Trello requires consumer_key and consumer_secret in config. "
-                "Add to monke/.env:\n"
-                "  MONKE_TRELLO_CONSUMER_KEY=your_key\n"
-                "  MONKE_TRELLO_CONSUMER_SECRET=your_secret\n"
-                "Then add to trello.yaml config_fields:\n"
-                "  consumer_key: ${MONKE_TRELLO_CONSUMER_KEY}\n"
-                "  consumer_secret: ${MONKE_TRELLO_CONSUMER_SECRET}"
+                "Trello requires consumer_key and consumer_secret. "
+                "Options:\n"
+                "1. Configure in backend: backend/airweave/platform/auth/yaml/dev.integrations.yaml\n"
+                "2. OR set environment variables in monke/.env:\n"
+                "   MONKE_TRELLO_CONSUMER_KEY=your_key\n"
+                "   MONKE_TRELLO_CONSUMER_SECRET=your_secret\n"
+                "   And update trello.yaml config_fields:\n"
+                "   consumer_key: ${MONKE_TRELLO_CONSUMER_KEY}\n"
+                "   consumer_secret: ${MONKE_TRELLO_CONSUMER_SECRET}"
             )
 
         # Test configuration
@@ -98,20 +119,94 @@ class TrelloBongo(BaseBongo):
         self.last_request_time = 0.0
         self.min_delay = 0.3  # 300ms between requests
 
+    def _load_from_integration_settings(self):
+        """Load consumer credentials from backend integration settings.
+
+        This allows Monke to use the same Trello OAuth1 app credentials
+        that are configured for the backend, avoiding the need to set
+        separate environment variables.
+        """
+        try:
+            import yaml
+            from pathlib import Path
+
+            # Find the integration settings YAML file
+            backend_path = Path(__file__).parent.parent.parent / "backend"
+            integrations_yaml = (
+                backend_path
+                / "airweave"
+                / "platform"
+                / "auth"
+                / "yaml"
+                / "dev.integrations.yaml"
+            )
+
+            if not integrations_yaml.exists():
+                self.logger.warning(
+                    f"Integration settings file not found: {integrations_yaml}"
+                )
+                return
+
+            # Load and parse the YAML file
+            with open(integrations_yaml, "r") as f:
+                data = yaml.safe_load(f)
+
+            # Get Trello settings
+            trello_settings = data.get("integrations", {}).get("trello", {})
+
+            if trello_settings:
+                consumer_key = trello_settings.get("consumer_key")
+                consumer_secret = trello_settings.get("consumer_secret")
+
+                if consumer_key and (
+                    not self.consumer_key or self.consumer_key.startswith("${")
+                ):
+                    self.consumer_key = consumer_key
+                    self.logger.info("✅ Loaded consumer_key from integration settings")
+
+                if consumer_secret and (
+                    not self.consumer_secret or self.consumer_secret.startswith("${")
+                ):
+                    self.consumer_secret = consumer_secret
+                    self.logger.info(
+                        "✅ Loaded consumer_secret from integration settings"
+                    )
+            else:
+                self.logger.warning(
+                    "Trello settings not found in integration settings file"
+                )
+
+        except Exception as e:
+            self.logger.warning(
+                f"Could not load consumer credentials from integration settings: {e}"
+            )
+            # Not a fatal error - caller will check if credentials are valid
+
     def _percent_encode(self, value: str) -> str:
         """Percent-encode for OAuth1."""
         return quote(str(value), safe="~")
 
-    def _build_oauth1_params(self) -> Dict[str, str]:
-        """Build OAuth1 protocol parameters."""
-        return {
+    def _build_oauth1_params(self, include_token: bool = True) -> Dict[str, str]:
+        """Build OAuth1 protocol parameters.
+
+        Args:
+            include_token: Whether to include the oauth_token parameter
+
+        Returns:
+            Dict of OAuth1 parameters
+        """
+        params = {
             "oauth_consumer_key": self.consumer_key,
-            "oauth_token": self.oauth_token,
             "oauth_signature_method": "HMAC-SHA1",
             "oauth_timestamp": str(int(time.time())),
             "oauth_nonce": secrets.token_urlsafe(32),
             "oauth_version": "1.0",
         }
+
+        if include_token and self.oauth_token:
+            params["oauth_token"] = self.oauth_token
+
+        return params
 
     def _sign_request(self, method: str, url: str, params: Dict[str, str]) -> str:
         """Sign OAuth1 request using HMAC-SHA1."""
@@ -174,17 +269,15 @@ class TrelloBongo(BaseBongo):
     ) -> Dict:
         """Make authenticated request to Trello API.
 
-        Trello supports two authentication methods:
-        1. OAuth1 signing (complex, requires matching consumer/token)
-        2. Simple key + token query params (after authorization)
-
-        We use method #2 since Composio provides the token but not matching consumer creds.
+        Trello accepts simple key+token authentication for already-authorized tokens:
+        https://developer.atlassian.com/cloud/trello/guides/rest-api/authorization/
+        
+        This is simpler than full OAuth1 signing and works for authorized tokens.
         """
         await self._rate_limit()
 
         # Use Trello's simple key+token authentication
-        # key = consumer_key (API key)
-        # token = oauth_token (access token)
+        # This works for OAuth tokens that have already been authorized
         if query_params is None:
             query_params = {}
 

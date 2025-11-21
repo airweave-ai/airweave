@@ -8,7 +8,10 @@ where each entity class inherits from BaseEntity and adds relevant fields with
 shared or per-resource metadata as needed.
 """
 
+from datetime import datetime
 from typing import Any, Dict, Optional
+
+from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity
@@ -21,12 +24,24 @@ class SalesforceAccountEntity(BaseEntity):
         https://developer.salesforce.com/docs/atlas.en-us.object_reference.meta/object_reference/sforce_api_objects_account.htm
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the Salesforce Account ID)
-    # - breadcrumbs (empty - accounts are top-level)
-    # - name (from account name)
-    # - created_at (from CreatedDate)
-    # - updated_at (from LastModifiedDate)
+    account_id: str = AirweaveField(
+        ..., description="Unique Salesforce ID for the account.", is_entity_id=True
+    )
+    account_name: str = AirweaveField(
+        ..., description="Display name of the account.", embeddable=True, is_name=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the account was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="When the account was last updated.", is_updated_at=True
+    )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="URL to open the account in Salesforce.",
+        embeddable=False,
+        unhashable=True,
+    )
 
     # API fields
     account_number: Optional[str] = AirweaveField(
@@ -127,6 +142,11 @@ class SalesforceAccountEntity(BaseEntity):
         embeddable=False,
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Browser URL for the account."""
+        return self.web_url_value or ""
+
 
 class SalesforceContactEntity(BaseEntity):
     """Schema for Salesforce Contact entities.
@@ -135,12 +155,24 @@ class SalesforceContactEntity(BaseEntity):
         https://developer.salesforce.com/docs/atlas.en-us.object_reference.meta/object_reference/sforce_api_objects_contact.htm
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the Salesforce Contact ID)
-    # - breadcrumbs (empty - contacts are top-level)
-    # - name (from Name field)
-    # - created_at (from CreatedDate)
-    # - updated_at (from LastModifiedDate)
+    contact_id: str = AirweaveField(
+        ..., description="Unique Salesforce ID for the contact.", is_entity_id=True
+    )
+    contact_name: str = AirweaveField(
+        ..., description="Display name of the contact.", embeddable=True, is_name=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the contact was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="When the contact was last updated.", is_updated_at=True
+    )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="URL to view the contact in Salesforce.",
+        embeddable=False,
+        unhashable=True,
+    )
 
     # API fields
     first_name: Optional[str] = AirweaveField(
@@ -270,6 +302,11 @@ class SalesforceContactEntity(BaseEntity):
         default_factory=dict, description="Additional metadata about the contact", embeddable=False
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Browser URL for the contact."""
+        return self.web_url_value or ""
+
 
 class SalesforceOpportunityEntity(BaseEntity):
     """Schema for Salesforce Opportunity entities.
@@ -278,12 +315,24 @@ class SalesforceOpportunityEntity(BaseEntity):
         https://developer.salesforce.com/docs/atlas.en-us.object_reference.meta/object_reference/sforce_api_objects_opportunity.htm
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the Salesforce Opportunity ID)
-    # - breadcrumbs (empty - opportunities are top-level)
-    # - name (from opportunity name)
-    # - created_at (from CreatedDate)
-    # - updated_at (from LastModifiedDate)
+    opportunity_id: str = AirweaveField(
+        ..., description="Unique Salesforce ID for the opportunity.", is_entity_id=True
+    )
+    opportunity_name: str = AirweaveField(
+        ..., description="Display name of the opportunity.", embeddable=True, is_name=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the opportunity was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="When the opportunity was last updated.", is_updated_at=True
+    )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="URL to view the opportunity in Salesforce.",
+        embeddable=False,
+        unhashable=True,
+    )
 
     # API fields
     account_id: Optional[str] = AirweaveField(
@@ -364,3 +413,8 @@ class SalesforceOpportunityEntity(BaseEntity):
         description="Additional metadata about the opportunity",
         embeddable=False,
     )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Browser URL for the opportunity."""
+        return self.web_url_value or ""

@@ -339,7 +339,9 @@ export const SourceConnectionSettings: React.FC<SourceConnectionSettingsProps> =
         .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
 
       if (Object.keys(filledAuthFields).length > 0) {
-        updateData.auth_fields = filledAuthFields;
+        updateData.authentication = {
+          credentials: filledAuthFields
+        };
       }
 
       if (editFormData.auth_provider !== sourceConnection?.auth_provider) {

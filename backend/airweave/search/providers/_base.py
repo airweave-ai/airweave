@@ -12,6 +12,14 @@ from airweave.api.context import ApiContext
 from .schemas import ProviderModelSpec
 
 
+class ProviderError(RuntimeError):
+    """Base exception for provider issues with retryability metadata."""
+
+    def __init__(self, message: str, *, retryable: bool = True) -> None:
+        super().__init__(message)
+        self.retryable = retryable
+
+
 class BaseProvider(ABC):
     """Base class for LLM providers."""
 
@@ -46,6 +54,9 @@ class BaseProvider(ABC):
         Returns:
             True if error should trigger fallback to next provider
         """
+        if isinstance(error, ProviderError):
+            return error.retryable
+
         error_str = str(error).lower()
 
         # Check for HTTP status codes and error patterns in error message

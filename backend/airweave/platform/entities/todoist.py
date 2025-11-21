@@ -4,7 +4,10 @@ Based on the Todoist REST API reference, we define entity schemas for
 Todoist objects, Projects, Sections, Tasks, and Comments.
 """
 
+from datetime import datetime
 from typing import Any, List, Optional
+
+from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity
@@ -17,12 +20,22 @@ class TodoistProjectEntity(BaseEntity):
         https://developer.todoist.com/rest/v2/#projects
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the project ID)
-    # - breadcrumbs (empty - projects are top-level)
-    # - name (from project name)
-    # - created_at (None - projects don't have creation timestamp)
-    # - updated_at (None - projects don't have update timestamp)
+    project_id: str = AirweaveField(..., description="Todoist project ID.", is_entity_id=True)
+    project_name: str = AirweaveField(
+        ..., description="Display name of the project.", embeddable=True, is_name=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the project snapshot was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="When the project snapshot was updated.", is_updated_at=True
+    )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="URL to open the project in Todoist.",
+        embeddable=False,
+        unhashable=True,
+    )
 
     # API fields
     color: Optional[str] = AirweaveField(
@@ -48,11 +61,16 @@ class TodoistProjectEntity(BaseEntity):
         None, description="Project view style ('list' or 'board')", embeddable=False
     )
     url: Optional[str] = AirweaveField(
-        None, description="URL to access the project", embeddable=False
+        None, description="URL to access the project", embeddable=False, unhashable=True
     )
     parent_id: Optional[str] = AirweaveField(
         None, description="ID of the parent project if nested", embeddable=False
     )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Return the Todoist project URL."""
+        return self.web_url_value or self.url or ""
 
 
 class TodoistSectionEntity(BaseEntity):
@@ -62,14 +80,10 @@ class TodoistSectionEntity(BaseEntity):
         https://developer.todoist.com/rest/v2/#sections
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the section ID)
-    # - breadcrumbs (project breadcrumb)
-    # - name (from section name)
-    # - created_at (None - sections don't have creation timestamp)
-    # - updated_at (None - sections don't have update timestamp)
-
-    # API fields
+    section_id: str = AirweaveField(..., description="Todoist section ID.", is_entity_id=True)
+    section_name: str = AirweaveField(
+        ..., description="Display name of the section.", embeddable=True, is_name=True
+    )
     project_id: str = AirweaveField(
         ..., description="ID of the project this section belongs to", embeddable=False
     )
@@ -83,15 +97,24 @@ class TodoistTaskEntity(BaseEntity):
         https://developer.todoist.com/rest/v2/#tasks
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the task ID)
-    # - breadcrumbs (project and optionally section breadcrumbs)
-    # - name (from task content)
-    # - created_at (from created_at timestamp)
-    # - updated_at (None - tasks don't have update timestamp)
+    task_id: str = AirweaveField(..., description="Todoist task ID.", is_entity_id=True)
+    content: str = AirweaveField(
+        ..., description="The task content/title", embeddable=True, is_name=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="When the task was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="Last update timestamp for the task.", is_updated_at=True
+    )
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="URL to open the task in Todoist.",
+        embeddable=False,
+        unhashable=True,
+    )
 
     # API fields
-    content: str = AirweaveField(..., description="The task content/title", embeddable=True)
     description: Optional[str] = AirweaveField(
         None, description="Optional detailed description of the task", embeddable=True
     )
@@ -154,7 +177,14 @@ class TodoistTaskEntity(BaseEntity):
     duration_unit: Optional[str] = AirweaveField(
         None, description="Duration unit ('minute' or 'day')", embeddable=False
     )
-    url: Optional[str] = AirweaveField(None, description="URL to access the task", embeddable=False)
+    url: Optional[str] = AirweaveField(
+        None, description="URL to access the task", embeddable=False, unhashable=True
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Return the Todoist task URL."""
+        return self.web_url_value or self.url or ""
 
 
 class TodoistCommentEntity(BaseEntity):
@@ -164,16 +194,13 @@ class TodoistCommentEntity(BaseEntity):
         https://developer.todoist.com/rest/v2/#comments
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the comment ID)
-    # - breadcrumbs (project, section, and task breadcrumbs)
-    # - name (from content preview)
-    # - created_at (from posted_at timestamp)
-    # - updated_at (None - comments don't have update timestamp)
-
-    # API fields
+    comment_id: str = AirweaveField(..., description="Todoist comment ID.", is_entity_id=True)
     task_id: str = AirweaveField(
         ..., description="ID of the task this comment belongs to", embeddable=False
     )
-    content: Optional[str] = AirweaveField(None, description="The comment content", embeddable=True)
-    posted_at: Any = AirweaveField(..., description="When the comment was posted", embeddable=False)
+    content: str = AirweaveField(
+        ..., description="The comment content", embeddable=True, is_name=True
+    )
+    posted_at: datetime = AirweaveField(
+        ..., description="When the comment was posted", is_created_at=True
+    )

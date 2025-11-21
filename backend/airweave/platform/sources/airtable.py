@@ -291,13 +291,9 @@ class AirtableSource(BaseSource):
                     continue
 
                 yield AirtableBaseEntity(
-                    # Base fields
-                    entity_id=base_id,
+                    base_id=base_id,
                     breadcrumbs=[],
                     name=base.get("name", base_id),
-                    created_at=None,  # Bases don't have creation timestamp in API
-                    updated_at=None,  # Bases don't have update timestamp in API
-                    # API fields
                     permission_level=base.get("permissionLevel"),
                     url=f"https://airtable.com/{base_id}",
                 )
@@ -331,13 +327,9 @@ class AirtableSource(BaseSource):
                     primary_field_name = fields[0].get("name")
 
                 yield AirtableTableEntity(
-                    # Base fields
-                    entity_id=table_id,
+                    table_id=table_id,
                     breadcrumbs=[base_breadcrumb],
                     name=table_name or table_id,
-                    created_at=None,  # Tables don't have creation timestamp in API
-                    updated_at=None,  # Tables don't have update timestamp in API
-                    # API fields
                     base_id=base_id,
                     description=table.get("description"),
                     fields_schema=fields,
@@ -376,13 +368,11 @@ class AirtableSource(BaseSource):
                     comment_name = f"Comment {comment_id}"
 
                 yield AirtableCommentEntity(
-                    # Base fields
-                    entity_id=comment_id,
+                    comment_id=comment_id,
                     breadcrumbs=record_breadcrumbs,
                     name=comment_name,
                     created_at=comment.get("createdTime"),
                     updated_at=comment.get("lastUpdatedTime"),
-                    # API fields
                     record_id=record_id,
                     base_id=base_id,
                     table_id=table_id,
@@ -419,12 +409,9 @@ class AirtableSource(BaseSource):
         file_type = mime_type.split("/")[0] if "/" in mime_type else "file"
 
         return AirtableAttachmentEntity(
-            # Base fields
-            entity_id=att_id,
+            attachment_id=att_id,
             breadcrumbs=record_breadcrumbs,
             name=filename,
-            created_at=None,  # Attachments don't have timestamps in API
-            updated_at=None,  # Attachments don't have timestamps in API
             # File fields
             url=url,
             size=size,
@@ -516,13 +503,9 @@ class AirtableSource(BaseSource):
                     user_name = email or user_id
 
                     yield AirtableUserEntity(
-                        # Base fields
-                        entity_id=user_id,
+                        user_id=user_id,
+                        display_name=user_name,
                         breadcrumbs=[],
-                        name=user_name,
-                        created_at=None,  # User doesn't have creation timestamp
-                        updated_at=None,  # User doesn't have update timestamp
-                        # API fields
                         email=email,
                         scopes=user_info.get("scopes"),
                     )
@@ -533,10 +516,14 @@ class AirtableSource(BaseSource):
             async for base_entity in self._generate_base_entities(client):
                 yield base_entity
 
-                base_id = base_entity.entity_id
+                base_id = base_entity.base_id
                 base_name = base_entity.name
 
-                base_breadcrumb = Breadcrumb(entity_id=base_id)
+                base_breadcrumb = Breadcrumb(
+                    entity_id=base_id,
+                    name=base_name,
+                    entity_type="AirtableBaseEntity",
+                )
 
                 # Generate table entities for this base
                 async for table_entity in self._generate_table_entities(
@@ -544,10 +531,14 @@ class AirtableSource(BaseSource):
                 ):
                     yield table_entity
 
-                    table_id = table_entity.entity_id
+                    table_id = table_entity.table_id
                     table_name = table_entity.name
 
-                    table_breadcrumb = Breadcrumb(entity_id=table_id)
+                    table_breadcrumb = Breadcrumb(
+                        entity_id=table_id,
+                        name=table_name,
+                        entity_type="AirtableTableEntity",
+                    )
                     table_breadcrumbs = [base_breadcrumb, table_breadcrumb]
 
                     # Generate record entities for this table
@@ -571,13 +562,10 @@ class AirtableSource(BaseSource):
 
                         # Yield the record entity
                         record_entity = AirtableRecordEntity(
-                            # Base fields
-                            entity_id=record_id,
+                            record_id=record_id,
                             breadcrumbs=table_breadcrumbs,
                             name=record_name,
                             created_at=record.get("createdTime"),
-                            updated_at=None,  # Records don't have update timestamp in API
-                            # API fields
                             base_id=base_id,
                             table_id=table_id,
                             table_name=table_name,
@@ -585,7 +573,11 @@ class AirtableSource(BaseSource):
                         )
                         yield record_entity
 
-                        record_breadcrumb = Breadcrumb(entity_id=record_id)
+                        record_breadcrumb = Breadcrumb(
+                            entity_id=record_id,
+                            name=record_name,
+                            entity_type="AirtableRecordEntity",
+                        )
                         record_breadcrumbs = [*table_breadcrumbs, record_breadcrumb]
 
                         # Generate comment entities for this record

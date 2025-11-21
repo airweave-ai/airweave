@@ -17,6 +17,8 @@ Reference:
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from pydantic import computed_field
+
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity
 
@@ -36,8 +38,16 @@ class TeamsUserEntity(BaseEntity):
     # - updated_at (None - users don't have update timestamp in Teams API)
 
     # API fields
-    display_name: Optional[str] = AirweaveField(
-        None, description="The name displayed in the address book for the user.", embeddable=True
+    id: str = AirweaveField(
+        ...,
+        description="User ID from Microsoft Graph.",
+        is_entity_id=True,
+    )
+    display_name: str = AirweaveField(
+        ...,
+        description="The name displayed in the address book for the user.",
+        embeddable=True,
+        is_name=True,
     )
     user_principal_name: Optional[str] = AirweaveField(
         None,
@@ -56,6 +66,21 @@ class TeamsUserEntity(BaseEntity):
     office_location: Optional[str] = AirweaveField(
         None, description="The office location in the user's place of business.", embeddable=True
     )
+    web_url_override: Optional[str] = AirweaveField(
+        None,
+        description="Link to the user in Microsoft 365.",
+        embeddable=False,
+        unhashable=True,
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Return best-effort link to contact the user."""
+        if self.web_url_override:
+            return self.web_url_override
+        if self.mail:
+            return f"mailto:{self.mail}"
+        return "https://teams.microsoft.com/"
 
 
 class TeamsTeamEntity(BaseEntity):
@@ -73,7 +98,17 @@ class TeamsTeamEntity(BaseEntity):
     # - updated_at (None - teams don't have update timestamp)
 
     # API fields
-    display_name: str = AirweaveField(..., description="The name of the team.", embeddable=True)
+    id: str = AirweaveField(
+        ...,
+        description="Team ID from Microsoft Graph.",
+        is_entity_id=True,
+    )
+    display_name: str = AirweaveField(
+        ...,
+        description="The name of the team.",
+        embeddable=True,
+        is_name=True,
+    )
     description: Optional[str] = AirweaveField(
         None, description="An optional description for the team.", embeddable=True
     )
@@ -84,9 +119,6 @@ class TeamsTeamEntity(BaseEntity):
     )
     is_archived: Optional[bool] = AirweaveField(
         None, description="Whether this team is in read-only mode.", embeddable=False
-    )
-    web_url: Optional[str] = AirweaveField(
-        None, description="A hyperlink that goes to the team in Microsoft Teams.", embeddable=False
     )
     classification: Optional[str] = AirweaveField(
         None,
@@ -101,6 +133,21 @@ class TeamsTeamEntity(BaseEntity):
     internal_id: Optional[str] = AirweaveField(
         None, description="A unique ID for the team used in audit logs.", embeddable=False
     )
+    web_url_override: Optional[str] = AirweaveField(
+        None,
+        description="Link to open the team in Microsoft Teams.",
+        embeddable=False,
+        unhashable=True,
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Return best-effort link to open the team."""
+        if self.web_url_override:
+            return self.web_url_override
+        if self.internal_id:
+            return f"https://teams.microsoft.com/l/team/{self.internal_id}"
+        return "https://teams.microsoft.com/"
 
 
 class TeamsChannelEntity(BaseEntity):
@@ -118,11 +165,19 @@ class TeamsChannelEntity(BaseEntity):
     # - updated_at (None - channels don't have update timestamp)
 
     # API fields
+    id: str = AirweaveField(
+        ...,
+        description="Channel ID.",
+        is_entity_id=True,
+    )
     team_id: str = AirweaveField(
         ..., description="ID of the team this channel belongs to.", embeddable=False
     )
     display_name: str = AirweaveField(
-        ..., description="Channel name as it appears to users.", embeddable=True
+        ...,
+        description="Channel name as it appears to users.",
+        embeddable=True,
+        is_name=True,
     )
     description: Optional[str] = AirweaveField(
         None, description="Optional textual description for the channel.", embeddable=True
@@ -143,11 +198,19 @@ class TeamsChannelEntity(BaseEntity):
         description="Indicates whether the channel is recommended for all team members.",
         embeddable=False,
     )
-    web_url: Optional[str] = AirweaveField(
+    web_url_override: Optional[str] = AirweaveField(
         None,
         description="A hyperlink that goes to the channel in Microsoft Teams.",
         embeddable=False,
+        unhashable=True,
     )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Return best-effort link to open the channel."""
+        if self.web_url_override:
+            return self.web_url_override
+        return f"https://teams.microsoft.com/l/channel/{self.id}"
 
 
 class TeamsChatEntity(BaseEntity):
@@ -165,19 +228,37 @@ class TeamsChatEntity(BaseEntity):
     # - updated_at (from last_updated_datetime)
 
     # API fields
+    id: str = AirweaveField(
+        ...,
+        description="Chat ID.",
+        is_entity_id=True,
+    )
     chat_type: str = AirweaveField(
         ...,
         description="Type of chat (oneOnOne, group, meeting).",
         embeddable=True,
+    )
+    topic_label: str = AirweaveField(
+        ...,
+        description="Display label for the chat.",
+        embeddable=True,
+        is_name=True,
     )
     topic: Optional[str] = AirweaveField(
         None,
         description="Subject or topic for the chat (only for group chats).",
         embeddable=True,
     )
-    web_url: Optional[str] = AirweaveField(
+    web_url_override: Optional[str] = AirweaveField(
         None, description="The URL for the chat in Microsoft Teams.", embeddable=False
     )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Return best-effort link to open the chat."""
+        if self.web_url_override:
+            return self.web_url_override
+        return f"https://teams.microsoft.com/l/chat/{self.id}"
 
 
 class TeamsMessageEntity(BaseEntity):
@@ -195,6 +276,11 @@ class TeamsMessageEntity(BaseEntity):
     # - updated_at (from last_modified_datetime)
 
     # API fields
+    id: str = AirweaveField(
+        ...,
+        description="Message ID.",
+        is_entity_id=True,
+    )
     team_id: Optional[str] = AirweaveField(
         None, description="ID of the team (if this is a channel message).", embeddable=False
     )
@@ -212,8 +298,17 @@ class TeamsMessageEntity(BaseEntity):
         description="Type of message (message, chatEvent, systemEventMessage).",
         embeddable=True,
     )
-    subject: Optional[str] = AirweaveField(
-        None, description="The subject of the chat message.", embeddable=True
+    created_datetime: Optional[datetime] = AirweaveField(
+        None,
+        description="When the message was created.",
+        embeddable=False,
+        is_created_at=True,
+    )
+    subject: str = AirweaveField(
+        ...,
+        description="The subject of the chat message.",
+        embeddable=True,
+        is_name=True,
     )
     body_content: Optional[str] = AirweaveField(
         None, description="The content of the message body.", embeddable=True
@@ -225,7 +320,10 @@ class TeamsMessageEntity(BaseEntity):
         None, description="Details of the sender of the message.", embeddable=True
     )
     last_edited_datetime: Optional[datetime] = AirweaveField(
-        None, description="Timestamp when edits to the message were made.", embeddable=False
+        None,
+        description="Timestamp when edits to the message were made.",
+        embeddable=False,
+        is_updated_at=True,
     )
     deleted_datetime: Optional[datetime] = AirweaveField(
         None, description="Timestamp at which the message was deleted.", embeddable=False
@@ -248,6 +346,16 @@ class TeamsMessageEntity(BaseEntity):
         description="Reactions for this message (e.g., Like).",
         embeddable=True,
     )
-    web_url: Optional[str] = AirweaveField(
+    web_url_override: Optional[str] = AirweaveField(
         None, description="Link to the message in Microsoft Teams.", embeddable=False
     )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Return best-effort link to open the message."""
+        if self.web_url_override:
+            return self.web_url_override
+        # Fallback to generic Teams URL when Graph doesn't provide a deep link.
+        # We don't have enough context here (chat/conversation IDs) to construct
+        # a valid per-message deep link, and the /message/{id} path is invalid.
+        return "https://teams.microsoft.com/"

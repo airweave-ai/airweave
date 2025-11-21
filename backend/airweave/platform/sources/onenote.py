@@ -280,13 +280,11 @@ class OneNoteSource(BaseSource):
                     self.logger.debug(f"Processing notebook #{notebook_count}: {display_name}")
 
                     notebook_entity = OneNoteNotebookEntity(
-                        # Base fields
-                        entity_id=notebook_id,
                         breadcrumbs=[],
+                        id=notebook_id,
                         name=display_name,
                         created_at=self._parse_datetime(notebook_data.get("createdDateTime")),
                         updated_at=self._parse_datetime(notebook_data.get("lastModifiedDateTime")),
-                        # API fields
                         display_name=display_name,
                         is_default=notebook_data.get("isDefault"),
                         is_shared=notebook_data.get("isShared"),
@@ -295,6 +293,9 @@ class OneNoteSource(BaseSource):
                         last_modified_by=notebook_data.get("lastModifiedBy"),
                         links=notebook_data.get("links"),
                         self_url=notebook_data.get("self"),
+                        web_url_override=(
+                            (notebook_data.get("links") or {}).get("oneNoteWebUrl", {}).get("href")
+                        ),
                     )
 
                     # Get sections data from expanded response
@@ -354,9 +355,8 @@ class OneNoteSource(BaseSource):
                     self.logger.debug(f"Processing section #{section_count}: {display_name}")
 
                     yield OneNoteSectionEntity(
-                        # Base fields
-                        entity_id=section_id,
                         breadcrumbs=[notebook_breadcrumb],
+                        id=section_id,
                         name=display_name,
                         created_at=self._parse_datetime(section_data.get("createdDateTime")),
                         updated_at=self._parse_datetime(section_data.get("lastModifiedDateTime")),
@@ -368,6 +368,9 @@ class OneNoteSource(BaseSource):
                         created_by=section_data.get("createdBy"),
                         last_modified_by=section_data.get("lastModifiedBy"),
                         pages_url=section_data.get("pagesUrl"),
+                        web_url_override=(
+                            (section_data.get("links") or {}).get("oneNoteWebUrl", {}).get("href")
+                        ),
                     )
 
                 # Handle pagination
@@ -387,7 +390,7 @@ class OneNoteSource(BaseSource):
             )
             # Don't raise - continue with other notebooks
 
-    async def _generate_page_entities(
+    async def _generate_page_entities(  # noqa: C901
         self,
         client: httpx.AsyncClient,
         section_id: str,
@@ -453,9 +456,8 @@ class OneNoteSource(BaseSource):
 
                     # Create the file entity
                     file_entity = OneNotePageFileEntity(
-                        # Base fields
-                        entity_id=page_id,
                         breadcrumbs=section_breadcrumbs,
+                        id=page_id,
                         name=page_name,
                         created_at=self._parse_datetime(page_data.get("createdDateTime")),
                         updated_at=self._parse_datetime(page_data.get("lastModifiedDateTime")),
@@ -476,6 +478,9 @@ class OneNoteSource(BaseSource):
                         last_modified_by=page_data.get("lastModifiedBy"),
                         links=page_data.get("links"),
                         user_tags=page_data.get("userTags", []),
+                        web_url_override=(
+                            (page_data.get("links") or {}).get("oneNoteWebUrl", {}).get("href")
+                        ),
                     )
 
                     # Download the page HTML using file downloader
@@ -497,7 +502,8 @@ class OneNoteSource(BaseSource):
                         yield file_entity
 
                     except FileSkippedException as e:
-                        # Page intentionally skipped (unsupported type, too large, etc.) - not an error
+                        # Page intentionally skipped (unsupported type, too large, etc.).
+                        # Not an error – continue with other pages.
                         self.logger.debug(f"Skipping page {title}: {e.reason}")
                         continue
 
@@ -549,8 +555,12 @@ class OneNoteSource(BaseSource):
                     yield notebook_entity
 
                     # Create notebook breadcrumb
-                    notebook_id = notebook_entity.entity_id
-                    notebook_breadcrumb = Breadcrumb(entity_id=notebook_id)
+                    notebook_id = notebook_entity.id
+                    notebook_breadcrumb = Breadcrumb(
+                        entity_id=notebook_id,
+                        name=notebook_entity.name,
+                        entity_type="OneNoteNotebookEntity",
+                    )
 
                     # 3) Process sections from expanded data with concurrent processing
                     if sections_data:
@@ -567,9 +577,8 @@ class OneNoteSource(BaseSource):
 
                                 # Create section entity
                                 section_entity = OneNoteSectionEntity(
-                                    # Base fields
-                                    entity_id=section_id,
                                     breadcrumbs=[nb_breadcrumb],
+                                    id=section_id,
                                     name=section_name,
                                     created_at=self._parse_datetime(
                                         section_data.get("createdDateTime")
@@ -587,10 +596,19 @@ class OneNoteSource(BaseSource):
                                     created_by=section_data.get("createdBy"),
                                     last_modified_by=section_data.get("lastModifiedBy"),
                                     pages_url=section_data.get("pagesUrl"),
+                                    web_url_override=(
+                                        (section_data.get("links") or {})
+                                        .get("oneNoteWebUrl", {})
+                                        .get("href")
+                                    ),
                                 )
 
                                 # Create section breadcrumb
-                                section_breadcrumb = Breadcrumb(entity_id=section_id)
+                                section_breadcrumb = Breadcrumb(
+                                    entity_id=section_id,
+                                    name=section_name,
+                                    entity_type="OneNoteSectionEntity",
+                                )
                                 section_breadcrumbs = [nb_breadcrumb, section_breadcrumb]
 
                                 # Yield section entity

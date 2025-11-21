@@ -4,29 +4,26 @@ Attio is a CRM platform that organizes data into Objects (Companies, People, Dea
 and Lists (custom collections). Each object/list contains Records with custom attributes.
 """
 
+from datetime import datetime
 from typing import Any, Dict, List, Optional
+
+from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity
 
 
 class AttioObjectEntity(BaseEntity):
-    """Schema for Attio Object (e.g., Companies, People, Deals).
+    """Schema for Attio Object (e.g., Companies, People, Deals)."""
 
-    Objects are the core data types in Attio's CRM.
+    object_id: str = AirweaveField(..., description="Attio object ID", is_entity_id=True)
+    name: str = AirweaveField(
+        ..., description="Display name of the object", is_name=True, embeddable=True
+    )
+    created_at: Optional[datetime] = AirweaveField(
+        None, description="When the object was created", is_created_at=True
+    )
 
-    Reference:
-        https://docs.attio.com/rest-api/endpoint-reference/objects
-    """
-
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the object ID)
-    # - breadcrumbs (empty - objects are top-level)
-    # - name (from singular_noun)
-    # - created_at (from created_at timestamp)
-    # - updated_at (None - objects don't have update timestamp)
-
-    # API fields
     singular_noun: str = AirweaveField(
         ..., description="Singular name of the object (e.g., 'Company')", embeddable=True
     )
@@ -38,24 +35,21 @@ class AttioObjectEntity(BaseEntity):
         None, description="Icon representing this object", embeddable=False
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Link to the object definition inside Attio."""
+        return f"https://app.attio.com/objects/{self.api_slug}"
+
 
 class AttioListEntity(BaseEntity):
-    """Schema for Attio List.
+    """Schema for Attio List."""
 
-    Lists are custom collections that can organize any type of record.
+    list_id: str = AirweaveField(..., description="Attio list ID", is_entity_id=True)
+    name: str = AirweaveField(..., description="List name", is_name=True, embeddable=True)
+    created_at: Optional[datetime] = AirweaveField(
+        None, description="When the list was created", is_created_at=True
+    )
 
-    Reference:
-        https://docs.attio.com/rest-api/endpoint-reference/lists
-    """
-
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the list ID)
-    # - breadcrumbs (empty - lists are top-level)
-    # - name (from list name)
-    # - created_at (from created_at timestamp)
-    # - updated_at (None - lists don't have update timestamp)
-
-    # API fields
     workspace_id: str = AirweaveField(
         ..., description="ID of the workspace this list belongs to", embeddable=False
     )
@@ -63,26 +57,26 @@ class AttioListEntity(BaseEntity):
         None, description="Parent object type if applicable", embeddable=True
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Link to the list inside Attio."""
+        return f"https://app.attio.com/lists/{self.list_id}"
+
 
 class AttioRecordEntity(BaseEntity):
-    """Schema for Attio Record.
+    """Schema for Attio Record."""
 
-    Records are individual entries in Objects or Lists (e.g., a specific company, person, or deal).
+    record_id: str = AirweaveField(..., description="Attio record ID", is_entity_id=True)
+    name: str = AirweaveField(..., description="Record display name", is_name=True, embeddable=True)
+    created_at: Optional[datetime] = AirweaveField(
+        None, description="When the record was created", is_created_at=True
+    )
+    updated_at: Optional[datetime] = AirweaveField(
+        None, description="When the record was last updated", is_updated_at=True
+    )
 
-    Reference:
-        https://docs.attio.com/rest-api/endpoint-reference/records
-    """
-
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the record ID)
-    # - breadcrumbs (object or list breadcrumb)
-    # - name (from name attribute or record ID)
-    # - created_at (from created_at timestamp)
-    # - updated_at (from updated_at timestamp)
-
-    # API fields
     object_id: Optional[str] = AirweaveField(
-        None, description="ID of the object this record belongs to", embeddable=False
+        None, description="ID/slug of the object this record belongs to", embeddable=False
     )
     list_id: Optional[str] = AirweaveField(
         None, description="ID of the list this record belongs to", embeddable=False
@@ -91,7 +85,6 @@ class AttioRecordEntity(BaseEntity):
         None, description="Name of the parent object/list", embeddable=True
     )
 
-    # Dynamic attributes - these are the actual CRM data
     description: Optional[str] = AirweaveField(
         None, description="Description of the record", embeddable=True
     )
@@ -111,60 +104,71 @@ class AttioRecordEntity(BaseEntity):
     categories: List[str] = AirweaveField(
         default_factory=list, description="Categories/tags for this record", embeddable=True
     )
-
-    # Custom attributes stored as structured data
     attributes: Dict[str, Any] = AirweaveField(
         default_factory=dict,
         description="Custom attributes and their values",
         embeddable=True,
     )
-
-    # Metadata
     permalink_url: Optional[str] = AirweaveField(
-        None, description="URL to view this record in Attio", embeddable=False
+        None,
+        description="URL to view this record in Attio (if provided by API)",
+        embeddable=False,
+        unhashable=True,
     )
+
+    @computed_field(return_type=Optional[str])
+    def web_url(self) -> Optional[str]:
+        """Best-effort link back to the record inside Attio."""
+        if self.permalink_url:
+            return self.permalink_url
+        if self.object_id:
+            return f"https://app.attio.com/objects/{self.object_id}/{self.record_id}"
+        if self.list_id:
+            return f"https://app.attio.com/lists/{self.list_id}/{self.record_id}"
+        return None
 
 
 class AttioNoteEntity(BaseEntity):
-    """Schema for Attio Note.
+    """Schema for Attio Note."""
 
-    Notes are text entries attached to records for context and collaboration.
+    note_id: str = AirweaveField(..., description="Attio note ID", is_entity_id=True)
+    name: str = AirweaveField(
+        ..., description="Note title or preview", is_name=True, embeddable=True
+    )
+    created_at: Optional[datetime] = AirweaveField(
+        None, description="When the note was created", is_created_at=True
+    )
+    updated_at: Optional[datetime] = AirweaveField(
+        None, description="When the note was last updated", is_updated_at=True
+    )
 
-    Reference:
-        https://docs.attio.com/rest-api/endpoint-reference/notes
-    """
-
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the note ID)
-    # - breadcrumbs (object/list and record breadcrumbs)
-    # - name (from title or content preview)
-    # - created_at (from created_at timestamp)
-    # - updated_at (from updated_at timestamp)
-
-    # API fields
     parent_record_id: str = AirweaveField(
         ..., description="ID of the record this note is attached to", embeddable=False
     )
     parent_object: Optional[str] = AirweaveField(
         None, description="Type of parent object", embeddable=False
     )
-
-    # Note content
     title: Optional[str] = AirweaveField(None, description="Title of the note", embeddable=True)
     content: str = AirweaveField(..., description="Content of the note", embeddable=True)
     format: Optional[str] = AirweaveField(
         None, description="Format of the note (plaintext, markdown, etc.)", embeddable=False
     )
-
-    # Author information
     author: Optional[Dict[str, Any]] = AirweaveField(
         None, description="User who created this note", embeddable=True
     )
-
-    # Metadata
     permalink_url: Optional[str] = AirweaveField(
-        None, description="URL to view this note in Attio", embeddable=False
+        None,
+        description="URL to view this note in Attio (if provided by API)",
+        embeddable=False,
+        unhashable=True,
     )
+
+    @computed_field(return_type=Optional[str])
+    def web_url(self) -> Optional[str]:
+        """Best-effort link back to the note inside Attio."""
+        if self.permalink_url:
+            return self.permalink_url
+        return f"https://app.attio.com/notes/{self.note_id}"
 
 
 # Note: AttioCommentEntity was removed because the Attio API does not provide

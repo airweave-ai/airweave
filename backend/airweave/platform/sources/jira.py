@@ -7,6 +7,7 @@ References:
     https://developer.atlassian.com/cloud/jira/platform/rest/v3/overview
 """
 
+from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, Optional
 
 import httpx
@@ -51,6 +52,11 @@ class JiraSource(BaseSource):
     It provides comprehensive access to projects, issues, and their
     relationships for agile development and issue tracking workflows.
     """
+
+    def __init__(self) -> None:
+        """Initialize Jira source with placeholders for site metadata."""
+        super().__init__()
+        self.site_url: Optional[str] = None
 
     async def _get_accessible_resources(self) -> list[dict]:
         """Get the list of accessible Atlassian resources for this token.
@@ -199,19 +205,20 @@ class JiraSource(BaseSource):
         self.logger.debug(
             f"Creating project entity for: {project_data.get('key')} - {project_data.get('name')}"
         )
-        # Use a composite ID format that includes the entity type for uniqueness
-        entity_id = f"project-{project_data['id']}"
+        project_id = str(project_data["id"])
+        project_name = project_data.get("name") or project_data["key"]
 
         return JiraProjectEntity(
-            # Base fields
-            entity_id=entity_id,
+            entity_id=project_id,
             breadcrumbs=[],
-            name=project_data.get("name") or project_data["key"],
-            created_at=None,  # Projects don't have creation timestamp in API
-            updated_at=None,  # Projects don't have update timestamp in API
-            # API fields
+            name=project_name,
+            created_at=None,
+            updated_at=None,
+            project_id=project_id,
+            project_name=project_name,
             project_key=project_data["key"],
             description=project_data.get("description"),
+            web_url_value=self._build_project_url(project_data["key"]),
         )
 
     def _extract_text_from_adf(self, adf_data):
@@ -269,22 +276,33 @@ class JiraSource(BaseSource):
             f"Creating issue entity: {issue_key} - Type: {issue_type_name}, Status: {status_name}"
         )
 
-        # Use a composite ID format that includes the entity type for uniqueness
-        entity_id = f"issue-{issue_data['id']}"
+        issue_id = str(issue_data["id"])
+        summary = fields.get("summary") or issue_key
+        created_time = self._parse_datetime(fields.get("created")) or datetime.utcnow()
+        updated_time = self._parse_datetime(fields.get("updated")) or created_time
 
         return JiraIssueEntity(
-            # Base fields
-            entity_id=entity_id,
-            breadcrumbs=[Breadcrumb(entity_id=project.entity_id)],
-            name=fields.get("summary") or issue_key,
-            created_at=fields.get("created"),
-            updated_at=fields.get("updated"),
-            # API fields
+            entity_id=issue_id,
+            breadcrumbs=[
+                Breadcrumb(
+                    entity_id=project.project_id,
+                    name=project.project_name,
+                    entity_type=JiraProjectEntity.__name__,
+                )
+            ],
+            name=summary,
+            created_at=created_time,
+            updated_at=updated_time,
+            issue_id=issue_id,
             issue_key=issue_key,
-            summary=fields.get("summary"),
+            summary=summary,
             description=description_text,
             status=status_name,
             issue_type=issue_type_name,
+            project_key=project.project_key,
+            created_time=created_time,
+            updated_time=updated_time,
+            web_url_value=self._build_issue_url(issue_key),
         )
 
     async def _generate_project_entities(
@@ -431,6 +449,11 @@ class JiraSource(BaseSource):
         if not resources:
             raise ValueError("No accessible resources found")
         cloud_id = resources[0]["id"]
+        self.site_url = resources[0].get("url")
+        if self.site_url:
+            self.site_url = self.site_url.rstrip("/")
+        else:
+            self.logger.warning("Accessible Jira resource missing site URL; web links disabled.")
 
         self.base_url = f"https://api.atlassian.com/ex/jira/{cloud_id}"
         self.logger.debug(f"Base URL set to: {self.base_url}")
@@ -509,3 +532,25 @@ class JiraSource(BaseSource):
         except Exception as e:
             self.logger.error(f"Jira validation failed: {str(e)}")
             return False
+
+    @staticmethod
+    def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
+        """Parse Jira timestamp strings into aware datetimes."""
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+
+    def _build_project_url(self, project_key: str) -> Optional[str]:
+        """Construct a human-friendly Jira URL for a project."""
+        if not self.site_url:
+            return None
+        return f"{self.site_url}/projects/{project_key}"
+
+    def _build_issue_url(self, issue_key: str) -> Optional[str]:
+        """Construct a human-friendly Jira URL for an issue."""
+        if not self.site_url:
+            return None
+        return f"{self.site_url}/browse/{issue_key}"

@@ -299,7 +299,7 @@ class QdrantDestination(VectorDBDestination):
                     DEFAULT_VECTOR_NAME: rest.VectorParams(
                         size=self.vector_size,
                         distance=rest.Distance.COSINE,
-                        on_disk=False,  # Keep original vectors in RAM for rescoring
+                        on_disk=True,  # Store vectors on disk, load for rescoring on-demand
                     ),
                 },
                 sparse_vectors_config={

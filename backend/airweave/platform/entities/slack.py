@@ -1,6 +1,9 @@
 """Slack entity schemas."""
 
+from datetime import datetime
 from typing import Any, Dict, Optional
+
+from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity
@@ -21,7 +24,9 @@ class SlackMessageEntity(BaseEntity):
     # - updated_at (None - messages don't have update timestamp)
 
     # API fields
-    text: str = AirweaveField(..., description="The text content of the message", embeddable=True)
+    text: str = AirweaveField(
+        ..., description="The text content of the message", embeddable=True, is_name=True
+    )
     user: Optional[str] = AirweaveField(
         None, description="User ID of the message author", embeddable=False
     )
@@ -29,7 +34,10 @@ class SlackMessageEntity(BaseEntity):
         None, description="Username of the message author", embeddable=True
     )
     ts: str = AirweaveField(
-        ..., description="Message timestamp (unique identifier)", embeddable=False
+        ...,
+        description="Message timestamp (unique identifier)",
+        embeddable=False,
+        is_entity_id=True,
     )
     channel_id: str = AirweaveField(
         ..., description="ID of the channel containing this message", embeddable=False
@@ -60,3 +68,14 @@ class SlackMessageEntity(BaseEntity):
     url: Optional[str] = AirweaveField(
         None, description="URL to view the message in Slack", embeddable=False
     )
+    message_time: datetime = AirweaveField(
+        ..., description="Timestamp converted to datetime for hashing checks.", is_created_at=True
+    )
+    web_url_value: Optional[str] = AirweaveField(
+        None, description="Permalink to open the message.", embeddable=False, unhashable=True
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Permalink for the Slack message."""
+        return self.web_url_value or self.url or ""

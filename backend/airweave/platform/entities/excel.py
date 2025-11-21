@@ -12,7 +12,10 @@ Reference:
   https://learn.microsoft.com/en-us/graph/api/resources/table
 """
 
+from datetime import datetime
 from typing import Any, Dict, List, Optional
+
+from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity
@@ -27,19 +30,31 @@ class ExcelWorkbookEntity(BaseEntity):
         https://learn.microsoft.com/en-us/graph/api/resources/driveitem
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the workbook/file ID)
-    # - breadcrumbs (empty - workbooks are top-level)
-    # - name (from workbook name without extension)
-    # - created_at (from created_datetime)
-    # - updated_at (from last_modified_datetime)
-
-    # API fields
+    id: str = AirweaveField(
+        ...,
+        description="Drive item ID for the workbook.",
+        is_entity_id=True,
+    )
+    name: str = AirweaveField(
+        ...,
+        description="Workbook name (without extension).",
+        is_name=True,
+        embeddable=True,
+    )
+    created_datetime: Optional[datetime] = AirweaveField(
+        None,
+        description="When the workbook was created.",
+        embeddable=False,
+        is_created_at=True,
+    )
+    last_modified_datetime: Optional[datetime] = AirweaveField(
+        None,
+        description="When the workbook was last modified.",
+        embeddable=False,
+        is_updated_at=True,
+    )
     file_name: str = AirweaveField(
         ..., description="The full file name including extension.", embeddable=True
-    )
-    web_url: Optional[str] = AirweaveField(
-        None, description="URL to open the workbook in Excel Online.", embeddable=False
     )
     size: Optional[int] = AirweaveField(
         None, description="Size of the file in bytes.", embeddable=False
@@ -61,6 +76,21 @@ class ExcelWorkbookEntity(BaseEntity):
     description: Optional[str] = AirweaveField(
         None, description="Description of the workbook if available.", embeddable=True
     )
+    web_url_override: Optional[str] = AirweaveField(
+        None,
+        description="Direct URL to open the workbook in Excel Online.",
+        embeddable=False,
+        unhashable=True,
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """URL exposed to Airweave clients."""
+        if self.web_url_override:
+            return self.web_url_override
+        if self.drive_id:
+            return f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}/items/{self.id}"
+        return f"https://graph.microsoft.com/v1.0/me/drive/items/{self.id}"
 
 
 class ExcelWorksheetEntity(BaseEntity):
@@ -72,14 +102,17 @@ class ExcelWorksheetEntity(BaseEntity):
         https://learn.microsoft.com/en-us/graph/api/resources/worksheet
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the worksheet ID)
-    # - breadcrumbs (workbook breadcrumb)
-    # - name (from worksheet name)
-    # - created_at (None - worksheets don't have creation timestamp)
-    # - updated_at (from last_modified_datetime)
-
-    # API fields
+    id: str = AirweaveField(
+        ...,
+        description="Worksheet ID within the workbook.",
+        is_entity_id=True,
+    )
+    name: str = AirweaveField(
+        ...,
+        description="Worksheet display name.",
+        is_name=True,
+        embeddable=True,
+    )
     workbook_id: str = AirweaveField(
         ..., description="ID of the parent workbook.", embeddable=False
     )
@@ -112,11 +145,25 @@ class ExcelWorksheetEntity(BaseEntity):
     column_count: Optional[int] = AirweaveField(
         None, description="Number of columns with data in the worksheet.", embeddable=False
     )
-    last_modified_datetime: Optional[Any] = AirweaveField(
+    last_modified_datetime: Optional[datetime] = AirweaveField(
         None,
         description="Timestamp at which the worksheet was last modified.",
         embeddable=False,
+        is_updated_at=True,
     )
+    web_url_override: Optional[str] = AirweaveField(
+        None,
+        description="URL that opens the containing workbook focused on this sheet.",
+        embeddable=False,
+        unhashable=True,
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Link to open the worksheet context in Excel Online."""
+        if self.web_url_override:
+            return self.web_url_override
+        return f"https://graph.microsoft.com/v1.0/me/drive/items/{self.workbook_id}/workbook/worksheets/{self.id}"
 
 
 class ExcelTableEntity(BaseEntity):
@@ -128,14 +175,17 @@ class ExcelTableEntity(BaseEntity):
         https://learn.microsoft.com/en-us/graph/api/resources/table
     """
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the table ID)
-    # - breadcrumbs (workbook and worksheet breadcrumbs)
-    # - name (from table name)
-    # - created_at (None - tables don't have creation timestamp)
-    # - updated_at (from last_modified_datetime)
-
-    # API fields
+    id: str = AirweaveField(
+        ...,
+        description="Table ID within the workbook.",
+        is_entity_id=True,
+    )
+    name: str = AirweaveField(
+        ...,
+        description="Table name as defined in Excel.",
+        is_name=True,
+        embeddable=True,
+    )
     workbook_id: str = AirweaveField(
         ..., description="ID of the parent workbook.", embeddable=False
     )
@@ -176,7 +226,7 @@ class ExcelTableEntity(BaseEntity):
     column_count: Optional[int] = AirweaveField(
         None, description="Number of columns in the table.", embeddable=False
     )
-    column_names: Optional[List[str]] = AirweaveField(
+    column_names: List[str] = AirweaveField(
         default_factory=list,
         description="Names of the columns in the table.",
         embeddable=True,
@@ -186,8 +236,22 @@ class ExcelTableEntity(BaseEntity):
         description="The actual table data as formatted text (rows and columns).",
         embeddable=True,
     )
-    last_modified_datetime: Optional[Any] = AirweaveField(
+    last_modified_datetime: Optional[datetime] = AirweaveField(
         None,
         description="Timestamp at which the table was last modified.",
         embeddable=False,
+        is_updated_at=True,
     )
+    web_url_override: Optional[str] = AirweaveField(
+        None,
+        description="URL that opens the workbook focused on this table.",
+        embeddable=False,
+        unhashable=True,
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Link to open the table context in Excel Online."""
+        if self.web_url_override:
+            return self.web_url_override
+        return f"https://graph.microsoft.com/v1.0/me/drive/items/{self.workbook_id}/workbook/tables/{self.id}"

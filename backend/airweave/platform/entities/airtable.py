@@ -1,6 +1,9 @@
 """Airtable entity schemas."""
 
+from datetime import datetime
 from typing import Any, Dict, List, Optional
+
+from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity, FileEntity
@@ -9,50 +12,50 @@ from airweave.platform.entities._base import BaseEntity, FileEntity
 class AirtableUserEntity(BaseEntity):
     """The authenticated user (from /meta/whoami endpoint)."""
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the user ID)
-    # - breadcrumbs (empty - user is top-level)
-    # - name (from email or user ID)
-    # - created_at (None - user doesn't have creation timestamp)
-    # - updated_at (None - user doesn't have update timestamp)
+    user_id: str = AirweaveField(..., description="Airtable user ID", is_entity_id=True)
+    display_name: str = AirweaveField(
+        ..., description="Display name derived from email or ID", is_name=True, embeddable=True
+    )
 
-    # API fields
     email: Optional[str] = AirweaveField(None, description="User email address", embeddable=True)
     scopes: Optional[List[str]] = AirweaveField(
         default=None, description="OAuth scopes granted to the token", embeddable=False
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Account settings page for the authenticated user."""
+        return "https://airtable.com/account"
+
 
 class AirtableBaseEntity(BaseEntity):
     """Metadata for an Airtable base."""
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the base ID)
-    # - breadcrumbs (empty - bases are top-level)
-    # - name (from base name)
-    # - created_at (None - bases don't have creation timestamp in API)
-    # - updated_at (None - bases don't have update timestamp in API)
+    base_id: str = AirweaveField(..., description="Airtable base ID", is_entity_id=True)
+    name: str = AirweaveField(..., description="Base name", is_name=True, embeddable=True)
 
-    # API fields
     permission_level: Optional[str] = AirweaveField(
         None, description="Permission level for this base", embeddable=False
     )
     url: Optional[str] = AirweaveField(
-        None, description="URL to open the base in Airtable", embeddable=False
+        None,
+        description="URL to open the base in Airtable (legacy API field)",
+        embeddable=False,
+        unhashable=True,
     )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Canonical link to open the base in Airtable."""
+        return f"https://airtable.com/{self.base_id}"
 
 
 class AirtableTableEntity(BaseEntity):
     """Metadata for an Airtable table (schema-level info)."""
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the table ID)
-    # - breadcrumbs (base breadcrumb)
-    # - name (from table name)
-    # - created_at (None - tables don't have creation timestamp in API)
-    # - updated_at (None - tables don't have update timestamp in API)
+    table_id: str = AirweaveField(..., description="Airtable table ID", is_entity_id=True)
+    name: str = AirweaveField(..., description="Table name", is_name=True, embeddable=True)
 
-    # API fields
     base_id: str = AirweaveField(..., description="Parent base ID", embeddable=False)
     description: Optional[str] = AirweaveField(
         None, description="Table description, if any", embeddable=True
@@ -67,18 +70,21 @@ class AirtableTableEntity(BaseEntity):
         None, description="Number of views in this table", embeddable=False
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Link back to the table inside the base."""
+        return f"https://airtable.com/{self.base_id}/{self.table_id}"
+
 
 class AirtableRecordEntity(BaseEntity):
     """One Airtable record (row) as a searchable chunk."""
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the record ID)
-    # - breadcrumbs (base and table breadcrumbs)
-    # - name (from primary field or record ID)
-    # - created_at (from created_time)
-    # - updated_at (None - records don't have update timestamp in API)
+    record_id: str = AirweaveField(..., description="Record ID", is_entity_id=True)
+    name: str = AirweaveField(..., description="Record display name", is_name=True, embeddable=True)
+    created_at: Optional[datetime] = AirweaveField(
+        None, description="Record creation time", is_created_at=True
+    )
 
-    # API fields
     base_id: str = AirweaveField(..., description="Parent base ID", embeddable=False)
     table_id: str = AirweaveField(..., description="Parent table ID", embeddable=False)
     table_name: Optional[str] = AirweaveField(
@@ -88,18 +94,24 @@ class AirtableRecordEntity(BaseEntity):
         default_factory=dict, description="Raw Airtable fields map", embeddable=True
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Attempt to deep-link to the record inside its table."""
+        return f"https://airtable.com/{self.base_id}/{self.table_id}/{self.record_id}"
+
 
 class AirtableCommentEntity(BaseEntity):
     """A comment on an Airtable record."""
 
-    # Base fields are inherited and set during entity creation:
-    # - entity_id (the comment ID)
-    # - breadcrumbs (base, table, and record breadcrumbs)
-    # - name (comment preview or comment ID)
-    # - created_at (from created_time)
-    # - updated_at (from last_updated_time)
+    comment_id: str = AirweaveField(..., description="Comment ID", is_entity_id=True)
+    name: str = AirweaveField(..., description="Comment preview", is_name=True, embeddable=True)
+    created_at: Optional[datetime] = AirweaveField(
+        None, description="When the comment was created", is_created_at=True
+    )
+    updated_at: Optional[datetime] = AirweaveField(
+        None, description="When the comment was last updated", is_updated_at=True
+    )
 
-    # API fields
     record_id: str = AirweaveField(..., description="Parent record ID", embeddable=False)
     base_id: str = AirweaveField(..., description="Parent base ID", embeddable=False)
     table_id: str = AirweaveField(..., description="Parent table ID", embeddable=False)
@@ -112,29 +124,20 @@ class AirtableCommentEntity(BaseEntity):
         None, description="Author display name", embeddable=True
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Link to the parent record where the comment resides."""
+        return f"https://airtable.com/{self.base_id}/{self.table_id}/{self.record_id}"
+
 
 class AirtableAttachmentEntity(FileEntity):
-    """Attachment file from an Airtable record.
+    """Attachment file from an Airtable record."""
 
-    Reference:
-        https://airtable.com/developers/web/api/field-model#multipleattachment
-    """
+    attachment_id: str = AirweaveField(
+        ..., description="Attachment ID (or composite key)", is_entity_id=True
+    )
+    name: str = AirweaveField(..., description="Attachment filename", is_name=True, embeddable=True)
 
-    # Base fields are inherited from BaseEntity:
-    # - entity_id (attachment ID or composite key)
-    # - breadcrumbs (base, table, and record breadcrumbs)
-    # - name (filename)
-    # - created_at (None - attachments don't have timestamps in API)
-    # - updated_at (None - attachments don't have timestamps in API)
-
-    # File fields are inherited from FileEntity:
-    # - url (attachment URL)
-    # - size (file size in bytes)
-    # - file_type (determined from mime_type)
-    # - mime_type
-    # - local_path (set after download)
-
-    # API fields (Airtable-specific)
     base_id: str = AirweaveField(..., description="Base ID", embeddable=False)
     table_id: str = AirweaveField(..., description="Table ID", embeddable=False)
     table_name: Optional[str] = AirweaveField(None, description="Table name", embeddable=True)
@@ -142,3 +145,8 @@ class AirtableAttachmentEntity(FileEntity):
     field_name: str = AirweaveField(
         ..., description="Field name that contains this attachment", embeddable=True
     )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Link to the parent record containing this attachment."""
+        return f"https://airtable.com/{self.base_id}/{self.table_id}/{self.record_id}"

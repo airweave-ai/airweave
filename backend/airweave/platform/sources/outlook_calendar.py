@@ -141,9 +141,8 @@ class OutlookCalendarSource(BaseSource):
                     self.logger.debug(f"Processing calendar #{calendar_count}: {calendar_name}")
 
                     yield OutlookCalendarCalendarEntity(
-                        # Base fields
-                        entity_id=calendar_id,
                         breadcrumbs=[],
+                        id=calendar_id,
                         name=calendar_name,
                         created_at=None,  # Calendars don't have creation timestamp
                         updated_at=None,  # Calendars don't have update timestamp
@@ -164,6 +163,7 @@ class OutlookCalendarSource(BaseSource):
                         default_online_meeting_provider=calendar_data.get(
                             "defaultOnlineMeetingProvider"
                         ),
+                        web_url_override=calendar_data.get("webUrl"),
                     )
 
                 # Handle pagination
@@ -186,7 +186,7 @@ class OutlookCalendarSource(BaseSource):
 
         Endpoint: GET /me/calendars/{calendar_id}/events
         """
-        calendar_id = calendar.entity_id
+        calendar_id = calendar.id
         calendar_name = calendar.name
         self.logger.info(f"Starting event generation for calendar: {calendar_name}")
 
@@ -195,7 +195,11 @@ class OutlookCalendarSource(BaseSource):
         event_count = 0
 
         # Create breadcrumb for this calendar
-        cal_breadcrumb = Breadcrumb(entity_id=calendar_id)
+        cal_breadcrumb = Breadcrumb(
+            entity_id=calendar_id,
+            name=calendar_name,
+            entity_type="OutlookCalendarCalendarEntity",
+        )
 
         try:
             while url:
@@ -280,15 +284,13 @@ class OutlookCalendarSource(BaseSource):
         # Extract event fields
         start_info = event_data.get("start", {})
         end_info = event_data.get("end", {})
+        created_dt = self._parse_simple_datetime(event_data.get("createdDateTime"))
+        updated_dt = self._parse_simple_datetime(event_data.get("lastModifiedDateTime"))
+        web_link = event_data.get("webLink")
 
         return OutlookCalendarEventEntity(
-            # Base fields
-            entity_id=event_id,
             breadcrumbs=[cal_breadcrumb],
             name=event_subject,
-            created_at=self._parse_simple_datetime(event_data.get("createdDateTime")),
-            updated_at=self._parse_simple_datetime(event_data.get("lastModifiedDateTime")),
-            # API fields
             subject=event_subject,
             body_preview=event_data.get("bodyPreview"),
             body_content=(
@@ -328,6 +330,10 @@ class OutlookCalendarSource(BaseSource):
             original_end_timezone=event_data.get("originalEndTimeZone"),
             allow_new_time_proposals=event_data.get("allowNewTimeProposals", True),
             hide_attendees=event_data.get("hideAttendees", False),
+            id=event_id,
+            created_datetime=created_dt,
+            last_modified_datetime=updated_dt,
+            web_url_override=web_link,
         )
 
     async def _process_event(
@@ -348,7 +354,11 @@ class OutlookCalendarSource(BaseSource):
         self.logger.debug(f"Event entity yielded for {event_subject}")
 
         # Create event breadcrumb for attachments
-        event_breadcrumb = Breadcrumb(entity_id=event_id)
+        event_breadcrumb = Breadcrumb(
+            entity_id=event_id,
+            name=event_subject,
+            entity_type="OutlookCalendarEventEntity",
+        )
 
         # Process attachments if the event has any
         if event_entity.has_attachments:
@@ -356,7 +366,7 @@ class OutlookCalendarSource(BaseSource):
             attachment_count = 0
             try:
                 async for attachment_entity in self._process_event_attachments(
-                    client, event_id, [cal_breadcrumb, event_breadcrumb]
+                    client, event_id, [cal_breadcrumb, event_breadcrumb], event_entity.web_url
                 ):
                     attachment_count += 1
                     self.logger.debug(
@@ -374,6 +384,7 @@ class OutlookCalendarSource(BaseSource):
         client: httpx.AsyncClient,
         event_id: str,
         breadcrumbs: List[Breadcrumb],
+        event_web_url: Optional[str],
     ) -> AsyncGenerator[OutlookCalendarAttachmentEntity, None]:
         """Process event attachments using the standard file processing pipeline."""
         self.logger.debug(f"Processing attachments for event {event_id}")
@@ -389,7 +400,13 @@ class OutlookCalendarSource(BaseSource):
 
                 for att_idx, attachment in enumerate(attachments):
                     processed_entity = await self._process_single_attachment(
-                        client, attachment, event_id, breadcrumbs, att_idx, len(attachments)
+                        client,
+                        attachment,
+                        event_id,
+                        breadcrumbs,
+                        att_idx,
+                        len(attachments),
+                        event_web_url,
                     )
                     if processed_entity:
                         yield processed_entity
@@ -410,6 +427,7 @@ class OutlookCalendarSource(BaseSource):
         breadcrumbs: List[Breadcrumb],
         att_idx: int,
         total_attachments: int,
+        event_web_url: Optional[str],
     ) -> Optional[OutlookCalendarAttachmentEntity]:
         """Process a single attachment and return the processed entity."""
         attachment_id = attachment["id"]
@@ -463,13 +481,9 @@ class OutlookCalendarSource(BaseSource):
 
             # Create file entity
             file_entity = OutlookCalendarAttachmentEntity(
-                # Base fields
-                entity_id=f"{event_id}_attachment_{attachment_id}",
+                composite_id=f"{event_id}_attachment_{attachment_id}",
                 breadcrumbs=breadcrumbs,
                 name=attachment_name,
-                created_at=None,  # Attachments don't have creation timestamp
-                updated_at=None,  # Attachments don't have update timestamp
-                # File fields
                 url=f"outlook://calendar/attachment/{event_id}/{attachment_id}",
                 size=size,
                 file_type=file_type,
@@ -482,6 +496,7 @@ class OutlookCalendarSource(BaseSource):
                 is_inline=attachment.get("isInline", False),
                 content_id=attachment.get("contentId"),
                 last_modified_at=attachment.get("lastModifiedDateTime"),
+                event_web_url=event_web_url,
             )
 
             # Save bytes using file downloader
@@ -536,7 +551,7 @@ class OutlookCalendarSource(BaseSource):
                     ):
                         entity_count += 1
                         entity_type = type(event_entity).__name__
-                        entity_id = event_entity.entity_id
+                        entity_id = event_entity.id
                         self.logger.info(
                             f"Yielding entity #{entity_count}: {entity_type} with ID {entity_id}"
                         )

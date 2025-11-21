@@ -273,10 +273,13 @@ class NotionSource(BaseSource):
     async def _search_objects(
         self, client: httpx.AsyncClient, object_type: str
     ) -> AsyncGenerator[dict, None]:
-        """Search for objects of a specific type."""
+        """Search for objects of a specific type, excluding archived objects."""
         url = "https://api.notion.com/v1/search"
         has_more = True
         start_cursor = None
+
+        total_found = 0
+        total_filtered = 0
 
         while has_more:
             json_data = {
@@ -290,9 +293,63 @@ class NotionSource(BaseSource):
             try:
                 response = await self._post_with_auth(client, url, json_data)
                 results = response.get("results", [])
+                total_found += len(results)
 
+                self.logger.debug(
+                    f"🔍 Search returned {len(results)} {object_type}(s) in this batch"
+                )
+
+                # Filter out archived and trashed objects
+                # Notion search API returns archived and trashed objects by default
+                filtered_count = 0
+                yielded_count_batch = 0
                 for obj in results:
-                    yield obj
+                    obj_id = obj.get("id", "unknown")
+                    is_archived = obj.get("archived", False)
+                    is_trashed = obj.get("in_trash", False)
+
+                    # Extract title for better logging
+                    obj_title = "Unknown"
+                    if object_type == "page":
+                        title_prop = obj.get("properties", {}).get("title", {})
+                        title_content = title_prop.get("title", [])
+                        if title_content and len(title_content) > 0:
+                            obj_title = title_content[0].get("text", {}).get("content", "Unknown")
+                    elif object_type == "database":
+                        title_list = obj.get("title", [])
+                        if title_list and len(title_list) > 0:
+                            obj_title = title_list[0].get("text", {}).get("content", "Unknown")
+
+                    if is_archived or is_trashed:
+                        filtered_count += 1
+                        total_filtered += 1
+                        status = []
+                        if is_archived:
+                            status.append("archived")
+                        if is_trashed:
+                            status.append("trashed")
+                        self.logger.warning(
+                            f"🗑️  FILTERED OUT {object_type}: '{obj_title}' [{obj_id}] "
+                            f"- Status: {', '.join(status)}"
+                        )
+                    else:
+                        yielded_count_batch += 1
+                        self.logger.debug(
+                            f"✅ YIELDING {object_type}: '{obj_title}' [{obj_id}] "
+                            f"(archived={is_archived}, in_trash={is_trashed})"
+                        )
+                        yield obj
+
+                self.logger.debug(
+                    f"📊 Batch complete: yielded {yielded_count_batch}, "
+                    f"filtered {filtered_count} {object_type}(s)"
+                )
+
+                if filtered_count > 0:
+                    self.logger.warning(
+                        f"⚠️  Filtered {filtered_count} {object_type}(s) in this batch "
+                        f"(archived or trashed)"
+                    )
 
                 has_more = response.get("has_more", False)
                 start_cursor = response.get("next_cursor")
@@ -304,13 +361,27 @@ class NotionSource(BaseSource):
                 self.logger.error(f"Error searching for {object_type}: {str(e)}")
                 raise
 
+        # Log summary after all pages processed
+        yielded_count = total_found - total_filtered
+        self.logger.debug(
+            f"📊 Search complete for {object_type}: "
+            f"found={total_found}, filtered={total_filtered}, yielded={yielded_count}"
+        )
+
     async def _query_database_pages(
         self, client: httpx.AsyncClient, database_id: str
     ) -> AsyncGenerator[dict, None]:
-        """Query all pages in a database."""
+        """Query all pages in a database, excluding archived pages.
+
+        Note: The 'archived' attribute is a page-level property, not a database property,
+        so it cannot be filtered via the database query filter. We filter client-side instead.
+        """
         url = f"https://api.notion.com/v1/databases/{database_id}/query"
         has_more = True
         start_cursor = None
+
+        total_found = 0
+        total_filtered = 0
 
         while has_more:
             json_data = {"page_size": 100}
@@ -320,9 +391,57 @@ class NotionSource(BaseSource):
             try:
                 response = await self._post_with_auth(client, url, json_data)
                 results = response.get("results", [])
+                total_found += len(results)
 
+                self.logger.debug(
+                    f"🔍 Database query returned {len(results)} page(s) for database {database_id}"
+                )
+
+                # Client-side filter: exclude archived and trashed pages
+                # Notion API returns archived and trashed pages by default, but we skip them
+                filtered_count = 0
+                yielded_count_batch = 0
                 for page in results:
-                    yield page
+                    page_id = page.get("id", "unknown")
+                    is_archived = page.get("archived", False)
+                    is_trashed = page.get("in_trash", False)
+
+                    # Extract title for better logging
+                    page_title = "Unknown"
+                    title_prop = page.get("properties", {}).get("title", {})
+                    title_content = title_prop.get("title", [])
+                    if title_content and len(title_content) > 0:
+                        page_title = title_content[0].get("text", {}).get("content", "Unknown")
+
+                    if is_archived or is_trashed:
+                        filtered_count += 1
+                        total_filtered += 1
+                        status = []
+                        if is_archived:
+                            status.append("archived")
+                        if is_trashed:
+                            status.append("trashed")
+                        self.logger.warning(
+                            f"🗑️  FILTERED OUT page: '{page_title}' [{page_id}] "
+                            f"from database {database_id} - Status: {', '.join(status)}"
+                        )
+                    else:
+                        yielded_count_batch += 1
+                        self.logger.debug(
+                            f"✅ YIELDING page: '{page_title}' [{page_id}] "
+                            f"from database (archived={is_archived}, in_trash={is_trashed})"
+                        )
+                        yield page
+
+                self.logger.debug(
+                    f"📊 Database batch complete: yielded {yielded_count_batch}, "
+                    f"filtered {filtered_count} page(s)"
+                )
+
+                if filtered_count > 0:
+                    self.logger.warning(
+                        f"⚠️  Filtered {filtered_count} page(s) in this batch (archived or trashed)"
+                    )
 
                 has_more = response.get("has_more", False)
                 start_cursor = response.get("next_cursor")
@@ -333,6 +452,13 @@ class NotionSource(BaseSource):
             except Exception as e:
                 self.logger.error(f"Error querying database {database_id}: {str(e)}")
                 raise
+
+        # Log summary after all pages processed
+        yielded_count = total_found - total_filtered
+        self.logger.debug(
+            f"📊 Database query complete for {database_id}: "
+            f"found={total_found}, filtered={total_filtered}, yielded={yielded_count}"
+        )
 
     # Child Database Processing
     async def _process_child_databases(  # noqa: C901 - complex loop over child DB traversal
@@ -381,7 +507,12 @@ class NotionSource(BaseSource):
 
                         try:
                             # Create breadcrumbs for child database pages
-                            page_breadcrumbs = breadcrumbs + [Breadcrumb(entity_id=database_id)]
+                            db_breadcrumb = Breadcrumb(
+                                entity_id=database_id,
+                                name=database_entity.title,
+                                entity_type=NotionDatabaseEntity.__name__,
+                            )
+                            page_breadcrumbs = breadcrumbs + [db_breadcrumb]
 
                             # Eagerly build page and files for child database page
                             page_entity, files = await self._create_comprehensive_page_entity(
@@ -462,7 +593,15 @@ class NotionSource(BaseSource):
                     parent_page = await self._get_with_auth(
                         client, f"https://api.notion.com/v1/pages/{parent_id}"
                     )
-                    breadcrumbs.insert(0, Breadcrumb(entity_id=parent_id))
+                    parent_title = self._extract_page_title(parent_page) or "Untitled Page"
+                    breadcrumbs.insert(
+                        0,
+                        Breadcrumb(
+                            entity_id=parent_id,
+                            name=parent_title,
+                            entity_type=NotionPageEntity.__name__,
+                        ),
+                    )
                     current_page = parent_page
                 except Exception as e:
                     self.logger.warning(f"Could not fetch parent page {parent_id}: {str(e)}")
@@ -488,8 +627,25 @@ class NotionSource(BaseSource):
         """Create a comprehensive page entity with full aggregated content."""
         page_id = page["id"]
         title = self._extract_page_title(page)
+        is_archived = page.get("archived", False)
+        is_trashed = page.get("in_trash", False)
 
-        self.logger.debug(f"Creating comprehensive page entity: {title} ({page_id})")
+        # Log page state for debugging
+        status_flags = []
+        if is_archived:
+            status_flags.append("ARCHIVED")
+        if is_trashed:
+            status_flags.append("TRASHED")
+        status_str = f" [{', '.join(status_flags)}]" if status_flags else ""
+
+        self.logger.debug(f"📝 Processing page: {title} ({page_id}){status_str}")
+
+        # Warn if processing a trashed/archived page (should not happen)
+        if is_archived or is_trashed:
+            self.logger.error(
+                f"❌ UNEXPECTED: Processing {status_str.strip('[]')} page {page_id}! "
+                f"This should have been filtered earlier."
+            )
 
         # Reset child database tracking for this page
         self._child_databases_to_process.clear()
@@ -514,18 +670,24 @@ class NotionSource(BaseSource):
 
         # Generate human-readable properties text
         properties_text = self._generate_properties_text_for_page(formatted_properties, title)
+        created_time = self._parse_datetime(page.get("created_time"))
+        updated_time = self._parse_datetime(page.get("last_edited_time"))
+        page_url = page.get("url", "")
 
         page_entity = NotionPageEntity(
             # Base fields
             entity_id=page_id,
             breadcrumbs=breadcrumbs,
             name=title,
-            created_at=self._parse_datetime(page.get("created_time")),
-            updated_at=self._parse_datetime(page.get("last_edited_time")),
+            created_at=created_time,
+            updated_at=updated_time,
             # API fields
+            page_id=page_id,
             parent_id=parent.get("page_id") or parent.get("database_id") or "",
             parent_type=parent.get("type", "workspace"),
             title=title,
+            created_time=created_time,
+            updated_time=updated_time,
             content=content_result["content"],
             properties=formatted_properties,  # Use formatted properties instead of raw
             properties_text=properties_text,  # Add formatted text for embedding
@@ -535,7 +697,7 @@ class NotionSource(BaseSource):
             cover=page.get("cover"),
             archived=page.get("archived", False),
             in_trash=page.get("in_trash", False),
-            url=page.get("url", ""),
+            url=page_url,
             content_blocks_count=content_result["blocks_count"],
             max_depth=content_result["max_depth"],
         )
@@ -948,6 +1110,9 @@ class NotionSource(BaseSource):
         database_id = database["id"]
         title = self._extract_rich_text_plain(database.get("title", []))
         description = self._extract_rich_text_plain(database.get("description", []))
+        created_time = self._parse_datetime(database.get("created_time"))
+        updated_time = self._parse_datetime(database.get("last_edited_time"))
+        database_url = database.get("url", "")
 
         parent = database.get("parent", {})
 
@@ -962,10 +1127,13 @@ class NotionSource(BaseSource):
             entity_id=database_id,
             breadcrumbs=[],
             name=title or "Untitled Database",
-            created_at=self._parse_datetime(database.get("created_time")),
-            updated_at=self._parse_datetime(database.get("last_edited_time")),
+            created_at=created_time,
+            updated_at=updated_time,
             # API fields
+            database_id=database_id,
             title=title or "Untitled Database",
+            created_time=created_time,
+            updated_time=updated_time,
             description=description,
             properties=formatted_schema,  # Use formatted schema
             properties_text=properties_text,  # Add formatted text for embedding
@@ -975,7 +1143,7 @@ class NotionSource(BaseSource):
             cover=database.get("cover"),
             archived=database.get("archived", False),
             is_inline=database.get("is_inline", False),
-            url=database.get("url", ""),
+            url=database_url,
         )
 
     def _format_database_schema(self, properties: dict) -> Dict[str, Any]:
@@ -1045,16 +1213,19 @@ class NotionSource(BaseSource):
         """Create a property entity from page property data."""
         prop_type = prop_value.get("type", "")
         formatted_value = self._format_property_value(prop_value, prop_type)
+        schema_prop_id = schema_prop.get("id", prop_name)
+        property_key = f"{page_id}_{schema_prop_id}"
 
         return NotionPropertyEntity(
             # Base fields
-            entity_id=f"{page_id}_{schema_prop.get('id', prop_name)}",
+            entity_id=property_key,
             breadcrumbs=[],
             name=prop_name,
             created_at=None,  # Properties don't have timestamps
             updated_at=None,  # Properties don't have timestamps
             # API fields
-            property_id=schema_prop.get("id", ""),
+            property_key=property_key,
+            property_id=schema_prop_id,
             property_name=prop_name,
             property_type=prop_type,
             page_id=page_id,
@@ -1100,6 +1271,7 @@ class NotionSource(BaseSource):
             name = parsed_url.path.split("/")[-1] if parsed_url.path else "Untitled File"
 
         caption = self._extract_rich_text_plain(block_content.get("caption", []))
+        display_name = name or "Untitled File"
 
         # Determine MIME type based on file extension or block type
         mime_type = None
@@ -1149,7 +1321,7 @@ class NotionSource(BaseSource):
             # Base fields
             entity_id=f"file_{parent_id}_{hash(file_id)}",
             breadcrumbs=[],
-            name=name or "Untitled File",
+            name=display_name,
             created_at=None,  # Notion files don't have timestamps in block content
             updated_at=None,  # Notion files don't have timestamps in block content
             # File fields
@@ -1160,8 +1332,10 @@ class NotionSource(BaseSource):
             local_path=None,
             # API fields (Notion-specific)
             file_id=file_id,
+            file_name=display_name,
             expiry_time=expiry_time,
             caption=caption,
+            web_url_value=url,
         )
 
     # Utility Methods
@@ -1393,7 +1567,10 @@ class NotionSource(BaseSource):
     # Main Entry Point
     async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate all entities from Notion using streaming discovery."""
-        self.logger.debug("Starting streaming Notion entity generation with content aggregation")
+        self.logger.debug("=" * 80)
+        self.logger.debug("🚀 Starting Notion entity generation with content aggregation")
+        self.logger.debug("=" * 80)
+
         self._stats = {
             "api_calls": 0,
             "rate_limit_waits": 0,
@@ -1408,21 +1585,43 @@ class NotionSource(BaseSource):
         try:
             async with self.http_client() as client:
                 # Phase 1 & 2: Discover and yield databases with their schemas
-                self.logger.debug("Phase 1 & 2: Streaming database discovery and schema analysis")
+                self.logger.debug("=" * 80)
+                self.logger.debug(
+                    "📊 PHASE 1 & 2: Streaming database discovery and schema analysis"
+                )
+                self.logger.debug("=" * 80)
                 async for entity in self._stream_database_discovery(client):
                     yield entity
+                self.logger.debug(
+                    f"✅ Phase 1 & 2 complete: {self._stats['databases_found']} databases found"
+                )
 
                 # Phase 3: Discover and yield standalone pages
-                self.logger.debug("Phase 3: Streaming standalone page discovery")
+                self.logger.debug("=" * 80)
+                self.logger.debug("📄 PHASE 3: Streaming standalone page discovery")
+                self.logger.debug("=" * 80)
                 async for entity in self._stream_page_discovery(client):
                     yield entity
+                self.logger.debug(
+                    f"✅ Phase 3 complete: {self._stats['pages_found']} standalone pages found"
+                )
 
                 # Phase 4: Process any remaining child databases found during page processing
-                self.logger.debug("Phase 4: Processing child databases")
+                self.logger.debug("=" * 80)
+                self.logger.debug("🗃️  PHASE 4: Processing child databases")
+                self.logger.debug("=" * 80)
                 async for entity in self._process_child_databases(client):
                     yield entity
+                self.logger.debug(
+                    f"✅ Phase 4 complete: "
+                    f"{self._stats['child_databases_found']} child databases found"
+                )
 
-            self.logger.debug(f"Notion sync complete. Final stats: {self._stats}")
+            self.logger.debug("=" * 80)
+            self.logger.debug("✅ Notion sync complete. Final stats:")
+            for key, value in self._stats.items():
+                self.logger.debug(f"   {key}: {value}")
+            self.logger.debug("=" * 80)
 
         except Exception as e:
             self.logger.error(
@@ -1469,7 +1668,13 @@ class NotionSource(BaseSource):
                 if page_id in self._processed_pages:
                     continue
                 try:
-                    breadcrumbs = [Breadcrumb(entity_id=database_id)]
+                    breadcrumbs = [
+                        Breadcrumb(
+                            entity_id=database_id,
+                            name=database_title or "Untitled Database",
+                            entity_type=NotionDatabaseEntity.__name__,
+                        )
+                    ]
                     page_entity, files = await self._create_comprehensive_page_entity(
                         client, page, breadcrumbs, database_id, schema
                     )

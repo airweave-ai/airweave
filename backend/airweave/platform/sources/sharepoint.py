@@ -182,9 +182,8 @@ class SharePointSource(BaseSource):
                     self.logger.debug(f"Processing user #{user_count}: {display_name}")
 
                     yield SharePointUserEntity(
-                        # Base fields
-                        entity_id=user_id,
                         breadcrumbs=[],
+                        id=user_id,
                         name=display_name,
                         created_at=None,  # Users don't have creation timestamp
                         updated_at=None,  # Users don't have update timestamp
@@ -257,9 +256,8 @@ class SharePointSource(BaseSource):
                             )
 
                     yield SharePointGroupEntity(
-                        # Base fields
-                        entity_id=group_id,
                         breadcrumbs=[],
+                        id=group_id,
                         name=display_name,
                         created_at=created_datetime,
                         updated_at=None,  # Groups don't have update timestamp
@@ -307,9 +305,8 @@ class SharePointSource(BaseSource):
             last_modified_datetime = self._parse_datetime(site_data.get("lastModifiedDateTime"))
 
             yield SharePointSiteEntity(
-                # Base fields
-                entity_id=site_id,
                 breadcrumbs=[],
+                id=site_id,
                 name=display_name,
                 created_at=created_datetime,
                 updated_at=last_modified_datetime,
@@ -317,7 +314,7 @@ class SharePointSource(BaseSource):
                 display_name=display_name,
                 site_name=site_data.get("name"),
                 description=site_data.get("description"),
-                web_url=site_data.get("webUrl"),
+                web_url_override=site_data.get("webUrl"),
                 is_personal_site=site_data.get("isPersonalSite"),
                 site_collection=site_data.get("siteCollection"),
             )
@@ -364,19 +361,22 @@ class SharePointSource(BaseSource):
                     self.logger.debug(f"Processing drive #{drive_count}: {drive_name}")
 
                     # Create site breadcrumb
-                    site_breadcrumb = Breadcrumb(entity_id=site_id)
+                    site_breadcrumb = Breadcrumb(
+                        entity_id=site_id,
+                        name=site_name,
+                        entity_type="SharePointSiteEntity",
+                    )
 
                     yield SharePointDriveEntity(
-                        # Base fields
-                        entity_id=drive_id,
                         breadcrumbs=[site_breadcrumb],
+                        id=drive_id,
                         name=drive_name,
                         created_at=self._parse_datetime(drive_data.get("createdDateTime")),
                         updated_at=self._parse_datetime(drive_data.get("lastModifiedDateTime")),
                         # API fields
                         description=drive_data.get("description"),
                         drive_type=drive_data.get("driveType"),
-                        web_url=drive_data.get("webUrl"),
+                        web_url_override=drive_data.get("webUrl"),
                         owner=drive_data.get("owner"),
                         quota=drive_data.get("quota"),
                         site_id=site_id,
@@ -531,21 +531,18 @@ class SharePointSource(BaseSource):
             file_type = ext if ext else "file"
 
         entity = SharePointDriveItemEntity(
-            # Base fields
-            entity_id=item["id"],
+            id=item["id"],
             breadcrumbs=[site_breadcrumb, drive_breadcrumb],
             name=item.get("name"),
             created_at=self._parse_datetime(item.get("createdDateTime")),
             updated_at=self._parse_datetime(item.get("lastModifiedDateTime")),
-            # File fields
             url=download_url,
             size=size,
             file_type=file_type,
             mime_type=mime_type,
             local_path=None,  # Will be set after download
-            # API fields
             description=item.get("description"),
-            web_url=item.get("webUrl"),
+            web_url_override=item.get("webUrl"),
             file=file_info,
             folder=item.get("folder"),
             parent_reference=parent_ref,
@@ -571,7 +568,11 @@ class SharePointSource(BaseSource):
         file_count = 0
 
         # Create drive breadcrumb
-        drive_breadcrumb = Breadcrumb(entity_id=drive_id)
+        drive_breadcrumb = Breadcrumb(
+            entity_id=drive_id,
+            name=drive_name,
+            entity_type="SharePointDriveEntity",
+        )
 
         async for item in self._list_all_drive_items_recursively(client, drive_id, site_id):
             try:
@@ -642,6 +643,11 @@ class SharePointSource(BaseSource):
         list_count = 0
 
         try:
+            site_breadcrumb = Breadcrumb(
+                entity_id=site_id,
+                name=site_name,
+                entity_type="SharePointSiteEntity",
+            )
             while url:
                 self.logger.debug(f"Fetching lists from: {url}")
                 data = await self._get_with_auth(client, url, params=params)
@@ -656,9 +662,8 @@ class SharePointSource(BaseSource):
                     self.logger.debug(f"Processing list #{list_count}: {display_name}")
 
                     yield SharePointListEntity(
-                        # Base fields
-                        entity_id=list_id,
-                        breadcrumbs=[Breadcrumb(entity_id=site_id)],
+                        breadcrumbs=[site_breadcrumb],
+                        id=list_id,
                         name=display_name,
                         created_at=self._parse_datetime(list_data.get("createdDateTime")),
                         updated_at=self._parse_datetime(list_data.get("lastModifiedDateTime")),
@@ -666,7 +671,7 @@ class SharePointSource(BaseSource):
                         display_name=display_name,
                         list_name=list_data.get("name"),
                         description=list_data.get("description"),
-                        web_url=list_data.get("webUrl"),
+                        web_url_override=list_data.get("webUrl"),
                         list_info=list_data.get("list"),
                         site_id=site_id,
                     )
@@ -692,7 +697,7 @@ class SharePointSource(BaseSource):
         site_breadcrumb: Breadcrumb,
     ) -> AsyncGenerator[SharePointListItemEntity, None]:
         """Generate SharePointListItemEntity objects for items in a list."""
-        list_id = list_entity.entity_id
+        list_id = list_entity.id
         list_name = list_entity.display_name or "Unknown List"
         self.logger.debug(f"Starting list item generation for list: {list_name}")
 
@@ -715,21 +720,25 @@ class SharePointSource(BaseSource):
                     fields = item_data.get("fields", {})
                     item_name = fields.get("Title") or fields.get("Name") or f"ListItem {item_id}"
 
-                    list_breadcrumb = Breadcrumb(entity_id=list_id)
+                    list_breadcrumb = Breadcrumb(
+                        entity_id=list_id,
+                        name=list_entity.display_name or list_name,
+                        entity_type="SharePointListEntity",
+                    )
 
                     yield SharePointListItemEntity(
-                        # Base fields
-                        entity_id=item_id,
                         breadcrumbs=[site_breadcrumb, list_breadcrumb],
+                        id=item_id,
                         name=item_name,
                         created_at=self._parse_datetime(item_data.get("createdDateTime")),
                         updated_at=self._parse_datetime(item_data.get("lastModifiedDateTime")),
                         # API fields
+                        title=item_name,
                         fields=fields,
                         content_type=item_data.get("contentType"),
                         created_by=item_data.get("createdBy"),
                         last_modified_by=item_data.get("lastModifiedBy"),
-                        web_url=item_data.get("webUrl"),
+                        web_url_override=item_data.get("webUrl"),
                         list_id=list_id,
                         site_id=list_entity.site_id,
                     )
@@ -837,6 +846,11 @@ class SharePointSource(BaseSource):
         page_count = 0
 
         try:
+            site_breadcrumb = Breadcrumb(
+                entity_id=site_id,
+                name=site_name,
+                entity_type="SharePointSiteEntity",
+            )
             while url:
                 self.logger.debug(f"Fetching pages from: {url}")
                 data = await self._get_with_auth(client, url, params=params)
@@ -854,9 +868,8 @@ class SharePointSource(BaseSource):
                     content = self._extract_page_content(page_data)
 
                     yield SharePointPageEntity(
-                        # Base fields
-                        entity_id=page_id,
-                        breadcrumbs=[Breadcrumb(entity_id=site_id)],
+                        breadcrumbs=[site_breadcrumb],
+                        id=page_id,
                         name=title,
                         created_at=self._parse_datetime(page_data.get("createdDateTime")),
                         updated_at=self._parse_datetime(page_data.get("lastModifiedDateTime")),
@@ -866,7 +879,7 @@ class SharePointSource(BaseSource):
                         content=content,
                         description=page_data.get("description"),
                         page_layout=page_data.get("pageLayout"),
-                        web_url=page_data.get("webUrl"),
+                        web_url_override=page_data.get("webUrl"),
                         created_by=page_data.get("createdBy"),
                         last_modified_by=page_data.get("lastModifiedBy"),
                         publishing_state=page_data.get("publishingState"),
@@ -955,7 +968,7 @@ class SharePointSource(BaseSource):
             yield drive_entity
 
             # Generate file entities for each drive
-            drive_id = drive_entity.entity_id
+            drive_id = drive_entity.id
             drive_name = drive_entity.name or "Document Library"
 
             self.logger.debug(f"Starting to process files from drive: {drive_id} ({drive_name})")
@@ -1024,9 +1037,13 @@ class SharePointSource(BaseSource):
                     return
 
                 # Create site breadcrumb for child entities
-                site_id = site_entity.entity_id
+                site_id = site_entity.id
                 site_name = site_entity.display_name or "SharePoint"
-                site_breadcrumb = Breadcrumb(entity_id=site_id)
+                site_breadcrumb = Breadcrumb(
+                    entity_id=site_id,
+                    name=site_name,
+                    entity_type="SharePointSiteEntity",
+                )
 
                 # 4) Generate list entities and their items for the site
                 async for entity in self._generate_lists_with_items(

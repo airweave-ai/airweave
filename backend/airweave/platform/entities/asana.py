@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import Field
+from pydantic import Field, computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity, FileEntity
@@ -12,18 +12,36 @@ from airweave.platform.entities._base import BaseEntity, FileEntity
 class AsanaWorkspaceEntity(BaseEntity):
     """Schema for Asana workspace entities."""
 
-    # API fields
+    gid: str = AirweaveField(..., description="Asana workspace GID", is_entity_id=True)
+    name: str = AirweaveField(..., description="Workspace name", is_name=True, embeddable=True)
     is_organization: bool = Field(False, description="Whether the workspace is an organization")
     email_domains: List[str] = Field(
         default_factory=list, description="List of email domains that can access this workspace"
     )
-    permalink_url: Optional[str] = Field(
-        None, description="URL to access the workspace in the Asana application"
+    permalink_url: Optional[str] = AirweaveField(
+        None,
+        description="URL to access the workspace in the Asana application",
+        unhashable=True,
     )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Construct clickable web URL for this workspace."""
+        return f"https://app.asana.com/0/{self.gid}/list"
 
 
 class AsanaProjectEntity(BaseEntity):
     """Schema for Asana project entities."""
+
+    # Native API fields with flags (composition over inheritance)
+    gid: str = AirweaveField(..., description="Asana project GID", is_entity_id=True)
+    name: str = AirweaveField(..., description="Project name", is_name=True, embeddable=True)
+    created_at: Optional[datetime] = AirweaveField(
+        None, description="Created at", is_created_at=True
+    )
+    modified_at: Optional[datetime] = AirweaveField(
+        None, description="Last modified at", is_updated_at=True
+    )
 
     workspace_gid: str = Field(
         ..., description="Globally unique identifier of the workspace the project belongs to"
@@ -95,13 +113,27 @@ class AsanaProjectEntity(BaseEntity):
         None, description="Default access level for the project (editor, commenter, viewer)"
     )
     icon: Optional[str] = Field(None, description="The icon for a project")
-    permalink_url: Optional[str] = Field(
-        None, description="URL to access the project in the Asana application"
+    permalink_url: Optional[str] = AirweaveField(
+        None,
+        description="URL to access the project in the Asana application",
+        unhashable=True,
     )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Construct clickable web URL for this project."""
+        return f"https://app.asana.com/0/{self.gid}"
 
 
 class AsanaSectionEntity(BaseEntity):
     """Schema for Asana section entities."""
+
+    # Native API fields with flags (composition over inheritance)
+    gid: str = AirweaveField(..., description="Asana section GID", is_entity_id=True)
+    name: str = AirweaveField(..., description="Section name", is_name=True, embeddable=True)
+    created_at: Optional[datetime] = AirweaveField(
+        None, description="Created at", is_created_at=True
+    )
 
     project_gid: str = Field(
         ..., description="Globally unique identifier of the project this section belongs to"
@@ -112,9 +144,25 @@ class AsanaSectionEntity(BaseEntity):
         embeddable=True,
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Construct clickable web URL for this section's project."""
+        # Sections don't have direct URLs, return project URL
+        return f"https://app.asana.com/0/{self.project_gid}/list"
+
 
 class AsanaTaskEntity(BaseEntity):
     """Schema for Asana task entities."""
+
+    # Native API fields with flags (composition over inheritance)
+    gid: str = AirweaveField(..., description="Asana task GID", is_entity_id=True)
+    name: str = AirweaveField(..., description="Task name", is_name=True, embeddable=True)
+    created_at: Optional[datetime] = AirweaveField(
+        None, description="Created at", is_created_at=True
+    )
+    modified_at: Optional[datetime] = AirweaveField(
+        None, description="Last modified at", is_updated_at=True
+    )
 
     project_gid: str = Field(
         ..., description="Globally unique identifier of the project this task belongs to"
@@ -188,8 +236,10 @@ class AsanaTaskEntity(BaseEntity):
     parent: Optional[Dict] = AirweaveField(
         None, description="The parent of this task, if applicable", embeddable=True
     )
-    permalink_url: Optional[str] = Field(
-        None, description="URL to access the task in the Asana application"
+    permalink_url: Optional[str] = AirweaveField(
+        None,
+        description="URL to access the task in the Asana application",
+        unhashable=True,
     )
     resource_subtype: str = Field(
         "default_task", description="The subtype of the task (default_task, milestone, approval)"
@@ -219,15 +269,26 @@ class AsanaTaskEntity(BaseEntity):
         None, description="The workspace this task is associated with", embeddable=True
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Construct clickable web URL for this task."""
+        return f"https://app.asana.com/0/{self.project_gid}/{self.gid}"
+
 
 class AsanaCommentEntity(BaseEntity):
     """Schema for Asana comment/story entities."""
+
+    # Native API fields with flags (composition over inheritance)
+    gid: str = AirweaveField(..., description="Asana comment GID", is_entity_id=True)
+    created_at: Optional[datetime] = AirweaveField(
+        None, description="Created at", is_created_at=True
+    )
 
     task_gid: str = Field(
         ..., description="Globally unique identifier of the task this comment belongs to"
     )
     author: Dict = AirweaveField(
-        ..., description="The user who created this comment", embeddable=True
+        ..., description="The user who created this comment", embeddable=True, is_name=True
     )
     resource_subtype: str = Field(
         "comment_added", description="The subtype of the comment resource"
@@ -250,6 +311,14 @@ class AsanaCommentEntity(BaseEntity):
         default_factory=list, description="Previews of attachments referenced in the comment"
     )
 
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Construct clickable web URL for the parent task (comments don't have direct URLs)."""
+        # Comments don't have direct URLs, return parent task URL
+        # We'll need to store project_gid separately or construct differently
+        # For now, return a task-only URL (won't work without project context)
+        return f"https://app.asana.com/0/0/{self.task_gid}"
+
 
 class AsanaFileEntity(FileEntity):
     """Schema for Asana file attachments.
@@ -258,12 +327,32 @@ class AsanaFileEntity(FileEntity):
         https://developers.asana.com/reference/getattachment
     """
 
+    # Native API fields with flags (composition over inheritance)
+    gid: str = AirweaveField(..., description="Asana file attachment GID", is_entity_id=True)
+    name: str = AirweaveField(..., description="File name", is_name=True, embeddable=True)
+    created_at: Optional[datetime] = AirweaveField(
+        None, description="Created at", is_created_at=True
+    )
+
     task_gid: str = Field(..., description="GID of the task this file is attached to")
     task_name: str = Field(..., description="Name of the task this file is attached to")
+    project_gid: Optional[str] = Field(
+        None, description="GID of the project (for web URL construction)"
+    )
     resource_type: str = Field(..., description="Type of the attachment resource")
     host: Optional[str] = Field(None, description="Service hosting the attachment")
     parent: Optional[Dict[str, Any]] = Field(
         None, description="Parent resource the attachment is on"
     )
-    view_url: Optional[str] = Field(None, description="URL to view the attachment")
+    view_url: Optional[str] = AirweaveField(
+        None, description="URL to view the attachment in browser", unhashable=True
+    )
     permanent: bool = Field(False, description="Whether this is a permanent attachment")
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """Construct clickable web URL for the parent task."""
+        # Files don't have direct URLs, return parent task URL if project_gid available
+        if self.project_gid:
+            return f"https://app.asana.com/0/{self.project_gid}/{self.task_gid}"
+        return f"https://app.asana.com/0/0/{self.task_gid}"

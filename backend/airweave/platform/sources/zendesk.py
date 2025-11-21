@@ -10,7 +10,7 @@ from airweave.core.exceptions import TokenRefreshError
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
 from airweave.platform.downloader import FileSkippedException
-from airweave.platform.entities._base import BaseEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.zendesk import (
     ZendeskAttachmentEntity,
     ZendeskCommentEntity,
@@ -152,6 +152,33 @@ class ZendeskSource(BaseSource):
             return getattr(self, "access_token", None)
         return getattr(self, "access_token", None)
 
+    @staticmethod
+    def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
+        """Parse Zendesk ISO8601 timestamps into timezone-aware datetimes."""
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _now() -> datetime:
+        """Return current UTC time."""
+        return datetime.now(timezone.utc)
+
+    def _build_ticket_url(self, ticket_id: int) -> str:
+        """Construct a browser URL for a ticket."""
+        return f"https://{self.subdomain}.zendesk.com/agent/tickets/{ticket_id}"
+
+    def _build_user_url(self, user_id: int) -> str:
+        """Construct a browser URL for a user profile."""
+        return f"https://{self.subdomain}.zendesk.com/agent/users/{user_id}"
+
+    def _build_org_url(self, org_id: int) -> str:
+        """Construct a browser URL for an organization."""
+        return f"https://{self.subdomain}.zendesk.com/agent/organizations/{org_id}"
+
     async def _generate_organization_entities(
         self, client: httpx.AsyncClient
     ) -> AsyncGenerator[BaseEntity, None]:
@@ -163,21 +190,30 @@ class ZendeskSource(BaseSource):
             response = await self._get_with_auth(client, url)
 
             for org in response.get("organizations", []):
+                org_name = org.get("name", "Organization")
+                created_time = self._parse_datetime(org.get("created_at")) or self._now()
+                updated_time = self._parse_datetime(org.get("updated_at")) or created_time
+
                 yield ZendeskOrganizationEntity(
                     # Base fields
                     entity_id=str(org["id"]),
                     breadcrumbs=[],
-                    name=org["name"],
-                    created_at=org.get("created_at"),
-                    updated_at=org.get("updated_at"),
+                    name=org_name,
+                    created_at=created_time,
+                    updated_at=updated_time,
                     # API fields
                     organization_id=org["id"],
+                    organization_name=org_name,
+                    created_time=created_time,
+                    updated_time=updated_time,
+                    web_url_value=self._build_org_url(org["id"]),
                     domain_names=org.get("domain_names", []),
                     details=org.get("details"),
                     notes=org.get("notes"),
                     tags=org.get("tags", []),
                     custom_fields=org.get("custom_fields", []),
                     organization_fields=org.get("organization_fields", {}),
+                    api_url=org.get("url"),
                 )
 
             # Check for next page
@@ -194,50 +230,40 @@ class ZendeskSource(BaseSource):
             response = await self._get_with_auth(client, url)
 
             for user in response.get("users", []):
-                # Ensure email exists and handle required datetime fields properly
                 if not user.get("email"):
                     continue  # Skip users without email
 
-                # Parse datetime fields with fallbacks
-                from datetime import datetime
-
-                now = datetime.now()
-
-                created_at = user.get("created_at")
-                if isinstance(created_at, str):
-                    from dateutil.parser import parse
-
-                    created_at = parse(created_at)
-                elif created_at is None:
-                    created_at = now
-
-                updated_at = user.get("updated_at")
-                if isinstance(updated_at, str):
-                    updated_at = parse(updated_at)
-                elif updated_at is None:
-                    updated_at = created_at
+                now = self._now()
+                created_time = self._parse_datetime(user.get("created_at")) or now
+                updated_time = self._parse_datetime(user.get("updated_at")) or created_time
+                display_name = user.get("name") or user.get("email") or f"User {user['id']}"
 
                 yield ZendeskUserEntity(
                     # Base fields
                     entity_id=str(user["id"]),
                     breadcrumbs=[],
-                    name=user["name"],
-                    created_at=created_at,
-                    updated_at=updated_at,
+                    name=display_name,
+                    created_at=created_time,
+                    updated_at=updated_time,
                     # API fields
                     user_id=user["id"],
+                    display_name=display_name,
+                    created_time=created_time,
+                    updated_time=updated_time,
+                    web_url_value=self._build_user_url(user["id"]),
                     email=user["email"],
                     role=user.get("role", "end-user"),
                     active=user.get("active", True),
                     last_login_at=user.get("last_login_at"),
                     organization_id=user.get("organization_id"),
-                    organization_name=None,  # Not provided in user API
+                    organization_name=None,
                     phone=user.get("phone"),
                     time_zone=user.get("time_zone"),
                     locale=user.get("locale"),
                     custom_fields=user.get("custom_fields", []),
                     tags=user.get("tags", []),
                     user_fields=user.get("user_fields", {}),
+                    profile_url=user.get("url"),
                 )
 
             # Check for next page
@@ -258,16 +284,24 @@ class ZendeskSource(BaseSource):
                 if self.exclude_closed_tickets and ticket.get("status") == "closed":
                     continue
 
+                created_time = self._parse_datetime(ticket.get("created_at")) or self._now()
+                updated_time = self._parse_datetime(ticket.get("updated_at")) or created_time
+                ticket_subject = ticket.get("subject", f"Ticket {ticket['id']}")
+                ticket_url = self._build_ticket_url(ticket["id"])
+
                 yield ZendeskTicketEntity(
                     # Base fields
                     entity_id=str(ticket["id"]),
                     breadcrumbs=[],
-                    name=ticket["subject"],
-                    created_at=ticket.get("created_at"),
-                    updated_at=ticket.get("updated_at"),
+                    name=ticket_subject,
+                    created_at=created_time,
+                    updated_at=updated_time,
                     # API fields
                     ticket_id=ticket["id"],
-                    subject=ticket["subject"],
+                    subject=ticket_subject,
+                    created_time=created_time,
+                    updated_time=updated_time,
+                    web_url_value=ticket_url,
                     description=ticket.get("description"),
                     requester_id=ticket.get("requester_id"),
                     requester_name=None,  # Will be populated from user data if needed
@@ -306,6 +340,13 @@ class ZendeskSource(BaseSource):
             for user in response.get("users", []):
                 users_map[user["id"]] = user
 
+            ticket_url = ticket.get("web_url") or self._build_ticket_url(ticket_id)
+            ticket_breadcrumb = Breadcrumb(
+                entity_id=str(ticket_id),
+                name=ticket.get("subject", f"Ticket {ticket_id}"),
+                entity_type=ZendeskTicketEntity.__name__,
+            )
+
             for comment in response.get("comments", []):
                 # Extract author information from the comment
                 author_id = comment.get("author_id")
@@ -331,13 +372,15 @@ class ZendeskSource(BaseSource):
                 if not comment_name:
                     comment_name = f"Comment {comment['id']}"
 
+                created_time = self._parse_datetime(comment.get("created_at")) or self._now()
+
                 yield ZendeskCommentEntity(
                     # Base fields
                     entity_id=f"{ticket_id}_{comment['id']}",
-                    breadcrumbs=[],
+                    breadcrumbs=[ticket_breadcrumb],
                     name=comment_name,
-                    created_at=comment.get("created_at"),
-                    updated_at=None,  # Comments don't have update timestamp
+                    created_at=created_time,
+                    updated_at=created_time,
                     # API fields
                     comment_id=comment["id"],
                     ticket_id=ticket_id,
@@ -349,6 +392,8 @@ class ZendeskSource(BaseSource):
                     html_body=comment.get("html_body"),
                     public=comment.get("public", False),
                     attachments=comment.get("attachments", []),
+                    created_time=created_time,
+                    web_url_value=ticket_url,
                 )
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
@@ -369,8 +414,19 @@ class ZendeskSource(BaseSource):
         try:
             response = await self._get_with_auth(client, url)
 
+            ticket_breadcrumb = Breadcrumb(
+                entity_id=str(ticket_id),
+                name=ticket.get("subject", f"Ticket {ticket_id}"),
+                entity_type=ZendeskTicketEntity.__name__,
+            )
+
             for comment in response.get("comments", []):
-                comment_created_at = comment.get("created_at")
+                comment_created_at = self._parse_datetime(comment.get("created_at"))
+                comment_breadcrumb = Breadcrumb(
+                    entity_id=str(comment["id"]),
+                    name=f"Comment {comment['id']}",
+                    entity_type=ZendeskCommentEntity.__name__,
+                )
 
                 for attachment in comment.get("attachments", []):
                     # Ensure required fields are present before creating entity
@@ -381,13 +437,11 @@ class ZendeskSource(BaseSource):
 
                     # Use attachment created_at if available, otherwise fall back to comment
                     # created_at, and finally to current time if both are None
-                    attachment_created_at = attachment.get("created_at") or comment_created_at
-                    if attachment_created_at is None:
-                        attachment_created_at = datetime.now(timezone.utc)
-                    elif isinstance(attachment_created_at, str):
-                        from dateutil.parser import parse
-
-                        attachment_created_at = parse(attachment_created_at)
+                    attachment_created_at = (
+                        self._parse_datetime(attachment.get("created_at"))
+                        or comment_created_at
+                        or self._now()
+                    )
 
                     # Determine file type from mime_type
                     mime_type = attachment.get("content_type") or "application/octet-stream"
@@ -404,10 +458,10 @@ class ZendeskSource(BaseSource):
                     attachment_entity = ZendeskAttachmentEntity(
                         # Base fields
                         entity_id=str(attachment["id"]),
-                        breadcrumbs=[],
+                        breadcrumbs=[ticket_breadcrumb, comment_breadcrumb],
                         name=attachment.get("file_name", ""),
                         created_at=attachment_created_at,
-                        updated_at=None,  # Attachments don't have update timestamp
+                        updated_at=attachment_created_at,
                         # File fields
                         url=attachment.get("content_url"),
                         size=size,
@@ -416,6 +470,9 @@ class ZendeskSource(BaseSource):
                         local_path=None,  # Will be set after download
                         # API fields
                         attachment_id=attachment["id"],
+                        created_time=attachment_created_at,
+                        updated_time=attachment_created_at,
+                        web_url_value=attachment.get("content_url"),
                         ticket_id=ticket_id,
                         comment_id=comment["id"],
                         ticket_subject=ticket["subject"],
@@ -482,13 +539,23 @@ class ZendeskSource(BaseSource):
 
                 # Generate comments for each ticket
                 async for comment_entity in self._generate_comment_entities(
-                    client, {"id": ticket_entity.ticket_id, "subject": ticket_entity.subject}
+                    client,
+                    {
+                        "id": ticket_entity.ticket_id,
+                        "subject": ticket_entity.subject,
+                        "web_url": ticket_entity.web_url,
+                    },
                 ):
                     yield comment_entity
 
                 # Generate attachments for each ticket
                 async for attachment_entity in self._generate_attachment_entities(
-                    client, {"id": ticket_entity.ticket_id, "subject": ticket_entity.subject}
+                    client,
+                    {
+                        "id": ticket_entity.ticket_id,
+                        "subject": ticket_entity.subject,
+                        "web_url": ticket_entity.web_url,
+                    },
                 ):
                     yield attachment_entity
 

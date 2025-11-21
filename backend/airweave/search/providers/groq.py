@@ -13,7 +13,7 @@ from tiktoken import Encoding
 
 from airweave.api.context import ApiContext
 
-from ._base import BaseProvider
+from ._base import BaseProvider, ProviderError
 from .schemas import ProviderModelSpec
 
 
@@ -65,7 +65,7 @@ class GroqProvider(BaseProvider):
 
         content = response.choices[0].message.content
         if not content:
-            raise ValueError("Groq returned empty completion content")
+            raise ProviderError("Groq returned empty completion content")
 
         return content
 
@@ -100,14 +100,14 @@ class GroqProvider(BaseProvider):
 
         content = response.choices[0].message.content
         if not content:
-            raise RuntimeError("Groq returned empty structured output content")
+            raise ProviderError("Groq returned empty structured output content")
 
         try:
             parsed = schema.model_validate(json.loads(content))
         except json.JSONDecodeError as e:
-            raise RuntimeError(f"Groq returned invalid JSON: {e}") from e
+            raise ProviderError(f"Groq returned invalid JSON: {e}") from e
         except Exception as e:
-            raise RuntimeError(f"Failed to parse Groq structured output: {e}") from e
+            raise ProviderError(f"Failed to parse Groq structured output: {e}") from e
 
         return parsed
 
@@ -149,7 +149,7 @@ class GroqProvider(BaseProvider):
         )
 
         if not rerank_result.rankings:
-            raise RuntimeError("Groq returned empty rankings")
+            raise ProviderError("Groq returned empty rankings")
 
         # Map rankings relative to chosen subset back to original indices
         mapped: List[Dict[str, Any]] = []

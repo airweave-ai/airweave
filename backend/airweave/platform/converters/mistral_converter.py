@@ -6,7 +6,7 @@ import json
 import os
 import tempfile
 import time
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from httpx import HTTPStatusError, ReadTimeout, TimeoutException
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
@@ -940,12 +940,77 @@ class MistralConverter(BaseTextConverter):
         logger.debug(f"Parsed {len(upload_key_results)} OCR results from batch")
         return upload_key_results
 
+    @staticmethod
+    def _warn_if_empty_markdown(
+        markdown: Optional[str],
+        file_name: str,
+        chunk_idx: Optional[int] = None,
+        total_chunks: Optional[int] = None,
+    ):
+        if isinstance(markdown, str) and not markdown.strip():
+            if chunk_idx is None:
+                logger.warning(f"OCR returned empty markdown for {file_name}")
+            else:
+                logger.warning(
+                    f"OCR returned empty markdown for chunk {chunk_idx}/{total_chunks} "
+                    f"of {file_name}"
+                )
+
+    def _process_single_chunk_result(
+        self,
+        upload_key_results: Dict[str, str],
+        unique_key: str,
+        chunk_path: str,
+        file_name: str,
+    ) -> Optional[str]:
+        upload_key = f"{unique_key}__chunk_{chunk_path}"
+        markdown = upload_key_results.get(upload_key)
+
+        if markdown is None:
+            logger.error(
+                f"Conversion failed for {file_name}: Upload or OCR failed "
+                f"(check logs above for details)"
+            )
+            return None
+
+        self._warn_if_empty_markdown(markdown, file_name)
+        return markdown
+
+    def _process_multi_chunk_result(
+        self,
+        upload_key_results: Dict[str, str],
+        unique_key: str,
+        chunk_paths: List[str],
+        file_name: str,
+    ) -> Optional[str]:
+        combined = ""
+
+        for idx, chunk_path in enumerate(chunk_paths, start=1):
+            upload_key = f"{unique_key}__chunk_{chunk_path}"
+            chunk_md = upload_key_results.get(upload_key)
+
+            if chunk_md is None:
+                logger.error(
+                    f"Conversion failed for {file_name}: Chunk {idx}/{len(chunk_paths)} "
+                    f"upload or OCR failed"
+                )
+                return None
+
+            self._warn_if_empty_markdown(chunk_md, file_name, idx, len(chunk_paths))
+
+            if idx > 1:
+                combined += "\n\n---\n\n"
+            combined += chunk_md
+
+        logger.debug(f"Successfully combined {len(chunk_paths)} chunks for {file_name}")
+        return combined
+
     async def _combine_chunk_results(
         self,
         upload_key_results: Dict[str, str],
         file_chunks_map: Dict[str, List[str]],
         original_file_paths: List[str],
-    ) -> Dict[str, str]:
+    ) -> Dict[str, str]:  # noqa: C901
         """Combine chunk markdown back to original files.
 
         Args:
@@ -968,53 +1033,16 @@ class MistralConverter(BaseTextConverter):
         for unique_key, chunk_paths in file_chunks_map.items():
             # Strip __batch_idx_X suffix to get original path
             original_path = unique_key.split("__batch_idx_")[0]
+            file_name = os.path.basename(original_path)
 
             if len(chunk_paths) == 1:
-                # No splitting occurred
-                chunk_path = chunk_paths[0]
-                upload_key = f"{unique_key}__chunk_{chunk_path}"
-                markdown = upload_key_results.get(upload_key)
-
-                if markdown:
-                    final_results[original_path] = markdown
-                else:
-                    # Explicit: OCR/upload failed for this file
-                    logger.error(
-                        f"Conversion failed for {os.path.basename(original_path)}: "
-                        f"Upload or OCR failed (check logs above for details)"
-                    )
-                    final_results[original_path] = None
+                final_results[original_path] = self._process_single_chunk_result(
+                    upload_key_results, unique_key, chunk_paths[0], file_name
+                )
             else:
-                # Recombine chunks
-                combined = ""
-                all_chunks_ok = True
-
-                for i, chunk_path in enumerate(chunk_paths):
-                    upload_key = f"{unique_key}__chunk_{chunk_path}"
-                    chunk_md = upload_key_results.get(upload_key)
-
-                    if not chunk_md:
-                        # Explicit: This chunk failed
-                        logger.error(
-                            f"Conversion failed for {os.path.basename(original_path)}: "
-                            f"Chunk {i + 1}/{len(chunk_paths)} upload or OCR failed"
-                        )
-                        all_chunks_ok = False
-                        break
-
-                    if i > 0:
-                        combined += "\n\n---\n\n"  # Chunk separator
-                    combined += chunk_md
-
-                if all_chunks_ok:
-                    final_results[original_path] = combined
-                    logger.debug(
-                        f"Successfully combined {len(chunk_paths)} chunks for "
-                        f"{os.path.basename(original_path)}"
-                    )
-                else:
-                    # Already logged error above
-                    final_results[original_path] = None
+                final_results[original_path] = self._process_multi_chunk_result(
+                    upload_key_results, unique_key, chunk_paths, file_name
+                )
 
         # Mark files that failed during preparation as None
         for path in original_file_paths:

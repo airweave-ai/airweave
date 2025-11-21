@@ -2,6 +2,7 @@
 
 import asyncio
 import re
+from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional, Union
 from uuid import uuid4
 
@@ -247,11 +248,13 @@ class LinearSource(BaseSource):
                     mime_type=mime_type or "application/octet-stream",
                     local_path=None,  # Will be set after download
                     # API fields
+                    attachment_id=attachment_id,
                     issue_id=issue_id,
                     issue_identifier=issue_identifier,
                     title=file_name,
                     subtitle="Extracted from issue description",
                     source={"type": "description_link"},
+                    web_url_value=url,
                 )
 
                 try:
@@ -275,7 +278,7 @@ class LinearSource(BaseSource):
                     yield attachment_entity
 
                 except FileSkippedException as e:
-                    # Attachment intentionally skipped (unsupported type, too large, etc.) - not an error
+                    # Attachment intentionally skipped (unsupported type or size)
                     self.logger.debug(f"Skipping attachment {attachment_id}: {e.reason}")
                     continue
 
@@ -326,17 +329,23 @@ class LinearSource(BaseSource):
             comment_url = f"https://linear.app/issue/{issue_identifier}#comment-{comment_id}"
 
             # Create comment name from body preview
-            comment_name = comment_body[:50] + "..." if len(comment_body) > 50 else comment_body
+            comment_preview = comment_body[:50] + "..." if len(comment_body) > 50 else comment_body
+            created_time = self._parse_datetime(comment.get("createdAt")) or datetime.utcnow()
+            updated_time = self._parse_datetime(comment.get("updatedAt")) or created_time
 
             # Create and yield LinearCommentEntity
             comment_entity = LinearCommentEntity(
                 # Base fields
                 entity_id=comment_id,
                 breadcrumbs=issue_breadcrumbs.copy(),
-                name=comment_name,
-                created_at=comment.get("createdAt"),
-                updated_at=comment.get("updatedAt"),
+                name=comment_preview,
+                created_at=created_time,
+                updated_at=updated_time,
                 # API fields
+                comment_id=comment_id,
+                body_preview=comment_preview,
+                created_time=created_time,
+                updated_time=updated_time,
                 issue_id=issue_id,
                 issue_identifier=issue_identifier,
                 body=comment_body,
@@ -346,7 +355,7 @@ class LinearSource(BaseSource):
                 team_name=team_name,
                 project_id=project_id,
                 project_name=project_name,
-                url=comment_url,
+                web_url_value=comment_url,
             )
 
             yield comment_entity
@@ -436,60 +445,58 @@ class LinearSource(BaseSource):
 
             self.logger.debug(f"Processing issue: {issue_identifier} - '{issue_title}'")
 
-            # Build breadcrumbs list
-            breadcrumbs = []
-
-            # Add team breadcrumb if available
-            team_id = None
-            team_name = None
-            if issue.get("team"):
-                team_id = issue["team"].get("id")
-                team_name = issue["team"].get("name")
-                team_breadcrumb = Breadcrumb(entity_id=team_id)
-                breadcrumbs.append(team_breadcrumb)
-
-            # Add project breadcrumb if available
-            project_id = None
-            project_name = None
-            if issue.get("project"):
-                project_id = issue["project"].get("id")
-                project_name = issue["project"].get("name")
-                project_breadcrumb = Breadcrumb(entity_id=project_id)
-                breadcrumbs.append(project_breadcrumb)
+            (
+                breadcrumbs,
+                team_id,
+                team_name,
+                project_id,
+                project_name,
+            ) = self._build_issue_context(issue)
 
             # Create issue URL
             issue_url = f"https://linear.app/issue/{issue.get('identifier')}"
             issue_id = issue.get("id")
+            issue_title = issue.get("title", "") or issue_identifier
+            created_time = self._parse_datetime(issue.get("createdAt")) or datetime.utcnow()
+            updated_time = self._parse_datetime(issue.get("updatedAt")) or created_time
+            completed_at = self._parse_datetime(issue.get("completedAt"))
 
             # Create and yield LinearIssueEntity
             issue_entity = LinearIssueEntity(
                 # Base fields
                 entity_id=issue_id,
                 breadcrumbs=breadcrumbs,
-                name=issue.get("title", ""),
-                created_at=issue.get("createdAt"),
-                updated_at=issue.get("updatedAt"),
+                name=issue_title,
+                created_at=created_time,
+                updated_at=updated_time,
                 # API fields
+                issue_id=issue_id,
                 identifier=issue_identifier,
-                title=issue.get("title", ""),
+                title=issue_title,
+                created_time=created_time,
+                updated_time=updated_time,
                 description=issue_description,
                 priority=issue.get("priority"),
                 state=issue.get("state", {}).get("name"),
-                completed_at=issue.get("completedAt"),
+                completed_at=completed_at,
                 due_date=issue.get("dueDate"),
                 team_id=team_id,
                 team_name=team_name,
                 project_id=project_id,
                 project_name=project_name,
                 assignee=issue.get("assignee", {}).get("name") if issue.get("assignee") else None,
-                url=issue_url,
+                web_url_value=issue_url,
             )
 
             # First yield the issue entity
             yield issue_entity
 
             # Create issue breadcrumb for comments and attachments
-            issue_breadcrumb = Breadcrumb(entity_id=issue_entity.entity_id)
+            issue_breadcrumb = Breadcrumb(
+                entity_id=issue_entity.entity_id,
+                name=issue_title,
+                entity_type=LinearIssueEntity.__name__,
+            )
 
             # Combine breadcrumbs with issue breadcrumb
             issue_breadcrumbs = breadcrumbs + [issue_breadcrumb]
@@ -579,8 +586,8 @@ class LinearSource(BaseSource):
             self.logger.debug(f"Processing project: {project_name}")
 
             # Extract team data
-            team_ids = []
-            team_names = []
+            team_ids: List[Optional[str]] = []
+            team_names: List[Optional[str]] = []
             teams = project.get("teams", {}).get("nodes", [])
 
             for team in teams:
@@ -588,38 +595,49 @@ class LinearSource(BaseSource):
                 team_names.append(team.get("name"))
 
             # Build breadcrumbs list
-            breadcrumbs = []
+            breadcrumbs: List[Breadcrumb] = []
 
             # Add team breadcrumbs if available
-            for team_id in team_ids:
-                team_breadcrumb = Breadcrumb(entity_id=team_id)
-                breadcrumbs.append(team_breadcrumb)
+            for t_id, t_name in zip(team_ids, team_names, strict=False):
+                if t_id:
+                    team_breadcrumb = Breadcrumb(
+                        entity_id=t_id,
+                        name=t_name or "Team",
+                        entity_type=LinearTeamEntity.__name__,
+                    )
+                    breadcrumbs.append(team_breadcrumb)
 
             # Create project URL
             project_url = f"https://linear.app/project/{project.get('slugId')}"
+            created_time = self._parse_datetime(project.get("createdAt")) or datetime.utcnow()
+            updated_time = self._parse_datetime(project.get("updatedAt")) or created_time
 
             # Create and yield LinearProjectEntity
             yield LinearProjectEntity(
                 # Base fields
                 entity_id=project_id,
                 breadcrumbs=breadcrumbs,
-                name=project.get("name", ""),
-                created_at=project.get("createdAt"),
-                updated_at=project.get("updatedAt"),
+                name=project_name or "",
+                created_at=created_time,
+                updated_at=updated_time,
                 # API fields
+                project_id=project_id,
+                project_name=project_name or "",
+                created_time=created_time,
+                updated_time=updated_time,
                 slug_id=project.get("slugId"),
                 description=project.get("description"),
                 priority=project.get("priority"),
                 state=project.get("state"),
-                completed_at=project.get("completedAt"),
-                started_at=project.get("startedAt"),
+                completed_at=self._parse_datetime(project.get("completedAt")),
+                started_at=self._parse_datetime(project.get("startedAt")),
                 target_date=project.get("targetDate"),
                 start_date=project.get("startDate"),
                 team_ids=team_ids if team_ids else None,
                 team_names=team_names if team_names else None,
                 progress=project.get("progress"),
                 lead=project.get("lead", {}).get("name") if project.get("lead") else None,
-                url=project_url,
+                web_url_value=project_url,
             )
 
         # Use the paginated query helper
@@ -686,17 +704,29 @@ class LinearSource(BaseSource):
             team_url = f"https://linear.app/team/{team.get('key')}"
 
             # Build breadcrumbs list (self-reference for consistency)
-            breadcrumbs = [Breadcrumb(entity_id=team_id)]
+            breadcrumbs = [
+                Breadcrumb(
+                    entity_id=team_id,
+                    name=team_name or team_key or "Team",
+                    entity_type=LinearTeamEntity.__name__,
+                )
+            ]
+            created_time = self._parse_datetime(team.get("createdAt")) or datetime.utcnow()
+            updated_time = self._parse_datetime(team.get("updatedAt")) or created_time
 
             # Create and yield LinearTeamEntity
             yield LinearTeamEntity(
                 # Base fields
                 entity_id=team_id,
                 breadcrumbs=breadcrumbs,
-                name=team_name,
-                created_at=team.get("createdAt"),
-                updated_at=team.get("updatedAt"),
+                name=team_name or "",
+                created_at=created_time,
+                updated_at=updated_time,
                 # API fields
+                team_id=team_id,
+                team_name=team_name or "",
+                created_time=created_time,
+                updated_time=updated_time,
                 key=team_key,
                 description=team.get("description", ""),
                 color=team.get("color", ""),
@@ -706,7 +736,7 @@ class LinearSource(BaseSource):
                 parent_id=team_parent_id,
                 parent_name=team_parent_name,
                 issue_count=team.get("issueCount", 0),
-                url=team_url,
+                web_url_value=team_url,
             )
 
         try:
@@ -785,24 +815,35 @@ class LinearSource(BaseSource):
                 team_names.append(team.get("name"))
 
             # Build breadcrumbs list - add team breadcrumbs
-            breadcrumbs = []
-            for team_id in team_ids:
-                team_breadcrumb = Breadcrumb(entity_id=team_id)
-                breadcrumbs.append(team_breadcrumb)
+            breadcrumbs: List[Breadcrumb] = []
+            for t_id, t_name in zip(team_ids, team_names, strict=False):
+                if t_id:
+                    team_breadcrumb = Breadcrumb(
+                        entity_id=t_id,
+                        name=t_name or "Team",
+                        entity_type=LinearTeamEntity.__name__,
+                    )
+                    breadcrumbs.append(team_breadcrumb)
 
             # Create user URL
             user_url = f"https://linear.app/u/{user.get('id')}"
+            display_label = display_name or user_name or user.get("email") or user_id
+            created_time = self._parse_datetime(user.get("createdAt")) or datetime.utcnow()
+            updated_time = self._parse_datetime(user.get("updatedAt")) or created_time
 
             # Create and yield LinearUserEntity
             yield LinearUserEntity(
                 # Base fields
                 entity_id=user_id,
                 breadcrumbs=breadcrumbs,
-                name=user_name,
-                created_at=user.get("createdAt"),
-                updated_at=user.get("updatedAt"),
+                name=user_name or display_label,
+                created_at=created_time,
+                updated_at=updated_time,
                 # API fields
-                display_name=display_name,
+                user_id=user_id,
+                display_name=display_label,
+                created_time=created_time,
+                updated_time=updated_time,
                 email=user.get("email"),
                 avatar_url=user.get("avatarUrl"),
                 description=user.get("description"),
@@ -817,7 +858,7 @@ class LinearSource(BaseSource):
                 created_issue_count=user.get("createdIssueCount"),
                 team_ids=team_ids if team_ids else None,
                 team_names=team_names if team_names else None,
-                url=user_url,
+                web_url_value=user_url,
             )
 
         # Use the paginated query helper
@@ -828,6 +869,47 @@ class LinearSource(BaseSource):
                 yield entity
         except Exception as e:
             self.logger.error(f"Error in user entity generation: {str(e)}")
+
+    @staticmethod
+    def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
+        """Parse Linear ISO8601 timestamps into timezone-aware datetimes."""
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+
+    def _build_issue_context(
+        self, issue: Dict[str, Any]
+    ) -> tuple[List[Breadcrumb], Optional[str], Optional[str], Optional[str], Optional[str]]:
+        """Assemble breadcrumb trail and related metadata for an issue."""
+        breadcrumbs: List[Breadcrumb] = []
+        team = issue.get("team") or {}
+        team_id = team.get("id")
+        team_name = team.get("name")
+        if team_id:
+            breadcrumbs.append(
+                Breadcrumb(
+                    entity_id=team_id,
+                    name=team_name or "Team",
+                    entity_type=LinearTeamEntity.__name__,
+                )
+            )
+
+        project = issue.get("project") or {}
+        project_id = project.get("id")
+        project_name = project.get("name")
+        if project_id:
+            breadcrumbs.append(
+                Breadcrumb(
+                    entity_id=project_id,
+                    name=project_name or "Project",
+                    entity_type=LinearProjectEntity.__name__,
+                )
+            )
+
+        return breadcrumbs, team_id, team_name, project_id, project_name
 
     async def _paginated_query(
         self,

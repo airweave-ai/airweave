@@ -6,15 +6,16 @@ connector:
   type: trello
   auth_mode: composio
   composio_config:
-    account_id: ca_LrmCrRcDeDdi
-    auth_config_id: ac_r8g0h__3n7RC
+    # UPDATE THESE with the new Composio connection that uses Airweave's consumer credentials
+    # Consumer key: 88e61134b0cbdbced53c8b652a1461bf (from dev.integrations.yaml)
+    # Consumer secret: <redacted – see dev.integrations.yaml or secure store>
+    account_id: ca_CQdfhfNklfWg
+    auth_config_id: ac_05-vmn6Uv6_s
   config_fields:
     openai_model: "gpt-4.1-mini"
     max_concurrency: 3
-    # OAuth1 consumer credentials (app-level, not user-level)
-    # Composio provides user tokens, but these are needed to sign API requests
-    consumer_key: ${MONKE_TRELLO_CONSUMER_KEY}
-    consumer_secret: ${MONKE_TRELLO_CONSUMER_SECRET}
+    # Consumer credentials are automatically loaded from backend integration settings
+    # No need to configure them here - the bongo will use dev.integrations.yaml
 
 test_flow:
   steps:
