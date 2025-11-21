@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { format, differenceInDays } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useAPIKeysStore, type APIKey } from "@/lib/stores/apiKeys";
+import { useOrganizationContext } from "@/hooks/use-organization-context";
 import {
   Dialog,
   DialogContent,
@@ -32,6 +33,9 @@ export function APIKeysSettings() {
     rotateAPIKey,
     deleteAPIKey
   } = useAPIKeysStore();
+
+  const { isCurrentUserAdmin } = useOrganizationContext();
+  const isAdmin = isCurrentUserAdmin();
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [selectedExpiration, setSelectedExpiration] = useState(90);
@@ -145,14 +149,16 @@ export function APIKeysSettings() {
             Manage access tokens for programmatic integration
           </p>
         </div>
-        <Button
-          onClick={handleCreateClick}
-          size="default"
-          className="h-9 gap-2 px-3 bg-slate-800 hover:bg-slate-700 dark:bg-slate-200 dark:hover:bg-slate-300 text-slate-50 dark:text-slate-900 font-medium"
-        >
-          <Plus className="h-4 w-4" />
-          Create key
-        </Button>
+        {isAdmin && (
+          <Button
+            onClick={handleCreateClick}
+            size="default"
+            className="h-9 gap-2 px-3 bg-slate-800 hover:bg-slate-700 dark:bg-slate-200 dark:hover:bg-slate-300 text-slate-50 dark:text-slate-900 font-medium"
+          >
+            <Plus className="h-4 w-4" />
+            Create key
+          </Button>
+        )}
       </div>
 
       {/* New Key Display */}
@@ -210,12 +216,14 @@ export function APIKeysSettings() {
           </div>
           <p className="text-sm font-medium mb-1">No API keys yet</p>
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
-            Create your first key to start using the API
+            {isAdmin ? "Create your first key to start using the API" : "Contact an admin to create API keys"}
           </p>
-          <Button onClick={handleCreateClick} size="sm" variant="outline">
-            <Plus className="h-4 w-4 mr-2" />
-            Create key
-          </Button>
+          {isAdmin && (
+            <Button onClick={handleCreateClick} size="sm" variant="outline">
+              <Plus className="h-4 w-4 mr-2" />
+              Create key
+            </Button>
+          )}
         </div>
       ) : (
         <div className="space-y-3">
@@ -279,32 +287,36 @@ export function APIKeysSettings() {
                           <Copy className="h-4 w-4" />
                         )}
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleRotateKey(apiKey)}
-                        disabled={rotatingKeyId === apiKey.id}
-                        className="h-8 w-8 text-slate-500 hover:text-slate-900 dark:hover:text-slate-100"
-                        title="Rotate key"
-                      >
-                        {rotatingKeyId === apiKey.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <RotateCw className="h-4 w-4" />
-                        )}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => {
-                          setKeyToDelete(apiKey);
-                          setDeleteDialogOpen(true);
-                        }}
-                        className="h-8 w-8 text-slate-500 hover:text-red-600 dark:hover:text-red-500"
-                        title="Delete key"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      {isAdmin && (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleRotateKey(apiKey)}
+                            disabled={rotatingKeyId === apiKey.id}
+                            className="h-8 w-8 text-slate-500 hover:text-slate-900 dark:hover:text-slate-100"
+                            title="Rotate key"
+                          >
+                            {rotatingKeyId === apiKey.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <RotateCw className="h-4 w-4" />
+                            )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              setKeyToDelete(apiKey);
+                              setDeleteDialogOpen(true);
+                            }}
+                            className="h-8 w-8 text-slate-500 hover:text-red-600 dark:hover:text-red-500"
+                            title="Delete key"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
