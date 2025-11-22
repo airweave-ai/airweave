@@ -75,11 +75,30 @@ provider_models:
       max_tokens_per_doc: 8192
       max_documents: 1000
 
+  ollama:
+    llm:
+      name: "llama3.3:70b"
+      tokenizer: "cl100k_base"
+      context_window: 128000
+    embedding:
+      name: "nomic-embed-text"
+      tokenizer: "cl100k_base"
+      dimensions: 768
+      max_tokens: 8192
+    rerank:
+      name: "llama3.3:70b"
+      tokenizer: "cl100k_base"
+      context_window: 128000
+
 # Operation preferences - which provider and which models to use
 # Format: provider: {llm: model_key, embedding: model_key, rerank: model_key}
 operation_preferences:
   query_expansion:
     order:
+      - provider: ollama
+        llm: llm
+        embedding: null
+        rerank: null
       - provider: cerebras
         llm: llm
         embedding: null
@@ -95,6 +114,10 @@ operation_preferences:
 
   query_interpretation:
     order:
+      - provider: ollama
+        llm: llm
+        embedding: null
+        rerank: null
       - provider: cerebras
         llm: llm
         embedding: null
@@ -110,6 +133,10 @@ operation_preferences:
 
   embed_query:
     order:
+      - provider: ollama
+        llm: null
+        embedding: embedding
+        rerank: null
       - provider: openai
         llm: null
         embedding: embedding
@@ -117,6 +144,10 @@ operation_preferences:
 
   reranking:
     order:
+      - provider: ollama
+        llm: null
+        embedding: null
+        rerank: rerank
       - provider: cohere
         llm: null
         embedding: null
@@ -132,6 +163,10 @@ operation_preferences:
 
   generate_answer:
     order:
+      - provider: ollama
+        llm: llm
+        embedding: null
+        rerank: null
       - provider: cerebras
         llm: llm
         embedding: null
@@ -147,6 +182,10 @@ operation_preferences:
 
   federated_search:
     order:
+      - provider: ollama
+        llm: llm
+        embedding: null
+        rerank: null
       - provider: cerebras
         llm: llm
         embedding: null

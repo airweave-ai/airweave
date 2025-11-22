@@ -36,6 +36,7 @@ from airweave.search.providers._base import BaseProvider
 from airweave.search.providers.cerebras import CerebrasProvider
 from airweave.search.providers.cohere import CohereProvider
 from airweave.search.providers.groq import GroqProvider
+from airweave.search.providers.ollama import OllamaProvider
 from airweave.search.providers.openai import OpenAIProvider
 from airweave.search.providers.schemas import (
     EmbeddingModelConfig,
@@ -370,6 +371,7 @@ class SearchFactory:
             "groq": getattr(settings, "GROQ_API_KEY", None),
             "openai": getattr(settings, "OPENAI_API_KEY", None),
             "cohere": getattr(settings, "COHERE_API_KEY", None),
+            "ollama": getattr(settings, "OLLAMA_BASE_URL", None),
         }
 
     def _create_provider_for_each_operation(
@@ -678,6 +680,11 @@ class SearchFactory:
                         f"[Factory] Attempting to initialize CohereProvider for {operation_name}"
                     )
                     provider = CohereProvider(api_key=api_key, model_spec=model_spec, ctx=ctx)
+                elif provider_name == "ollama":
+                    ctx.logger.debug(
+                        f"[Factory] Attempting to initialize OllamaProvider for {operation_name}"
+                    )
+                    provider = OllamaProvider(base_url=api_key, model_spec=model_spec, ctx=ctx)
 
                 if provider:
                     initialized_providers.append(provider)
