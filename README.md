@@ -101,6 +101,7 @@ That's it! Access the dashboard at http://localhost:8080
 <img src="frontend/src/components/icons/apps/jira.svg" alt="Jira" width="50" height="50" style="margin: 8px;" />
 <img src="frontend/src/components/icons/apps/linear.svg" alt="Linear" width="50" height="50" style="margin: 8px;" />
 <img src="frontend/src/components/icons/apps/monday.svg" alt="Monday" width="50" height="50" style="margin: 8px;" />
+<img src="frontend/src/components/icons/apps/n8n.svg" alt="n8n" width="50" height="50" style="margin: 8px;" />
 <img src="frontend/src/components/icons/apps/notion.svg" alt="Notion" width="50" height="50" style="margin: 8px;" />
 <img src="frontend/src/components/icons/apps/onedrive.svg" alt="Onedrive" width="50" height="50" style="margin: 8px;" />
 <img src="frontend/src/components/icons/apps/onenote.svg" alt="OneNote" width="50" height="50" style="margin: 8px;" />

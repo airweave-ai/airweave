@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <!-- n8n logo - simplified version based on official branding -->
+  <!-- Background circle -->
+  <circle cx="100" cy="100" r="95" fill="#EA4B71"/>
+
+  <!-- "n8n" text in white -->
+  <g fill="#FFFFFF">
+    <!-- First 'n' -->
+    <path d="M50 120 L50 80 L50 70 Q50 60 60 60 L70 60 Q80 60 80 70 L80 120" stroke="#FFFFFF" stroke-width="12" fill="none" stroke-linecap="round"/>
+
+    <!-- '8' -->
+    <ellipse cx="100" cy="80" rx="12" ry="15" fill="#FFFFFF"/>
+    <ellipse cx="100" cy="105" rx="12" ry="15" fill="#FFFFFF"/>
+    <circle cx="100" cy="92.5" r="8" fill="#EA4B71"/>
+
+    <!-- Second 'n' -->
+    <path d="M120 120 L120 80 L120 70 Q120 60 130 60 L140 60 Q150 60 150 70 L150 120" stroke="#FFFFFF" stroke-width="12" fill="none" stroke-linecap="round"/>
+  </g>
+</svg>
