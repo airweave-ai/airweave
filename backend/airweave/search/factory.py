@@ -36,6 +36,7 @@ from airweave.search.providers._base import BaseProvider
 from airweave.search.providers.cerebras import CerebrasProvider
 from airweave.search.providers.cohere import CohereProvider
 from airweave.search.providers.groq import GroqProvider
+from airweave.search.providers.local import LocalProvider
 from airweave.search.providers.openai import OpenAIProvider
 from airweave.search.providers.schemas import (
     EmbeddingModelConfig,
@@ -405,13 +406,39 @@ class SearchFactory:
 
         Note: Returns single provider, not a list. Embeddings must use consistent
         models within a collection and cannot fallback to different providers.
+
+        For 384-dim collections, uses local TEXT2VEC service (no API key needed).
+        For 1536/3072-dim collections, uses OpenAI (requires OPENAI_API_KEY).
         """
+        # Special handling for 384-dim collections - use local embeddings
+        if vector_size == 384:
+            ctx.logger.debug("[Factory] Using LocalProvider for 384-dim embeddings")
+            # Create minimal model spec (not used by LocalProvider but required by interface)
+            model_spec = ProviderModelSpec(
+                llm_model=None,
+                embedding_model=EmbeddingModelConfig(
+                    name="sentence-transformers/all-MiniLM-L6-v2",
+                    dimensions=384,
+                    max_tokens=512,
+                    tokenizer="cl100k_base"
+                ),
+                rerank_model=None
+            )
+            return LocalProvider(
+                api_key="local",  # Dummy API key (not used)
+                model_spec=model_spec,
+                ctx=ctx,
+                vector_size=384
+            )
+
+        # For OpenAI models (1536/3072), go through standard provider initialization
         providers = self._init_all_providers_for_operation(
             "embed_query", api_keys, ctx, vector_size
         )
         if not providers:
             raise ValueError(
-                "Embedding provider required for vector-backed search. Configure OPENAI_API_KEY"
+                f"Embedding provider required for {vector_size}-dim vector search. "
+                f"Configure OPENAI_API_KEY or use 384-dim collections with local embeddings."
             )
         # Return first (and only) available embedding provider
         return providers[0]
