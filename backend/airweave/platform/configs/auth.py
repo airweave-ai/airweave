@@ -226,9 +226,15 @@ class QdrantAuthConfig(AuthConfig):
 class Neo4jAuthConfig(AuthConfig):
     """Neo4j authentication credentials schema."""
 
-    uri: str = Field(title="URI", description="The URI of the Neo4j database")
-    username: str = Field(title="Username", description="The username for the Neo4j database")
-    password: str = Field(title="Password", description="The password for the Neo4j database")
+    uri: str = Field(
+        title="URI", description="The URI of the Neo4j database", min_length=1
+    )
+    username: str = Field(
+        title="Username", description="The username for the Neo4j database", min_length=1
+    )
+    password: str = Field(
+        title="Password", description="The password for the Neo4j database", min_length=1
+    )
 
 
 # AUTH CONFIGS FOR ALL SOURCES
