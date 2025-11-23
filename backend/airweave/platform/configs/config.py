@@ -539,6 +539,38 @@ class SharePointEnterpriseConfig(SourceConfig):
     )
 
 
+class SharePoint2019Config(SourceConfig):
+    """SharePoint 2019 On-Premise configuration schema."""
+
+    site_url: str = RequiredTemplateConfig(
+        title="SharePoint Site URL",
+        description=(
+            "Full URL of the SharePoint site to sync (e.g., 'https://sharepoint.contoso.com/sites/Marketing'). "
+            "This connector syncs data from a single site and all its lists, libraries, and files."
+        ),
+        json_schema_extra={"required_for_auth": True},
+    )
+    
+    ad_server: str = RequiredTemplateConfig(
+        title="Active Directory Server",
+        description=(
+            "LDAP server hostname or IP address for Active Directory queries "
+            "(e.g., 'dc.contoso.local' or 'ldaps://dc.contoso.local:636'). "
+            "Used to expand group memberships for access control."
+        ),
+        json_schema_extra={"required_for_auth": True},
+    )
+    
+    ad_search_base: str = RequiredTemplateConfig(
+        title="AD Search Base DN",
+        description=(
+            "LDAP search base Distinguished Name for Active Directory queries "
+            "(e.g., 'DC=contoso,DC=local'). This is the root DN where users and groups are located."
+        ),
+        json_schema_extra={"required_for_auth": True},
+    )
+
+
 class TrelloConfig(SourceConfig):
     """Trello configuration schema."""
 

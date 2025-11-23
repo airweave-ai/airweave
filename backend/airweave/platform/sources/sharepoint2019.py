@@ -1,0 +1,746 @@
+"""SharePoint 2019 On-Premise source implementation using REST API + LDAP.
+
+Retrieves data from SharePoint 2019 On-Premise, including:
+ - Lists (document libraries and custom lists)
+ - List Items (rows of data or file metadata)
+ - Files (downloadable documents)
+
+And extracts access control from:
+ - SharePoint Groups (cannot contain SP groups)
+ - Active Directory Groups (can be nested)
+ - Active Directory Users
+
+Reference:
+  SharePoint 2019 REST API: https://docs.microsoft.com/en-us/sharepoint/dev/sp-add-ins/get-to-know-the-sharepoint-rest-service
+  SharePoint 2019 uses OData v3 (different from Microsoft Graph)
+"""
+
+import os
+import ssl
+from datetime import datetime
+from typing import Any, AsyncGenerator, Dict, List, Optional
+
+import httpx
+from ldap3 import BASE, SUBTREE, Connection, Server, Tls
+from requests_ntlm import HttpNtlmAuth
+from tenacity import retry, stop_after_attempt
+
+from airweave.platform.access_control.schemas import AccessControlMembership
+from airweave.platform.decorators import source
+from airweave.platform.downloader import FileSkippedException
+from airweave.platform.entities._base import AccessControl, BaseEntity, Breadcrumb
+from airweave.platform.entities.sharepoint2019 import (
+    SharePoint2019FileEntity,
+    SharePoint2019ListEntity,
+    SharePoint2019ListItemEntity,
+)
+from airweave.platform.sources._base import BaseSource
+from airweave.platform.sources.retry_helpers import (
+    retry_if_rate_limit_or_timeout,
+    wait_rate_limit_with_backoff,
+)
+from airweave.schemas.source_connection import AuthenticationMethod
+
+
+@source(
+    name="SharePoint 2019 On-Premise",
+    short_name="sharepoint2019",
+    auth_methods=[AuthenticationMethod.DIRECT],
+    oauth_type=None,
+    auth_config_class="SharePoint2019AuthConfig",
+    config_class="SharePoint2019Config",
+    labels=["File Storage", "Collaboration", "On-Premise"],
+    supports_continuous=False,
+)
+class SharePoint2019Source(BaseSource):
+    """SharePoint 2019 On-Premise connector using NTLM + LDAP.
+
+    Syncs data from a specific SharePoint site including:
+    - All lists and document libraries
+    - List items and file metadata
+    - File downloads using the download service
+
+    Extracts access control from:
+    - SharePoint Groups (first-level principals)
+    - Active Directory Groups (expanded recursively)
+    - Active Directory Users
+
+    Uses LoginName for all principals to ensure consistent identity tracking
+    across SharePoint and Active Directory.
+    """
+
+    def __init__(self):
+        """Initialize SharePoint 2019 source."""
+        super().__init__()
+        self.site_url: Optional[str] = None
+        self.sp_username: Optional[str] = None
+        self.sp_password: Optional[str] = None
+        self.sp_domain: Optional[str] = None
+        self.ad_server: Optional[str] = None
+        self.ad_username: Optional[str] = None
+        self.ad_password: Optional[str] = None
+        self.ad_domain: Optional[str] = None
+        self.ad_search_base: Optional[str] = None
+        self._ad_connection: Optional[Connection] = None
+
+    @classmethod
+    async def create(
+        cls, credentials: Dict[str, Any], config: Optional[Dict[str, Any]] = None
+    ) -> "SharePoint2019Source":
+        """Create SharePoint 2019 source with NTLM + LDAP credentials.
+
+        Args:
+            credentials: Dict containing:
+                - sharepoint_username: Windows username for NTLM
+                - sharepoint_password: Password for NTLM
+                - sharepoint_domain: Optional Windows domain
+                - ad_username: AD username for LDAP
+                - ad_password: AD password for LDAP
+                - ad_domain: AD domain
+            config: Dict containing:
+                - site_url: Full URL of the SharePoint site
+                - ad_server: AD server hostname or IP
+                - ad_search_base: LDAP search base DN
+
+        Returns:
+            Configured SharePoint2019Source instance
+        """
+        instance = cls()
+
+        # SharePoint credentials
+        instance.sp_username = credentials.get("sharepoint_username")
+        instance.sp_password = credentials.get("sharepoint_password")
+        instance.sp_domain = credentials.get("sharepoint_domain")
+
+        # AD credentials
+        instance.ad_username = credentials.get("ad_username")
+        instance.ad_password = credentials.get("ad_password")
+        instance.ad_domain = credentials.get("ad_domain")
+
+        # Config
+        config = config or {}
+        instance.site_url = config.get("site_url", "").rstrip("/")
+        instance.ad_server = config.get("ad_server")
+        instance.ad_search_base = config.get("ad_search_base")
+
+        return instance
+
+    def _create_ntlm_auth(self) -> HttpNtlmAuth:
+        """Create NTLM authentication object for SharePoint API calls."""
+        if self.sp_domain:
+            username = f"{self.sp_domain}\\{self.sp_username}"
+        else:
+            username = self.sp_username
+        return HttpNtlmAuth(username, self.sp_password)
+
+    async def _connect_to_ad(self) -> Connection:
+        """Establish LDAP connection to Active Directory."""
+        if self._ad_connection and self._ad_connection.bound:
+            return self._ad_connection
+
+        # Strip protocol prefix if present
+        server_clean = self.ad_server.replace("ldap://", "").replace("ldaps://", "")
+
+        # Try LDAPS first (port 636), fallback to STARTTLS on 389
+        tls_config = Tls(validate=ssl.CERT_NONE, version=ssl.PROTOCOL_TLSv1_2)
+
+        # Try LDAPS
+        try:
+            if ":" in server_clean:
+                server_url = server_clean
+            else:
+                server_url = f"{server_clean}:636"
+
+            server = Server(server_url, get_info="ALL", use_ssl=True, tls=tls_config)
+            user_dn = f"{self.ad_domain}\\{self.ad_username}"
+            conn = Connection(server, user=user_dn, password=self.ad_password, auto_bind=True)
+            self._ad_connection = conn
+            self.logger.info(f"Connected to AD via LDAPS: {server_url}")
+            return conn
+        except Exception as ldaps_error:
+            self.logger.debug(f"LDAPS failed, trying STARTTLS: {ldaps_error}")
+
+            # Fallback to STARTTLS
+            try:
+                server_url_starttls = server_clean if ":" in server_clean else server_clean
+                server = Server(server_url_starttls, get_info="ALL", tls=tls_config)
+                user_dn = f"{self.ad_domain}\\{self.ad_username}"
+                conn = Connection(server, user=user_dn, password=self.ad_password, auto_bind=False)
+                conn.open()
+                conn.start_tls()
+                conn.bind()
+                self._ad_connection = conn
+                self.logger.info(f"Connected to AD via STARTTLS: {server_url_starttls}")
+                return conn
+            except Exception as starttls_error:
+                self.logger.error(
+                    f"Both LDAPS and STARTTLS failed: LDAPS={ldaps_error}, STARTTLS={starttls_error}"
+                )
+                raise Exception(f"Could not connect to AD: {starttls_error}")
+
+    @retry(
+        stop=stop_after_attempt(3),
+        retry=retry_if_rate_limit_or_timeout,
+        wait=wait_rate_limit_with_backoff,
+        reraise=True,
+    )
+    async def _sp_get(self, endpoint: str, params: Optional[Dict] = None) -> Dict[str, Any]:
+        """Make authenticated GET request to SharePoint REST API.
+
+        Args:
+            endpoint: REST API endpoint (e.g., '/web/lists')
+            params: Optional query parameters
+
+        Returns:
+            JSON response from SharePoint
+        """
+        url = f"{self.site_url}/_api{endpoint}"
+        auth = self._create_ntlm_auth()
+        headers = {
+            "Accept": "application/json;odata=verbose",
+            "Content-Type": "application/json;odata=verbose",
+        }
+
+        try:
+            async with httpx.AsyncClient(verify=False) as client:
+                # Use httpx-ntlm or requests-ntlm adapter
+                # For simplicity, we'll use a sync requests call wrapped in async
+                import requests
+
+                response = requests.get(
+                    url,
+                    auth=auth,
+                    headers=headers,
+                    params=params,
+                    verify=False,
+                    timeout=30,
+                )
+                response.raise_for_status()
+                return response.json()
+        except Exception as e:
+            self.logger.error(f"Error calling SharePoint API {url}: {e}")
+            raise
+
+    async def _sp_get_file_content(self, server_relative_url: str) -> bytes:
+        """Download file content from SharePoint.
+
+        Args:
+            server_relative_url: Server-relative URL of the file
+
+        Returns:
+            File content as bytes
+        """
+        url = f"{self.site_url}/_api/web/GetFileByServerRelativeUrl('{server_relative_url}')/$value"
+        auth = self._create_ntlm_auth()
+
+        try:
+            import requests
+
+            response = requests.get(
+                url,
+                auth=auth,
+                verify=False,
+                timeout=60,
+            )
+            response.raise_for_status()
+            return response.content
+        except Exception as e:
+            self.logger.error(f"Error downloading file {server_relative_url}: {e}")
+            raise
+
+    async def _get_lists(self) -> AsyncGenerator[Dict[str, Any], None]:
+        """Get all lists in the site using pagination."""
+        endpoint = "/web/lists"
+        params = {
+            "$filter": "Hidden eq false",  # Skip hidden system lists
+            "$top": 100,
+        }
+
+        while True:
+            data = await self._sp_get(endpoint, params)
+            results = data.get("d", {}).get("results", [])
+
+            for list_obj in results:
+                yield list_obj
+
+            # Handle pagination
+            next_link = data.get("d", {}).get("__next")
+            if not next_link:
+                break
+            # Extract endpoint from next link
+            endpoint = next_link.replace(f"{self.site_url}/_api", "")
+            params = None  # Params are in the next link
+
+    async def _get_list_items(self, list_id: str) -> AsyncGenerator[Dict[str, Any], None]:
+        """Get all items in a list using pagination."""
+        endpoint = f"/web/lists(guid'{list_id}')/items"
+        params = {
+            "$top": 100,
+        }
+
+        while True:
+            try:
+                data = await self._sp_get(endpoint, params)
+                results = data.get("d", {}).get("results", [])
+
+                for item in results:
+                    yield item
+
+                # Handle pagination
+                next_link = data.get("d", {}).get("__next")
+                if not next_link:
+                    break
+                endpoint = next_link.replace(f"{self.site_url}/_api", "")
+                params = None
+            except Exception as e:
+                self.logger.error(f"Error getting items for list {list_id}: {e}")
+                break
+
+    async def _get_role_assignments(self, list_id: str, item_id: int) -> List[Dict[str, Any]]:
+        """Get role assignments (permissions) for a list item.
+
+        Returns list of principals with READ permission.
+        """
+        endpoint = f"/web/lists(guid'{list_id}')/items({item_id})/roleassignments"
+        params = {
+            "$expand": "Member,RoleDefinitionBindings",
+        }
+
+        try:
+            data = await self._sp_get(endpoint, params)
+            assignments = data.get("d", {}).get("results", [])
+
+            # Filter for READ permissions (BasePermissions.Low & 1)
+            read_principals = []
+            for assignment in assignments:
+                member = assignment.get("Member", {})
+                bindings = assignment.get("RoleDefinitionBindings", {}).get("results", [])
+
+                # Check if any role has READ permission (bit 1 in Low)
+                has_read = False
+                for role in bindings:
+                    perms = role.get("BasePermissions", {})
+                    low = int(perms.get("Low", 0))
+                    if low & 1:  # ViewListItems permission
+                        has_read = True
+                        break
+
+                if has_read:
+                    read_principals.append(member)
+
+            return read_principals
+        except Exception as e:
+            self.logger.warning(
+                f"Could not get role assignments for list {list_id} item {item_id}: {e}"
+            )
+            return []
+
+    def _build_access_control(self, principals: List[Dict[str, Any]]) -> AccessControl:
+        """Build AccessControl object from SharePoint principal list.
+
+        Uses LoginName for all principals to ensure consistent identity tracking.
+        """
+        viewers = []
+
+        for principal in principals:
+            principal_type = principal.get("PrincipalType", 0)
+            login_name = principal.get("LoginName", "")
+
+            if not login_name:
+                continue
+
+            if principal_type == 1:  # User
+                # Use LoginName directly (e.g., "i:0#.w|DOMAIN\username")
+                viewers.append(f"user:{login_name}")
+            elif principal_type == 8:  # SharePoint Group
+                # Use group:sp:<GroupId> to distinguish from AD groups
+                group_id = principal.get("Id")
+                if group_id:
+                    viewers.append(f"group:sp:{group_id}")
+            elif principal_type == 4:  # AD Security Group
+                # Use LoginName (e.g., "c:0+.w|DOMAIN\groupname")
+                viewers.append(f"group:ad:{login_name}")
+
+        return AccessControl(viewers=viewers)
+
+    async def _generate_list_entities(self) -> AsyncGenerator[SharePoint2019ListEntity, None]:
+        """Generate list entities for all lists in the site."""
+        self.logger.info("Generating list entities...")
+
+        async for list_obj in self._get_lists():
+            list_id = list_obj.get("Id")
+            title = list_obj.get("Title", "Untitled List")
+
+            self.logger.debug(f"Processing list: {title} ({list_id})")
+
+            # Parse timestamps
+            created = self._parse_datetime(list_obj.get("Created"))
+            modified = self._parse_datetime(list_obj.get("LastItemModifiedDate"))
+
+            yield SharePoint2019ListEntity(
+                breadcrumbs=[],
+                id=list_id,
+                name=title,
+                title=title,
+                created_at=created,
+                updated_at=modified,
+                description=list_obj.get("Description"),
+                base_template=list_obj.get("BaseTemplate"),
+                item_count=list_obj.get("ItemCount"),
+                server_relative_url=list_obj.get("RootFolder", {}).get("ServerRelativeUrl"),
+                enable_versioning=list_obj.get("EnableVersioning"),
+                hidden=list_obj.get("Hidden"),
+                raw_metadata=list_obj,
+            )
+
+    async def _generate_list_item_and_file_entities(
+        self, list_entity: SharePoint2019ListEntity
+    ) -> AsyncGenerator[BaseEntity, None]:
+        """Generate list item entities and file entities for a list.
+
+        For document libraries (BaseTemplate=101), also download files.
+        """
+        list_id = list_entity.id
+        is_document_library = list_entity.base_template == 101
+
+        list_breadcrumb = Breadcrumb(
+            entity_id=list_id,
+            name=list_entity.title,
+            entity_type="SharePoint2019ListEntity",
+        )
+
+        async for item in self._get_list_items(list_id):
+            item_id = item.get("Id")
+            file_system_obj_type = item.get("FileSystemObjectType", 0)
+
+            # Skip folders
+            if file_system_obj_type == 1:
+                continue
+
+            # Extract title/name
+            title = item.get("Title") or item.get("FileLeafRef") or f"Item {item_id}"
+
+            # Get access control
+            principals = await self._get_role_assignments(list_id, item_id)
+            access = self._build_access_control(principals)
+
+            # Parse timestamps
+            created = self._parse_datetime(item.get("Created"))
+            modified = self._parse_datetime(item.get("Modified"))
+
+            # For document libraries, also yield file entity
+            if is_document_library and file_system_obj_type == 0:
+                # Get file metadata
+                file_ref = item.get("FileRef")  # Server-relative URL
+
+                if file_ref:
+                    try:
+                        # Get file details
+                        file_endpoint = f"/web/GetFileByServerRelativeUrl('{file_ref}')"
+                        file_data = await self._sp_get(file_endpoint)
+                        file_obj = file_data.get("d", {})
+
+                        file_name = file_obj.get("Name", title)
+                        file_length = file_obj.get("Length", 0)
+
+                        # Determine file type and MIME type
+                        _, ext = os.path.splitext(file_name)
+                        ext = ext.lower().lstrip(".")
+
+                        # Create file entity
+                        file_entity = SharePoint2019FileEntity(
+                            breadcrumbs=[list_breadcrumb],
+                            id=file_obj.get("UniqueId", item_id),
+                            name=file_name,
+                            title=title,
+                            created_at=created,
+                            updated_at=modified,
+                            access=access,
+                            url=f"{self.site_url}{file_ref}",
+                            size=file_length,
+                            file_type=ext or "file",
+                            mime_type=f"application/{ext}" if ext else "application/octet-stream",
+                            server_relative_url=file_ref,
+                            length=file_length,
+                            time_created=file_obj.get("TimeCreated"),
+                            time_last_modified=file_obj.get("TimeLastModified"),
+                            list_item_id=item_id,
+                            list_id=list_id,
+                            author=file_obj.get("Author"),
+                            modified_by=file_obj.get("ModifiedBy"),
+                            checked_out_by_user=file_obj.get("CheckedOutByUser"),
+                            check_out_type=file_obj.get("CheckOutType"),
+                            raw_metadata=file_obj,
+                            local_path=None,
+                        )
+
+                        # Download file using downloader service
+                        try:
+                            # Download directly as we have NTLM auth
+                            file_content = await self._sp_get_file_content(file_ref)
+
+                            # Use file downloader to save
+                            await self.file_downloader.save_bytes(
+                                entity=file_entity,
+                                content=file_content,
+                                filename_with_extension=file_name,
+                                logger=self.logger,
+                            )
+
+                            yield file_entity
+
+                        except FileSkippedException as e:
+                            self.logger.debug(f"Skipping file {file_name}: {e.reason}")
+                        except Exception as e:
+                            self.logger.error(f"Failed to download file {file_name}: {e}")
+
+                    except Exception as e:
+                        self.logger.error(f"Error processing file for item {item_id}: {e}")
+            else:
+                # Regular list item (not a file)
+                yield SharePoint2019ListItemEntity(
+                    breadcrumbs=[list_breadcrumb],
+                    id=str(item_id),
+                    name=title,
+                    title=title,
+                    created_at=created,
+                    updated_at=modified,
+                    access=access,
+                    fields=item,
+                    content_type_id=item.get("ContentTypeId"),
+                    file_system_object_type=file_system_obj_type,
+                    server_relative_url=item.get("FileRef"),
+                    list_id=list_id,
+                    raw_metadata=item,
+                )
+
+    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
+        """Generate all SharePoint 2019 entities.
+
+        Yields:
+            - SharePoint2019ListEntity for each list
+            - SharePoint2019ListItemEntity for each non-file list item
+            - SharePoint2019FileEntity for each file (with download)
+        """
+        self.logger.info("===== STARTING SHAREPOINT 2019 ENTITY GENERATION =====")
+        entity_count = 0
+
+        try:
+            # Generate list entities and their items
+            async for list_entity in self._generate_list_entities():
+                entity_count += 1
+                self.logger.info(f"Entity #{entity_count}: List - {list_entity.title}")
+                yield list_entity
+
+                # Generate items/files for this list
+                async for item_or_file in self._generate_list_item_and_file_entities(list_entity):
+                    entity_count += 1
+                    self.logger.info(
+                        f"Entity #{entity_count}: {type(item_or_file).__name__} - {item_or_file.name}"
+                    )
+                    yield item_or_file
+
+        except Exception as e:
+            self.logger.error(f"Error in entity generation: {e}", exc_info=True)
+            raise
+        finally:
+            self.logger.info(
+                f"===== SHAREPOINT 2019 ENTITY GENERATION COMPLETE: {entity_count} entities ====="
+            )
+
+    async def generate_access_control_memberships(
+        self,
+    ) -> AsyncGenerator[AccessControlMembership, None]:
+        """Generate access control membership tuples for SharePoint + AD.
+
+        Creates tuples for:
+        - SP Group → User
+        - SP Group → AD Group
+        - AD Group → AD Group (nested)
+        - AD Group → User
+
+        Uses LoginName consistently to track principals.
+        """
+        self.logger.info("===== STARTING ACCESS CONTROL MEMBERSHIP EXTRACTION =====")
+        membership_count = 0
+
+        try:
+            # Connect to AD
+            ad_conn = await self._connect_to_ad()
+
+            # 1. Get all SharePoint Groups
+            sp_groups_endpoint = "/web/sitegroups"
+            sp_groups_data = await self._sp_get(sp_groups_endpoint)
+            sp_groups = sp_groups_data.get("d", {}).get("results", [])
+
+            for sp_group in sp_groups:
+                group_id = sp_group.get("Id")
+                group_title = sp_group.get("Title", "Unknown Group")
+
+                self.logger.info(f"Processing SP Group: {group_title} (ID: {group_id})")
+
+                # Get members of this SP group
+                members_endpoint = f"/web/sitegroups/getbyid({group_id})/users"
+                members_data = await self._sp_get(members_endpoint)
+                members = members_data.get("d", {}).get("results", [])
+
+                for member in members:
+                    principal_type = member.get("PrincipalType", 0)
+                    login_name = member.get("LoginName", "")
+
+                    if not login_name:
+                        continue
+
+                    if principal_type == 1:  # User
+                        # SP Group → User membership
+                        yield AccessControlMembership(
+                            member_id=login_name,
+                            member_type="user",
+                            group_id=f"sp:{group_id}",
+                            group_name=group_title,
+                        )
+                        membership_count += 1
+
+                    elif principal_type == 4:  # AD Security Group
+                        # SP Group → AD Group membership
+                        yield AccessControlMembership(
+                            member_id=login_name,
+                            member_type="group",
+                            group_id=f"sp:{group_id}",
+                            group_name=group_title,
+                        )
+                        membership_count += 1
+
+                        # Now expand this AD group recursively
+                        async for ad_membership in self._expand_ad_group_recursive(
+                            ad_conn, login_name
+                        ):
+                            yield ad_membership
+                            membership_count += 1
+
+            self.logger.info(
+                f"===== ACCESS CONTROL MEMBERSHIP EXTRACTION COMPLETE: {membership_count} memberships ====="
+            )
+
+        except Exception as e:
+            self.logger.error(f"Error generating access control memberships: {e}", exc_info=True)
+            raise
+
+    async def _expand_ad_group_recursive(
+        self, ad_conn: Connection, group_login_name: str
+    ) -> AsyncGenerator[AccessControlMembership, None]:
+        """Recursively expand an AD group to find all nested memberships.
+
+        Args:
+            ad_conn: LDAP connection
+            group_login_name: LoginName of the AD group (e.g., "c:0+.w|DOMAIN\\groupname")
+
+        Yields:
+            AccessControlMembership for AD Group → User and AD Group → AD Group
+        """
+        # Extract actual group name from LoginName
+        # LoginName format: "c:0+.w|DOMAIN\\groupname"
+        group_name = (
+            group_login_name.split("|")[-1].split("\\")[-1]
+            if "|" in group_login_name
+            else group_login_name
+        )
+
+        # Query AD for this group
+        search_filter = f"(&(objectClass=group)(sAMAccountName={group_name}))"
+        ad_conn.search(
+            search_base=self.ad_search_base,
+            search_filter=search_filter,
+            search_scope=SUBTREE,
+            attributes=["cn", "distinguishedName", "member"],
+        )
+
+        if not ad_conn.entries:
+            self.logger.warning(f"AD group not found: {group_name}")
+            return
+
+        group_entry = ad_conn.entries[0]
+        group_dn = str(group_entry.distinguishedName)
+        members = [str(m) for m in group_entry.member] if hasattr(group_entry, "member") else []
+
+        for member_dn in members:
+            # Query this member to determine if it's a user or group
+            ad_conn.search(
+                search_base=member_dn,
+                search_filter="(objectClass=*)",
+                search_scope=BASE,
+                attributes=["objectClass", "sAMAccountName"],
+            )
+
+            if not ad_conn.entries:
+                continue
+
+            member_entry = ad_conn.entries[0]
+            object_classes = (
+                [str(oc) for oc in member_entry.objectClass]
+                if hasattr(member_entry, "objectClass")
+                else []
+            )
+            sam_account_name = (
+                str(member_entry.sAMAccountName)
+                if hasattr(member_entry, "sAMAccountName")
+                else None
+            )
+
+            if not sam_account_name:
+                continue
+
+            # Build LoginName format
+            member_login_name = f"{self.ad_domain}\\{sam_account_name}"
+
+            if "user" in object_classes:
+                # AD Group → User
+                yield AccessControlMembership(
+                    member_id=member_login_name,
+                    member_type="user",
+                    group_id=group_login_name,
+                    group_name=group_name,
+                )
+            elif "group" in object_classes:
+                # AD Group → AD Group
+                nested_group_login = f"c:0+.w|{member_login_name}"
+                yield AccessControlMembership(
+                    member_id=nested_group_login,
+                    member_type="group",
+                    group_id=group_login_name,
+                    group_name=group_name,
+                )
+
+                # Recurse into nested group
+                async for nested_membership in self._expand_ad_group_recursive(
+                    ad_conn, nested_group_login
+                ):
+                    yield nested_membership
+
+    async def validate(self) -> bool:
+        """Validate SharePoint 2019 and AD connections."""
+        try:
+            # Test SharePoint connection
+            await self._sp_get("/web")
+            self.logger.info("SharePoint connection validated")
+
+            # Test AD connection
+            await self._connect_to_ad()
+            self.logger.info("Active Directory connection validated")
+
+            return True
+        except Exception as e:
+            self.logger.error(f"Validation failed: {e}")
+            return False
+
+    def _parse_datetime(self, dt_str: Optional[str]) -> Optional[datetime]:
+        """Parse datetime string from SharePoint OData format."""
+        if not dt_str:
+            return None
+        try:
+            # SharePoint returns ISO format or OData format
+            if dt_str.endswith("Z"):
+                dt_str = dt_str.replace("Z", "+00:00")
+            return datetime.fromisoformat(dt_str)
+        except (ValueError, TypeError):
+            return None
