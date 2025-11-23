@@ -71,6 +71,11 @@ openpyxl = "^3.1.5"
 pillow = "^11.0.0"
 chonkie = {extras = ["code", "semantic"], version = "^1.4.0"}
 prometheus-client = "^0.21.0"
+# SharePoint 2019 On-Premise dependencies
+requests-ntlm = "^1.2.0"
+ldap3 = "^2.9.1"
+pycryptodome = "^3.20.0"
+httpx-ntlm = "^1.4.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"

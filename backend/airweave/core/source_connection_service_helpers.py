@@ -286,7 +286,15 @@ class SourceConnectionHelpers:
     ) -> None:
         """Validate direct authentication credentials."""
         source_cls = resource_locator.get_source(source)
-        source_instance = await source_cls.create(auth_fields, config=config_fields)
+        auth_payload = (
+            auth_fields.model_dump() if hasattr(auth_fields, "model_dump") else auth_fields
+        )
+        config_payload = (
+            config_fields.model_dump()
+            if config_fields is not None and hasattr(config_fields, "model_dump")
+            else config_fields
+        )
+        source_instance = await source_cls.create(auth_payload, config=config_payload)
         source_instance.set_logger(ctx.logger)
 
         is_valid = await source_instance.validate()
@@ -312,8 +320,13 @@ class SourceConnectionHelpers:
             credentials: Full OAuth credentials dict (includes access_token, instance_url, etc.)
         """
         source_cls = resource_locator.get_source(source)
+        config_payload = (
+            config_fields.model_dump()
+            if config_fields is not None and hasattr(config_fields, "model_dump")
+            else config_fields
+        )
 
-        source_instance = await source_cls.create(access_token=access_token, config=config_fields)
+        source_instance = await source_cls.create(access_token=access_token, config=config_payload)
 
         source_instance.set_logger(ctx.logger)
 

@@ -17,6 +17,7 @@ from airweave.core.guard_rail_service import GuardRailService
 from airweave.core.logging import ContextualLogger, LoggerConfigurator, logger
 from airweave.core.sync_cursor_service import sync_cursor_service
 from airweave.db.init_db_native import init_db_with_entity_definitions
+from airweave.platform.auth.schemas import BaseAuthSettings
 from airweave.platform.auth_providers._base import BaseAuthProvider
 from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.entities._base import BaseEntity

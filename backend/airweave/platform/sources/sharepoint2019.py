@@ -15,14 +15,15 @@ Reference:
   SharePoint 2019 uses OData v3 (different from Microsoft Graph)
 """
 
+import hashlib
 import os
 import ssl
 from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
+from httpx_ntlm import HttpNtlmAuth
 from ldap3 import BASE, SUBTREE, Connection, Server, Tls
-from requests_ntlm import HttpNtlmAuth
 from tenacity import retry, stop_after_attempt
 
 from airweave.platform.access_control.schemas import AccessControlMembership
@@ -40,6 +41,29 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod
+
+
+def _ensure_md4_support() -> None:
+    """Ensure hashlib can create MD4 digests required for NTLM."""
+    try:
+        hashlib.new("md4", b"test")
+    except ValueError:
+        from Crypto.Hash import MD4
+
+        _original_new = hashlib.new
+
+        def _patched_new(name, data=b"", **kwargs):
+            if name.lower() == "md4":
+                digest = MD4.new()
+                if data:
+                    digest.update(data)
+                return digest
+            return _original_new(name, data, **kwargs)
+
+        hashlib.new = _patched_new
+
+
+_ensure_md4_support()
 
 
 @source(
@@ -82,6 +106,7 @@ class SharePoint2019Source(BaseSource):
         self.ad_domain: Optional[str] = None
         self.ad_search_base: Optional[str] = None
         self._ad_connection: Optional[Connection] = None
+        self._ntlm_auth: Optional[HttpNtlmAuth] = None
 
     @classmethod
     async def create(
@@ -127,11 +152,12 @@ class SharePoint2019Source(BaseSource):
 
     def _create_ntlm_auth(self) -> HttpNtlmAuth:
         """Create NTLM authentication object for SharePoint API calls."""
-        if self.sp_domain:
-            username = f"{self.sp_domain}\\{self.sp_username}"
-        else:
-            username = self.sp_username
-        return HttpNtlmAuth(username, self.sp_password)
+        if self._ntlm_auth is None:
+            username = (
+                f"{self.sp_domain}\\{self.sp_username}" if self.sp_domain else self.sp_username
+            )
+            self._ntlm_auth = HttpNtlmAuth(username, self.sp_password)
+        return self._ntlm_auth
 
     async def _connect_to_ad(self) -> Connection:
         """Establish LDAP connection to Active Directory."""
@@ -174,7 +200,9 @@ class SharePoint2019Source(BaseSource):
                 return conn
             except Exception as starttls_error:
                 self.logger.error(
-                    f"Both LDAPS and STARTTLS failed: LDAPS={ldaps_error}, STARTTLS={starttls_error}"
+                    "Both LDAPS and STARTTLS failed: LDAPS=%s, STARTTLS=%s",
+                    ldaps_error,
+                    starttls_error,
                 )
                 raise Exception(f"Could not connect to AD: {starttls_error}")
 
@@ -202,21 +230,26 @@ class SharePoint2019Source(BaseSource):
         }
 
         try:
-            async with httpx.AsyncClient(verify=False) as client:
-                # Use httpx-ntlm or requests-ntlm adapter
-                # For simplicity, we'll use a sync requests call wrapped in async
-                import requests
-
-                response = requests.get(
-                    url,
-                    auth=auth,
-                    headers=headers,
-                    params=params,
-                    verify=False,
-                    timeout=30,
-                )
-                response.raise_for_status()
-                return response.json()
+            timeout = httpx.Timeout(30.0, connect=30.0, read=30.0)
+            async with self.http_client(
+                auth=auth,
+                verify=False,
+                timeout=timeout,
+            ) as client:
+                response = await client.get(url, headers=headers, params=params)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as http_err:
+            resp = http_err.response
+            status_code = resp.status_code if resp is not None else "unknown"
+            error_snippet = resp.text[:1000] if resp is not None and resp.text else "<empty body>"
+            self.logger.error(
+                "SharePoint API %s returned %s. Response body snippet: %s",
+                url,
+                status_code,
+                error_snippet,
+            )
+            raise
         except Exception as e:
             self.logger.error(f"Error calling SharePoint API {url}: {e}")
             raise
@@ -234,16 +267,26 @@ class SharePoint2019Source(BaseSource):
         auth = self._create_ntlm_auth()
 
         try:
-            import requests
-
-            response = requests.get(
-                url,
+            timeout = httpx.Timeout(60.0, connect=30.0, read=60.0)
+            async with self.http_client(
                 auth=auth,
                 verify=False,
-                timeout=60,
-            )
+                timeout=timeout,
+            ) as client:
+                response = await client.get(url)
             response.raise_for_status()
             return response.content
+        except httpx.HTTPStatusError as http_err:
+            resp = http_err.response
+            status_code = resp.status_code if resp is not None else "unknown"
+            error_snippet = resp.text[:1000] if resp is not None and resp.text else "<empty body>"
+            self.logger.error(
+                "Failed to download %s (status=%s). Response snippet: %s",
+                server_relative_url,
+                status_code,
+                error_snippet,
+            )
+            raise
         except Exception as e:
             self.logger.error(f"Error downloading file {server_relative_url}: {e}")
             raise
@@ -535,8 +578,13 @@ class SharePoint2019Source(BaseSource):
                 # Generate items/files for this list
                 async for item_or_file in self._generate_list_item_and_file_entities(list_entity):
                     entity_count += 1
+                    entity_type = type(item_or_file).__name__
+                    entity_name = getattr(item_or_file, "name", "unknown")
                     self.logger.info(
-                        f"Entity #{entity_count}: {type(item_or_file).__name__} - {item_or_file.name}"
+                        "Entity #%s: %s - %s",
+                        entity_count,
+                        entity_type,
+                        entity_name,
                     )
                     yield item_or_file
 
@@ -619,7 +667,8 @@ class SharePoint2019Source(BaseSource):
                             membership_count += 1
 
             self.logger.info(
-                f"===== ACCESS CONTROL MEMBERSHIP EXTRACTION COMPLETE: {membership_count} memberships ====="
+                "===== ACCESS CONTROL MEMBERSHIP EXTRACTION COMPLETE: %s memberships =====",
+                membership_count,
             )
 
         except Exception as e:
@@ -629,7 +678,7 @@ class SharePoint2019Source(BaseSource):
     async def _expand_ad_group_recursive(
         self, ad_conn: Connection, group_login_name: str
     ) -> AsyncGenerator[AccessControlMembership, None]:
-        """Recursively expand an AD group to find all nested memberships.
+        r"""Recursively expand an AD group to find all nested memberships.
 
         Args:
             ad_conn: LDAP connection
@@ -660,7 +709,6 @@ class SharePoint2019Source(BaseSource):
             return
 
         group_entry = ad_conn.entries[0]
-        group_dn = str(group_entry.distinguishedName)
         members = [str(m) for m in group_entry.member] if hasattr(group_entry, "member") else []
 
         for member_dn in members:
@@ -721,8 +769,32 @@ class SharePoint2019Source(BaseSource):
         """Validate SharePoint 2019 and AD connections."""
         try:
             # Test SharePoint connection
-            await self._sp_get("/web")
-            self.logger.info("SharePoint connection validated")
+            try:
+                await self._sp_get("/web")
+                self.logger.info("SharePoint connection validated")
+            except Exception as sp_error:
+                # Helper: If HTTP failed, check if HTTPS works and guide the user
+                if self.site_url and self.site_url.startswith("http://"):
+                    original_url = self.site_url
+                    https_url = self.site_url.replace("http://", "https://")
+                    self.logger.info(f"HTTP connection failed. Testing HTTPS: {https_url}")
+
+                    try:
+                        self.site_url = https_url
+                        await self._sp_get("/web")
+                        # If we get here, HTTPS works!
+                        self.logger.error(
+                            f"Validation succeeded with {https_url} but failed with "
+                            f"{original_url}. Please update your Site URL to use 'https://'."
+                        )
+                        # We must return False because the saved config would still be HTTP
+                        return False
+                    except Exception:
+                        # HTTPS also failed, revert and raise original error
+                        self.site_url = original_url
+                        raise sp_error
+                else:
+                    raise sp_error
 
             # Test AD connection
             await self._connect_to_ad()

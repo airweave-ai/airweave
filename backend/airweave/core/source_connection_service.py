@@ -587,20 +587,20 @@ class SourceConnectionService:
             db, obj_in.short_name, obj_in.config, ctx
         )
 
-        # Extract template configs for OAuth flow (e.g., tenant_id for SharePoint Enterprise)
-        template_configs = await self._validate_and_extract_template_configs(
-            db, source, validated_config, ctx
-        )
-
-        token_response = await oauth2_service.exchange_client_credentials_for_token(
-            ctx,
-            source.short_name,
-            validated_auth.client_id,
-            validated_auth.client_secret,
-            template_configs,
-        )
-
         if source_class._oauth_type == OAuthType.CLIENT_CREDENTIALS:
+            # Extract template configs for OAuth flow (e.g., tenant_id for SharePoint Enterprise)
+            template_configs = await self._validate_and_extract_template_configs(
+                db, source, validated_config, ctx
+            )
+
+            token_response = await oauth2_service.exchange_client_credentials_for_token(
+                ctx,
+                source.short_name,
+                validated_auth.client_id,
+                validated_auth.client_secret,
+                template_configs,
+            )
+
             await self._validate_oauth_token(
                 source, token_response.access_token, validated_config, ctx
             )

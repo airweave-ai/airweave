@@ -329,6 +329,8 @@ integrations:
     content_type: "application/x-www-form-urlencoded"
     client_credential_location: "body"
 
+  sharepoint_2019:
+
   slack:
     oauth_type: "access_only"
     url: "https://slack.com/oauth/v2/authorize"
