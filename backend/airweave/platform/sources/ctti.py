@@ -16,6 +16,7 @@ from airweave.platform.decorators import source
 from airweave.platform.entities._base import Breadcrumb
 from airweave.platform.entities.ctti import CTTIWebEntity
 from airweave.platform.sources._base import BaseSource
+from airweave.platform.storage import storage_manager
 from airweave.schemas.source_connection import AuthenticationMethod
 
 # Global connection pool for CTTI to prevent connection exhaustion
@@ -202,7 +203,10 @@ class CTTISource(BaseSource):
         return self.pool
 
     async def generate_entities(self) -> AsyncGenerator[Union[CTTIWebEntity], None]:
-        """Generate WebEntity instances for each nct_id in the AACT studies table."""
+        """Generate WebEntity instances for each nct_id in the AACT studies table.
+        
+        Skips entities that already exist in Azure storage to avoid redundant processing.
+        """
         try:
             # Get the connection pool
             pool = await self._ensure_pool()
@@ -241,24 +245,53 @@ class CTTISource(BaseSource):
             records = await _retry_with_backoff(_execute_query)
 
             self.logger.info(f"Starting to process {len(records)} records into entities")
-            entities_created = 0
 
-            # Process each nct_id
+            # Filter out invalid records upfront
+            valid_records = []
             for record in records:
                 nct_id = record["nct_id"]
+                if nct_id and str(nct_id).strip():
+                    valid_records.append(record)
 
-                # Skip if nct_id is empty or None
-                if not nct_id or not str(nct_id).strip():
-                    continue
+            if not valid_records:
+                self.logger.warning("No valid records found after filtering")
+                return
 
-                # Clean the nct_id (remove whitespace)
+            self.logger.info(
+                f"Processing {len(valid_records)} valid records in batches "
+                f"(checking Azure storage for existing entities)"
+            )
+
+            # Worker function to create entity from a record
+            async def _create_entity_worker(record):
+                """Create a CTTI entity from a database record, skipping if already in storage."""
+                nct_id = record["nct_id"]
                 clean_nct_id = str(nct_id).strip()
-
-                # Create the ClinicalTrials.gov URL
-                url = f"https://clinicaltrials.gov/study/{clean_nct_id}"
 
                 # Create entity_id using the nct_id
                 entity_id = f"CTTI:study:{clean_nct_id}"
+
+                # Check if entity already exists in Azure storage
+                # This I/O operation benefits from concurrent batching
+                try:
+                    exists = await storage_manager.check_ctti_file_exists(
+                        self.logger, entity_id
+                    )
+                    if exists:
+                        # Entity already processed, skip it
+                        self.logger.debug(
+                            f"Skipping entity {entity_id} - already exists in Azure storage"
+                        )
+                        return  # Don't yield anything, effectively skipping this entity
+                except Exception as e:
+                    # Log error but continue processing - don't fail entire sync on storage check errors
+                    self.logger.warning(
+                        f"Error checking storage for {entity_id}: {e}. "
+                        "Continuing with entity creation."
+                    )
+
+                # Create the ClinicalTrials.gov URL
+                url = f"https://clinicaltrials.gov/study/{clean_nct_id}"
 
                 # Create WebEntity
                 entity = CTTIWebEntity(
@@ -294,23 +327,37 @@ class CTTISource(BaseSource):
                     },
                 )
 
-                # TODO: For faster startup, consider batching entity creation
-                # and checking Azure storage existence in parallel batches
-                # This would reduce the sequential processing time significantly
+                yield entity
 
+            # Process records in batches using concurrent processing
+            # batch_size=50 provides good throughput for Azure storage I/O operations
+            # The concurrent batching significantly speeds up storage existence checks
+            entities_created = 0
+            batch_size = 50
+
+            async for entity in self.process_entities_concurrent(
+                items=valid_records,
+                worker=_create_entity_worker,
+                batch_size=batch_size,
+                preserve_order=False,  # Order doesn't matter for CTTI entities
+                stop_on_error=False,  # Continue processing even if one entity fails
+                max_queue_size=200,  # Reasonable queue size for batching
+            ):
                 entities_created += 1
 
                 # Log progress every 100 entities
                 if entities_created % 100 == 0:
-                    self.logger.info(f"Created {entities_created}/{len(records)} CTTI entities")
-
-                # Yield control periodically to prevent blocking
-                if entities_created % 10 == 0:
-                    await asyncio.sleep(0)  # Allow other tasks to run
+                    self.logger.info(
+                        f"Created {entities_created} new CTTI entities"
+                    )
 
                 yield entity
 
-            self.logger.info(f"Completed creating all {entities_created} CTTI entities")
+            # Calculate skipped count (entities that were filtered out by worker)
+            self.logger.info(
+                f"Completed processing: {entities_created} new entities created, "
+                f"~{len(valid_records) - entities_created} skipped (already in storage)"
+            )
 
         except Exception as e:
             self.logger.error(f"Error in CTTI source generate_entities: {str(e)}")
