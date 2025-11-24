@@ -132,23 +132,36 @@ class SharePoint2019Source(BaseSource):
         """
         instance = cls()
 
+        credentials_dict = cls._coerce_to_dict(credentials)
+        config_dict = cls._coerce_to_dict(config)
+
         # SharePoint credentials
-        instance.sp_username = credentials.get("sharepoint_username")
-        instance.sp_password = credentials.get("sharepoint_password")
-        instance.sp_domain = credentials.get("sharepoint_domain")
+        instance.sp_username = credentials_dict.get("sharepoint_username")
+        instance.sp_password = credentials_dict.get("sharepoint_password")
+        instance.sp_domain = credentials_dict.get("sharepoint_domain")
 
         # AD credentials
-        instance.ad_username = credentials.get("ad_username")
-        instance.ad_password = credentials.get("ad_password")
-        instance.ad_domain = credentials.get("ad_domain")
+        instance.ad_username = credentials_dict.get("ad_username")
+        instance.ad_password = credentials_dict.get("ad_password")
+        instance.ad_domain = credentials_dict.get("ad_domain")
 
         # Config
-        config = config or {}
-        instance.site_url = config.get("site_url", "").rstrip("/")
-        instance.ad_server = config.get("ad_server")
-        instance.ad_search_base = config.get("ad_search_base")
+        instance.site_url = config_dict.get("site_url", "").rstrip("/")
+        instance.ad_server = config_dict.get("ad_server")
+        instance.ad_search_base = config_dict.get("ad_search_base")
 
         return instance
+
+    @staticmethod
+    def _coerce_to_dict(data: Optional[Any]) -> Dict[str, Any]:
+        """Convert config/auth inputs (dict or BaseModel) to a dict."""
+        if data is None:
+            return {}
+        if isinstance(data, dict):
+            return data
+        if hasattr(data, "model_dump"):
+            return data.model_dump()
+        return dict(data)
 
     def _create_ntlm_auth(self) -> HttpNtlmAuth:
         """Create NTLM authentication object for SharePoint API calls."""
@@ -251,7 +264,13 @@ class SharePoint2019Source(BaseSource):
             )
             raise
         except Exception as e:
-            self.logger.error(f"Error calling SharePoint API {url}: {e}")
+            self.logger.error(
+                "Error calling SharePoint API %s: %s (%s)",
+                url,
+                e,
+                type(e).__name__,
+                exc_info=True,
+            )
             raise
 
     async def _sp_get_file_content(self, server_relative_url: str) -> bytes:
@@ -777,7 +796,13 @@ class SharePoint2019Source(BaseSource):
                 if self.site_url and self.site_url.startswith("http://"):
                     original_url = self.site_url
                     https_url = self.site_url.replace("http://", "https://")
-                    self.logger.info(f"HTTP connection failed. Testing HTTPS: {https_url}")
+                    self.logger.warning(
+                        "HTTP validation failed for %s: %s (%s). Trying HTTPS: %s",
+                        original_url,
+                        sp_error,
+                        type(sp_error).__name__,
+                        https_url,
+                    )
 
                     try:
                         self.site_url = https_url
@@ -789,11 +814,25 @@ class SharePoint2019Source(BaseSource):
                         )
                         # We must return False because the saved config would still be HTTP
                         return False
-                    except Exception:
+                    except Exception as https_error:
+                        self.logger.error(
+                            "HTTPS validation failed for %s as well: %s (%s)",
+                            https_url,
+                            https_error,
+                            type(https_error).__name__,
+                            exc_info=True,
+                        )
                         # HTTPS also failed, revert and raise original error
                         self.site_url = original_url
                         raise sp_error
                 else:
+                    self.logger.error(
+                        "SharePoint validation failed for %s: %s (%s)",
+                        self.site_url,
+                        sp_error,
+                        type(sp_error).__name__,
+                        exc_info=True,
+                    )
                     raise sp_error
 
             # Test AD connection
