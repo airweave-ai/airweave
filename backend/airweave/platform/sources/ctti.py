@@ -350,6 +350,7 @@ class CTTISource(BaseSource):
                     self.logger.info(
                         f"Created {entities_created} new CTTI entities"
                     )
+                    await asyncio.sleep(0) # Allow other tasks to run
 
                 yield entity
 
