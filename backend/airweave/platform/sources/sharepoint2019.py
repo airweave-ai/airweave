@@ -255,7 +255,7 @@ class SharePoint2019Source(BaseSource):
         except httpx.HTTPStatusError as http_err:
             resp = http_err.response
             status_code = resp.status_code if resp is not None else "unknown"
-            error_snippet = resp.text[:1000] if resp is not None and resp.text else "<empty body>"
+            error_snippet = resp.text if resp is not None and resp.text else "<empty body>"
             self.logger.error(
                 "SharePoint API %s returned %s. Response body snippet: %s",
                 url,
@@ -333,12 +333,38 @@ class SharePoint2019Source(BaseSource):
             endpoint = next_link.replace(f"{self.site_url}/_api", "")
             params = None  # Params are in the next link
 
-    async def _get_list_items(self, list_id: str) -> AsyncGenerator[Dict[str, Any], None]:
-        """Get all items in a list using pagination."""
+    async def _get_list_items(
+        self, list_id: str, is_document_library: bool = False
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """Get all items in a list using pagination.
+
+        Args:
+            list_id: The GUID of the list
+            is_document_library: If True, expands File properties to get file metadata
+                                 including ServerRelativeUrl, Name, etc.
+
+        Expansions used:
+            - FieldValuesAsText: Returns text representations of all field values,
+              which is essential for lookup fields, person fields, choice fields, etc.
+              Without this, these fields return IDs instead of display values.
+            - File (for document libraries): Returns file metadata including
+              ServerRelativeUrl, Name, Length, UniqueId, etc.
+        """
         endpoint = f"/web/lists(guid'{list_id}')/items"
         params = {
             "$top": 100,
         }
+
+        # Always expand FieldValuesAsText to get human-readable values for:
+        # - Lookup fields (shows display value instead of ID)
+        # - Person/Group fields (shows name instead of ID)
+        # - Choice fields (shows selected value)
+        # - Managed Metadata (shows term value)
+        # For document libraries, also expand File for file metadata
+        if is_document_library:
+            params["$expand"] = "File,FieldValuesAsText"
+        else:
+            params["$expand"] = "FieldValuesAsText"
 
         while True:
             try:
@@ -425,6 +451,114 @@ class SharePoint2019Source(BaseSource):
 
         return AccessControl(viewers=viewers)
 
+    def _extract_field_values(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract and merge field values from a list item.
+
+        SharePoint returns field values in two places:
+        1. Direct item properties (may contain IDs for lookup/person fields)
+        2. FieldValuesAsText (contains text representations of all fields)
+
+        This method merges both, preferring the text values from FieldValuesAsText
+        for human-readable output while keeping both available.
+
+        Args:
+            item: Raw list item from SharePoint API
+
+        Returns:
+            Dictionary with merged field values, including:
+            - All direct properties
+            - text_values: Dict of text representations from FieldValuesAsText
+        """
+        # Get FieldValuesAsText if available (expanded in the query)
+        field_values_as_text = item.get("FieldValuesAsText", {})
+        if "__deferred" in field_values_as_text:
+            # FieldValuesAsText wasn't expanded, just has a deferred reference
+            field_values_as_text = {}
+
+        # Remove metadata keys from FieldValuesAsText
+        text_values = {
+            k: v
+            for k, v in field_values_as_text.items()
+            if not k.startswith("__") and k != "odata.type"
+        }
+
+        # Build a clean fields dictionary
+        # Include important direct properties and add text_values as a nested dict
+        fields = {}
+
+        # Copy relevant direct properties (excluding metadata and deferred objects)
+        skip_keys = {
+            "__metadata",
+            "File",
+            "FieldValuesAsText",
+            "FieldValuesForEdit",
+            "FirstUniqueAncestorSecurableObject",
+            "RoleAssignments",
+            "AttachmentFiles",
+            "ContentType",
+            "ParentList",
+            "Folder",
+        }
+        for key, value in item.items():
+            if key in skip_keys:
+                continue
+            # Skip deferred navigation properties
+            if isinstance(value, dict) and "__deferred" in value:
+                continue
+            fields[key] = value
+
+        # Add text values as a nested key for easy access
+        if text_values:
+            fields["_text_values"] = text_values
+
+        return fields
+
+    def _get_item_title(self, item: Dict[str, Any], file_obj: Dict[str, Any], item_id: Any) -> str:
+        """Extract the best available title for a list item.
+
+        Priority:
+        1. File.Name (for documents)
+        2. FieldValuesAsText.Title (text representation)
+        3. Item.Title (direct property)
+        4. Item.FileLeafRef (file name for documents)
+        5. Fallback to "Item {id}"
+
+        Args:
+            item: Raw list item from SharePoint API
+            file_obj: Expanded File object (may be empty)
+            item_id: Item ID for fallback
+
+        Returns:
+            Best available title string
+        """
+        # For documents, prefer the file name
+        if file_obj:
+            file_name = file_obj.get("Name")
+            if file_name:
+                return file_name
+
+        # Try FieldValuesAsText.Title (human-readable)
+        field_values_as_text = item.get("FieldValuesAsText", {})
+        if not isinstance(field_values_as_text, dict) or "__deferred" in field_values_as_text:
+            field_values_as_text = {}
+
+        text_title = field_values_as_text.get("Title")
+        if text_title:
+            return text_title
+
+        # Fall back to direct Title property
+        direct_title = item.get("Title")
+        if direct_title:
+            return direct_title
+
+        # Try FileLeafRef (file name)
+        file_leaf_ref = item.get("FileLeafRef")
+        if file_leaf_ref:
+            return file_leaf_ref
+
+        # Last resort fallback
+        return f"Item {item_id}"
+
     async def _generate_list_entities(self) -> AsyncGenerator[SharePoint2019ListEntity, None]:
         """Generate list entities for all lists in the site."""
         self.logger.info("Generating list entities...")
@@ -471,7 +605,8 @@ class SharePoint2019Source(BaseSource):
             entity_type="SharePoint2019ListEntity",
         )
 
-        async for item in self._get_list_items(list_id):
+        # Pass is_document_library to expand File properties when needed
+        async for item in self._get_list_items(list_id, is_document_library=is_document_library):
             item_id = item.get("Id")
             file_system_obj_type = item.get("FileSystemObjectType", 0)
 
@@ -479,8 +614,17 @@ class SharePoint2019Source(BaseSource):
             if file_system_obj_type == 1:
                 continue
 
-            # Extract title/name
-            title = item.get("Title") or item.get("FileLeafRef") or f"Item {item_id}"
+            # Get expanded File object (populated when $expand=File is used)
+            file_obj = item.get("File", {})
+            # Handle deferred File object (not expanded) - check for __deferred key
+            if "__deferred" in file_obj:
+                file_obj = {}
+
+            # Extract field values (merges raw values with FieldValuesAsText for better data)
+            fields = self._extract_field_values(item)
+
+            # Extract title using best available source (File.Name, FieldValuesAsText, etc.)
+            title = self._get_item_title(item, file_obj, item_id)
 
             # Get access control
             principals = await self._get_role_assignments(list_id, item_id)
@@ -492,27 +636,24 @@ class SharePoint2019Source(BaseSource):
 
             # For document libraries, also yield file entity
             if is_document_library and file_system_obj_type == 0:
-                # Get file metadata
-                file_ref = item.get("FileRef")  # Server-relative URL
+                # Get file metadata from expanded File object
+                # ServerRelativeUrl is the key property for file access
+                file_ref = file_obj.get("ServerRelativeUrl") or item.get("FileRef")
 
-                if file_ref:
+                if file_ref and file_obj:
                     try:
-                        # Get file details
-                        file_endpoint = f"/web/GetFileByServerRelativeUrl('{file_ref}')"
-                        file_data = await self._sp_get(file_endpoint)
-                        file_obj = file_data.get("d", {})
-
+                        # File metadata is already available from the expanded File object
                         file_name = file_obj.get("Name", title)
-                        file_length = file_obj.get("Length", 0)
+                        file_length = int(file_obj.get("Length", 0) or 0)
 
                         # Determine file type and MIME type
                         _, ext = os.path.splitext(file_name)
                         ext = ext.lower().lstrip(".")
 
-                        # Create file entity
+                        # Create file entity using expanded File properties
                         file_entity = SharePoint2019FileEntity(
                             breadcrumbs=[list_breadcrumb],
-                            id=file_obj.get("UniqueId", item_id),
+                            id=file_obj.get("UniqueId", str(item_id)),
                             name=file_name,
                             title=title,
                             created_at=created,
@@ -558,6 +699,64 @@ class SharePoint2019Source(BaseSource):
 
                     except Exception as e:
                         self.logger.error(f"Error processing file for item {item_id}: {e}")
+                elif file_ref and not file_obj:
+                    # File expansion didn't return data, try fetching directly
+                    self.logger.debug(
+                        f"File object not expanded for item {item_id}, fetching directly"
+                    )
+                    try:
+                        file_endpoint = f"/web/GetFileByServerRelativeUrl('{file_ref}')"
+                        file_data = await self._sp_get(file_endpoint)
+                        fetched_file_obj = file_data.get("d", {})
+
+                        file_name = fetched_file_obj.get("Name", title)
+                        file_length = int(fetched_file_obj.get("Length", 0) or 0)
+
+                        _, ext = os.path.splitext(file_name)
+                        ext = ext.lower().lstrip(".")
+
+                        file_entity = SharePoint2019FileEntity(
+                            breadcrumbs=[list_breadcrumb],
+                            id=fetched_file_obj.get("UniqueId", str(item_id)),
+                            name=file_name,
+                            title=title,
+                            created_at=created,
+                            updated_at=modified,
+                            access=access,
+                            url=f"{self.site_url}{file_ref}",
+                            size=file_length,
+                            file_type=ext or "file",
+                            mime_type=f"application/{ext}" if ext else "application/octet-stream",
+                            server_relative_url=file_ref,
+                            length=file_length,
+                            time_created=fetched_file_obj.get("TimeCreated"),
+                            time_last_modified=fetched_file_obj.get("TimeLastModified"),
+                            list_item_id=item_id,
+                            list_id=list_id,
+                            author=fetched_file_obj.get("Author"),
+                            modified_by=fetched_file_obj.get("ModifiedBy"),
+                            checked_out_by_user=fetched_file_obj.get("CheckedOutByUser"),
+                            check_out_type=fetched_file_obj.get("CheckOutType"),
+                            raw_metadata=fetched_file_obj,
+                            local_path=None,
+                        )
+
+                        try:
+                            file_content = await self._sp_get_file_content(file_ref)
+                            await self.file_downloader.save_bytes(
+                                entity=file_entity,
+                                content=file_content,
+                                filename_with_extension=file_name,
+                                logger=self.logger,
+                            )
+                            yield file_entity
+                        except FileSkippedException as e:
+                            self.logger.debug(f"Skipping file {file_name}: {e.reason}")
+                        except Exception as e:
+                            self.logger.error(f"Failed to download file {file_name}: {e}")
+
+                    except Exception as e:
+                        self.logger.error(f"Error fetching file for item {item_id}: {e}")
             else:
                 # Regular list item (not a file)
                 yield SharePoint2019ListItemEntity(
@@ -568,10 +767,10 @@ class SharePoint2019Source(BaseSource):
                     created_at=created,
                     updated_at=modified,
                     access=access,
-                    fields=item,
-                    content_type_id=item.get("ContentTypeId"),
+                    fields=fields,  # Processed fields with text values
+                    content_type_id=fields.get("ContentTypeId"),
                     file_system_object_type=file_system_obj_type,
-                    server_relative_url=item.get("FileRef"),
+                    server_relative_url=fields.get("FileRef"),
                     list_id=list_id,
                     raw_metadata=item,
                 )
