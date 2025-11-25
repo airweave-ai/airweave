@@ -118,7 +118,6 @@ class RateLimiter:
         """
         # Bypass rate limiting if disabled (for testing)
         if settings.DISABLE_RATE_LIMIT:
-            ctx.logger.debug("Rate limiting disabled via DISABLE_RATE_LIMIT flag")
             return RateLimitResult(
                 allowed=True,
                 retry_after=0.0,

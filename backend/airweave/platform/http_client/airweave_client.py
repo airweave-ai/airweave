@@ -79,11 +79,6 @@ class AirweaveHttpClient:
         """
         # Skip if feature flag is disabled
         if not self._feature_flag_enabled:
-            if self._logger:
-                self._logger.debug(
-                    f"[AirweaveHttpClient] Rate limiting disabled (feature flag off) for "
-                    f"org={self._org_id}, source={self._source_short_name}"
-                )
             return
 
         try:

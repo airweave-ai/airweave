@@ -122,6 +122,9 @@ class Settings(BaseSettings):
     QDRANT_PORT: Optional[int] = None
     TEXT2VEC_INFERENCE_URL: str = "http://localhost:9878"
 
+    # Storage configuration (filesystem-based, cloud-agnostic)
+    STORAGE_PATH: str = "./local_storage"  # In K8s: /data/airweave-storage (PVC mount)
+
     OPENAI_API_KEY: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
     MISTRAL_API_KEY: Optional[str] = None

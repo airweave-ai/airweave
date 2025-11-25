@@ -321,6 +321,18 @@ export const Onboarding = () => {
 
       const organization = await createOrgResponse.json();
 
+      // Track successful org creation
+      posthog.capture('onboarding_completed', {
+        org_id: organization.id,
+        org_name: formData.organizationName,
+        subscription_plan: formData.subscriptionPlan,
+        billing_period: billingPeriod,
+        team_members_invited: teamMembers.length,
+        org_size: formData.organizationSize,
+        user_role: formData.userRole,
+        org_type: formData.organizationType,
+      });
+
       // Step 2: Update organization context
       setCurrentOrganization(organization);
 

@@ -1,13 +1,16 @@
-"""Azure Storage client with environment-aware configuration."""
+"""Cloud-agnostic storage client using filesystem (local or PVC-mounted).
 
-import os
+The storage client uses a simple filesystem backend that works everywhere:
+- Local development: ./local_storage directory
+- Kubernetes with PVC: /data/airweave-storage (mounted from PVC)
+- Any environment: Configured via settings.STORAGE_PATH
+
+No cloud-specific SDKs required - pure filesystem operations.
+"""
+
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import BinaryIO, List, Optional
-
-from azure.core.exceptions import ClientAuthenticationError, ResourceNotFoundError
-from azure.identity import DefaultAzureCredential
-from azure.storage.blob import BlobServiceClient
 
 from airweave.core.config import settings
 from airweave.core.logging import ContextualLogger, logger
@@ -50,171 +53,17 @@ class StorageBackend(ABC):
         pass
 
 
-class AzureStorageBackend(StorageBackend):
-    """Azure Blob Storage backend implementation."""
+class FilesystemStorageBackend(StorageBackend):
+    """Filesystem storage backend (local disk or PVC-mounted).
 
-    def __init__(self, blob_service_client: BlobServiceClient):
-        """Initialize Azure storage backend.
-
-        Args:
-            blob_service_client: Azure BlobServiceClient instance
-        """
-        self.client = blob_service_client
-
-    async def list_containers(self, logger: ContextualLogger) -> List[str]:
-        """List all containers in the storage account.
-
-        Returns:
-            List of container names
-
-        Raises:
-            Exception: If listing fails
-        """
-        try:
-            containers = [c.name for c in self.client.list_containers()]
-            logger.with_context(containers=containers).debug(f"Listed {len(containers)} containers")
-            return containers
-        except Exception as e:
-            logger.error(f"Failed to list containers: {e}")
-            raise
-
-    async def upload_file(
-        self, logger: ContextualLogger, container_name: str, blob_name: str, data: BinaryIO
-    ) -> bool:
-        """Upload a file to Azure Blob Storage.
-
-        Args:
-            logger: The logger to use
-            container_name: Name of the container
-            blob_name: Name of the blob
-            data: File data to upload
-
-        Returns:
-            True if successful
-
-        Raises:
-            Exception: If upload fails
-        """
-        try:
-            container_client = self.client.get_container_client(container_name)
-            blob_client = container_client.get_blob_client(blob_name)
-            blob_client.upload_blob(data, overwrite=True)
-            logger.with_context(
-                container=container_name,
-                blob=blob_name,
-            ).info("Uploaded blob successfully")
-            return True
-        except Exception as e:
-            logger.with_context(
-                container=container_name,
-                blob=blob_name,
-            ).error(f"Failed to upload blob: {e}")
-            raise
-
-    async def download_file(
-        self, logger: ContextualLogger, container_name: str, blob_name: str
-    ) -> Optional[bytes]:
-        """Download a file from Azure Blob Storage.
-
-        Args:
-            logger: The logger to use
-            container_name: Name of the container
-            blob_name: Name of the blob
-
-        Returns:
-            File content as bytes, or None if not found
-
-        Raises:
-            Exception: If download fails (except for not found)
-        """
-        try:
-            container_client = self.client.get_container_client(container_name)
-            blob_client = container_client.get_blob_client(blob_name)
-            data = blob_client.download_blob().readall()
-            logger.with_context(
-                container=container_name,
-                blob=blob_name,
-                size=len(data),
-            ).info("Downloaded blob successfully")
-            return data
-        except ResourceNotFoundError:
-            logger.with_context(container=container_name, blob=blob_name).warning("Blob not found")
-            return None
-        except Exception as e:
-            logger.with_context(
-                container=container_name,
-                blob=blob_name,
-            ).error(f"Failed to download blob: {e}")
-            raise
-
-    async def delete_file(
-        self, logger: ContextualLogger, container_name: str, blob_name: str
-    ) -> bool:
-        """Delete a file from Azure Blob Storage.
-
-        Args:
-            logger: The logger to use
-            container_name: Name of the container
-            blob_name: Name of the blob
-
-        Returns:
-            True if successful
-
-        Raises:
-            Exception: If deletion fails
-        """
-        try:
-            container_client = self.client.get_container_client(container_name)
-            blob_client = container_client.get_blob_client(blob_name)
-            blob_client.delete_blob()
-            logger.with_context(
-                container=container_name,
-                blob=blob_name,
-            ).info("Deleted blob successfully")
-            return True
-        except ResourceNotFoundError:
-            logger.with_context(container=container_name, blob=blob_name).warning("Blob not found")
-            return False
-        except Exception as e:
-            logger.with_context(
-                container=container_name,
-                blob=blob_name,
-            ).error(f"Failed to delete blob: {e}")
-            raise
-
-    async def file_exists(
-        self, logger: ContextualLogger, container_name: str, blob_name: str
-    ) -> bool:
-        """Check if a file exists in Azure Blob Storage.
-
-        Args:
-            logger: The logger to use
-            container_name: Name of the container
-            blob_name: Name of the blob
-
-        Returns:
-            True if the blob exists
-        """
-        try:
-            container_client = self.client.get_container_client(container_name)
-            blob_client = container_client.get_blob_client(blob_name)
-            return blob_client.exists()
-        except Exception as e:
-            logger.with_context(
-                container=container_name,
-                blob=blob_name,
-            ).error(f"Failed to check blob existence: {e}")
-            return False
-
-
-class LocalStorageBackend(StorageBackend):
-    """Local filesystem storage backend implementation."""
+    Works everywhere - local development, Kubernetes with PVC, any platform.
+    """
 
     def __init__(self, base_path: Path):
-        """Initialize local storage backend.
+        """Initialize filesystem storage backend.
 
         Args:
-            base_path: Base directory for local storage
+            base_path: Base directory for storage (from settings.STORAGE_PATH)
         """
         self.base_path = base_path
         self.base_path.mkdir(parents=True, exist_ok=True)
@@ -385,156 +234,53 @@ class StorageClient:
         self._log_configuration()
 
     def _configure_backend(self) -> StorageBackend:
-        """Configure storage backend based on environment.
+        """Configure filesystem storage backend.
+
+        Uses settings.STORAGE_PATH for the storage location:
+        - Local dev: ./local_storage (default)
+        - Kubernetes: /data/airweave-storage (PVC mount)
 
         Returns:
-            Configured storage backend
-
-        Raises:
-            RuntimeError: If configuration fails
+            Configured filesystem storage backend
         """
-        if settings.ENVIRONMENT == "local":
-            return self._configure_local_backend()
-        else:
-            return self._configure_azure_backend()
+        storage_path = Path(settings.STORAGE_PATH)
 
-    def _configure_local_backend(self) -> StorageBackend:
-        """Configure backend for local development.
+        logger.info(f"Configuring filesystem storage", extra={"storage_path": str(storage_path)})
 
-        Tries Azure first, falls back to local disk.
+        # Ensure base directory exists
+        storage_path.mkdir(parents=True, exist_ok=True)
 
-        Returns:
-            Configured storage backend
-        """
-        # Check if we should skip Azure and use local storage directly
-        if os.getenv("SKIP_AZURE_STORAGE", "false").lower() == "true":
-            logger.debug("SKIP_AZURE_STORAGE is set, using local disk storage")
-            local_path = Path("./local_storage")
-            self._ensure_default_containers(local_path)
-            return LocalStorageBackend(local_path)
+        # Create default containers (subdirectories)
+        self._ensure_default_containers(storage_path)
 
-        # Try Azure connection first
-        try:
-            credential = DefaultAzureCredential()
-            storage_account = os.getenv(
-                "AZURE_STORAGE_ACCOUNT_NAME", self._get_default_storage_account()
-            )
+        logger.info(
+            "Filesystem storage configured successfully", extra={"storage_path": str(storage_path)}
+        )
 
-            if not storage_account:
-                raise ValueError("No storage account name available")
-
-            blob_client = BlobServiceClient(
-                account_url=f"https://{storage_account}.blob.core.windows.net",
-                credential=credential,
-            )
-
-            # Test connection
-            try:
-                # Just try to get the first container to test connection
-                next(iter(blob_client.list_containers()), None)
-            except Exception:
-                # If we can't list containers, connection has failed
-                raise
-
-            logger.with_context(
-                storage_account=storage_account,
-            ).info("Connected to Azure Storage via Azure CLI")
-            return AzureStorageBackend(blob_client)
-
-        except (ClientAuthenticationError, Exception) as e:
-            logger.warning(
-                f"Azure connection failed, using local disk: {e} (error type: {type(e).__name__})"
-            )
-
-            # Fall back to local disk
-            local_path = Path("./local_storage")
-            self._ensure_default_containers(local_path)
-            return LocalStorageBackend(local_path)
-
-    def _configure_azure_backend(self) -> StorageBackend:
-        """Configure Azure backend for dev/prod environments.
-
-        Returns:
-            Configured Azure storage backend
-
-        Raises:
-            RuntimeError: If Azure connection fails
-        """
-        try:
-            credential = DefaultAzureCredential()
-            storage_account = os.getenv(
-                "AZURE_STORAGE_ACCOUNT_NAME", self._get_default_storage_account()
-            )
-
-            if not storage_account:
-                raise ValueError("No storage account name configured")
-
-            blob_client = BlobServiceClient(
-                account_url=f"https://{storage_account}.blob.core.windows.net",
-                credential=credential,
-            )
-
-            # Test connection
-            try:
-                # Just try to get the first container to test connection
-                next(iter(blob_client.list_containers()), None)
-            except Exception:
-                # If we can't list containers, connection has failed
-                raise
-
-            logger.with_context(
-                environment=settings.ENVIRONMENT,
-                storage_account=storage_account,
-            ).info("Connected to Azure Storage using managed identity")
-            return AzureStorageBackend(blob_client)
-
-        except Exception as e:
-            logger.with_context(
-                environment=settings.ENVIRONMENT,
-                error_type=type(e).__name__,
-            ).error(f"Failed to connect to Azure Storage: {e}")
-            raise RuntimeError(f"Azure Storage connection failed: {e}") from e
-
-    def _get_default_storage_account(self) -> str:
-        """Get default storage account name based on environment.
-
-        Returns:
-            Storage account name
-        """
-        env_map = {
-            "local": "airweavecoredevstorage",  # Use dev storage when running locally
-            "dev": "airweavecoredevstorage",
-            "prd": "airweavecoreprdsstorage",
-        }
-        return env_map.get(settings.ENVIRONMENT, "")
+        return FilesystemStorageBackend(storage_path)
 
     def _ensure_default_containers(self, base_path: Path) -> None:
-        """Ensure default containers exist for local storage.
+        """Ensure default storage containers (subdirectories) exist.
 
         Args:
-            base_path: Base directory for local storage
+            base_path: Base directory for storage
         """
         default_containers = ["sync-data", "sync-metadata", "processed-files", "backup"]
         for container in default_containers:
             (base_path / container).mkdir(parents=True, exist_ok=True)
 
+        logger.debug(
+            f"Ensured {len(default_containers)} storage containers exist",
+            extra={"containers": default_containers},
+        )
+
     def _log_configuration(self) -> None:
         """Log the current storage configuration."""
         backend_type = type(self.backend).__name__
         logger.with_context(
-            environment=settings.ENVIRONMENT,
+            storage_path=settings.STORAGE_PATH,
             backend_type=backend_type,
-            is_local_disk=isinstance(self.backend, LocalStorageBackend),
         ).info("Storage client configured")
-
-    @property
-    def is_local_disk(self) -> bool:
-        """Check if using local disk storage.
-
-        Returns:
-            True if using local disk storage
-        """
-        return isinstance(self.backend, LocalStorageBackend)
 
     # Delegate all storage operations to the backend
     async def list_containers(self, logger: ContextualLogger) -> List[str]:

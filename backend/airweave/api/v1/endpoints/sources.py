@@ -11,6 +11,7 @@ from airweave.api.context import ApiContext
 from airweave.api.examples import create_single_source_response, create_source_list_response
 from airweave.api.router import TrailingSlashRouter
 from airweave.core.auth_provider_service import auth_provider_service
+from airweave.core.config import settings
 from airweave.core.exceptions import NotFoundException
 from airweave.platform.configs._base import Fields
 from airweave.platform.locator import resource_locator
@@ -91,6 +92,11 @@ async def list(
                 "config_fields": config_fields,
                 "supported_auth_providers": supported_auth_providers,
             }
+
+            # In self-hosted mode, force requires_byoc for OAuth sources
+            if settings.ENVIRONMENT == "self-hosted" and source.auth_methods:
+                if "oauth_browser" in source.auth_methods or "oauth_token" in source.auth_methods:
+                    source_dict["requires_byoc"] = True
 
             source_model = schemas.Source.model_validate(source_dict)
             result_sources.append(source_model)
@@ -173,6 +179,11 @@ async def get(
             "config_fields": config_fields,
             "supported_auth_providers": supported_auth_providers,
         }
+
+        # In self-hosted mode, force requires_byoc for OAuth sources
+        if settings.ENVIRONMENT == "self-hosted" and source.auth_methods:
+            if "oauth_browser" in source.auth_methods or "oauth_token" in source.auth_methods:
+                source_dict["requires_byoc"] = True
 
         # Validate in one step with all fields present
         source_model = schemas.Source.model_validate(source_dict)
