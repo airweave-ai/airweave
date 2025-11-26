@@ -513,10 +513,85 @@ class SharePoint2019Source(BaseSource):
             )
             return []
 
+    def _resolve_user_principal(self, login_name: str) -> str:
+        r"""Resolve a SharePoint LoginName to a canonical user principal identifier.
+
+        This method provides a simple, deterministic approach to identity resolution
+        for access control. It handles two authentication modes commonly found in
+        SharePoint On-Premise deployments:
+
+        MODE 1: Windows/NTLM Authentication (Claims-based)
+        ─────────────────────────────────────────────────────
+        SharePoint stores users with claims-based LoginNames like:
+            "i:0#.w|DOMAIN\username"
+
+        We extract the sAMAccountName (the "username" part) because:
+        - It's the canonical AD identifier (Security Account Manager Account Name)
+        - It's always present in Windows-authenticated environments
+        - It's deterministic: same user always has same sAMAccountName
+        - It can be used to query AD for additional attributes (email, UPN, etc.)
+
+        Parsing approach (simple string splitting, no regex):
+            "i:0#.w|DOMAIN\username" → split on "|" → "DOMAIN\username"
+                                     → split on "\" → "username"
+
+        Caveats:
+        - Multi-domain forests: "jdoe" in CORP and "jdoe" in EMEA are different users
+          but will resolve to the same principal. For multi-domain, consider prefixing
+          with domain or using a domain-to-email mapping configuration.
+        - sAMAccountName != email prefix: "jdoe" might have email "john.doe@company.com"
+          The search endpoint will need to handle this mapping.
+
+        MODE 2: SAML/ADFS/Forms Authentication (Email-based)
+        ─────────────────────────────────────────────────────
+        For federated authentication, LoginName often contains the email directly:
+            "i:0e.t|adfs|john.doe@company.com"
+            "i:0#.f|membership|user@external.com"
+
+        We detect this by checking for "@" in the identity portion.
+
+        Caveats:
+        - Assumes the IdP sends email as the identifier
+        - Some IdPs send opaque IDs instead (would need LDAP lookup)
+
+        Args:
+            login_name: The SharePoint LoginName (claims format or simple)
+
+        Returns:
+            Canonical user identifier (sAMAccountName or email), lowercase.
+            This value is used as the `member_id` in AccessControlMembership
+            and in the `access.viewers` list on entities.
+
+        Examples:
+            "i:0#.w|AIRWEAVE-SP2019\\SP_Admin" → "sp_admin"
+            "i:0e.t|adfs|john.doe@company.com" → "john.doe@company.com"
+            "DOMAIN\\jdoe" → "jdoe"
+            "user@company.com" → "user@company.com"
+        """
+        # Step 1: Extract the identity portion (after the last "|" if claims format)
+        if "|" in login_name:
+            identity_part = login_name.split("|")[-1]
+        else:
+            identity_part = login_name
+
+        # Step 2: Check if it's already an email (SAML/ADFS/Forms auth)
+        if "@" in identity_part and "\\" not in identity_part:
+            # It's an email - use directly
+            return identity_part.lower()
+
+        # Step 3: Extract sAMAccountName from DOMAIN\username format
+        if "\\" in identity_part:
+            sam = identity_part.split("\\")[-1]
+        else:
+            sam = identity_part
+
+        return sam.lower()
+
     def _build_access_control(self, principals: List[Dict[str, Any]]) -> AccessControl:
         """Build AccessControl object from SharePoint principal list.
 
-        Uses LoginName for all principals to ensure consistent identity tracking.
+        Uses canonical user principals (sAMAccountName or email) to enable
+        cross-source identity matching at search time.
         """
         viewers = []
 
@@ -528,8 +603,9 @@ class SharePoint2019Source(BaseSource):
                 continue
 
             if principal_type == 1:  # User
-                # Use LoginName directly (e.g., "i:0#.w|DOMAIN\username")
-                viewers.append(f"user:{login_name}")
+                # Resolve to canonical user principal (sAMAccountName or email)
+                user_principal = self._resolve_user_principal(login_name)
+                viewers.append(f"user:{user_principal}")
             elif principal_type == 8:  # SharePoint Group
                 # Use group:sp:<GroupId> to distinguish from AD groups
                 group_id = principal.get("Id")
@@ -718,6 +794,100 @@ class SharePoint2019Source(BaseSource):
                 raw_metadata=list_obj,
             )
 
+    def _build_file_entity(
+        self,
+        file_obj: Dict[str, Any],
+        item_id: int,
+        list_id: str,
+        title: str,
+        created: Optional[datetime],
+        modified: Optional[datetime],
+        access: AccessControl,
+        breadcrumbs: List[Breadcrumb],
+        base_url: str,
+        file_ref: str,
+    ) -> SharePoint2019FileEntity:
+        """Build a SharePoint2019FileEntity from file metadata.
+
+        Args:
+            file_obj: File metadata from SharePoint API
+            item_id: List item ID
+            list_id: Parent list ID
+            title: Item title
+            created: Created timestamp
+            modified: Modified timestamp
+            access: Access control object
+            breadcrumbs: Breadcrumb trail
+            base_url: Base site URL
+            file_ref: Server-relative URL of the file
+
+        Returns:
+            SharePoint2019FileEntity instance
+        """
+        file_name = file_obj.get("Name", title)
+        file_length = int(file_obj.get("Length", 0) or 0)
+
+        _, ext = os.path.splitext(file_name)
+        ext = ext.lower().lstrip(".")
+
+        return SharePoint2019FileEntity(
+            breadcrumbs=breadcrumbs,
+            id=file_obj.get("UniqueId", str(item_id)),
+            name=file_name,
+            title=title,
+            created_at=created,
+            updated_at=modified,
+            access=access,
+            url=f"{base_url}{file_ref}",
+            size=file_length,
+            file_type=ext or "file",
+            mime_type=f"application/{ext}" if ext else "application/octet-stream",
+            server_relative_url=file_ref,
+            length=file_length,
+            time_created=file_obj.get("TimeCreated"),
+            time_last_modified=file_obj.get("TimeLastModified"),
+            list_item_id=item_id,
+            list_id=list_id,
+            author=file_obj.get("Author"),
+            modified_by=file_obj.get("ModifiedBy"),
+            checked_out_by_user=file_obj.get("CheckedOutByUser"),
+            check_out_type=file_obj.get("CheckOutType"),
+            raw_metadata=file_obj,
+            local_path=None,
+        )
+
+    async def _download_and_yield_file(
+        self,
+        file_entity: SharePoint2019FileEntity,
+        file_ref: str,
+        base_url: str,
+    ) -> Optional[SharePoint2019FileEntity]:
+        """Download file content and save using file downloader.
+
+        Args:
+            file_entity: The file entity to populate
+            file_ref: Server-relative URL of the file
+            base_url: Base site URL
+
+        Returns:
+            The file entity if download succeeded, None otherwise
+        """
+        try:
+            file_content = await self._sp_get_file_content(file_ref, site_url=base_url)
+            await self.file_downloader.save_bytes(
+                entity=file_entity,
+                content=file_content,
+                filename_with_extension=file_entity.name,
+                logger=self.logger,
+            )
+            return file_entity
+        except FileSkippedException as e:
+            self.logger.debug(f"Skipping file {file_entity.name}: {e.reason}")
+            return None
+        except Exception as e:
+            self.logger.error(f"Failed to download file {file_entity.name}: {e}")
+            return None
+
     async def _generate_list_item_and_file_entities(
         self,
         list_entity: SharePoint2019ListEntity,
@@ -775,133 +945,44 @@ class SharePoint2019Source(BaseSource):
             created = self._parse_datetime(item.get("Created"))
             modified = self._parse_datetime(item.get("Modified"))
 
-            # For document libraries, also yield file entity
+            # For document libraries, yield file entity
             if is_document_library and file_system_obj_type == 0:
-                # Get file metadata from expanded File object
-                # ServerRelativeUrl is the key property for file access
                 file_ref = file_obj.get("ServerRelativeUrl") or item.get("FileRef")
+                if not file_ref:
+                    continue
 
-                if file_ref and file_obj:
-                    try:
-                        # File metadata is already available from the expanded File object
-                        file_name = file_obj.get("Name", title)
-                        file_length = int(file_obj.get("Length", 0) or 0)
-
-                        # Determine file type and MIME type
-                        _, ext = os.path.splitext(file_name)
-                        ext = ext.lower().lstrip(".")
-
-                        # Create file entity using expanded File properties
-                        file_entity = SharePoint2019FileEntity(
-                            breadcrumbs=item_breadcrumbs,
-                            id=file_obj.get("UniqueId", str(item_id)),
-                            name=file_name,
-                            title=title,
-                            created_at=created,
-                            updated_at=modified,
-                            access=access,
-                            url=f"{base_url}{file_ref}",
-                            size=file_length,
-                            file_type=ext or "file",
-                            mime_type=f"application/{ext}" if ext else "application/octet-stream",
-                            server_relative_url=file_ref,
-                            length=file_length,
-                            time_created=file_obj.get("TimeCreated"),
-                            time_last_modified=file_obj.get("TimeLastModified"),
-                            list_item_id=item_id,
-                            list_id=list_id,
-                            author=file_obj.get("Author"),
-                            modified_by=file_obj.get("ModifiedBy"),
-                            checked_out_by_user=file_obj.get("CheckedOutByUser"),
-                            check_out_type=file_obj.get("CheckOutType"),
-                            raw_metadata=file_obj,
-                            local_path=None,
-                        )
-
-                        # Download file using downloader service
-                        try:
-                            # Download directly as we have NTLM auth
-                            file_content = await self._sp_get_file_content(
-                                file_ref, site_url=base_url
-                            )
-
-                            # Use file downloader to save
-                            await self.file_downloader.save_bytes(
-                                entity=file_entity,
-                                content=file_content,
-                                filename_with_extension=file_name,
-                                logger=self.logger,
-                            )
-
-                            yield file_entity
-
-                        except FileSkippedException as e:
-                            self.logger.debug(f"Skipping file {file_name}: {e.reason}")
-                        except Exception as e:
-                            self.logger.error(f"Failed to download file {file_name}: {e}")
-
-                    except Exception as e:
-                        self.logger.error(f"Error processing file for item {item_id}: {e}")
-                elif file_ref and not file_obj:
-                    # File expansion didn't return data, try fetching directly
+                # Get file metadata - either from expanded object or fetch directly
+                if not file_obj:
                     self.logger.debug(
                         f"File object not expanded for item {item_id}, fetching directly"
                     )
                     try:
                         file_endpoint = f"/web/GetFileByServerRelativeUrl('{file_ref}')"
                         file_data = await self._sp_get_for_site(base_url, file_endpoint)
-                        fetched_file_obj = file_data.get("d", {})
-
-                        file_name = fetched_file_obj.get("Name", title)
-                        file_length = int(fetched_file_obj.get("Length", 0) or 0)
-
-                        _, ext = os.path.splitext(file_name)
-                        ext = ext.lower().lstrip(".")
-
-                        file_entity = SharePoint2019FileEntity(
-                            breadcrumbs=item_breadcrumbs,
-                            id=fetched_file_obj.get("UniqueId", str(item_id)),
-                            name=file_name,
-                            title=title,
-                            created_at=created,
-                            updated_at=modified,
-                            access=access,
-                            url=f"{base_url}{file_ref}",
-                            size=file_length,
-                            file_type=ext or "file",
-                            mime_type=f"application/{ext}" if ext else "application/octet-stream",
-                            server_relative_url=file_ref,
-                            length=file_length,
-                            time_created=fetched_file_obj.get("TimeCreated"),
-                            time_last_modified=fetched_file_obj.get("TimeLastModified"),
-                            list_item_id=item_id,
-                            list_id=list_id,
-                            author=fetched_file_obj.get("Author"),
-                            modified_by=fetched_file_obj.get("ModifiedBy"),
-                            checked_out_by_user=fetched_file_obj.get("CheckedOutByUser"),
-                            check_out_type=fetched_file_obj.get("CheckOutType"),
-                            raw_metadata=fetched_file_obj,
-                            local_path=None,
-                        )
-
-                        try:
-                            file_content = await self._sp_get_file_content(
-                                file_ref, site_url=base_url
-                            )
-                            await self.file_downloader.save_bytes(
-                                entity=file_entity,
-                                content=file_content,
-                                filename_with_extension=file_name,
-                                logger=self.logger,
-                            )
-                            yield file_entity
-                        except FileSkippedException as e:
-                            self.logger.debug(f"Skipping file {file_name}: {e.reason}")
-                        except Exception as e:
-                            self.logger.error(f"Failed to download file {file_name}: {e}")
-
+                        file_obj = file_data.get("d", {})
                     except Exception as e:
                         self.logger.error(f"Error fetching file for item {item_id}: {e}")
+                        continue
+
+                # Build and download file entity
+                try:
+                    file_entity = self._build_file_entity(
+                        file_obj=file_obj,
+                        item_id=item_id,
+                        list_id=list_id,
+                        title=title,
+                        created=created,
+                        modified=modified,
+                        access=access,
+                        breadcrumbs=item_breadcrumbs,
+                        base_url=base_url,
+                        file_ref=file_ref,
+                    )
+                    result = await self._download_and_yield_file(file_entity, file_ref, base_url)
+                    if result:
+                        yield result
+                except Exception as e:
+                    self.logger.error(f"Error processing file for item {item_id}: {e}")
             else:
                 # Regular list item (not a file)
                 # Use GUID for globally unique entity ID (item IDs are only unique within a list)
@@ -1052,12 +1133,13 @@ class SharePoint2019Source(BaseSource):
         """Generate access control membership tuples for SharePoint + AD.
 
         Creates tuples for:
-        - SP Group → User
+        - SP Group → User (using canonical user principal)
         - SP Group → AD Group
         - AD Group → AD Group (nested)
-        - AD Group → User
+        - AD Group → User (using canonical user principal)
 
-        Uses LoginName consistently to track principals.
+        User member_id values use the canonical principal format from
+        _resolve_user_principal() to enable cross-source identity matching.
         """
         self.logger.info("===== STARTING ACCESS CONTROL MEMBERSHIP EXTRACTION =====")
         membership_count = 0
@@ -1091,8 +1173,10 @@ class SharePoint2019Source(BaseSource):
 
                     if principal_type == 1:  # User
                         # SP Group → User membership
+                        # Use canonical user principal (sAMAccountName or email)
+                        user_principal = self._resolve_user_principal(login_name)
                         yield AccessControlMembership(
-                            member_id=login_name,
+                            member_id=user_principal,
                             member_type="user",
                             group_id=f"sp:{group_id}",
                             group_name=group_title,
@@ -1135,7 +1219,8 @@ class SharePoint2019Source(BaseSource):
             group_login_name: LoginName of the AD group (e.g., "c:0+.w|DOMAIN\\groupname")
 
         Yields:
-            AccessControlMembership for AD Group → User and AD Group → AD Group
+            AccessControlMembership for AD Group → User and AD Group → AD Group.
+            User member_id uses canonical principal (sAMAccountName, lowercase).
         """
         # Extract actual group name from LoginName
         # LoginName format: "c:0+.w|DOMAIN\\groupname"
@@ -1152,6 +1237,7 @@ class SharePoint2019Source(BaseSource):
             search_filter=search_filter,
             search_scope=SUBTREE,
             attributes=["cn", "distinguishedName", "member"],
+            size_limit=1000,
         )
 
         if not ad_conn.entries:
@@ -1188,19 +1274,19 @@ class SharePoint2019Source(BaseSource):
             if not sam_account_name:
                 continue
 
-            # Build LoginName format
-            member_login_name = f"{self.ad_domain}\\{sam_account_name}"
-
             if "user" in object_classes:
                 # AD Group → User
+                # Use canonical user principal (sAMAccountName, lowercase)
                 yield AccessControlMembership(
-                    member_id=member_login_name,
+                    member_id=sam_account_name.lower(),
                     member_type="user",
                     group_id=group_login_name,
                     group_name=group_name,
                 )
             elif "group" in object_classes:
                 # AD Group → AD Group
+                # Build LoginName format for group reference
+                member_login_name = f"{self.ad_domain}\\{sam_account_name}"
                 nested_group_login = f"c:0+.w|{member_login_name}"
                 yield AccessControlMembership(
                     member_id=nested_group_login,

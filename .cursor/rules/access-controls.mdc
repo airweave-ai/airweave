@@ -1,0 +1,315 @@
+# Access Control System
+
+## Overview
+
+The access control system enables fine-grained, database-level permission filtering at search time. It consists of three phases:
+
+1. **Entity-Level Access** - Sources attach `AccessControl` metadata to entities during sync
+2. **Edge List Creation** - Sources generate `AccessControlMembership` tuples (user→group, group→group)
+3. **Resolution** - `AccessBroker` expands user principals at search time for Qdrant filtering
+
+## Architecture Diagram
+
+```
+SYNC TIME:
+  Source → BaseEntity.access (viewers: ["user:x", "group:y"])
+        → AccessControlMembership tuples → PostgreSQL
+
+SEARCH TIME:
+  user_email → AccessBroker.resolve_access_context() → AccessContext
+            → UserFilter operation → Qdrant filter with principals
+```
+
+---
+
+## Phase 1: Entity-Level Access Control
+
+### AccessControl Model (`platform/entities/_base.py`)
+
+```python
+class AccessControl(BaseModel):
+    """Access control metadata - who can view this entity."""
+
+    viewers: List[str] = Field(
+        default_factory=list,
+        description="Principal IDs: 'user:email' or 'group:id'"
+    )
+    is_public: bool = Field(
+        default=False,
+        description="Whether publicly accessible"
+    )
+```
+
+### Principal Format
+
+| Type | Format | Example |
+|------|--------|---------|
+| User | `user:<identifier>` | `user:john@acme.com` |
+| SharePoint Group | `group:sp:<group_id>` | `group:sp:42` |
+| AD Group | `group:ad:<login_name>` | `group:ad:c:0+.w\|DOMAIN\\Engineers` |
+| Generic Group | `group:<group_id>` | `group:engineering-team` |
+
+### Source Implementation Pattern
+
+Sources build `AccessControl` from their permission model:
+
+```python
+def _build_access_control(self, principals: List[Dict]) -> AccessControl:
+    """Convert source principals to normalized format."""
+    viewers = []
+
+    for principal in principals:
+        principal_type = principal.get("PrincipalType")
+        login_name = principal.get("LoginName", "")
+
+        if principal_type == 1:  # User
+            viewers.append(f"user:{login_name}")
+        elif principal_type == 8:  # SP Group
+            viewers.append(f"group:sp:{principal.get('Id')}")
+        elif principal_type == 4:  # AD Group
+            viewers.append(f"group:ad:{login_name}")
+
+    return AccessControl(viewers=viewers)
+```
+
+### Entity Usage
+
+```python
+yield SharePoint2019FileEntity(
+    # ... other fields
+    access=self._build_access_control(principals),
+)
+```
+
+**Key Rule**: Principals are stored as-is on entities. Group expansion happens at search time, not sync time.
+
+---
+
+## Phase 2: Edge List Creation (Membership Tuples)
+
+### AccessControlMembership Schema (`platform/access_control/schemas.py`)
+
+```python
+class AccessControlMembership(BaseModel):
+    """Membership tuple: (member_id, member_type) → group_id"""
+
+    member_id: str    # Email for users, ID for groups
+    member_type: str  # "user" or "group"
+    group_id: str     # Parent group identifier
+    group_name: Optional[str] = None
+```
+
+### Database Model (`models/access_control_membership.py`)
+
+```python
+class AccessControlMembership(OrganizationBase):
+    """PostgreSQL table for membership tuples."""
+
+    member_id: str          # Index for lookup
+    member_type: str        # "user" or "group"
+    group_id: str           # Index for lookup
+    group_name: Optional[str]
+    source_name: str        # e.g., "sharepoint2019"
+    source_connection_id: UUID  # FK with CASCADE delete
+```
+
+**Unique Constraint**: `(organization_id, member_id, member_type, group_id, source_connection_id)`
+
+### Source Generation Pattern
+
+Sources must implement `generate_access_control_memberships()`:
+
+```python
+async def generate_access_control_memberships(
+    self,
+) -> AsyncGenerator[AccessControlMembership, None]:
+    """Generate user→group and group→group tuples."""
+
+    # Get SharePoint groups
+    for sp_group in await self._get_sp_groups():
+        for member in await self._get_group_members(sp_group["Id"]):
+            if member["PrincipalType"] == 1:  # User
+                yield AccessControlMembership(
+                    member_id=member["LoginName"],
+                    member_type="user",
+                    group_id=f"sp:{sp_group['Id']}",
+                    group_name=sp_group["Title"],
+                )
+            elif member["PrincipalType"] == 4:  # AD Group
+                yield AccessControlMembership(
+                    member_id=member["LoginName"],
+                    member_type="group",
+                    group_id=f"sp:{sp_group['Id']}",
+                    group_name=sp_group["Title"],
+                )
+                # Recursively expand AD group
+                async for nested in self._expand_ad_group(member["LoginName"]):
+                    yield nested
+```
+
+### Pipeline Processing (`platform/sync/access_control_pipeline.py`)
+
+```python
+class AccessControlPipeline:
+    """Simplified pipeline: deduplicate + persist to PostgreSQL."""
+
+    async def process(self, memberships: List[AccessControlMembership], sync_context):
+        # 1. Deduplicate by (member_id, member_type, group_id)
+        normalized = self._deduplicate_memberships(memberships)
+
+        # 2. Bulk upsert with ON CONFLICT
+        async with get_db_context() as db:
+            await crud.access_control_membership.bulk_create(
+                db=db,
+                memberships=normalized,
+                organization_id=sync_context.ctx.organization.id,
+                source_connection_id=sync_context.source_connection.id,
+                source_name=sync_context.source_connection.short_name,
+            )
+```
+
+**No transformers, no embeddings** - just normalize and persist.
+
+---
+
+## Phase 3: Resolution at Search Time
+
+### AccessContext Schema (`platform/access_control/schemas.py`)
+
+```python
+class AccessContext(BaseModel):
+    """User's expanded access context for filtering."""
+
+    user_email: str
+    user_principals: List[str]   # ["user:john@acme.com"]
+    group_principals: List[str]  # ["group:sp:42", "group:ad:..."]
+
+    @property
+    def all_principals(self) -> Set[str]:
+        """All principals for Qdrant filtering."""
+        return set(self.user_principals + self.group_principals)
+```
+
+### AccessBroker (`platform/access_control/broker.py`)
+
+```python
+class AccessBroker:
+    """Resolves user → expanded principals."""
+
+    async def resolve_access_context_for_collection(
+        self,
+        db: AsyncSession,
+        user_email: str,
+        readable_collection_id: str,
+        organization_id: UUID,
+    ) -> AccessContext:
+        """Resolve access context scoped to collection's sources."""
+
+        # 1. Query direct memberships (scoped to collection)
+        memberships = await crud.access_control_membership.get_by_member_and_collection(
+            db=db,
+            member_id=user_email,
+            member_type="user",
+            readable_collection_id=readable_collection_id,
+            organization_id=organization_id,
+        )
+
+        # 2. Expand nested group-to-group (recursively)
+        all_groups = await self._expand_group_memberships(
+            db, group_ids=[m.group_id for m in memberships], organization_id=organization_id
+        )
+
+        return AccessContext(
+            user_email=user_email,
+            user_principals=[f"user:{user_email}"],
+            group_principals=[f"group:{g}" for g in all_groups],
+        )
+```
+
+### Qdrant Filter Generation (`search/operations/user_filter.py`)
+
+```python
+def _build_access_control_filter(self, principals: List[str]) -> Dict:
+    """Build Qdrant filter: public OR matching principal."""
+    return {
+        "should": [
+            {"key": "access.is_public", "match": {"value": True}},
+            {"key": "access.viewers", "match": {"any": principals}},
+        ]
+    }
+```
+
+### Search Flow
+
+```python
+# 1. Endpoint resolves access context
+access_context = await access_broker.resolve_access_context_for_collection(
+    db, user_email, collection.readable_id, ctx.organization.id
+)
+
+# 2. SearchService passes to factory
+await service.search(..., access_context=access_context)
+
+# 3. Factory extracts principals
+access_principals = list(access_context.all_principals)
+
+# 4. UserFilter builds Qdrant filter
+filter = _build_access_control_filter(access_principals)
+
+# 5. Retrieval applies filter at DB level
+await destination.search(filter=filter, ...)
+```
+
+---
+
+## Implementation Checklist for New Sources
+
+### Required Methods
+
+1. **`_build_access_control()`** - Convert source principals to `AccessControl`
+2. **`generate_access_control_memberships()`** - Yield membership tuples
+
+### Entity Requirements
+
+- Add `access: AccessControl` field to entity classes
+- Populate during `generate_entities()`
+
+### Principal Conventions
+
+| Source Type | User Format | Group Format |
+|-------------|-------------|--------------|
+| SharePoint 2019 | `user:i:0#.w\|DOMAIN\\user` | `group:sp:42`, `group:ad:...` |
+| Google Drive | `user:john@gmail.com` | `group:group-id@googlegroups.com` |
+| Generic OAuth | `user:email` | `group:role-name` |
+
+---
+
+## Key Invariants
+
+1. **Principals are NOT expanded on entities** - Groups stored as-is
+2. **Expansion happens at search time** - `AccessBroker` resolves transitively
+3. **Collection scoping** - Memberships filtered by source_connection_id
+4. **Cascade delete** - Deleting source_connection removes all memberships
+5. **Case-insensitive deduplication** - `member_id.lower()` for uniqueness
+6. **Qdrant-level filtering** - No post-processing, filter at database
+
+## CRUD Layer Methods
+
+```python
+# Get memberships for user (org-wide)
+crud.access_control_membership.get_by_member(db, member_id, member_type, org_id)
+
+# Get memberships scoped to collection
+crud.access_control_membership.get_by_member_and_collection(db, member_id, member_type, collection_id, org_id)
+
+# Bulk upsert with ON CONFLICT
+crud.access_control_membership.bulk_create(db, memberships, org_id, source_conn_id, source_name)
+```
+
+## Common Pitfalls
+
+1. **Don't expand groups on entities** - Store group IDs, expand at search
+2. **Use consistent principal format** - Same format in entity.access and memberships
+3. **Handle nested groups** - Recursive expansion in `generate_access_control_memberships()`
+4. **Scope to collection** - Use `get_by_member_and_collection()` not org-wide
+5. **Deduplicate before persist** - Pipeline normalizes case and removes dupes
