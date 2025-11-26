@@ -346,9 +346,14 @@ async def _search_collection_async(
     except Exception:
         return []
 
-
+# added strict token match to prevent delete false positives
 async def _token_present_in_collection(
-    client, readable_id: str, token: str, limit: int = 1000, expect_present: bool = True
+    client,
+    readable_id: str,
+    token: str,
+    limit: int = 1000,
+    expect_present: bool = True,
+    require_token_field_match: bool = False,
 ) -> bool:
     """
     Check if `token` appears in any result payload (case-insensitive).
@@ -373,21 +378,77 @@ async def _token_present_in_collection(
 
         # Log sample results for debugging (only if results exist)
         if results and len(results) > 0:
-            logger.info("📋 Sample results (showing up to 3):")
+            logger.info("📋 Sample results (showing up to 3 with IDs/tokens):")
             for i, r in enumerate(results[:3]):
-                payload = r.get("payload", {})
+                payload = r.get("payload", {}) or {}
                 score = r.get("score", 0)
                 name = payload.get("name") or payload.get("title") or payload.get("id", "Unknown")
-                logger.info(f"   • Result {i+1}: {name} (score: {score:.3f})")
+                payload_id = (
+                    payload.get("id")
+                    or payload.get("path")
+                    or payload.get("document_id")
+                    or "Unknown"
+                )
+                payload_token = (
+                    payload.get("token")
+                    or payload.get("payload_token")
+                    or payload.get("tracking_token")
+                )
+                logger.info(
+                    f"   • Result {i+1}: {name} (id: {payload_id}, token: {payload_token}, score: {score:.3f})"
+                )
 
         # Check if token is present in any result
         for i, r in enumerate(results):
-            payload = r.get("payload", {})
-            if payload and token_lower in str(payload).lower():
+            payload = r.get("payload", {}) or {}
+            payload_id = (
+                payload.get("id")
+                or payload.get("path")
+                or payload.get("document_id")
+                or payload.get("title")
+                or "Unknown"
+            )
+            payload_token_fields = [
+                payload.get("token"),
+                payload.get("payload_token"),
+                payload.get("tracking_token"),
+            ]
+            normalized_tokens = {str(value).lower() for value in payload_token_fields if value}
+            payload_text = str(payload).lower()
+
+            if token_lower in normalized_tokens:
+                matched_token = next(
+                    (value for value in payload_token_fields if value and str(value).lower() == token_lower),
+                    None,
+                )
                 if expect_present:
-                    logger.info(f"✅ Token '{token}' found in vector database (as expected)")
+                    logger.info(
+                        f"✅ Token '{token}' found in result #{i+1} (id={payload_id}, token_field={matched_token})"
+                    )
                 else:
-                    logger.warning(f"⚠️ Token '{token}' found but was expected to be deleted!")
+                    logger.warning(
+                        f"⚠️ Token '{token}' still present in result #{i+1} (id={payload_id}, token_field={matched_token})"
+                    )
+                    logger.debug(f"   Payload snapshot: {payload}")
+                return True
+
+            # Allow substring matches only when exact token fields are not required
+            if token_lower in payload_text:
+                if require_token_field_match:
+                    logger.info(
+                        f"ℹ️ Result #{i+1} (id={payload_id}) contains text '{token}' "
+                        "but lacks a token field match; ignoring for verification"
+                    )
+                    continue
+                if expect_present:
+                    logger.info(
+                        f"✅ Token '{token}' found via payload text in result #{i+1} (id={payload_id})"
+                    )
+                else:
+                    logger.warning(
+                        f"⚠️ Token '{token}' still present via payload text in result #{i+1} (id={payload_id})"
+                    )
+                    logger.debug(f"   Payload snapshot: {payload}")
                 return True
 
         # Token not found
@@ -608,12 +669,28 @@ class VerifyPartialDeletionStep(TestStep):
             )
             return
 
+        verify_start = time.perf_counter()
+        entities_to_check = list(self.context.partially_deleted_entities)
+        total_expected = len(entities_to_check)
+        self.context.metrics["partial_delete_expected"] = total_expected
+
+        if total_expected == 0:
+            self.logger.info("ℹ️ No partially deleted entities recorded; skipping verification")
+            self.context.metrics["partial_delete_verified_removed"] = 0
+            self.context.metrics["partial_delete_verification_duration"] = (
+                time.perf_counter() - verify_start
+            )
+            return
+
         client = self.context.airweave_client
 
-        self.logger.info("🔍 Expecting these entities to be deleted:")
-        for entity in self.context.partially_deleted_entities:
+        self.logger.info(
+            f"🔍 Expecting {total_expected} partially deleted entities to stay deleted"
+        )
+        for idx, entity in enumerate(entities_to_check, start=1):
             self.logger.info(
-                f"   - {self._display_name(entity)} (token: {entity.get('token', 'N/A')})"
+                f"   [{idx}/{total_expected}] {self._display_name(entity)} "
+                f"(token: {entity.get('token', 'N/A')})"
             )
 
         async def check_deleted(entity: Dict[str, Any]) -> Tuple[Dict[str, Any], bool]:
@@ -627,30 +704,48 @@ class VerifyPartialDeletionStep(TestStep):
 
             # Check if token is present in collection (expecting it to be absent/deleted)
             present = await _token_present_in_collection(
-                client, self.context.collection_readable_id, token, 1000, expect_present=False
+                client,
+                self.context.collection_readable_id,
+                token,
+                1000,
+                expect_present=False,
+                require_token_field_match=True,
             )
 
             return entity, (not present)
 
-        results = await asyncio.gather(
-            *[check_deleted(e) for e in self.context.partially_deleted_entities]
-        )
+        results = await asyncio.gather(*[check_deleted(e) for e in entities_to_check])
 
         errors = []
-        for entity, is_removed in results:
+        confirmed = 0
+        for idx, (entity, is_removed) in enumerate(results, start=1):
             if not is_removed:
                 errors.append(
                     f"Entity {self._display_name(entity)} still exists in Qdrant after deletion"
                 )
             else:
+                confirmed += 1
                 self.logger.info(
-                    f"✅ Entity {self._display_name(entity)} confirmed removed from Qdrant"
+                    f"✅ [{idx}/{total_expected}] {self._display_name(entity)} confirmed removed from Qdrant"
                 )
 
+        duration = time.perf_counter() - verify_start
+        self.context.metrics["partial_delete_verified_removed"] = confirmed
+        self.context.metrics["partial_delete_verification_duration"] = duration
+        self.context.metrics["partial_delete_verification_failed"] = bool(errors)
+
         if errors:
+            self.logger.error(
+                f"❌ Partial deletion verification failed for {len(errors)} entity(ies)"
+            )
+            for err in errors:
+                self.logger.error(f"   • {err}")
             raise Exception("; ".join(errors))
 
-        self.logger.info("✅ Partial deletion verification completed")
+        self.logger.info(
+            f"✅ Partial deletion verification completed in {duration:.2f}s "
+            f"({confirmed}/{total_expected} entities confirmed removed)"
+        )
 
 
 class VerifyRemainingEntitiesStep(TestStep):
@@ -755,7 +850,12 @@ class VerifyCompleteDeletionStep(TestStep):
 
             # Always use 1000 limit for comprehensive search (expecting it to be absent/deleted)
             present = await _token_present_in_collection(
-                client, self.context.collection_readable_id, expected_token, 1000, expect_present=False
+                client,
+                self.context.collection_readable_id,
+                expected_token,
+                1000,
+                expect_present=False,
+                require_token_field_match=True,
             )
 
             if present:
