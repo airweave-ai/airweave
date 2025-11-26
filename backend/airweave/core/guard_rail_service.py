@@ -8,15 +8,16 @@ from uuid import UUID
 from sqlalchemy import func, select
 
 from airweave import crud
+from airweave.billing.plan_logic import PLAN_LIMITS as BUSINESS_PLAN_LIMITS
 from airweave.core.config import settings
 from airweave.core.exceptions import PaymentRequiredException, UsageLimitExceededException
 from airweave.core.logging import ContextualLogger
 from airweave.core.logging import logger as default_logger
 from airweave.core.shared_models import ActionType
 from airweave.db.session import get_db_context
+from airweave.models.source_connection import SourceConnection
 from airweave.models.user_organization import UserOrganization
 from airweave.schemas.billing_period import BillingPeriodStatus
-from airweave.models.source_connection import SourceConnection
 from airweave.schemas.organization_billing import BillingPlan
 from airweave.schemas.usage import Usage, UsageLimit
 
@@ -57,32 +58,7 @@ class GuardRailService:
     }
 
     # Plan limits configuration (matching BillingService)
-    PLAN_LIMITS = {
-        BillingPlan.DEVELOPER: {
-            "max_entities": 50000,
-            "max_queries": 500,
-            "max_source_connections": 10,
-            "max_team_members": 1,
-        },
-        BillingPlan.PRO: {
-            "max_entities": 100000,
-            "max_queries": 2000,
-            "max_source_connections": 50,
-            "max_team_members": 2,
-        },
-        BillingPlan.TEAM: {
-            "max_entities": 1000000,
-            "max_queries": 10000,
-            "max_source_connections": 1000,
-            "max_team_members": 10,
-        },
-        BillingPlan.ENTERPRISE: {
-            "max_entities": None,
-            "max_queries": None,
-            "max_source_connections": None,
-            "max_team_members": None,
-        },
-    }
+    PLAN_LIMITS = BUSINESS_PLAN_LIMITS
 
     def __init__(self, organization_id: UUID, logger: Optional[ContextualLogger] = None):
         """Initialize the guard rail service.

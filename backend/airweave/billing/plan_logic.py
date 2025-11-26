@@ -90,13 +90,13 @@ class InferredPlan:
 # Plan configuration
 PLAN_LIMITS = {
     BillingPlan.DEVELOPER: {
-        "max_entities": 50000,
-        "max_queries": 500,
+        "max_entities": 100000,
+        "max_queries": 50,
         "max_source_connections": 10,
         "max_team_members": 1,
     },
     BillingPlan.PRO: {
-        "max_entities": 100000,
+        "max_entities": 500000,
         "max_queries": 2000,
         "max_source_connections": 50,
         "max_team_members": 2,

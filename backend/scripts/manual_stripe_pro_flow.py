@@ -336,8 +336,8 @@ def _assert_api_subscription(
     limits = sub.get("limits") or {}
     # Basic plan limits sanity per plan
     plan_limits = {
-        "developer": {"max_source_connections": 10, "max_entities": 50000, "max_queries": 500},
-        "pro": {"max_source_connections": 50, "max_entities": 100000, "max_queries": 2000},
+        "developer": {"max_source_connections": 10, "max_entities": 100000, "max_queries": 50},
+        "pro": {"max_source_connections": 50, "max_entities": 500000, "max_queries": 2000},
         "team": {"max_source_connections": 1000, "max_entities": 1000000, "max_queries": 10000},
     }
     expected = plan_limits.get(expected_plan.lower())
