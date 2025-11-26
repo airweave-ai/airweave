@@ -587,6 +587,50 @@ class SharePoint2019Source(BaseSource):
 
         return sam.lower()
 
+    def _resolve_group_principal(self, login_name: str) -> str:
+        r"""Resolve AD group LoginName to a canonical group principal (group name only).
+
+        Similar to _resolve_user_principal, this extracts just the group name
+        for simpler, more readable access control identifiers.
+
+        SharePoint returns AD groups in various formats:
+        - Claims format: "c:0+.w|DOMAIN\\groupname"
+        - Claims with SID: "c:0+.w|s-1-5-21-..."
+        - Direct format: "DOMAIN\\groupname"
+
+        We extract just the group name (e.g., "group_engineering") for consistency.
+        For SID-based references, we keep the SID as-is since we can't resolve
+        it to a name without an AD lookup.
+
+        Args:
+            login_name: The SharePoint LoginName for an AD group
+
+        Returns:
+            Canonical group identifier (group name, lowercase)
+
+        Examples:
+            "c:0+.w|AIRWEAVE-SP2019\\group_engineering" → "group_engineering"
+            "AIRWEAVE-SP2019\\group_engineering" → "group_engineering"
+            "c:0+.w|s-1-5-21-..." → "s-1-5-21-..." (SID kept as-is)
+        """
+        # Step 1: Extract the identity portion (after the last "|" if claims format)
+        if "|" in login_name:
+            identity_part = login_name.split("|")[-1]
+        else:
+            identity_part = login_name
+
+        # Step 2: Check if it's a SID (starts with s-1-) - keep as-is
+        if identity_part.startswith("s-1-"):
+            return identity_part.lower()
+
+        # Step 3: Extract group name from DOMAIN\groupname format
+        if "\\" in identity_part:
+            group_name = identity_part.split("\\")[-1]
+        else:
+            group_name = identity_part
+
+        return group_name.lower()
+
     def _build_access_control(self, principals: List[Dict[str, Any]]) -> AccessControl:
         """Build AccessControl object from SharePoint principal list.
 
@@ -612,8 +656,9 @@ class SharePoint2019Source(BaseSource):
                 if group_id:
                     viewers.append(f"group:sp:{group_id}")
             elif principal_type == 4:  # AD Security Group
-                # Use LoginName (e.g., "c:0+.w|DOMAIN\groupname")
-                viewers.append(f"group:ad:{login_name}")
+                # Resolve to canonical group principal (group name only)
+                group_principal = self._resolve_group_principal(login_name)
+                viewers.append(f"group:ad:{group_principal}")
 
         return AccessControl(viewers=viewers)
 
@@ -1185,8 +1230,11 @@ class SharePoint2019Source(BaseSource):
 
                     elif principal_type == 4:  # AD Security Group
                         # SP Group → AD Group membership
+                        # Use canonical group principal (group name only) to match document access
+                        group_principal = self._resolve_group_principal(login_name)
+                        ad_group_id = f"ad:{group_principal}"
                         yield AccessControlMembership(
-                            member_id=login_name,
+                            member_id=ad_group_id,
                             member_type="group",
                             group_id=f"sp:{group_id}",
                             group_name=group_title,
@@ -1221,14 +1269,16 @@ class SharePoint2019Source(BaseSource):
         Yields:
             AccessControlMembership for AD Group → User and AD Group → AD Group.
             User member_id uses canonical principal (sAMAccountName, lowercase).
+            Group group_id uses canonical format "ad:groupname" to match document access.
         """
         # Extract actual group name from LoginName
-        # LoginName format: "c:0+.w|DOMAIN\\groupname"
-        group_name = (
-            group_login_name.split("|")[-1].split("\\")[-1]
-            if "|" in group_login_name
-            else group_login_name
-        )
+        # LoginName format: "c:0+.w|DOMAIN\\groupname" or "DOMAIN\\groupname"
+        if "|" in group_login_name:
+            # Claims format: "c:0+.w|DOMAIN\\groupname"
+            group_name = group_login_name.split("|")[-1].split("\\")[-1]
+        else:
+            # Non-claims format: "DOMAIN\\groupname" or just "groupname"
+            group_name = group_login_name.split("\\")[-1]
 
         # Query AD for this group
         search_filter = f"(&(objectClass=group)(sAMAccountName={group_name}))"
@@ -1246,6 +1296,10 @@ class SharePoint2019Source(BaseSource):
 
         group_entry = ad_conn.entries[0]
         members = [str(m) for m in group_entry.member] if hasattr(group_entry, "member") else []
+
+        # Use canonical group_id format: "ad:groupname"
+        # This matches document access format: "group:ad:groupname"
+        membership_group_id = f"ad:{group_name.lower()}"
 
         for member_dn in members:
             # Query this member to determine if it's a user or group
@@ -1280,22 +1334,22 @@ class SharePoint2019Source(BaseSource):
                 yield AccessControlMembership(
                     member_id=sam_account_name.lower(),
                     member_type="user",
-                    group_id=group_login_name,
+                    group_id=membership_group_id,
                     group_name=group_name,
                 )
             elif "group" in object_classes:
                 # AD Group → AD Group
-                # Build LoginName format for group reference
-                member_login_name = f"{self.ad_domain}\\{sam_account_name}"
-                nested_group_login = f"c:0+.w|{member_login_name}"
+                # Use canonical format: "ad:groupname"
+                nested_membership_group_id = f"ad:{sam_account_name.lower()}"
                 yield AccessControlMembership(
-                    member_id=nested_group_login,
+                    member_id=nested_membership_group_id,
                     member_type="group",
-                    group_id=group_login_name,
+                    group_id=membership_group_id,
                     group_name=group_name,
                 )
 
                 # Recurse into nested group
+                nested_group_login = f"{self.ad_domain}\\{sam_account_name}"
                 async for nested_membership in self._expand_ad_group_recursive(
                     ad_conn, nested_group_login
                 ):

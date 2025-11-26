@@ -18,7 +18,7 @@ class AccessBroker:
     """
 
     async def resolve_access_context(
-        self, db: AsyncSession, user_email: str, organization_id: UUID
+        self, db: AsyncSession, user_principal: str, organization_id: UUID
     ) -> AccessContext:
         """Resolve user's access context by expanding group memberships.
 
@@ -33,7 +33,7 @@ class AccessBroker:
 
         Args:
             db: Database session
-            user_email: User's email address
+            user_principal: User principal (username or identifier)
             organization_id: Organization ID
 
         Returns:
@@ -41,11 +41,11 @@ class AccessBroker:
         """
         # Query direct user-group memberships (member_type="user")
         memberships = await crud.access_control_membership.get_by_member(
-            db=db, member_id=user_email, member_type="user", organization_id=organization_id
+            db=db, member_id=user_principal, member_type="user", organization_id=organization_id
         )
 
         # Build principals
-        user_principals = [f"user:{user_email}"]
+        user_principals = [f"user:{user_principal}"]
 
         # Recursively expand group-to-group relationships (if any exist)
         # For SharePoint: no group-group tuples exist (uses /transitivemembers)
@@ -55,13 +55,13 @@ class AccessBroker:
         )
 
         return AccessContext(
-            user_email=user_email,
+            user_principal=user_principal,
             user_principals=user_principals,
             group_principals=[f"group:{g}" for g in all_groups],
         )
 
     async def resolve_access_context_for_collection(
-        self, db: AsyncSession, user_email: str, readable_collection_id: str, organization_id: UUID
+        self, db: AsyncSession, user_principal: str, readable_collection_id: str, organization_id: UUID
     ) -> AccessContext:
         """Resolve user's access context scoped to a collection's source connections.
 
@@ -75,7 +75,7 @@ class AccessBroker:
 
         Args:
             db: Database session
-            user_email: User's email address
+            user_principal: User principal (username or identifier)
             readable_collection_id: Collection readable_id (string) to scope the access context
             organization_id: Organization ID
 
@@ -85,14 +85,14 @@ class AccessBroker:
         # Query user-group memberships scoped to collection (member_type="user")
         memberships = await crud.access_control_membership.get_by_member_and_collection(
             db=db,
-            member_id=user_email,
+            member_id=user_principal,
             member_type="user",
             readable_collection_id=readable_collection_id,
             organization_id=organization_id,
         )
 
         # Build principals
-        user_principals = [f"user:{user_email}"]
+        user_principals = [f"user:{user_principal}"]
 
         # Recursively expand group-to-group relationships (if any exist)
         # Note: Group expansion is still organization-wide, not collection-scoped
@@ -101,7 +101,7 @@ class AccessBroker:
         )
 
         return AccessContext(
-            user_email=user_email,
+            user_principal=user_principal,
             user_principals=user_principals,
             group_principals=[f"group:{g}" for g in all_groups],
         )

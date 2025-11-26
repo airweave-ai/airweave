@@ -38,8 +38,8 @@ class AccessContext(BaseModel):
     Contains expanded principals: user + all groups they belong to (including transitive).
     """
 
-    user_email: str
-    user_principals: List[str] = Field(description="User principals, e.g., ['user:john@acme.com']")
+    user_principal: str = Field(description="User principal (username or identifier)")
+    user_principals: List[str] = Field(description="User principals, e.g., ['user:sp_admin']")
     group_principals: List[str] = Field(
         description="Group principals, e.g., ['group:engineering', 'group:design']"
     )

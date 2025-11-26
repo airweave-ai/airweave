@@ -262,7 +262,7 @@ const Collections = () => {
     const [refreshingSourceIds, setRefreshingSourceIds] = useState<string[]>([]);
 
     // Test state for search-as-user endpoint
-    const [testUserEmail, setTestUserEmail] = useState('');
+    const [testUserPrincipal, setTestUserPrincipal] = useState('');
     const [testSearchQuery, setTestSearchQuery] = useState('');
     const [testSearchResults, setTestSearchResults] = useState<any>(null);
     const [isTestSearching, setIsTestSearching] = useState(false);
@@ -510,10 +510,10 @@ const Collections = () => {
 
     // Test search-as-user endpoint
     const handleTestSearchAsUser = async () => {
-        if (!collection?.readable_id || !testUserEmail || !testSearchQuery) {
+        if (!collection?.readable_id || !testUserPrincipal || !testSearchQuery) {
             toast({
                 title: "Error",
-                description: "Please enter both user email and search query",
+                description: "Please enter both user principal and search query",
                 variant: "destructive"
             });
             return;
@@ -524,7 +524,7 @@ const Collections = () => {
 
         try {
             const response = await apiClient.post(
-                `/collections/${collection.readable_id}/search/as-user?user_email=${encodeURIComponent(testUserEmail)}`,
+                `/collections/${collection.readable_id}/search/as-user?user_principal=${encodeURIComponent(testUserPrincipal)}`,
                 { query: testSearchQuery }
             );
 
@@ -533,7 +533,7 @@ const Collections = () => {
                 setTestSearchResults(data);
                 toast({
                     title: "Success",
-                    description: `Found ${data.results?.length || 0} results for ${testUserEmail}`
+                    description: `Found ${data.results?.length || 0} results for ${testUserPrincipal}`
                 });
             } else {
                 const errorText = await response.text();
@@ -1009,11 +1009,11 @@ const Collections = () => {
                                 <div className="space-y-3">
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
-                                            <label className="text-xs text-muted-foreground mb-1 block">User Email</label>
+                                            <label className="text-xs text-muted-foreground mb-1 block">User Principal</label>
                                             <Input
-                                                placeholder="user@example.com"
-                                                value={testUserEmail}
-                                                onChange={(e) => setTestUserEmail(e.target.value)}
+                                                placeholder="username or user ID"
+                                                value={testUserPrincipal}
+                                                onChange={(e) => setTestUserPrincipal(e.target.value)}
                                                 className="h-8 text-sm"
                                             />
                                         </div>
@@ -1036,7 +1036,7 @@ const Collections = () => {
                                         <Button
                                             size="sm"
                                             onClick={handleTestSearchAsUser}
-                                            disabled={isTestSearching || !testUserEmail || !testSearchQuery}
+                                            disabled={isTestSearching || !testUserPrincipal || !testSearchQuery}
                                             className="h-7 text-xs"
                                         >
                                             {isTestSearching ? (

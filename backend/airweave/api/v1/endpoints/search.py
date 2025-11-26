@@ -178,7 +178,9 @@ async def search_collection_as_user(
     readable_id: str = Path(
         ..., description="The unique readable identifier of the collection to search"
     ),
-    user_email: str = Query(..., description="Email of user to search as"),
+    user_principal: str = Query(
+        ..., description="User principal (username or identifier) to search as"
+    ),
     search_request: Union[SearchRequest, LegacySearchRequest] = ...,
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
@@ -191,13 +193,13 @@ async def search_collection_as_user(
     this collection's source connections.
 
     This endpoint resolves the access context (user + groups) for the specified
-    user email and applies access control filtering at the database level using
+    user principal and applies access control filtering at the database level using
     Qdrant's filter capabilities, rather than post-processing results.
     """
     await guard_rail.is_allowed(ActionType.QUERIES)
 
     ctx.logger.info(
-        f"Starting access-controlled search for collection '{readable_id}' as user '{user_email}'"
+        f"Starting access-controlled search for collection '{readable_id}' as user '{user_principal}'"
     )
 
     # Get collection
@@ -211,13 +213,13 @@ async def search_collection_as_user(
 
     access_context = await access_broker.resolve_access_context_for_collection(
         db=db,
-        user_email=user_email,
+        user_principal=user_principal,
         readable_collection_id=collection.readable_id,
         organization_id=ctx.organization.id,
     )
 
     ctx.logger.info(
-        f"Resolved access context for {user_email}: {len(access_context.all_principals)} principals"
+        f"Resolved access context for {user_principal}: {len(access_context.all_principals)} principals"
     )
 
     # Determine if this is a legacy request and convert if needed
