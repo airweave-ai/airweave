@@ -34,6 +34,7 @@ from airweave.platform.entities.sharepoint2019 import (
     SharePoint2019FileEntity,
     SharePoint2019ListEntity,
     SharePoint2019ListItemEntity,
+    SharePoint2019SiteEntity,
 )
 from airweave.platform.sources._base import BaseSource
 from airweave.platform.sources.retry_helpers import (
@@ -235,7 +236,28 @@ class SharePoint2019Source(BaseSource):
         Returns:
             JSON response from SharePoint
         """
-        url = f"{self.site_url}/_api{endpoint}"
+        return await self._sp_get_for_site(self.site_url, endpoint, params)
+
+    @retry(
+        stop=stop_after_attempt(3),
+        retry=retry_if_rate_limit_or_timeout,
+        wait=wait_rate_limit_with_backoff,
+        reraise=True,
+    )
+    async def _sp_get_for_site(
+        self, site_url: str, endpoint: str, params: Optional[Dict] = None
+    ) -> Dict[str, Any]:
+        """Make authenticated GET request to SharePoint REST API for a specific site.
+
+        Args:
+            site_url: Full URL of the site (e.g., 'https://sharepoint.example.com/sites/mysite')
+            endpoint: REST API endpoint (e.g., '/web/lists')
+            params: Optional query parameters
+
+        Returns:
+            JSON response from SharePoint
+        """
+        url = f"{site_url}/_api{endpoint}"
         auth = self._create_ntlm_auth()
         headers = {
             "Accept": "application/json;odata=verbose",
@@ -273,16 +295,20 @@ class SharePoint2019Source(BaseSource):
             )
             raise
 
-    async def _sp_get_file_content(self, server_relative_url: str) -> bytes:
+    async def _sp_get_file_content(
+        self, server_relative_url: str, site_url: Optional[str] = None
+    ) -> bytes:
         """Download file content from SharePoint.
 
         Args:
             server_relative_url: Server-relative URL of the file
+            site_url: Optional site URL. If not provided, uses self.site_url
 
         Returns:
             File content as bytes
         """
-        url = f"{self.site_url}/_api/web/GetFileByServerRelativeUrl('{server_relative_url}')/$value"
+        base_url = site_url or self.site_url
+        url = f"{base_url}/_api/web/GetFileByServerRelativeUrl('{server_relative_url}')/$value"
         auth = self._create_ntlm_auth()
 
         try:
@@ -310,8 +336,58 @@ class SharePoint2019Source(BaseSource):
             self.logger.error(f"Error downloading file {server_relative_url}: {e}")
             raise
 
-    async def _get_lists(self) -> AsyncGenerator[Dict[str, Any], None]:
-        """Get all lists in the site using pagination."""
+    async def _get_subsites(
+        self, site_url: Optional[str] = None
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """Get all sub-sites (webs) under a site recursively.
+
+        SharePoint 2019 REST API endpoint: /_api/web/webs
+        Returns all immediate child webs/subsites of the specified site.
+
+        Args:
+            site_url: URL of the site to get subsites from. Defaults to self.site_url
+
+        Yields:
+            Dict containing subsite information including Id, Title, Url, ServerRelativeUrl
+        """
+        base_url = site_url or self.site_url
+        endpoint = "/web/webs"
+        params = {"$top": 100}
+
+        while True:
+            try:
+                data = await self._sp_get_for_site(base_url, endpoint, params)
+                results = data.get("d", {}).get("results", [])
+
+                for subsite in results:
+                    # Yield this subsite
+                    yield subsite
+
+                    # Recursively get subsites of this subsite
+                    subsite_url = subsite.get("Url", "").rstrip("/")
+                    if subsite_url:
+                        async for nested_subsite in self._get_subsites(subsite_url):
+                            yield nested_subsite
+
+                # Handle pagination
+                next_link = data.get("d", {}).get("__next")
+                if not next_link:
+                    break
+                endpoint = next_link.replace(f"{base_url}/_api", "")
+                params = None
+            except Exception as e:
+                self.logger.warning(f"Error getting subsites from {base_url}: {e}")
+                break
+
+    async def _get_lists(
+        self, site_url: Optional[str] = None
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """Get all lists in a site using pagination.
+
+        Args:
+            site_url: URL of the site to get lists from. Defaults to self.site_url
+        """
+        base_url = site_url or self.site_url
         endpoint = "/web/lists"
         params = {
             "$filter": "Hidden eq false",  # Skip hidden system lists
@@ -319,7 +395,7 @@ class SharePoint2019Source(BaseSource):
         }
 
         while True:
-            data = await self._sp_get(endpoint, params)
+            data = await self._sp_get_for_site(base_url, endpoint, params)
             results = data.get("d", {}).get("results", [])
 
             for list_obj in results:
@@ -330,11 +406,14 @@ class SharePoint2019Source(BaseSource):
             if not next_link:
                 break
             # Extract endpoint from next link
-            endpoint = next_link.replace(f"{self.site_url}/_api", "")
+            endpoint = next_link.replace(f"{base_url}/_api", "")
             params = None  # Params are in the next link
 
     async def _get_list_items(
-        self, list_id: str, is_document_library: bool = False
+        self,
+        list_id: str,
+        is_document_library: bool = False,
+        site_url: Optional[str] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Get all items in a list using pagination.
 
@@ -342,6 +421,7 @@ class SharePoint2019Source(BaseSource):
             list_id: The GUID of the list
             is_document_library: If True, expands File properties to get file metadata
                                  including ServerRelativeUrl, Name, etc.
+            site_url: URL of the site containing the list. Defaults to self.site_url
 
         Expansions used:
             - FieldValuesAsText: Returns text representations of all field values,
@@ -350,6 +430,7 @@ class SharePoint2019Source(BaseSource):
             - File (for document libraries): Returns file metadata including
               ServerRelativeUrl, Name, Length, UniqueId, etc.
         """
+        base_url = site_url or self.site_url
         endpoint = f"/web/lists(guid'{list_id}')/items"
         params = {
             "$top": 100,
@@ -368,7 +449,7 @@ class SharePoint2019Source(BaseSource):
 
         while True:
             try:
-                data = await self._sp_get(endpoint, params)
+                data = await self._sp_get_for_site(base_url, endpoint, params)
                 results = data.get("d", {}).get("results", [])
 
                 for item in results:
@@ -378,24 +459,33 @@ class SharePoint2019Source(BaseSource):
                 next_link = data.get("d", {}).get("__next")
                 if not next_link:
                     break
-                endpoint = next_link.replace(f"{self.site_url}/_api", "")
+                endpoint = next_link.replace(f"{base_url}/_api", "")
                 params = None
             except Exception as e:
                 self.logger.error(f"Error getting items for list {list_id}: {e}")
                 break
 
-    async def _get_role_assignments(self, list_id: str, item_id: int) -> List[Dict[str, Any]]:
+    async def _get_role_assignments(
+        self, list_id: str, item_id: int, site_url: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
         """Get role assignments (permissions) for a list item.
 
-        Returns list of principals with READ permission.
+        Args:
+            list_id: The GUID of the list
+            item_id: The ID of the list item
+            site_url: URL of the site containing the list. Defaults to self.site_url
+
+        Returns:
+            List of principals with READ permission.
         """
+        base_url = site_url or self.site_url
         endpoint = f"/web/lists(guid'{list_id}')/items({item_id})/roleassignments"
         params = {
             "$expand": "Member,RoleDefinitionBindings",
         }
 
         try:
-            data = await self._sp_get(endpoint, params)
+            data = await self._sp_get_for_site(base_url, endpoint, params)
             assignments = data.get("d", {}).get("results", [])
 
             # Filter for READ permissions (BasePermissions.Low & 1)
@@ -455,19 +545,19 @@ class SharePoint2019Source(BaseSource):
         """Extract and merge field values from a list item.
 
         SharePoint returns field values in two places:
-        1. Direct item properties (may contain IDs for lookup/person fields)
-        2. FieldValuesAsText (contains text representations of all fields)
+        1. Direct item properties (may contain IDs for lookup/person fields, raw HTML)
+        2. FieldValuesAsText (contains clean text representations of all fields)
 
-        This method merges both, preferring the text values from FieldValuesAsText
-        for human-readable output while keeping both available.
+        This method intelligently merges both:
+        - For content-rich fields (WikiField, Description, etc.), prefers clean text
+        - Includes additional fields from FieldValuesAsText (Author, Editor, FileRef, etc.)
+          that provide human-readable versions not present in direct properties
 
         Args:
             item: Raw list item from SharePoint API
 
         Returns:
-            Dictionary with merged field values, including:
-            - All direct properties
-            - text_values: Dict of text representations from FieldValuesAsText
+            Dictionary with merged field values optimized for semantic search
         """
         # Get FieldValuesAsText if available (expanded in the query)
         field_values_as_text = item.get("FieldValuesAsText", {})
@@ -482,8 +572,13 @@ class SharePoint2019Source(BaseSource):
             if not k.startswith("__") and k != "odata.type"
         }
 
+        # Fields that typically contain HTML - prefer clean text version
+        html_fields = {"WikiField", "Description", "Body", "Comment", "Comments", "Notes"}
+
+        # Fields from FieldValuesAsText that contain embedded duplicates - skip these
+        skip_text_fields = {"MetaInfo"}
+
         # Build a clean fields dictionary
-        # Include important direct properties and add text_values as a nested dict
         fields = {}
 
         # Copy relevant direct properties (excluding metadata and deferred objects)
@@ -498,6 +593,7 @@ class SharePoint2019Source(BaseSource):
             "ContentType",
             "ParentList",
             "Folder",
+            "MetaInfo",  # Contains embedded duplicates of WikiField etc.
         }
         for key, value in item.items():
             if key in skip_keys:
@@ -505,11 +601,23 @@ class SharePoint2019Source(BaseSource):
             # Skip deferred navigation properties
             if isinstance(value, dict) and "__deferred" in value:
                 continue
+
+            # For HTML content fields, use clean text version if available
+            if key in html_fields and key in text_values:
+                clean_text = text_values.get(key)
+                if clean_text:
+                    fields[key] = clean_text
+                    continue
+
             fields[key] = value
 
-        # Add text values as a nested key for easy access
-        if text_values:
-            fields["_text_values"] = text_values
+        # Add fields from FieldValuesAsText that aren't already present
+        # This captures Author, Editor, FileRef, UniqueId, and other human-readable fields
+        for key, value in text_values.items():
+            if key in skip_text_fields:
+                continue
+            if key not in fields and value:  # Only add if not already present and non-empty
+                fields[key] = value
 
         return fields
 
@@ -517,11 +625,12 @@ class SharePoint2019Source(BaseSource):
         """Extract the best available title for a list item.
 
         Priority:
-        1. File.Name (for documents)
-        2. FieldValuesAsText.Title (text representation)
+        1. File.Name (for documents in document libraries)
+        2. FieldValuesAsText.Title (text representation, if non-empty)
         3. Item.Title (direct property)
-        4. Item.FileLeafRef (file name for documents)
-        5. Fallback to "Item {id}"
+        4. FieldValuesAsText.FileLeafRef (file name for wiki/site pages - strip .aspx)
+        5. Item.FileLeafRef (file name)
+        6. Fallback to "Item {id}"
 
         Args:
             item: Raw list item from SharePoint API
@@ -537,11 +646,12 @@ class SharePoint2019Source(BaseSource):
             if file_name:
                 return file_name
 
-        # Try FieldValuesAsText.Title (human-readable)
+        # Get FieldValuesAsText for text representations
         field_values_as_text = item.get("FieldValuesAsText", {})
         if not isinstance(field_values_as_text, dict) or "__deferred" in field_values_as_text:
             field_values_as_text = {}
 
+        # Try FieldValuesAsText.Title (human-readable)
         text_title = field_values_as_text.get("Title")
         if text_title:
             return text_title
@@ -551,7 +661,15 @@ class SharePoint2019Source(BaseSource):
         if direct_title:
             return direct_title
 
-        # Try FileLeafRef (file name)
+        # Try FileLeafRef from FieldValuesAsText (important for wiki/site pages like ASPX)
+        text_file_leaf_ref = field_values_as_text.get("FileLeafRef")
+        if text_file_leaf_ref:
+            # Remove .aspx extension for cleaner display
+            if text_file_leaf_ref.lower().endswith(".aspx"):
+                return text_file_leaf_ref[:-5]  # Strip ".aspx"
+            return text_file_leaf_ref
+
+        # Try direct FileLeafRef
         file_leaf_ref = item.get("FileLeafRef")
         if file_leaf_ref:
             return file_leaf_ref
@@ -559,11 +677,22 @@ class SharePoint2019Source(BaseSource):
         # Last resort fallback
         return f"Item {item_id}"
 
-    async def _generate_list_entities(self) -> AsyncGenerator[SharePoint2019ListEntity, None]:
-        """Generate list entities for all lists in the site."""
-        self.logger.info("Generating list entities...")
+    async def _generate_list_entities(
+        self,
+        site_url: Optional[str] = None,
+        site_breadcrumbs: Optional[List[Breadcrumb]] = None,
+    ) -> AsyncGenerator[SharePoint2019ListEntity, None]:
+        """Generate list entities for all lists in a site.
 
-        async for list_obj in self._get_lists():
+        Args:
+            site_url: URL of the site to get lists from. Defaults to self.site_url
+            site_breadcrumbs: Breadcrumbs from parent sites. Defaults to empty list.
+        """
+        base_url = site_url or self.site_url
+        breadcrumbs = site_breadcrumbs or []
+        self.logger.info(f"Generating list entities for site: {base_url}")
+
+        async for list_obj in self._get_lists(site_url=base_url):
             list_id = list_obj.get("Id")
             title = list_obj.get("Title", "Untitled List")
 
@@ -574,7 +703,7 @@ class SharePoint2019Source(BaseSource):
             modified = self._parse_datetime(list_obj.get("LastItemModifiedDate"))
 
             yield SharePoint2019ListEntity(
-                breadcrumbs=[],
+                breadcrumbs=breadcrumbs,
                 id=list_id,
                 name=title,
                 title=title,
@@ -590,12 +719,19 @@ class SharePoint2019Source(BaseSource):
             )
 
     async def _generate_list_item_and_file_entities(
-        self, list_entity: SharePoint2019ListEntity
+        self,
+        list_entity: SharePoint2019ListEntity,
+        site_url: Optional[str] = None,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate list item entities and file entities for a list.
 
         For document libraries (BaseTemplate=101), also download files.
+
+        Args:
+            list_entity: The list entity to generate items for
+            site_url: URL of the site containing the list. Defaults to self.site_url
         """
+        base_url = site_url or self.site_url
         list_id = list_entity.id
         is_document_library = list_entity.base_template == 101
 
@@ -605,8 +741,13 @@ class SharePoint2019Source(BaseSource):
             entity_type="SharePoint2019ListEntity",
         )
 
+        # Combine list entity's breadcrumbs with the list breadcrumb
+        item_breadcrumbs = list(list_entity.breadcrumbs) + [list_breadcrumb]
+
         # Pass is_document_library to expand File properties when needed
-        async for item in self._get_list_items(list_id, is_document_library=is_document_library):
+        async for item in self._get_list_items(
+            list_id, is_document_library=is_document_library, site_url=base_url
+        ):
             item_id = item.get("Id")
             file_system_obj_type = item.get("FileSystemObjectType", 0)
 
@@ -627,7 +768,7 @@ class SharePoint2019Source(BaseSource):
             title = self._get_item_title(item, file_obj, item_id)
 
             # Get access control
-            principals = await self._get_role_assignments(list_id, item_id)
+            principals = await self._get_role_assignments(list_id, item_id, site_url=base_url)
             access = self._build_access_control(principals)
 
             # Parse timestamps
@@ -652,14 +793,14 @@ class SharePoint2019Source(BaseSource):
 
                         # Create file entity using expanded File properties
                         file_entity = SharePoint2019FileEntity(
-                            breadcrumbs=[list_breadcrumb],
+                            breadcrumbs=item_breadcrumbs,
                             id=file_obj.get("UniqueId", str(item_id)),
                             name=file_name,
                             title=title,
                             created_at=created,
                             updated_at=modified,
                             access=access,
-                            url=f"{self.site_url}{file_ref}",
+                            url=f"{base_url}{file_ref}",
                             size=file_length,
                             file_type=ext or "file",
                             mime_type=f"application/{ext}" if ext else "application/octet-stream",
@@ -680,7 +821,9 @@ class SharePoint2019Source(BaseSource):
                         # Download file using downloader service
                         try:
                             # Download directly as we have NTLM auth
-                            file_content = await self._sp_get_file_content(file_ref)
+                            file_content = await self._sp_get_file_content(
+                                file_ref, site_url=base_url
+                            )
 
                             # Use file downloader to save
                             await self.file_downloader.save_bytes(
@@ -706,7 +849,7 @@ class SharePoint2019Source(BaseSource):
                     )
                     try:
                         file_endpoint = f"/web/GetFileByServerRelativeUrl('{file_ref}')"
-                        file_data = await self._sp_get(file_endpoint)
+                        file_data = await self._sp_get_for_site(base_url, file_endpoint)
                         fetched_file_obj = file_data.get("d", {})
 
                         file_name = fetched_file_obj.get("Name", title)
@@ -716,14 +859,14 @@ class SharePoint2019Source(BaseSource):
                         ext = ext.lower().lstrip(".")
 
                         file_entity = SharePoint2019FileEntity(
-                            breadcrumbs=[list_breadcrumb],
+                            breadcrumbs=item_breadcrumbs,
                             id=fetched_file_obj.get("UniqueId", str(item_id)),
                             name=file_name,
                             title=title,
                             created_at=created,
                             updated_at=modified,
                             access=access,
-                            url=f"{self.site_url}{file_ref}",
+                            url=f"{base_url}{file_ref}",
                             size=file_length,
                             file_type=ext or "file",
                             mime_type=f"application/{ext}" if ext else "application/octet-stream",
@@ -742,7 +885,9 @@ class SharePoint2019Source(BaseSource):
                         )
 
                         try:
-                            file_content = await self._sp_get_file_content(file_ref)
+                            file_content = await self._sp_get_file_content(
+                                file_ref, site_url=base_url
+                            )
                             await self.file_downloader.save_bytes(
                                 entity=file_entity,
                                 content=file_content,
@@ -759,26 +904,61 @@ class SharePoint2019Source(BaseSource):
                         self.logger.error(f"Error fetching file for item {item_id}: {e}")
             else:
                 # Regular list item (not a file)
+                # Use GUID for globally unique entity ID (item IDs are only unique within a list)
+                item_guid = item.get("GUID", str(item_id))
                 yield SharePoint2019ListItemEntity(
-                    breadcrumbs=[list_breadcrumb],
-                    id=str(item_id),
+                    breadcrumbs=item_breadcrumbs,
+                    id=item_guid,
                     name=title,
                     title=title,
                     created_at=created,
                     updated_at=modified,
                     access=access,
-                    fields=fields,  # Processed fields with text values
+                    fields=fields,  # Single dict with all API data (clean text preferred)
                     content_type_id=fields.get("ContentTypeId"),
                     file_system_object_type=file_system_obj_type,
                     server_relative_url=fields.get("FileRef"),
                     list_id=list_id,
-                    raw_metadata=item,
                 )
 
-    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
-        """Generate all SharePoint 2019 entities.
+    async def _generate_entities_for_site(
+        self,
+        site_url: str,
+        site_breadcrumbs: Optional[List[Breadcrumb]] = None,
+    ) -> AsyncGenerator[BaseEntity, None]:
+        """Generate all entities for a specific site.
+
+        Args:
+            site_url: URL of the site to process
+            site_breadcrumbs: Breadcrumbs from parent sites. Defaults to empty list.
 
         Yields:
+            - SharePoint2019ListEntity for each list
+            - SharePoint2019ListItemEntity for each non-file list item
+            - SharePoint2019FileEntity for each file (with download)
+        """
+        breadcrumbs = site_breadcrumbs or []
+        self.logger.info(f"Processing site: {site_url}")
+
+        # Generate list entities and their items for this site
+        async for list_entity in self._generate_list_entities(
+            site_url=site_url, site_breadcrumbs=breadcrumbs
+        ):
+            yield list_entity
+
+            # Generate items/files for this list
+            async for item_or_file in self._generate_list_item_and_file_entities(
+                list_entity, site_url=site_url
+            ):
+                yield item_or_file
+
+    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
+        """Generate all SharePoint 2019 entities including sub-sites.
+
+        Processes the root site and recursively processes all sub-sites.
+
+        Yields:
+            - SharePoint2019SiteEntity for each sub-site
             - SharePoint2019ListEntity for each list
             - SharePoint2019ListItemEntity for each non-file list item
             - SharePoint2019FileEntity for each file (with download)
@@ -787,24 +967,76 @@ class SharePoint2019Source(BaseSource):
         entity_count = 0
 
         try:
-            # Generate list entities and their items
-            async for list_entity in self._generate_list_entities():
+            # First, generate entities for the root site
+            self.logger.info(f"Processing root site: {self.site_url}")
+            async for entity in self._generate_entities_for_site(self.site_url):
                 entity_count += 1
-                self.logger.info(f"Entity #{entity_count}: List - {list_entity.title}")
-                yield list_entity
+                entity_type = type(entity).__name__
+                entity_name = getattr(entity, "name", getattr(entity, "title", "unknown"))
+                self.logger.info(
+                    "Entity #%s: %s - %s",
+                    entity_count,
+                    entity_type,
+                    entity_name,
+                )
+                yield entity
 
-                # Generate items/files for this list
-                async for item_or_file in self._generate_list_item_and_file_entities(list_entity):
+            # Then, recursively process all sub-sites
+            self.logger.info("Discovering sub-sites...")
+            async for subsite in self._get_subsites(self.site_url):
+                subsite_id = subsite.get("Id", "")
+                subsite_title = subsite.get("Title", "Untitled Site")
+                subsite_url = subsite.get("Url", "").rstrip("/")
+
+                if not subsite_url:
+                    continue
+
+                self.logger.info(f"Found sub-site: {subsite_title} ({subsite_url})")
+
+                # Parse timestamps for site entity
+                created = self._parse_datetime(subsite.get("Created"))
+
+                # Create site entity for this sub-site
+                site_entity = SharePoint2019SiteEntity(
+                    breadcrumbs=[],  # Sub-sites are at the root level
+                    id=subsite_id,
+                    name=subsite_title,
+                    title=subsite_title,
+                    created_at=created,
+                    updated_at=created,  # SharePoint API doesn't provide LastModified for webs
+                    description=subsite.get("Description"),
+                    url=subsite_url,
+                    server_relative_url=subsite.get("ServerRelativeUrl"),
+                    web_template=subsite.get("WebTemplate"),
+                    language=subsite.get("Language"),
+                    raw_metadata=subsite,
+                )
+
+                entity_count += 1
+                self.logger.info(f"Entity #{entity_count}: Site - {subsite_title}")
+                yield site_entity
+
+                # Create breadcrumb for this site to pass to child entities
+                site_breadcrumb = Breadcrumb(
+                    entity_id=subsite_id,
+                    name=subsite_title,
+                    entity_type="SharePoint2019SiteEntity",
+                )
+
+                # Generate entities for this sub-site
+                async for entity in self._generate_entities_for_site(
+                    subsite_url, site_breadcrumbs=[site_breadcrumb]
+                ):
                     entity_count += 1
-                    entity_type = type(item_or_file).__name__
-                    entity_name = getattr(item_or_file, "name", "unknown")
+                    entity_type = type(entity).__name__
+                    entity_name = getattr(entity, "name", getattr(entity, "title", "unknown"))
                     self.logger.info(
                         "Entity #%s: %s - %s",
                         entity_count,
                         entity_type,
                         entity_name,
                     )
-                    yield item_or_file
+                    yield entity
 
         except Exception as e:
             self.logger.error(f"Error in entity generation: {e}", exc_info=True)
