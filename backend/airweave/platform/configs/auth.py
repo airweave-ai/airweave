@@ -319,6 +319,45 @@ class BitbucketAuthConfig(AuthConfig):
         return self
 
 
+class ShopifyAuthConfig(AuthConfig):
+    """Shopify authentication credentials schema."""
+
+    api_key: str = Field(
+        title="API Key",
+        description=(
+            "The API key for the Shopify store. Generate one in the Shopify admin "
+            "[here](https://help.shopify.com/en/manual/apps/app-types/custom-apps#get-the-api-credentials-"
+            "for-a-custom-app). Go to 'Admin API' access and choose read permissions for "
+            "the store data you want to sync."
+        ),
+        min_length=10,
+    )
+
+    shop_name: str = Field(
+        title="Shop Name",
+        description=(
+            "The name of the Shopify store (e.g., 'my-store' for my-store.myshopify.com)."
+        ),
+        min_length=1,
+    )
+
+    @field_validator("api_key")
+    @classmethod
+    def validate_api_key(cls, v: str) -> str:
+        """Validate Shopify API key."""
+        if not v or not v.strip():
+            raise ValueError("API key is required")
+        return v.strip()
+
+    @field_validator("shop_name")
+    @classmethod
+    def validate_shop_name(cls, v: str) -> str:
+        """Validate Shopify shop name."""
+        if not v or not v.strip():
+            raise ValueError("Shop name is required")
+        return v.strip()
+
+
 class BoxAuthConfig(OAuth2WithRefreshAuthConfig):
     """Box authentication credentials schema."""
 
