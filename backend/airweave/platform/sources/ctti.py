@@ -7,7 +7,7 @@ from the studies table, and creates WebEntity instances with ClinicalTrials.gov 
 import asyncio
 import random
 import time
-from typing import Any, AsyncGenerator, Dict, Optional, Union
+from typing import Any, AsyncGenerator, AsyncIterable, Dict, Optional, Union
 
 import asyncpg
 
@@ -211,7 +211,7 @@ class CTTISource(BaseSource):
         limit: int,
         skip: int,
         total_records: int,
-    ) -> Optional[CTTIWebEntity]:
+    ) -> AsyncIterable[CTTIWebEntity]:
         """Create a CTTI entity from a database record, skipping if already in storage."""
         nct_id = record["nct_id"]
         clean_nct_id = str(nct_id).strip()
@@ -224,7 +224,7 @@ class CTTISource(BaseSource):
             exists = await storage_manager.check_ctti_file_exists(self.logger, entity_id)
             if exists:
                 self.logger.debug(f"Skipping entity {entity_id} - already exists in Azure storage")
-                return None
+                return
         except Exception as e:
             # Log error but continue processing
             self.logger.warning(
@@ -234,8 +234,7 @@ class CTTISource(BaseSource):
         # Create the ClinicalTrials.gov URL
         url = f"https://clinicaltrials.gov/study/{clean_nct_id}"
 
-        # Create WebEntity
-        return CTTIWebEntity(
+        entity = CTTIWebEntity(
             entity_id=entity_id,
             crawl_url=url,
             title=f"Clinical Trial {clean_nct_id}",
@@ -269,6 +268,8 @@ class CTTISource(BaseSource):
                 "total_fetched": total_records,
             },
         )
+
+        yield entity
 
     async def generate_entities(self) -> AsyncGenerator[Union[CTTIWebEntity], None]:
         """Generate WebEntity instances for each nct_id in the AACT studies table.
