@@ -8,6 +8,7 @@ The storage client uses a simple filesystem backend that works everywhere:
 No cloud-specific SDKs required - pure filesystem operations.
 """
 
+import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import BinaryIO, List, Optional
@@ -245,7 +246,7 @@ class StorageClient:
         """
         storage_path = Path(settings.STORAGE_PATH)
 
-        logger.info(f"Configuring filesystem storage", extra={"storage_path": str(storage_path)})
+        logger.info("Configuring filesystem storage", extra={"storage_path": str(storage_path)})
 
         # Ensure base directory exists
         storage_path.mkdir(parents=True, exist_ok=True)

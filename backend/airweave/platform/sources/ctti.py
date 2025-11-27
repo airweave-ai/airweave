@@ -6,7 +6,8 @@ from the studies table, and creates WebEntity instances with ClinicalTrials.gov 
 
 import asyncio
 import random
-from typing import Any, AsyncGenerator, Dict, Optional, Union
+import time
+from typing import Any, AsyncGenerator, AsyncIterable, Dict, Optional, Union
 
 import asyncpg
 
@@ -16,6 +17,7 @@ from airweave.platform.decorators import source
 from airweave.platform.entities._base import Breadcrumb
 from airweave.platform.entities.ctti import CTTIWebEntity
 from airweave.platform.sources._base import BaseSource
+from airweave.platform.storage import storage_manager
 from airweave.schemas.source_connection import AuthenticationMethod
 
 # Global connection pool for CTTI to prevent connection exhaustion
@@ -142,6 +144,7 @@ class CTTISource(BaseSource):
 
     def __init__(self):
         """Initialize the CTTI source."""
+        super().__init__()
         self.pool: Optional[asyncpg.Pool] = None
 
     @classmethod
@@ -201,8 +204,78 @@ class CTTISource(BaseSource):
 
         return self.pool
 
+    async def _create_entity_worker(
+        self,
+        record: Any,
+        *,
+        limit: int,
+        skip: int,
+        total_records: int,
+    ) -> AsyncIterable[CTTIWebEntity]:
+        """Create a CTTI entity from a database record, skipping if already in storage."""
+        nct_id = record["nct_id"]
+        clean_nct_id = str(nct_id).strip()
+
+        # Create entity_id using the nct_id
+        entity_id = f"CTTI:study:{clean_nct_id}"
+
+        # Check if entity already exists in Azure storage
+        try:
+            exists = await storage_manager.check_ctti_file_exists(self.logger, entity_id)
+            if exists:
+                self.logger.debug(f"Skipping entity {entity_id} - already exists in Azure storage")
+                return
+        except Exception as e:
+            # Log error but continue processing
+            self.logger.warning(
+                f"Error checking storage for {entity_id}: {e}. Continuing with entity creation."
+            )
+
+        # Create the ClinicalTrials.gov URL
+        url = f"https://clinicaltrials.gov/study/{clean_nct_id}"
+
+        entity = CTTIWebEntity(
+            entity_id=entity_id,
+            crawl_url=url,
+            title=f"Clinical Trial {clean_nct_id}",
+            description=(
+                f"Clinical trial study from ClinicalTrials.gov with NCT ID: {clean_nct_id}"
+            ),
+            nct_id=clean_nct_id,
+            study_url=url,
+            data_source="ClinicalTrials.gov",
+            breadcrumbs=[
+                Breadcrumb(
+                    entity_id="CTTI:source",
+                    name="CTTI Clinical Trials",
+                    entity_type="source",
+                ),
+                Breadcrumb(
+                    entity_id=entity_id,
+                    name=f"Clinical Trial {clean_nct_id}",
+                    entity_type="clinical_trial",
+                ),
+            ],
+            metadata={
+                "source": "CTTI",
+                "database_host": self.AACT_HOST,
+                "database_name": self.AACT_DATABASE,
+                "database_schema": self.AACT_SCHEMA,
+                "database_table": self.AACT_TABLE,
+                "original_nct_id": nct_id,
+                "limit_used": limit,
+                "skip_used": skip,
+                "total_fetched": total_records,
+            },
+        )
+
+        yield entity
+
     async def generate_entities(self) -> AsyncGenerator[Union[CTTIWebEntity], None]:
-        """Generate WebEntity instances for each nct_id in the AACT studies table."""
+        """Generate WebEntity instances for each nct_id in the AACT studies table.
+
+        Skips entities that already exist in Azure storage to avoid redundant processing.
+        """
         try:
             # Get the connection pool
             pool = await self._ensure_pool()
@@ -240,77 +313,60 @@ class CTTISource(BaseSource):
             # Use retry logic for query execution
             records = await _retry_with_backoff(_execute_query)
 
-            self.logger.info(f"Starting to process {len(records)} records into entities")
-            entities_created = 0
+            self.logger.info(f"Starting to process {len(records)} records into CTTI entities")
 
-            # Process each nct_id
+            # Filter out invalid records upfront
+            valid_records = []
             for record in records:
                 nct_id = record["nct_id"]
+                if nct_id and str(nct_id).strip():
+                    valid_records.append(record)
 
-                # Skip if nct_id is empty or None
-                if not nct_id or not str(nct_id).strip():
-                    continue
+            if not valid_records:
+                self.logger.warning("No valid records found after filtering")
+                return
 
-                # Clean the nct_id (remove whitespace)
-                clean_nct_id = str(nct_id).strip()
+            start_time = time.time()
 
-                # Create the ClinicalTrials.gov URL
-                url = f"https://clinicaltrials.gov/study/{clean_nct_id}"
+            self.logger.info(
+                f"Processing {len(valid_records)} valid records in batches "
+                f"(checking Azure storage for existing entities)"
+            )
 
-                # Create entity_id using the nct_id
-                entity_id = f"CTTI:study:{clean_nct_id}"
+            # Process records in batches using concurrent processing
+            # batch_size=50 provides good throughput for Azure storage I/O operations
+            # The concurrent batching significantly speeds up storage existence checks
+            entities_created = 0
+            batch_size = 50
 
-                # Create WebEntity
-                entity = CTTIWebEntity(
-                    entity_id=entity_id,
-                    url=url,
-                    title=f"Clinical Trial {clean_nct_id}",
-                    description=(
-                        f"Clinical trial study from ClinicalTrials.gov with NCT ID: {clean_nct_id}"
-                    ),
-                    nct_id=clean_nct_id,
-                    study_url=url,
-                    data_source="ClinicalTrials.gov",
-                    breadcrumbs=[
-                        Breadcrumb(
-                            entity_id="CTTI:source", name="CTTI Clinical Trials", type="source"
-                        ),
-                        Breadcrumb(
-                            entity_id=entity_id,
-                            name=f"Clinical Trial {clean_nct_id}",
-                            type="clinical_trial",
-                        ),
-                    ],
-                    metadata={
-                        "source": "CTTI",
-                        "database_host": self.AACT_HOST,
-                        "database_name": self.AACT_DATABASE,
-                        "database_schema": self.AACT_SCHEMA,
-                        "database_table": self.AACT_TABLE,
-                        "original_nct_id": nct_id,  # Keep original in case it had formatting
-                        "limit_used": limit,
-                        "skip_used": skip,
-                        "total_fetched": len(records),
-                    },
-                )
-
-                # TODO: For faster startup, consider batching entity creation
-                # and checking Azure storage existence in parallel batches
-                # This would reduce the sequential processing time significantly
-
+            async for entity in self.process_entities_concurrent(
+                items=valid_records,
+                worker=lambda rec: self._create_entity_worker(
+                    rec, limit=limit, skip=skip, total_records=len(valid_records)
+                ),
+                batch_size=batch_size,
+                preserve_order=False,  # Order doesn't matter for CTTI entities
+                stop_on_error=False,  # Continue processing even if one entity fails
+                max_queue_size=200,  # Reasonable queue size for batching
+            ):
                 entities_created += 1
 
                 # Log progress every 100 entities
                 if entities_created % 100 == 0:
-                    self.logger.info(f"Created {entities_created}/{len(records)} CTTI entities")
-
-                # Yield control periodically to prevent blocking
-                if entities_created % 10 == 0:
+                    self.logger.info(f"Created {entities_created} new CTTI entities")
                     await asyncio.sleep(0)  # Allow other tasks to run
 
                 yield entity
 
-            self.logger.info(f"Completed creating all {entities_created} CTTI entities")
+            end_time = time.time()
+            duration = end_time - start_time
+
+            # Calculate skipped count (entities that were filtered out by worker)
+            self.logger.info(
+                f"Completed processing: {entities_created} new CTTI entities created, "
+                f"~{len(valid_records) - entities_created} skipped (already in storage), "
+                f"Time taken: {duration:.4f} seconds"
+            )
 
         except Exception as e:
             self.logger.error(f"Error in CTTI source generate_entities: {str(e)}")
