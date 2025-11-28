@@ -21,7 +21,7 @@ class SemanticChunker(BaseChunker):
 
     # Configuration constants
     MAX_TOKENS_PER_CHUNK = 8192  # OpenAI text-embedding-3-small hard limit (safety net)
-    SEMANTIC_CHUNK_SIZE = 2048  # Soft target for semantic groups (better search quality)
+    SEMANTIC_CHUNK_SIZE = 4096  # Soft target for semantic groups (better search quality)
     OVERLAP_TOKENS = 128  # Token overlap between chunks
 
     # SemanticChunker configuration
@@ -41,7 +41,7 @@ class SemanticChunker(BaseChunker):
     # Final search embeddings use OpenAI text-embedding-3-small separately.
     EMBEDDING_MODEL = "minishlab/potion-base-128M"  # Default: Good speed/quality balance
 
-    SIMILARITY_THRESHOLD = 0.3  # 0-1: Lower=larger chunks, Higher=smaller chunks
+    SIMILARITY_THRESHOLD = 0.01  # 0-1: Lower=larger chunks, Higher=smaller chunks
     SIMILARITY_WINDOW = 10  # Number of sentences to compare for similarity
     MIN_SENTENCES_PER_CHUNK = 1  # Prevent tiny fragment chunks
     MIN_CHARACTERS_PER_SENTENCE = 24  # Minimum chars per sentence
@@ -214,7 +214,11 @@ class SemanticChunker(BaseChunker):
         for chunks in semantic_results:
             for chunk in chunks:
                 # Recount with tiktoken
-                chunk.token_count = len(self._tiktoken_tokenizer.encode(chunk.text))
+                # Use allowed_special="all" to handle special tokens like <|endoftext|>
+                # that may appear in user content (e.g., AI-generated text pasted into Linear)
+                chunk.token_count = len(
+                    self._tiktoken_tokenizer.encode(chunk.text, allowed_special="all")
+                )
 
         return semantic_results
 

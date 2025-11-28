@@ -14,9 +14,9 @@ from airweave.core.logging import ContextualLogger
 from airweave.core.logging import logger as default_logger
 from airweave.core.shared_models import ActionType
 from airweave.db.session import get_db_context
+from airweave.models.source_connection import SourceConnection
 from airweave.models.user_organization import UserOrganization
 from airweave.schemas.billing_period import BillingPeriodStatus
-from airweave.models.source_connection import SourceConnection
 from airweave.schemas.organization_billing import BillingPlan
 from airweave.schemas.usage import Usage, UsageLimit
 
@@ -138,7 +138,6 @@ class GuardRailService:
             False if local development mode, True otherwise
         """
         if settings.LOCAL_DEVELOPMENT:
-            self.logger.debug("Local development mode - usage limits disabled")
             return False
         return True
 

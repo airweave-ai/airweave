@@ -101,6 +101,7 @@ class CodeChunker(BaseChunker):
         """Chunk a batch of code texts with two-stage approach.
 
         Stage 1: CodeChunker chunks at AST boundaries (functions, classes)
+        Stage 1.5: Recount tokens with tiktoken cl100k_base (Chonkie reports incorrect counts)
         Stage 2: TokenChunker force-splits any chunks exceeding MAX_TOKENS_PER_CHUNK (hard limit)
 
         Uses run_in_thread_pool because Chonkie is synchronous (avoids blocking event loop).
@@ -123,8 +124,17 @@ class CodeChunker(BaseChunker):
             # CodeChunker failure = sync failure (not entity-level)
             raise SyncFailureError(f"CodeChunker batch processing failed: {e}")
 
-        # Stage 2: Safety net (batched for efficiency)
-        final_results = await run_in_thread_pool(self._apply_safety_net_batched, code_results)
+        # Stage 1.5: Recount tokens with tiktoken (Chonkie's CodeChunker reports incorrect counts)
+        # Chonkie counts tokens from individual AST nodes, but the final chunk text includes
+        # whitespace/gaps between nodes plus leading/trailing content, causing underestimates.
+        code_results_with_tiktoken = await run_in_thread_pool(
+            self._recount_tokens_with_tiktoken, code_results
+        )
+
+        # Stage 2: Safety net (batched for efficiency, now uses accurate tiktoken counts)
+        final_results = await run_in_thread_pool(
+            self._apply_safety_net_batched, code_results_with_tiktoken
+        )
 
         # Validate all chunks meet requirements
         for doc_chunks in final_results:
@@ -215,18 +225,50 @@ class CodeChunker(BaseChunker):
 
         return final_results
 
+    def _recount_tokens_with_tiktoken(self, code_results: List[List[Any]]) -> List[List[Any]]:
+        """Recount all chunks with tiktoken cl100k_base for accurate token counts.
+
+        Chonkie's CodeChunker reports incorrect token counts because it counts tokens
+        from individual AST nodes, but the final chunk text includes:
+        - Whitespace/gaps between AST nodes
+        - Leading content before the first node
+        - Trailing content after the last node
+
+        This causes token counts to be significantly understated. We recount with
+        tiktoken to get accurate token counts before the safety net check.
+
+        Args:
+            code_results: Chunks from CodeChunker with potentially incorrect token counts
+
+        Returns:
+            Same chunks but with token_count field updated to accurate tiktoken counts
+        """
+        for chunks in code_results:
+            for chunk in chunks:
+                # Recount with tiktoken (actual chunk text may be larger than reported)
+                # Use allowed_special="all" to handle special tokens like <|endoftext|>
+                # that may appear in code comments or strings
+                chunk.token_count = len(
+                    self._tiktoken_tokenizer.encode(chunk.text, allowed_special="all")
+                )
+
+        return code_results
+
     def _convert_chunk(self, chunk) -> Dict[str, Any]:
         """Convert Chonkie Chunk object to dict format.
 
+        Token counts have already been recounted with tiktoken in
+        _recount_tokens_with_tiktoken(), so we just use them directly.
+
         Args:
-            chunk: Chonkie Chunk object with text, start_index, end_index, token_count
+            chunk: Chonkie Chunk object with tiktoken token_count
 
         Returns:
-            Dict with chunk data
+            Dict with chunk data and accurate OpenAI token count
         """
         return {
             "text": chunk.text,
             "start_index": chunk.start_index,
             "end_index": chunk.end_index,
-            "token_count": chunk.token_count,
+            "token_count": chunk.token_count,  # Already tiktoken count
         }

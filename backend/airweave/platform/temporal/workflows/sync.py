@@ -114,6 +114,10 @@ class RunSourceConnectionWorkflow:
             return  # Exit gracefully without error
 
         try:
+            # Use longer heartbeat timeout in local development for debugging
+            local_development = ctx_dict.get("local_development", False)
+            heartbeat_timeout = timedelta(hours=1) if local_development else timedelta(minutes=5)
+
             await workflow.execute_activity(
                 run_sync_activity,
                 args=[
@@ -126,9 +130,7 @@ class RunSourceConnectionWorkflow:
                     force_full_sync,
                 ],
                 start_to_close_timeout=timedelta(days=7),
-                heartbeat_timeout=timedelta(
-                    seconds=30
-                ),  # quicker cancel delivery on next RPC heartbeat
+                heartbeat_timeout=heartbeat_timeout,
                 cancellation_type=workflow.ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
                 retry_policy=RetryPolicy(
                     maximum_attempts=1,  # NO RETRIES - fail fast

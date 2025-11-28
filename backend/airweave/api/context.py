@@ -106,6 +106,8 @@ class ApiContext(BaseModel):
         Returns:
             Dict containing all fields
         """
+        from airweave.core.config import settings
+
         return {
             "request_id": self.request_id,
             "organization_id": str(self.organization.id),
@@ -113,4 +115,5 @@ class ApiContext(BaseModel):
             "user": self.user.model_dump(mode="json") if self.user else None,
             "auth_method": self.auth_method.value,
             "auth_metadata": self.auth_metadata,
+            "local_development": settings.LOCAL_DEVELOPMENT,
         }

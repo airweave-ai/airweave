@@ -28,6 +28,7 @@ from airweave.platform.entities._base import (
     DeletionEntity,
     FileEntity,
     PolymorphicEntity,
+    WebEntity,
 )
 from airweave.platform.sync.context import SyncContext
 from airweave.platform.sync.exceptions import EntityProcessingError, SyncFailureError
@@ -940,10 +941,18 @@ class EntityPipeline:
         entities: List[BaseEntity],
         sync_context: SyncContext,
     ) -> None:
-        """Build textual_representation with batch-optimized conversion."""
+        """Build textual_representation with batch-optimized conversion.
+
+        This method:
+        1. Builds metadata section for all entities
+        2. Determines the appropriate converter for each entity type
+        3. Batch converts content and appends to textual_representation
+        4. Tracks and removes failed entities
+        """
         source_name = sync_context.source._short_name
 
-        # Step 1: Build metadata section
+        # Step 1: Build metadata section for all entities
+        # CodeFileEntity is exempt because code is self-documenting (AST chunking works on raw code)
         async def _build_metadata(entity: BaseEntity):
             metadata = self._build_metadata_section(entity, source_name)
             if not metadata and not isinstance(entity, CodeFileEntity):
@@ -952,59 +961,54 @@ class EntityPipeline:
 
         await asyncio.gather(*[_build_metadata(e) for e in entities])
 
-        # Step 2: Partition FileEntities by converter
-        converter_groups = {}  # {converter_module: [entity, ...]}
+        # Step 2: Partition entities by converter
+        # Store (entity, key) tuples to avoid recomputing keys later
         failed_entities = []  # Track entities that failed (including unsupported types)
+        converter_groups: Dict[Any, List[Tuple[BaseEntity, str]]] = {}
 
         for entity in entities:
-            if isinstance(entity, FileEntity):
-                # Validate local_path exists
-                if not entity.local_path:
-                    sync_context.logger.warning(
-                        f"FileEntity {entity.__class__.__name__}[{entity.entity_id}] "
-                        f"missing local_path"
-                    )
-                    failed_entities.append(entity)
+            try:
+                converter, key = self._get_converter_and_key(entity)
+                if converter is None:
+                    # Entity type doesn't need content conversion (e.g., base entities)
                     continue
+                if converter not in converter_groups:
+                    converter_groups[converter] = []
+                converter_groups[converter].append((entity, key))
+            except EntityProcessingError as e:
+                sync_context.logger.warning(
+                    f"Skipping {entity.__class__.__name__}[{entity.entity_id}]: {e}"
+                )
+                failed_entities.append(entity)
+
+        # Step 3: Batch convert each partition and append content to entities
+        # Default batch size for converters without specific config
+        DEFAULT_CONVERTER_BATCH_SIZE = 10
+
+        for converter, entity_key_pairs in converter_groups.items():
+            # Use converter-specific batch size if available, otherwise default
+            batch_size = getattr(converter, "BATCH_SIZE", DEFAULT_CONVERTER_BATCH_SIZE)
+
+            for i in range(0, len(entity_key_pairs), batch_size):
+                sub_batch = entity_key_pairs[i : i + batch_size]
+
+                # Extract keys from pre-computed tuples
+                keys = [key for _, key in sub_batch]
 
                 try:
-                    converter = self._determine_converter_for_file(entity.local_path)
-                    if converter not in converter_groups:
-                        converter_groups[converter] = []
-                    converter_groups[converter].append(entity)
-                except EntityProcessingError as e:
-                    sync_context.logger.warning(
-                        f"Skipping {entity.__class__.__name__}[{entity.entity_id}]: {e}"
-                    )
-                    failed_entities.append(entity)
-                    continue
-
-        # Step 3: Batch convert each partition and append to entities
-        # Process in smaller sub-batches for progressive completion (especially for Mistral)
-        CONVERTER_BATCH_SIZE = 10  # Max files per converter batch (prevents waterfall delay)
-
-        for converter, file_entities in converter_groups.items():
-            # Split into sub-batches to avoid blocking on large Mistral uploads
-            for i in range(0, len(file_entities), CONVERTER_BATCH_SIZE):
-                sub_batch = file_entities[i : i + CONVERTER_BATCH_SIZE]
-                file_paths = [e.local_path for e in sub_batch]
-
-                try:
-                    # Batch convert returns Dict[file_path, text_content]
-                    results = await converter.convert_batch(file_paths)
+                    # Batch convert returns Dict[key, text_content]
+                    results = await converter.convert_batch(keys)
 
                     # Append content to each entity's textual_representation
-                    # Track entities that fail (None results)
-                    for entity in sub_batch:
-                        text_content = results.get(entity.local_path)
+                    for entity, key in sub_batch:
+                        text_content = results.get(key)
 
                         if not text_content:
                             sync_context.logger.warning(
                                 f"Conversion returned no content for "
                                 f"{entity.__class__.__name__}[{entity.entity_id}] "
-                                f"at {entity.local_path} - entity will be skipped"
+                                f"at {key} - entity will be skipped"
                             )
-                            # Mark for removal - don't process this entity further
                             failed_entities.append(entity)
                             continue
 
@@ -1012,39 +1016,25 @@ class EntityPipeline:
                         entity.textual_representation += f"\n\n# Content\n\n{text_content}"
 
                 except SyncFailureError:
-                    # Infrastructure failure from converter - propagate to fail entire sync
+                    # Infrastructure failure - propagate to fail entire sync
                     raise
                 except EntityProcessingError as e:
-                    # Recoverable converter issue - skip sub-batch without error log
+                    # Recoverable converter issue - skip sub-batch
                     converter_name = converter.__class__.__name__
                     sync_context.logger.warning(
                         f"Batch conversion skipped for {converter_name} sub-batch: {e}"
                     )
-                    failed_entities.extend(sub_batch)
-                    for entity in sub_batch:
-                        sync_context.logger.warning(
-                            f"Skipping {entity.__class__.__name__}[{entity.entity_id}] "
-                            f"due to recoverable converter error"
-                        )
+                    failed_entities.extend([entity for entity, _ in sub_batch])
                 except Exception as e:
-                    # Unexpected errors - mark entire sub-batch as failed but continue
+                    # Unexpected errors - mark sub-batch as failed but continue
                     converter_name = converter.__class__.__name__
                     sync_context.logger.error(
                         f"Batch conversion failed for {converter_name} sub-batch: {e}",
                         exc_info=True,
                     )
-                    # Mark all entities in this sub-batch as failed
-                    failed_entities.extend(sub_batch)
-                    # Log each entity being skipped
-                    for entity in sub_batch:
-                        sync_context.logger.warning(
-                            f"Skipping {entity.__class__.__name__}[{entity.entity_id}] "
-                            f"due to batch failure"
-                        )
-                    # Don't raise - continue with other sub-batches/converters
+                    failed_entities.extend([entity for entity, _ in sub_batch])
 
-        # Remove failed entities from the entities list and mark as skipped
-        # This cleanup ALWAYS runs now since we don't raise exceptions above
+        # Step 4: Remove failed entities from the list and mark as skipped
         if failed_entities:
             for entity in failed_entities:
                 if entity in entities:
@@ -1053,6 +1043,38 @@ class EntityPipeline:
             sync_context.logger.warning(
                 f"Removed {len(failed_entities)} entities that failed conversion"
             )
+
+    def _get_converter_and_key(self, entity: BaseEntity) -> Tuple[Any, Optional[str]]:
+        """Get the appropriate converter and key for an entity.
+
+        Args:
+            entity: The entity to get converter for
+
+        Returns:
+            Tuple of (converter, key) where:
+            - converter: The converter module/instance to use
+            - key: The key to pass to convert_batch (URL for WebEntity, file path for FileEntity)
+
+        Raises:
+            EntityProcessingError: If entity type is not supported or missing required fields
+        """
+        from airweave.platform import converters
+
+        # WebEntity: use web_converter with crawl_url
+        if isinstance(entity, WebEntity):
+            if not entity.crawl_url:
+                raise EntityProcessingError(f"WebEntity {entity.entity_id} missing crawl_url")
+            return converters.web_converter, entity.crawl_url
+
+        # FileEntity: use file-type specific converter with local_path
+        if isinstance(entity, FileEntity):
+            if not entity.local_path:
+                raise EntityProcessingError(f"FileEntity {entity.entity_id} missing local_path")
+            converter = self._determine_converter_for_file(entity.local_path)
+            return converter, entity.local_path
+
+        # Other entity types don't need content conversion
+        return None, None
 
     # ------------------------------------------------------------------------------------
     # Chunking (Entity Multiplication)
@@ -1300,7 +1322,7 @@ class EntityPipeline:
 
             tokenizer = tiktoken.get_encoding("cl100k_base")
             token_counts = [
-                len(tokenizer.encode(chunk_entity.textual_representation))
+                len(tokenizer.encode(chunk_entity.textual_representation, allowed_special="all"))
                 for chunk_entity in all_chunk_entities
             ]
 

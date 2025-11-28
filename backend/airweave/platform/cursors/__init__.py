@@ -5,6 +5,7 @@ of cursor data for a specific source connector.
 """
 
 from ._base import BaseCursor
+from .ctti import CTTICursor
 from .github import GitHubCursor
 from .gmail import GmailCursor
 from .google_docs import GoogleDocsCursor
@@ -15,6 +16,7 @@ from .postgresql import PostgreSQLCursor
 
 __all__ = [
     "BaseCursor",
+    "CTTICursor",
     "GmailCursor",
     "GoogleDriveCursor",
     "GoogleDocsCursor",

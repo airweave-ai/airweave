@@ -1,6 +1,7 @@
 """OpenAI dense embedder using text-embedding-3-large."""
 
 import asyncio
+import time
 from typing import List
 
 import tiktoken
@@ -23,7 +24,7 @@ class DenseEmbedder(BaseEmbedder):
     Features:
     - Dynamic model selection based on vector_size (3072 or 1536)
     - Batch processing with OpenAI limits (2048 texts/request, 300K tokens/request)
-    - 5 concurrent requests max
+    - 10 concurrent requests max (safe with 6 pods at Tier 4: 10,000 RPM)
     - Rate limiting with OpenAIRateLimiter singleton (shared across instances)
     - Automatic retry on transient errors (via AsyncOpenAI client)
     - Fail-fast on any API errors (no silent failures)
@@ -32,7 +33,7 @@ class DenseEmbedder(BaseEmbedder):
     MAX_TOKENS_PER_TEXT = 8192  # OpenAI limit per text
     MAX_BATCH_SIZE = 2048  # OpenAI limit per request
     MAX_TOKENS_PER_REQUEST = 300000  # OpenAI limit
-    MAX_CONCURRENT_REQUESTS = 5
+    MAX_CONCURRENT_REQUESTS = 10  # Concurrent API requests per embedder instance
 
     def __new__(cls, vector_size: int = None):
         """Override singleton pattern from BaseEmbedder - create fresh instances."""
@@ -102,27 +103,80 @@ class DenseEmbedder(BaseEmbedder):
                 )
 
         # Count tokens for the entire batch
-        total_tokens = sum(len(self._tokenizer.encode(text)) for text in texts)
+        # Use allowed_special="all" to handle special tokens like <|endoftext|>
+        # that may appear in user content
+        total_tokens = sum(
+            len(self._tokenizer.encode(text, allowed_special="all")) for text in texts
+        )
 
         sync_context.logger.debug(f"Embedding {len(texts)} texts with {total_tokens} total tokens")
 
-        # Split into smaller batches to avoid blocking and allow heartbeats
-        # Max 200 texts per sub-batch to prevent long blocking periods
-        MAX_TEXTS_PER_SUBBATCH = 200
+        # Split into smaller batches and process concurrently
+        # Max 100 texts per sub-batch to stay under 300K token limit
+        # (100 texts × 2000 avg tokens = 200K tokens, safely under 300K)
+        MAX_TEXTS_PER_SUBBATCH = 100
 
         if len(texts) > MAX_TEXTS_PER_SUBBATCH:
+            # Create sub-batches
+            sub_batches = [
+                texts[i : i + MAX_TEXTS_PER_SUBBATCH]
+                for i in range(0, len(texts), MAX_TEXTS_PER_SUBBATCH)
+            ]
+
             sync_context.logger.debug(
-                f"Splitting {len(texts)} texts into sub-batches of {MAX_TEXTS_PER_SUBBATCH} "
-                f"to allow heartbeats and prevent Temporal timeout"
+                f"[EMBED] Starting {len(sub_batches)} sub-batches "
+                f"(max {self.MAX_CONCURRENT_REQUESTS} concurrent)"
             )
-            all_embeddings = []
-            for i in range(0, len(texts), MAX_TEXTS_PER_SUBBATCH):
-                sub_batch = texts[i : i + MAX_TEXTS_PER_SUBBATCH]
-                sub_embeddings = await self.embed_many(sub_batch, sync_context)
-                all_embeddings.extend(sub_embeddings)
-                # Yield control to event loop between sub-batches
-                await asyncio.sleep(0)
-            return all_embeddings
+
+            # Process sub-batches concurrently with semaphore limit
+            semaphore = asyncio.Semaphore(self.MAX_CONCURRENT_REQUESTS)
+            active_count = 0
+            active_lock = asyncio.Lock()
+            batch_start_time = time.monotonic()
+
+            async def embed_with_semaphore(
+                batch_idx: int, sub_batch: List[str]
+            ) -> List[List[float]]:
+                nonlocal active_count
+                wait_start = time.monotonic()
+
+                async with semaphore:
+                    async with active_lock:
+                        active_count += 1
+                        current_active = active_count
+
+                    wait_time = time.monotonic() - wait_start
+                    start_time = time.monotonic()
+                    sync_context.logger.debug(
+                        f"[EMBED] Batch {batch_idx + 1}/{len(sub_batches)} STARTED "
+                        f"(texts={len(sub_batch)}, active={current_active}, wait={wait_time:.2f}s)"
+                    )
+
+                    try:
+                        result = await self._embed_sub_batch(sub_batch, sync_context)
+                        elapsed = time.monotonic() - start_time
+                        sync_context.logger.debug(
+                            f"[EMBED] Batch {batch_idx + 1}/{len(sub_batches)} DONE "
+                            f"in {elapsed:.2f}s (texts={len(sub_batch)})"
+                        )
+                        return result
+                    finally:
+                        async with active_lock:
+                            active_count -= 1
+
+            # Execute all sub-batches concurrently (limited by semaphore)
+            results = await asyncio.gather(
+                *[embed_with_semaphore(i, sb) for i, sb in enumerate(sub_batches)]
+            )
+
+            total_time = time.monotonic() - batch_start_time
+            sync_context.logger.debug(
+                f"[EMBED] All {len(sub_batches)} sub-batches completed in {total_time:.2f}s "
+                f"(avg {total_time / len(sub_batches):.2f}s/batch)"
+            )
+
+            # Flatten results while preserving order
+            return [emb for batch_result in results for emb in batch_result]
 
         # Check if we need to split due to token limit
         if total_tokens > self.MAX_TOKENS_PER_REQUEST:
@@ -145,6 +199,37 @@ class DenseEmbedder(BaseEmbedder):
 
         return embeddings
 
+    async def _embed_sub_batch(
+        self, texts: List[str], sync_context: SyncContext
+    ) -> List[List[float]]:
+        """Embed a sub-batch, handling token limit splitting if needed.
+
+        This is called from concurrent processing and handles cases where
+        a sub-batch exceeds the token limit by splitting recursively.
+
+        Args:
+            texts: List of texts to embed (already within count limit)
+            sync_context: Sync context with logger
+
+        Returns:
+            List of embedding vectors
+        """
+        # Count tokens for this sub-batch
+        total_tokens = sum(len(self._tokenizer.encode(text)) for text in texts)
+
+        # Check if we need to split due to token limit
+        if total_tokens > self.MAX_TOKENS_PER_REQUEST:
+            sync_context.logger.debug(
+                f"Sub-batch exceeds {self.MAX_TOKENS_PER_REQUEST} tokens, splitting in half"
+            )
+            mid = len(texts) // 2
+            first_half = await self._embed_sub_batch(texts[:mid], sync_context)
+            second_half = await self._embed_sub_batch(texts[mid:], sync_context)
+            return first_half + second_half
+
+        # Process single request
+        return await self._embed_batch(texts, sync_context)
+
     async def _embed_batch(self, batch: List[str], sync_context: SyncContext) -> List[List[float]]:
         """Embed single batch with rate limiting and error handling.
 
@@ -160,14 +245,25 @@ class DenseEmbedder(BaseEmbedder):
         """
         try:
             # Rate limit (singleton shared across pod)
+            rate_limit_start = time.monotonic()
             await self._rate_limiter.acquire()
+            rate_limit_wait = time.monotonic() - rate_limit_start
 
             # Call OpenAI API
+            api_start = time.monotonic()
             response = await self._client.embeddings.create(
                 input=batch,
                 model=self.MODEL_NAME,
                 encoding_format="float",
             )
+            api_time = time.monotonic() - api_start
+
+            # Log timing breakdown
+            if rate_limit_wait > 0.1 or api_time > 5.0:
+                sync_context.logger.debug(
+                    f"[EMBED] API call: {len(batch)} texts, "
+                    f"rate_limit_wait={rate_limit_wait:.2f}s, api_time={api_time:.2f}s"
+                )
 
             # Extract embeddings
             embeddings = [e.embedding for e in response.data]

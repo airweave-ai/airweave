@@ -98,7 +98,9 @@ class BaseProvider(ABC):
             raise RuntimeError("Tokenizer not initialized for token counting")
         if text is None:
             return 0
-        return len(tokenizer.encode(text))
+        # Use allowed_special="all" to handle special tokens like <|endoftext|>
+        # that may appear in user content
+        return len(tokenizer.encode(text, allowed_special="all"))
 
     @abstractmethod
     async def generate(self, messages: List[Dict[str, str]]) -> str:
