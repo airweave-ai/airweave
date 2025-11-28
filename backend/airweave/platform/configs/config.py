@@ -61,6 +61,12 @@ class BitbucketConfig(SourceConfig):
         return value
 
 
+class ShopifyConfig(SourceConfig):
+    """Shopify configuration schema."""
+
+    pass
+
+
 class BoxConfig(SourceConfig):
     """Box configuration schema."""
 
