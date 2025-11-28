@@ -55,5 +55,8 @@
     },
     "files.watcherExclude": {
         "**/fern/**": true
-    }
+    },
+    "cursorpyright.analysis.extraPaths": [
+        "${workspaceFolder}/backend"
+    ]
 }

@@ -252,6 +252,114 @@ class TaskEntity(ChunkEntity):
     # ...
 ```
 
+#### 4. CRITICAL: Always Include Breadcrumbs
+
+**⚠️ IMPORTANT: Breadcrumbs are frequently forgotten but essential for entity relationships and search context.**
+
+Every entity MUST have breadcrumbs set when yielded. Breadcrumbs track the entity's location in the hierarchy (e.g., "Organization → Person → Deal").
+
+```python
+from airweave.platform.entities._base import Breadcrumb
+
+# When generating entities, ALWAYS set breadcrumbs based on relationships:
+
+# Top-level entities (organizations, workspaces) - empty breadcrumbs
+yield OrganizationEntity(
+    entity_id=org_id,
+    breadcrumbs=[],  # Top-level, no parent
+    name=name,
+    # ...
+)
+
+# Child entities - include parent breadcrumbs
+breadcrumbs = []
+if parent_org_id and parent_org_name:
+    breadcrumbs.append(
+        Breadcrumb(
+            entity_id=str(parent_org_id),
+            name=parent_org_name,
+            entity_type="OrganizationEntity",
+        )
+    )
+
+yield PersonEntity(
+    entity_id=person_id,
+    breadcrumbs=breadcrumbs,  # Links to parent organization
+    name=name,
+    # ...
+)
+
+# Deeply nested entities - include full hierarchy
+deal_breadcrumbs = []
+if org_id and org_name:
+    deal_breadcrumbs.append(Breadcrumb(entity_id=str(org_id), name=org_name, entity_type="OrganizationEntity"))
+if person_id and person_name:
+    deal_breadcrumbs.append(Breadcrumb(entity_id=str(person_id), name=person_name, entity_type="PersonEntity"))
+
+yield DealEntity(
+    entity_id=deal_id,
+    breadcrumbs=deal_breadcrumbs,  # Shows: Organization → Person → Deal
+    # ...
+)
+```
+
+**Common Mistake:**
+```python
+# ❌ WRONG - Empty breadcrumbs when entity has parent relationships
+yield PersonEntity(
+    entity_id=person_id,
+    breadcrumbs=[],  # Lost relationship to organization!
+    organization_id=org_id,
+    organization_name=org_name,
+    # ...
+)
+```
+
+**Rule:** If an entity has a parent reference (org_id, project_id, etc.), it should have a corresponding breadcrumb.
+
+#### 5. Web URLs - User-Facing Links
+
+**⚠️ IMPORTANT: Web URLs must be correct user-facing links that agents can share with users.**
+
+Every entity should have a `web_url` field that links to the record in the source system's UI. These are URLs that:
+- Users can click to view the record in the source application
+- Agents can provide to users when referencing entities
+- Should open directly to the specific record, not a list view
+
+```python
+# In your entity schema
+class MyEntity(ChunkEntity):
+    web_url_value: Optional[str] = AirweaveField(
+        None,
+        description="URL to view this record in the source system.",
+        embeddable=False,
+        unhashable=True,  # URLs change and shouldn't affect content hash
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """User-facing link to the record."""
+        return self.web_url_value or ""
+
+# In your source - build proper URLs for each record type
+def _build_record_url(self, record_type: str, record_id: str) -> Optional[str]:
+    """Build a user-facing URL for the record."""
+    # Different record types often have different URL patterns!
+    # Verify the actual URL structure in the source system's UI
+    url_patterns = {
+        "task": f"https://app.example.com/tasks/{record_id}",
+        "project": f"https://app.example.com/projects/{record_id}",
+        "comment": f"https://app.example.com/tasks/{parent_id}#comment-{record_id}",
+    }
+    return url_patterns.get(record_type)
+```
+
+**Common Mistakes:**
+- Using API URLs instead of UI URLs
+- Using incorrect URL patterns (verify in the actual app!)
+- Forgetting that some record types may not have direct URLs (e.g., settings pages)
+- Not handling cases where the URL requires additional context (parent IDs, etc.)
+
 #### 4. File Entities
 
 For attachments, inherit from `FileEntity`:
@@ -1054,11 +1162,15 @@ async def _generate_projects(self, client, workspace):
   - [ ] Timestamps (created_at, modified_at, due_dates)
   - [ ] Verify: Only IDs and binary metadata use `Field()` without embeddable
 - [ ] All entities have `created_at` or `modified_at` timestamps with proper flags
+- [ ] **⚠️ BREADCRUMBS: All entities with parent relationships have breadcrumbs set**
+  - [ ] Import `Breadcrumb` from `airweave.platform.entities._base`
+  - [ ] Build breadcrumbs list based on parent entity references (org_id, project_id, etc.)
+  - [ ] Include `entity_id`, `name`, and `entity_type` for each breadcrumb
+  - [ ] Top-level entities can have empty breadcrumbs `[]`
 - [ ] Auth config class added to `platform/configs/auth.py`
 - [ ] Auth config referenced in source `@source` decorator
 - [ ] Source implements `create()`, `generate_entities()`, and `validate()`
 - [ ] Token refresh is handled via `_get_with_auth()` pattern
-- [ ] Hierarchical relationships use breadcrumbs
 - [ ] File entities use `process_file_entity()`
 - [ ] Logging uses proper levels (INFO for milestones, DEBUG for details)
 - [ ] OAuth config is in `dev.integrations.yaml` (human already set this up)
@@ -1074,11 +1186,15 @@ async def _generate_projects(self, client, workspace):
    - Fix: Mark most user-visible, content-rich fields as `embeddable=True`
    - Rule of thumb: ~70% of entity fields should be embeddable
 
-2. **Forgetting timestamps** - Without `is_created_at` or `is_updated_at`, incremental sync won't work
+2. **⚠️ Forgetting breadcrumbs (VERY COMMON)**
+   - Setting `breadcrumbs=[]` when the entity has parent references (org_id, project_id, etc.)
+   - Impact: Entity relationships are lost, search results lack context
+   - Fix: Build breadcrumbs list from parent entity info BEFORE yielding entity
+   - Rule: If entity has `parent_id` or `org_id` field with a value, it needs a breadcrumb
 
-3. **Not handling token refresh** - Syncs will fail after tokens expire
+3. **Forgetting timestamps** - Without `is_created_at` or `is_updated_at`, incremental sync won't work
 
-4. **Not tracking breadcrumbs** - Entity relationships will be lost
+4. **Not handling token refresh** - Syncs will fail after tokens expire
 
 5. **Blocking the event loop** - Always use `async`/`await` for I/O
 

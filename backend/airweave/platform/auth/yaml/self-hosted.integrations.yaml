@@ -307,6 +307,8 @@ integrations:
     additional_frontend_params:
       response_mode: "query"
 
+  pipedrive:
+
   sharepoint:
     oauth_type: "with_rotating_refresh"
     url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"

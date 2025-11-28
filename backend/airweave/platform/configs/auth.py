@@ -507,6 +507,24 @@ class OutlookMailAuthConfig(OAuth2WithRefreshAuthConfig):
     # Inherits refresh_token and access_token from OAuth2WithRefreshAuthConfig
 
 
+class PipedriveAuthConfig(AuthConfig):
+    """Pipedrive authentication credentials schema."""
+
+    api_token: str = Field(
+        title="API Token",
+        description="Your Pipedrive API token. Find it in Settings > Personal preferences > API.",
+        min_length=10,
+    )
+
+    @field_validator("api_token")
+    @classmethod
+    def validate_api_token(cls, v: str) -> str:
+        """Validate Pipedrive API token."""
+        if not v or not v.strip():
+            raise ValueError("API token is required")
+        return v.strip()
+
+
 class ExcelAuthConfig(OAuth2WithRefreshAuthConfig):
     """Microsoft Excel authentication credentials schema."""
 

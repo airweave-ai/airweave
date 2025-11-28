@@ -1,0 +1,46 @@
+name: "pipedrive_test"
+description: "End-to-end test for Pipedrive Persons via Monke"
+
+connector:
+  name: "Pipedrive"
+  type: "pipedrive"
+  auth_mode: direct
+  auth_fields:
+    api_token: MONKE_PIPEDRIVE_API_TOKEN
+  config_fields:
+    openai_model: "gpt-4.1-mini"
+    rate_limit_delay_ms: 500
+    post_create_sleep_seconds: 30  # Time for Pipedrive to index
+
+test_flow:
+  steps:
+    - cleanup
+    - create
+    - sync
+    - verify
+    - update
+    - sync
+    - verify
+    - partial_delete
+    - sync
+    - verify_partial_deletion
+    - verify_remaining_entities
+    - complete_delete
+    - sync
+    - verify_complete_deletion
+    - cleanup
+
+entity_count: 3
+
+deletion:
+  partial_delete_count: 1
+  verify_partial_deletion: true
+  verify_remaining_entities: true
+  verify_complete_deletion: true
+
+verification:
+  retries: 3
+  retry_backoff_seconds: 5
+  resync_on_miss: true
+  search_limit: 50
+
