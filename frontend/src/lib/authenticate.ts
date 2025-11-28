@@ -1,5 +1,6 @@
 import { apiClient } from "@/lib/api";
 import { redirectWithError } from "@/lib/error-utils";
+import { safeLogAuthValues, safeLogDialogState, safeLogCredentialData, safeLogSensitiveValue } from "@/lib/auth-utils";
 import { useNavigate } from "react-router-dom";
 
 // Function for OAuth2 authentication flow
@@ -13,8 +14,8 @@ const create_credentials_oauth = async (
         const authValues = dialogState.authValues;
 
         console.log(`🔄 Starting OAuth2 authentication for ${sourceDetails.name}`);
-        console.log(`📦 Auth values:`, authValues); // Debug log
-        console.log(`📊 FULL DIALOG STATE IN AUTHENTICATE:`, JSON.stringify(dialogState, null, 2));
+        safeLogAuthValues(authValues, '📦 [OAuth2]');
+        safeLogDialogState(dialogState, '📊 [OAuth2]');
 
         // Make sure we're including dialogId in the stored state
         const stateToStore = {
@@ -31,7 +32,7 @@ const create_credentials_oauth = async (
 
         // If client_id is present in auth values, add it as a query parameter
         if (authValues && authValues.client_id) {
-            console.log(`🔑 Using provided client_id: ${authValues.client_id}`);
+            safeLogSensitiveValue(authValues.client_id, 'client_id', '🔑 [OAuth2]');
             url += `?client_id=${encodeURIComponent(authValues.client_id)}`;
         }
 
@@ -114,7 +115,7 @@ const create_credential_non_oauth = async (
             auth_fields: authValues // The auth values from the form
         };
 
-        console.log("Sending credential data:", JSON.stringify(credentialData));
+        safeLogCredentialData(credentialData, '📤 [NonOAuth]');
 
         // Use /connections/credentials/ as the base path
         const response = await apiClient.post(
@@ -169,23 +170,16 @@ export const authenticateSource = async (
 ): Promise<{ success: boolean, credentialId?: string }> => {
     const { authValues, sourceDetails, sourceShortName } = dialogState;
 
-    // Format the data for display
-    const authFieldsInfo = Object.entries(authValues)
-        .map(([key, value]) => `${key}: ${value === null ? 'null' : value}`)
-        .join('\n');
+    // Log source information safely (without exposing credentials)
+    console.log(`
+🔐 Authenticating Source: ${sourceDetails.name} (${sourceShortName})
+   Auth Config Class: ${sourceDetails.auth_config_class}
+   Config Class: ${sourceDetails.config_class}
+   Auth Type: ${sourceDetails.auth_type || 'not specified'}
+    `);
 
-    // Create a console log with formatted information
-    const message = `
-Source: ${sourceDetails.name} (${sourceShortName})
-Auth Config Class: ${sourceDetails.auth_config_class}
-Config Class: ${sourceDetails.config_class}
-Auth Type: ${sourceDetails.auth_type || 'not specified'}
-
-Authentication Values:
-${authFieldsInfo}
-    `;
-
-    console.log(message);
+    // Safely log authentication values (metadata only, no credential values)
+    safeLogAuthValues(authValues, '🔐 [authenticateSource]');
 
     try {
         // Check auth_type and call appropriate function
