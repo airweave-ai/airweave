@@ -96,7 +96,7 @@ class JSONFormatter(logging.Formatter):
         if record.exc_info:
             # Extract error_severity from exception class
             if record.exc_info[0] and hasattr(record.exc_info[0], "severity"):
-                severity = record.exc_info[0].severity
+                severity = record.exc_info[1].severity
                 if hasattr(severity, "value"):
                     log_entry["error_severity"] = severity.value
 

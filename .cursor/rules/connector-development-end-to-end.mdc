@@ -321,6 +321,7 @@ class MyConnectorFileEntity(FileEntity):
 **Basic structure:**
 
 ```python
+from airweave.core.exceptions import PreSyncValidationException
 from airweave.platform.decorators import source
 from airweave.platform.sources._base import BaseSource
 from airweave.platform.entities._base import Breadcrumb, ChunkEntity
@@ -363,12 +364,21 @@ class MyConnectorSource(BaseSource):
                 async for child in self._generate_children(client, parent, [breadcrumb]):
                     yield child
 
-    async def validate(self) -> bool:
-        return await self._validate_oauth2(
+    async def validate(self) -> None:
+        """Verify credentials by pinging the API.
+        
+        Raises:
+            PreSyncValidationException: If credentials are invalid
+        """
+        is_valid = await self._validate_oauth2(
             ping_url="https://api.example.com/me",
             headers={"Accept": "application/json"},
             timeout=10.0,
         )
+        if not is_valid:
+            raise PreSyncValidationException(
+                "Example credentials validation failed", source_name="example"
+            )
     # This can also be a very simple list method, to make sure we have a
 ```
 
