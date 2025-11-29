@@ -578,10 +578,10 @@ class SyncOrchestrator:
         self, error: Exception, error_message: Optional[str] = None
     ) -> None:
         """Handle sync failure by updating job status with error details.
-        
+
         Args:
             error: The exception that caused the failure
-            error_message: Optional pre-formatted error message. If not provided, 
+            error_message: Optional pre-formatted error message. If not provided,
                           will extract from exception using get_error_message()
         """
         if error_message is None:
