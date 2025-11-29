@@ -97,7 +97,12 @@ def _build_connection_payload(config: TestConfig, context: TestContext) -> Dict[
         elif config.connector.auth_fields:
             credentials = config.connector.resolve_auth_fields()
 
-        base_payload["authentication"] = {"credentials": credentials}
+        # NOTE: Currently used for Postgres direct-auth tests; other connectors still use Composio.
+        #       This may need refactoring if more connectors migrate to direct auth.
+        base_payload["authentication"] = {
+            "method": "direct",
+            "credentials": credentials,
+        }
 
     elif config.connector.auth_mode == "composio":
         logger.info("🔐 Using Composio auth provider")
