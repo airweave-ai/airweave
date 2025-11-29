@@ -460,29 +460,41 @@ class OneDriveSource(BaseSource):
 
         # 1) Default OneDrive (most common)
         try:
-            await self._validate_oauth2(
+            is_valid = await self._validate_oauth2(
                 ping_url="https://graph.microsoft.com/v1.0/me/drive",
                 headers=headers,
                 timeout=10.0,
             )
+            if not is_valid:
+                raise PreSyncValidationException(
+                    "OneDrive default drive validation failed", source_name="onedrive"
+                )
             return  # Success
         except PreSyncValidationException:
             pass  # Try next endpoint
 
         # 2) Accounts without SPO default drive but with accessible drives list
         try:
-            await self._validate_oauth2(
+            is_valid = await self._validate_oauth2(
                 ping_url="https://graph.microsoft.com/v1.0/me/drives?$top=1",
                 headers=headers,
                 timeout=10.0,
             )
+            if not is_valid:
+                raise PreSyncValidationException(
+                    "OneDrive drives list validation failed", source_name="onedrive"
+                )
             return  # Success
         except PreSyncValidationException:
             pass  # Try last endpoint
 
         # 3) App-folder-only scenario (last attempt - will raise if fails)
-        await self._validate_oauth2(
+        is_valid = await self._validate_oauth2(
             ping_url="https://graph.microsoft.com/v1.0/me/drive/special/approot",
             headers=headers,
             timeout=10.0,
         )
+        if not is_valid:
+            raise PreSyncValidationException(
+                "OneDrive validation failed on all endpoints", source_name="onedrive"
+            )

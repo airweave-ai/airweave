@@ -9,6 +9,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 import httpx
 from tenacity import retry, stop_after_attempt
 
+from airweave.core.exceptions import PreSyncValidationException, TokenRefreshError
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
 from airweave.platform.downloader import FileSkippedException, DownloadFailureException
@@ -140,11 +141,6 @@ class GitLabSource(BaseSource):
                 if self.token_manager:
                     try:
                         # Force refresh the token
-                        from airweave.core.exceptions import (
-                            TokenRefreshError,
-                            PreSyncValidationException,
-                        )
-
                         new_token = await self.token_manager.refresh_on_unauthorized()
                         headers = {"Authorization": f"Bearer {new_token}"}
 
@@ -209,11 +205,6 @@ class GitLabSource(BaseSource):
                     if self.token_manager:
                         try:
                             # Force refresh the token
-                            from airweave.core.exceptions import (
-                                TokenRefreshError,
-                                PreSyncValidationException,
-                            )
-
                             new_token = await self.token_manager.refresh_on_unauthorized()
                             headers = {
                                 "Authorization": f"Bearer {new_token}",

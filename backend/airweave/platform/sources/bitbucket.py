@@ -539,7 +539,7 @@ class BitbucketSource(BaseSource):
             self.logger.debug(f"Skipping file: {e.reason}")
 
         except DownloadFailureException as e:
-            self.logger.error(f"Failed to download file {file_path}: {e}", exc_info=True)
+            self.logger.error(f"Failed to download file {item_path}: {e}", exc_info=True)
 
         except Exception as e:
             self.logger.error(f"Error processing file {item_path}: {str(e)}")

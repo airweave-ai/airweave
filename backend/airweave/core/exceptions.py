@@ -94,8 +94,9 @@ class PreSyncValidationException(AirweaveException):
             source_name (str, optional): The name of the source.
 
         """
+        self.message = message
         self.source_name = source_name
-        super().__init__(message)
+        super().__init__(self.message)
 
 
 class UsageLimitExceededException(AirweaveException):

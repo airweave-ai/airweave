@@ -11,6 +11,7 @@ from urllib.parse import quote
 import httpx
 from tenacity import retry, stop_after_attempt
 
+from airweave.core.exceptions import PreSyncValidationException
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
