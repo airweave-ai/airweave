@@ -53,6 +53,7 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+from airweave.core.exceptions import PreSyncValidationException
 
 
 @source(
@@ -446,10 +447,14 @@ class GoogleCalendarSource(BaseSource):
                 ):
                     yield entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify Google Calendar OAuth2 token by pinging the calendarList endpoint."""
-        return await self._validate_oauth2(
+        is_valid = await self._validate_oauth2(
             ping_url="https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=1",
             headers={"Accept": "application/json"},
             timeout=10.0,
         )
+        if not is_valid:
+            raise PreSyncValidationException(
+                "Google Calendar credentials validation failed", source_name="google_calendar"
+            )

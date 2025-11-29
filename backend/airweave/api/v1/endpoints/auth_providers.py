@@ -16,6 +16,7 @@ from airweave.db.unit_of_work import UnitOfWork
 from airweave.platform.auth.settings import AuthenticationMethod
 from airweave.platform.configs._base import Fields
 from airweave.platform.locator import resource_locator
+from airweave.core.exceptions import PreSyncValidationException
 
 router = TrailingSlashRouter()
 
@@ -147,9 +148,13 @@ async def _validate_auth_provider_credentials(
     except HTTPException:
         # Re-raise HTTPException as-is (these come from the validation methods)
         raise
+    except PreSyncValidationException as e:
+        error_msg = f"Failed to validate {auth_provider_short_name} connection: {str(e)}"
+        ctx.logger.error(error_msg, exc_info=True)
+        raise
     except Exception as e:
         error_msg = f"Failed to validate {auth_provider_short_name} connection: {str(e)}"
-        ctx.logger.error(f"❌ {error_msg}")
+        ctx.logger.error(f"❌ {error_msg}", exc_info=True)
         raise HTTPException(status_code=422, detail=error_msg) from e
 
 

@@ -6,10 +6,10 @@ from typing import Any, AsyncGenerator, Dict, Optional
 import httpx
 from tenacity import retry, stop_after_attempt
 
-from airweave.core.exceptions import TokenRefreshError
+from airweave.core.exceptions import TokenRefreshError, PreSyncValidationException
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
+from airweave.platform.downloader import FileSkippedException, DownloadFailureException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.zendesk import (
     ZendeskAttachmentEntity,
@@ -508,6 +508,10 @@ class ZendeskSource(BaseSource):
                         )
                         continue
 
+                    except DownloadFailureException as e:
+                        self.logger.error(f"Failed to download file: {e}", exc_info=True)
+                        continue
+
                     except Exception as e:
                         self.logger.error(
                             f"Failed to download attachment {attachment_entity.name}: {e}"
@@ -559,16 +563,28 @@ class ZendeskSource(BaseSource):
                 ):
                     yield attachment_entity
 
-    async def validate(self) -> bool:
-        """Verify OAuth2 token by pinging Zendesk's /users/me endpoint."""
+    async def validate(self) -> None:
+        """Verify OAuth2 token by pinging Zendesk's /users/me endpoint.
+
+        Raises:
+            PreSyncValidationException: If credentials are invalid
+        """
         # If we're in validation mode without a real subdomain, skip the actual API call
         if getattr(self, "_is_validation_mode", False):
             # For validation mode, we can't make a real API call without the subdomain
             # Just validate that we have an access token
-            return bool(getattr(self, "access_token", None))
+            if not getattr(self, "access_token", None):
+                raise PreSyncValidationException(
+                    "Zendesk validation failed: missing access token", source_name="zendesk"
+                )
+            return
 
-        return await self._validate_oauth2(
+        is_valid = await self._validate_oauth2(
             ping_url=f"https://{self.subdomain}.zendesk.com/api/v2/users/me.json",
             headers={"Accept": "application/json"},
             timeout=10.0,
         )
+        if not is_valid:
+            raise PreSyncValidationException(
+                "Zendesk credentials validation failed", source_name="zendesk"
+            )

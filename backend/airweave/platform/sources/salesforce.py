@@ -30,6 +30,7 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+from airweave.core.exceptions import PreSyncValidationException
 
 
 @source(
@@ -473,7 +474,7 @@ class SalesforceSource(BaseSource):
             async for opportunity_entity in self._generate_opportunity_entities(client):
                 yield opportunity_entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify Salesforce access token by pinging the identity endpoint."""
         # If we're in validation mode without a real instance_url, skip the actual API call
         if getattr(self, "_is_validation_mode", False):
@@ -482,21 +483,31 @@ class SalesforceSource(BaseSource):
             return bool(getattr(self, "access_token", None))
 
         if not getattr(self, "access_token", None):
-            self.logger.error("Salesforce validation failed: missing access token.")
-            return False
+            raise PreSyncValidationException(
+                "Salesforce validation failed: missing access token.",
+                source_name=self.__class__.__name__,
+            )
 
         if not getattr(self, "instance_url", None):
-            self.logger.error("Salesforce validation failed: missing instance URL.")
-            return False
+            raise PreSyncValidationException(
+                "Salesforce validation failed: missing instance URL.",
+                source_name=self.__class__.__name__,
+            )
 
         try:
             # Use the OAuth2 validation helper with Salesforce's identity endpoint
             # instance_url is normalized (no protocol), so we need to add https://
-            return await self._validate_oauth2(
+            is_valid = await self._validate_oauth2(
                 ping_url=f"https://{self.instance_url}/services/oauth2/userinfo",
                 access_token=self.access_token,
                 timeout=10.0,
             )
+            if not is_valid:
+                raise PreSyncValidationException(
+                    "Salesforce credentials validation failed", source_name="salesforce"
+                )
         except Exception as e:
-            self.logger.error(f"Unexpected error during Salesforce validation: {e}")
-            return False
+            raise PreSyncValidationException(
+                f"Unexpected error during Salesforce validation: {e}",
+                source_name=self.__class__.__name__,
+            )

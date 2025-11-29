@@ -47,7 +47,7 @@ async def _authenticate_auth0_user(
     try:
         user = await crud.user.get_by_email(db, email=auth0_user.email)
     except NotFoundException:
-        logger.error(f"User {auth0_user.email} not found in database")
+        logger.error(f"User {auth0_user.email} not found in database", exc_info=True)
         return None, AuthMethod.AUTH0, {}
 
     # Update last active timestamp directly (can't use CRUD during auth flow)
@@ -131,7 +131,7 @@ async def _authenticate_api_key(
         return None, AuthMethod.API_KEY, auth_metadata, str(org_id)
 
     except (ValueError, NotFoundException) as e:
-        logger.error(f"API key validation failed: {e}")
+        logger.error(f"API key validation failed: {e}", exc_info=True)
         if "expired" in str(e):
             raise HTTPException(status_code=403, detail="API key has expired") from e
         raise HTTPException(status_code=403, detail="Invalid or expired API key") from e
