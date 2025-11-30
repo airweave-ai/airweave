@@ -123,6 +123,8 @@ class ConfigField(BaseModel):
     type: str
     required: bool = True  # Default to True for backward compatibility
     items_type: Optional[str] = None  # For array types, the type of items
+    options: Optional[list[str]] = None  # For enum/select types
+    ui_component: Optional[str] = None  # Hint for frontend rendering (e.g., "select", "textarea")
 
 
 _type_map = {str: "string", int: "number", float: "number", bool: "boolean"}
@@ -147,23 +149,45 @@ class Fields(BaseModel):
 
             # Check if it's a list type
             items_type = None
+            options = None
             origin = get_origin(annotation)
+            
             if origin is list:
                 # Get the type of list items
                 list_args = get_args(annotation)
                 if list_args:
                     items_type = _type_map.get(list_args[0], "string")
                 type_str = "array"
+            elif origin is get_origin(get_args(Optional[str])[0]): # Check for Literal (hacky way to get Literal origin)
+                 # This might be cleaner with typing.Literal check if available, but let's check string repr or try/except
+                 pass
+
+            # Better Literal check
+            from typing import Literal
+            if origin is Literal:
+                type_str = "string"
+                options = list(get_args(annotation))
             else:
                 # Map the type to string representation
                 type_str = _type_map.get(
                     annotation, "string"
                 )  # Default to string if type not found
 
+            if origin is list:
+                 type_str = "array"
+
             # Determine if field is required
             # A field is required if it has no default and is not Optional
             has_default = field_info.default is not PydanticUndefined
             is_required = not has_default and not is_optional
+
+            # Extract UI hints and options from json_schema_extra
+            ui_component = None
+            if field_info.json_schema_extra:
+                ui_component = field_info.json_schema_extra.get("ui_component")
+                # If options not set by Literal, try to get from enum in json_schema_extra
+                if not options and "enum" in field_info.json_schema_extra:
+                    options = field_info.json_schema_extra.get("enum")
 
             fields.append(
                 ConfigField(
@@ -173,6 +197,8 @@ class Fields(BaseModel):
                     type=type_str,
                     required=is_required,
                     items_type=items_type,
+                    options=options,
+                    ui_component=ui_component,
                 )
             )
         return Fields(fields=fields)

@@ -44,6 +44,8 @@ interface SourceDetails {
       description?: string;
       type?: string;
       required?: boolean;
+      options?: string[];
+      ui_component?: string;
     }>;
   };
 }
@@ -687,11 +689,31 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
                               placeholder={`Enter ${field.title?.toLowerCase() || field.name} and press Enter...`}
                               transformInput={sourceDetails?.short_name === 'jira' && field.name === 'project_keys' ? (v) => v.toUpperCase() : undefined}
                             />
+                          ) : field.ui_component === 'select' || (field.options && field.options.length > 0) ? (
+                            <select
+                              value={configData[field.name] as string || ''}
+                              onChange={(e) => setConfigData({ ...configData, [field.name]: e.target.value })}
+                              className={cn(
+                                "w-full px-4 py-2 rounded-lg text-sm",
+                                "border bg-transparent",
+                                "focus:outline-none focus:border-gray-400 dark:focus:border-gray-600",
+                                isDark
+                                  ? "border-gray-800 text-white placeholder:text-gray-600 bg-gray-900"
+                                  : "border-gray-200 text-gray-900 placeholder:text-gray-400 bg-white"
+                              )}
+                            >
+                              <option value="" disabled>Select an option...</option>
+                              {field.options?.map((option) => (
+                                <option key={option} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
                           ) : (
                             <input
                               type="text"
                               placeholder=""
-                              value={configData[field.name] || ''}
+                              value={configData[field.name] as string || ''}
                               onChange={(e) => setConfigData({ ...configData, [field.name]: e.target.value })}
                               className={cn(
                                 "w-full px-4 py-2 rounded-lg text-sm",

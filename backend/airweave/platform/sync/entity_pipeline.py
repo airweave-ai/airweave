@@ -996,8 +996,15 @@ class EntityPipeline:
                 keys = [key for _, key in sub_batch]
 
                 try:
+                    # Get preferred model from source config if available
+                    preferred_model = getattr(sync_context.source, "model", None)
+
                     # Batch convert returns Dict[key, text_content]
-                    results = await converter.convert_batch(keys)
+                    # Pass preferred_model to SmartConverter (or others that support it)
+                    if hasattr(converter, "convert_batch") and "preferred_model" in converter.convert_batch.__code__.co_varnames:
+                         results = await converter.convert_batch(keys, preferred_model=preferred_model)
+                    else:
+                         results = await converter.convert_batch(keys)
 
                     # Append content to each entity's textual_representation
                     for entity, key in sub_batch:

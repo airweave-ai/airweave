@@ -84,6 +84,9 @@ class GoogleDriveSource(BaseSource):
         instance.preserve_order = bool(config.get("preserve_order", False))
         instance.stop_on_error = bool(config.get("stop_on_error", False))
 
+        # Model selection
+        instance.model = config.get("model")
+
         return instance
 
     @staticmethod
