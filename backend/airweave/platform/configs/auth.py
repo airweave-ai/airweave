@@ -322,13 +322,15 @@ class BitbucketAuthConfig(AuthConfig):
 class ShopifyAuthConfig(AuthConfig):
     """Shopify authentication credentials schema."""
 
-    api_key: str = Field(
-        title="API Key",
+    access_token: str = Field(
+        title="Access Token",
         description=(
-            "The API key for the Shopify store. Generate one in the Shopify admin "
-            "[here](https://help.shopify.com/en/manual/apps/app-types/custom-apps#get-the-api-credentials-"
-            "for-a-custom-app). Go to 'Admin API' access and choose read permissions for "
-            "the store data you want to sync."
+            "The Admin API access token for the Shopify store. Generate one in the Shopify admin "
+            "by creating a custom app: Settings → Apps and sales channels → Develop apps → "
+            "Create an app. Configure Admin API scopes (read_products, read_orders, etc.) and "
+            "install the app to get the access token. "
+            "Learn more: https://shopify.dev/docs/apps/build/authentication-authorization/"
+            "access-tokens/generate-app-access-tokens-admin"
         ),
         min_length=10,
     )
@@ -336,26 +338,36 @@ class ShopifyAuthConfig(AuthConfig):
     shop_name: str = Field(
         title="Shop Name",
         description=(
-            "The name of the Shopify store (e.g., 'my-store' for my-store.myshopify.com)."
+            "The name of the Shopify store. Use either 'my-store' or "
+            "'my-store.myshopify.com' format."
         ),
         min_length=1,
     )
 
-    @field_validator("api_key")
-    @classmethod
-    def validate_api_key(cls, v: str) -> str:
-        """Validate Shopify API key."""
+    @field_validator("access_token")
+    def validate_access_token(self, v: str) -> str:
+        """Validate Shopify access token."""
         if not v or not v.strip():
-            raise ValueError("API key is required")
+            raise ValueError("Access token is required")
+
         return v.strip()
 
     @field_validator("shop_name")
-    @classmethod
-    def validate_shop_name(cls, v: str) -> str:
+    def validate_shop_name(self, v: str) -> str:
         """Validate Shopify shop name."""
         if not v or not v.strip():
             raise ValueError("Shop name is required")
-        return v.strip()
+
+        v = v.strip()
+
+        # Remove .myshopify.com if provided for validation
+        shop_name_clean = v.replace(".myshopify.com", "")
+
+        # Check for valid shop name format (alphanumeric and hyphens only)
+        if not shop_name_clean.replace("-", "").isalnum():
+            raise ValueError("Shop name should only contain letters, numbers, and hyphens")
+
+        return v
 
 
 class BoxAuthConfig(OAuth2WithRefreshAuthConfig):

@@ -1,6 +1,6 @@
 """Configuration classes for platform components."""
 
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import Field, field_validator, validator
 
@@ -64,7 +64,62 @@ class BitbucketConfig(SourceConfig):
 class ShopifyConfig(SourceConfig):
     """Shopify configuration schema."""
 
-    pass
+    api_version: str = Field(
+        default="2025-01",
+        title="API Version",
+        description=(
+            "The Shopify Admin API version to use (e.g., '2025-01', '2024-10'). "
+            "See available versions at https://shopify.dev/docs/api/usage/versioning"
+        ),
+    )
+
+    resources: Optional[List[str]] = Field(
+        default=None,
+        title="Resources to Sync",
+        description=(
+            "List of resource types to sync. Leave empty to sync all available resources. "
+            "Available: Product, Order, Customer, Collection, DraftOrder, InventoryItem, "
+            "Location, FulfillmentOrder"
+        ),
+    )
+
+    @field_validator("api_version")
+    @classmethod
+    def validate_api_version(cls, v: str) -> str:
+        """Validate API version format."""
+        if not v or not v.strip():
+            raise ValueError("API version is required")
+        # Check format: YYYY-MM
+        if not v.count("-") == 1:
+            raise ValueError("API version must be in format YYYY-MM (e.g., '2025-01')")
+        return v.strip()
+
+    @field_validator("resources")
+    @classmethod
+    def validate_resources(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        """Validate resource list."""
+        if v is None:
+            return None
+
+        valid_resources = {
+            "Product",
+            "Order",
+            "Customer",
+            "Collection",
+            "DraftOrder",
+            "InventoryItem",
+            "Location",
+            "FulfillmentOrder",
+        }
+
+        invalid = set(v) - valid_resources
+        if invalid:
+            raise ValueError(
+                f"Invalid resources: {', '.join(invalid)}. "
+                f"Valid options: {', '.join(sorted(valid_resources))}"
+            )
+
+        return v
 
 
 class BoxConfig(SourceConfig):
