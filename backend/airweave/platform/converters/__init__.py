@@ -2,6 +2,7 @@
 
 from .code_converter import CodeConverter
 from .html_converter import HtmlConverter
+from .markitdown_converter import MarkItDownConverter
 from .mistral_converter import MistralConverter
 from .txt_converter import TxtConverter
 from .web_converter import WebConverter
@@ -9,6 +10,7 @@ from .xlsx_converter import XlsxConverter
 
 # Singleton instances
 mistral_converter = MistralConverter()
+markitdown_converter = MarkItDownConverter()
 html_converter = HtmlConverter()
 xlsx_converter = XlsxConverter()  # Local openpyxl extraction (not Mistral)
 txt_converter = TxtConverter()
@@ -16,10 +18,11 @@ code_converter = CodeConverter()
 web_converter = WebConverter()  # URL fetching and HTML to markdown
 
 # Aliases for backward compatibility
-pdf_converter = mistral_converter  # PDF uses Mistral OCR
-docx_converter = mistral_converter  # DOCX uses Mistral OCR
-pptx_converter = mistral_converter  # PPTX uses Mistral OCR
-img_converter = mistral_converter  # Images use Mistral OCR
+# Use MarkItDown (local) instead of Mistral (cloud)
+pdf_converter = markitdown_converter
+docx_converter = markitdown_converter
+pptx_converter = markitdown_converter
+img_converter = markitdown_converter
 
 __all__ = [
     "mistral_converter",

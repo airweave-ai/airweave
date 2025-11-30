@@ -44,8 +44,10 @@ services:
 
   backend:
     container_name: airweave-backend
-    # Use pre-built image of latest release, or override with BACKEND_IMAGE env var for testing
-    image: ${BACKEND_IMAGE:-ghcr.io/airweave-ai/airweave-backend:latest}
+    # Build from source for local dev (fixes platform mismatch on M1/M2)
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
     # Import all variables from .env file
     env_file:
       - ../.env
@@ -88,8 +90,10 @@ services:
 
   frontend:
     container_name: airweave-frontend
-    # Use pre-built image of latest release, or override with FRONTEND_IMAGE env var for testing
-    image: ${FRONTEND_IMAGE:-ghcr.io/airweave-ai/airweave-frontend:latest}
+    # Build from source for local dev
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
     # Profile: only start if explicitly enabled with --profile frontend
     # Not needed for backend-only testing (API tests, connector tests)
     profiles:
@@ -183,8 +187,10 @@ services:
 
   temporal-worker:
     container_name: airweave-temporal-worker
-    # Use pre-built image of latest release, or override with BACKEND_IMAGE env var for testing
-    image: ${BACKEND_IMAGE:-ghcr.io/airweave-ai/airweave-backend:latest}
+    # Build from source for local dev
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
     # Import all variables from .env file (same as backend)
     env_file:
       - ../.env

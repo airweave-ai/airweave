@@ -158,8 +158,8 @@ integrations:
     url: "https://accounts.google.com/o/oauth2/auth"
     backend_url: "https://oauth2.googleapis.com/token"
     grant_type: "authorization_code"
-    client_id: "976410117544-apnlsluj4nc0l7lolc9oklm2tfv5f7et.apps.googleusercontent.com"
-    client_secret: "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"
+    client_id: "placeholder_client_id" # REPLACED FOR SECURITY
+    client_secret: "placeholder_secret" # REPLACED FOR SECURITY
     content_type: "application/x-www-form-urlencoded"
     client_credential_location: "body"
     scope: "https://www.googleapis.com/auth/docs https://www.googleapis.com/auth/drive.photos.readonly https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.metadata https://www.googleapis.com/auth/drive.metadata.readonly https://www.googleapis.com/auth/gmail.readonly"

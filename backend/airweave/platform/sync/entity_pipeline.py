@@ -886,14 +886,14 @@ class EntityPipeline:
 
         # Map extensions to converter modules
         converter_map = {
-            # Mistral OCR - Documents
-            ".pdf": converters.mistral_converter,
-            ".docx": converters.mistral_converter,
-            ".pptx": converters.mistral_converter,
-            # Mistral OCR - Images
-            ".jpg": converters.mistral_converter,
-            ".jpeg": converters.mistral_converter,
-            ".png": converters.mistral_converter,
+            # Documents - use aliases from __init__.py (defaults to MarkItDown)
+            ".pdf": converters.pdf_converter,
+            ".docx": converters.docx_converter,
+            ".pptx": converters.pptx_converter,
+            # Images - use aliases from __init__.py (defaults to MarkItDown)
+            ".jpg": converters.img_converter,
+            ".jpeg": converters.img_converter,
+            ".png": converters.img_converter,
             # XLSX - local extraction
             ".xlsx": converters.xlsx_converter,
             # HTML
