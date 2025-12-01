@@ -96,7 +96,7 @@ class GoogleDriveSource(BaseSource):
         except ValueError:
             return None
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate the Google Drive source connection."""
         is_valid = await self._validate_oauth2(
             ping_url="https://www.googleapis.com/drive/v3/drives?pageSize=1",
