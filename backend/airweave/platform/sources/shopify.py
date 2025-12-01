@@ -1,20 +1,30 @@
 """Shopify Admin GraphQL API source implementation.
 
-This source connects to Shopify stores via the Admin GraphQL API and dynamically
-discovers available data types. It focuses on primary business resources like
-products, orders, customers, collections, and inventory.
+This source connects to Shopify stores via the Admin GraphQL API and syncs
+core business data including products, orders, customers, collections, and inventory.
 """
 
 import asyncio
 import json
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, List, Optional, Type
+from typing import Any, AsyncGenerator, Dict, Optional
 
 from aiohttp import ClientSession, ClientTimeout
 
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import BaseEntity, PolymorphicEntity
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
+from airweave.platform.entities.shopify import (
+    ShopifyCollectionEntity,
+    ShopifyCustomerEntity,
+    ShopifyDraftOrderEntity,
+    ShopifyFulfillmentOrderEntity,
+    ShopifyInventoryItemEntity,
+    ShopifyLocationEntity,
+    ShopifyOrderEntity,
+    ShopifyProductEntity,
+    ShopifyShopEntity,
+)
 from airweave.platform.sources._base import BaseSource
 from airweave.schemas.source_connection import AuthenticationMethod
 
@@ -22,6 +32,7 @@ from airweave.schemas.source_connection import AuthenticationMethod
 RESOURCE_CONFIGS = {
     "Product": {
         "query_name": "products",
+        "entity_class": ShopifyProductEntity,
         "fields": """
             id
             title
@@ -57,6 +68,7 @@ RESOURCE_CONFIGS = {
     },
     "Order": {
         "query_name": "orders",
+        "entity_class": ShopifyOrderEntity,
         "fields": """
             id
             name
@@ -113,6 +125,7 @@ RESOURCE_CONFIGS = {
     },
     "Customer": {
         "query_name": "customers",
+        "entity_class": ShopifyCustomerEntity,
         "fields": """
             id
             firstName
@@ -153,6 +166,7 @@ RESOURCE_CONFIGS = {
     },
     "Collection": {
         "query_name": "collections",
+        "entity_class": ShopifyCollectionEntity,
         "fields": """
             id
             title
@@ -180,6 +194,7 @@ RESOURCE_CONFIGS = {
     },
     "DraftOrder": {
         "query_name": "draftOrders",
+        "entity_class": ShopifyDraftOrderEntity,
         "fields": """
             id
             name
@@ -207,6 +222,7 @@ RESOURCE_CONFIGS = {
     },
     "InventoryItem": {
         "query_name": "inventoryItems",
+        "entity_class": ShopifyInventoryItemEntity,
         "fields": """
             id
             createdAt
@@ -227,6 +243,7 @@ RESOURCE_CONFIGS = {
     },
     "Location": {
         "query_name": "locations",
+        "entity_class": ShopifyLocationEntity,
         "fields": """
             id
             name
@@ -250,6 +267,7 @@ RESOURCE_CONFIGS = {
     },
     "FulfillmentOrder": {
         "query_name": "fulfillmentOrders",
+        "entity_class": ShopifyFulfillmentOrderEntity,
         "fields": """
             id
             createdAt
@@ -297,22 +315,11 @@ class ShopifySource(BaseSource):
     customers, collections, inventory, and fulfillment information.
     """
 
-    _RESERVED_ENTITY_FIELDS = {
-        "entity_id",
-        "breadcrumbs",
-        "name",
-        "created_at",
-        "updated_at",
-        "textual_representation",
-        "airweave_system_metadata",
-    }
-
     def __init__(self):
         """Initialize the Shopify source."""
         super().__init__()
         self.session: Optional[ClientSession] = None
-        self.entity_classes: Dict[str, Type[PolymorphicEntity]] = {}
-        self.field_mappings: Dict[str, Dict[str, str]] = {}
+        self.shop_breadcrumb: Optional[Breadcrumb] = None
 
     @classmethod
     async def create(
@@ -395,121 +402,48 @@ class ShopifySource(BaseSource):
 
             return data.get("data", {})
 
-    def _flatten_nested_object(self, obj: Any, prefix: str = "") -> Dict[str, Any]:
-        """Flatten nested objects into dot-notation fields."""
-        result = {}
+    def _parse_datetime(self, dt_str: Optional[str]) -> Optional[datetime]:
+        """Parse ISO datetime string."""
+        if not dt_str:
+            return None
+        try:
+            return datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            return None
 
-        if isinstance(obj, dict):
-            for key, value in obj.items():
-                new_key = f"{prefix}.{key}" if prefix else key
-                if isinstance(value, (dict, list)) and value:
-                    # Serialize complex objects as JSON strings
-                    result[new_key] = json.dumps(value)
-                else:
-                    result[new_key] = value
-        elif isinstance(obj, list):
-            result[prefix] = json.dumps(obj)
-        else:
-            result[prefix] = obj
+    def _extract_nested_value(self, obj: Dict, path: str) -> Any:
+        """Extract a nested value from a dictionary using dot notation."""
+        parts = path.split(".")
+        current = obj
+        for part in parts:
+            if not isinstance(current, dict):
+                return None
+            current = current.get(part)
+            if current is None:
+                return None
+        return current
 
-        return result
-
-    def _extract_fields_from_node(self, node: Dict[str, Any]) -> Dict[str, Any]:
-        """Extract and flatten fields from a GraphQL node."""
-        flattened = {}
-
-        for key, value in node.items():
-            if value is None:
-                flattened[key] = None
-            elif isinstance(value, dict):
-                # Flatten nested objects
-                nested = self._flatten_nested_object(value, key)
-                flattened.update(nested)
-            elif isinstance(value, list):
-                # Serialize lists as JSON
-                flattened[key] = json.dumps(value)
-            else:
-                flattened[key] = value
-
-        return flattened
-
-    def _infer_type_from_value(self, value: Any) -> Type:
-        """Infer Python type from a value."""
-        if value is None:
-            return str
-        elif isinstance(value, bool):
-            return bool
-        elif isinstance(value, int):
-            return int
-        elif isinstance(value, float):
-            return float
-        elif isinstance(value, str):
-            # Check if it's a datetime string
-            if "T" in value and ("Z" in value or "+" in value or "-" in value):
-                try:
-                    datetime.fromisoformat(value.replace("Z", "+00:00"))
-                    return datetime
-                except (ValueError, AttributeError):
-                    pass
-            return str
-        elif isinstance(value, (dict, list)):
-            return str  # Will be serialized as JSON
-        else:
-            return str
-
-    def _normalize_field_name(self, field_name: str) -> str:
-        """Normalize field names to avoid collisions."""
-        if field_name in self._RESERVED_ENTITY_FIELDS:
-            return f"{field_name}_field"
-        return field_name
-
-    async def _create_entity_class(
-        self, resource_type: str, sample_nodes: List[Dict]
-    ) -> Type[PolymorphicEntity]:
-        """Create a polymorphic entity class from sample data.
-
-        Args:
-            resource_type: Name of the resource
-            sample_nodes: Sample nodes to infer schema
-
-        Returns:
-            Dynamically created entity class
-        """
-        # Collect all fields from sample nodes
-        all_fields = {}
-        for node in sample_nodes:
-            flattened = self._extract_fields_from_node(node)
-            for field_name, value in flattened.items():
-                if field_name not in all_fields:
-                    python_type = self._infer_type_from_value(value)
-                    all_fields[field_name] = python_type
-
-        # Create columns
-        columns = {}
-        field_mapping = {}
-
-        for field_name, python_type in all_fields.items():
-            normalized_name = self._normalize_field_name(field_name)
-
-            columns[field_name] = {
-                "name": field_name,
-                "python_type": python_type,
-                "normalized_name": normalized_name,
+    async def _get_shop_info(self) -> Dict[str, Any]:
+        """Get shop information."""
+        query = """
+        query {
+          shop {
+            id
+            name
+            email
+            myshopifyDomain
+            currencyCode
+            ianaTimezone
+            contactEmail
+            shopOwnerName
+            billingAddress {
+              country
             }
-
-            field_mapping[field_name] = normalized_name
-
-        self.field_mappings[resource_type] = field_mapping
-
-        # Create entity class
-        entity_class = PolymorphicEntity.create_table_entity_class(
-            table_name=resource_type,
-            schema_name="shopify",
-            columns=columns,
-            primary_keys=["id"],
-        )
-
-        return entity_class
+          }
+        }
+        """
+        result = await self._execute_graphql(query)
+        return result.get("shop", {})
 
     async def _fetch_resource_page(
         self, resource_type: str, cursor: Optional[str] = None, page_size: int = 50
@@ -559,43 +493,186 @@ class ShopifySource(BaseSource):
         self,
         node_data: Dict,
         resource_type: str,
-        entity_class: Type[PolymorphicEntity],
     ) -> BaseEntity:
         """Convert a GraphQL node to an entity."""
-        # Flatten nested objects
-        flattened = self._extract_fields_from_node(node_data)
+        config = RESOURCE_CONFIGS[resource_type]
+        entity_class = config["entity_class"]
+        name_field = config.get("name_field", "id")
 
         # Generate entity ID
         entity_id = self._generate_entity_id(resource_type, node_data)
 
-        # Map fields
-        field_mapping = self.field_mappings.get(resource_type, {})
-        processed_data = {}
-
-        for field_name, value in flattened.items():
-            normalized_name = field_mapping.get(field_name, field_name)
-
-            if normalized_name not in entity_class.model_fields:
-                continue
-
-            processed_data[normalized_name] = value
-
         # Determine entity name
-        config = RESOURCE_CONFIGS[resource_type]
-        name_field = config.get("name_field", "id")
         entity_name = str(node_data.get(name_field) or node_data.get("id", "unknown"))
 
         # Extract timestamps
-        created_at = node_data.get("createdAt")
-        updated_at = node_data.get("updatedAt")
+        created_at = self._parse_datetime(node_data.get("createdAt"))
+        updated_at = self._parse_datetime(node_data.get("updatedAt"))
+
+        # Build entity-specific fields based on resource type
+        kwargs = {}
+
+        if resource_type == "Product":
+            kwargs = {
+                "description": node_data.get("description"),
+                "description_html": node_data.get("descriptionHtml"),
+                "handle": node_data.get("handle"),
+                "status": node_data.get("status"),
+                "published_at": self._parse_datetime(node_data.get("publishedAt")),
+                "vendor": node_data.get("vendor"),
+                "product_type": node_data.get("productType"),
+                "tags": json.dumps(node_data.get("tags", [])),
+                "total_inventory": node_data.get("totalInventory"),
+                "tracks_inventory": node_data.get("tracksInventory"),
+                "online_store_url": node_data.get("onlineStoreUrl"),
+                "featured_image_url": self._extract_nested_value(node_data, "featuredImage.url"),
+                "price_range_min": self._extract_nested_value(
+                    node_data, "priceRangeV2.minVariantPrice.amount"
+                ),
+                "price_range_max": self._extract_nested_value(
+                    node_data, "priceRangeV2.maxVariantPrice.amount"
+                ),
+                "currency_code": self._extract_nested_value(
+                    node_data, "priceRangeV2.minVariantPrice.currencyCode"
+                ),
+            }
+
+        elif resource_type == "Order":
+            kwargs = {
+                "email": node_data.get("email"),
+                "phone": node_data.get("phone"),
+                "cancelled_at": self._parse_datetime(node_data.get("cancelledAt")),
+                "closed_at": self._parse_datetime(node_data.get("closedAt")),
+                "processed_at": self._parse_datetime(node_data.get("processedAt")),
+                "fulfillment_status": node_data.get("displayFulfillmentStatus"),
+                "financial_status": node_data.get("displayFinancialStatus"),
+                "fully_paid": node_data.get("fullyPaid"),
+                "confirmed": node_data.get("confirmed"),
+                "cancelled": node_data.get("cancelled"),
+                "test": node_data.get("test"),
+                "tags": json.dumps(node_data.get("tags", [])),
+                "note": node_data.get("note"),
+                "total_price": self._extract_nested_value(
+                    node_data, "totalPriceSet.shopMoney.amount"
+                ),
+                "subtotal_price": self._extract_nested_value(
+                    node_data, "subtotalPriceSet.shopMoney.amount"
+                ),
+                "total_tax": self._extract_nested_value(node_data, "totalTaxSet.shopMoney.amount"),
+                "total_shipping_price": self._extract_nested_value(
+                    node_data, "totalShippingPriceSet.shopMoney.amount"
+                ),
+                "currency_code": self._extract_nested_value(
+                    node_data, "totalPriceSet.shopMoney.currencyCode"
+                ),
+                "customer_id": self._extract_nested_value(node_data, "customer.id"),
+                "customer_email": self._extract_nested_value(node_data, "customer.email"),
+                "customer_name": self._extract_nested_value(node_data, "customer.displayName"),
+            }
+
+        elif resource_type == "Customer":
+            kwargs = {
+                "first_name": node_data.get("firstName"),
+                "last_name": node_data.get("lastName"),
+                "email": node_data.get("email"),
+                "phone": node_data.get("phone"),
+                "state": node_data.get("state"),
+                "verified_email": node_data.get("verifiedEmail"),
+                "tax_exempt": node_data.get("taxExempt"),
+                "tags": json.dumps(node_data.get("tags", [])),
+                "note": node_data.get("note"),
+                "orders_count": node_data.get("ordersCount"),
+                "total_spent": self._extract_nested_value(node_data, "totalSpentV2.amount"),
+                "average_order_amount": self._extract_nested_value(
+                    node_data, "averageOrderAmountV2.amount"
+                ),
+                "currency_code": self._extract_nested_value(node_data, "totalSpentV2.currencyCode"),
+                "lifetime_duration": node_data.get("lifetimeDuration"),
+                "addresses": json.dumps(node_data.get("addresses", [])),
+            }
+
+        elif resource_type == "Collection":
+            kwargs = {
+                "description": node_data.get("description"),
+                "description_html": node_data.get("descriptionHtml"),
+                "handle": node_data.get("handle"),
+                "sort_order": node_data.get("sortOrder"),
+                "template_suffix": node_data.get("templateSuffix"),
+                "products_count": node_data.get("productsCount"),
+                "image_url": self._extract_nested_value(node_data, "image.url"),
+                "rule_set": json.dumps(node_data.get("ruleSet"))
+                if node_data.get("ruleSet")
+                else None,
+            }
+
+        elif resource_type == "DraftOrder":
+            kwargs = {
+                "email": node_data.get("email"),
+                "phone": node_data.get("phone"),
+                "completed_at": self._parse_datetime(node_data.get("completedAt")),
+                "status": node_data.get("status"),
+                "tags": json.dumps(node_data.get("tags", [])),
+                "note": node_data.get("note"),
+                "invoice_url": node_data.get("invoiceUrl"),
+                "total_price": node_data.get("totalPrice"),
+                "subtotal_price": node_data.get("subtotalPrice"),
+                "total_tax": node_data.get("totalTax"),
+                "total_shipping_price": node_data.get("totalShippingPrice"),
+                "currency_code": node_data.get("currencyCode"),
+                "customer_id": self._extract_nested_value(node_data, "customer.id"),
+                "customer_email": self._extract_nested_value(node_data, "customer.email"),
+                "customer_name": self._extract_nested_value(node_data, "customer.displayName"),
+            }
+
+        elif resource_type == "InventoryItem":
+            kwargs = {
+                "sku": node_data.get("sku"),
+                "tracked": node_data.get("tracked"),
+                "requires_shipping": node_data.get("requiresShipping"),
+                "duplicate_sku_count": node_data.get("duplicateSkuCount"),
+                "country_code_of_origin": node_data.get("countryCodeOfOrigin"),
+                "province_code_of_origin": node_data.get("provinceCodeOfOrigin"),
+                "harmonized_system_code": node_data.get("harmonizedSystemCode"),
+                "unit_cost": self._extract_nested_value(node_data, "unitCost.amount"),
+                "currency_code": self._extract_nested_value(node_data, "unitCost.currencyCode"),
+            }
+
+        elif resource_type == "Location":
+            kwargs = {
+                "address": json.dumps(node_data.get("address"))
+                if node_data.get("address")
+                else None,
+                "is_active": node_data.get("isActive"),
+                "fulfills_online_orders": node_data.get("fulfillsOnlineOrders"),
+                "has_active_inventory": node_data.get("hasActiveInventory"),
+                "ships_inventory": node_data.get("shipsInventory"),
+            }
+
+        elif resource_type == "FulfillmentOrder":
+            kwargs = {
+                "status": node_data.get("status"),
+                "request_status": node_data.get("requestStatus"),
+                "destination": json.dumps(node_data.get("destination"))
+                if node_data.get("destination")
+                else None,
+                "delivery_method_type": self._extract_nested_value(
+                    node_data, "deliveryMethod.methodType"
+                ),
+                "assigned_location_name": self._extract_nested_value(
+                    node_data, "assignedLocation.name"
+                ),
+                "assigned_location_address": self._extract_nested_value(
+                    node_data, "assignedLocation.address1"
+                ),
+            }
 
         return entity_class(
             entity_id=entity_id,
-            breadcrumbs=[],
+            breadcrumbs=[self.shop_breadcrumb] if self.shop_breadcrumb else [],
             name=entity_name,
             created_at=created_at,
             updated_at=updated_at,
-            **processed_data,
+            **kwargs,
         )
 
     async def _sync_resource_type(self, resource_type: str) -> AsyncGenerator[BaseEntity, None]:
@@ -603,25 +680,7 @@ class ShopifySource(BaseSource):
         cursor = None
         page_count = 0
         total_items = 0
-        sample_nodes = []
 
-        # First pass: collect samples to infer schema
-        self.logger.info(f"Collecting schema samples for {resource_type}...")
-        sample_result = await self._fetch_resource_page(resource_type, None, 10)
-        sample_edges = sample_result.get("edges", [])
-
-        for edge in sample_edges:
-            sample_nodes.append(edge.get("node", {}))
-
-        if not sample_nodes:
-            self.logger.warning(f"No data found for {resource_type}")
-            return
-
-        # Create entity class from samples
-        entity_class = await self._create_entity_class(resource_type, sample_nodes)
-        self.entity_classes[resource_type] = entity_class
-
-        # Second pass: sync all data
         while True:
             page_count += 1
             self.logger.info(
@@ -645,7 +704,7 @@ class ShopifySource(BaseSource):
             for edge in edges:
                 node = edge.get("node", {})
                 try:
-                    entity = await self._process_node_to_entity(node, resource_type, entity_class)
+                    entity = await self._process_node_to_entity(node, resource_type)
                     total_items += 1
                     yield entity
                 except Exception as e:
@@ -667,6 +726,28 @@ class ShopifySource(BaseSource):
         try:
             # Create session
             self.session = await self._create_session()
+
+            # Get shop info and create shop entity
+            shop_info = await self._get_shop_info()
+            shop_id = shop_info.get("id", "unknown")
+            shop_name = shop_info.get("name", "Unknown Shop")
+
+            shop_entity = ShopifyShopEntity(
+                entity_id=shop_id,
+                breadcrumbs=[],
+                name=shop_name,
+                created_at=None,
+                updated_at=None,
+                email=shop_info.get("email") or shop_info.get("contactEmail"),
+                domain=shop_info.get("myshopifyDomain"),
+                currency_code=shop_info.get("currencyCode"),
+                timezone=shop_info.get("ianaTimezone"),
+                shop_owner=shop_info.get("shopOwnerName"),
+                country_name=self._extract_nested_value(shop_info, "billingAddress.country"),
+            )
+
+            self.shop_breadcrumb = Breadcrumb(entity_id=shop_id)
+            yield shop_entity
 
             # Get list of resources to sync
             resources_to_sync = self.config.get("resources", list(RESOURCE_CONFIGS.keys()))
