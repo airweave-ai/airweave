@@ -4,12 +4,12 @@ This source connects to Shopify stores via the Admin GraphQL API and syncs
 core business data including products, orders, customers, collections, and inventory.
 """
 
-import asyncio
 import json
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
-from aiohttp import ClientSession, ClientTimeout
+import httpx
+from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
@@ -26,6 +26,10 @@ from airweave.platform.entities.shopify import (
     ShopifyShopEntity,
 )
 from airweave.platform.sources._base import BaseSource
+from airweave.platform.sources.retry_helpers import (
+    retry_if_rate_limit_or_timeout,
+    wait_rate_limit_with_backoff,
+)
 from airweave.schemas.source_connection import AuthenticationMethod
 
 # Resource configurations with query patterns
@@ -318,89 +322,104 @@ class ShopifySource(BaseSource):
     def __init__(self):
         """Initialize the Shopify source."""
         super().__init__()
-        self.session: Optional[ClientSession] = None
         self.shop_breadcrumb: Optional[Breadcrumb] = None
+        self.shop_name: Optional[str] = None
+        self.api_version: str = "2025-01"
+        self.resources: List[str] = list(RESOURCE_CONFIGS.keys())
 
     @classmethod
     async def create(
-        cls, credentials: Dict[str, Any], config: Optional[Dict[str, Any]] = None
+        cls, access_token: str, config: Optional[Dict[str, Any]] = None
     ) -> "ShopifySource":
         """Create a new Shopify source instance.
 
         Args:
-            credentials: Dictionary containing:
+            access_token: Admin API access token for Shopify store
+            config: Configuration parameters containing:
                 - shop_name: Shopify store name (e.g., 'my-store' for my-store.myshopify.com)
-                - access_token: Admin API access token
                 - api_version: API version (e.g., '2025-01', defaults to '2025-01')
                 - resources: Optional list of resources to sync (defaults to all)
-            config: Optional configuration parameters
         """
         instance = cls()
-        instance.config = (
-            credentials.model_dump() if hasattr(credentials, "model_dump") else dict(credentials)
-        )
+        instance.access_token = access_token
 
-        # Set defaults
-        if "api_version" not in instance.config:
-            instance.config["api_version"] = "2025-01"
-        if "resources" not in instance.config:
-            instance.config["resources"] = list(RESOURCE_CONFIGS.keys())
+        if config:
+            instance.shop_name = config.get("shop_name", "")
+            instance.api_version = config.get("api_version", "2025-01")
+            instance.resources = config.get("resources") or list(RESOURCE_CONFIGS.keys())
+        else:
+            instance.shop_name = ""
+            instance.api_version = "2025-01"
+            instance.resources = list(RESOURCE_CONFIGS.keys())
 
         return instance
 
     def _get_api_url(self) -> str:
         """Construct the GraphQL API URL."""
-        shop_name = self.config["shop_name"]
-        api_version = self.config["api_version"]
+        shop_name = self.shop_name
 
         # Handle both formats: 'my-store' or 'my-store.myshopify.com'
         if ".myshopify.com" not in shop_name:
             shop_name = f"{shop_name}.myshopify.com"
 
-        return f"https://{shop_name}/admin/api/{api_version}/graphql.json"
+        return f"https://{shop_name}/admin/api/{self.api_version}/graphql.json"
 
-    async def _create_session(self) -> ClientSession:
-        """Create an aiohttp session with proper headers."""
-        headers = {
-            "Content-Type": "application/json",
-            "X-Shopify-Access-Token": self.config["access_token"],
-        }
-        timeout = ClientTimeout(total=60)
-        return ClientSession(headers=headers, timeout=timeout)
+    @retry(
+        stop=stop_after_attempt(5),
+        retry=retry_if_rate_limit_or_timeout,
+        wait=wait_rate_limit_with_backoff,
+        reraise=True,
+    )
+    async def _execute_graphql(
+        self, client: httpx.AsyncClient, query: str, variables: Optional[Dict] = None
+    ) -> Dict:
+        """Execute a GraphQL query against the Shopify API with retry logic.
 
-    async def _execute_graphql(self, query: str, variables: Optional[Dict] = None) -> Dict:
-        """Execute a GraphQL query against the Shopify API.
+        Retries on:
+        - 429 rate limits (respects Retry-After header)
+        - Timeout errors (exponential backoff)
+
+        Max 5 attempts with intelligent wait strategy.
 
         Args:
+            client: HTTP client to use for the request
             query: GraphQL query string
             variables: Optional variables for the query
 
         Returns:
             Response data dictionary
         """
-        if not self.session:
-            self.session = await self._create_session()
+        # Get a valid token (will refresh if needed)
+        access_token = await self.get_access_token()
+        if not access_token:
+            raise ValueError("No access token available")
 
         url = self._get_api_url()
+        headers = {
+            "Content-Type": "application/json",
+            "X-Shopify-Access-Token": access_token,
+        }
+
         payload = {"query": query}
         if variables:
             payload["variables"] = variables
 
-        async with self.session.post(url, json=payload) as response:
-            if response.status == 429:
-                # Handle rate limiting
-                retry_after = int(response.headers.get("Retry-After", 2))
-                self.logger.warning(f"Rate limited. Waiting {retry_after} seconds...")
-                await asyncio.sleep(retry_after)
-                return await self._execute_graphql(query, variables)
-
+        try:
+            response = await client.post(url, json=payload, headers=headers)
             response.raise_for_status()
-            data = await response.json()
+            data = response.json()
 
             if "errors" in data:
                 raise ValueError(f"GraphQL errors: {data['errors']}")
 
             return data.get("data", {})
+
+        except httpx.HTTPStatusError as e:
+            self.logger.error(f"HTTP error from Shopify API: {e.response.status_code}")
+            raise
+        except Exception as e:
+            self.logger.error(f"Unexpected error accessing Shopify API: {str(e)}")
+            raise
 
     def _parse_datetime(self, dt_str: Optional[str]) -> Optional[datetime]:
         """Parse ISO datetime string."""
@@ -423,7 +442,7 @@ class ShopifySource(BaseSource):
                 return None
         return current
 
-    async def _get_shop_info(self) -> Dict[str, Any]:
+    async def _get_shop_info(self, client: httpx.AsyncClient) -> Dict[str, Any]:
         """Get shop information."""
         query = """
         query {
@@ -442,15 +461,20 @@ class ShopifySource(BaseSource):
           }
         }
         """
-        result = await self._execute_graphql(query)
+        result = await self._execute_graphql(client, query)
         return result.get("shop", {})
 
     async def _fetch_resource_page(
-        self, resource_type: str, cursor: Optional[str] = None, page_size: int = 50
+        self,
+        client: httpx.AsyncClient,
+        resource_type: str,
+        cursor: Optional[str] = None,
+        page_size: int = 50,
     ) -> Dict:
         """Fetch a page of resources using cursor-based pagination.
 
         Args:
+            client: HTTP client to use for the request
             resource_type: Name of the resource to fetch
             cursor: Cursor for pagination (None for first page)
             page_size: Number of items per page
@@ -481,7 +505,7 @@ class ShopifySource(BaseSource):
         }}
         """
 
-        result = await self._execute_graphql(query)
+        result = await self._execute_graphql(client, query)
         return result.get(query_name, {})
 
     def _generate_entity_id(self, resource_type: str, node_data: Dict) -> str:
@@ -675,7 +699,9 @@ class ShopifySource(BaseSource):
             **kwargs,
         )
 
-    async def _sync_resource_type(self, resource_type: str) -> AsyncGenerator[BaseEntity, None]:
+    async def _sync_resource_type(
+        self, client: httpx.AsyncClient, resource_type: str
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Sync all items for a specific resource type."""
         cursor = None
         page_count = 0
@@ -689,7 +715,7 @@ class ShopifySource(BaseSource):
             )
 
             try:
-                result = await self._fetch_resource_page(resource_type, cursor)
+                result = await self._fetch_resource_page(client, resource_type, cursor)
             except Exception as e:
                 self.logger.error(f"Error fetching {resource_type} page: {e}")
                 break
@@ -723,12 +749,9 @@ class ShopifySource(BaseSource):
 
     async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate entities by syncing all configured resource types."""
-        try:
-            # Create session
-            self.session = await self._create_session()
-
+        async with self.http_client() as client:
             # Get shop info and create shop entity
-            shop_info = await self._get_shop_info()
+            shop_info = await self._get_shop_info(client)
             shop_id = shop_info.get("id", "unknown")
             shop_name = shop_info.get("name", "Unknown Shop")
 
@@ -750,7 +773,7 @@ class ShopifySource(BaseSource):
             yield shop_entity
 
             # Get list of resources to sync
-            resources_to_sync = self.config.get("resources", list(RESOURCE_CONFIGS.keys()))
+            resources_to_sync = self.resources
 
             self.logger.info(
                 f"Starting Shopify sync for {len(resources_to_sync)} resource types: "
@@ -765,49 +788,38 @@ class ShopifySource(BaseSource):
 
                 self.logger.info(f"Syncing {i}/{len(resources_to_sync)}: {resource_type}")
 
-                async for entity in self._sync_resource_type(resource_type):
+                async for entity in self._sync_resource_type(client, resource_type):
                     yield entity
 
             self.logger.info(
                 f"Successfully completed sync for all {len(resources_to_sync)} resource types"
             )
 
-        finally:
-            if self.session:
-                await self.session.close()
-                self.session = None
-
     async def validate(self) -> bool:
         """Verify Shopify credentials and API access."""
         try:
-            self.session = await self._create_session()
+            async with self.http_client() as client:
+                # Test with a simple shop query
+                test_query = """
+                query {
+                  shop {
+                    name
+                    email
+                    currencyCode
+                  }
+                }
+                """
 
-            # Test with a simple shop query
-            test_query = """
-            query {
-              shop {
-                name
-                email
-                currencyCode
-              }
-            }
-            """
+                result = await self._execute_graphql(client, test_query)
 
-            result = await self._execute_graphql(test_query)
-
-            if "shop" in result:
-                shop_name = result["shop"].get("name", "Unknown")
-                self.logger.info(f"Successfully connected to shop: {shop_name}")
-                return True
-            else:
-                self.logger.error("Validation failed: No shop data returned")
-                return False
+                if "shop" in result:
+                    shop_name = result["shop"].get("name", "Unknown")
+                    self.logger.info(f"Successfully connected to shop: {shop_name}")
+                    return True
+                else:
+                    self.logger.error("Validation failed: No shop data returned")
+                    return False
 
         except Exception as e:
             self.logger.error(f"Validation failed: {e}")
             return False
-
-        finally:
-            if self.session:
-                await self.session.close()
-                self.session = None

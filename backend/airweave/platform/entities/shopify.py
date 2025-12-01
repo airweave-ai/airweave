@@ -46,13 +46,13 @@ class ShopifyProductEntity(BaseEntity):
         None, description="Product description (HTML)", embeddable=True
     )
     handle: Optional[str] = AirweaveField(
-        None, description="URL-friendly product handle", embeddable=False
+        None, description="URL-friendly product handle", embeddable=True
     )
     status: Optional[str] = AirweaveField(
-        None, description="Product status (ACTIVE, DRAFT, ARCHIVED)", embeddable=False
+        None, description="Product status (ACTIVE, DRAFT, ARCHIVED)", embeddable=True
     )
     published_at: Optional[datetime] = AirweaveField(
-        None, description="When the product was published", embeddable=False
+        None, description="When the product was published", embeddable=True
     )
     vendor: Optional[str] = AirweaveField(None, description="Product vendor", embeddable=True)
     product_type: Optional[str] = AirweaveField(
@@ -62,25 +62,25 @@ class ShopifyProductEntity(BaseEntity):
         None, description="Product tags (JSON array)", embeddable=True
     )
     total_inventory: Optional[int] = AirweaveField(
-        None, description="Total inventory across all variants", embeddable=False
+        None, description="Total inventory across all variants", embeddable=True
     )
     tracks_inventory: Optional[bool] = AirweaveField(
         None, description="Whether inventory is tracked", embeddable=False
     )
     online_store_url: Optional[str] = AirweaveField(
-        None, description="URL to product in online store", embeddable=False
+        None, description="URL to product in online store", embeddable=True
     )
     featured_image_url: Optional[str] = AirweaveField(
         None, description="Featured image URL", embeddable=False
     )
     price_range_min: Optional[str] = AirweaveField(
-        None, description="Minimum variant price", embeddable=False
+        None, description="Minimum variant price", embeddable=True
     )
     price_range_max: Optional[str] = AirweaveField(
-        None, description="Maximum variant price", embeddable=False
+        None, description="Maximum variant price", embeddable=True
     )
     currency_code: Optional[str] = AirweaveField(
-        None, description="Price currency code", embeddable=False
+        None, description="Price currency code", embeddable=True
     )
 
 
@@ -100,28 +100,28 @@ class ShopifyOrderEntity(BaseEntity):
     )
     phone: Optional[str] = AirweaveField(None, description="Customer phone number", embeddable=True)
     cancelled_at: Optional[datetime] = AirweaveField(
-        None, description="When the order was cancelled", embeddable=False
+        None, description="When the order was cancelled", embeddable=True
     )
     closed_at: Optional[datetime] = AirweaveField(
-        None, description="When the order was closed", embeddable=False
+        None, description="When the order was closed", embeddable=True
     )
     processed_at: Optional[datetime] = AirweaveField(
-        None, description="When the order was processed", embeddable=False
+        None, description="When the order was processed", embeddable=True
     )
     fulfillment_status: Optional[str] = AirweaveField(
-        None, description="Fulfillment status display", embeddable=False
+        None, description="Fulfillment status display", embeddable=True
     )
     financial_status: Optional[str] = AirweaveField(
-        None, description="Financial status display", embeddable=False
+        None, description="Financial status display", embeddable=True
     )
     fully_paid: Optional[bool] = AirweaveField(
-        None, description="Whether the order is fully paid", embeddable=False
+        None, description="Whether the order is fully paid", embeddable=True
     )
     confirmed: Optional[bool] = AirweaveField(
-        None, description="Whether the order is confirmed", embeddable=False
+        None, description="Whether the order is confirmed", embeddable=True
     )
     cancelled: Optional[bool] = AirweaveField(
-        None, description="Whether the order is cancelled", embeddable=False
+        None, description="Whether the order is cancelled", embeddable=True
     )
     test: Optional[bool] = AirweaveField(
         None, description="Whether this is a test order", embeddable=False
@@ -131,17 +131,17 @@ class ShopifyOrderEntity(BaseEntity):
     )
     note: Optional[str] = AirweaveField(None, description="Order notes", embeddable=True)
     total_price: Optional[str] = AirweaveField(
-        None, description="Total price amount", embeddable=False
+        None, description="Total price amount", embeddable=True
     )
     subtotal_price: Optional[str] = AirweaveField(
-        None, description="Subtotal price amount", embeddable=False
+        None, description="Subtotal price amount", embeddable=True
     )
-    total_tax: Optional[str] = AirweaveField(None, description="Total tax amount", embeddable=False)
+    total_tax: Optional[str] = AirweaveField(None, description="Total tax amount", embeddable=True)
     total_shipping_price: Optional[str] = AirweaveField(
-        None, description="Total shipping amount", embeddable=False
+        None, description="Total shipping amount", embeddable=True
     )
     currency_code: Optional[str] = AirweaveField(
-        None, description="Order currency code", embeddable=False
+        None, description="Order currency code", embeddable=True
     )
     customer_id: Optional[str] = AirweaveField(None, description="Customer ID", embeddable=False)
     customer_email: Optional[str] = AirweaveField(
@@ -174,32 +174,30 @@ class ShopifyCustomerEntity(BaseEntity):
     )
     phone: Optional[str] = AirweaveField(None, description="Customer phone number", embeddable=True)
     state: Optional[str] = AirweaveField(
-        None, description="Customer account state", embeddable=False
+        None, description="Customer account state", embeddable=True
     )
     verified_email: Optional[bool] = AirweaveField(
         None, description="Whether email is verified", embeddable=False
     )
     tax_exempt: Optional[bool] = AirweaveField(
-        None, description="Whether customer is tax exempt", embeddable=False
+        None, description="Whether customer is tax exempt", embeddable=True
     )
     tags: Optional[str] = AirweaveField(
         None, description="Customer tags (JSON array)", embeddable=True
     )
     note: Optional[str] = AirweaveField(None, description="Customer notes", embeddable=True)
     orders_count: Optional[int] = AirweaveField(
-        None, description="Total number of orders", embeddable=False
+        None, description="Total number of orders", embeddable=True
     )
     total_spent: Optional[str] = AirweaveField(
-        None, description="Total amount spent", embeddable=False
+        None, description="Total amount spent", embeddable=True
     )
     average_order_amount: Optional[str] = AirweaveField(
-        None, description="Average order amount", embeddable=False
+        None, description="Average order amount", embeddable=True
     )
-    currency_code: Optional[str] = AirweaveField(
-        None, description="Currency code", embeddable=False
-    )
+    currency_code: Optional[str] = AirweaveField(None, description="Currency code", embeddable=True)
     lifetime_duration: Optional[str] = AirweaveField(
-        None, description="Customer lifetime duration", embeddable=False
+        None, description="Customer lifetime duration", embeddable=True
     )
     addresses: Optional[str] = AirweaveField(
         None, description="Customer addresses (JSON array)", embeddable=True
@@ -224,16 +222,16 @@ class ShopifyCollectionEntity(BaseEntity):
         None, description="Collection description (HTML)", embeddable=True
     )
     handle: Optional[str] = AirweaveField(
-        None, description="URL-friendly collection handle", embeddable=False
+        None, description="URL-friendly collection handle", embeddable=True
     )
     sort_order: Optional[str] = AirweaveField(
-        None, description="Product sort order", embeddable=False
+        None, description="Product sort order", embeddable=True
     )
     template_suffix: Optional[str] = AirweaveField(
         None, description="Template suffix for theme", embeddable=False
     )
     products_count: Optional[int] = AirweaveField(
-        None, description="Number of products in collection", embeddable=False
+        None, description="Number of products in collection", embeddable=True
     )
     image_url: Optional[str] = AirweaveField(
         None, description="Collection image URL", embeddable=False
@@ -259,25 +257,23 @@ class ShopifyDraftOrderEntity(BaseEntity):
     )
     phone: Optional[str] = AirweaveField(None, description="Customer phone number", embeddable=True)
     completed_at: Optional[datetime] = AirweaveField(
-        None, description="When the draft order was completed", embeddable=False
+        None, description="When the draft order was completed", embeddable=True
     )
-    status: Optional[str] = AirweaveField(None, description="Draft order status", embeddable=False)
+    status: Optional[str] = AirweaveField(None, description="Draft order status", embeddable=True)
     tags: Optional[str] = AirweaveField(
         None, description="Draft order tags (JSON array)", embeddable=True
     )
     note: Optional[str] = AirweaveField(None, description="Draft order notes", embeddable=True)
     invoice_url: Optional[str] = AirweaveField(None, description="Invoice URL", embeddable=False)
-    total_price: Optional[str] = AirweaveField(None, description="Total price", embeddable=False)
+    total_price: Optional[str] = AirweaveField(None, description="Total price", embeddable=True)
     subtotal_price: Optional[str] = AirweaveField(
-        None, description="Subtotal price", embeddable=False
+        None, description="Subtotal price", embeddable=True
     )
-    total_tax: Optional[str] = AirweaveField(None, description="Total tax", embeddable=False)
+    total_tax: Optional[str] = AirweaveField(None, description="Total tax", embeddable=True)
     total_shipping_price: Optional[str] = AirweaveField(
-        None, description="Total shipping price", embeddable=False
+        None, description="Total shipping price", embeddable=True
     )
-    currency_code: Optional[str] = AirweaveField(
-        None, description="Currency code", embeddable=False
-    )
+    currency_code: Optional[str] = AirweaveField(None, description="Currency code", embeddable=True)
     customer_id: Optional[str] = AirweaveField(None, description="Customer ID", embeddable=False)
     customer_email: Optional[str] = AirweaveField(
         None, description="Customer email from draft order", embeddable=True
@@ -338,16 +334,16 @@ class ShopifyLocationEntity(BaseEntity):
         None, description="Location address (JSON)", embeddable=True
     )
     is_active: Optional[bool] = AirweaveField(
-        None, description="Whether location is active", embeddable=False
+        None, description="Whether location is active", embeddable=True
     )
     fulfills_online_orders: Optional[bool] = AirweaveField(
-        None, description="Whether location fulfills online orders", embeddable=False
+        None, description="Whether location fulfills online orders", embeddable=True
     )
     has_active_inventory: Optional[bool] = AirweaveField(
-        None, description="Whether location has active inventory", embeddable=False
+        None, description="Whether location has active inventory", embeddable=True
     )
     ships_inventory: Optional[bool] = AirweaveField(
-        None, description="Whether location ships inventory", embeddable=False
+        None, description="Whether location ships inventory", embeddable=True
     )
 
 
@@ -363,16 +359,16 @@ class ShopifyFulfillmentOrderEntity(BaseEntity):
 
     # API fields
     status: Optional[str] = AirweaveField(
-        None, description="Fulfillment order status", embeddable=False
+        None, description="Fulfillment order status", embeddable=True
     )
     request_status: Optional[str] = AirweaveField(
-        None, description="Request status", embeddable=False
+        None, description="Request status", embeddable=True
     )
     destination: Optional[str] = AirweaveField(
         None, description="Destination address (JSON)", embeddable=True
     )
     delivery_method_type: Optional[str] = AirweaveField(
-        None, description="Delivery method type", embeddable=False
+        None, description="Delivery method type", embeddable=True
     )
     assigned_location_name: Optional[str] = AirweaveField(
         None, description="Assigned location name", embeddable=True
