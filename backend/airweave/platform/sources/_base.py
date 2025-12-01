@@ -360,7 +360,7 @@ class BaseSource:
 
         async def _do_ping(bearer: str) -> bool:
             try:
-                async with httpx.AsyncClient(timeout=timeout) as client:
+                async with self.http_client(timeout=timeout) as client:
                     hdrs = {"Authorization": f"Bearer {bearer}"}
                     if headers:
                         hdrs.update(headers)
@@ -383,7 +383,7 @@ class BaseSource:
         # 1) Try RFC 7662 introspection if configured
         if introspection_url:
             try:
-                async with httpx.AsyncClient(timeout=timeout) as client:
+                async with self.http_client(timeout=timeout) as client:
                     auth = (client_id, client_secret) if client_id and client_secret else None
                     data = {"token": token, "token_type_hint": "access_token"}
                     resp = await client.post(

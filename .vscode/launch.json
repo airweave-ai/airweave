@@ -58,7 +58,7 @@
                 "PYTHONPATH": "${workspaceFolder}/backend",
                 "TESTING": "true"
             },
-            "envFile": "${workspaceFolder}/backend/tests/e2e/.env.test",
+            "envFile": "${workspaceFolder}/.env",
             "python": "${command:python.interpreterPath}"
         },
         {
