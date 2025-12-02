@@ -64,13 +64,13 @@ class BitbucketConfig(SourceConfig):
 class ShopifyConfig(BaseConfig):
     """Configuration for Shopify source."""
 
-    shop_name: str = Field(
+    shop_name: str = RequiredTemplateConfig(
         title="Shop Name",
         description=(
-            "The name of the Shopify store. Use either 'my-store' or "
-            "'my-store.myshopify.com' format."
+            "The name of the Shopify store (e.g., 'my-store' or 'my-store.myshopify.com')."
+            "Required before OAuth authentication."
         ),
-        min_length=1,
+        json_schema_extra={"required_for_auth": True},
     )
     api_version: str = Field(
         default="2025-01",

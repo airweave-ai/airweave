@@ -1,5 +1,5 @@
 # Warning: this file is not used in production. It is only used for development.
-# The secrets that we openly share with you are for development purposes only and cannot 
+# The secrets that we openly share with you are for development purposes only and cannot
 # be used in production.
 
 integrations:
@@ -411,3 +411,16 @@ integrations:
       response_mode: "query"
 
   qdrant:
+
+  shopify:
+    oauth_type: "access_only"
+    url: "https://{shop_name}.myshopify.com/admin/oauth/authorize"
+    backend_url: "https://{shop_name}.myshopify.com/admin/oauth/access_token"
+    grant_type: "authorization_code"
+    client_id: "client_id"
+    client_secret: "client_secret"
+    content_type: "application/x-www-form-urlencoded"
+    client_credential_location: "body"
+    scope: "read_products,read_orders,read_customers,read_inventory,read_locations,read_fulfillments,read_draft_orders"
+    url_template: true
+    backend_url_template: true

@@ -12,7 +12,6 @@ import httpx
 from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
-from airweave.platform.configs.auth import ShopifyAuthConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.shopify import (
@@ -31,7 +30,7 @@ from airweave.platform.sources.retry_helpers import (
     retry_if_rate_limit_or_timeout,
     wait_rate_limit_with_backoff,
 )
-from airweave.schemas.source_connection import AuthenticationMethod
+from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 # Resource configurations with query patterns
 RESOURCE_CONFIGS = {
@@ -306,9 +305,13 @@ RESOURCE_CONFIGS = {
 @source(
     name="Shopify",
     short_name="shopify",
-    auth_methods=[AuthenticationMethod.DIRECT, AuthenticationMethod.AUTH_PROVIDER],
-    oauth_type=None,
-    auth_config_class="ShopifyAuthConfig",
+    auth_methods=[
+        AuthenticationMethod.DIRECT,  # User provides access_token manually
+        AuthenticationMethod.OAUTH_BROWSER,  # OAuth flow populates access_token
+        AuthenticationMethod.AUTH_PROVIDER,  # Via Composio/Pipedream
+    ],
+    oauth_type=OAuthType.ACCESS_ONLY,  # No refresh tokens
+    auth_config_class=None,  # Use access_token string directly (like Todoist, Notion)
     config_class="ShopifyConfig",
     labels=["E-commerce", "Sales"],
     rate_limit_level=RateLimitLevel.ORG,
@@ -330,28 +333,33 @@ class ShopifySource(BaseSource):
 
     @classmethod
     async def create(
-        cls, credentials: ShopifyAuthConfig, config: Optional[Dict[str, Any]] = None
+        cls, access_token: str, config: Optional[Dict[str, Any]] = None
     ) -> "ShopifySource":
         """Create a new Shopify source instance.
 
         Args:
-            credentials: ShopifyAuthConfig instance containing the access token
+            access_token: The Shopify Admin API access token
             config: Optional configuration dict containing:
-                - shop_name: The Shopify store name (required)
+                - shop_name: The Shopify store name (required for sync, optional for validation)
                 - api_version: API version (default: "2025-01")
                 - resources: List of resources to sync
         """
         instance = cls()
-        instance.access_token = credentials.access_token
+        instance.access_token = access_token
 
-        if config:
-            # shop_name should be passed in config from source config
+        if config and config.get("shop_name"):
+            # Normal mode: shop_name provided
             instance.shop_name = config.get("shop_name")
             instance.api_version = config.get("api_version", "2025-01")
             instance.resources = config.get("resources") or list(RESOURCE_CONFIGS.keys())
-
-        if not instance.shop_name:
-            raise ValueError("shop_name is required in config")
+            instance._is_validation_mode = False
+        else:
+            # Validation mode: shop_name not yet provided (OAuth callback)
+            # The actual shop_name will be provided during connection creation
+            instance.shop_name = "validation-placeholder"
+            instance.api_version = "2025-01"
+            instance.resources = list(RESOURCE_CONFIGS.keys())
+            instance._is_validation_mode = True
 
         return instance
 
@@ -390,15 +398,14 @@ class ShopifySource(BaseSource):
         Returns:
             Response data dictionary
         """
-        # Get a valid token (will refresh if needed)
-        access_token = await self.get_access_token()
-        if not access_token:
+        # Use the access token directly (Shopify tokens don't expire/refresh)
+        if not self.access_token:
             raise ValueError("No access token available")
 
         url = self._get_api_url()
         headers = {
             "Content-Type": "application/json",
-            "X-Shopify-Access-Token": access_token,
+            "X-Shopify-Access-Token": self.access_token,
         }
 
         payload = {"query": query}
@@ -798,6 +805,15 @@ class ShopifySource(BaseSource):
 
     async def validate(self) -> bool:
         """Verify Shopify credentials and API access."""
+        # In validation mode (OAuth callback before config is complete),
+        # we can't make API calls since we don't have the real shop_name yet.
+        # Just return True to allow the OAuth flow to complete.
+        if getattr(self, "_is_validation_mode", False):
+            self.logger.info(
+                "Validation mode: skipping API validation (shop_name not yet provided)"
+            )
+            return True
+
         try:
             async with self.http_client() as client:
                 # Test with a simple shop query

@@ -320,15 +320,27 @@ class BitbucketAuthConfig(AuthConfig):
 
 
 class ShopifyAuthConfig(AuthConfig):
-    """Shopify authentication credentials schema."""
+    """Shopify authentication credentials schema.
+
+    Supports both:
+    1. Direct authentication - User provides an access token from a custom Shopify app
+    2. OAuth authentication - Token obtained through OAuth browser flow
+
+    Shopify uses access_only OAuth - tokens don't expire until the app is uninstalled.
+    """
 
     access_token: str = Field(
         title="Access Token",
         description=(
-            "The Admin API access token for the Shopify store. Generate one in the Shopify admin "
-            "by creating a custom app: Settings → Apps and sales channels → Develop apps → "
-            "Create an app. Configure Admin API scopes (read_products, read_orders, etc.) and "
-            "install the app to get the access token. "
+            "The Admin API access token for the Shopify store.\n\n"
+            "**Option 1 - Direct (Custom App):**\n"
+            "Generate one in the Shopify admin by creating a custom app: "
+            "Settings → Apps and sales channels → Develop apps → Create an app. "
+            "Configure Admin API scopes (read_products, read_orders, etc.) and "
+            "install the app to get the access token.\n\n"
+            "**Option 2 - OAuth:**\n"
+            "Use the OAuth flow to authenticate with your Shopify store. "
+            "The access token will be obtained automatically.\n\n"
             "Learn more: https://shopify.dev/docs/apps/build/authentication-authorization/"
             "access-tokens/generate-app-access-tokens-admin"
         ),
@@ -341,7 +353,14 @@ class ShopifyAuthConfig(AuthConfig):
         """Validate Shopify access token."""
         if not v or not v.strip():
             raise ValueError("Access token is required")
-        return v.strip()
+        v = v.strip()
+        # Shopify access tokens have various prefixes:
+        # - shpat_ (Admin API token)
+        # - shpca_ (Custom App token)
+        # - shpua_ (User Access token)
+        # - shppa_ (Public App token)
+        # Older tokens may not have a prefix
+        return v
 
 
 class BoxAuthConfig(OAuth2WithRefreshAuthConfig):
