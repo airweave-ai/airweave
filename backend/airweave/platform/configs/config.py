@@ -550,7 +550,7 @@ class SharePoint2019Config(SourceConfig):
         ),
         json_schema_extra={"required_for_auth": True},
     )
-    
+
     ad_server: str = RequiredTemplateConfig(
         title="Active Directory Server",
         description=(
@@ -560,7 +560,7 @@ class SharePoint2019Config(SourceConfig):
         ),
         json_schema_extra={"required_for_auth": True},
     )
-    
+
     ad_search_base: str = RequiredTemplateConfig(
         title="AD Search Base DN",
         description=(
@@ -568,6 +568,40 @@ class SharePoint2019Config(SourceConfig):
             "(e.g., 'DC=contoso,DC=local'). This is the root DN where users and groups are located."
         ),
         json_schema_extra={"required_for_auth": True},
+    )
+
+
+class SharePoint2019V2Config(SourceConfig):
+    """SharePoint 2019 On-Premise configuration schema.
+
+    Requires both SharePoint site URL and Active Directory server configuration.
+    AD is needed to resolve SIDs to sAMAccountNames for access control.
+    """
+
+    site_url: str = RequiredTemplateConfig(
+        title="SharePoint Site URL",
+        description=(
+            "Full URL of the SharePoint site to sync "
+            "(e.g., 'https://sharepoint.contoso.com/sites/Marketing')"
+        ),
+        json_schema_extra={"required_for_auth": True},
+    )
+
+    # Active Directory config (required for SID resolution)
+    ad_server: str = Field(
+        title="Active Directory Server",
+        description=(
+            "LDAP server hostname or IP address for Active Directory queries "
+            "(e.g., 'dc.contoso.local' or 'ldaps://dc.contoso.local:636')"
+        ),
+    )
+
+    ad_search_base: str = Field(
+        title="AD Search Base DN",
+        description=(
+            "LDAP search base Distinguished Name for Active Directory queries "
+            "(e.g., 'DC=contoso,DC=local')"
+        ),
     )
 
 

@@ -605,10 +605,10 @@ class SharePointEnterpriseAuthConfig(ClientCredentialsAuthConfig):
 
 class SharePoint2019AuthConfig(AuthConfig):
     """SharePoint 2019 On-Premise authentication config using NTLM + LDAP.
-    
+
     SharePoint 2019 on-premise uses NTLM authentication for the SharePoint REST API.
     LDAP credentials are used separately to query Active Directory for group memberships.
-    
+
     This connector syncs data from a specific SharePoint site and extracts the access
     graph from both SharePoint Groups and Active Directory Groups.
     """
@@ -627,8 +627,47 @@ class SharePoint2019AuthConfig(AuthConfig):
         title="SharePoint Domain",
         description="Windows domain for NTLM authentication (e.g., 'CONTOSO'). Optional if username includes domain.",
     )
-    
+
     # Active Directory LDAP credentials (can be same or different from SharePoint)
+    ad_username: str = Field(
+        title="AD Username",
+        description="Active Directory username for LDAP queries (e.g., 'admin')",
+    )
+    ad_password: str = Field(
+        title="AD Password",
+        description="Password for Active Directory LDAP authentication",
+    )
+    ad_domain: str = Field(
+        title="AD Domain",
+        description="Active Directory domain (e.g., 'CONTOSO' or 'contoso.local')",
+    )
+
+
+class SharePoint2019V2AuthConfig(AuthConfig):
+    r"""SharePoint 2019 On-Premise authentication config using NTLM + LDAP.
+
+    SharePoint 2019 on-premise uses NTLM authentication for the SharePoint REST API.
+    LDAP credentials are required to query Active Directory for resolving SIDs to
+    sAMAccountNames and for expanding group memberships in the access control graph.
+
+    Both SharePoint and AD credentials are required for sync to work correctly.
+    """
+
+    # SharePoint NTLM credentials (required)
+    sharepoint_username: str = Field(
+        title="SharePoint Username",
+        description="Windows username for NTLM authentication (e.g., 'jdoe' or 'DOMAIN\\jdoe')",
+    )
+    sharepoint_password: str = Field(
+        title="SharePoint Password",
+        description="Password for SharePoint NTLM authentication",
+    )
+    sharepoint_domain: str = Field(
+        title="SharePoint Domain",
+        description="Windows domain for NTLM authentication (e.g., 'CONTOSO')",
+    )
+
+    # Active Directory LDAP credentials (required for SID resolution)
     ad_username: str = Field(
         title="AD Username",
         description="Active Directory username for LDAP queries (e.g., 'admin')",
