@@ -311,7 +311,7 @@ RESOURCE_CONFIGS = {
         AuthenticationMethod.AUTH_PROVIDER,  # Via Composio/Pipedream
     ],
     oauth_type=OAuthType.ACCESS_ONLY,  # No refresh tokens
-    auth_config_class=None,  # Use access_token string directly (like Todoist, Notion)
+    auth_config_class="ShopifyAuthConfig",  # Shows access_token field in UI for Direct auth
     config_class="ShopifyConfig",
     labels=["E-commerce", "Sales"],
     rate_limit_level=RateLimitLevel.ORG,
@@ -333,19 +333,39 @@ class ShopifySource(BaseSource):
 
     @classmethod
     async def create(
-        cls, access_token: str, config: Optional[Dict[str, Any]] = None
+        cls, access_token: Any = None, config: Optional[Dict[str, Any]] = None, **kwargs
     ) -> "ShopifySource":
         """Create a new Shopify source instance.
 
         Args:
-            access_token: The Shopify Admin API access token
+            access_token: Either:
+                - ShopifyAuthConfig object (from Direct auth via positional arg)
+                - str access token (from OAuth validation or OAuth flow)
+                - dict with 'access_token' key (from auth provider)
             config: Optional configuration dict containing:
                 - shop_name: The Shopify store name (required for sync, optional for validation)
                 - api_version: API version (default: "2025-01")
                 - resources: List of resources to sync
+            **kwargs: Accepts 'credentials' for compatibility with sync factory
         """
         instance = cls()
-        instance.access_token = access_token
+
+        # Handle both 'access_token' and 'credentials' parameter names
+        # Sync factory passes positional 'credentials', OAuth validation passes 'access_token='
+        creds = access_token if access_token is not None else kwargs.get("credentials")
+
+        # Handle different credential formats
+        if isinstance(creds, str):
+            # OAuth flow provides access_token as string
+            instance.access_token = creds
+        elif isinstance(creds, dict):
+            # Auth provider may provide dict with access_token
+            instance.access_token = creds.get("access_token", "")
+        elif hasattr(creds, "access_token"):
+            # ShopifyAuthConfig object from Direct auth
+            instance.access_token = creds.access_token
+        else:
+            raise ValueError(f"Unsupported credentials type: {type(creds)}")
 
         if config and config.get("shop_name"):
             # Normal mode: shop_name provided
