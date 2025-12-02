@@ -61,27 +61,43 @@ class BitbucketConfig(SourceConfig):
         return value
 
 
-class ShopifyConfig(SourceConfig):
-    """Shopify configuration schema."""
+class ShopifyConfig(BaseConfig):
+    """Configuration for Shopify source."""
 
+    shop_name: str = Field(
+        title="Shop Name",
+        description=(
+            "The name of the Shopify store. Use either 'my-store' or "
+            "'my-store.myshopify.com' format."
+        ),
+        min_length=1,
+    )
     api_version: str = Field(
         default="2025-01",
         title="API Version",
+        description="Shopify Admin API version to use (e.g., '2025-01')",
+    )
+    resources: Optional[List[str]] = Field(
+        default=None,
+        title="Resources",
         description=(
-            "The Shopify Admin API version to use (e.g., '2025-01', '2024-10'). "
-            "See available versions at https://shopify.dev/docs/api/usage/versioning"
+            "List of Shopify resources to sync. If not specified, all resources will be synced: "
+            "Product, Order, Customer, Collection, DraftOrder,"
+            "InventoryItem, Location, FulfillmentOrder"
         ),
     )
 
-    resources: Optional[List[str]] = Field(
-        default=None,
-        title="Resources to Sync",
-        description=(
-            "List of resource types to sync. Leave empty to sync all available resources. "
-            "Available: Product, Order, Customer, Collection, DraftOrder, InventoryItem, "
-            "Location, FulfillmentOrder"
-        ),
-    )
+    @field_validator("shop_name")
+    @classmethod
+    def validate_shop_name(cls, v: str) -> str:
+        """Validate Shopify shop name."""
+        if not v or not v.strip():
+            raise ValueError("Shop name is required")
+        v = v.strip()
+        shop_name_clean = v.replace(".myshopify.com", "")
+        if not shop_name_clean.replace("-", "").isalnum():
+            raise ValueError("Shop name should only contain letters, numbers, and hyphens")
+        return v
 
     @field_validator("api_version")
     @classmethod
@@ -97,11 +113,8 @@ class ShopifyConfig(SourceConfig):
     @field_validator("resources")
     @classmethod
     def validate_resources(cls, v: Optional[List[str]]) -> Optional[List[str]]:
-        """Validate resource list."""
-        if v is None:
-            return None
-
-        valid_resources = {
+        """Validate resource list and default to all if not provided."""
+        all_resources = [
             "Product",
             "Order",
             "Customer",
@@ -110,7 +123,13 @@ class ShopifyConfig(SourceConfig):
             "InventoryItem",
             "Location",
             "FulfillmentOrder",
-        }
+        ]
+
+        # If None or empty, return all resources
+        if not v:
+            return all_resources
+
+        valid_resources = set(all_resources)
 
         invalid = set(v) - valid_resources
         if invalid:

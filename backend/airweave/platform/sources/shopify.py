@@ -12,6 +12,7 @@ import httpx
 from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
+from airweave.platform.configs.auth import ShopifyAuthConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.shopify import (
@@ -329,28 +330,28 @@ class ShopifySource(BaseSource):
 
     @classmethod
     async def create(
-        cls, access_token: str, config: Optional[Dict[str, Any]] = None
+        cls, credentials: ShopifyAuthConfig, config: Optional[Dict[str, Any]] = None
     ) -> "ShopifySource":
         """Create a new Shopify source instance.
 
         Args:
-            access_token: Admin API access token for Shopify store
-            config: Configuration parameters containing:
-                - shop_name: Shopify store name (e.g., 'my-store' for my-store.myshopify.com)
-                - api_version: API version (e.g., '2025-01', defaults to '2025-01')
-                - resources: Optional list of resources to sync (defaults to all)
+            credentials: ShopifyAuthConfig instance containing the access token
+            config: Optional configuration dict containing:
+                - shop_name: The Shopify store name (required)
+                - api_version: API version (default: "2025-01")
+                - resources: List of resources to sync
         """
         instance = cls()
-        instance.access_token = access_token
+        instance.access_token = credentials.access_token
 
         if config:
-            instance.shop_name = config.get("shop_name", "")
+            # shop_name should be passed in config from source config
+            instance.shop_name = config.get("shop_name")
             instance.api_version = config.get("api_version", "2025-01")
             instance.resources = config.get("resources") or list(RESOURCE_CONFIGS.keys())
-        else:
-            instance.shop_name = ""
-            instance.api_version = "2025-01"
-            instance.resources = list(RESOURCE_CONFIGS.keys())
+
+        if not instance.shop_name:
+            raise ValueError("shop_name is required in config")
 
         return instance
 

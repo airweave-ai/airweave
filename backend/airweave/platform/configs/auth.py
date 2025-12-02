@@ -335,39 +335,13 @@ class ShopifyAuthConfig(AuthConfig):
         min_length=10,
     )
 
-    shop_name: str = Field(
-        title="Shop Name",
-        description=(
-            "The name of the Shopify store. Use either 'my-store' or "
-            "'my-store.myshopify.com' format."
-        ),
-        min_length=1,
-    )
-
     @field_validator("access_token")
-    def validate_access_token(self, v: str) -> str:
+    @classmethod
+    def validate_access_token(cls, v: str) -> str:
         """Validate Shopify access token."""
         if not v or not v.strip():
             raise ValueError("Access token is required")
-
         return v.strip()
-
-    @field_validator("shop_name")
-    def validate_shop_name(self, v: str) -> str:
-        """Validate Shopify shop name."""
-        if not v or not v.strip():
-            raise ValueError("Shop name is required")
-
-        v = v.strip()
-
-        # Remove .myshopify.com if provided for validation
-        shop_name_clean = v.replace(".myshopify.com", "")
-
-        # Check for valid shop name format (alphanumeric and hyphens only)
-        if not shop_name_clean.replace("-", "").isalnum():
-            raise ValueError("Shop name should only contain letters, numbers, and hyphens")
-
-        return v
 
 
 class BoxAuthConfig(OAuth2WithRefreshAuthConfig):
