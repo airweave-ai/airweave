@@ -209,6 +209,7 @@ class LDAPClient:
 
         group_entry = conn.entries[0]
         members = self._get_members(group_entry)
+        self.logger.info(f"AD group '{group_name}' has {len(members)} members")
 
         # Canonical group_id format: "ad:groupname"
         # This matches entity access format: "group:ad:groupname"
@@ -225,6 +226,7 @@ class LDAPClient:
             if "user" in object_classes:
                 # AD Group → User
                 # member_id is raw sAMAccountName (lowercase)
+                self.logger.debug(f"  → User member: {sam_account_name}")
                 yield AccessControlMembership(
                     member_id=sam_account_name.lower(),
                     member_type="user",
@@ -236,6 +238,7 @@ class LDAPClient:
                 # AD Group → AD Group (nested)
                 # member_id uses "ad:groupname" format
                 nested_group_id = f"ad:{sam_account_name.lower()}"
+                self.logger.info(f"  → Nested group member: {sam_account_name} (will recurse)")
                 yield AccessControlMembership(
                     member_id=nested_group_id,
                     member_type="group",
@@ -266,14 +269,19 @@ class LDAPClient:
         Returns:
             Tuple of (object_classes_list, sAMAccountName) or None
         """
-        conn.search(
-            search_base=member_dn,
-            search_filter="(objectClass=*)",
-            search_scope=BASE,
-            attributes=["objectClass", "sAMAccountName"],
-        )
+        try:
+            conn.search(
+                search_base=member_dn,
+                search_filter="(objectClass=*)",
+                search_scope=BASE,
+                attributes=["objectClass", "sAMAccountName"],
+            )
+        except Exception as e:
+            self.logger.warning(f"LDAP query failed for member DN '{member_dn}': {e}")
+            return None
 
         if not conn.entries:
+            self.logger.debug(f"No LDAP entry found for member DN: {member_dn}")
             return None
 
         member_entry = conn.entries[0]
@@ -289,6 +297,10 @@ class LDAPClient:
             sam_account_name = str(member_entry.sAMAccountName)
 
         if not sam_account_name:
+            self.logger.debug(f"No sAMAccountName for member DN: {member_dn}")
             return None
 
+        self.logger.debug(
+            f"Resolved member DN '{member_dn}' → {sam_account_name} (classes: {object_classes})"
+        )
         return object_classes, sam_account_name
