@@ -352,10 +352,16 @@ class ShopifySource(BaseSource):
 
         # Handle both 'access_token' and 'credentials' parameter names
         # Sync factory passes positional 'credentials', OAuth validation passes 'access_token='
-        creds = access_token if access_token is not None else kwargs.get("credentials")
+        creds = access_token if access_token is not None else kwargs.get("credentials", None)
 
         # Handle different credential formats
-        if isinstance(creds, str):
+        # Handle different credential formats. It's acceptable for creds to be None
+        # (validation mode or some scheduled contexts may not provide them). In
+        # that case use an empty string so the instance can be created and
+        # validation logic or sync code can decide how to proceed.
+        if creds is None:
+            instance.access_token = ""
+        elif isinstance(creds, str):
             # OAuth flow provides access_token as string
             instance.access_token = creds
         elif isinstance(creds, dict):
