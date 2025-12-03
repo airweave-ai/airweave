@@ -11,11 +11,13 @@ from temporalio.worker import Worker
 from airweave.core.config import settings
 from airweave.core.logging import logger
 from airweave.platform.temporal.client import temporal_client
-from airweave.platform.temporal.worker_metrics import worker_metrics
 from airweave.platform.temporal.prometheus_metrics import (
     get_prometheus_metrics,
+)
+from airweave.platform.temporal.prometheus_metrics import (
     update_worker_metrics as update_prometheus_metrics,
 )
+from airweave.platform.temporal.worker_metrics import worker_metrics
 
 
 class TemporalWorker:
@@ -107,9 +109,12 @@ class TemporalWorker:
             self.running = False
             await self.worker.shutdown()
 
-        # Cleanup metrics server
+        # Cleanup metrics server (continue shutdown even if this fails)
         if self.metrics_server:
-            await self.metrics_server.cleanup()
+            try:
+                await self.metrics_server.cleanup()
+            except (AttributeError, Exception) as e:
+                logger.warning(f"Metrics server cleanup skipped: {e}")
 
         # Always close temporal client to prevent resource leaks
         await temporal_client.close()
@@ -289,6 +294,8 @@ class TemporalWorker:
                 cpu_percent = 0.0
                 memory_mb = 0
 
+            active_and_pending_workers = await worker_metrics.get_total_active_and_pending_workers()
+
             response_data = {
                 "worker_id": metrics["worker_id"],
                 "status": status,
@@ -302,7 +309,7 @@ class TemporalWorker:
                 "active_syncs": detailed_syncs,  # NEW: detailed sync info with org, connector
                 "metrics": {  # NEW: resource metrics
                     "total_workers": settings.SYNC_MAX_WORKERS,
-                    "active_and_pending_workers": await worker_metrics.get_total_active_and_pending_workers(),
+                    "active_and_pending_workers": active_and_pending_workers,
                     "total_threads": settings.SYNC_THREAD_POOL_SIZE,
                     "active_threads": thread_pool_active,
                     "cpu_percent": round(cpu_percent, 1),

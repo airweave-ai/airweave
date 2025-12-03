@@ -22,7 +22,7 @@ except ImportError:
 
 from monke.core import events
 from monke.core.runner import TestRunner
-from monke.utils.logging import get_logger
+from monke.utils.logging import get_logger, setup_file_logging
 
 # Check if we're in CI environment
 IS_CI = os.getenv("CI") == "true" or os.getenv("GITHUB_ACTIONS") == "true"
@@ -316,6 +316,10 @@ Examples:
     parser.add_argument("--no-ui", action="store_true", help="Disable Rich UI even if available")
 
     args = parser.parse_args()
+
+     # Set up file logging
+    log_dir = setup_file_logging()
+    print(f"📝 Logs will be written to: {log_dir}/monke.log")
 
     # Load environment variables (if not in CI)
     if load_dotenv and not IS_CI:

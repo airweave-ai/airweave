@@ -1,10 +1,52 @@
 """Logging utilities for monke."""
 
 import logging
+from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from rich.console import Console
 from rich.logging import RichHandler
+
+# Global log directory for the current run
+_log_dir: Optional[Path] = None
+
+
+def setup_file_logging() -> Path:
+    """Set up file logging for the current run.
+    Creates a timestamped log directory and configures the root logger
+    to write to a file in that directory.
+    Returns:
+        Path to the log directory
+    """
+    global _log_dir
+
+    # Create log directory with timestamp
+    log_base = Path(__file__).parent.parent / "logs"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    _log_dir = log_base / timestamp
+    _log_dir.mkdir(parents=True, exist_ok=True)
+
+    # Write latest pointer
+    (log_base / ".latest").write_text(timestamp)
+
+    # Configure root logger with file handler
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG)
+
+    # Add file handler
+    file_handler = logging.FileHandler(_log_dir / "monke.log")
+    file_handler.setLevel(logging.DEBUG)
+    file_formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    file_handler.setFormatter(file_formatter)
+    root_logger.addHandler(file_handler)
+
+    return _log_dir
+
+
+def get_log_dir() -> Optional[Path]:
+    """Get the current log directory."""
+    return _log_dir
 
 
 def get_logger(name: str, level: Optional[str] = None) -> logging.Logger:

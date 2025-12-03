@@ -291,3 +291,81 @@ verification:
 8. **Configurable**: Test flows customizable per connector
 
 ---
+
+## Common Pitfalls & Troubleshooting
+
+### Entity ID Collisions Across Types
+
+**Problem**: When a source has multiple entity types (e.g., Pipedrive has persons, deals, notes), different types can share the same numeric ID from the external API (e.g., `deal/75` and `note/75` both exist).
+
+**Symptoms**:
+- `verify_partial_deletion` fails because wrong entities are matched
+- Entities "found" in Qdrant that should be deleted
+- UUID collisions in vector storage
+
+**Solution**: Use **type-prefixed IDs** for internal tracking:
+```python
+ent = {
+    "type": "deal",
+    "id": f"deal_{pipedrive_id}",      # Unique internal ID: "deal_75"
+    "pipedrive_id": pipedrive_id,       # Raw API ID: 75
+    "token": token,
+    # ...
+}
+```
+- Use `id` for Monke tracking, comparison, and Qdrant paths
+- Use `pipedrive_id` (or equivalent) for actual API calls
+
+### Deletion Order for Linked Entities
+
+**Problem**: APIs often prevent deleting parent entities while children reference them.
+
+**Solution**: Delete in dependency order (children first):
+```python
+# Notes → Activities → Leads → Deals → Persons → Organizations → Products
+all_entities = (
+    self._notes           # Depend on persons/deals
+    + self._activities    # Depend on persons/deals/orgs
+    + self._leads         # Depend on persons/orgs
+    + self._deals         # Depend on persons/orgs
+    + self._persons       # Depend on orgs
+    + self._organizations # Independent
+    + self._products      # Independent
+)
+```
+
+### Token Embedding in Searchable Fields
+
+**Problem**: Qdrant verification searches for tokens. If the token isn't in an embeddable field, verification fails.
+
+**Solution**:
+1. Schema: Mark searchable fields with `embeddable=True` in Pydantic schemas
+2. Generator: Embed token in the searchable field (e.g., `title`, `name`, `content`)
+3. Bongo: Explicitly ensure token presence when creating:
+```python
+# Ensure token is in searchable field even if generator omits it
+title_with_token = f"{deal.title} [{token}]"
+payload = {"title": title_with_token, ...}
+```
+
+### Debugging Entity Verification
+
+Add diagnostic logging to trace what's being created vs what's searched:
+```python
+self.logger.info(f"📝 DIAGNOSTIC: Creating deal with title='{title_with_token}'")
+# After API response
+actual_title = deal_data.get("title", "")
+if token not in actual_title:
+    self.logger.warning(f"⚠️ Token {token} not in returned title: {actual_title}")
+```
+
+### Syntax Errors After Editing Bongos
+
+**Problem**: Indentation errors after multi-line edits to Python files.
+
+**Solution**: Always verify syntax after editing:
+```bash
+python3 -m py_compile monke/bongos/{connector}.py && echo "Syntax OK"
+```
+
+---
