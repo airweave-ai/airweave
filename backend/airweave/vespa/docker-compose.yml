@@ -1,11 +1,5 @@
 version: '3.8'
 
-# Test setup: 1 config server, 3 content nodes (only 2 in config), 2 container nodes
-# This verifies:
-# - configserver arg starts only config server
-# - services arg connects to config server
-# - Nodes not in services.xml don't get config (content-2)
-
 services:
   # Config server - runs with "configserver" arg
   config:
