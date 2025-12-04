@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<services version="1.0">
+
+  <admin version="2.0">
+    <adminserver hostalias="container0"/>
+    <slobroks>
+      <slobrok hostalias="container0"/>
+    </slobroks>
+    <configservers>
+      <configserver hostalias="config0"/>
+    </configservers>
+    <cluster-controllers>
+      <cluster-controller hostalias="container0"/>
+    </cluster-controllers>
+  </admin>
+
+  <!-- Container cluster: handles queries and document API -->
+  <container id="default" version="1.0">
+    <http>
+      <server id="default" port="8081"/>
+    </http>
+    <search/>
+    <document-api/>
+    <document-processing/>
+    <nodes>
+      <node hostalias="container0"/>
+    </nodes>
+  </container>
+
+  <!-- Content cluster: stores and indexes documents -->
+  <content id="airweave" version="1.0">
+    <redundancy>2</redundancy>
+    <documents>
+      <document type="chunk" mode="index"/>
+    </documents>
+    <nodes>
+      <node hostalias="content0" distribution-key="0"/>
+    </nodes>
+    <tuning>
+      <distribution type="loose"/>
+    </tuning>
+  </content>
+
+</services>
+

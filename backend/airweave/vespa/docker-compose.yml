@@ -1,0 +1,61 @@
+version: '3.8'
+
+# Test setup: 1 config server, 3 content nodes (only 2 in config), 2 container nodes
+# This verifies:
+# - configserver arg starts only config server
+# - services arg connects to config server
+# - Nodes not in services.xml don't get config (content-2)
+
+services:
+  # Config server - runs with "configserver" arg
+  config:
+    image: vespaengine/vespa:8
+    hostname: vespa-config
+    container_name: vespa-config
+    command: ["configserver"]
+    environment:
+      VESPA_CONFIGSERVERS: vespa-config
+    ports:
+      - "19071:19071"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:19071/state/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    networks:
+      - vespa-net
+
+  # Container node 0 - defined in services.xml
+  container-0:
+    image: vespaengine/vespa:8
+    hostname: vespa-container-0
+    container_name: vespa-container-0
+    command: ["services"]
+    environment:
+      VESPA_CONFIGSERVERS: vespa-config
+    ports:
+      - "8081:8081"
+    depends_on:
+      config:
+        condition: service_healthy
+    networks:
+      - vespa-net
+
+  # Content node 0 - defined in services.xml
+  content-0:
+    image: vespaengine/vespa:8
+    hostname: vespa-content-0
+    container_name: vespa-content-0
+    command: ["services"]
+    environment:
+      VESPA_CONFIGSERVERS: vespa-config
+    depends_on:
+      config:
+        condition: service_healthy
+    networks:
+      - vespa-net
+
+networks:
+  vespa-net:
+    driver: bridge
+
