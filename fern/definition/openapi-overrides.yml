@@ -1,6 +1,0 @@
-components:
-  schemas:
-    SourceConnectionCreate:
-      examples: null
-    SourceConnectionUpdate:
-      examples: null

@@ -1,9 +1,0 @@
-# Test requirements for async E2E tests
-pytest>=7.4.0
-pytest-asyncio>=0.21.0
-pytest-xdist>=3.3.0
-httpx>=0.25.0
-pydantic>=2.0.0
-pydantic-settings>=2.0.0
-python-dotenv>=1.0.0
-qdrant-client>=1.13.3
