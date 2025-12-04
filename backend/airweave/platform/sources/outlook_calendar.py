@@ -18,7 +18,7 @@ from tenacity import retry, stop_after_attempt
 from airweave.core.logging import logger
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
+from airweave.platform.downloader import FileSkippedException, DownloadFailureException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.outlook_calendar import (
     OutlookCalendarAttachmentEntity,
@@ -31,6 +31,7 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+from airweave.core.exceptions import PreSyncValidationException
 
 
 @source(
@@ -520,6 +521,10 @@ class OutlookCalendarSource(BaseSource):
                 self.logger.debug(f"Skipping attachment {attachment_name}: {e.reason}")
                 return None
 
+            except DownloadFailureException as e:
+                self.logger.error(f"Failed to download file: {e}", exc_info=True)
+                return None
+
             except Exception as e:
                 self.logger.error(f"Failed to save attachment {attachment_name}: {e}")
                 return None
@@ -565,10 +570,14 @@ class OutlookCalendarSource(BaseSource):
                 f"===== OUTLOOK CALENDAR ENTITY GENERATION COMPLETE: {entity_count} entities ====="
             )
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify Outlook Calendar OAuth2 token by pinging the calendars endpoint."""
-        return await self._validate_oauth2(
+        is_valid = await self._validate_oauth2(
             ping_url=f"{self.GRAPH_BASE_URL}/me/calendars?$top=1",
             headers={"Accept": "application/json"},
             timeout=10.0,
         )
+        if not is_valid:
+            raise PreSyncValidationException(
+                "Outlook Calendar credentials validation failed", source_name="outlook_calendar"
+            )

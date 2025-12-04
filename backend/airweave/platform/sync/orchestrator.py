@@ -7,7 +7,11 @@ from typing import Optional
 from airweave import schemas
 from airweave.analytics import business_events
 from airweave.core.datetime_utils import utc_now_naive
-from airweave.core.exceptions import PaymentRequiredException, UsageLimitExceededException
+from airweave.core.exceptions import (
+    PaymentRequiredException,
+    PreSyncValidationException,
+    UsageLimitExceededException,
+)
 from airweave.core.guard_rail_service import ActionType
 from airweave.core.shared_models import SyncJobStatus
 from airweave.core.sync_cursor_service import sync_cursor_service
@@ -82,6 +86,9 @@ class SyncOrchestrator:
             )
 
         try:
+            # Pre-sync validation
+            await self.sync_context.source.validate()
+
             # Phase 1: Start sync
             phase_start = time.time()
             self.sync_context.logger.info("🚀 PHASE 1: Starting sync initialization...")
@@ -108,6 +115,12 @@ class SyncOrchestrator:
 
             final_status = SyncJobStatus.COMPLETED
             return self.sync_context.sync
+        except PreSyncValidationException as e:
+            error_message = f"Source validation failed: {str(e)}"
+            self.sync_context.logger.error(error_message, exc_info=True)
+            final_status = SyncJobStatus.FAILED
+            await self._handle_sync_failure(e, error_message)
+            raise
         except asyncio.CancelledError:
             # Cooperative cancellation: ensure producer and ALL pending tasks are stopped
             self.sync_context.logger.info("Cancellation requested, handling gracefully...")
@@ -116,7 +129,7 @@ class SyncOrchestrator:
             raise
         except Exception as e:
             error_message = get_error_message(e)
-            await self._handle_sync_failure(e)
+            await self._handle_sync_failure(e, error_message)
             final_status = SyncJobStatus.FAILED
             raise
         finally:
@@ -561,9 +574,18 @@ class SyncOrchestrator:
                 exc_info=True,
             )
 
-    async def _handle_sync_failure(self, error: Exception) -> None:
-        """Handle sync failure by updating job status with error details."""
-        error_message = get_error_message(error)
+    async def _handle_sync_failure(
+        self, error: Exception, error_message: Optional[str] = None
+    ) -> None:
+        """Handle sync failure by updating job status with error details.
+
+        Args:
+            error: The exception that caused the failure
+            error_message: Optional pre-formatted error message. If not provided,
+                          will extract from exception using get_error_message()
+        """
+        if error_message is None:
+            error_message = get_error_message(error)
         self.sync_context.logger.error(
             f"Sync job {self.sync_context.sync_job.id} failed: {error_message}", exc_info=True
         )

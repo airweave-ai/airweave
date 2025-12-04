@@ -11,7 +11,7 @@ from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
+from airweave.platform.downloader import FileSkippedException, DownloadFailureException
 from airweave.platform.entities._base import Breadcrumb
 from airweave.platform.entities.linear import (
     LinearAttachmentEntity,
@@ -27,6 +27,7 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+from airweave.core.exceptions import PreSyncValidationException
 
 
 @source(
@@ -278,8 +279,12 @@ class LinearSource(BaseSource):
                     yield attachment_entity
 
                 except FileSkippedException as e:
-                    # Attachment intentionally skipped (unsupported type or size)
+                    # Attachment intentionally skipped (unsupported type, too large, etc.)
                     self.logger.debug(f"Skipping attachment {attachment_id}: {e.reason}")
+                    continue
+
+                except DownloadFailureException as e:
+                    self.logger.error(f"Failed to download file: {e}", exc_info=True)
                     continue
 
                 except Exception as e:
@@ -1042,13 +1047,15 @@ class LinearSource(BaseSource):
             except Exception as e:
                 self.logger.error(f"Failed to generate issue/attachment entities: {str(e)}")
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify Linear OAuth2 token by POSTing a minimal GraphQL query to /graphql."""
         try:
             token = await self.get_access_token()
             if not token:
-                self.logger.error("Linear validation failed: no access token available.")
-                return False
+                raise PreSyncValidationException(
+                    "Linear validation failed: no access token available.",
+                    source_name=self.__class__.__name__,
+                )
 
             query = {"query": "query { viewer { id } }"}
 
@@ -1075,22 +1082,32 @@ class LinearSource(BaseSource):
                         )
 
                 if not (200 <= resp.status_code < 300):
-                    self.logger.warning(
-                        f"Linear validate failed: HTTP {resp.status_code} - {resp.text[:200]}"
+                    raise PreSyncValidationException(
+                        f"Linear validation failed: HTTP {resp.status_code}",
+                        source_name=self.__class__.__name__,
                     )
-                    return False
 
                 body = resp.json()
                 if body.get("errors"):
-                    self.logger.warning(f"Linear validate GraphQL errors: {body['errors']}")
-                    return False
+                    error_msg = (
+                        body["errors"][0].get("message", "Unknown error")
+                        if body["errors"]
+                        else "Unknown error"
+                    )
+                    raise PreSyncValidationException(
+                        f"Linear GraphQL validation failed: {error_msg}",
+                        source_name=self.__class__.__name__,
+                    )
 
                 viewer = (body.get("data") or {}).get("viewer") or {}
                 return bool(viewer.get("id"))
 
         except httpx.RequestError as e:
-            self.logger.error(f"Linear validation request error: {e}")
-            return False
+            raise PreSyncValidationException(
+                f"Linear validation request error: {e}", source_name=self.__class__.__name__
+            )
         except Exception as e:
-            self.logger.error(f"Unexpected error during Linear validation: {e}")
-            return False
+            raise PreSyncValidationException(
+                f"Unexpected error during Linear validation: {e}",
+                source_name=self.__class__.__name__,
+            )

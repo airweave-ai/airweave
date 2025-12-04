@@ -11,6 +11,7 @@ from urllib.parse import quote
 import httpx
 from tenacity import retry, stop_after_attempt
 
+from airweave.core.exceptions import PreSyncValidationException
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
@@ -599,11 +600,11 @@ class TrelloSource(BaseSource):
 
         self.logger.info("Trello sync completed")
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify OAuth1 credentials by calling the /members/me endpoint.
 
-        Returns:
-            True if credentials are valid, False otherwise
+        Raises:
+            PreSyncValidationException: If credentials are invalid or unreachable
         """
         try:
             async with self.http_client() as client:
@@ -612,7 +613,7 @@ class TrelloSource(BaseSource):
                     f"{self.API_BASE}/members/me",
                     query_params={"fields": "id,username"},
                 )
-            return True
         except Exception as e:
-            self.logger.error(f"OAuth1 validation failed: {str(e)}")
-            return False
+            raise PreSyncValidationException(
+                f"OAuth1 validation failed: {str(e)}", source_name=self.__class__.__name__
+            )

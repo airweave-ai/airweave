@@ -33,6 +33,7 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod
+from airweave.core.exceptions import PreSyncValidationException
 
 
 @source(
@@ -847,18 +848,18 @@ class AttioSource(BaseSource):
             self.logger.error(f"Error during Attio sync: {e}", exc_info=True)
             raise
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify credentials by pinging the Attio API.
 
-        Returns:
-            True if credentials are valid, False otherwise
+        Raises:
+            PreSyncValidationException: If credentials are invalid or unreachable
         """
         try:
             async with self.http_client() as client:
                 # Test by fetching objects (should work with any valid API key)
                 url = f"{self.BASE_URL}/objects"
                 await self._get_with_auth(client, url, params={"limit": 1})
-                return True
         except Exception as e:
-            self.logger.error(f"Attio credential validation failed: {str(e)}")
-            return False
+            raise PreSyncValidationException(
+                f"Attio credential validation failed: {str(e)}", source_name=self.__class__.__name__
+            )

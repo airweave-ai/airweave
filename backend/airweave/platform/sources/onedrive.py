@@ -22,11 +22,12 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
+from airweave.platform.downloader import FileSkippedException, DownloadFailureException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.onedrive import OneDriveDriveEntity, OneDriveDriveItemEntity
 from airweave.platform.sources._base import BaseSource
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+from airweave.core.exceptions import PreSyncValidationException
 
 
 @source(
@@ -400,6 +401,12 @@ class OneDriveSource(BaseSource):
                     self.logger.debug(f"Skipping file {file_entity.name}: {e.reason}")
                     continue
 
+                except DownloadFailureException as e:
+                    self.logger.error(
+                        f"Failed to download file {file_entity.name}: {e}", exc_info=True
+                    )
+                    continue
+
                 except Exception as e:
                     self.logger.error(f"Failed to download file {file_entity.name}: {e}")
                     # Continue with other files
@@ -443,7 +450,7 @@ class OneDriveSource(BaseSource):
             ):
                 yield file_entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify OneDrive OAuth2 token and access with sensible fallbacks.
 
         Tries default drive (/me/drive), then list drives (/me/drives),
@@ -452,26 +459,42 @@ class OneDriveSource(BaseSource):
         headers = {"Accept": "application/json"}
 
         # 1) Default OneDrive (most common)
-        ok = await self._validate_oauth2(
-            ping_url="https://graph.microsoft.com/v1.0/me/drive",
-            headers=headers,
-            timeout=10.0,
-        )
-        if ok:
-            return True
+        try:
+            is_valid = await self._validate_oauth2(
+                ping_url="https://graph.microsoft.com/v1.0/me/drive",
+                headers=headers,
+                timeout=10.0,
+            )
+            if not is_valid:
+                raise PreSyncValidationException(
+                    "OneDrive default drive validation failed", source_name="onedrive"
+                )
+            return  # Success
+        except PreSyncValidationException:
+            pass  # Try next endpoint
 
         # 2) Accounts without SPO default drive but with accessible drives list
-        ok = await self._validate_oauth2(
-            ping_url="https://graph.microsoft.com/v1.0/me/drives?$top=1",
-            headers=headers,
-            timeout=10.0,
-        )
-        if ok:
-            return True
+        try:
+            is_valid = await self._validate_oauth2(
+                ping_url="https://graph.microsoft.com/v1.0/me/drives?$top=1",
+                headers=headers,
+                timeout=10.0,
+            )
+            if not is_valid:
+                raise PreSyncValidationException(
+                    "OneDrive drives list validation failed", source_name="onedrive"
+                )
+            return  # Success
+        except PreSyncValidationException:
+            pass  # Try last endpoint
 
-        # 3) App-folder-only scenario
-        return await self._validate_oauth2(
+        # 3) App-folder-only scenario (last attempt - will raise if fails)
+        is_valid = await self._validate_oauth2(
             ping_url="https://graph.microsoft.com/v1.0/me/drive/special/approot",
             headers=headers,
             timeout=10.0,
         )
+        if not is_valid:
+            raise PreSyncValidationException(
+                "OneDrive validation failed on all endpoints", source_name="onedrive"
+            )

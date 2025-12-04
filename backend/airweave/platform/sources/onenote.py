@@ -23,7 +23,7 @@ from tenacity import retry, stop_after_attempt
 
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
+from airweave.platform.downloader import FileSkippedException, DownloadFailureException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.onenote import (
     OneNoteNotebookEntity,
@@ -36,6 +36,7 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+from airweave.core.exceptions import PreSyncValidationException
 
 
 @source(
@@ -502,9 +503,13 @@ class OneNoteSource(BaseSource):
                         yield file_entity
 
                     except FileSkippedException as e:
-                        # Page intentionally skipped (unsupported type, too large, etc.).
-                        # Not an error – continue with other pages.
+                        # Page intentionally skipped (unsupported type, too large, etc.)
                         self.logger.debug(f"Skipping page {title}: {e.reason}")
+                        continue
+
+                    except DownloadFailureException as e:
+                        self.logger.error(f"Failed to download file: {e}", exc_info=True)
+                        # Continue with other pages
                         continue
 
                     except Exception as e:
@@ -652,14 +657,18 @@ class OneNoteSource(BaseSource):
                 f"===== MICROSOFT ONENOTE ENTITY GENERATION COMPLETE: {entity_count} entities ====="
             )
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify Microsoft OneNote OAuth2 token by pinging the notebooks endpoint.
 
-        Returns:
-            True if token is valid, False otherwise
+        Raises:
+            PreSyncValidationException: If token is invalid or unreachable
         """
-        return await self._validate_oauth2(
+        is_valid = await self._validate_oauth2(
             ping_url=f"{self.GRAPH_BASE_URL}/me/onenote/notebooks?$top=1",
             headers={"Accept": "application/json"},
             timeout=10.0,
         )
+        if not is_valid:
+            raise PreSyncValidationException(
+                "Onenote credentials validation failed", source_name="onenote"
+            )

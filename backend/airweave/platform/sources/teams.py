@@ -36,6 +36,7 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+from airweave.core.exceptions import PreSyncValidationException
 
 
 @source(
@@ -731,14 +732,18 @@ class TeamsSource(BaseSource):
                 f"===== MICROSOFT TEAMS ENTITY GENERATION COMPLETE: {entity_count} entities ====="
             )
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify Microsoft Teams OAuth2 token by pinging the joinedTeams endpoint.
 
-        Returns:
-            True if token is valid, False otherwise
+        Raises:
+            PreSyncValidationException: If token is invalid or unreachable
         """
-        return await self._validate_oauth2(
+        is_valid = await self._validate_oauth2(
             ping_url=f"{self.GRAPH_BASE_URL}/me/joinedTeams",
             headers={"Accept": "application/json"},
             timeout=10.0,
         )
+        if not is_valid:
+            raise PreSyncValidationException(
+                "Teams credentials validation failed", source_name="teams"
+            )

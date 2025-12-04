@@ -20,7 +20,7 @@ from airweave.platform.utils.filename_utils import safe_filename
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.cursors import OutlookMailCursor
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
+from airweave.platform.downloader import FileSkippedException, DownloadFailureException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.outlook_mail import (
     OutlookAttachmentEntity,
@@ -32,6 +32,7 @@ from airweave.platform.entities.outlook_mail import (
 from airweave.platform.sources._base import BaseSource
 from airweave.platform.sources.retry_helpers import wait_rate_limit_with_backoff
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+from airweave.core.exceptions import PreSyncValidationException
 
 
 def _should_retry_outlook_request(exception: Exception) -> bool:
@@ -742,6 +743,10 @@ class OutlookMailSource(BaseSource):
             self.logger.debug(f"Skipping attachment {attachment_name}: {e.reason}")
             return None
 
+        except DownloadFailureException as e:
+            self.logger.error(f"Failed to download file: {e}", exc_info=True)
+            return None
+
         except Exception as e:
             self.logger.error(f"Error processing attachment {attachment_id}: {str(e)}")
             return None
@@ -1269,10 +1274,14 @@ class OutlookMailSource(BaseSource):
                 f"===== OUTLOOK MAIL ENTITY GENERATION COMPLETE: {entity_count} entities ====="
             )
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify Outlook Mail OAuth2 token by pinging the mailFolders endpoint."""
-        return await self._validate_oauth2(
+        is_valid = await self._validate_oauth2(
             ping_url=f"{self.GRAPH_BASE_URL}/me/mailFolders?$top=1",
             headers={"Accept": "application/json"},
             timeout=10.0,
         )
+        if not is_valid:
+            raise PreSyncValidationException(
+                "Outlook Mail credentials validation failed", source_name="outlook_mail"
+            )

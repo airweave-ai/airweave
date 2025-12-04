@@ -6,11 +6,11 @@ from typing import Any, AsyncGenerator, Dict, List, Optional, Union
 import httpx
 from tenacity import retry, stop_after_attempt
 
-from airweave.core.exceptions import TokenRefreshError
+from airweave.core.exceptions import PreSyncValidationException, TokenRefreshError
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.configs.auth import ClickUpAuthConfig
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
+from airweave.platform.downloader import FileSkippedException, DownloadFailureException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.clickup import (
     ClickUpCommentEntity,
@@ -551,6 +551,11 @@ class ClickUpSource(BaseSource):
                     # Continue with other attachments
                     continue
 
+                except DownloadFailureException as e:
+                    self.logger.error(f"Failed to download file: {e}", exc_info=True)
+                    # Still yield the file entity without processed content
+                    yield file_entity
+
                 except Exception as e:
                     self.logger.warning(f"Failed to download attachment {file_name}: {e}")
                     # Still yield the file entity without processed content
@@ -725,10 +730,14 @@ class ClickUpSource(BaseSource):
                             ):
                                 yield file_entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate credentials by calling ClickUp's /user endpoint."""
-        return await self._validate_oauth2(
+        is_valid = await self._validate_oauth2(
             ping_url=f"{self.BASE_URL}/user",
             headers={"Accept": "application/json"},
             timeout=10.0,
         )
+        if not is_valid:
+            raise PreSyncValidationException(
+                "ClickUp credentials validation failed", source_name="clickup"
+            )

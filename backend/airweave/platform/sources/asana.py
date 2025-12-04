@@ -5,10 +5,10 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 import httpx
 from tenacity import retry, stop_after_attempt
 
-from airweave.core.exceptions import TokenRefreshError
+from airweave.core.exceptions import TokenRefreshError, PreSyncValidationException
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
+from airweave.platform.downloader import FileSkippedException, DownloadFailureException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.asana import (
     AsanaCommentEntity,
@@ -523,6 +523,10 @@ class AsanaSource(BaseSource):
                 self.logger.debug(f"Skipping attachment {attachment_detail['gid']}: {e.reason}")
                 continue
 
+            except DownloadFailureException as e:
+                self.logger.error(f"Failed to download file: {e}", exc_info=True)
+                continue
+
             except Exception as e:
                 self.logger.error(
                     f"Failed to download attachment {attachment_detail['gid']} "
@@ -616,10 +620,14 @@ class AsanaSource(BaseSource):
                         ):
                             yield file_entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify OAuth2 token by pinging Asana's /users/me endpoint."""
-        return await self._validate_oauth2(
+        is_valid = await self._validate_oauth2(
             ping_url="https://app.asana.com/api/1.0/users/me",
             headers={"Accept": "application/json"},
             timeout=10.0,
         )
+        if not is_valid:
+            raise PreSyncValidationException(
+                "Asana credentials validation failed", source_name="asana"
+            )
