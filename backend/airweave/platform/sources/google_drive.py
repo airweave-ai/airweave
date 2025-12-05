@@ -84,6 +84,9 @@ class GoogleDriveSource(BaseSource):
         instance.preserve_order = bool(config.get("preserve_order", False))
         instance.stop_on_error = bool(config.get("stop_on_error", False))
 
+        # Model selection
+        instance.model = config.get("model")
+
         return instance
 
     @staticmethod
@@ -713,8 +716,8 @@ class GoogleDriveSource(BaseSource):
         if not folder_segments:
             return [], filename_glob or "*"
 
-        self.logger.debug(
-            f"Resolved pattern '{pattern}' to {len(parent_ids or [])} folder(s), "
+        self.logger.info(
+            f"Resolved pattern '{pattern}' to {len(parent_ids or [])} folder(s): {parent_ids}, "
             f"filename_glob={filename_glob}"
         )
         return parent_ids or [], filename_glob
@@ -896,7 +899,7 @@ class GoogleDriveSource(BaseSource):
             file_entity = self._build_file_entity(file_obj, parent_breadcrumb)
             if not file_entity:
                 return None
-            self.logger.debug(f"Processing file entity: {file_entity.file_id} '{file_entity.name}'")
+            self.logger.info(f"Processing file entity: {file_entity.file_id} '{file_entity.name}'")
 
             # Download file using downloader
             try:
@@ -1020,7 +1023,7 @@ class GoogleDriveSource(BaseSource):
 
             async with self.http_client() as client:
                 patterns: List[str] = getattr(self, "include_patterns", []) or []
-                self.logger.debug(f"Include patterns: {patterns}")
+                self.logger.info(f"Include patterns configuration: {patterns}")
 
                 drive_objs: List[Dict[str, Any]] = []
                 try:

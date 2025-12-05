@@ -886,14 +886,14 @@ class EntityPipeline:
 
         # Map extensions to converter modules
         converter_map = {
-            # Mistral OCR - Documents
-            ".pdf": converters.mistral_converter,
-            ".docx": converters.mistral_converter,
-            ".pptx": converters.mistral_converter,
-            # Mistral OCR - Images
-            ".jpg": converters.mistral_converter,
-            ".jpeg": converters.mistral_converter,
-            ".png": converters.mistral_converter,
+            # Documents - use aliases from __init__.py (defaults to MarkItDown)
+            ".pdf": converters.pdf_converter,
+            ".docx": converters.docx_converter,
+            ".pptx": converters.pptx_converter,
+            # Images - use aliases from __init__.py (defaults to MarkItDown)
+            ".jpg": converters.img_converter,
+            ".jpeg": converters.img_converter,
+            ".png": converters.img_converter,
             # XLSX - local extraction
             ".xlsx": converters.xlsx_converter,
             # HTML
@@ -996,8 +996,15 @@ class EntityPipeline:
                 keys = [key for _, key in sub_batch]
 
                 try:
+                    # Get preferred model from source config if available
+                    preferred_model = getattr(sync_context.source, "model", None)
+
                     # Batch convert returns Dict[key, text_content]
-                    results = await converter.convert_batch(keys)
+                    # Pass preferred_model to SmartConverter (or others that support it)
+                    if hasattr(converter, "convert_batch") and "preferred_model" in converter.convert_batch.__code__.co_varnames:
+                         results = await converter.convert_batch(keys, preferred_model=preferred_model)
+                    else:
+                         results = await converter.convert_batch(keys)
 
                     # Append content to each entity's textual_representation
                     for entity, key in sub_batch:

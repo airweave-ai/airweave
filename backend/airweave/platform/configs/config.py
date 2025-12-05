@@ -260,6 +260,19 @@ class GoogleDriveConfig(SourceConfig):
             return [p.strip() for p in value.split(",") if p.strip()]
         return value
 
+    model: str = Field(
+        default="local",
+        title="Conversion Model",
+        description=(
+            "Select the model to use for document conversion. "
+            "OpenAI (Best Quality, requires Key), Mistral (Good, requires Key), or Local (Free, Private)."
+        ),
+        json_schema_extra={
+            "enum": ["openai", "mistral", "local"],
+            "ui_component": "select",
+        },
+    )
+
 
 class GoogleSlidesConfig(SourceConfig):
     """Google Slides configuration schema."""
