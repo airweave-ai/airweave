@@ -1,0 +1,192 @@
+# Open questions:
+# - one chunk wil end up with the metadata section from the textual representation, does that make sense?
+# - can we build indeces for each tenant separately?
+# - do we NEED to train a second phase model or are there sensible defaults that work well in a lot of different contexts?
+
+# OVERVIEW:
+# - matching: x[96] ANN
+# - ranking: x[768] cosine similariy
+# - first phase: heuristic combination of lexical and semantic embeddings
+# - second phase: None b/c no training data for lightgbm
+# - we use layered ranking: select best docs based on the best chunks and return only the best 3 chunks of the best docs
+
+# TODO:
+# - global reranker (like we do with cohere)
+
+schema base_entity {
+    
+
+    document base_entity {
+
+        # attribute: in-memory (unless paged), can be used for fast filtering
+        # summary: field will be returned in results
+        # This field is not keyword searchable b/c its not indexed
+        field entity_id type string {
+            indexing: summary | attribute
+        }
+
+        # This field is keyword searchable
+        field name type string {
+            indexing: index | summary
+            index: enable-bm25
+        }
+
+        # type breadcrumb is defined below
+        field breadcrumbs type array<breadcrumb> {
+            indexing: summary
+            struct-field entity_id { indexing: attribute }
+            struct-field name { indexing: attribute }
+            struct-field entity_type { indexing: attribute }
+        }
+
+        # TODO: convert ISO strings to epochs seconds
+        field created_at type long {
+            indexing: attribute | summary
+        }
+        
+        # TODO: convert ISO strings to epochs seconds
+        field updated_at type long {
+            indexing: attribute | summary
+        }
+
+        # TODO: airweave_system_metadata
+
+        field textual_representation type string {}
+
+        # field to store all other fields from the source entity (as JSON string)
+        field payload type string {
+            indexing: index | summary
+            index: enable-bm25
+        }
+    }
+
+    struct breadcrumb {
+        field entity_id   type string {}
+        field name        type string {}
+        field entity_type type string {}
+    }
+    
+    # chunked, keyword indexed
+    field chunks type array<string> {
+        indexing: input textual_representation | chunk fixed-length 1024 | summary | index
+        index: enable-bm25
+    }
+
+    # binarized embeddings for retrieval (ANN) - small and fast.
+    field chunk_embeddings type tensor<int8>(chunk{}, x[96]) {
+        indexing: input textual_representation | chunk fixed-length 1024 | embed | pack_bits | attribute | index
+    }
+
+    # Higher-precision embeddings for ranking - not indexed for ANN.
+    field chunk_ranking_embeddings type tensor<bfloat16>(chunk{}, x[768]) {
+        indexing: input textual_representation | chunk fixed-length 1024 | embed | attribute
+        attribute {
+            distance-metric: angular
+        }
+    }
+    
+    # Default fieldset used by userInput() / unspecified text search.
+    fieldset default {
+        fields: name, payload, chunks
+    }
+
+    document-summary no-chunks {
+        summary entity_id {}
+        summary name {}
+        summary breadcrumbs {}
+        summary created_at {}
+        summary updated_at {}
+    }
+
+    document-summary top_3_chunks {
+        from-disk # get these from disk even if there were attributes?
+        summary chunks_top3 {
+            source: chunks
+            select-elements-by: top_3_chunk_sim_scores
+        }
+    }
+
+    # get top 3 most similar chunks to return in the summary
+    # this is calculated DURING ranking phase, but is not USED in the ranking
+    rank-profile default {
+        inputs {
+            query(embedding) tensor<int8>(x[96]) # Used for ANN during matching
+            query(float_embedding) tensor<float>(x[768])
+        }
+
+        # Fixed length chunking should not cause any positional gap between elements
+        # so lexical search over chunks behaves like one big text field.
+        rank chunks {
+            element-gap: 0
+        }
+
+        # BM25 score per chunk
+        function chunk_text_scores() {
+            expression: elementwise(bm25(chunks), chunk, float)
+        }
+
+        # Dot product between large query embedding and high-precision chunk embeddings
+        function chunk_dot_prod() {
+            expression: reduce(query(float_embedding) * attribute(chunk_ranking_embeddings), sum, x)
+        }
+
+        # L2 norm helper
+        function vector_norms(t) {
+            expression: sqrt(sum(pow(t, 2), x))
+        }
+
+        # Cosine similarity per chunk
+        function chunk_sim_scores() {
+            expression: chunk_dot_prod() / (vector_norms(attribute(chunk_ranking_embeddings)) * vector_norms(query(float_embedding)))
+        }
+
+        # Top 3 chunks by BM25
+        function top_3_chunk_text_scores() {
+            expression: top(3, chunk_text_scores())
+        }
+
+        # Top 3 chunks by cosine similarity
+        function top_3_chunk_sim_scores() {
+            expression: top(3, chunk_sim_scores())
+        }
+
+        summary-features {
+            top_3_chunk_sim_scores
+        }
+    }
+
+    rank-profile heuristic-linear inherits default {
+
+        # Aggregations over the per-chunk scores, inspired by the tutorial.
+        function avg_top_3_chunk_text_scores() {
+            expression: reduce(top_3_chunk_text_scores(), avg, chunk)
+        }
+
+        function avg_top_3_chunk_sim_scores() {
+            expression: reduce(top_3_chunk_sim_scores(), avg, chunk)
+        }
+
+        function max_chunk_text_scores() {
+            expression: reduce(chunk_text_scores(), max, chunk)
+        }
+
+        function max_chunk_sim_scores() {
+            expression: reduce(chunk_sim_scores(), max, chunk)
+        }
+
+        # Heuristic first-phase scoring function (no learned weights yet).
+        # Combines BM25 over name/payload/chunks with chunk-level cosine and text scores.
+        first-phase {
+            expression {
+                0.25 * bm25(name) +
+                0.15 * bm25(payload) +
+                0.15 * bm25(chunks) +
+                0.25 * max_chunk_sim_scores() +
+                0.05 * max_chunk_text_scores() +
+                0.10 * avg_top_3_chunk_sim_scores() +
+                0.05 * avg_top_3_chunk_text_scores()
+            }
+        }
+    }
+    
+}

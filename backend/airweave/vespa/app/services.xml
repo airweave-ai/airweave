@@ -22,6 +22,21 @@
     <search/>
     <document-api/>
     <document-processing/>
+
+    <!-- Default embedder for `embed` in indexing/query pipelines -->
+    <component id="nomicmb" type="hugging-face-embedder">
+      <transformer-model
+        url="https://data.vespa-cloud.com/onnx_models/nomic-ai-modernbert-embed-base/model.onnx"/>
+      <tokenizer-model
+        url="https://data.vespa-cloud.com/onnx_models/nomic-ai-modernbert-embed-base/tokenizer.json"/>
+      <transformer-output>token_embeddings</transformer-output>
+      <max-tokens>8192</max-tokens>
+      <prepend>
+        <query>search_query:</query>
+        <document>search_document:</document>
+      </prepend>
+    </component>
+
     <nodes>
       <node hostalias="container0"/>
     </nodes>
@@ -31,7 +46,7 @@
   <content id="airweave" version="1.0">
     <redundancy>2</redundancy>
     <documents>
-      <document type="chunk" mode="index"/>
+      <document type="base_entity" mode="index"/>
     </documents>
     <nodes>
       <node hostalias="content0" distribution-key="0"/>

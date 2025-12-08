@@ -1,0 +1,27 @@
+<query-profile id="hybrid">
+    <!-- Schema and document type -->
+    <field name="schema">base_entity</field>
+
+    <!-- Query embeddings for ANN (int8) and ranking (float/bfloat16) -->
+    <field name="ranking.features.query(embedding)">embed(@query)</field>
+    <field name="ranking.features.query(float_embedding)">embed(@query)</field>
+
+    <!-- Hybrid retrieval: lexical (userInput over default fieldset) + vector over chunk_embeddings -->
+    <field name="yql">
+        select *
+        from %{schema}
+        where userInput(@query) or
+              ({label:"chunks_label", targetHits:100}nearestNeighbor(chunk_embeddings, embedding))
+    </field>
+
+    <!-- Use our heuristic first-phase rank profile -->
+    <field name="ranking.profile">heuristic-linear</field>
+
+    <!-- Return only the top-3 most similar chunks per document -->
+    <field name="presentation.summary">top_3_chunks</field>
+
+    <!-- Default number of hits -->
+    <field name="hits">10</field>
+</query-profile>
+
+
