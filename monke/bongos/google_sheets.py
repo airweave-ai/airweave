@@ -199,7 +199,7 @@ class GoogleSheetsBongo(BaseBongo):
 
     async def delete_entities(self) -> List[str]:
         """Delete all test spreadsheets."""
-        return await self.delete_specific_entities(self._test_spreadsheets)
+        return await self.delete_specific_entities(self._test_spreadsheets[:])
 
     async def delete_specific_entities(
         self, entities: List[Dict[str, Any]]
