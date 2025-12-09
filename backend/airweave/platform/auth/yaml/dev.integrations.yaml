@@ -1,5 +1,5 @@
 # Warning: this file is not used in production. It is only used for development.
-# The secrets that we openly share with you are for development purposes only and cannot 
+# The secrets that we openly share with you are for development purposes only and cannot
 # be used in production.
 
 integrations:
@@ -163,6 +163,20 @@ integrations:
     content_type: "application/x-www-form-urlencoded"
     client_credential_location: "body"
     scope: "https://www.googleapis.com/auth/docs https://www.googleapis.com/auth/drive.photos.readonly https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.metadata https://www.googleapis.com/auth/drive.metadata.readonly https://www.googleapis.com/auth/gmail.readonly"
+    additional_frontend_params:
+      access_type: "offline"
+      prompt: "consent"
+
+  google_sheets:
+    oauth_type: "with_refresh"
+    url: "https://accounts.google.com/o/oauth2/auth"
+    backend_url: "https://oauth2.googleapis.com/token"
+    grant_type: "authorization_code"
+    client_id: "976410117544-apnlsluj4nc0l7lolc9oklm2tfv5f7et.apps.googleusercontent.com"
+    client_secret: "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"
+    content_type: "application/x-www-form-urlencoded"
+    client_credential_location: "body"
+    scope: "https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/drive.readonly"
     additional_frontend_params:
       access_type: "offline"
       prompt: "consent"
