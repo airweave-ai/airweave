@@ -6,8 +6,8 @@ connector:
   type: zoom
   auth_mode: composio
   composio_config:
-    account_id: placeholder_account_id
-    auth_config_id: placeholder_auth_config_id
+    account_id: ca_gKqXk34Ldboh
+    auth_config_id: ac_JSBgoEk_7h06
   config_fields:
     openai_model: "gpt-4.1-mini"
     max_concurrency: 2

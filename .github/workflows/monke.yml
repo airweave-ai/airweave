@@ -265,8 +265,9 @@ jobs:
           MONKE_SHOPIFY_CLIENT_SECRET: ${{ secrets.MONKE_SHOPIFY_CLIENT_SECRET }}
           MONKE_SHOPIFY_SHOP_DOMAIN: ${{ secrets.MONKE_SHOPIFY_SHOP_DOMAIN }}
 
-          # Zoom OAuth credentials (via Composio)
-          # Requires MONKE_COMPOSIO_API_KEY and MONKE_COMPOSIO_PROVIDER_ID for OAuth
+          # Zoom OAuth credentials
+          MONKE_ZOOM_CLIENT_ID: ${{ secrets.MONKE_ZOOM_CLIENT_ID }}
+          MONKE_ZOOM_CLIENT_SECRET: ${{ secrets.MONKE_ZOOM_CLIENT_SECRET }}
 
           # All SaaS app credentials (Composio configs, API tokens, etc.)
           # will be fetched from Azure Key Vault at runtime
