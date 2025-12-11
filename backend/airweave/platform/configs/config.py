@@ -1,6 +1,6 @@
 """Configuration classes for platform components."""
 
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import Field, field_validator, validator
 
@@ -59,6 +59,86 @@ class BitbucketConfig(SourceConfig):
             # Split by commas and strip whitespace
             return [ext.strip() for ext in value.split(",") if ext.strip()]
         return value
+
+
+class ShopifyConfig(BaseConfig):
+    """Configuration for Shopify source."""
+
+    shop_name: str = RequiredTemplateConfig(
+        title="Shop Name",
+        description=(
+            "The name of the Shopify store (e.g., 'my-store' or 'my-store.myshopify.com')."
+            "Required before OAuth authentication."
+        ),
+        json_schema_extra={"required_for_auth": True},
+    )
+    api_version: str = Field(
+        default="2025-01",
+        title="API Version",
+        description="Shopify Admin API version to use (e.g., '2025-01')",
+    )
+    resources: Optional[List[str]] = Field(
+        default=None,
+        title="Resources",
+        description=(
+            "List of Shopify resources to sync. If not specified, all resources will be synced: "
+            "Product, Order, Customer, Collection, DraftOrder,"
+            "InventoryItem, Location, FulfillmentOrder"
+        ),
+    )
+
+    @field_validator("shop_name")
+    @classmethod
+    def validate_shop_name(cls, v: str) -> str:
+        """Validate Shopify shop name."""
+        if not v or not v.strip():
+            raise ValueError("Shop name is required")
+        v = v.strip()
+        shop_name_clean = v.replace(".myshopify.com", "")
+        if not shop_name_clean.replace("-", "").isalnum():
+            raise ValueError("Shop name should only contain letters, numbers, and hyphens")
+        return v
+
+    @field_validator("api_version")
+    @classmethod
+    def validate_api_version(cls, v: str) -> str:
+        """Validate API version format."""
+        if not v or not v.strip():
+            raise ValueError("API version is required")
+        # Check format: YYYY-MM
+        if not v.count("-") == 1:
+            raise ValueError("API version must be in format YYYY-MM (e.g., '2025-01')")
+        return v.strip()
+
+    @field_validator("resources")
+    @classmethod
+    def validate_resources(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        """Validate resource list and default to all if not provided."""
+        all_resources = [
+            "Product",
+            "Order",
+            "Customer",
+            "Collection",
+            "DraftOrder",
+            "InventoryItem",
+            "Location",
+            "FulfillmentOrder",
+        ]
+
+        # If None or empty, return all resources
+        if not v:
+            return all_resources
+
+        valid_resources = set(all_resources)
+
+        invalid = set(v) - valid_resources
+        if invalid:
+            raise ValueError(
+                f"Invalid resources: {', '.join(invalid)}. "
+                f"Valid options: {', '.join(sorted(valid_resources))}"
+            )
+
+        return v
 
 
 class BoxConfig(SourceConfig):

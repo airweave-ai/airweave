@@ -84,6 +84,7 @@ That's it! Access the dashboard at http://localhost:8080
 <img src="frontend/src/components/icons/apps/asana.svg" alt="Asana" width="50" height="50" style="margin: 8px;" />
 <img src="frontend/src/components/icons/apps/attio.svg" alt="Attio" width="50" height="50" style="margin: 8px;" />
 <img src="frontend/src/components/icons/apps/bitbucket.svg" alt="Bitbucket" width="50" height="50" style="margin: 8px;" />
+<img src="frontend/src/components/icons/apps/shopify.svg" alt="Neo4j" width="50" height="50" style="margin: 8px;" />
 <img src="frontend/src/components/icons/apps/box.svg" alt="Box" width="50" height="50" style="margin: 8px;" />
 <img src="frontend/src/components/icons/apps/clickup.svg" alt="ClickUp" width="50" height="50" style="margin: 8px;" />
 <img src="frontend/src/components/icons/apps/confluence.svg" alt="Confluence" width="50" height="50" style="margin: 8px;" />
