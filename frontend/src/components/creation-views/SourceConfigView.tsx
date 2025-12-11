@@ -113,7 +113,8 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
   const getDefaultRedirectUrl = () => {
     const origin = window.location.origin;
     // Use the current protocol (don't force HTTPS for local dev)
-    return `${origin}?oauth_return=true`;
+    // Include /collections path so the OAuth callback is handled correctly
+    return `${origin}/collections?oauth_return=true`;
   };
 
   // Update store when connection name changes
