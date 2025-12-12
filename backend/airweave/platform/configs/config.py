@@ -334,6 +334,12 @@ class MySQLConfig(SourceConfig):
     pass
 
 
+class Neo4jConfig(SourceConfig):
+    """Neo4j configuration schema."""
+
+    pass
+
+
 class NotionConfig(SourceConfig):
     """Notion configuration schema."""
 
