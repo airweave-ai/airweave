@@ -75,6 +75,40 @@ provider_models:
       max_tokens_per_doc: 8192
       max_documents: 1000
 
+  azure_openai:
+    # Note: For Azure OpenAI, the 'name' fields below are for reference only.
+    # Azure uses deployment names configured via environment variables:
+    # - AZURE_OPENAI_EMBEDDING_DEPLOYMENT (for embeddings)
+    # - AZURE_OPENAI_LLM_DEPLOYMENT (for LLM operations)
+    # The actual model depends on what you deployed in your Azure OpenAI resource.
+    llm_big:
+      name: "gpt-5"
+      tokenizer: "cl100k_base"
+      context_window: 400000
+    llm_small:
+      name: "gpt-5-nano"
+      tokenizer: "cl100k_base"
+      context_window: 400000
+    embedding_large:
+      name: "text-embedding-3-large"
+      tokenizer: "cl100k_base"
+      dimensions: 3072
+      max_tokens: 8192
+    embedding_small:
+      name: "text-embedding-3-small"
+      tokenizer: "cl100k_base"
+      dimensions: 1536
+      max_tokens: 8192
+    embedding:
+      name: "text-embedding-3-large"
+      tokenizer: "cl100k_base"
+      dimensions: 3072
+      max_tokens: 8192
+    rerank:
+      name: "gpt-5-nano"
+      tokenizer: "cl100k_base"
+      context_window: 400000
+
 # Operation preferences - which provider and which models to use
 # Format: provider: {llm: model_key, embedding: model_key, rerank: model_key}
 operation_preferences:
@@ -89,6 +123,10 @@ operation_preferences:
         embedding: null
         rerank: null
       - provider: openai
+        llm: llm_small
+        embedding: null
+        rerank: null
+      - provider: azure_openai
         llm: llm_small
         embedding: null
         rerank: null
@@ -107,10 +145,18 @@ operation_preferences:
         llm: llm_small
         embedding: null
         rerank: null
+      - provider: azure_openai
+        llm: llm_small
+        embedding: null
+        rerank: null
 
   embed_query:
     order:
       - provider: openai
+        llm: null
+        embedding: embedding
+        rerank: null
+      - provider: azure_openai
         llm: null
         embedding: embedding
         rerank: null
@@ -129,6 +175,10 @@ operation_preferences:
         llm: llm_small
         embedding: null
         rerank: rerank
+      - provider: azure_openai
+        llm: llm_small
+        embedding: null
+        rerank: rerank
 
   generate_answer:
     order:
@@ -144,6 +194,10 @@ operation_preferences:
         llm: llm_small
         embedding: null
         rerank: null
+      - provider: azure_openai
+        llm: llm_small
+        embedding: null
+        rerank: null
 
   federated_search:
     order:
@@ -156,6 +210,10 @@ operation_preferences:
         embedding: null
         rerank: null
       - provider: openai
+        llm: llm_small
+        embedding: null
+        rerank: null
+      - provider: azure_openai
         llm: llm_small
         embedding: null
         rerank: null
