@@ -334,6 +334,25 @@ class MySQLConfig(SourceConfig):
     pass
 
 
+class N8nConfig(SourceConfig):
+    """n8n configuration schema."""
+
+    include_executions: bool = Field(
+        default=True,
+        title="Include Executions",
+        description="Whether to include workflow execution history. "
+        "Disable this if you only want to sync workflow definitions without execution logs.",
+    )
+    max_executions_per_workflow: int = Field(
+        default=100,
+        title="Max Executions Per Workflow",
+        description="Maximum number of executions to sync per workflow. "
+        "Helps prevent very large syncs for workflows with thousands of executions.",
+        ge=1,
+        le=1000,
+    )
+
+
 class NotionConfig(SourceConfig):
     """Notion configuration schema."""
 

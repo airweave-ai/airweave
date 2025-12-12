@@ -479,6 +479,44 @@ class MySQLAuthConfig(BaseDatabaseAuthConfig):
     """MySQL authentication configuration."""
 
 
+class N8nAuthConfig(AuthConfig):
+    """n8n authentication credentials schema.
+
+    n8n uses API key authentication with the X-N8N-API-KEY header.
+    Users must provide their n8n instance URL and an API key generated
+    from Settings → API in their n8n instance.
+    """
+
+    url: str = Field(
+        title="n8n Instance URL",
+        description="The URL of your n8n instance (e.g., https://n8n.example.com). "
+        "Do not include /api/v1 in the URL.",
+        min_length=1,
+    )
+    api_key: str = Field(
+        title="API Key",
+        description="Your n8n API key. Generate this from Settings → API in your n8n instance.",
+        min_length=1,
+    )
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, v: str) -> str:
+        """Validate and normalize n8n instance URL."""
+        if not v or not v.strip():
+            raise ValueError("URL is required")
+        v = v.strip()
+        # Remove trailing slashes
+        v = v.rstrip("/")
+        # Ensure it starts with http:// or https://
+        if not v.startswith(("http://", "https://")):
+            raise ValueError("URL must start with http:// or https://")
+        # Remove /api/v1 suffix if user included it
+        if v.endswith("/api/v1"):
+            v = v[:-7]
+        return v
+
+
 class NotionAuthConfig(OAuth2AuthConfig):
     """Notion authentication credentials schema."""
 
