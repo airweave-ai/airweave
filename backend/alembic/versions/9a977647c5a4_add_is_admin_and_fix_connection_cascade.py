@@ -102,7 +102,12 @@ def upgrade():
     op.execute("UPDATE \"user\" SET is_admin = false")
 
     # Then, set users with @airweave.ai email to is_admin = true
-    op.execute("UPDATE \"user\" SET is_admin = true WHERE email LIKE '%@airweave.ai' OR email = 'admin@example.com'")
+    # For non-production environments, also grant admin to test account
+    from airweave.core.config import settings
+    if settings.ENVIRONMENT != 'prd':
+        op.execute("UPDATE \"user\" SET is_admin = true WHERE email LIKE '%@airweave.ai' OR email = 'admin@example.com'")
+    else:
+        op.execute("UPDATE \"user\" SET is_admin = true WHERE email LIKE '%@airweave.ai'")
 
     # Now make the column NOT NULL
     op.alter_column('user', 'is_admin', nullable=False)
