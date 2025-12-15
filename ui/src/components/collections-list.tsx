@@ -288,7 +288,7 @@ export const CollectionsList = () => {
                 anands-collection-4m6pbv.airweave.ai
               </CardDescription>
               <CardAction>
-                <Badge className="bg-emerald-50 border-emerald-300 text-emerald-500">
+                <Badge className="bg-emerald-50 border-emerald-300 text-emerald-500 dark:bg-emerald-950 dark:border-emerald-700 dark:text-emerald-400">
                   Active
                 </Badge>
               </CardAction>

@@ -17,21 +17,29 @@ import {
 import { SidebarMenuButton } from '@/components/ui/sidebar'
 import {
   IconChartBar,
+  IconCheck,
   IconCircleDashed,
   IconCircleDashedCheck,
   IconCreditCard,
+  IconDeviceLaptop,
   IconLogout,
+  IconMoon,
   IconPlus,
   IconSettings,
+  IconSun,
+  IconSunMoon,
   IconSwitch3,
   IconUsers,
 } from '@tabler/icons-react'
+import { useTheme } from 'next-themes'
 
 export function SidebarUser({
   user,
 }: {
   user: { name: string; avatar: string }
 }) {
+  const { theme, setTheme } = useTheme()
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -67,6 +75,33 @@ export function SidebarUser({
             <IconCreditCard />
             Billing
           </DropdownMenuItem>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <IconSunMoon />
+              Theme
+            </DropdownMenuSubTrigger>
+            <DropdownMenuPortal>
+              <DropdownMenuSubContent>
+                <DropdownMenuGroup>
+                  <DropdownMenuItem onClick={() => setTheme('system')}>
+                    <IconDeviceLaptop />
+                    System
+                    {theme === 'system' && <IconCheck />}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTheme('light')}>
+                    <IconSun />
+                    Light
+                    {theme === 'light' && <IconCheck />}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTheme('dark')}>
+                    <IconMoon />
+                    Dark
+                    {theme === 'dark' && <IconCheck />}
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+              </DropdownMenuSubContent>
+            </DropdownMenuPortal>
+          </DropdownMenuSub>
           <DropdownMenuSeparator />
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>

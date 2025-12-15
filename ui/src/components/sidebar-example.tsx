@@ -88,7 +88,7 @@ export default function SidebarInsetExample() {
                 <div>Logs</div>
                 <Badge
                   variant="outline"
-                  className="text-navbar-foreground opacity-50"
+                  className="text-sidebar-primary-foreground border-sidebar-primary-foreground opacity-50"
                 >
                   Beta
                 </Badge>
@@ -119,7 +119,10 @@ export default function SidebarInsetExample() {
               />
             </div>
             <div className="py-4">
-              <Button className="w-full" variant="secondary">
+              <Button
+                className="w-full dark:bg-foreground dark:text-background"
+                variant="secondary"
+              >
                 <IconPlus /> New collection
               </Button>
             </div>
