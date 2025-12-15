@@ -1,5 +1,5 @@
 'use client'
 
 export function DocsPanel() {
-  return 'OK'
+  return 'Embed docs'
 }

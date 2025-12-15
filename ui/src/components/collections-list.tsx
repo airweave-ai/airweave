@@ -9,7 +9,13 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { IconPlus } from '@tabler/icons-react'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@/components/ui/input-group'
+import { IconPlus, IconSearch } from '@tabler/icons-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 interface Source {
   name: string
@@ -18,17 +24,13 @@ interface Source {
 }
 
 interface Category {
-  icon: string
   title: string
-  description: string
   sources: Source[]
 }
 
 const categories: Category[] = [
   {
-    icon: '📊',
     title: 'Databases & Spreadsheets',
-    description: 'Structured data, records, and tables.',
     sources: [
       {
         name: 'Airtable',
@@ -53,9 +55,7 @@ const categories: Category[] = [
     ],
   },
   {
-    icon: '🗂️',
     title: 'Project & Task Management',
-    description: 'Work tracking, planning, and execution.',
     sources: [
       { name: 'Asana', slug: 'asana', description: 'Work management platform' },
       {
@@ -87,9 +87,7 @@ const categories: Category[] = [
     ],
   },
   {
-    icon: '📚',
     title: 'Knowledge Base & Documentation',
-    description: 'Docs, wikis, and internal knowledge.',
     sources: [
       {
         name: 'Confluence',
@@ -119,9 +117,7 @@ const categories: Category[] = [
     ],
   },
   {
-    icon: '🧑‍💻',
     title: 'Code Repositories & Dev Tools',
-    description: 'Source control and developer collaboration.',
     sources: [
       {
         name: 'GitHub',
@@ -141,9 +137,7 @@ const categories: Category[] = [
     ],
   },
   {
-    icon: '☁️',
     title: 'File Storage & Content Management',
-    description: 'Files, folders, and document storage.',
     sources: [
       { name: 'Box', slug: 'box', description: 'Cloud content management' },
       {
@@ -169,9 +163,7 @@ const categories: Category[] = [
     ],
   },
   {
-    icon: '✉️',
     title: 'Email & Calendar',
-    description: 'Communication and scheduling.',
     sources: [
       { name: 'Gmail', slug: 'google', description: 'Email by Google' },
       {
@@ -192,9 +184,7 @@ const categories: Category[] = [
     ],
   },
   {
-    icon: '💬',
     title: 'Team Communication',
-    description: 'Real-time messaging and collaboration.',
     sources: [
       {
         name: 'Slack',
@@ -209,9 +199,7 @@ const categories: Category[] = [
     ],
   },
   {
-    icon: '🧾',
     title: 'CRM, Sales & Customer Support',
-    description: 'Customer data, sales pipelines, and support tickets.',
     sources: [
       {
         name: 'HubSpot',
@@ -227,9 +215,7 @@ const categories: Category[] = [
     ],
   },
   {
-    icon: '💳',
     title: 'Payments & Finance',
-    description: 'Billing, payments, and transactions.',
     sources: [
       {
         name: 'Stripe',
@@ -239,9 +225,7 @@ const categories: Category[] = [
     ],
   },
   {
-    icon: '🧪',
     title: 'Research & Clinical Data',
-    description: 'Specialized research or clinical trial systems.',
     sources: [
       {
         name: 'CTTI AACT',
@@ -253,6 +237,43 @@ const categories: Category[] = [
 ]
 
 export const CollectionsList = () => {
+  const [searchQuery, setSearchQuery] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === '/' && document.activeElement !== inputRef.current) {
+        e.preventDefault()
+        inputRef.current?.focus()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
+  const filteredCategories = useMemo(() => {
+    if (!searchQuery.trim()) return categories
+
+    const query = searchQuery.toLowerCase()
+    return categories
+      .map((category) => ({
+        ...category,
+        sources: category.sources.filter(
+          (source) =>
+            source.name.toLowerCase().includes(query) ||
+            source.description.toLowerCase().includes(query),
+        ),
+      }))
+      .filter((category) => category.sources.length > 0)
+  }, [searchQuery])
+
+  const totalSources = useMemo(() => {
+    return filteredCategories.reduce(
+      (acc, category) => acc + category.sources.length,
+      0,
+    )
+  }, [filteredCategories])
+
   return (
     <>
       <section className="space-y-6">
@@ -302,51 +323,71 @@ export const CollectionsList = () => {
         </div>
       </section>
       <section className="mt-12">
-        <h2 className="text-md font-medium text-muted-foreground font-mono uppercase mb-8">
-          Sources
-        </h2>
-        {categories.map((category) => (
-          <div key={category.title} className="mb-10">
-            <h3 className="text-sm font-medium text-muted-foreground font-mono uppercase mb-2 flex items-center gap-2">
-              <span>{category.icon}</span>
-              <span>{category.title}</span>
-            </h3>
-            <p className="text-xs text-muted-foreground mb-4">
-              {category.description}
-            </p>
-            <div className="flex gap-4 flex-wrap">
-              {category.sources.map((source) => (
-                <Card key={source.name} className="w-[25rem]">
-                  <CardHeader>
-                    <div className="flex items-center gap-2">
-                      <Avatar size="sm" className="shrink-0">
-                        <AvatarImage
-                          src={`https://github.com/${source.slug}.png`}
-                          alt={`@${source.slug}`}
-                        />
-                      </Avatar>
-                      <CardTitle className="grow truncate">
-                        {source.name}
-                      </CardTitle>
-                    </div>
-                    <CardDescription className="truncate font-mono text-xs">
-                      {source.description}
-                    </CardDescription>
-                    <CardAction>
-                      <Button
-                        variant="outline"
-                        className="rounded-full"
-                        size="icon"
-                      >
-                        <IconPlus />
-                      </Button>
-                    </CardAction>
-                  </CardHeader>
-                </Card>
-              ))}
-            </div>
+        <header className="flex items-center justify-between">
+          <h2 className="text-md font-medium text-muted-foreground font-mono uppercase mb-4">
+            Sources
+          </h2>
+          <div>
+            <InputGroup>
+              <InputGroupInput
+                ref={inputRef}
+                placeholder="Press / to search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              <InputGroupAddon>
+                <IconSearch />
+              </InputGroupAddon>
+              <InputGroupAddon align="inline-end">
+                {totalSources} {totalSources === 1 ? 'source' : 'sources'}
+              </InputGroupAddon>
+            </InputGroup>
           </div>
-        ))}
+        </header>
+        {filteredCategories.length === 0 ? (
+          <div className="py-12 text-center text-muted-foreground">
+            No sources found matching "{searchQuery}"
+          </div>
+        ) : (
+          filteredCategories.map((category) => (
+            <div key={category.title} className="mb-10 space-y-4">
+              <h3 className="text-sm font-medium text-muted-foreground font-mono uppercase flex items-center gap-2">
+                <span>{category.title}</span>
+              </h3>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {category.sources.map((source) => (
+                  <Card key={source.name}>
+                    <CardHeader>
+                      <div className="flex items-center gap-2">
+                        <Avatar size="sm" className="shrink-0">
+                          <AvatarImage
+                            src={`https://github.com/${source.slug}.png`}
+                            alt={`@${source.slug}`}
+                          />
+                        </Avatar>
+                        <CardTitle className="grow truncate">
+                          {source.name}
+                        </CardTitle>
+                      </div>
+                      <CardDescription className="truncate font-mono text-xs">
+                        {source.description}
+                      </CardDescription>
+                      <CardAction>
+                        <Button
+                          variant="outline"
+                          className="rounded-full"
+                          size="icon"
+                        >
+                          <IconPlus />
+                        </Button>
+                      </CardAction>
+                    </CardHeader>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          ))
+        )}
       </section>
     </>
   )
