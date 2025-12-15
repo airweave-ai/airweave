@@ -14,6 +14,12 @@ connector:
     openai_model: "gpt-4.1-mini"
     # post_create_sleep_seconds: 7  # Optional: wait N seconds after creation before first sync
 
+    # Rich data generation options
+    create_comments: true      # Add comments to issues
+    create_labels: true        # Add labels to issues
+    assign_issues: true        # Assign issues to users
+    create_subtasks: false     # Create parent-child relationships (advanced)
+
 test_flow:
   steps:
     - cleanup
