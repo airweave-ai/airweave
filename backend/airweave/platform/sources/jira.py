@@ -19,6 +19,7 @@ from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.jira import (
+    JiraCommentEntity,
     JiraIssueEntity,
     JiraProjectEntity,
     ZephyrTestCaseEntity,
@@ -294,14 +295,59 @@ class JiraSource(BaseSource):
         description_text = None
         if description:
             if isinstance(description, dict):
-                # Extract plain text from the ADF structure
                 self.logger.debug(f"Converting ADF description to text for issue {issue_key}")
                 description_text = self._extract_text_from_adf(description)
             else:
                 description_text = description
 
+        # Extract assignee information
+        assignee = fields.get("assignee") or {}
+        assignee_account_id = assignee.get("accountId") if isinstance(assignee, dict) else None
+        assignee_display_name = assignee.get("displayName") if isinstance(assignee, dict) else None
+
+        # Extract reporter information
+        reporter = fields.get("reporter") or {}
+        reporter_account_id = reporter.get("accountId") if isinstance(reporter, dict) else None
+        reporter_display_name = reporter.get("displayName") if isinstance(reporter, dict) else None
+
+        # Extract labels
+        labels = fields.get("labels", [])
+        labels = labels if labels else None
+
+        # Extract sprint information (customfield_10020 is the common sprint field)
+        sprint_id = None
+        sprint_name = None
+        sprint_field = fields.get("customfield_10020")
+        if sprint_field and isinstance(sprint_field, list) and sprint_field:
+            # Get the most recent sprint (last in array)
+            latest_sprint = sprint_field[-1]
+            if isinstance(latest_sprint, dict):
+                sprint_id = str(latest_sprint.get("id")) if latest_sprint.get("id") else None
+                sprint_name = latest_sprint.get("name")
+
+        # Extract epic information
+        epic_key = fields.get("customfield_10014")  # Epic Link field
+        epic_name = fields.get("customfield_10011")  # Epic Name field
+
+        # Extract parent-child relationships
+        parent = fields.get("parent", {})
+        parent_issue_key = parent.get("key") if isinstance(parent, dict) else None
+        parent_issue_id = (
+            str(parent.get("id")) if isinstance(parent, dict) and parent.get("id") else None
+        )
+
+        # Extract subtasks
+        subtasks = fields.get("subtasks", [])
+        subtask_keys = [st.get("key") for st in subtasks if isinstance(st, dict) and st.get("key")]
+        subtask_keys = subtask_keys if subtask_keys else None
+
+        # Extract comment count
+        comments = fields.get("comment", {})
+        comment_count = comments.get("total", 0) if isinstance(comments, dict) else 0
+
         self.logger.debug(
-            f"Creating issue entity: {issue_key} - Type: {issue_type_name}, Status: {status_name}"
+            f"Creating issue entity: {issue_key} - Type: {issue_type_name}, Status: {status_name}, "
+            f"Assignee: {assignee_display_name}, Comments: {comment_count}"
         )
 
         issue_id = str(issue_data["id"])
@@ -328,9 +374,81 @@ class JiraSource(BaseSource):
             status=status_name,
             issue_type=issue_type_name,
             project_key=project.project_key,
+            assignee_account_id=assignee_account_id,
+            assignee_display_name=assignee_display_name,
+            reporter_account_id=reporter_account_id,
+            reporter_display_name=reporter_display_name,
+            labels=labels,
+            sprint_id=sprint_id,
+            sprint_name=sprint_name,
+            epic_key=epic_key,
+            epic_name=epic_name,
+            parent_issue_key=parent_issue_key,
+            parent_issue_id=parent_issue_id,
+            subtask_keys=subtask_keys,
+            comment_count=comment_count,
             created_time=created_time,
             updated_time=updated_time,
             web_url_value=self._build_issue_url(issue_key),
+        )
+
+    def _create_comment_entity(
+        self, comment_data: Dict[str, Any], issue: JiraIssueEntity
+    ) -> JiraCommentEntity:
+        """Transform raw comment data into a JiraCommentEntity."""
+        comment_id = str(comment_data.get("id", "unknown"))
+
+        # Extract author information
+        author = comment_data.get("author", {})
+        author_account_id = author.get("accountId") if isinstance(author, dict) else None
+        author_display_name = author.get("displayName") if isinstance(author, dict) else None
+
+        # Extract comment body (handle ADF format)
+        body_data = comment_data.get("body")
+        if isinstance(body_data, dict):
+            # ADF format
+            body_text = self._extract_text_from_adf(body_data)
+        else:
+            # Plain text fallback
+            body_text = str(body_data) if body_data else ""
+
+        # Parse timestamps
+        created_time = self._parse_datetime(comment_data.get("created")) or datetime.utcnow()
+        updated_time = self._parse_datetime(comment_data.get("updated")) or created_time
+
+        # Build comment URL
+        comment_url = None
+        if self.site_url:
+            comment_url = f"{self.site_url}/browse/{issue.issue_key}?focusedCommentId={comment_id}"
+
+        self.logger.debug(f"Creating comment entity: {comment_id} on issue {issue.issue_key}")
+
+        return JiraCommentEntity(
+            entity_id=comment_id,
+            breadcrumbs=[
+                Breadcrumb(
+                    entity_id=issue.project_key,
+                    name=issue.project_key,
+                    entity_type=JiraProjectEntity.__name__,
+                ),
+                Breadcrumb(
+                    entity_id=issue.issue_id,
+                    name=issue.summary,
+                    entity_type=JiraIssueEntity.__name__,
+                ),
+            ],
+            name=body_text[:100] + "..." if len(body_text) > 100 else body_text,
+            created_at=created_time,
+            updated_at=updated_time,
+            comment_id=comment_id,
+            body=body_text,
+            author_account_id=author_account_id,
+            author_display_name=author_display_name,
+            issue_key=issue.issue_key,
+            issue_id=issue.issue_id,
+            created_time=created_time,
+            updated_time=updated_time,
+            web_url_value=comment_url,
         )
 
     async def _generate_project_entities(
@@ -441,7 +559,23 @@ class JiraSource(BaseSource):
             search_body = {
                 "jql": f"project = {project_key}",
                 "maxResults": max_results,
-                "fields": ["summary", "description", "status", "issuetype", "created", "updated"],
+                "fields": [
+                    "summary",
+                    "description",
+                    "status",
+                    "issuetype",
+                    "created",
+                    "updated",
+                    "assignee",
+                    "reporter",
+                    "labels",
+                    "customfield_10020",  # Sprint (common field ID)
+                    "customfield_10014",  # Epic Link (common field ID)
+                    "customfield_10011",  # Epic Name (common field ID)
+                    "parent",
+                    "subtasks",
+                    "comment",
+                ],
             }
 
             # Add nextPageToken if we have one (for pagination)
@@ -469,13 +603,183 @@ class JiraSource(BaseSource):
                 self.logger.info(f"Completed fetching all issues for project {project_key}")
                 break
 
+    async def _generate_comment_entities(
+        self, client: httpx.AsyncClient, issue: JiraIssueEntity
+    ) -> AsyncGenerator[JiraCommentEntity, None]:
+        """Generate JiraCommentEntity objects for a given issue."""
+        issue_key = issue.issue_key
+
+        # Skip if issue has no comments
+        if issue.comment_count == 0:
+            self.logger.debug(f"Skipping comments for {issue_key} - no comments present")
+            return
+
+        self.logger.debug(f"Fetching {issue.comment_count} comment(s) for issue: {issue_key}")
+
+        # Jira comments API endpoint
+        comments_url = f"{self.base_url}/rest/api/3/issue/{issue_key}/comment"
+
+        try:
+            data = await self._get_with_auth(client, comments_url)
+            comments = data.get("comments", [])
+
+            self.logger.debug(f"Retrieved {len(comments)} comments for issue {issue_key}")
+
+            for comment_data in comments:
+                comment_entity = self._create_comment_entity(comment_data, issue)
+                yield comment_entity
+
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                self.logger.warning(f"Comments endpoint not found for issue {issue_key}")
+            else:
+                self.logger.error(
+                    f"Failed to fetch comments for {issue_key}: "
+                    f"{e.response.status_code} - {e.response.text}"
+                )
+        except Exception as e:
+            self.logger.warning(f"Error fetching comments for {issue_key}: {str(e)}")
+
+    async def _process_projects_issues_comments(
+        self,
+        client: httpx.AsyncClient,
+        processed_entities: set,
+    ) -> AsyncGenerator[tuple[BaseEntity, int, int, int], None]:
+        """Process projects, their issues, and comments.
+
+        Yields tuples of (entity, project_count, issue_count, comment_count) for tracking.
+        """
+        project_count = 0
+        issue_count = 0
+        comment_count = 0
+
+        # Store projects for potential Zephyr integration
+        projects: List[JiraProjectEntity] = []
+
+        # Generate all Projects
+        async for project_entity in self._generate_project_entities(client):
+            project_count += 1
+            project_identifier = (project_entity.entity_id, project_entity.project_key)
+
+            if project_identifier in processed_entities:
+                self.logger.warning(
+                    f"Skipping duplicate project: {project_entity.project_key} "
+                    f"(ID: {project_entity.entity_id})"
+                )
+                continue
+
+            processed_entities.add(project_identifier)
+            projects.append(project_entity)
+            self.logger.info(
+                f"Yielding project entity: {project_entity.project_key} ({project_entity.name})"
+            )
+            yield (project_entity, project_count, issue_count, comment_count)
+
+            # Generate all Issues for this Project
+            project_issue_count = 0
+            project_comment_count = 0
+
+            async for issue_entity in self._generate_issue_entities(client, project_entity):
+                issue_identifier = (issue_entity.entity_id, issue_entity.issue_key)
+
+                if issue_identifier in processed_entities:
+                    self.logger.warning(
+                        f"Skipping duplicate issue: {issue_entity.issue_key} "
+                        f"(ID: {issue_entity.entity_id})"
+                    )
+                    continue
+
+                processed_entities.add(issue_identifier)
+                issue_count += 1
+                project_issue_count += 1
+                self.logger.info(f"Yielding issue entity: {issue_entity.issue_key}")
+                yield (issue_entity, project_count, issue_count, comment_count)
+
+                # Generate comments for this issue
+                issue_comment_count = 0
+                async for comment_entity in self._generate_comment_entities(client, issue_entity):
+                    comment_identifier = (comment_entity.entity_id, comment_entity.comment_id)
+
+                    if comment_identifier not in processed_entities:
+                        processed_entities.add(comment_identifier)
+                        issue_comment_count += 1
+                        project_comment_count += 1
+                        comment_count += 1
+                        yield (comment_entity, project_count, issue_count, comment_count)
+
+                if issue_comment_count > 0:
+                    self.logger.debug(
+                        f"Yielded {issue_comment_count} comments for issue {issue_entity.issue_key}"
+                    )
+
+            self.logger.info(
+                f"Completed {project_issue_count} issues and {project_comment_count} comments "
+                f"for project {project_entity.project_key}"
+            )
+
+        # Store projects list in instance variable for Zephyr integration
+        self._projects_cache = projects
+
+    async def _process_zephyr_entities(
+        self,
+        client: httpx.AsyncClient,
+        projects: List[JiraProjectEntity],
+        processed_entities: set,
+    ) -> AsyncGenerator[tuple[BaseEntity, int, int, int], None]:
+        """Process Zephyr Scale test entities for all projects.
+
+        Yields tuples of (entity, test_case_count, test_cycle_count, test_plan_count).
+        """
+        test_case_count = 0
+        test_cycle_count = 0
+        test_plan_count = 0
+
+        self.logger.info("🧪 Starting Zephyr Scale entity generation")
+
+        for project in projects:
+            # Generate Test Cases
+            async for test_case in self._generate_zephyr_test_case_entities(client, project):
+                tc_identifier = (test_case.entity_id, test_case.test_case_key)
+                if tc_identifier not in processed_entities:
+                    processed_entities.add(tc_identifier)
+                    test_case_count += 1
+                    self.logger.debug(f"Yielding test case entity: {test_case.test_case_key}")
+                    yield (test_case, test_case_count, test_cycle_count, test_plan_count)
+
+            # Generate Test Cycles
+            async for test_cycle in self._generate_zephyr_test_cycle_entities(client, project):
+                tcyc_identifier = (test_cycle.entity_id, test_cycle.test_cycle_key)
+                if tcyc_identifier not in processed_entities:
+                    processed_entities.add(tcyc_identifier)
+                    test_cycle_count += 1
+                    self.logger.debug(f"Yielding test cycle entity: {test_cycle.test_cycle_key}")
+                    yield (test_cycle, test_case_count, test_cycle_count, test_plan_count)
+
+            # Generate Test Plans
+            async for test_plan in self._generate_zephyr_test_plan_entities(client, project):
+                tp_identifier = (test_plan.entity_id, test_plan.test_plan_key)
+                if tp_identifier not in processed_entities:
+                    processed_entities.add(tp_identifier)
+                    test_plan_count += 1
+                    self.logger.debug(f"Yielding test plan entity: {test_plan.test_plan_key}")
+                    yield (test_plan, test_case_count, test_cycle_count, test_plan_count)
+
+        self.logger.info(
+            f"✅ Completed Zephyr Scale entity generation: "
+            f"{test_case_count} test cases, "
+            f"{test_cycle_count} test cycles, "
+            f"{test_plan_count} test plans"
+        )
+
     async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate all entities from Jira and optionally Zephyr Scale."""
         self.logger.info("Starting Jira entity generation process")
 
+        # Get accessible resources and setup
         resources = await self._get_accessible_resources()
         if not resources:
             raise ValueError("No accessible resources found")
+
         cloud_id = resources[0]["id"]
         self.site_url = resources[0].get("url")
         if self.site_url:
@@ -487,9 +791,6 @@ class JiraSource(BaseSource):
         self.logger.debug(f"Base URL set to: {self.base_url}")
 
         # Check if Zephyr Scale integration is enabled
-        # Token will only be present if:
-        # 1. The ZEPHYR_SCALE feature flag is enabled for the organization
-        # 2. The user provided the API token in the config
         zephyr_enabled = self._is_zephyr_enabled()
         if zephyr_enabled:
             self.logger.info(
@@ -503,119 +804,36 @@ class JiraSource(BaseSource):
             )
 
         async with httpx.AsyncClient() as client:
-            project_count = 0
-            issue_count = 0
-            zephyr_test_case_count = 0
-            zephyr_test_cycle_count = 0
-            zephyr_test_plan_count = 0
+            # Track processed entities to avoid duplicates
+            processed_entities = set()
 
-            # Track already processed entity IDs with their type to avoid duplicates
-            processed_entities = set()  # Will store tuples of (entity_id, key)
+            # Counters for final summary
+            final_project_count = 0
+            final_issue_count = 0
+            final_comment_count = 0
 
-            # Store projects for Zephyr integration (need to iterate twice)
-            projects: List[JiraProjectEntity] = []
-
-            # 1) Generate (and yield) all Projects
-            async for project_entity in self._generate_project_entities(client):
-                project_count += 1
-                # Create a unique identifier for this project
-                project_identifier = (project_entity.entity_id, project_entity.project_key)
-
-                # Skip if already processed
-                if project_identifier in processed_entities:
-                    self.logger.warning(
-                        f"Skipping duplicate project: {project_entity.project_key} "
-                        f"(ID: {project_entity.entity_id})"
-                    )
-                    continue
-
-                processed_entities.add(project_identifier)
-                projects.append(project_entity)
-                self.logger.info(
-                    f"Yielding project entity: {project_entity.project_key} ({project_entity.name})"
-                )
-                yield project_entity
-
-                # 2) Generate (and yield) all Issues for each Project
-                project_issue_count = 0
-                async for issue_entity in self._generate_issue_entities(client, project_entity):
-                    # Create a unique identifier for this issue
-                    issue_identifier = (issue_entity.entity_id, issue_entity.issue_key)
-
-                    # Skip if already processed
-                    if issue_identifier in processed_entities:
-                        self.logger.warning(
-                            f"Skipping duplicate issue: {issue_entity.issue_key} "
-                            f"(ID: {issue_entity.entity_id})"
-                        )
-                        continue
-
-                    processed_entities.add(issue_identifier)
-                    issue_count += 1
-                    project_issue_count += 1
-                    self.logger.info(f"Yielding issue entity: {issue_entity.issue_key}")
-                    yield issue_entity
-
-                self.logger.info(
-                    f"Completed {project_issue_count} issues for project "
-                    f"{project_entity.project_key}"
-                )
+            # Process projects, issues, and comments
+            async for entity, proj_cnt, iss_cnt, com_cnt in self._process_projects_issues_comments(
+                client, processed_entities
+            ):
+                final_project_count = proj_cnt
+                final_issue_count = iss_cnt
+                final_comment_count = com_cnt
+                yield entity
 
             self.logger.info(
-                f"Completed Jira entity generation: {project_count} projects, "
-                f"{issue_count} issues total"
+                f"Completed Jira entity generation: {final_project_count} projects, "
+                f"{final_issue_count} issues, {final_comment_count} comments"
             )
 
-            # 3) Zephyr Scale Integration (if configured)
+            # Process Zephyr Scale entities if enabled
             if zephyr_enabled:
-                self.logger.info("🧪 Starting Zephyr Scale entity generation")
+                projects_cache = getattr(self, "_projects_cache", [])
 
-                for project in projects:
-                    # Generate Test Cases
-                    async for test_case in self._generate_zephyr_test_case_entities(
-                        client, project
-                    ):
-                        tc_identifier = (test_case.entity_id, test_case.test_case_key)
-                        if tc_identifier not in processed_entities:
-                            processed_entities.add(tc_identifier)
-                            zephyr_test_case_count += 1
-                            self.logger.debug(
-                                f"Yielding test case entity: {test_case.test_case_key}"
-                            )
-                            yield test_case
-
-                    # Generate Test Cycles
-                    async for test_cycle in self._generate_zephyr_test_cycle_entities(
-                        client, project
-                    ):
-                        tcyc_identifier = (test_cycle.entity_id, test_cycle.test_cycle_key)
-                        if tcyc_identifier not in processed_entities:
-                            processed_entities.add(tcyc_identifier)
-                            zephyr_test_cycle_count += 1
-                            self.logger.debug(
-                                f"Yielding test cycle entity: {test_cycle.test_cycle_key}"
-                            )
-                            yield test_cycle
-
-                    # Generate Test Plans
-                    async for test_plan in self._generate_zephyr_test_plan_entities(
-                        client, project
-                    ):
-                        tp_identifier = (test_plan.entity_id, test_plan.test_plan_key)
-                        if tp_identifier not in processed_entities:
-                            processed_entities.add(tp_identifier)
-                            zephyr_test_plan_count += 1
-                            self.logger.debug(
-                                f"Yielding test plan entity: {test_plan.test_plan_key}"
-                            )
-                            yield test_plan
-
-                self.logger.info(
-                    f"✅ Completed Zephyr Scale entity generation: "
-                    f"{zephyr_test_case_count} test cases, "
-                    f"{zephyr_test_cycle_count} test cycles, "
-                    f"{zephyr_test_plan_count} test plans"
-                )
+                async for entity, _tc_cnt, _tcyc_cnt, _tp_cnt in self._process_zephyr_entities(
+                    client, projects_cache, processed_entities
+                ):
+                    yield entity
 
     async def validate(self) -> bool:
         """Verify Jira OAuth2 token by calling accessible-resources endpoint.
