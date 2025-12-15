@@ -6,10 +6,10 @@ from typing import Any, Dict, List, Optional
 from pydantic import Field, computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import ChunkEntity
+from airweave.platform.entities._base import BaseEntity
 
 
-class CalComScheduleEntity(ChunkEntity):
+class CalComScheduleEntity(BaseEntity):
     """Schema for Cal.com schedule entities."""
 
     id: int = AirweaveField(..., description="Schedule ID", is_entity_id=True)
@@ -42,7 +42,7 @@ class CalComScheduleEntity(ChunkEntity):
         return f"https://cal.com/settings/availability/schedule/{self.id}"
 
 
-class CalComEventTypeEntity(ChunkEntity):
+class CalComEventTypeEntity(BaseEntity):
     """Schema for Cal.com event type entities."""
 
     id: int = AirweaveField(..., description="Event type ID", is_entity_id=True)
@@ -137,7 +137,7 @@ class CalComEventTypeEntity(ChunkEntity):
         return f"https://cal.com/{self.slug}"
 
 
-class CalComBookingEntity(ChunkEntity):
+class CalComBookingEntity(BaseEntity):
     """Schema for Cal.com booking entities."""
 
     id: int = AirweaveField(..., description="Booking ID", is_entity_id=True)

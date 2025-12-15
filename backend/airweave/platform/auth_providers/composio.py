@@ -52,6 +52,7 @@ class ComposioAuthProvider(BaseAuthProvider):
         "teams": "microsoft_teams",
         "onenote": "one_drive",
         "word": "one_drive",
+        "cal_com": "CAL",  # Cal.com integration slug in Composio
         # Add more mappings as needed
     }
 
