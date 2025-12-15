@@ -424,4 +424,15 @@ integrations:
       access_type: "offline"
       prompt: "consent"
 
+  cal_com:
+    oauth_type: "with_refresh"
+    url: "https://app.cal.com/auth/oauth2/authorize"
+    backend_url: "https://app.cal.com/api/auth/oauth/token"
+    grant_type: "authorization_code"
+    client_id: "placeholder_client_id"
+    client_secret: "placeholder_client_secret"
+    content_type: "application/x-www-form-urlencoded"
+    client_credential_location: "body"
+    scope: "CALCOM_API_READ"
+
   qdrant:
