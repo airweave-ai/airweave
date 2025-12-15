@@ -166,7 +166,7 @@ export default function SidebarInsetExample() {
         </SidebarContent>
         <SidebarRail />
       </Sidebar>
-      <SidebarInset className="py-8 px-10">
+      <SidebarInset className="h-[calc(100vh-1rem)] overflow-auto py-8 px-10">
         <CollectionsList />
       </SidebarInset>
 

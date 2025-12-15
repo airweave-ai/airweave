@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/breadcrumb'
 import { Button } from '@/components/ui/button'
 import { ButtonGroup } from '@/components/ui/button-group'
+import { Calendar } from '@/components/ui/calendar'
 import {
   Card,
   CardContent,
@@ -42,12 +43,36 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from '@/components/ui/carousel'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+} from '@/components/ui/combobox'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from '@/components/ui/command'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -83,19 +108,64 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from '@/components/ui/field'
+import {
   HoverCard,
   HoverCardContent,
   HoverCardTrigger,
 } from '@/components/ui/hover-card'
 import { Input } from '@/components/ui/input'
 import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@/components/ui/input-group'
+import {
   InputOTP,
   InputOTPGroup,
   InputOTPSeparator,
   InputOTPSlot,
 } from '@/components/ui/input-otp'
+import {
+  Item,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemMedia,
+  ItemTitle,
+} from '@/components/ui/item'
 import { Kbd } from '@/components/ui/kbd'
 import { Label } from '@/components/ui/label'
+import {
+  Menubar,
+  MenubarContent,
+  MenubarItem,
+  MenubarMenu,
+  MenubarSeparator,
+  MenubarShortcut,
+  MenubarTrigger,
+} from '@/components/ui/menubar'
+import {
+  NavigationMenu,
+  NavigationMenuContent,
+  NavigationMenuItem,
+  NavigationMenuLink,
+  NavigationMenuList,
+  NavigationMenuTrigger,
+} from '@/components/ui/navigation-menu'
 import {
   Pagination,
   PaginationContent,
@@ -162,17 +232,32 @@ import {
   AlignLeft,
   AlignRight,
   Bold,
+  Calculator,
+  Calendar as CalendarIcon,
   ChevronsUpDown,
+  CreditCard,
   Download,
+  FileText,
+  Inbox,
   Info,
   Italic,
   Mail,
   Plus,
   Search,
   Settings,
+  Smile,
   Underline,
+  User,
 } from 'lucide-react'
 import * as React from 'react'
+
+const frameworks = [
+  { value: 'next.js', label: 'Next.js' },
+  { value: 'sveltekit', label: 'SvelteKit' },
+  { value: 'nuxt.js', label: 'Nuxt.js' },
+  { value: 'remix', label: 'Remix' },
+  { value: 'astro', label: 'Astro' },
+]
 
 export const Route = createFileRoute('/components')({
   component: ComponentsPage,
@@ -449,6 +534,40 @@ function ComponentsPage() {
           </div>
         </section>
 
+        {/* Calendar */}
+        <section className="space-y-4">
+          <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+            Calendar
+          </h2>
+          <Calendar mode="single" className="rounded-lg border" />
+        </section>
+
+        {/* Carousel */}
+        <section className="space-y-4">
+          <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+            Carousel
+          </h2>
+          <Carousel className="w-full max-w-xs mx-auto">
+            <CarouselContent>
+              {Array.from({ length: 5 }).map((_, index) => (
+                <CarouselItem key={index}>
+                  <div className="p-1">
+                    <Card>
+                      <CardContent className="flex aspect-square items-center justify-center p-6">
+                        <span className="text-4xl font-semibold">
+                          {index + 1}
+                        </span>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </CarouselItem>
+              ))}
+            </CarouselContent>
+            <CarouselPrevious />
+            <CarouselNext />
+          </Carousel>
+        </section>
+
         {/* Checkbox */}
         <section className="space-y-4">
           <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
@@ -501,6 +620,71 @@ function ComponentsPage() {
               </div>
             </CollapsibleContent>
           </Collapsible>
+        </section>
+
+        {/* Combobox */}
+        <section className="space-y-4">
+          <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+            Combobox
+          </h2>
+          <Combobox>
+            <ComboboxInput
+              placeholder="Select framework..."
+              className="w-[200px]"
+            />
+            <ComboboxContent>
+              <ComboboxList>
+                <ComboboxEmpty>No framework found.</ComboboxEmpty>
+                {frameworks.map((framework) => (
+                  <ComboboxItem key={framework.value} value={framework.value}>
+                    {framework.label}
+                  </ComboboxItem>
+                ))}
+              </ComboboxList>
+            </ComboboxContent>
+          </Combobox>
+        </section>
+
+        {/* Command */}
+        <section className="space-y-4">
+          <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+            Command
+          </h2>
+          <Command className="rounded-lg border shadow-md max-w-md">
+            <CommandInput placeholder="Type a command or search..." />
+            <CommandList>
+              <CommandEmpty>No results found.</CommandEmpty>
+              <CommandGroup heading="Suggestions">
+                <CommandItem>
+                  <CalendarIcon className="mr-2 size-4" />
+                  <span>Calendar</span>
+                </CommandItem>
+                <CommandItem>
+                  <Smile className="mr-2 size-4" />
+                  <span>Search Emoji</span>
+                </CommandItem>
+                <CommandItem>
+                  <Calculator className="mr-2 size-4" />
+                  <span>Calculator</span>
+                </CommandItem>
+              </CommandGroup>
+              <CommandSeparator />
+              <CommandGroup heading="Settings">
+                <CommandItem>
+                  <User className="mr-2 size-4" />
+                  <span>Profile</span>
+                </CommandItem>
+                <CommandItem>
+                  <CreditCard className="mr-2 size-4" />
+                  <span>Billing</span>
+                </CommandItem>
+                <CommandItem>
+                  <Settings className="mr-2 size-4" />
+                  <span>Settings</span>
+                </CommandItem>
+              </CommandGroup>
+            </CommandList>
+          </Command>
         </section>
 
         {/* Context Menu */}
@@ -599,6 +783,55 @@ function ComponentsPage() {
           </DropdownMenu>
         </section>
 
+        {/* Empty */}
+        <section className="space-y-4">
+          <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+            Empty
+          </h2>
+          <Empty className="border max-w-md">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Inbox className="size-4" />
+              </EmptyMedia>
+              <EmptyTitle>No messages</EmptyTitle>
+              <EmptyDescription>
+                You don't have any messages yet. Start a conversation!
+              </EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button size="sm">
+                <Mail className="mr-2 size-4" />
+                Compose
+              </Button>
+            </EmptyContent>
+          </Empty>
+        </section>
+
+        {/* Field */}
+        <section className="space-y-4">
+          <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+            Field
+          </h2>
+          <FieldGroup className="max-w-sm">
+            <Field>
+              <FieldLabel htmlFor="field-name">Name</FieldLabel>
+              <Input id="field-name" placeholder="Enter your name" />
+              <FieldDescription>
+                Your full name as it appears on your ID.
+              </FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="field-email">Email</FieldLabel>
+              <Input
+                id="field-email"
+                type="email"
+                placeholder="Enter your email"
+              />
+              <FieldError>Please enter a valid email address.</FieldError>
+            </Field>
+          </FieldGroup>
+        </section>
+
         {/* Hover Card */}
         <section className="space-y-4">
           <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
@@ -638,6 +871,34 @@ function ComponentsPage() {
           </div>
         </section>
 
+        {/* Input Group */}
+        <section className="space-y-4">
+          <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+            Input Group
+          </h2>
+          <div className="flex flex-col gap-3 max-w-sm">
+            <InputGroup>
+              <InputGroupAddon>
+                <Mail className="size-4" />
+              </InputGroupAddon>
+              <InputGroupInput placeholder="Email address" />
+            </InputGroup>
+            <InputGroup>
+              <InputGroupAddon>
+                <Search className="size-4" />
+              </InputGroupAddon>
+              <InputGroupInput placeholder="Search..." />
+              <InputGroupAddon align="inline-end">
+                <Kbd>⌘K</Kbd>
+              </InputGroupAddon>
+            </InputGroup>
+            <InputGroup>
+              <InputGroupAddon>https://</InputGroupAddon>
+              <InputGroupInput placeholder="example.com" />
+            </InputGroup>
+          </div>
+        </section>
+
         {/* Input OTP */}
         <section className="space-y-4">
           <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
@@ -656,6 +917,42 @@ function ComponentsPage() {
               <InputOTPSlot index={5} />
             </InputOTPGroup>
           </InputOTP>
+        </section>
+
+        {/* Item */}
+        <section className="space-y-4">
+          <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+            Item
+          </h2>
+          <ItemGroup className="max-w-md">
+            <Item variant="outline">
+              <ItemMedia variant="icon">
+                <FileText className="size-4" />
+              </ItemMedia>
+              <ItemContent>
+                <ItemTitle>Document.pdf</ItemTitle>
+                <ItemDescription>2.4 MB • Updated 2 days ago</ItemDescription>
+              </ItemContent>
+            </Item>
+            <Item variant="outline">
+              <ItemMedia variant="icon">
+                <FileText className="size-4" />
+              </ItemMedia>
+              <ItemContent>
+                <ItemTitle>Presentation.pptx</ItemTitle>
+                <ItemDescription>5.1 MB • Updated yesterday</ItemDescription>
+              </ItemContent>
+            </Item>
+            <Item variant="outline">
+              <ItemMedia variant="icon">
+                <FileText className="size-4" />
+              </ItemMedia>
+              <ItemContent>
+                <ItemTitle>Spreadsheet.xlsx</ItemTitle>
+                <ItemDescription>1.2 MB • Updated today</ItemDescription>
+              </ItemContent>
+            </Item>
+          </ItemGroup>
         </section>
 
         {/* Kbd */}
@@ -681,6 +978,113 @@ function ComponentsPage() {
             <Label htmlFor="email-label">Email</Label>
             <Input id="email-label" type="email" placeholder="Enter email" />
           </div>
+        </section>
+
+        {/* Menubar */}
+        <section className="space-y-4">
+          <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+            Menubar
+          </h2>
+          <Menubar>
+            <MenubarMenu>
+              <MenubarTrigger>File</MenubarTrigger>
+              <MenubarContent>
+                <MenubarItem>
+                  New Tab <MenubarShortcut>⌘T</MenubarShortcut>
+                </MenubarItem>
+                <MenubarItem>
+                  New Window <MenubarShortcut>⌘N</MenubarShortcut>
+                </MenubarItem>
+                <MenubarSeparator />
+                <MenubarItem>Share</MenubarItem>
+                <MenubarSeparator />
+                <MenubarItem>Print</MenubarItem>
+              </MenubarContent>
+            </MenubarMenu>
+            <MenubarMenu>
+              <MenubarTrigger>Edit</MenubarTrigger>
+              <MenubarContent>
+                <MenubarItem>
+                  Undo <MenubarShortcut>⌘Z</MenubarShortcut>
+                </MenubarItem>
+                <MenubarItem>
+                  Redo <MenubarShortcut>⇧⌘Z</MenubarShortcut>
+                </MenubarItem>
+                <MenubarSeparator />
+                <MenubarItem>Cut</MenubarItem>
+                <MenubarItem>Copy</MenubarItem>
+                <MenubarItem>Paste</MenubarItem>
+              </MenubarContent>
+            </MenubarMenu>
+            <MenubarMenu>
+              <MenubarTrigger>View</MenubarTrigger>
+              <MenubarContent>
+                <MenubarItem>Reload</MenubarItem>
+                <MenubarSeparator />
+                <MenubarItem>Toggle Fullscreen</MenubarItem>
+              </MenubarContent>
+            </MenubarMenu>
+          </Menubar>
+        </section>
+
+        {/* Navigation Menu */}
+        <section className="space-y-4">
+          <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+            Navigation Menu
+          </h2>
+          <NavigationMenu>
+            <NavigationMenuList>
+              <NavigationMenuItem>
+                <NavigationMenuTrigger>Getting Started</NavigationMenuTrigger>
+                <NavigationMenuContent>
+                  <ul className="grid gap-3 p-4 md:w-[400px] lg:w-[500px] lg:grid-cols-[.75fr_1fr]">
+                    <li className="row-span-3">
+                      <NavigationMenuLink className="flex h-full w-full select-none flex-col justify-end rounded-md bg-gradient-to-b from-muted/50 to-muted p-6 no-underline outline-none focus:shadow-md">
+                        <div className="mb-2 mt-4 text-lg font-medium">
+                          shadcn/ui
+                        </div>
+                        <p className="text-sm leading-tight text-muted-foreground">
+                          Beautifully designed components built with Radix UI
+                          and Tailwind CSS.
+                        </p>
+                      </NavigationMenuLink>
+                    </li>
+                    <li>
+                      <NavigationMenuLink>Introduction</NavigationMenuLink>
+                    </li>
+                    <li>
+                      <NavigationMenuLink>Installation</NavigationMenuLink>
+                    </li>
+                    <li>
+                      <NavigationMenuLink>Typography</NavigationMenuLink>
+                    </li>
+                  </ul>
+                </NavigationMenuContent>
+              </NavigationMenuItem>
+              <NavigationMenuItem>
+                <NavigationMenuTrigger>Components</NavigationMenuTrigger>
+                <NavigationMenuContent>
+                  <ul className="grid w-[400px] gap-3 p-4 md:w-[500px] md:grid-cols-2 lg:w-[600px]">
+                    <li>
+                      <NavigationMenuLink>Alert Dialog</NavigationMenuLink>
+                    </li>
+                    <li>
+                      <NavigationMenuLink>Hover Card</NavigationMenuLink>
+                    </li>
+                    <li>
+                      <NavigationMenuLink>Progress</NavigationMenuLink>
+                    </li>
+                    <li>
+                      <NavigationMenuLink>Scroll-area</NavigationMenuLink>
+                    </li>
+                  </ul>
+                </NavigationMenuContent>
+              </NavigationMenuItem>
+              <NavigationMenuItem>
+                <NavigationMenuLink>Documentation</NavigationMenuLink>
+              </NavigationMenuItem>
+            </NavigationMenuList>
+          </NavigationMenu>
         </section>
 
         {/* Pagination */}
