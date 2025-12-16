@@ -4,6 +4,7 @@ Creates, updates, and deletes test event types and bookings via the real Cal.com
 """
 
 import asyncio
+import re
 import time
 import uuid
 from datetime import datetime, timedelta
@@ -35,7 +36,32 @@ class CalComBongo(BaseBongo):
             **kwargs: Configuration from config file
         """
         super().__init__(credentials)
-        self.access_token: str = credentials["access_token"]
+        
+        # Initialize logger FIRST before using it
+        self.logger = get_logger("cal_com_bongo")
+        
+        # Debug: Log available credential fields
+        self.logger.info(
+            f"Received credentials with fields: {list(credentials.keys())}"
+        )
+        
+        # Try to get access_token - support multiple possible field names from Composio
+        self.access_token = (
+            credentials.get("access_token")
+            or credentials.get("token")
+            or credentials.get("generic_api_key")
+        )
+        
+        if not self.access_token:
+            available_fields = list(credentials.keys())
+            self.logger.error(
+                f"No 'access_token' in credentials. Available: {available_fields}"
+            )
+            raise ValueError(
+                f"Missing 'access_token' in credentials. "
+                f"Expected one of: 'access_token', 'token', 'generic_api_key'. "
+                f"Available fields: {available_fields}"
+            )
         self.entity_count: int = int(kwargs.get("entity_count", 3))
         self.openai_model: str = kwargs.get("openai_model", "gpt-4.1-mini")
         self.max_concurrency: int = int(kwargs.get("max_concurrency", 1))
@@ -51,8 +77,6 @@ class CalComBongo(BaseBongo):
 
         # Pacing
         self.last_request_time = 0.0
-
-        self.logger = get_logger("cal_com_bongo")
 
     def _headers(self) -> Dict[str, str]:
         """Get headers for API requests."""
@@ -139,12 +163,55 @@ class CalComBongo(BaseBongo):
                         ) = await generate_cal_com_event_type(self.openai_model, token)
                         self.logger.info(f"📝 Generated event type: '{title[:50]}...'")
 
-                        # Create event type
+                        # Normalize location type to valid Cal.com values
+                        valid_location_types = {"address", "link", "integration", "phone"}
+                        if location_type not in valid_location_types:
+                            location_lower = location_type.lower()
+                            if "zoom" in location_lower or "video" in location_lower:
+                                location_type = "integration"
+                                location_details = "cal-video"
+                            elif "phone" in location_lower or "call" in location_lower:
+                                location_type = "phone"
+                            elif "address" in location_lower or "in-person" in location_lower:
+                                location_type = "address"
+                            else:
+                                location_type = "integration"
+                                location_details = "cal-video"
+
+                        # Build location object based on type
+                        location_obj = {"type": location_type, "public": True}
+                        
+                        if location_type == "link":
+                            url = (
+                                location_details
+                                if location_details and location_details.startswith(("http://", "https://"))
+                                else "https://meet.google.com/abc-defg-hij"
+                            )
+                            location_obj["url"] = url
+                        elif location_type == "address" and location_details:
+                            location_obj["address"] = location_details
+                        elif location_type == "phone" and location_details:
+                            location_obj["phoneNumber"] = location_details
+                        elif location_type == "integration":
+                            location_obj["integration"] = "cal-video"
+                        else:
+                            # Fallback to integration type
+                            location_obj = {"type": "integration", "integration": "cal-video", "public": True}
+                        
+                        # Generate slug from title (URL-friendly identifier)
+                        slug = re.sub(r'[^a-z0-9]+', '-', title.lower()).strip('-')
+                        if not slug:
+                            slug = f"event-{token}"
+                        else:
+                            slug = f"{slug}-{token}"  # Add token to ensure uniqueness
+                        
+                        # Build event type data (title, slug, lengthInMinutes are required)
                         event_type_data = {
                             "title": title,
-                            "description": description,
+                            "slug": slug,
                             "lengthInMinutes": duration_minutes,
-                            "locations": [{"type": location_type}],
+                            "description": description,
+                            "locations": [location_obj],
                             "hidden": False,
                             "bookingRequiresAuthentication": False,
                         }
@@ -152,10 +219,6 @@ class CalComBongo(BaseBongo):
                         # Add schedule if available
                         if self._default_schedule_id:
                             event_type_data["scheduleId"] = self._default_schedule_id
-
-                        # Add location details if provided
-                        if location_details and location_type == "address":
-                            event_type_data["locations"][0]["address"] = location_details
 
                         resp = await client.post(
                             f"{self.API_BASE}/event-types",

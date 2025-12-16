@@ -19,8 +19,8 @@ class CalComEventTypeContent(BaseModel):
         description="Event type description in markdown format - MUST include the token"
     )
     location_type: str = Field(
-        default="integrations:zoom",
-        description="Location type (e.g., 'integrations:zoom', 'address', 'phone')",
+        default="integration",
+        description="Location type - must be one of: 'address', 'link', 'integration', or 'phone'. Use 'integration' for video calls (simplest option).",
     )
     location_details: Optional[str] = Field(
         None, description="Additional location details if needed"

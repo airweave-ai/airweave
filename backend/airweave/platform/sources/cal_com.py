@@ -139,12 +139,20 @@ class CalComSource(BaseSource):
         schedules_data = await self._get_with_auth(client, url)
 
         # Cal.com API returns data in a 'data' field
-        schedules = schedules_data.get("data", [])
+        if not isinstance(schedules_data, dict):
+            self.logger.error(f"Invalid response format from Cal.com API: {type(schedules_data)}")
+            return
+        schedules_raw = schedules_data.get("data", [])
+        schedules = schedules_raw if isinstance(schedules_raw, list) else []
         if not schedules:
             self.logger.info("No schedules found")
             return
 
         for schedule in schedules:
+            if not isinstance(schedule, dict):
+                self.logger.warning(f"Skipping invalid schedule (not a dict): {schedule}")
+                continue
+
             yield CalComScheduleEntity(
                 id=schedule["id"],
                 name=schedule.get("name", ""),
@@ -166,16 +174,35 @@ class CalComSource(BaseSource):
         event_types_data = await self._get_with_auth(client, url)
 
         # Cal.com API returns data in a 'data' field with status
-        event_types = event_types_data.get("data", [])
+        if not isinstance(event_types_data, dict):
+            self.logger.error(f"Invalid response format from Cal.com API: {type(event_types_data)}")
+            return
+        event_types_raw = event_types_data.get("data", [])
+        event_types = event_types_raw if isinstance(event_types_raw, list) else []
         if not event_types:
             self.logger.info("No event types found")
             return
 
         for event_type in event_types:
+            if not isinstance(event_type, dict):
+                self.logger.warning(f"Skipping invalid event type (not a dict): {event_type}")
+                continue
+
             # Extract owner information if available
             owner = event_type.get("owner", {})
             owner_name = owner.get("name") if isinstance(owner, dict) else None
             owner_email = owner.get("email") if isinstance(owner, dict) else None
+
+            # Extract user emails from users array (may be objects or strings)
+            users_data = event_type.get("users", [])
+            user_emails = []
+            for user in users_data:
+                if isinstance(user, str):
+                    user_emails.append(user)
+                elif isinstance(user, dict):
+                    email = user.get("email") or user.get("username")
+                    if email:
+                        user_emails.append(email)
 
             yield CalComEventTypeEntity(
                 id=event_type["id"],
@@ -201,7 +228,7 @@ class CalComSource(BaseSource):
                 owner_id=event_type.get("ownerId"),
                 owner_name=owner_name,
                 owner_email=owner_email,
-                users=event_type.get("users", []),
+                users=user_emails,
                 recurrence=event_type.get("recurrence"),
                 metadata=event_type.get("metadata", {}),
             )
@@ -229,7 +256,11 @@ class CalComSource(BaseSource):
         bookings_data = await self._get_with_auth(client, url, params=params)
 
         # Cal.com API returns data in a 'data' field
-        bookings = bookings_data.get("data", [])
+        if not isinstance(bookings_data, dict):
+            self.logger.error(f"Invalid response format from Cal.com API: {type(bookings_data)}")
+            return
+        bookings_raw = bookings_data.get("data", [])
+        bookings = bookings_raw if isinstance(bookings_raw, list) else []
         if not bookings:
             if event_type:
                 self.logger.debug(f"No bookings found for event type {event_type.get('id')}")
@@ -242,14 +273,22 @@ class CalComSource(BaseSource):
             breadcrumbs = [event_type_breadcrumb]
 
         for booking in bookings:
+            if not isinstance(booking, dict):
+                self.logger.warning(f"Skipping invalid booking (not a dict): {booking}")
+                continue
+
             # Extract attendee information
-            attendees = booking.get("attendees", [])
+            attendees_raw = booking.get("attendees", [])
+            attendees = attendees_raw if isinstance(attendees_raw, list) else []
             user_email = None
             user_name = None
             if attendees:
                 primary_attendee = attendees[0]
-                user_email = primary_attendee.get("email")
-                user_name = primary_attendee.get("name")
+                if isinstance(primary_attendee, dict):
+                    user_email = primary_attendee.get("email")
+                    user_name = primary_attendee.get("name")
+                elif isinstance(primary_attendee, str):
+                    user_email = primary_attendee
 
             # Extract organizer information
             organizer = booking.get("organizer", {})
@@ -269,6 +308,14 @@ class CalComSource(BaseSource):
                 location_str = location_obj.get("address") or location_obj.get("displayLocation")
                 meeting_url = location_obj.get("url") or location_obj.get("meetingUrl")
 
+            # Extract event type information
+            event_type_obj = booking.get("eventType")
+            event_type_title = None
+            event_type_slug = None
+            if isinstance(event_type_obj, dict):
+                event_type_title = event_type_obj.get("title")
+                event_type_slug = event_type_obj.get("slug")
+
             yield CalComBookingEntity(
                 id=booking["id"],
                 uid=booking.get("uid", ""),
@@ -280,12 +327,8 @@ class CalComSource(BaseSource):
                 updated_at=self._parse_datetime(booking.get("updatedAt")),
                 breadcrumbs=breadcrumbs,
                 event_type_id=booking.get("eventTypeId"),
-                event_type_title=booking.get("eventType", {}).get("title")
-                if booking.get("eventType")
-                else None,
-                event_type_slug=booking.get("eventType", {}).get("slug")
-                if booking.get("eventType")
-                else None,
+                event_type_title=event_type_title,
+                event_type_slug=event_type_slug,
                 attendees=attendees,
                 user_email=user_email,
                 user_name=user_name,

@@ -3,7 +3,7 @@
 Generates realistic event type and booking content for testing Cal.com integration using LLM.
 """
 
-from typing import Tuple
+from typing import List, Optional, Tuple
 
 from monke.client.llm import LLMClient
 from monke.generation.schemas.cal_com import CalComBooking, CalComEventType
@@ -30,7 +30,7 @@ async def generate_cal_com_event_type(
         "Create a meaningful title and description. "
         "The event should have a clear purpose and value proposition. "
         "Suggest a reasonable duration (15, 30, 45, or 60 minutes). "
-        "Choose an appropriate location type (e.g., 'integrations:zoom' for video calls, 'address' for in-person)."
+        "Choose an appropriate location type from the valid options: 'integration' (for video calls - recommended), 'link' (for custom video links), 'address' (for in-person), or 'phone' (for phone calls)."
     )
 
     # Generate structured event type data
