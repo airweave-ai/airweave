@@ -278,7 +278,7 @@ export const CollectionsList = () => {
     <>
       <section className="space-y-6">
         <h2 className="text-md font-medium text-muted-foreground font-mono uppercase">
-          Your collections
+          Collections
         </h2>
         <div className="flex gap-4 flex-wrap">
           <Card className="w-[25rem]">

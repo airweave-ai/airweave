@@ -1,7 +1,5 @@
 'use client'
 
-import { CollectionsList } from '@/components/collections-list'
-import { CreateCollection } from '@/components/create-collection'
 import {
   AskPanel,
   CodePanel,
@@ -43,10 +41,33 @@ import * as React from 'react'
 
 type RightSidebarTab = 'code' | 'docs' | 'demo' | 'ask'
 
-export default function SidebarInsetExample() {
+interface NavItem {
+  title: string
+  url: string
+  icon: React.ReactNode
+  isActive?: boolean
+  items?: Array<{ title: string; url: string }>
+}
+
+interface ShellProps {
+  children: React.ReactNode
+  navItems?: NavItem[]
+  showNewCollectionButton?: boolean
+  onNewCollectionClick?: () => void
+  code?: React.ReactNode
+  docs?: React.ReactNode
+}
+
+export function Shell({
+  children,
+  navItems,
+  showNewCollectionButton = false,
+  onNewCollectionClick,
+  code,
+  docs,
+}: ShellProps) {
   const [rightSidebarOpen, setRightSidebarOpen] = React.useState(false)
   const [activeTab, setActiveTab] = React.useState<RightSidebarTab>('code')
-  const [createCollectionOpen, setCreateCollectionOpen] = React.useState(false)
 
   const toggleRightSidebar = (tab: RightSidebarTab) => {
     if (rightSidebarOpen && activeTab === tab) {
@@ -56,42 +77,33 @@ export default function SidebarInsetExample() {
       setRightSidebarOpen(true)
     }
   }
-  const data = {
-    navMain: [
-      {
-        title: 'Collections',
-        url: '#',
-        icon: <IconApps />,
-        isActive: true,
-        items: [
-          {
-            title: 'Anand‘s collection',
-            url: '#',
-          },
-        ],
-      },
-      {
-        title: 'API keys',
-        url: '#',
-        icon: <IconKey />,
-      },
-      {
-        title: 'Webhooks',
-        url: '#',
-        icon: <IconCode />,
-      },
-      // {
-      //   title: 'Logs',
-      //   url: '#',
-      //   icon: <IconBook />,
-      // },
-      {
-        title: 'Auth providers',
-        url: '#',
-        icon: <IconShield />,
-      },
-    ],
-  }
+
+  const defaultNavItems: NavItem[] = [
+    {
+      title: 'Collections',
+      url: '/',
+      icon: <IconApps />,
+      isActive: true,
+      items: [
+        {
+          title: "Anand's collection",
+          url: '#',
+        },
+      ],
+    },
+    {
+      title: 'API keys',
+      url: '#',
+      icon: <IconKey />,
+    },
+    {
+      title: 'Auth providers',
+      url: '#',
+      icon: <IconShield />,
+    },
+  ]
+
+  const navMain = navItems || defaultNavItems
 
   return (
     <SidebarProvider>
@@ -105,17 +117,19 @@ export default function SidebarInsetExample() {
                 className="invert w-28"
               />
             </div>
-            <div className="py-4">
-              <Button
-                className="w-full dark:bg-foreground dark:text-background"
-                variant="secondary"
-                onClick={() => setCreateCollectionOpen(true)}
-              >
-                <IconPlus /> New collection
-              </Button>
-            </div>
+            {showNewCollectionButton && (
+              <div className="py-4">
+                <Button
+                  className="w-full dark:bg-foreground dark:text-background"
+                  variant="secondary"
+                  onClick={onNewCollectionClick}
+                >
+                  <IconPlus /> New collection
+                </Button>
+              </div>
+            )}
             <SidebarMenu>
-              {data.navMain.map((item, index) => (
+              {navMain.map((item, index) => (
                 <Collapsible
                   key={index}
                   defaultOpen={item.isActive}
@@ -158,7 +172,7 @@ export default function SidebarInsetExample() {
         <SidebarRail />
       </Sidebar>
       <SidebarInset className="h-[calc(100vh-1rem)] overflow-auto py-8 px-10">
-        <CollectionsList />
+        {children}
       </SidebarInset>
 
       <div
@@ -184,10 +198,10 @@ export default function SidebarInsetExample() {
             <div className="flex-1 overflow-auto p-4">
               <Tabs value={activeTab} className="h-full">
                 <TabsContent value="code" className="mt-0">
-                  <CodePanel />
+                  {code || <CodePanel />}
                 </TabsContent>
                 <TabsContent value="docs" className="mt-0">
-                  <DocsPanel />
+                  {docs || <DocsPanel />}
                 </TabsContent>
                 <TabsContent value="demo" className="mt-0 h-full">
                   <DemoPanel />
@@ -270,10 +284,7 @@ export default function SidebarInsetExample() {
           </Button>
         </div>
       </div>
-      <CreateCollection
-        open={createCollectionOpen}
-        onOpenChange={setCreateCollectionOpen}
-      />
     </SidebarProvider>
   )
 }
+

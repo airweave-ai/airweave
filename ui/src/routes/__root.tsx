@@ -36,14 +36,14 @@ function RootDocument({ children }: { children: React.ReactNode }) {
             },
           ]}
         /> */}
-          <div className="fixed bottom-0 -left-48 -right-64 top-0 -z-10 bg-black">
+          <div className="fixed bottom-0 -left-48 -right-64 top-0 -z-10 bg-zinc-950">
             <video
               src="https://framerusercontent.com/assets/RfUXPn10oWk94UsML4m6oY4.mp4"
               loop
               preload="auto"
               muted
               playsInline
-              className="w-full h-full object-cover opacity-50"
+              className="w-full h-full object-cover opacity-20"
               autoPlay
             />
             <div
