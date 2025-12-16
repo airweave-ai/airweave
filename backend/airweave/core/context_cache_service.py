@@ -26,11 +26,16 @@ class ContextCacheService:
     ORG_KEY_PREFIX = "context:org"
     USER_KEY_PREFIX = "context:user"
     API_KEY_PREFIX = "context:apikey"
+    JWT_BLACKLIST_PREFIX = "jwt:blacklist"
+    JWT_USER_BLACKLIST_PREFIX = "jwt:user_blacklist"
 
     # Cache TTLs (in seconds)
     ORG_TTL = 300
     USER_TTL = 180
     API_KEY_TTL = 600
+    # JWT blacklist TTL should match or exceed the maximum JWT expiration time
+    # Auth0 default is 24 hours, we set to 48 hours to be safe
+    JWT_BLACKLIST_TTL = 172800  # 48 hours
 
     def __init__(self, logger: Optional[ContextualLogger] = None):
         """Initialize the context cache service.
@@ -302,6 +307,153 @@ class ContextCacheService:
         except Exception as e:
             self.logger.warning(f"Error invalidating user cache: {e}")
             return False
+
+    # JWT Blacklisting Methods
+
+    def _jwt_blacklist_key(self, jti: str) -> str:
+        """Get Redis cache key for blacklisted JWT token.
+
+        Args:
+            jti: JWT ID (jti claim from token)
+
+        Returns:
+            Redis key string
+        """
+        return f"{self.JWT_BLACKLIST_PREFIX}:{jti}"
+
+    def _jwt_user_blacklist_key(self, user_email: str) -> str:
+        """Get Redis cache key for user's JWT blacklist timestamp.
+
+        Args:
+            user_email: User email address
+
+        Returns:
+            Redis key string
+        """
+        return f"{self.JWT_USER_BLACKLIST_PREFIX}:{user_email}"
+
+    async def blacklist_jwt(self, jti: str, ttl_seconds: Optional[int] = None) -> bool:
+        """Blacklist a JWT token by its jti (JWT ID) claim.
+
+        Once blacklisted, the token will be rejected even if it's otherwise valid.
+        The blacklist entry expires after the specified TTL (defaults to JWT_BLACKLIST_TTL).
+
+        Args:
+            jti: JWT ID (jti claim) to blacklist
+            ttl_seconds: Optional custom TTL in seconds (defaults to JWT_BLACKLIST_TTL)
+
+        Returns:
+            True if blacklisted successfully, False otherwise
+        """
+        try:
+            cache_key = self._jwt_blacklist_key(jti)
+            ttl = ttl_seconds or self.JWT_BLACKLIST_TTL
+            await redis_client.client.setex(cache_key, ttl, "1")
+            self.logger.info(f"Blacklisted JWT {jti} for {ttl}s")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Error blacklisting JWT {jti}: {e}")
+            return False
+
+    async def is_jwt_blacklisted(self, jti: str) -> bool:
+        """Check if a JWT token is blacklisted.
+
+        Args:
+            jti: JWT ID (jti claim) to check
+
+        Returns:
+            True if token is blacklisted, False otherwise
+        """
+        try:
+            cache_key = self._jwt_blacklist_key(jti)
+            exists = await redis_client.client.exists(cache_key)
+            return bool(exists)
+
+        except Exception as e:
+            self.logger.error(f"Error checking JWT blacklist for {jti}: {e}")
+            # Fail closed - if we can't check Redis, deny the token
+            return True
+
+    async def blacklist_user_tokens(self, user_email: str, ttl_seconds: Optional[int] = None) -> bool:
+        """Blacklist all JWT tokens for a specific user.
+
+        This creates a timestamp entry. Any JWT issued before this timestamp
+        will be rejected. This is more efficient than blacklisting individual tokens.
+
+        Args:
+            user_email: User email to blacklist tokens for
+            ttl_seconds: Optional custom TTL in seconds (defaults to JWT_BLACKLIST_TTL)
+
+        Returns:
+            True if blacklisted successfully, False otherwise
+        """
+        try:
+            cache_key = self._jwt_user_blacklist_key(user_email)
+            ttl = ttl_seconds or self.JWT_BLACKLIST_TTL
+
+            # Store current timestamp - any JWT issued before this will be invalid
+            import time
+
+            timestamp = str(int(time.time()))
+            await redis_client.client.setex(cache_key, ttl, timestamp)
+            self.logger.info(f"Blacklisted all tokens for user {user_email} (issued before {timestamp})")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Error blacklisting user tokens for {user_email}: {e}")
+            return False
+
+    async def is_user_token_blacklisted(self, user_email: str, token_issued_at: int) -> bool:
+        """Check if a user's token is blacklisted based on issue timestamp.
+
+        Args:
+            user_email: User email from token
+            token_issued_at: Token 'iat' (issued at) timestamp
+
+        Returns:
+            True if token was issued before blacklist timestamp, False otherwise
+        """
+        try:
+            cache_key = self._jwt_user_blacklist_key(user_email)
+            blacklist_timestamp = await redis_client.client.get(cache_key)
+
+            if not blacklist_timestamp:
+                return False
+
+            # Token is blacklisted if it was issued before the blacklist timestamp
+            blacklist_ts = int(blacklist_timestamp.decode("utf-8"))
+            return token_issued_at < blacklist_ts
+
+        except Exception as e:
+            self.logger.error(f"Error checking user token blacklist for {user_email}: {e}")
+            # Fail closed - if we can't check Redis, deny the token
+            return True
+
+    async def invalidate_user_with_tokens(self, user_email: str) -> bool:
+        """Invalidate user cache AND blacklist all their JWT tokens.
+
+        This is the recommended method to call when you need to immediately
+        revoke access for a user (e.g., account suspension, security incident).
+
+        Args:
+            user_email: User email address
+
+        Returns:
+            True if both operations succeeded, False otherwise
+        """
+        cache_invalidated = await self.invalidate_user(user_email)
+        tokens_blacklisted = await self.blacklist_user_tokens(user_email)
+
+        if cache_invalidated and tokens_blacklisted:
+            self.logger.info(f"Successfully invalidated user {user_email} and blacklisted all tokens")
+            return True
+
+        self.logger.warning(
+            f"Partial invalidation for user {user_email}: "
+            f"cache={cache_invalidated}, tokens={tokens_blacklisted}"
+        )
+        return False
 
 
 context_cache = ContextCacheService()
