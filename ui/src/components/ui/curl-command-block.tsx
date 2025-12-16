@@ -1,10 +1,10 @@
 'use client'
 
+import { Input } from '@/components/ui/input'
+import { cn } from '@/lib/utils'
 import { useTheme } from 'next-themes'
 import * as React from 'react'
 import { createHighlighter, type Highlighter } from 'shiki'
-import { cn } from '@/lib/utils'
-import { Input } from '@/components/ui/input'
 
 interface CurlCommandBlockProps {
   collectionName: string
@@ -90,7 +90,7 @@ export function CurlCommandBlock({
     return (
       <div
         className={cn(
-          'rounded-lg border border-border/50 overflow-hidden bg-muted/20',
+          'rounded-lg border border-border/50 overflow-hidden bg-background shadow-xs',
           className,
         )}
       >
@@ -111,7 +111,7 @@ export function CurlCommandBlock({
   return (
     <div
       className={cn(
-        'rounded-lg border border-border/50 overflow-hidden bg-muted/20',
+        'rounded-lg border border-border/50 overflow-hidden bg-background shadow-xs',
         className,
       )}
     >
@@ -142,4 +142,3 @@ export function CurlCommandBlock({
     </div>
   )
 }
-

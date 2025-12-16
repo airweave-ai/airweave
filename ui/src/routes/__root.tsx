@@ -43,7 +43,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
               preload="auto"
               muted
               playsInline
-              className="w-full h-full object-cover opacity-20"
+              className="w-full h-full object-cover opacity-50"
               autoPlay
             />
             <div

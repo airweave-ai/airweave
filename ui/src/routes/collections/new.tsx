@@ -2,8 +2,6 @@
 
 import { Shell } from '@/components/shell'
 import { Button } from '@/components/ui/button'
-import { CodeBlock } from '@/components/ui/code-block'
-import { CurlCommandBlock } from '@/components/ui/curl-command-block'
 import { Field, FieldContent, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -46,48 +44,48 @@ function NewCollectionPage() {
   )
 
   const codeContent = (
-    <div className="grid grid-cols-2 gap-8 p-4">
-      {/* cURL Command */}
-      <div className="space-y-2">
-        <CurlCommandBlock
-          collectionName={collectionName}
-          onCollectionNameChange={setCollectionName}
-          readableId={`${collectionData.id}-${collectionData.randomId}`}
-        />
-      </div>
-
-      {/* Collection Preview */}
-      <div className="space-y-2">
-        <CodeBlock
-          code={JSON.stringify(
-            {
-              id: 'string',
-              name: collectionName || 'string',
-              short_name: 'string',
-              readable_collection_id: `${collectionData.id}-${collectionData.randomId}`,
-              created_at: '2024-01-15T09:30:00Z',
-              modified_at: '2024-01-15T09:30:00Z',
-              is_authenticated: true,
-              auth_method: 'direct',
-              status: 'active',
-              entity_count: 0,
-              federated_search: false,
-            },
-            null,
-            2,
-          )}
-          language="json"
-          title="Response"
-        />
-      </div>
-    </div>
+    <iframe
+      src="https://docs.airweave.ai/api-reference/collections/create-collections-post"
+      className="w-full h-full"
+    />
+    //     <div className="space-y-4 p-2">
+    //       <h2 className="font-mono uppercase text-muted-foreground font-medium">
+    //         Create
+    //       </h2>
+    //       <p>
+    //         Create a new collection. The newly created collection is initially empty
+    //         and does not contain any data until you explicitly add source
+    //         connections to it.
+    //       </p>
+    //       <CodeBlock
+    //         code={`curl -X POST https://api.airweave.ai/collections \\
+    //      -H "x-api-key: <apiKey>" \\
+    //      -H "Content-Type: application/json" \\
+    //      -d '{
+    //   "name": "${collectionName}",
+    //   "readable_id": "finance-data-reports"
+    // }'`}
+    //         language="json"
+    //         // title="Create a new collection"
+    //       />
+    //       <footer className="flex gap-2">
+    //         <Button variant="outline" size="sm">
+    //           <IconCopy />
+    //           Copy
+    //         </Button>
+    //         <Button variant="outline" size="sm">
+    //           <IconPlayerPlay />
+    //           Send
+    //         </Button>
+    //       </footer>
+    //     </div>
   )
 
   return (
     <Shell code={codeContent}>
-      <div className="max-w-6xl mx-auto">
+      <div className="w-4xl max-w-4xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-3xl font-semibold mb-2">
+          <h1 className="font-mono text-lg uppercase">
             Create a new collection
           </h1>
           <p className="text-sm text-muted-foreground">
@@ -110,22 +108,27 @@ function NewCollectionPage() {
 
         <form onSubmit={handleSubmit}>
           <div className="grid grid-cols-2 gap-8">
-            <Field>
-              <FieldLabel>
-                <Label htmlFor="collection-name">Name</Label>
-              </FieldLabel>
-              <FieldContent>
-                <Input
-                  id="collection-name"
-                  type="text"
-                  placeholder="ACME's HR Applications"
-                  value={collectionName}
-                  onChange={(e) => setCollectionName(e.target.value)}
-                  required
-                  autoFocus
-                />
-              </FieldContent>
-            </Field>
+            <div className="space-y-4">
+              <Field>
+                <FieldLabel>
+                  <Label htmlFor="collection-name">Name</Label>
+                </FieldLabel>
+                <FieldContent>
+                  <Input
+                    id="collection-name"
+                    type="text"
+                    placeholder="ACME's HR Applications"
+                    value={collectionName}
+                    onChange={(e) => setCollectionName(e.target.value)}
+                    required
+                    autoFocus
+                  />
+                </FieldContent>
+              </Field>
+              <div className="flex justify-end">
+                <Button type="submit">Continue</Button>
+              </div>
+            </div>
             <div className="w-full max-w-lg mx-auto">
               <div className="rounded-t-xl border-2 border-b-0 border-dashed px-5 py-3 bg-zinc-50 border-zinc-300 dark:bg-zinc-900 dark:border-zinc-700">
                 <div className="text-xs font-mono mb-2 opacity-80 text-zinc-500 dark:text-zinc-400">
@@ -244,9 +247,6 @@ function NewCollectionPage() {
                 Add more source connections any time.
               </p>
             </div>
-          </div>
-          <div className="mt-8 flex justify-end">
-            <Button type="submit">Continue</Button>
           </div>
         </form>
       </div>

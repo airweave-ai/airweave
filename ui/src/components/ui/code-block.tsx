@@ -1,9 +1,9 @@
 'use client'
 
+import { cn } from '@/lib/utils'
 import { useTheme } from 'next-themes'
 import * as React from 'react'
 import { createHighlighter, type Highlighter } from 'shiki'
-import { cn } from '@/lib/utils'
 
 interface CodeBlockProps {
   code: string
@@ -71,7 +71,7 @@ export function CodeBlock({
     return (
       <div
         className={cn(
-          'rounded-lg border border-border/50 overflow-hidden bg-muted/20',
+          'rounded-lg border border-border/50 overflow-hidden bg-background shadow-xs',
           className,
         )}
       >
@@ -82,7 +82,7 @@ export function CodeBlock({
             </span>
           </div>
         )}
-        <pre className="p-4 overflow-x-auto bg-muted/20">
+        <pre className="p-4 overflow-x-auto bg-background shadow-xs">
           <code className="text-xs font-mono text-foreground/90 leading-relaxed">
             {code}
           </code>
@@ -94,7 +94,7 @@ export function CodeBlock({
   return (
     <div
       className={cn(
-        'rounded-lg border border-border/50 overflow-hidden bg-muted/20',
+        'rounded-lg border border-border/50 overflow-hidden bg-background shadow-xs',
         className,
       )}
     >
@@ -106,10 +106,9 @@ export function CodeBlock({
         </div>
       )}
       <div
-        className="p-4 overflow-x-auto bg-muted/20 [&_pre]:!bg-transparent [&_pre]:!m-0 [&_pre]:!p-0 [&_pre]:text-xs [&_pre]:font-mono [&_pre]:leading-relaxed [&_code]:!bg-transparent"
+        className="p-4 overflow-x-auto bg-background shadow-xs [&_pre]:!bg-transparent [&_pre]:!m-0 [&_pre]:!p-0 [&_pre]:text-xs [&_pre]:font-mono [&_pre]:leading-relaxed [&_code]:!bg-transparent"
         dangerouslySetInnerHTML={{ __html: highlightedCode }}
       />
     </div>
   )
 }
-
