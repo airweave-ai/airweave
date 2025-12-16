@@ -3,6 +3,7 @@
 import { Shell } from '@/components/shell'
 import { Button } from '@/components/ui/button'
 import { Field, FieldContent, FieldLabel } from '@/components/ui/field'
+import { FutureSourcePlaceholder } from '@/components/ui/future-source-placeholder'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -10,6 +11,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { useCollectionData } from '@/hooks/use-collection-data'
 import { IconHelpCircle } from '@tabler/icons-react'
 import { createFileRoute } from '@tanstack/react-router'
 import * as React from 'react'
@@ -20,65 +22,18 @@ export const Route = createFileRoute('/collections/new')({
 
 function NewCollectionPage() {
   const [collectionName, setCollectionName] = React.useState('')
-  const randomId = React.useRef(Math.random().toString(36).substring(2, 15))
+  const collectionData = useCollectionData(collectionName)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    // TODO: Add API call to create collection
-    console.log('Creating collection:', collectionName)
-    // TODO: Navigate to collection page or show success message
+    // API call and navigation will be added when backend integration is ready
   }
-
-  const collectionData = React.useMemo(
-    () => ({
-      name: collectionName,
-      id:
-        collectionName
-          ?.toLowerCase()
-          .replace(/ /g, '-')
-          .replace(/[^a-z0-9-]/g, '')
-          .substring(0, 10) || 'your-collection',
-      randomId: randomId.current,
-    }),
-    [collectionName],
-  )
 
   const codeContent = (
     <iframe
       src="https://docs.airweave.ai/api-reference/collections/create-collections-post"
       className="w-full h-full"
     />
-    //     <div className="space-y-4 p-2">
-    //       <h2 className="font-mono uppercase text-muted-foreground font-medium">
-    //         Create
-    //       </h2>
-    //       <p>
-    //         Create a new collection. The newly created collection is initially empty
-    //         and does not contain any data until you explicitly add source
-    //         connections to it.
-    //       </p>
-    //       <CodeBlock
-    //         code={`curl -X POST https://api.airweave.ai/collections \\
-    //      -H "x-api-key: <apiKey>" \\
-    //      -H "Content-Type: application/json" \\
-    //      -d '{
-    //   "name": "${collectionName}",
-    //   "readable_id": "finance-data-reports"
-    // }'`}
-    //         language="json"
-    //         // title="Create a new collection"
-    //       />
-    //       <footer className="flex gap-2">
-    //         <Button variant="outline" size="sm">
-    //           <IconCopy />
-    //           Copy
-    //         </Button>
-    //         <Button variant="outline" size="sm">
-    //           <IconPlayerPlay />
-    //           Send
-    //         </Button>
-    //       </footer>
-    //     </div>
   )
 
   return (
@@ -145,102 +100,10 @@ function NewCollectionPage() {
               </div>
               <div className="rounded-b-xl border-2 border-t border-dashed p-5 bg-zinc-50 border-zinc-300 dark:bg-zinc-900 dark:border-zinc-700">
                 <div className="grid grid-cols-2 gap-1 rounded-lg overflow-hidden bg-zinc-100/60 dark:bg-zinc-800/60">
-                  <div className="aspect-square p-4 bg-white/70 dark:bg-zinc-800/70">
-                    <div className="w-full h-full flex flex-col items-center justify-center">
-                      <div className="w-20 h-20 rounded-2xl border-2 border-dashed flex items-center justify-center border-zinc-350 dark:border-zinc-600">
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="24"
-                          height="24"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className="lucide lucide-plus w-8 h-8 opacity-35 text-zinc-350 dark:text-zinc-500"
-                        >
-                          <path d="M5 12h14"></path>
-                          <path d="M12 5v14"></path>
-                        </svg>
-                      </div>
-                      <div className="text-[10px] font-mono opacity-35 mt-2 text-zinc-400 dark:text-zinc-500">
-                        future source
-                      </div>
-                    </div>
-                  </div>
-                  <div className="aspect-square p-4 bg-white/70 dark:bg-zinc-800/70">
-                    <div className="w-full h-full flex flex-col items-center justify-center">
-                      <div className="w-20 h-20 rounded-2xl border-2 border-dashed flex items-center justify-center border-zinc-350 dark:border-zinc-600">
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="24"
-                          height="24"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className="lucide lucide-plus w-8 h-8 opacity-35 text-zinc-350 dark:text-zinc-500"
-                        >
-                          <path d="M5 12h14"></path>
-                          <path d="M12 5v14"></path>
-                        </svg>
-                      </div>
-                      <div className="text-[10px] font-mono opacity-35 mt-2 text-zinc-400 dark:text-zinc-500">
-                        future source
-                      </div>
-                    </div>
-                  </div>
-                  <div className="aspect-square p-4 bg-white/70 dark:bg-zinc-800/70">
-                    <div className="w-full h-full flex flex-col items-center justify-center">
-                      <div className="w-20 h-20 rounded-2xl border-2 border-dashed flex items-center justify-center border-zinc-350 dark:border-zinc-600">
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="24"
-                          height="24"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className="lucide lucide-plus w-8 h-8 opacity-35 text-zinc-350 dark:text-zinc-500"
-                        >
-                          <path d="M5 12h14"></path>
-                          <path d="M12 5v14"></path>
-                        </svg>
-                      </div>
-                      <div className="text-[10px] font-mono opacity-35 mt-2 text-zinc-400 dark:text-zinc-500">
-                        future source
-                      </div>
-                    </div>
-                  </div>
-                  <div className="aspect-square p-4 bg-white/70 dark:bg-zinc-800/70">
-                    <div className="w-full h-full flex flex-col items-center justify-center">
-                      <div className="w-20 h-20 rounded-2xl border-2 border-dashed flex items-center justify-center border-zinc-350 dark:border-zinc-600">
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="24"
-                          height="24"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className="lucide lucide-plus w-8 h-8 opacity-35 text-zinc-350 dark:text-zinc-500"
-                        >
-                          <path d="M5 12h14"></path>
-                          <path d="M12 5v14"></path>
-                        </svg>
-                      </div>
-                      <div className="text-[10px] font-mono opacity-35 mt-2 text-zinc-400 dark:text-zinc-500">
-                        future source
-                      </div>
-                    </div>
-                  </div>
+                  <FutureSourcePlaceholder />
+                  <FutureSourcePlaceholder />
+                  <FutureSourcePlaceholder />
+                  <FutureSourcePlaceholder />
                 </div>
               </div>
               <p className="text-xs text-muted-foreground my-4 text-center">

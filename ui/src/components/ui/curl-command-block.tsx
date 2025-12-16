@@ -1,10 +1,8 @@
 'use client'
 
 import { Input } from '@/components/ui/input'
+import { useShikiHighlighter } from '@/hooks/use-shiki-highlighter'
 import { cn } from '@/lib/utils'
-import { useTheme } from 'next-themes'
-import * as React from 'react'
-import { createHighlighter, type Highlighter } from 'shiki'
 
 interface CurlCommandBlockProps {
   collectionName: string
@@ -19,72 +17,23 @@ export function CurlCommandBlock({
   readableId,
   className,
 }: CurlCommandBlockProps) {
-  const { theme, resolvedTheme } = useTheme()
-  const [highlightedParts, setHighlightedParts] = React.useState<{
-    before: string
-    after: string
-  }>({ before: '', after: '' })
-  const [isLoading, setIsLoading] = React.useState(true)
-  const highlighterRef = React.useRef<Highlighter | null>(null)
-
-  React.useEffect(() => {
-    let isMounted = true
-
-    const initHighlighter = async () => {
-      try {
-        if (!highlighterRef.current) {
-          highlighterRef.current = await createHighlighter({
-            themes: ['github-dark', 'github-light'],
-            langs: ['bash', 'shell'],
-          })
-        }
-
-        if (!isMounted) return
-
-        const currentTheme =
-          resolvedTheme === 'dark' || theme === 'dark'
-            ? 'github-dark'
-            : 'github-light'
-
-        // Split the cURL command into parts before and after the input
-        const beforeInput = `curl -X POST https://api.airweave.ai/collections \\
+  const beforeInput = `curl -X POST https://api.airweave.ai/collections \\
      -H "x-api-key: <apiKey>" \\
      -H "Content-Type: application/json" \\
      -d '{
   "name": "`
 
-        const afterInput = `",
+  const afterInput = `",
   "readable_id": "${readableId}"
 }'`
 
-        const beforeHtml = highlighterRef.current.codeToHtml(beforeInput, {
-          lang: 'bash',
-          theme: currentTheme,
-        })
+  const { highlightedCode: beforeHtml, isLoading: beforeLoading } =
+    useShikiHighlighter({ code: beforeInput, language: 'bash' })
 
-        const afterHtml = highlighterRef.current.codeToHtml(afterInput, {
-          lang: 'bash',
-          theme: currentTheme,
-        })
+  const { highlightedCode: afterHtml, isLoading: afterLoading } =
+    useShikiHighlighter({ code: afterInput, language: 'bash' })
 
-        if (isMounted) {
-          setHighlightedParts({ before: beforeHtml, after: afterHtml })
-          setIsLoading(false)
-        }
-      } catch (error) {
-        console.error('Error highlighting cURL command:', error)
-        if (isMounted) {
-          setIsLoading(false)
-        }
-      }
-    }
-
-    initHighlighter()
-
-    return () => {
-      isMounted = false
-    }
-  }, [readableId, theme, resolvedTheme])
+  const isLoading = beforeLoading || afterLoading
 
   if (isLoading) {
     return (
@@ -124,7 +73,7 @@ export function CurlCommandBlock({
         <div className="text-xs font-mono leading-relaxed whitespace-pre-wrap">
           <span
             className="inline [&_pre]:!bg-transparent [&_pre]:!m-0 [&_pre]:!p-0 [&_pre]:!inline-block [&_pre]:text-xs [&_pre]:font-mono [&_pre]:leading-relaxed [&_code]:!bg-transparent [&_code]:inline [&_code]:text-xs [&_code]:font-mono"
-            dangerouslySetInnerHTML={{ __html: highlightedParts.before }}
+            dangerouslySetInnerHTML={{ __html: beforeHtml }}
           />
           <Input
             value={collectionName}
@@ -135,7 +84,7 @@ export function CurlCommandBlock({
           />
           <span
             className="inline [&_pre]:!bg-transparent [&_pre]:!m-0 [&_pre]:!p-0 [&_pre]:!inline-block [&_pre]:text-xs [&_pre]:font-mono [&_pre]:leading-relaxed [&_code]:!bg-transparent [&_code]:inline [&_code]:text-xs [&_code]:font-mono"
-            dangerouslySetInnerHTML={{ __html: highlightedParts.after }}
+            dangerouslySetInnerHTML={{ __html: afterHtml }}
           />
         </div>
       </div>

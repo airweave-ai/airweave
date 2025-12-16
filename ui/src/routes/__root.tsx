@@ -25,17 +25,6 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       <body>
         <ThemeProvider defaultTheme="dark" attribute="class">
           {children}
-          {/* <TanStackDevtools
-          config={{
-            position: 'bottom-right',
-          }}
-          plugins={[
-            {
-              name: 'Tanstack Router',
-              render: <TanStackRouterDevtoolsPanel />,
-            },
-          ]}
-        /> */}
           <div className="fixed bottom-0 -left-48 -right-64 top-0 -z-10 bg-zinc-950">
             <video
               src="https://framerusercontent.com/assets/RfUXPn10oWk94UsML4m6oY4.mp4"
