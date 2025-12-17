@@ -1,7 +1,6 @@
 'use client'
 
 import { Button } from '@/components/ui/button'
-import { CodeBlock } from '@/components/ui/code-block'
 import { CurlCommandBlock } from '@/components/ui/curl-command-block'
 import {
   Dialog,
@@ -53,7 +52,7 @@ export function CreateCollection({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-2xl w-full">
+      <DialogContent className="sm:max-w-3xl w-full">
         <form onSubmit={handleSubmit}>
           <Tabs defaultValue="form" className="w-full">
             <DialogHeader className="p-4 pb-0">
@@ -135,39 +134,12 @@ export function CreateCollection({
                 </div>
               </div>
             </TabsContent>
-            <TabsContent value="code" className="mt-4">
-              <div className="grid grid-cols-2 gap-8 p-4">
-                <div className="space-y-2">
-                  <CurlCommandBlock
-                    collectionName={collectionName}
-                    onCollectionNameChange={setCollectionName}
-                    readableId={`${collectionData.id}-${collectionData.randomId}`}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <CodeBlock
-                    code={JSON.stringify(
-                      {
-                        id: 'string',
-                        name: collectionName || 'string',
-                        short_name: 'string',
-                        readable_collection_id: `${collectionData.id}-${collectionData.randomId}`,
-                        created_at: '2024-01-15T09:30:00Z',
-                        modified_at: '2024-01-15T09:30:00Z',
-                        is_authenticated: true,
-                        auth_method: 'direct',
-                        status: 'active',
-                        entity_count: 0,
-                        federated_search: false,
-                      },
-                      null,
-                      2,
-                    )}
-                    language="json"
-                    title="Response"
-                  />
-                </div>
-              </div>
+            <TabsContent value="code" className="my-4 p-4">
+              <CurlCommandBlock
+                collectionName={collectionName}
+                onCollectionNameChange={setCollectionName}
+                readableId={`${collectionData.id}-${collectionData.randomId}`}
+              />
             </TabsContent>
           </Tabs>
           <DialogFooter>

@@ -354,7 +354,7 @@ export const CollectionsList = () => {
               <h3 className="text-sm font-medium text-muted-foreground font-mono uppercase flex items-center gap-2">
                 <span>{category.title}</span>
               </h3>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 {category.sources.map((source) => (
                   <Card key={source.name}>
                     <CardHeader>

@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/sidebar'
 import { Tabs, TabsContent } from '@/components/ui/tabs'
 import {
+  IconAnalyze,
   IconApps,
   IconBook,
   IconBrandDiscord,
@@ -34,9 +35,12 @@ import {
   IconHelp,
   IconKey,
   IconPhone,
-  IconPlus,
+  IconPlug,
+  IconSearch,
   IconShield,
+  IconWebhook,
 } from '@tabler/icons-react'
+import { useLocation } from '@tanstack/react-router'
 import * as React from 'react'
 
 type RightSidebarTab = 'code' | 'docs' | 'demo' | 'ask'
@@ -52,22 +56,27 @@ interface NavItem {
 interface ShellProps {
   children: React.ReactNode
   navItems?: NavItem[]
-  showNewCollectionButton?: boolean
   onNewCollectionClick?: () => void
   code?: React.ReactNode
   docs?: React.ReactNode
+  askTitle?: string
+  askDescription?: string
+  askSuggestions?: string[]
 }
 
 export function Shell({
   children,
   navItems,
-  showNewCollectionButton = false,
   onNewCollectionClick,
   code,
   docs,
+  askTitle,
+  askDescription,
+  askSuggestions,
 }: ShellProps) {
   const [rightSidebarOpen, setRightSidebarOpen] = React.useState(false)
   const [activeTab, setActiveTab] = React.useState<RightSidebarTab>('code')
+  const location = useLocation()
 
   const toggleRightSidebar = (tab: RightSidebarTab) => {
     if (rightSidebarOpen && activeTab === tab) {
@@ -78,12 +87,23 @@ export function Shell({
     }
   }
 
+  // Helper to check if a nav item is active based on current URL
+  const isNavItemActive = (url: string) => {
+    if (url === '#') return false
+    if (url === '/') return location.pathname === '/'
+    return location.pathname.startsWith(url)
+  }
+
   const defaultNavItems: NavItem[] = [
     {
+      title: 'Dashboard',
+      url: '/dashboard',
+      icon: <IconAnalyze />,
+    },
+    {
       title: 'Collections',
-      url: '/',
+      url: '/collections',
       icon: <IconApps />,
-      isActive: true,
       items: [
         {
           title: "Anand's collection",
@@ -92,9 +112,19 @@ export function Shell({
       ],
     },
     {
+      title: 'Source Connections',
+      url: '/source-connections',
+      icon: <IconPlug />,
+    },
+    {
       title: 'API keys',
       url: '#',
       icon: <IconKey />,
+    },
+    {
+      title: 'Webhooks',
+      url: '#',
+      icon: <IconWebhook />,
     },
     {
       title: 'Auth providers',
@@ -103,7 +133,11 @@ export function Shell({
     },
   ]
 
-  const navMain = navItems || defaultNavItems
+  // Apply isActive based on current URL
+  const navMain = (navItems || defaultNavItems).map((item) => ({
+    ...item,
+    isActive: isNavItemActive(item.url),
+  }))
 
   return (
     <SidebarProvider>
@@ -117,17 +151,16 @@ export function Shell({
                 className="invert w-28"
               />
             </div>
-            {showNewCollectionButton && (
-              <div className="py-4">
-                <Button
-                  className="w-full dark:bg-foreground dark:text-background"
-                  variant="secondary"
-                  onClick={onNewCollectionClick}
-                >
-                  <IconPlus /> New collection
-                </Button>
-              </div>
-            )}
+            <div className="py-4">
+              <Button
+                className="w-full dark:bg-foreground dark:text-background"
+                variant="secondary"
+                onClick={onNewCollectionClick}
+              >
+                <IconSearch />
+                Search your data
+              </Button>
+            </div>
             <SidebarMenu>
               {navMain.map((item, index) => (
                 <Collapsible
@@ -171,7 +204,7 @@ export function Shell({
         </SidebarContent>
         <SidebarRail />
       </Sidebar>
-      <SidebarInset className="h-[calc(100vh-1rem)] overflow-auto py-8 px-10">
+      <SidebarInset className="h-[calc(100vh-1rem)] overflow-auto ">
         {children}
       </SidebarInset>
 
@@ -182,32 +215,36 @@ export function Shell({
         <div
           className={`
             transition-[width] duration-200 ease-linear relative bg-transparent
-            ${rightSidebarOpen ? 'w-80' : 'w-0'}
+            ${rightSidebarOpen ? 'w-96' : 'w-0'}
           `}
         />
 
         <div
           className={`
-            fixed inset-y-0 z-10 hidden h-svh w-82 
+            fixed inset-y-0 z-10 hidden h-svh w-98 
             transition-all duration-200 ease-linear md:flex
             p-2 pl-0
-            ${rightSidebarOpen ? 'right-12 opacity-100' : '-right-82 opacity-0'}
+            ${rightSidebarOpen ? 'right-12 opacity-100' : '-right-96 opacity-0'}
           `}
         >
-          <div className="bg-sidebar-accent rounded-xl shadow-sm flex size-full flex-col overflow-hidden text-foreground">
-            <div className="flex-1 overflow-auto p-4">
+          <div className="bg-background rounded-xl shadow-sm flex size-full flex-col overflow-hidden text-foreground">
+            <div className="flex-1 overflow-auto">
               <Tabs value={activeTab} className="h-full">
                 <TabsContent value="code" className="mt-0">
                   {code || <CodePanel />}
                 </TabsContent>
-                <TabsContent value="docs" className="mt-0">
+                <TabsContent value="docs" className="mt-0 p-0">
                   {docs || <DocsPanel />}
                 </TabsContent>
                 <TabsContent value="demo" className="mt-0 h-full">
                   <DemoPanel />
                 </TabsContent>
                 <TabsContent value="ask" className="mt-0">
-                  <AskPanel />
+                  <AskPanel
+                    title={askTitle}
+                    description={askDescription}
+                    suggestions={askSuggestions}
+                  />
                 </TabsContent>
               </Tabs>
             </div>
@@ -218,9 +255,9 @@ export function Shell({
         <div className="flex flex-col">
           <Button
             variant="ghost"
-            className={`text-sidebar-foreground flex flex-col items-center justify-center gap-1 text-xs h-auto py-2.5 hover:text-sidebar-secondary hover:bg-sidebar-accent/20 ${
+            className={`text-sidebar-foreground flex flex-col items-center justify-center gap-1 text-xs h-auto py-2.5 hover:text-sidebar-secondary hover:bg-background/20 ${
               rightSidebarOpen && activeTab === 'code'
-                ? 'bg-sidebar-accent text-foreground hover:bg-sidebar-accent rounded-l-none'
+                ? 'bg-background text-foreground hover:bg-background rounded-l-none'
                 : ''
             }`}
             onClick={() => toggleRightSidebar('code')}
@@ -230,9 +267,9 @@ export function Shell({
           </Button>
           <Button
             variant="ghost"
-            className={`text-sidebar-foreground flex flex-col items-center justify-center gap-1 text-xs h-auto py-2.5 hover:text-sidebar-secondary hover:bg-sidebar-accent/20 ${
+            className={`text-sidebar-foreground flex flex-col items-center justify-center gap-1 text-xs h-auto py-2.5 hover:text-sidebar-secondary hover:bg-background/20 ${
               rightSidebarOpen && activeTab === 'docs'
-                ? 'bg-sidebar-accent text-foreground hover:bg-sidebar-accent rounded-l-none'
+                ? 'bg-background text-foreground hover:bg-background rounded-l-none'
                 : ''
             }`}
             onClick={() => toggleRightSidebar('docs')}
@@ -242,9 +279,9 @@ export function Shell({
           </Button>
           <Button
             variant="ghost"
-            className={`text-sidebar-foreground flex flex-col items-center justify-center gap-1 text-xs h-auto py-2.5 hover:text-sidebar-secondary hover:bg-sidebar-accent/20 ${
+            className={`text-sidebar-foreground flex flex-col items-center justify-center gap-1 text-xs h-auto py-2.5 hover:text-sidebar-secondary hover:bg-background/20 ${
               rightSidebarOpen && activeTab === 'demo'
-                ? 'bg-sidebar-accent text-foreground hover:bg-sidebar-accent rounded-l-none'
+                ? 'bg-background text-foreground hover:bg-background rounded-l-none'
                 : ''
             }`}
             onClick={() => toggleRightSidebar('demo')}
@@ -254,9 +291,9 @@ export function Shell({
           </Button>
           <Button
             variant="ghost"
-            className={`text-sidebar-foreground flex flex-col items-center justify-center gap-1 text-xs h-auto py-2.5 hover:text-sidebar-secondary hover:bg-sidebar-accent/20 ${
+            className={`text-sidebar-foreground flex flex-col items-center justify-center gap-1 text-xs h-auto py-2.5 hover:text-sidebar-secondary hover:bg-background/20 ${
               rightSidebarOpen && activeTab === 'ask'
-                ? 'bg-sidebar-accent text-foreground hover:bg-sidebar-accent rounded-l-none'
+                ? 'bg-background text-foreground hover:bg-background rounded-l-none'
                 : ''
             }`}
             onClick={() => toggleRightSidebar('ask')}
@@ -287,4 +324,3 @@ export function Shell({
     </SidebarProvider>
   )
 }
-

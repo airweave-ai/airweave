@@ -21,7 +21,7 @@ import {
   PromptInputTextarea,
   PromptInputTools,
 } from '@/components/ai-elements/prompt-input'
-import { Suggestion, Suggestions } from '@/components/ai-elements/suggestion'
+import { Suggestion } from '@/components/ai-elements/suggestion'
 import {
   Select,
   SelectContent,
@@ -31,7 +31,7 @@ import {
 } from '@/components/ui/select'
 import { IconMicrophone, IconSparkles } from '@tabler/icons-react'
 import { nanoid } from 'nanoid'
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 type MessageType = {
   key: string
@@ -46,7 +46,7 @@ const models = [
   { id: 'gemini-3-pro', name: 'Gemini 3 Pro', provider: 'Google' },
 ]
 
-const suggestions = [
+const defaultSuggestions = [
   'How do I connect a data source?',
   'What integrations are available?',
   'How do I create a sync?',
@@ -122,7 +122,17 @@ const fallbackResponses = [
   `Good question! Airweave provides flexible options for data integration. Feel free to explore the interface or ask about specific features.`,
 ]
 
-export function AskPanel() {
+type AskPanelProps = {
+  title?: string
+  description?: string
+  suggestions?: string[]
+}
+
+export function AskPanel({
+  title = 'Airweave',
+  description = 'Get help with data sources, syncs, and more',
+  suggestions,
+}: AskPanelProps) {
   const [text, setText] = useState('')
   const [model, setModel] = useState(models[0].id)
   const [useMicrophone, setUseMicrophone] = useState(false)
@@ -132,6 +142,11 @@ export function AskPanel() {
   const [messages, setMessages] = useState<MessageType[]>([])
 
   const selectedModel = models.find((m) => m.id === model)
+  const suggestionsToShow = useMemo(
+    () =>
+      suggestions && suggestions.length > 0 ? suggestions : defaultSuggestions,
+    [suggestions],
+  )
 
   const streamResponse = useCallback(
     async (messageId: string, content: string) => {
@@ -205,13 +220,13 @@ export function AskPanel() {
   }
 
   return (
-    <div className="flex size-full flex-col text-foreground">
+    <div className="flex size-full flex-col text-foreground p-6">
       <Conversation className="flex-1">
         <ConversationContent className="gap-4 p-0">
           {messages.length === 0 ? (
             <ConversationEmptyState
-              title="Ask about Airweave"
-              description="Get help with data sources, syncs, and more"
+              title={`Ask about ${title}`}
+              description={description}
               icon={<IconSparkles className="size-8" strokeWidth={1.1} />}
             />
           ) : (
@@ -233,26 +248,30 @@ export function AskPanel() {
 
       <div className="shrink-0">
         {messages.length === 0 && (
-          <Suggestions className="mb-3">
-            {suggestions.map((suggestion) => (
-              <Suggestion
+          <div className="mb-3 flex flex-col gap-2">
+            {suggestionsToShow.map((suggestion) => (
+              <div
                 key={suggestion}
-                onClick={() => handleSuggestionClick(suggestion)}
-                suggestion={suggestion}
-              />
+                className="flex items-center justify-center"
+              >
+                <Suggestion
+                  onClick={() => handleSuggestionClick(suggestion)}
+                  suggestion={suggestion}
+                />
+              </div>
             ))}
-          </Suggestions>
+          </div>
         )}
-        <PromptInput onSubmit={handleSubmit} multiple className="mt-2.5">
+        <PromptInput onSubmit={handleSubmit} multiple className="mt-4">
           <PromptInputBody>
             <PromptInputTextarea
               placeholder="Ask about Airweave..."
               value={text}
               onChange={(e) => setText(e.target.value)}
-              className="min-h-10"
+              className="min-h-none"
             />
           </PromptInputBody>
-          <PromptInputFooter>
+          <PromptInputFooter className="p-1 pt-0">
             <PromptInputTools>
               <PromptInputButton
                 onClick={() => setUseMicrophone(!useMicrophone)}

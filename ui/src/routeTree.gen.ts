@@ -9,13 +9,31 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SourceConnectionsRouteImport } from './routes/source-connections'
+import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ComponentsRouteImport } from './routes/components'
+import { Route as CollectionsRouteImport } from './routes/collections'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as CollectionsNewRouteImport } from './routes/collections/new'
 
+const SourceConnectionsRoute = SourceConnectionsRouteImport.update({
+  id: '/source-connections',
+  path: '/source-connections',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DashboardRoute = DashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ComponentsRoute = ComponentsRouteImport.update({
   id: '/components',
   path: '/components',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CollectionsRoute = CollectionsRouteImport.update({
+  id: '/collections',
+  path: '/collections',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -24,48 +42,99 @@ const IndexRoute = IndexRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const CollectionsNewRoute = CollectionsNewRouteImport.update({
-  id: '/collections/new',
-  path: '/collections/new',
-  getParentRoute: () => rootRouteImport,
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => CollectionsRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/collections': typeof CollectionsRouteWithChildren
   '/components': typeof ComponentsRoute
+  '/dashboard': typeof DashboardRoute
+  '/source-connections': typeof SourceConnectionsRoute
   '/collections/new': typeof CollectionsNewRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/collections': typeof CollectionsRouteWithChildren
   '/components': typeof ComponentsRoute
+  '/dashboard': typeof DashboardRoute
+  '/source-connections': typeof SourceConnectionsRoute
   '/collections/new': typeof CollectionsNewRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/collections': typeof CollectionsRouteWithChildren
   '/components': typeof ComponentsRoute
+  '/dashboard': typeof DashboardRoute
+  '/source-connections': typeof SourceConnectionsRoute
   '/collections/new': typeof CollectionsNewRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/components' | '/collections/new'
+  fullPaths:
+    | '/'
+    | '/collections'
+    | '/components'
+    | '/dashboard'
+    | '/source-connections'
+    | '/collections/new'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/components' | '/collections/new'
-  id: '__root__' | '/' | '/components' | '/collections/new'
+  to:
+    | '/'
+    | '/collections'
+    | '/components'
+    | '/dashboard'
+    | '/source-connections'
+    | '/collections/new'
+  id:
+    | '__root__'
+    | '/'
+    | '/collections'
+    | '/components'
+    | '/dashboard'
+    | '/source-connections'
+    | '/collections/new'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  CollectionsRoute: typeof CollectionsRouteWithChildren
   ComponentsRoute: typeof ComponentsRoute
-  CollectionsNewRoute: typeof CollectionsNewRoute
+  DashboardRoute: typeof DashboardRoute
+  SourceConnectionsRoute: typeof SourceConnectionsRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/source-connections': {
+      id: '/source-connections'
+      path: '/source-connections'
+      fullPath: '/source-connections'
+      preLoaderRoute: typeof SourceConnectionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/components': {
       id: '/components'
       path: '/components'
       fullPath: '/components'
       preLoaderRoute: typeof ComponentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/collections': {
+      id: '/collections'
+      path: '/collections'
+      fullPath: '/collections'
+      preLoaderRoute: typeof CollectionsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -77,18 +146,32 @@ declare module '@tanstack/react-router' {
     }
     '/collections/new': {
       id: '/collections/new'
-      path: '/collections/new'
+      path: '/new'
       fullPath: '/collections/new'
       preLoaderRoute: typeof CollectionsNewRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof CollectionsRoute
     }
   }
 }
 
+interface CollectionsRouteChildren {
+  CollectionsNewRoute: typeof CollectionsNewRoute
+}
+
+const CollectionsRouteChildren: CollectionsRouteChildren = {
+  CollectionsNewRoute: CollectionsNewRoute,
+}
+
+const CollectionsRouteWithChildren = CollectionsRoute._addFileChildren(
+  CollectionsRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  CollectionsRoute: CollectionsRouteWithChildren,
   ComponentsRoute: ComponentsRoute,
-  CollectionsNewRoute: CollectionsNewRoute,
+  DashboardRoute: DashboardRoute,
+  SourceConnectionsRoute: SourceConnectionsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
