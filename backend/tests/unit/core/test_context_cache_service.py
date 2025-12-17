@@ -515,3 +515,226 @@ def test_global_context_cache_instance():
     from airweave.core.context_cache_service import context_cache
 
     assert isinstance(context_cache, ContextCacheService)
+
+
+# ============================================================================
+# JWT Blacklisting Tests
+# ============================================================================
+
+
+@pytest.fixture
+def jti():
+    """Create a test JWT ID."""
+    return "jwt-id-123456789"
+
+
+def test_jwt_blacklist_key_generation(cache_service, jti):
+    """Test that JWT blacklist cache keys are formatted correctly."""
+    key = cache_service._jwt_blacklist_key(jti)
+    assert key == f"jwt:blacklist:{jti}"
+
+
+def test_jwt_user_blacklist_key_generation(cache_service, user_email):
+    """Test that user JWT blacklist cache keys are formatted correctly."""
+    key = cache_service._jwt_user_blacklist_key(user_email)
+    assert key == f"jwt:user_blacklist:{user_email}"
+
+
+@pytest.mark.asyncio
+async def test_blacklist_jwt_success(cache_service, mock_redis, jti):
+    """Test successfully blacklisting a JWT by JTI."""
+    result = await cache_service.blacklist_jwt(jti)
+
+    assert result is True
+    mock_redis.client.setex.assert_called_once()
+    call_args = mock_redis.client.setex.call_args
+    assert call_args[0][0] == f"jwt:blacklist:{jti}"
+    assert call_args[0][1] == ContextCacheService.JWT_BLACKLIST_TTL
+    assert call_args[0][2] == "1"
+
+
+@pytest.mark.asyncio
+async def test_blacklist_jwt_custom_ttl(cache_service, mock_redis, jti):
+    """Test blacklisting a JWT with custom TTL."""
+    custom_ttl = 3600  # 1 hour
+
+    result = await cache_service.blacklist_jwt(jti, ttl_seconds=custom_ttl)
+
+    assert result is True
+    call_args = mock_redis.client.setex.call_args
+    assert call_args[0][1] == custom_ttl
+
+
+@pytest.mark.asyncio
+async def test_blacklist_jwt_redis_error(cache_service, mock_redis, jti):
+    """Test that Redis errors during JWT blacklisting are handled gracefully."""
+    mock_redis.client.setex.side_effect = Exception("Redis connection error")
+
+    result = await cache_service.blacklist_jwt(jti)
+
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_is_jwt_blacklisted_true(cache_service, mock_redis, jti):
+    """Test checking if a JWT is blacklisted when it is."""
+    mock_redis.client.exists.return_value = 1
+
+    result = await cache_service.is_jwt_blacklisted(jti)
+
+    assert result is True
+    mock_redis.client.exists.assert_called_once_with(f"jwt:blacklist:{jti}")
+
+
+@pytest.mark.asyncio
+async def test_is_jwt_blacklisted_false(cache_service, mock_redis, jti):
+    """Test checking if a JWT is blacklisted when it is not."""
+    mock_redis.client.exists.return_value = 0
+
+    result = await cache_service.is_jwt_blacklisted(jti)
+
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_is_jwt_blacklisted_redis_error_fail_closed(cache_service, mock_redis, jti):
+    """Test that Redis errors during blacklist check fail closed (deny access)."""
+    mock_redis.client.exists.side_effect = Exception("Redis connection error")
+
+    result = await cache_service.is_jwt_blacklisted(jti)
+
+    # Should return True (fail closed) to deny access when Redis is down
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_blacklist_user_tokens_success(cache_service, mock_redis, user_email):
+    """Test successfully blacklisting all tokens for a user."""
+    with patch("airweave.core.context_cache_service.time") as mock_time:
+        mock_time.time.return_value = 1234567890
+
+        result = await cache_service.blacklist_user_tokens(user_email)
+
+        assert result is True
+        mock_redis.client.setex.assert_called_once()
+        call_args = mock_redis.client.setex.call_args
+        assert call_args[0][0] == f"jwt:user_blacklist:{user_email}"
+        assert call_args[0][1] == ContextCacheService.JWT_BLACKLIST_TTL
+        assert call_args[0][2] == "1234567890"
+
+
+@pytest.mark.asyncio
+async def test_blacklist_user_tokens_custom_ttl(cache_service, mock_redis, user_email):
+    """Test blacklisting user tokens with custom TTL."""
+    custom_ttl = 7200
+    with patch("airweave.core.context_cache_service.time") as mock_time:
+        mock_time.time.return_value = 1234567890
+
+        result = await cache_service.blacklist_user_tokens(user_email, ttl_seconds=custom_ttl)
+
+        assert result is True
+        call_args = mock_redis.client.setex.call_args
+        assert call_args[0][1] == custom_ttl
+
+
+@pytest.mark.asyncio
+async def test_blacklist_user_tokens_redis_error(cache_service, mock_redis, user_email):
+    """Test that Redis errors during user token blacklisting are handled gracefully."""
+    mock_redis.client.setex.side_effect = Exception("Redis connection error")
+
+    result = await cache_service.blacklist_user_tokens(user_email)
+
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_is_user_token_blacklisted_true(cache_service, mock_redis, user_email):
+    """Test checking if a user's token is blacklisted when it is."""
+    # Token was issued at timestamp 1000, blacklisted at timestamp 2000
+    token_issued_at = 1000
+    blacklist_timestamp = 2000
+
+    mock_redis.client.get.return_value = str(blacklist_timestamp).encode("utf-8")
+
+    result = await cache_service.is_user_token_blacklisted(user_email, token_issued_at)
+
+    # Token issued before blacklist should be rejected
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_is_user_token_blacklisted_false_newer_token(cache_service, mock_redis, user_email):
+    """Test checking if a user's token is blacklisted when token is newer."""
+    # Token was issued at timestamp 3000, blacklisted at timestamp 2000
+    token_issued_at = 3000
+    blacklist_timestamp = 2000
+
+    mock_redis.client.get.return_value = str(blacklist_timestamp).encode("utf-8")
+
+    result = await cache_service.is_user_token_blacklisted(user_email, token_issued_at)
+
+    # Token issued after blacklist should be allowed
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_is_user_token_blacklisted_no_blacklist(cache_service, mock_redis, user_email):
+    """Test checking if a user's token is blacklisted when no blacklist exists."""
+    mock_redis.client.get.return_value = None
+
+    result = await cache_service.is_user_token_blacklisted(user_email, 1000)
+
+    # No blacklist means token is not blacklisted
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_is_user_token_blacklisted_redis_error_fail_closed(
+    cache_service, mock_redis, user_email
+):
+    """Test that Redis errors during user token check fail closed (deny access)."""
+    mock_redis.client.get.side_effect = Exception("Redis connection error")
+
+    result = await cache_service.is_user_token_blacklisted(user_email, 1000)
+
+    # Should return True (fail closed) to deny access when Redis is down
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_invalidate_user_with_tokens_success(cache_service, mock_redis, user_email):
+    """Test successfully invalidating user cache and blacklisting tokens."""
+    with patch("airweave.core.context_cache_service.time") as mock_time:
+        mock_time.time.return_value = 1234567890
+
+        result = await cache_service.invalidate_user_with_tokens(user_email)
+
+        assert result is True
+        # Should call both delete (cache invalidation) and setex (token blacklist)
+        mock_redis.client.delete.assert_called_once()
+        mock_redis.client.setex.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_invalidate_user_with_tokens_partial_failure(cache_service, mock_redis, user_email):
+    """Test invalidating user when one operation fails."""
+    # Cache invalidation succeeds but token blacklisting fails
+    mock_redis.client.delete.return_value = 1
+    mock_redis.client.setex.side_effect = Exception("Redis error")
+
+    result = await cache_service.invalidate_user_with_tokens(user_email)
+
+    # Should return False when partial failure occurs
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_invalidate_user_with_tokens_both_fail(cache_service, mock_redis, user_email):
+    """Test invalidating user when both operations fail."""
+    mock_redis.client.delete.side_effect = Exception("Redis error")
+    mock_redis.client.setex.side_effect = Exception("Redis error")
+
+    result = await cache_service.invalidate_user_with_tokens(user_email)
+
+    # Should return False when both operations fail
+    assert result is False
