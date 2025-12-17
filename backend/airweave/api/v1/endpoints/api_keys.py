@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud, schemas
 from airweave.api import deps
 from airweave.api.context import ApiContext
+from airweave.api.rbac import require_org_role
 from airweave.api.router import TrailingSlashRouter
 from airweave.core import credentials
 from airweave.core.datetime_utils import utc_now_naive
@@ -24,6 +25,8 @@ async def create_api_key(
 ) -> schemas.APIKey:
     """Create a new API key for the current user.
 
+    This operation requires admin or owner role within the organization.
+
     Returns a temporary plain key for the user to store securely.
     This is not stored in the database.
 
@@ -37,7 +40,14 @@ async def create_api_key(
     -------
         schemas.APIKey: The created API key object, including the key.
 
+    Raises:
+    ------
+        HTTPException: If user lacks admin privileges (403).
+
     """
+    # Validate user has admin role
+    require_org_role(ctx, min_role="admin")
+
     api_key_obj = await crud.api_key.create(db=db, obj_in=api_key_in, ctx=ctx)
 
     # Audit log: API key creation (flows to Azure LAW)
@@ -167,6 +177,8 @@ async def rotate_api_key(
 ) -> schemas.APIKey:
     """Rotate an API key by creating a new one.
 
+    This operation requires admin or owner role within the organization.
+
     This endpoint creates a new API key with a fresh 90-day expiration.
     The old key remains active until its original expiration date.
     Users can manage multiple keys or delete the old one manually if desired.
@@ -183,9 +195,13 @@ async def rotate_api_key(
 
     Raises:
     ------
-        HTTPException: If the API key is not found or user doesn't have access.
+        HTTPException: If the API key is not found, user doesn't have access,
+            or lacks admin privileges (403).
 
     """
+    # Validate user has admin role
+    require_org_role(ctx, min_role="admin")
+
     # Verify old key exists and user has access
     old_key = await crud.api_key.get(db=db, id=id, ctx=ctx)
     old_key_schema = schemas.APIKey.model_validate(old_key, from_attributes=True)
@@ -224,6 +240,8 @@ async def delete_api_key(
 ) -> schemas.APIKey:
     """Delete an API key.
 
+    This operation requires admin or owner role within the organization.
+
     Args:
     ----
         db (AsyncSession): The database session.
@@ -236,9 +254,12 @@ async def delete_api_key(
 
     Raises:
     ------
-        HTTPException: If the API key is not found.
+        HTTPException: If the API key is not found or user lacks admin privileges (403).
 
     """
+    # Validate user has admin role
+    require_org_role(ctx, min_role="admin")
+
     api_key = await crud.api_key.get(db=db, id=id, ctx=ctx)
 
     # Decrypt the key for the response

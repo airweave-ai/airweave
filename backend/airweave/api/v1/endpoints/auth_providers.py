@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud, schemas
 from airweave.api import deps
 from airweave.api.context import ApiContext
+from airweave.api.rbac import require_org_role
 from airweave.api.router import TrailingSlashRouter
 from airweave.core import credentials
 from airweave.core.logging import logger
@@ -512,6 +513,8 @@ async def delete_auth_provider_connection(
 ) -> schemas.AuthProviderConnection:
     """Delete an auth provider connection.
 
+    This operation requires admin or owner role within the organization.
+
     This will cascade delete:
     - The associated integration credential
     - All source connections that were created using this auth provider
@@ -526,7 +529,14 @@ async def delete_auth_provider_connection(
     Returns:
     --------
         schemas.AuthProviderConnection: The deleted connection information
+
+    Raises:
+    -------
+        HTTPException: If user lacks admin privileges (403) or connection not found (404).
     """
+    # Validate user has admin role
+    require_org_role(ctx, min_role="admin")
+
     # Find the connection by readable_id and integration_type
     connection = await crud.connection.get_by_readable_id(db, readable_id=readable_id, ctx=ctx)
 
@@ -731,6 +741,8 @@ async def update_auth_provider_connection(
 ) -> schemas.AuthProviderConnection:
     """Update an existing auth provider connection.
 
+    This operation requires admin or owner role within the organization.
+
     This endpoint allows updating:
     - The connection name and description
     - The authentication credentials (which will be re-validated and re-encrypted)
@@ -745,7 +757,14 @@ async def update_auth_provider_connection(
     Returns:
     --------
         schemas.AuthProviderConnection: The updated connection information
+
+    Raises:
+    -------
+        HTTPException: If user lacks admin privileges (403) or connection not found (404).
     """
+    # Validate user has admin role
+    require_org_role(ctx, min_role="admin")
+
     async with UnitOfWork(db) as uow:
         try:
             # 1. Validate connection
