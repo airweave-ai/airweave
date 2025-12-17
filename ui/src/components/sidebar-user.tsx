@@ -54,7 +54,6 @@ export function SidebarUser({
         <div className="grid flex-1 text-left text-sm leading-tight">
           <span className="truncate font-medium">{user.name}</span>
         </div>
-        {/* <IconDotsVertical className="ml-auto size-4" /> */}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuGroup>

@@ -1,6 +1,4 @@
 import { Shell } from '@/components/shell'
-import { Avatar, AvatarImage } from '@/components/ui/avatar'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -30,7 +28,6 @@ import {
   IconDots,
   IconFileDownload,
   IconFilter,
-  IconLoader2,
   IconPencil,
   IconPlug,
   IconPlus,
@@ -39,207 +36,13 @@ import {
 } from '@tabler/icons-react'
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { SourceAvatars } from '@/features/collections/components/source-avatars'
+import { StatusBadge } from '@/features/collections/components/status-badge'
+import { collections } from '@/features/collections/data/mock-collections'
 
 export const Route = createFileRoute('/collections/')({
   component: CollectionsPage,
 })
-
-interface Collection {
-  id: string
-  name: string
-  domain: string
-  status: 'active' | 'syncing' | 'paused'
-  sources: string[]
-  lastSynced: string
-  createdAt: string
-  entities: number
-  size: number
-}
-
-const collections: Collection[] = [
-  {
-    id: '1',
-    name: "Anand's collection",
-    domain: 'anands-collection-4m6pbv',
-    status: 'active',
-    sources: ['makenotion', 'asana', 'linear'],
-    lastSynced: '2 min ago',
-    createdAt: '2 min ago',
-    entities: 1247,
-    size: 4531,
-  },
-  {
-    id: '2',
-    name: 'Marketing Assets',
-    domain: 'marketing-assets-8k2nxp',
-    status: 'active',
-    sources: ['google', 'dropbox'],
-    lastSynced: '5 min ago',
-    createdAt: '2 days ago',
-    entities: 892,
-    size: 65432,
-  },
-  {
-    id: '3',
-    name: 'Engineering Docs',
-    domain: 'engineering-docs-3j9mvz',
-    status: 'syncing',
-    sources: ['github', 'atlassian', 'makenotion'],
-    lastSynced: '1 hour ago',
-    createdAt: '1 day ago',
-    entities: 3421,
-    size: 216,
-  },
-  {
-    id: '4',
-    name: 'Customer Support',
-    domain: 'customer-support-7r4kls',
-    status: 'active',
-    sources: ['zendesk', 'slackhq'],
-    lastSynced: '10 min ago',
-    entities: 5672,
-    createdAt: '1 week ago',
-    size: 92487,
-  },
-  {
-    id: '5',
-    name: 'Sales Pipeline',
-    domain: 'sales-pipeline-2m8fht',
-    status: 'active',
-    sources: ['hubspot', 'salesforce'],
-    lastSynced: '15 min ago',
-    entities: 2103,
-    createdAt: '1 month ago',
-    size: 1024,
-  },
-  {
-    id: '6',
-    name: 'Product Roadmap',
-    domain: 'product-roadmap-9n3wqx',
-    status: 'paused',
-    sources: ['linear', 'atlassian'],
-    lastSynced: '2 days ago',
-    entities: 456,
-    createdAt: '2 months ago',
-    size: 3121,
-  },
-  {
-    id: '7',
-    name: 'HR Resources',
-    domain: 'hr-resources-5k7pmt',
-    status: 'active',
-    sources: ['google', 'microsoft'],
-    lastSynced: '30 min ago',
-    entities: 1834,
-    createdAt: '3 months ago',
-    size: 5432,
-  },
-  {
-    id: '8',
-    name: 'Financial Records',
-    domain: 'financial-records-1h6cvn',
-    status: 'active',
-    sources: ['stripe', 'airtable'],
-    lastSynced: '1 hour ago',
-    entities: 7891,
-    createdAt: '3 months ago',
-    size: 1024,
-  },
-  {
-    id: '9',
-    name: 'Research Data',
-    domain: 'research-data-4w2jbp',
-    status: 'syncing',
-    sources: ['postgresql', 'google'],
-    lastSynced: '3 hours ago',
-    entities: 12456,
-    createdAt: '3 months ago',
-    size: 345231,
-  },
-  {
-    id: '10',
-    name: 'Client Projects',
-    domain: 'client-projects-8m5rzq',
-    status: 'active',
-    sources: ['asana', 'box', 'slackhq'],
-    lastSynced: '45 min ago',
-    entities: 3287,
-    createdAt: '3 months ago',
-    size: 345231,
-  },
-]
-
-const sourceSlugMap: Record<string, string> = {
-  notion: 'makenotion',
-  makenotion: 'makenotion',
-  asana: 'asana',
-  linear: 'linear',
-  google: 'google',
-  dropbox: 'dropbox',
-  github: 'github',
-  atlassian: 'atlassian',
-  zendesk: 'zendesk',
-  slackhq: 'slackhq',
-  hubspot: 'hubspot',
-  salesforce: 'salesforce',
-  microsoft: 'microsoft',
-  stripe: 'stripe',
-  airtable: 'airtable',
-  postgresql: 'postgresql',
-  box: 'box',
-}
-
-function StatusBadge({ status }: { status: Collection['status'] }) {
-  const statusConfig = {
-    active: {
-      indicator: <span className="size-1.5 rounded-full bg-emerald-500" />,
-      badge:
-        'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950 dark:border-emerald-800 dark:text-emerald-400',
-      label: 'Active',
-    },
-    syncing: {
-      indicator: <IconLoader2 className="size-3 animate-spin" />,
-      badge:
-        'bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-400',
-      label: 'Syncing',
-    },
-    paused: {
-      indicator: <span className="size-1.5 rounded-full bg-gray-400" />,
-      badge:
-        'bg-gray-50 border-gray-200 text-gray-600 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-400',
-      label: 'Paused',
-    },
-  }
-
-  const config = statusConfig[status]
-
-  return (
-    <Badge className={`${config.badge} gap-1.5`}>
-      {config.indicator}
-      {config.label}
-    </Badge>
-  )
-}
-
-function SourceAvatars({ sources }: { sources: string[] }) {
-  return (
-    <div className="flex -space-x-1.5 *:ring-2 *:ring-background">
-      {sources.slice(0, 4).map((source) => (
-        <Avatar key={source} size="sm">
-          <AvatarImage
-            src={`https://github.com/${sourceSlugMap[source] || source}.png`}
-            alt={source}
-          />
-        </Avatar>
-      ))}
-      {sources.length > 4 && (
-        <div className="flex items-center justify-center size-6 rounded-full bg-muted text-[10px] font-medium text-muted-foreground ring-2 ring-background">
-          +{sources.length - 4}
-        </div>
-      )}
-    </div>
-  )
-}
 
 function CollectionsPage() {
   const [searchQuery, setSearchQuery] = useState('')
@@ -287,17 +90,6 @@ function CollectionsPage() {
           <Button variant="outline" size="icon-xs">
             <IconSearch className="size-3" />
           </Button>
-          {/* <InputGroup className="w-36">
-          <InputGroupAddon>
-            <IconSearch className="size-4" />
-          </InputGroupAddon>
-          <InputGroupInput
-            ref={inputRef}
-            placeholder="Search..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </InputGroup> */}
           <DropdownMenu>
             <DropdownMenuTrigger
               render={

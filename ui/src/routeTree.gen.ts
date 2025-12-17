@@ -9,32 +9,32 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as SourceConnectionsRouteImport } from './routes/source-connections'
-import { Route as DashboardRouteImport } from './routes/dashboard'
-import { Route as ComponentsRouteImport } from './routes/components'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as SourceConnectionsIndexRouteImport } from './routes/source-connections/index'
+import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
+import { Route as ComponentsIndexRouteImport } from './routes/components/index'
 import { Route as CollectionsIndexRouteImport } from './routes/collections/index'
 import { Route as CollectionsNewRouteImport } from './routes/collections/new'
-import { Route as CollectionsSlugRouteImport } from './routes/collections/$slug'
+import { Route as CollectionsSlugIndexRouteImport } from './routes/collections/$slug/index'
 
-const SourceConnectionsRoute = SourceConnectionsRouteImport.update({
-  id: '/source-connections',
-  path: '/source-connections',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DashboardRoute = DashboardRouteImport.update({
-  id: '/dashboard',
-  path: '/dashboard',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ComponentsRoute = ComponentsRouteImport.update({
-  id: '/components',
-  path: '/components',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SourceConnectionsIndexRoute = SourceConnectionsIndexRouteImport.update({
+  id: '/source-connections/',
+  path: '/source-connections/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DashboardIndexRoute = DashboardIndexRouteImport.update({
+  id: '/dashboard/',
+  path: '/dashboard/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ComponentsIndexRoute = ComponentsIndexRouteImport.update({
+  id: '/components/',
+  path: '/components/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CollectionsIndexRoute = CollectionsIndexRouteImport.update({
@@ -47,108 +47,108 @@ const CollectionsNewRoute = CollectionsNewRouteImport.update({
   path: '/collections/new',
   getParentRoute: () => rootRouteImport,
 } as any)
-const CollectionsSlugRoute = CollectionsSlugRouteImport.update({
-  id: '/collections/$slug',
-  path: '/collections/$slug',
+const CollectionsSlugIndexRoute = CollectionsSlugIndexRouteImport.update({
+  id: '/collections/$slug/',
+  path: '/collections/$slug/',
   getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/components': typeof ComponentsRoute
-  '/dashboard': typeof DashboardRoute
-  '/source-connections': typeof SourceConnectionsRoute
-  '/collections/$slug': typeof CollectionsSlugRoute
   '/collections/new': typeof CollectionsNewRoute
   '/collections': typeof CollectionsIndexRoute
+  '/components': typeof ComponentsIndexRoute
+  '/dashboard': typeof DashboardIndexRoute
+  '/source-connections': typeof SourceConnectionsIndexRoute
+  '/collections/$slug': typeof CollectionsSlugIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/components': typeof ComponentsRoute
-  '/dashboard': typeof DashboardRoute
-  '/source-connections': typeof SourceConnectionsRoute
-  '/collections/$slug': typeof CollectionsSlugRoute
   '/collections/new': typeof CollectionsNewRoute
   '/collections': typeof CollectionsIndexRoute
+  '/components': typeof ComponentsIndexRoute
+  '/dashboard': typeof DashboardIndexRoute
+  '/source-connections': typeof SourceConnectionsIndexRoute
+  '/collections/$slug': typeof CollectionsSlugIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/components': typeof ComponentsRoute
-  '/dashboard': typeof DashboardRoute
-  '/source-connections': typeof SourceConnectionsRoute
-  '/collections/$slug': typeof CollectionsSlugRoute
   '/collections/new': typeof CollectionsNewRoute
   '/collections/': typeof CollectionsIndexRoute
+  '/components/': typeof ComponentsIndexRoute
+  '/dashboard/': typeof DashboardIndexRoute
+  '/source-connections/': typeof SourceConnectionsIndexRoute
+  '/collections/$slug/': typeof CollectionsSlugIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/collections/new'
+    | '/collections'
     | '/components'
     | '/dashboard'
     | '/source-connections'
     | '/collections/$slug'
-    | '/collections/new'
-    | '/collections'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/collections/new'
+    | '/collections'
     | '/components'
     | '/dashboard'
     | '/source-connections'
     | '/collections/$slug'
-    | '/collections/new'
-    | '/collections'
   id:
     | '__root__'
     | '/'
-    | '/components'
-    | '/dashboard'
-    | '/source-connections'
-    | '/collections/$slug'
     | '/collections/new'
     | '/collections/'
+    | '/components/'
+    | '/dashboard/'
+    | '/source-connections/'
+    | '/collections/$slug/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  ComponentsRoute: typeof ComponentsRoute
-  DashboardRoute: typeof DashboardRoute
-  SourceConnectionsRoute: typeof SourceConnectionsRoute
-  CollectionsSlugRoute: typeof CollectionsSlugRoute
   CollectionsNewRoute: typeof CollectionsNewRoute
   CollectionsIndexRoute: typeof CollectionsIndexRoute
+  ComponentsIndexRoute: typeof ComponentsIndexRoute
+  DashboardIndexRoute: typeof DashboardIndexRoute
+  SourceConnectionsIndexRoute: typeof SourceConnectionsIndexRoute
+  CollectionsSlugIndexRoute: typeof CollectionsSlugIndexRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/source-connections': {
-      id: '/source-connections'
-      path: '/source-connections'
-      fullPath: '/source-connections'
-      preLoaderRoute: typeof SourceConnectionsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/dashboard': {
-      id: '/dashboard'
-      path: '/dashboard'
-      fullPath: '/dashboard'
-      preLoaderRoute: typeof DashboardRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/components': {
-      id: '/components'
-      path: '/components'
-      fullPath: '/components'
-      preLoaderRoute: typeof ComponentsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/': {
       id: '/'
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/source-connections/': {
+      id: '/source-connections/'
+      path: '/source-connections'
+      fullPath: '/source-connections'
+      preLoaderRoute: typeof SourceConnectionsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dashboard/': {
+      id: '/dashboard/'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/components/': {
+      id: '/components/'
+      path: '/components'
+      fullPath: '/components'
+      preLoaderRoute: typeof ComponentsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/collections/': {
@@ -165,11 +165,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CollectionsNewRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/collections/$slug': {
-      id: '/collections/$slug'
+    '/collections/$slug/': {
+      id: '/collections/$slug/'
       path: '/collections/$slug'
       fullPath: '/collections/$slug'
-      preLoaderRoute: typeof CollectionsSlugRouteImport
+      preLoaderRoute: typeof CollectionsSlugIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -177,12 +177,12 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  ComponentsRoute: ComponentsRoute,
-  DashboardRoute: DashboardRoute,
-  SourceConnectionsRoute: SourceConnectionsRoute,
-  CollectionsSlugRoute: CollectionsSlugRoute,
   CollectionsNewRoute: CollectionsNewRoute,
   CollectionsIndexRoute: CollectionsIndexRoute,
+  ComponentsIndexRoute: ComponentsIndexRoute,
+  DashboardIndexRoute: DashboardIndexRoute,
+  SourceConnectionsIndexRoute: SourceConnectionsIndexRoute,
+  CollectionsSlugIndexRoute: CollectionsSlugIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
