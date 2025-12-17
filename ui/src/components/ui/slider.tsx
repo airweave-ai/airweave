@@ -1,7 +1,7 @@
 'use client'
 
-import * as React from 'react'
 import { Slider as SliderPrimitive } from '@base-ui/react/slider'
+import * as React from 'react'
 
 import { cn } from '@/lib/utils'
 
@@ -42,7 +42,7 @@ function Slider({
       >
         <SliderPrimitive.Track
           data-slot="slider-track"
-          className="bg-muted rounded-full data-horizontal:h-1 data-horizontal:w-full data-vertical:h-full data-vertical:w-1 relative overflow-hidden select-none"
+          className="bg-white rounded-full data-horizontal:h-1 data-horizontal:w-full data-vertical:h-full data-vertical:w-1 relative overflow-hidden select-none"
         >
           <SliderPrimitive.Indicator
             data-slot="slider-range"

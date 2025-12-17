@@ -2,10 +2,15 @@ import { Shell } from '@/components/shell'
 import { Avatar, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuPortal,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
@@ -20,18 +25,22 @@ import {
   IconAdjustments,
   IconCircleDot,
   IconClock,
+  IconCopy,
   IconDatabase,
+  IconDots,
   IconFileDownload,
   IconFilter,
   IconLoader2,
+  IconPencil,
   IconPlug,
   IconPlus,
   IconSearch,
+  IconTrash,
 } from '@tabler/icons-react'
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-export const Route = createFileRoute('/collections')({
+export const Route = createFileRoute('/collections/')({
   component: CollectionsPage,
 })
 
@@ -262,7 +271,6 @@ function CollectionsPage() {
   return (
     <Shell
       askTitle="collections"
-      showNewCollectionButton
       askDescription="Collections are searchable knowledge bases that combine data from your connected sources."
       askSuggestions={[
         'How do I create a collection?',
@@ -341,13 +349,13 @@ function CollectionsPage() {
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <TableHead className="pl-6">Status</TableHead>
+            <TableHead className="pl-12">Status</TableHead>
             <TableHead>Name</TableHead>
             <TableHead>Domain</TableHead>
             <TableHead>Created</TableHead>
             <TableHead>Last Synced</TableHead>
             <TableHead>Vector Size</TableHead>
-            <TableHead className="text-right pr-6">Entities</TableHead>
+            <TableHead className="text-right pr-14">Entities</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -363,8 +371,13 @@ function CollectionsPage() {
           ) : (
             filteredCollections.map((collection) => (
               <TableRow key={collection.id}>
-                <TableCell className="pl-6">
-                  <StatusBadge status={collection.status} />
+                <TableCell className="pl-3 flex items-center gap-4">
+                  <div>
+                    <Checkbox />
+                  </div>
+                  <div>
+                    <StatusBadge status={collection.status} />
+                  </div>
                 </TableCell>
                 <TableCell className="font-medium">{collection.name}</TableCell>
                 <TableCell className="font-mono text-xs text-muted-foreground">
@@ -379,11 +392,54 @@ function CollectionsPage() {
                 <TableCell className="text-muted-foreground tabular-nums">
                   {collection.size.toLocaleString()}
                 </TableCell>
-                <TableCell className="text-right tabular-nums pr-6 flex items-center gap-6 justify-end">
+                <TableCell className="text-right tabular-nums flex items-center gap-6 justify-end">
                   <SourceAvatars sources={collection.sources} />
                   <div className="w-12">
                     {collection.entities.toLocaleString()}
                   </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger>
+                      <Button variant="ghost" size="icon-xs">
+                        <IconDots className="size-3" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuItem>
+                        <IconPencil className="size-4 opacity-60" />
+                        Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger>
+                          <IconCopy className="size-4 opacity-60" />
+                          Copy
+                        </DropdownMenuSubTrigger>
+                        <DropdownMenuPortal>
+                          <DropdownMenuSubContent>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                navigator.clipboard.writeText(collection.id)
+                              }}
+                            >
+                              Copy ID
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                navigator.clipboard.writeText(
+                                  JSON.stringify({ id: collection.id }),
+                                )
+                              }}
+                            >
+                              Copy as JSON
+                            </DropdownMenuItem>
+                          </DropdownMenuSubContent>
+                        </DropdownMenuPortal>
+                      </DropdownMenuSub>
+                      <DropdownMenuItem>
+                        <IconTrash className="size-4 opacity-60" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </TableCell>
               </TableRow>
             ))

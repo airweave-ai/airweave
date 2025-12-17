@@ -12,9 +12,10 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SourceConnectionsRouteImport } from './routes/source-connections'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ComponentsRouteImport } from './routes/components'
-import { Route as CollectionsRouteImport } from './routes/collections'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as CollectionsIndexRouteImport } from './routes/collections/index'
 import { Route as CollectionsNewRouteImport } from './routes/collections/new'
+import { Route as CollectionsSlugRouteImport } from './routes/collections/$slug'
 
 const SourceConnectionsRoute = SourceConnectionsRouteImport.update({
   id: '/source-connections',
@@ -31,80 +32,93 @@ const ComponentsRoute = ComponentsRouteImport.update({
   path: '/components',
   getParentRoute: () => rootRouteImport,
 } as any)
-const CollectionsRoute = CollectionsRouteImport.update({
-  id: '/collections',
-  path: '/collections',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CollectionsIndexRoute = CollectionsIndexRouteImport.update({
+  id: '/collections/',
+  path: '/collections/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CollectionsNewRoute = CollectionsNewRouteImport.update({
-  id: '/new',
-  path: '/new',
-  getParentRoute: () => CollectionsRoute,
+  id: '/collections/new',
+  path: '/collections/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CollectionsSlugRoute = CollectionsSlugRouteImport.update({
+  id: '/collections/$slug',
+  path: '/collections/$slug',
+  getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/collections': typeof CollectionsRouteWithChildren
   '/components': typeof ComponentsRoute
   '/dashboard': typeof DashboardRoute
   '/source-connections': typeof SourceConnectionsRoute
+  '/collections/$slug': typeof CollectionsSlugRoute
   '/collections/new': typeof CollectionsNewRoute
+  '/collections': typeof CollectionsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/collections': typeof CollectionsRouteWithChildren
   '/components': typeof ComponentsRoute
   '/dashboard': typeof DashboardRoute
   '/source-connections': typeof SourceConnectionsRoute
+  '/collections/$slug': typeof CollectionsSlugRoute
   '/collections/new': typeof CollectionsNewRoute
+  '/collections': typeof CollectionsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/collections': typeof CollectionsRouteWithChildren
   '/components': typeof ComponentsRoute
   '/dashboard': typeof DashboardRoute
   '/source-connections': typeof SourceConnectionsRoute
+  '/collections/$slug': typeof CollectionsSlugRoute
   '/collections/new': typeof CollectionsNewRoute
+  '/collections/': typeof CollectionsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/collections'
     | '/components'
     | '/dashboard'
     | '/source-connections'
+    | '/collections/$slug'
     | '/collections/new'
+    | '/collections'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/collections'
     | '/components'
     | '/dashboard'
     | '/source-connections'
+    | '/collections/$slug'
     | '/collections/new'
+    | '/collections'
   id:
     | '__root__'
     | '/'
-    | '/collections'
     | '/components'
     | '/dashboard'
     | '/source-connections'
+    | '/collections/$slug'
     | '/collections/new'
+    | '/collections/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  CollectionsRoute: typeof CollectionsRouteWithChildren
   ComponentsRoute: typeof ComponentsRoute
   DashboardRoute: typeof DashboardRoute
   SourceConnectionsRoute: typeof SourceConnectionsRoute
+  CollectionsSlugRoute: typeof CollectionsSlugRoute
+  CollectionsNewRoute: typeof CollectionsNewRoute
+  CollectionsIndexRoute: typeof CollectionsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -130,13 +144,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ComponentsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/collections': {
-      id: '/collections'
-      path: '/collections'
-      fullPath: '/collections'
-      preLoaderRoute: typeof CollectionsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/': {
       id: '/'
       path: '/'
@@ -144,34 +151,38 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/collections/': {
+      id: '/collections/'
+      path: '/collections'
+      fullPath: '/collections'
+      preLoaderRoute: typeof CollectionsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/collections/new': {
       id: '/collections/new'
-      path: '/new'
+      path: '/collections/new'
       fullPath: '/collections/new'
       preLoaderRoute: typeof CollectionsNewRouteImport
-      parentRoute: typeof CollectionsRoute
+      parentRoute: typeof rootRouteImport
+    }
+    '/collections/$slug': {
+      id: '/collections/$slug'
+      path: '/collections/$slug'
+      fullPath: '/collections/$slug'
+      preLoaderRoute: typeof CollectionsSlugRouteImport
+      parentRoute: typeof rootRouteImport
     }
   }
 }
 
-interface CollectionsRouteChildren {
-  CollectionsNewRoute: typeof CollectionsNewRoute
-}
-
-const CollectionsRouteChildren: CollectionsRouteChildren = {
-  CollectionsNewRoute: CollectionsNewRoute,
-}
-
-const CollectionsRouteWithChildren = CollectionsRoute._addFileChildren(
-  CollectionsRouteChildren,
-)
-
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  CollectionsRoute: CollectionsRouteWithChildren,
   ComponentsRoute: ComponentsRoute,
   DashboardRoute: DashboardRoute,
   SourceConnectionsRoute: SourceConnectionsRoute,
+  CollectionsSlugRoute: CollectionsSlugRoute,
+  CollectionsNewRoute: CollectionsNewRoute,
+  CollectionsIndexRoute: CollectionsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -91,7 +91,7 @@ export function Shell({
   const isNavItemActive = (url: string) => {
     if (url === '#') return false
     if (url === '/') return location.pathname === '/'
-    return location.pathname.startsWith(url)
+    return location.pathname === url
   }
 
   const defaultNavItems: NavItem[] = [
@@ -107,7 +107,7 @@ export function Shell({
       items: [
         {
           title: "Anand's collection",
-          url: '#',
+          url: '/collections/anands-collection',
         },
       ],
     },
@@ -176,11 +176,12 @@ export function Shell({
                     <span>{item.title}</span>
                   </SidebarMenuButton>
                   {item.items && item.items.length > 0 && (
-                    <SidebarMenuSub>
+                    <SidebarMenuSub className="mr-0 pr-0">
                       {item.items.map((subItem, index) => (
                         <SidebarMenuSubItem key={index}>
                           <SidebarMenuSubButton
                             render={<a href={subItem.url} />}
+                            isActive={isNavItemActive(subItem.url)}
                           >
                             {subItem.title}
                           </SidebarMenuSubButton>

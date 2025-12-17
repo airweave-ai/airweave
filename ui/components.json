@@ -11,6 +11,8 @@
     "prefix": ""
   },
   "iconLibrary": "tabler",
+  "menuColor": "inverted",
+  "menuAccent": "subtle",
   "aliases": {
     "components": "@/components",
     "utils": "@/lib/utils",
@@ -18,7 +20,7 @@
     "lib": "@/lib",
     "hooks": "@/hooks"
   },
-  "menuColor": "inverted",
-  "menuAccent": "subtle",
-  "registries": {}
+  "registries": {
+    "@ai-elements": "https://registry.ai-sdk.dev/{name}.json"
+  }
 }
