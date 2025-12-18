@@ -621,3 +621,9 @@ class PipedreamConfig(AuthProviderConfig):
         title="Environment",
         description="Pipedream environment (production or development)",
     )
+
+
+class CalendlyConfig(SourceConfig):
+    """Calendly configuration schema."""
+
+    pass
