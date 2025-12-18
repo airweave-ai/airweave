@@ -118,7 +118,7 @@ class ComposioBroker(BaseAuthBroker):
             "teams": "microsoft_teams",
             "onenote": "one_drive",  # OneNote uses OneDrive integration (same Graph API)
             "word": "one_drive",  # Word uses OneDrive integration (same Graph API)
-            "cal_com": "CAL",  # Cal.com integration slug in Composio
+            "cal_com": "cal",  # Cal.com integration slug in Composio
         }
 
         # Check if we have an explicit mapping
@@ -134,7 +134,18 @@ class ComposioBroker(BaseAuthBroker):
         matching = [a for a in accounts if a.get("toolkit", {}).get("slug") == slug]
 
         if not matching:
-            raise RuntimeError(f"No Composio connected accounts for slug '{slug}'")
+            # Log all available toolkit slugs for debugging
+            all_toolkits = {
+                acc.get("toolkit", {}).get("slug", "unknown") for acc in accounts
+            }
+            self.logger.error(
+                f"No Composio connected accounts for slug '{slug}'. "
+                f"Available slugs: {sorted(all_toolkits)}"
+            )
+            raise RuntimeError(
+                f"No Composio connected accounts for slug '{slug}'. "
+                f"Available slugs: {sorted(all_toolkits)}"
+            )
 
         selected = None
         if self.auth_config_id and self.account_id:
