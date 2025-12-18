@@ -48,14 +48,14 @@ async def generate_calendly_event_type(
     name = artifact.spec.name
     if token not in name:
         # Strategy 1: Prefix token (most visible for search)
-        # Format: "TOKEN Event Name" 
+        # Format: "TOKEN Event Name"
         name = f"{token} {name}"
-    
+
     # CRITICAL: Double-check token is in name before returning
     if token not in name:
         # Fallback: Append token if prefix didn't work
         name = f"{name} [{token}]"
-    
+
     # Final verification - if token still not in name, this is a critical error
     if token not in name:
         raise ValueError(
@@ -101,4 +101,3 @@ async def generate_calendly_scheduled_event_notes(
         notes += f"\n\nEvent ID: {token}"
 
     return notes
-

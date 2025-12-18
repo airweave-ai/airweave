@@ -21,7 +21,8 @@ class CalendlyEventTypeContent(BaseModel):
         description="Description of the event type in markdown format. Must include the token."
     )
     internal_note: Optional[str] = Field(
-        default=None, description="Internal note about the event type (not visible to invitees)"
+        default=None,
+        description="Internal note about the event type (not visible to invitees)",
     )
 
 
@@ -52,4 +53,3 @@ class CalendlyScheduledEvent(BaseModel):
 
     spec: CalendlyScheduledEventSpec
     content: CalendlyScheduledEventContent
-

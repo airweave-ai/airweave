@@ -82,7 +82,7 @@ class CalendlyBongo(BaseBongo):
             from monke.auth.broker import ComposioBroker
 
             self.logger.info("🔄 Refreshing Calendly access token...")
-            
+
             if self._composio_config:
                 # Use the specific Composio configuration for this connector
                 broker = ComposioBroker(
@@ -93,8 +93,9 @@ class CalendlyBongo(BaseBongo):
             else:
                 # Fallback to generic credentials resolver
                 from monke.auth.credentials_resolver import resolve_credentials
+
                 fresh_creds = await resolve_credentials("calendly", self._credentials)
-            
+
             self.access_token = fresh_creds["access_token"]
             self._token_refreshed = True
             self.logger.info("✅ Calendly access token refreshed")
@@ -113,17 +114,19 @@ class CalendlyBongo(BaseBongo):
                 f"{self.API_BASE}/users/me",
                 headers=self._headers(),
             )
-            
+
             # Handle 401 by refreshing token and retrying
             if resp.status_code == 401:
-                self.logger.warning("⚠️ Got 401 when fetching user info, refreshing token...")
+                self.logger.warning(
+                    "⚠️ Got 401 when fetching user info, refreshing token..."
+                )
                 await self._refresh_token()
                 await self._rate_limit()
                 resp = await client.get(
                     f"{self.API_BASE}/users/me",
                     headers=self._headers(),
                 )
-            
+
             resp.raise_for_status()
             data = resp.json()
             resource = data.get("resource", {})
@@ -133,7 +136,9 @@ class CalendlyBongo(BaseBongo):
             if self._organization_uri:
                 self.logger.info(f"✅ Got organization URI: {self._organization_uri}")
             else:
-                self.logger.warning("⚠️ No organization URI found, will use user context")
+                self.logger.warning(
+                    "⚠️ No organization URI found, will use user context"
+                )
 
     async def create_entities(self) -> List[Dict[str, Any]]:
         """Create event types in Calendly.
@@ -151,7 +156,7 @@ class CalendlyBongo(BaseBongo):
 
         entities: List[Dict[str, Any]] = []
         semaphore = asyncio.Semaphore(self.max_concurrency)
-        
+
         # Track tokens to detect collisions
         used_tokens: set[str] = set()
         token_lock = asyncio.Lock()
@@ -162,7 +167,7 @@ class CalendlyBongo(BaseBongo):
                 async with semaphore:
                     try:
                         await self._rate_limit()
-                        
+
                         # Generate unique token with collision detection
                         async with token_lock:
                             max_attempts = 100  # Prevent infinite loop
@@ -174,37 +179,45 @@ class CalendlyBongo(BaseBongo):
                                 )
                                 token = str(uuid.uuid4())[:8]
                                 attempts += 1
-                            
+
                             if attempts >= max_attempts:
                                 raise ValueError(
                                     f"Failed to generate unique token after {max_attempts} attempts. "
                                     f"Current token set size: {len(used_tokens)}"
                                 )
-                            
+
                             used_tokens.add(token)
                             if attempts > 0:
                                 self.logger.info(
                                     f"✅ Generated unique token after {attempts} collision(s): {token}"
                                 )
-                        
+
                         self.logger.info(
                             f"🔨 Generating content for event type with token: {token} "
                             f"(unique token #{len(used_tokens)})"
                         )
-                        name, description, duration_minutes = await generate_calendly_event_type(
-                            self.openai_model, token
+                        (
+                            name,
+                            description,
+                            duration_minutes,
+                        ) = await generate_calendly_event_type(self.openai_model, token)
+                        self.logger.info(
+                            f"📝 Generated event type: '{name}' (token: {token})"
                         )
-                        self.logger.info(f"📝 Generated event type: '{name}' (token: {token})")
                         # Verify token is in name
                         if token not in name:
-                            self.logger.warning(f"⚠️ Token {token} not found in generated name '{name}' - this may cause verification to fail!")
+                            self.logger.warning(
+                                f"⚠️ Token {token} not found in generated name '{name}' - this may cause verification to fail!"
+                            )
 
                         # Create event type
                         # Calendly API v2 structure requires 'owner' parameter
                         # Owner should be the user URI who owns the event type
                         if not self._user_uri:
-                            raise ValueError("No user URI available for creating event type (owner is required)")
-                        
+                            raise ValueError(
+                                "No user URI available for creating event type (owner is required)"
+                            )
+
                         request_body = {
                             "name": name,  # Token is already embedded in name by generation function
                             "duration": duration_minutes,
@@ -214,15 +227,17 @@ class CalendlyBongo(BaseBongo):
                             "active": True,
                             "owner": self._user_uri,  # Required: owner of the event type
                         }
-                        
+
                         # Add organization URI if available (optional but recommended)
                         if self._organization_uri:
                             request_body["organization"] = self._organization_uri
-                        
+
                         url = f"{self.API_BASE}/event_types"
                         self.logger.debug(f"Creating event type: URL={url}")
-                        self.logger.debug(f"Request body (sanitized): name={name}, duration={duration_minutes}, has_org={bool(self._organization_uri)}, has_user={bool(self._user_uri)}")
-                        
+                        self.logger.debug(
+                            f"Request body (sanitized): name={name}, duration={duration_minutes}, has_org={bool(self._organization_uri)}, has_user={bool(self._user_uri)}"
+                        )
+
                         resp = await client.post(
                             url,
                             headers=self._headers(),
@@ -231,7 +246,9 @@ class CalendlyBongo(BaseBongo):
 
                         # Handle 401 by refreshing token and retrying
                         if resp.status_code == 401:
-                            self.logger.warning("⚠️ Got 401 when creating event type, refreshing token...")
+                            self.logger.warning(
+                                "⚠️ Got 401 when creating event type, refreshing token..."
+                            )
                             await self._refresh_token()
                             await self._rate_limit()
                             resp = await client.post(
@@ -254,7 +271,9 @@ class CalendlyBongo(BaseBongo):
                                         f"Calendly API error: {error_title} - {error_message}"
                                     )
                                     if error_details:
-                                        self.logger.error(f"Error details: {error_details}")
+                                        self.logger.error(
+                                            f"Error details: {error_details}"
+                                        )
                             except Exception:
                                 pass
                             self.logger.error(
@@ -263,9 +282,7 @@ class CalendlyBongo(BaseBongo):
                             self.logger.error(
                                 f"Request URL: {self.API_BASE}/event_types"
                             )
-                            self.logger.error(
-                                f"Request body: {request_body}"
-                            )
+                            self.logger.error(f"Request body: {request_body}")
                             resp.raise_for_status()
 
                         resp.raise_for_status()
@@ -283,7 +300,7 @@ class CalendlyBongo(BaseBongo):
                         api_name = event_type.get("name", "MISSING")
                         api_description = event_type.get("description_plain", "MISSING")
                         api_internal_note = event_type.get("internal_note", "MISSING")
-                        
+
                         self.logger.info(
                             f"🔍 API RESPONSE VERIFICATION for token {token}:"
                         )
@@ -301,7 +318,7 @@ class CalendlyBongo(BaseBongo):
                             f"   • API returned internal_note: {'PRESENT' if api_internal_note and api_internal_note != 'MISSING' else 'MISSING'} "
                             f"(contains token: {token in str(api_internal_note) if api_internal_note else False})"
                         )
-                        
+
                         # CRITICAL: Verify token is in the returned name (most critical field)
                         api_name_str = str(api_name)
                         if token not in api_name_str:
@@ -310,8 +327,16 @@ class CalendlyBongo(BaseBongo):
                                 f"Sent name was '{name}'. This will cause verification to fail."
                             )
                             # Check if token is in other fields as fallback
-                            token_in_desc = token in str(api_description) if api_description else False
-                            token_in_note = token in str(api_internal_note) if api_internal_note else False
+                            token_in_desc = (
+                                token in str(api_description)
+                                if api_description
+                                else False
+                            )
+                            token_in_note = (
+                                token in str(api_internal_note)
+                                if api_internal_note
+                                else False
+                            )
                             if token_in_desc or token_in_note:
                                 self.logger.warning(
                                     f"⚠️ Token found in other fields (desc: {token_in_desc}, note: {token_in_note}) "
@@ -323,7 +348,9 @@ class CalendlyBongo(BaseBongo):
                                     f"This entity will definitely fail verification."
                                 )
                         else:
-                            self.logger.info(f"✅ Token {token} confirmed in API response name")
+                            self.logger.info(
+                                f"✅ Token {token} confirmed in API response name"
+                            )
 
                         # Entity descriptor used by generic verification
                         return {
@@ -358,7 +385,7 @@ class CalendlyBongo(BaseBongo):
 
         # SAFEGUARD: Store entities IMMEDIATELY after creation to prevent loss
         self.created_entities = entities
-        
+
         # Log entity storage for debugging
         self.logger.info(
             f"💾 STORAGE VERIFICATION: Stored {len(entities)} entities in self.created_entities"
@@ -368,7 +395,7 @@ class CalendlyBongo(BaseBongo):
                 f"   Entity #{i}: id={entity.get('id')}, token={entity.get('token')}, "
                 f"uri={entity.get('uri', 'missing')}"
             )
-        
+
         # Final verification: Check for duplicate tokens in created entities
         entity_tokens = [e.get("token") for e in entities if e.get("token")]
         unique_tokens = set(entity_tokens)
@@ -392,9 +419,9 @@ class CalendlyBongo(BaseBongo):
                 f"✅ Token uniqueness verified: {len(unique_tokens)} unique tokens for {len(entities)} entities"
             )
             self.logger.info(f"   Tokens: {sorted(entity_tokens)}")
-        
+
         self.logger.info(f"✅ Created {len(entities)} event types")
-        
+
         # CRITICAL: Verify entities are ready to be returned
         if not entities:
             self.logger.error("❌ CRITICAL: create_entities() returning empty list!")
@@ -403,7 +430,7 @@ class CalendlyBongo(BaseBongo):
                 f"✅ RETURNING {len(entities)} entities to test framework: "
                 f"tokens={[e.get('token') for e in entities]}"
             )
-        
+
         return entities
 
     async def update_entities(self) -> List[Dict[str, Any]]:
@@ -424,12 +451,21 @@ class CalendlyBongo(BaseBongo):
                 try:
                     await self._rate_limit()
                     token = event_info.get("token") or str(uuid.uuid4())[:8]
-                    self.logger.info(f"🔨 Generating update content with token: {token}")
-                    name, description, duration_minutes = await generate_calendly_event_type(
+                    self.logger.info(
+                        f"🔨 Generating update content with token: {token}"
+                    )
+                    (
+                        name,
+                        description,
+                        duration_minutes,
+                    ) = await generate_calendly_event_type(
                         self.openai_model, token, is_update=True
                     )
 
-                    event_type_uri = event_info.get("uri") or f"{self.API_BASE}/event_types/{event_info['id']}"
+                    event_type_uri = (
+                        event_info.get("uri")
+                        or f"{self.API_BASE}/event_types/{event_info['id']}"
+                    )
 
                     # Update event type
                     resp = await client.put(
@@ -445,7 +481,9 @@ class CalendlyBongo(BaseBongo):
 
                     # Handle 401 by refreshing token and retrying
                     if resp.status_code == 401:
-                        self.logger.warning("⚠️ Got 401 when updating event type, refreshing token...")
+                        self.logger.warning(
+                            "⚠️ Got 401 when updating event type, refreshing token..."
+                        )
                         await self._refresh_token()
                         await self._rate_limit()
                         resp = await client.put(
@@ -470,13 +508,17 @@ class CalendlyBongo(BaseBongo):
                             "token": token,
                             "expected_content": token,
                             "updated": True,
-                            "path": event_info.get("path", f"calendly/event_type/{event_info['id']}"),
+                            "path": event_info.get(
+                                "path", f"calendly/event_type/{event_info['id']}"
+                            ),
                         }
                     )
                     self.logger.info(f"📝 Updated event type: {event_info['id']}")
 
                 except Exception as e:
-                    self.logger.error(f"Failed to update event type {event_info['id']}: {e}")
+                    self.logger.error(
+                        f"Failed to update event type {event_info['id']}: {e}"
+                    )
                     # Continue with next event type
 
         return updated
@@ -493,7 +535,7 @@ class CalendlyBongo(BaseBongo):
         self.logger.info(
             f"🥁 Deleting {len(entities)} specific event types from Calendly"
         )
-        
+
         # SAFEGUARD: Log what we're deleting to track premature deletion
         if entities:
             entity_info = [
@@ -501,17 +543,20 @@ class CalendlyBongo(BaseBongo):
                 for e in entities
             ]
             self.logger.info(
-                f"🗑️ DELETION REQUEST: About to delete entities:\n   " + "\n   ".join(entity_info)
+                f"🗑️ DELETION REQUEST: About to delete entities:\n   "
+                + "\n   ".join(entity_info)
             )
-        
+
         deleted_ids: List[str] = []
 
         async with httpx.AsyncClient() as client:
             for entity in entities:
                 entity_id = entity.get("id")
-                event_type_uri = entity.get("uri") or f"{self.API_BASE}/event_types/{entity_id}"
+                event_type_uri = (
+                    entity.get("uri") or f"{self.API_BASE}/event_types/{entity_id}"
+                )
                 deletion_succeeded = False
-                
+
                 try:
                     await self._rate_limit()
                     # Calendly uses DELETE method for event types
@@ -522,7 +567,9 @@ class CalendlyBongo(BaseBongo):
 
                     # Handle 401 by refreshing token and retrying
                     if resp.status_code == 401:
-                        self.logger.warning("⚠️ Got 401 when deleting event type, refreshing token...")
+                        self.logger.warning(
+                            "⚠️ Got 401 when deleting event type, refreshing token..."
+                        )
                         await self._refresh_token()
                         await self._rate_limit()
                         resp = await client.delete(
@@ -533,12 +580,16 @@ class CalendlyBongo(BaseBongo):
                     if resp.status_code == 204:
                         deleted_ids.append(entity_id)
                         deletion_succeeded = True
-                        self.logger.info(f"🗑️ Successfully deleted event type: {entity_id}")
+                        self.logger.info(
+                            f"🗑️ Successfully deleted event type: {entity_id}"
+                        )
                     elif resp.status_code == 404:
                         # 404 means the entity doesn't exist - verify by trying to fetch it
                         await self._rate_limit()
                         try:
-                            verify_resp = await client.get(event_type_uri, headers=self._headers())
+                            verify_resp = await client.get(
+                                event_type_uri, headers=self._headers()
+                            )
                             if verify_resp.status_code == 200:
                                 # Entity still exists - deletion failed but API returned 404
                                 # Try deactivating instead (Calendly might require deactivation before deletion)
@@ -580,7 +631,9 @@ class CalendlyBongo(BaseBongo):
                             )
                     else:
                         # Unexpected status code - try deactivation as fallback
-                        error_text = resp.text[:200] if resp.text else "No error details"
+                        error_text = (
+                            resp.text[:200] if resp.text else "No error details"
+                        )
                         self.logger.warning(
                             f"⚠️ Deletion failed for event type {entity_id}: "
                             f"status {resp.status_code}, error: {error_text}. "
@@ -615,13 +668,17 @@ class CalendlyBongo(BaseBongo):
                         # Try to verify if entity exists
                         try:
                             await self._rate_limit()
-                            verify_resp = await client.get(event_type_uri, headers=self._headers())
+                            verify_resp = await client.get(
+                                event_type_uri, headers=self._headers()
+                            )
                             # Handle 401 in verification
                             if verify_resp.status_code == 401:
                                 await self._refresh_token()
                                 await self._rate_limit()
-                                verify_resp = await client.get(event_type_uri, headers=self._headers())
-                            
+                                verify_resp = await client.get(
+                                    event_type_uri, headers=self._headers()
+                                )
+
                             if verify_resp.status_code == 200:
                                 # Entity exists - try deactivation
                                 self.logger.warning(
@@ -721,7 +778,7 @@ class CalendlyBongo(BaseBongo):
                         self.logger.error(
                             f"❌ Failed to deactivate event type {entity_id}: {deactivate_e}"
                         )
-                
+
                 if not deletion_succeeded:
                     self.logger.warning(
                         f"⚠️ Event type {entity_id} could not be deleted or deactivated. "
@@ -733,31 +790,32 @@ class CalendlyBongo(BaseBongo):
     async def cleanup(self):
         """Clean up all test data."""
         self.logger.info("🧹 Cleaning up Calendly test data")
-        
+
         # SAFEGUARD: Log what we're about to delete to prevent premature deletion
         if hasattr(self, "created_entities") and self.created_entities:
             entity_count = len(self.created_entities)
             entity_ids = [e.get("id", "unknown") for e in self.created_entities]
             entity_tokens = [e.get("token", "no-token") for e in self.created_entities]
-            
+
             self.logger.info(
                 f"🗑️ PRE-DELETION CHECK: About to delete {entity_count} entities"
             )
             self.logger.info(f"   Entity IDs: {entity_ids}")
             self.logger.info(f"   Entity tokens: {entity_tokens}")
-            
+
             # Verify entities still exist before deletion (safety check)
             if entity_count > 0:
                 self.logger.info(
                     f"⚠️ DELETION WARNING: Deleting {entity_count} entities with tokens: {entity_tokens}"
                 )
-            
+
             await self.delete_entities()
         else:
-            self.logger.info("ℹ️ No entities to clean up (created_entities is empty or missing)")
-        
+            self.logger.info(
+                "ℹ️ No entities to clean up (created_entities is empty or missing)"
+            )
+
         # Only clear tracking after successful deletion
         self._event_types = []
         # Don't clear _user_uri as it might be needed for subsequent operations
         # self._user_uri = None
-

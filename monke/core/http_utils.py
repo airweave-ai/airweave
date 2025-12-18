@@ -40,6 +40,19 @@ def http_post(
         params=params,
         timeout=timeout,
     )
+    if resp.status_code == 422:
+        # Log validation error details for debugging
+        try:
+            error_body = resp.json()
+            import json as json_lib
+            from monke.utils.logging import get_logger
+
+            logger = get_logger("http_utils")
+            logger.error(
+                f"Validation error (422) for POST {path}: {json_lib.dumps(error_body, indent=2)}"
+            )
+        except Exception:
+            pass  # If we can't parse the error, continue with raise_for_status
     resp.raise_for_status()
     return resp.json()
 

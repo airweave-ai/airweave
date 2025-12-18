@@ -438,4 +438,3 @@ class CalendlyEventInviteeEntity(BaseEntity):
         """Clickable invitee URL."""
         invitee_id = self.uri.split("/")[-1]
         return f"https://calendly.com/invitees/{invitee_id}"
-
