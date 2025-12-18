@@ -412,7 +412,7 @@ class ComposioAuthProvider(BaseAuthProvider):
                         f"\n  ⚠️ Provided empty 'refresh_token' for '{source_short_name}' as it's likely API key auth.\n"
                     )
                     continue
-                
+
                 missing_fields.append(airweave_field)
                 self.logger.warning(
                     f"\n  ❌ Missing field: '{airweave_field}' (looked for "
