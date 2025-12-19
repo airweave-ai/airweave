@@ -7,7 +7,7 @@ Does not support embeddings or reranking.
 import json
 from typing import Any, Dict, List, Optional
 
-from cerebras.cloud.sdk import Cerebras
+from cerebras.cloud.sdk import AsyncCerebras
 from pydantic import BaseModel
 from tiktoken import Encoding
 
@@ -28,7 +28,8 @@ class CerebrasProvider(BaseProvider):
         super().__init__(api_key, model_spec, ctx)
 
         try:
-            self.client = Cerebras(api_key=api_key)
+            # Set 30s timeout to prevent indefinite hangs
+            self.client = AsyncCerebras(api_key=api_key, timeout=30.0)
         except Exception as e:
             raise RuntimeError(f"Failed to initialize Cerebras client: {e}") from e
 
@@ -48,7 +49,7 @@ class CerebrasProvider(BaseProvider):
             raise ValueError("Cannot generate completion with empty messages")
 
         try:
-            response = self.client.chat.completions.create(
+            response = await self.client.chat.completions.create(
                 model=self.model_spec.llm_model.name,
                 messages=messages,
                 max_completion_tokens=self.MAX_COMPLETION_TOKENS,
@@ -88,7 +89,7 @@ class CerebrasProvider(BaseProvider):
 
         try:
             # Strict schema mode (preferred)
-            response = self.client.chat.completions.create(
+            response = await self.client.chat.completions.create(
                 model=self.model_spec.llm_model.name,
                 messages=messages,
                 response_format={
