@@ -66,16 +66,25 @@ class GenerateAnswer(SearchOperation):
         chosen_count_for_metrics = 0  # Track for metrics
 
         async def call_provider(provider: BaseProvider) -> str:
+            import time
             nonlocal chosen_count_for_metrics
 
             if not provider.model_spec.llm_model:
                 raise RuntimeError("LLM model not configured for provider")
 
+            print(f"[GENERATE_ANSWER DEBUG] Starting with provider: {provider.__class__.__name__}")
+            budget_start = time.time()
+            
             # Budget and format results for THIS SPECIFIC provider
             formatted_context, chosen_count = self._budget_and_format_results(
                 results, context.query, provider, ctx
             )
             chosen_count_for_metrics = chosen_count  # Store for metrics
+
+            budget_elapsed = time.time() - budget_start
+            print(f"[GENERATE_ANSWER DEBUG] Budgeting took {budget_elapsed:.2f}s")
+            print(f"[GENERATE_ANSWER DEBUG] {chosen_count} results fit in context")
+            print(f"[GENERATE_ANSWER DEBUG] Context length: {len(formatted_context)} chars")
 
             ctx.logger.debug(
                 f"[GenerateAnswer] {chosen_count} results fit in {provider.__class__.__name__} "
@@ -89,7 +98,13 @@ class GenerateAnswer(SearchOperation):
                 {"role": "user", "content": context.query},
             ]
 
-            return await provider.generate(messages)
+            print(f"[GENERATE_ANSWER DEBUG] Calling provider.generate()...")
+            generate_start = time.time()
+            result = await provider.generate(messages)
+            generate_elapsed = time.time() - generate_start
+            print(f"[GENERATE_ANSWER DEBUG] ✓ provider.generate() completed in {generate_elapsed:.2f}s")
+            
+            return result
 
         completion = await self._execute_with_provider_fallback(
             providers=self.providers,

@@ -29,10 +29,15 @@ class CerebrasProvider(BaseProvider):
 
         try:
             # Set 30s timeout to prevent indefinite hangs
+            print(f"[CEREBRAS DEBUG INIT] Initializing AsyncCerebras client with 30s timeout")
             self.client = AsyncCerebras(api_key=api_key, timeout=30.0)
+            print(f"[CEREBRAS DEBUG INIT] ✓ Client initialized successfully")
         except Exception as e:
+            print(f"[CEREBRAS DEBUG INIT] ✗ Failed to initialize client: {e}")
             raise RuntimeError(f"Failed to initialize Cerebras client: {e}") from e
 
+        print(f"[CEREBRAS DEBUG INIT] Model: {model_spec.llm_model.name if model_spec.llm_model else 'None'}")
+        print(f"[CEREBRAS DEBUG INIT] Context window: {model_spec.llm_model.context_window if model_spec.llm_model else 'None'}")
         self.ctx.logger.debug(f"[CerebrasProvider] Initialized with model spec: {model_spec}")
 
         self.llm_tokenizer: Optional[Encoding] = None
@@ -42,32 +47,55 @@ class CerebrasProvider(BaseProvider):
 
     async def generate(self, messages: List[Dict[str, str]]) -> str:
         """Generate text completion using Cerebras."""
+        import time
+        
         if not self.model_spec.llm_model:
             raise RuntimeError("LLM model not configured for Cerebras provider")
 
         if not messages:
             raise ValueError("Cannot generate completion with empty messages")
 
+        # Log request details
+        total_chars = sum(len(str(m.get("content", ""))) for m in messages)
+        estimated_tokens = total_chars // 4
+        print(f"[CEREBRAS DEBUG] Starting API call")
+        print(f"[CEREBRAS DEBUG] Model: {self.model_spec.llm_model.name}")
+        print(f"[CEREBRAS DEBUG] Messages: {len(messages)}")
+        print(f"[CEREBRAS DEBUG] Total chars: {total_chars}")
+        print(f"[CEREBRAS DEBUG] Est. input tokens: {estimated_tokens}")
+        print(f"[CEREBRAS DEBUG] Max completion tokens: {self.MAX_COMPLETION_TOKENS}")
+        print(f"[CEREBRAS DEBUG] Timeout: 30s")
+
+        start_time = time.time()
         try:
+            print(f"[CEREBRAS DEBUG] Sending request to Cerebras API at {time.time():.2f}...")
             response = await self.client.chat.completions.create(
                 model=self.model_spec.llm_model.name,
                 messages=messages,
                 max_completion_tokens=self.MAX_COMPLETION_TOKENS,
             )
+            elapsed = time.time() - start_time
+            print(f"[CEREBRAS DEBUG] ✓ Response received in {elapsed:.2f}s")
         except Exception as e:
+            elapsed = time.time() - start_time
+            print(f"[CEREBRAS DEBUG] ✗ API call failed after {elapsed:.2f}s: {type(e).__name__}: {e}")
             raise RuntimeError(f"Cerebras completion API call failed: {e}") from e
 
         # Extract content from response
         content = response.choices[0].message.content
         if not content:
+            print(f"[CEREBRAS DEBUG] ✗ Empty content in response")
             raise ProviderError("Cerebras returned empty completion content")
 
+        print(f"[CEREBRAS DEBUG] ✓ Got {len(content)} chars response")
         return content
 
     async def structured_output(
         self, messages: List[Dict[str, str]], schema: type[BaseModel]
     ) -> BaseModel:
         """Generate structured output using Cerebras JSON schema mode."""
+        import time
+        
         if not self.model_spec.llm_model:
             raise RuntimeError("LLM model not configured for Cerebras provider")
 
@@ -87,8 +115,18 @@ class CerebrasProvider(BaseProvider):
         # Normalize arrays: drop min/max and, when prefixItems present, set items: false.
         schema_json = self._normalize_arrays_for_cerebras(schema_json)
 
+        # Log request details
+        total_chars = sum(len(str(m.get("content", ""))) for m in messages)
+        print(f"[CEREBRAS DEBUG STRUCTURED] Starting API call")
+        print(f"[CEREBRAS DEBUG STRUCTURED] Model: {self.model_spec.llm_model.name}")
+        print(f"[CEREBRAS DEBUG STRUCTURED] Schema: {schema.__name__}")
+        print(f"[CEREBRAS DEBUG STRUCTURED] Total chars: {total_chars}")
+        print(f"[CEREBRAS DEBUG STRUCTURED] Timeout: 30s")
+
+        start_time = time.time()
         try:
             # Strict schema mode (preferred)
+            print(f"[CEREBRAS DEBUG STRUCTURED] Sending request at {time.time():.2f}...")
             response = await self.client.chat.completions.create(
                 model=self.model_spec.llm_model.name,
                 messages=messages,
@@ -102,7 +140,11 @@ class CerebrasProvider(BaseProvider):
                 },
                 max_completion_tokens=self.MAX_STRUCTURED_OUTPUT_TOKENS,
             )
+            elapsed = time.time() - start_time
+            print(f"[CEREBRAS DEBUG STRUCTURED] ✓ Response received in {elapsed:.2f}s")
         except Exception as e:
+            elapsed = time.time() - start_time
+            print(f"[CEREBRAS DEBUG STRUCTURED] ✗ API call failed after {elapsed:.2f}s: {type(e).__name__}: {e}")
             raise RuntimeError(f"Cerebras structured output API call failed: {e}") from e
 
         content = response.choices[0].message.content
