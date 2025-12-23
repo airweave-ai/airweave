@@ -62,6 +62,8 @@ services:
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
       - TEXT2VEC_INFERENCE_URL=http://text2vec-transformers:8080
+      # Local AI configuration
+      - OLLAMA_BASE_URL=http://ollama:11434
       # Environment configuration (can be overridden in .env)
       - ENVIRONMENT=${ENVIRONMENT:-local}
       - LOCAL_DEVELOPMENT=${LOCAL_DEVELOPMENT:-true}
@@ -70,7 +72,9 @@ services:
       - TEMPORAL_PORT=7233
       - TEMPORAL_NAMESPACE=default
       - TEMPORAL_ENABLED=true
+      - STATE_SECRET=${STATE_SECRET}
       - AUTH_ENABLED=false
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
     depends_on:
       postgres:
         condition: service_healthy
@@ -204,6 +208,8 @@ services:
       - TEMPORAL_NAMESPACE=default
       - TEMPORAL_TASK_QUEUE=airweave-sync-queue
       - TEMPORAL_ENABLED=true
+      - STATE_SECRET=${STATE_SECRET}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
     volumes:
       - ../backend:/app
     entrypoint: [ "python", "-m", "airweave.platform.temporal.worker" ]
@@ -214,7 +220,35 @@ services:
         condition: service_healthy
     restart: on-failure
 
+  ollama:
+    container_name: airweave-ollama
+    image: ollama/ollama:latest
+    # Profile: only start if explicitly enabled with --profile local-llm
+    # Allows users to run local Llama models instead of cloud AI providers
+    profiles:
+      - local-llm
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # GPU support (uncomment if you have NVIDIA GPU)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    healthcheck:
+      test: [ "CMD", "ollama", "list" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: on-failure
+
 volumes:
   postgres_data:
   redis_data:
   qdrant_data:
+  ollama_data:
