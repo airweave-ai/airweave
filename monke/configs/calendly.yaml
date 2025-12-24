@@ -1,0 +1,58 @@
+name: calendly_test
+description: End-to-end test for Calendly source using Monke
+
+connector:
+  name: Calendly
+  type: calendly
+  auth_mode: composio
+  composio_config:
+    account_id: ca_SE-YEKdldCbu  # Replace with actual Composio account ID
+    auth_config_id: ac_CLQ0xBLjC8wx  # Replace with actual Composio auth config ID
+  config_fields:
+    openai_model: "gpt-4.1-mini"  # Model for content generation
+    rate_limit_delay_ms: 500  # Delay between API calls for Calendly
+    max_concurrency: 1  # Calendly API rate limits are conservative
+
+test_flow:
+  steps:
+    - cleanup
+    - create
+    - sync
+    - verify
+    - update
+    - sync
+    - verify
+    - partial_delete
+    - sync
+    - verify_partial_deletion
+    - verify_remaining_entities
+    - complete_delete
+    - sync
+    - verify_complete_deletion
+    - cleanup
+    - collection_cleanup
+
+deletion:
+  partial_delete_count: 1
+  verify_partial_deletion: true
+  verify_remaining_entities: true
+  verify_complete_deletion: true
+
+entity_count: 3  # Number of event types to create
+
+collection:
+  name: Calendly Test Collection
+
+verification:
+  retry_attempts: 5
+  retry_delay_seconds: 10
+  score_threshold: 0.0
+  expected_fields:
+    - name
+    - uri
+    - description_plain
+
+# Note: Calendly doesn't allow creating scheduled events via API.
+# Scheduled events are created when someone books a meeting.
+# This test focuses on event types, which can be created programmatically.
+
