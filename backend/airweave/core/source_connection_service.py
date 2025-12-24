@@ -1463,7 +1463,9 @@ class SourceConnectionService:
         module_name = class_name.replace("Source", "").lower()
 
         # Handle special cases
-        if module_name.startswith("google") and len(module_name) > 6:
+        if module_name == "calcom":
+            module_name = "cal_com"
+        elif module_name.startswith("google") and len(module_name) > 6:
             module_name = "google_" + module_name[6:]
         elif module_name.startswith("outlook") and len(module_name) > 7:
             module_name = "outlook_" + module_name[7:]
