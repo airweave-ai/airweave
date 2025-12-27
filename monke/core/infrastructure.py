@@ -30,6 +30,13 @@ def setup_test_infrastructure(config: TestConfig, context: TestContext) -> None:
     connection_payload = _build_connection_payload(config, context)
     source_connection = _create_source_connection(connection_payload)
     context.source_connection_id = source_connection["id"]
+
+    # Capture sync_id for raw data verification
+    sync_id = source_connection.get("sync_id")
+    if sync_id:
+        context.sync_id = str(sync_id)
+        logger.info(f"📦 Captured sync_id for raw data verification: {context.sync_id}")
+
     logger.info(f"✅ Created source connection: {context.source_connection_id}")
 
 

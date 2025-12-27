@@ -1,6 +1,7 @@
 """Test step implementations with parallelized verification and robust sync handling."""
 
 import asyncio
+import os
 import time
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Tuple
@@ -929,6 +930,112 @@ class CollectionCleanupStep(TestStep):
             # Don't re-raise - cleanup should be best-effort
 
 
+class VerifyRawDataStep(TestStep):
+    """Verify raw data was captured to local storage (local backend only).
+
+    This step checks that the raw data capture system stored entity data
+    during sync. It automatically skips when running against a remote
+    Airweave backend since local filesystem access is required.
+    """
+
+    def _is_local_backend(self) -> bool:
+        """Check if pointing at a local Airweave backend."""
+        url = os.getenv("AIRWEAVE_API_URL", "http://localhost:8001").lower()
+        return any(x in url for x in ["localhost", "127.0.0.1", "0.0.0.0"])
+
+    async def execute(self) -> None:
+        """Verify raw data files exist for the current sync."""
+        self.logger.info("=" * 80)
+        self.logger.info("📦 RAW DATA VERIFICATION: Checking local storage capture")
+        self.logger.info("=" * 80)
+
+        # Skip if not running locally
+        if not self._is_local_backend():
+            self.logger.info("⏭️ Skipping raw data verification (remote backend)")
+            self.logger.info("   Raw data capture verification requires local filesystem access")
+            return
+
+        # Get sync_id from context
+        sync_id = self.context.sync_id
+        if not sync_id:
+            self.logger.warning("⚠️ No sync_id found in context, skipping raw data verification")
+            return
+
+        self.logger.info(f"🔍 Verifying raw data for sync: {sync_id}")
+
+        # Import Path here to avoid top-level import issues
+        from pathlib import Path
+
+        # Determine storage path - check common locations
+        storage_path = os.getenv("STORAGE_PATH")
+        if storage_path:
+            base_path = Path(storage_path)
+        else:
+            # Try common local development paths
+            candidates = [
+                Path("local_storage"),
+                Path("backend/local_storage"),
+                Path("/app/local_storage"),
+            ]
+            base_path = None
+            for candidate in candidates:
+                if candidate.exists():
+                    base_path = candidate
+                    break
+
+            if not base_path:
+                self.logger.warning("⚠️ Could not find local_storage directory, skipping verification")
+                return
+
+        raw_path = base_path / "raw" / sync_id
+        self.logger.info(f"📂 Checking raw data path: {raw_path}")
+
+        errors = []
+
+        # Check manifest exists
+        manifest = raw_path / "manifest.json"
+        if not manifest.exists():
+            errors.append(f"Missing manifest.json at {manifest}")
+        else:
+            self.logger.info("✅ Found manifest.json")
+
+        # Check entities directory has files
+        entities_dir = raw_path / "entities"
+        if not entities_dir.exists():
+            errors.append(f"Missing entities directory at {entities_dir}")
+        else:
+            entity_files = list(entities_dir.glob("*.json"))
+            if not entity_files:
+                errors.append(f"No entity JSON files in {entities_dir}")
+            else:
+                self.logger.info(f"✅ Found {len(entity_files)} entity file(s)")
+
+        # Check files directory (optional - only for file-based connectors)
+        files_dir = raw_path / "files"
+        if files_dir.exists():
+            file_count = len(list(files_dir.iterdir()))
+            if file_count > 0:
+                self.logger.info(f"✅ Found {file_count} raw file(s) in files directory")
+            else:
+                self.logger.info("ℹ️ Files directory exists but is empty")
+        else:
+            self.logger.info("ℹ️ No files directory (normal for non-file connectors)")
+
+        # Report results
+        self.logger.info("=" * 80)
+        if errors:
+            self.logger.error(f"❌ RAW DATA VERIFICATION FAILED")
+            for error in errors:
+                self.logger.error(f"   • {error}")
+            self.logger.info("=" * 80)
+            raise Exception("; ".join(errors))
+        else:
+            entity_count = len(list(entities_dir.glob("*.json"))) if entities_dir.exists() else 0
+            self.logger.info(f"✅ RAW DATA VERIFICATION PASSED")
+            self.logger.info(f"📊 Summary: {entity_count} entities captured to {raw_path}")
+            self.logger.info("=" * 80)
+
+
 class TestStepFactory:
     """Factory for creating test steps."""
 
@@ -939,6 +1046,7 @@ class TestStepFactory:
         "sync": SyncStep,
         "force_full_sync": SyncStep,  # Use same class with force_full_sync=True
         "verify": VerifyStep,
+        "verify_raw_data": VerifyRawDataStep,
         "update": UpdateStep,
         "partial_delete": PartialDeleteStep,
         "verify_partial_deletion": VerifyPartialDeletionStep,

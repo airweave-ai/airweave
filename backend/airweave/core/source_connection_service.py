@@ -519,13 +519,18 @@ class SourceConnectionService:
         if not source_conn:
             raise HTTPException(status_code=404, detail="Source connection not found")
 
+        # Capture attributes upfront to avoid lazy-loading issues after session changes
+        # (cancel_job and other operations may detach the object from the session)
+        sync_id = source_conn.sync_id
+        readable_collection_id = source_conn.readable_collection_id
+
         # Build response before deletion
         response = await self._build_source_connection_response(db, source_conn, ctx)
 
         # Cancel any running jobs before deletion
-        if source_conn.sync_id:
+        if sync_id:
             # Get the latest running job for this source connection
-            latest_job = await crud.sync_job.get_latest_by_sync_id(db, sync_id=source_conn.sync_id)
+            latest_job = await crud.sync_job.get_latest_by_sync_id(db, sync_id=sync_id)
             if latest_job and latest_job.status in [SyncJobStatus.PENDING, SyncJobStatus.RUNNING]:
                 ctx.logger.info(
                     f"Cancelling job {latest_job.id} for source connection {id} before deletion"
@@ -544,13 +549,16 @@ class SourceConnectionService:
                     ctx.logger.warning(f"Failed to cancel job {latest_job.id} during deletion: {e}")
 
         # Clean up data
-        if source_conn.sync_id:
+        if sync_id:
             # Clean up destination data
-            if source_conn.readable_collection_id:
+            if readable_collection_id:
                 await self._cleanup_destination_data(db, source_conn, ctx)
 
             # Clean up Temporal schedules
-            await self._cleanup_temporal_schedules(source_conn.sync_id, db, ctx)
+            await self._cleanup_temporal_schedules(sync_id, db, ctx)
+
+            # Clean up raw data store (if enabled)
+            await self._cleanup_raw_data(sync_id, ctx)
 
         # Delete the source connection
         await crud.source_connection.remove(db, id=id, ctx=ctx)
@@ -1854,6 +1862,20 @@ class SourceConnectionService:
                             )
 
         return source_conn_response
+
+    async def _cleanup_raw_data(self, sync_id: UUID, ctx: ApiContext) -> None:
+        """Clean up raw data store for a sync."""
+        try:
+            from airweave.platform.sync import raw_data_service
+
+            sync_id_str = str(sync_id)
+            if await raw_data_service.sync_exists(sync_id_str):
+                deleted = await raw_data_service.delete_sync(sync_id_str)
+                if deleted:
+                    ctx.logger.info(f"Deleted raw data store for sync {sync_id}")
+        except Exception as e:
+            # Log but don't fail deletion
+            ctx.logger.warning(f"Failed to cleanup raw data for sync {sync_id}: {e}")
 
     # Import helper methods from existing helpers
     from airweave.core.source_connection_service_helpers import (

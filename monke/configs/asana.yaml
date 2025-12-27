@@ -18,9 +18,11 @@ test_flow:
     - cleanup
     - create
     - sync
+    - verify_raw_data          # Verify raw data capture (local only)
     - verify
     - update
     - sync
+    - verify_raw_data          # Verify raw data still present after update
     - verify
     - partial_delete
     - sync

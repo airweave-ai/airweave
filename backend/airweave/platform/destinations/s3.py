@@ -22,7 +22,7 @@ from airweave.core.logging import logger as default_logger
 from airweave.platform.configs.auth import S3AuthConfig
 from airweave.platform.decorators import destination
 from airweave.platform.destinations._base import BaseDestination
-from airweave.platform.storage import storage_manager
+from airweave.platform.storage import sync_file_manager
 
 
 @destination("S3", "s3", auth_config_class=S3AuthConfig, supports_vector=False)
@@ -292,8 +292,8 @@ class S3Destination(BaseDestination):
         blob_key = None
         if self.sync_id and filename:
             try:
-                # Use storage_manager to get file content
-                file_content = await storage_manager.get_file_content(
+                # Use sync_file_manager to get file content
+                file_content = await sync_file_manager.get_file_content(
                     entity_id=entity_id,
                     sync_id=self.sync_id,
                     filename=filename,

@@ -1,4 +1,7 @@
-"""Storage-specific exceptions."""
+"""Storage exceptions for Airweave.
+
+All storage-related exceptions inherit from StorageException.
+"""
 
 
 class StorageException(Exception):

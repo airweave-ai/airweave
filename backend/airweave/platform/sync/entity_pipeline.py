@@ -151,32 +151,10 @@ class EntityPipeline:
         sync_context: SyncContext,
     ) -> None:
         """Process a list of entities."""
-        # Eval data capture (if enabled via config)
         # Populate BaseEntity fields from flagged fields BEFORE duplicate detection
         # This sets entity_id, name, created_at, updated_at from flagged source fields
         for entity in entities:
             self._populate_base_entity_fields_from_flags(entity)
-
-        # Eval data capture (AFTER field population so entity_id is set)
-        # Captures raw entity snapshots to Azure Blob Storage for evaluation
-        from airweave.core.config import settings
-
-        if settings.EVAL_DATA_CAPTURE_ENABLED:
-            try:
-                from airweave_evals.capture import EvalDataCapture
-
-                capture = EvalDataCapture()
-                snapshot_name = capture.capture(entities=entities, sync_context=sync_context)
-                sync_context.logger.info(
-                    f"Captured {len(entities)} entities to Azure Blob: {snapshot_name}"
-                )
-            except ImportError:
-                sync_context.logger.warning(
-                    "EVAL_DATA_CAPTURE_ENABLED but airweave_evals not installed. "
-                    "Install with: pip install -e /path/to/evals2"
-                )
-            except Exception as e:
-                sync_context.logger.error(f"Failed to capture eval data: {e}")
 
         unique_entities = await self._filter_duplicates(entities, sync_context)
 
@@ -189,6 +167,10 @@ class EntityPipeline:
         await self.compute_hashes_for_batch(unique_entities, sync_context)
 
         partitions = await self._determine_actions(unique_entities, sync_context)
+
+        # Raw data capture (AFTER action determination so we only store INSERT/UPDATE)
+        # Captures raw entity snapshots for replay/re-processing with different configs
+        await self._capture_raw_data(partitions, sync_context)
 
         # Early exit: If nothing needs to be processed (only KEEP entities)
         if not any(partitions[k] for k in ("inserts", "updates", "deletes")):
@@ -312,6 +294,48 @@ class EntityPipeline:
         )
 
         return unique_entities
+
+    # ------------------------------------------------------------------------------------
+    # Raw Data Capture
+    # ------------------------------------------------------------------------------------
+
+    async def _capture_raw_data(
+        self, partitions: Dict[str, Any], sync_context: SyncContext
+    ) -> None:
+        """Capture raw entities based on their action (INSERT/UPDATE/DELETE).
+
+        This captures entities after action determination:
+        - INSERT/UPDATE: Upsert to raw data store
+        - DELETE: Remove from raw data store
+
+        Args:
+            partitions: Dict with inserts, updates, deletes, keeps lists
+            sync_context: The sync context
+        """
+        try:
+            from airweave.platform.sync import raw_data_service
+
+            # Upsert INSERT and UPDATE entities
+            entities_to_upsert = partitions["inserts"] + partitions["updates"]
+            if entities_to_upsert:
+                count = await raw_data_service.upsert_entities(
+                    entities=entities_to_upsert,
+                    sync_context=sync_context,
+                )
+                if count:
+                    sync_context.logger.debug(f"Stored {count} entities to raw data store")
+
+            # Delete entities marked for deletion
+            deletes = partitions["deletes"]
+            if deletes:
+                entity_ids = [str(e.entity_id) for e in deletes]
+                deleted = await raw_data_service.delete_entities(entity_ids, sync_context)
+                if deleted:
+                    sync_context.logger.debug(f"Deleted {deleted} entities from raw data store")
+
+        except Exception as e:
+            # Log but don't fail sync - capture is optional
+            sync_context.logger.error(f"Failed to capture raw data: {e}")
 
     # ------------------------------------------------------------------------------------
     # Early Metadata Enrichment

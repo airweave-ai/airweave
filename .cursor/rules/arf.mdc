@@ -1,0 +1,25 @@
+---
+alwaysApply: false
+---
+# Airweave Raw Format (ARF)
+
+Raw entity capture for replay, debugging, and evals.
+
+## Structure
+
+```
+raw/{sync_id}/
+├── manifest.json          # Sync metadata
+├── entities/{id}.json     # One file per entity
+└── files/{id}_{name}      # Binary files (optional)
+```
+
+## Key Files
+
+- **RawDataService**: `platform/sync/raw_data.py`
+- **StorageBackend**: `platform/storage/backend.py` (Filesystem or Azure Blob)
+- **Config**: `AZURE_RAW_DATA_CONTAINER` (default: `"raw"`)
+
+## Usage
+
+Capture happens automatically in `EntityPipeline._capture_raw_data()` after action determination (INSERT/UPDATE entities stored, DELETE entities removed).

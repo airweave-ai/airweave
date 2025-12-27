@@ -20,9 +20,11 @@ test_flow:
     - cleanup
     - create
     - sync                     # First sync: Full sync (no cursor exists yet)
+    - verify_raw_data          # Verify raw data capture (local only)
     - verify
     - update
     - sync                     # Second sync: Incremental with cursor
+    - verify_raw_data          # Verify raw data still present after update
     - verify
     - partial_delete
     - force_full_sync          # Third sync: Force full sync to detect deletion

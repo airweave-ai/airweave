@@ -172,6 +172,9 @@ class SyncOrchestrator:
         # Start the stream (worker pool doesn't need starting)
         await self.stream.start()
 
+        # Start raw data tracking for full syncs (to cleanup stale entities later)
+        await self._start_raw_data_tracking_if_needed()
+
         started_at = utc_now_naive()
         await sync_job_service.update_status(
             sync_job_id=self.sync_context.sync_job.id,
@@ -450,6 +453,9 @@ class SyncOrchestrator:
                     "🧹 Starting orphaned entity cleanup phase (first sync - no cursor data)"
                 )
             await self.entity_pipeline.cleanup_orphaned_entities(self.sync_context)
+
+            # Also cleanup stale raw data entities
+            await self._cleanup_stale_raw_data_if_needed()
         elif (
             has_cursor_data and not self.sync_context.force_full_sync and source_supports_continuous
         ):
@@ -457,6 +463,50 @@ class SyncOrchestrator:
                 "⏩ Skipping orphaned entity cleanup for INCREMENTAL sync "
                 "(cursor data exists, only changed entities are processed)"
             )
+
+    async def _start_raw_data_tracking_if_needed(self) -> None:
+        """Start tracking raw data entities for full sync cleanup."""
+        # Determine if this is a full sync
+        has_cursor_data = bool(
+            hasattr(self.sync_context, "cursor")
+            and self.sync_context.cursor
+            and self.sync_context.cursor.cursor_data
+        )
+        source_supports_continuous = getattr(
+            self.sync_context.source, "_supports_continuous", False
+        )
+        is_full_sync = (
+            self.sync_context.force_full_sync
+            or not has_cursor_data
+            or not source_supports_continuous
+        )
+
+        if is_full_sync:
+            try:
+                from airweave.platform.sync import raw_data_service
+
+                sync_id = str(self.sync_context.sync.id)
+                raw_data_service.start_sync_tracking(sync_id)
+                self.sync_context.logger.debug(f"Started raw data tracking for full sync {sync_id}")
+            except Exception as e:
+                self.sync_context.logger.warning(f"Failed to start raw data tracking: {e}")
+
+    async def _cleanup_stale_raw_data_if_needed(self) -> None:
+        """Cleanup stale raw data entities after full sync."""
+        try:
+            from airweave.platform.sync import raw_data_service
+
+            sync_id = str(self.sync_context.sync.id)
+
+            # Only cleanup if we were tracking
+            deleted = await raw_data_service.cleanup_stale_entities(self.sync_context)
+            if deleted:
+                self.sync_context.logger.info(f"🧹 Cleaned up {deleted} stale raw data entities")
+
+            # End tracking
+            raw_data_service.end_sync_tracking(sync_id)
+        except Exception as e:
+            self.sync_context.logger.warning(f"Failed to cleanup stale raw data: {e}")
 
     async def _finalize_progress_and_trackers(
         self, status: SyncJobStatus, error: Optional[str] = None

@@ -20,6 +20,7 @@ class TestContext:
     collection_id: Optional[str] = None
     collection_readable_id: Optional[str] = None
     source_connection_id: Optional[str] = None
+    sync_id: Optional[str] = None  # From source connection for raw data verification
 
     # Entity tracking
     created_entities: List[Dict[str, Any]] = field(default_factory=list)
