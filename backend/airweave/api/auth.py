@@ -6,6 +6,7 @@ from fastapi_auth0 import Auth0, Auth0User
 from jose import jwt
 
 from airweave.core.config import settings
+from airweave.core.context_cache_service import context_cache
 
 
 # Add a method to auth0 instance to verify tokens directly
@@ -54,6 +55,19 @@ async def get_user_from_token(token: str):
             audience=auth0.audience,
             issuer=f"https://{auth0.domain}/",
         )
+
+        # Check if token is blacklisted by JTI (individual token revocation)
+        jti = payload.get("jti")
+        if jti and await context_cache.is_jwt_blacklisted(jti):
+            logging.warning(f"Token with JTI {jti} is blacklisted")
+            return None
+
+        # Check if all user tokens are blacklisted (bulk user revocation)
+        email = payload.get("email") or payload.get(f"{settings.AUTH0_RULE_NAMESPACE}email")
+        issued_at = payload.get("iat")
+        if email and issued_at and await context_cache.is_user_token_blacklisted(email, issued_at):
+            logging.warning(f"All tokens for user {email} issued before revocation are blacklisted")
+            return None
 
         # Create an Auth0User from the payload
         return auth0.auth0_user_model(**payload)

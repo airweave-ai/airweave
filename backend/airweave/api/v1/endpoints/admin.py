@@ -814,3 +814,59 @@ async def disable_feature_flag(
     ctx.logger.info(f"Admin disabled feature flag {flag} for org {organization_id}")
 
     return {"message": f"Feature flag '{flag}' disabled", "organization_id": str(organization_id)}
+
+
+@router.post("/users/{user_email}/revoke-tokens")
+async def revoke_user_tokens(
+    user_email: str,
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+) -> dict:
+    """Immediately revoke all JWT tokens for a user (admin only).
+
+    This endpoint is for emergency security responses when a user account
+    is compromised or needs immediate access revocation. It blacklists all
+    JWT tokens issued before the current moment.
+
+    The user will need to re-authenticate to get a new token.
+
+    Args:
+        user_email: Email address of the user whose tokens should be revoked
+        db: Database session
+        ctx: API context
+
+    Returns:
+        Confirmation message with user email
+
+    Raises:
+        HTTPException: If user is not an admin or user not found
+    """
+    _require_admin(ctx)
+
+    # Verify user exists in database
+    try:
+        user = await crud.user.get_by_email(db, email=user_email)
+        if not user:
+            raise HTTPException(status_code=404, detail=f"User {user_email} not found")
+    except NotFoundException:
+        raise HTTPException(status_code=404, detail=f"User {user_email} not found")
+
+    # Blacklist all tokens for this user
+    success = await context_cache.invalidate_user_with_tokens(user_email)
+
+    if not success:
+        ctx.logger.error(f"Failed to revoke tokens for user {user_email}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to revoke tokens. Check server logs for details.",
+        )
+
+    ctx.logger.warning(
+        f"Admin {ctx.user.email if ctx.user else 'system'} revoked all JWT tokens for user {user_email}"
+    )
+
+    return {
+        "message": f"All JWT tokens revoked for user {user_email}",
+        "user_email": user_email,
+        "revoked_by": ctx.user.email if ctx.user else "system",
+    }
