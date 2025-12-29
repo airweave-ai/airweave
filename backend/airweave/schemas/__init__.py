@@ -136,6 +136,21 @@ from .sync import (
     SyncWithoutConnections,
     SyncWithSourceConnection,
 )
+from .sync_connection import (
+    DestinationSlotInfo,
+    ForkDestinationRequest,
+    ForkDestinationResponse,
+    SwitchDestinationResponse,
+)
+from .sync_connection import (
+    SyncConnection as SyncConnectionSchema,
+)
+from .sync_connection import (
+    SyncConnectionCreate as SyncConnectionCreateSchema,
+)
+from .sync_connection import (
+    SyncConnectionUpdate as SyncConnectionUpdateSchema,
+)
 from .sync_cursor import (
     SyncCursor,
     SyncCursorBase,
@@ -174,3 +189,4 @@ Organization.model_rebuild()
 OrganizationWithRole.model_rebuild()
 UserOrganization.model_rebuild()
 User.model_rebuild()
+ForkDestinationResponse.model_rebuild()
