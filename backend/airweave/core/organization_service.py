@@ -822,9 +822,13 @@ class OrganizationService:
         await db.execute(delete_stmt)
         await db.commit()
 
-        # Invalidate user cache so subsequent requests reflect the membership change
-        await context_cache.invalidate_user(user_schema.email)
-        logger.debug(f"Invalidated user cache for {user_schema.email}")
+        # Invalidate user cache AND blacklist all JWT tokens to immediately revoke access
+        # This is critical for security - user should lose access immediately, not after JWT expires
+        await context_cache.invalidate_user_with_tokens(user_schema.email)
+        logger.info(
+            f"Invalidated cache and blacklisted all JWT tokens for {user_schema.email} "
+            "after organization removal"
+        )
 
         logger.info(
             f"Successfully removed user {user_schema.email} from organization {org_schema.name}"
