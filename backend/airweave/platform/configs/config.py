@@ -421,6 +421,12 @@ class WordConfig(SourceConfig):
     pass
 
 
+class CalComConfig(SourceConfig):
+    """Cal.com configuration schema."""
+
+    pass
+
+
 class CTTIConfig(SourceConfig):
     """CTTI AACT configuration schema."""
 

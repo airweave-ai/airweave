@@ -1,0 +1,52 @@
+name: cal_com_test
+description: End-to-end test for Cal.com source using Monke
+
+connector:
+  name: Cal.com
+  type: cal_com
+  auth_mode: composio
+  composio_config:
+    account_id: ca_JSZt5d3raXEe
+    auth_config_id: ac_LxC-8TplvZMn
+  config_fields:
+    openai_model: "gpt-4.1-mini"
+    max_concurrency: 2
+
+test_flow:
+  steps:
+    - cleanup
+    - create
+    - sync
+    - verify
+    - update
+    - sync
+    - verify
+    - partial_delete
+    - sync
+    - verify_partial_deletion
+    - verify_remaining_entities
+    - complete_delete
+    - sync
+    - verify_complete_deletion
+    - cleanup
+    - collection_cleanup
+
+deletion:
+  partial_delete_count: 1
+  verify_partial_deletion: true
+  verify_remaining_entities: true
+  verify_complete_deletion: true
+
+entity_count: 3
+
+collection:
+  name: Cal.com Test Collection
+
+verification:
+  retry_attempts: 5
+  retry_delay_seconds: 10
+  score_threshold: 0.0
+  expected_fields:
+    - entity_id
+    - title
+    - description
