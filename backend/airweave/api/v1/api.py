@@ -22,6 +22,7 @@ from airweave.api.v1.endpoints import (
     source_rate_limits,
     sources,
     sync,
+    sync_multiplex,
     transformers,
     usage,
     users,
@@ -52,6 +53,7 @@ api_router.include_router(
     source_rate_limits.router, prefix="/source-rate-limits", tags=["source-rate-limits"]
 )
 api_router.include_router(sync.router, prefix="/sync", tags=["sync"])
+api_router.include_router(sync_multiplex.router, prefix="/sync", tags=["sync-multiplex"])
 api_router.include_router(entities.router, prefix="/entities", tags=["entities"])
 api_router.include_router(entity_counts.router, prefix="/entity-counts", tags=["entity-counts"])
 api_router.include_router(transformers.router, prefix="/transformers", tags=["transformers"])
