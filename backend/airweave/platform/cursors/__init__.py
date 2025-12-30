@@ -10,6 +10,7 @@ from .github import GitHubCursor
 from .gmail import GmailCursor
 from .google_docs import GoogleDocsCursor
 from .google_drive import GoogleDriveCursor
+from .google_sheets import GoogleSheetsCursor
 from .google_slides import GoogleSlidesCursor
 from .outlook_mail import OutlookMailCursor
 from .postgresql import PostgreSQLCursor
@@ -20,6 +21,7 @@ __all__ = [
     "GmailCursor",
     "GoogleDriveCursor",
     "GoogleDocsCursor",
+    "GoogleSheetsCursor",
     "GoogleSlidesCursor",
     "GitHubCursor",
     "PostgreSQLCursor",
