@@ -1,0 +1,58 @@
+name: "postgres_test"
+description: "End-to-end test for Postgres connector via Monke"
+
+connector:
+  name: "PostgreSQL"
+  type: "postgresql"
+  auth_mode: direct
+  auth_fields:
+    connection_string: "MONKE_POSTGRES_DSN"
+    host: "MONKE_POSTGRES_HOST"
+    port: "MONKE_POSTGRES_PORT"
+    database: "MONKE_POSTGRES_DB"
+    user: "MONKE_POSTGRES_USER"
+    password: "MONKE_POSTGRES_PASSWORD"
+    schema: "MONKE_POSTGRES_SCHEMA"
+    tables: "MONKE_POSTGRES_TABLES"
+    ssl: "MONKE_POSTGRES_SSL"
+  config_fields:
+    schema: "public"
+    table_name: "monke_test_entities"
+    update_count: 2
+    openai_model: "gpt-4.1-mini"
+    rate_limit_delay_ms: 200
+    ssl_mode: "require"
+    options:
+      statement_cache_size: 0
+
+test_flow:
+  steps:
+    - cleanup
+    - create
+    - sync
+    - verify
+    - update
+    - sync
+    - verify
+    - partial_delete
+    - sync
+    - verify_partial_deletion
+    - verify_remaining_entities
+    - complete_delete
+    - sync
+    - verify_complete_deletion
+    - cleanup
+
+entity_count: 3
+
+deletion:
+  partial_delete_count: 1
+  verify_partial_deletion: true
+  verify_remaining_entities: true
+  verify_complete_deletion: true
+
+verification:
+  retries: 3
+  retry_backoff_seconds: 5
+  resync_on_miss: true
+  search_limit: 50
