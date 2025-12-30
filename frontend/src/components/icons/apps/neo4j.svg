@@ -1,0 +1,28 @@
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Neo4j Logo - Baltic Blue #0A6190 -->
+  <g>
+    <!-- Central Circle -->
+    <circle cx="100" cy="100" r="70" fill="none" stroke="#0A6190" stroke-width="8"/>
+
+    <!-- Node circles -->
+    <circle cx="100" cy="40" r="12" fill="#0A6190"/>
+    <circle cx="145" cy="70" r="12" fill="#0A6190"/>
+    <circle cx="145" cy="130" r="12" fill="#0A6190"/>
+    <circle cx="100" cy="160" r="12" fill="#0A6190"/>
+    <circle cx="55" cy="130" r="12" fill="#0A6190"/>
+    <circle cx="55" cy="70" r="12" fill="#0A6190"/>
+
+    <!-- Connection lines -->
+    <line x1="100" y1="40" x2="145" y2="70" stroke="#0A6190" stroke-width="3"/>
+    <line x1="145" y1="70" x2="145" y2="130" stroke="#0A6190" stroke-width="3"/>
+    <line x1="145" y1="130" x2="100" y2="160" stroke="#0A6190" stroke-width="3"/>
+    <line x1="100" y1="160" x2="55" y2="130" stroke="#0A6190" stroke-width="3"/>
+    <line x1="55" y1="130" x2="55" y2="70" stroke="#0A6190" stroke-width="3"/>
+    <line x1="55" y1="70" x2="100" y2="40" stroke="#0A6190" stroke-width="3"/>
+
+    <!-- Cross connections -->
+    <line x1="100" y1="40" x2="100" y2="160" stroke="#0A6190" stroke-width="2" opacity="0.4"/>
+    <line x1="55" y1="70" x2="145" y2="130" stroke="#0A6190" stroke-width="2" opacity="0.4"/>
+    <line x1="145" y1="70" x2="55" y2="130" stroke="#0A6190" stroke-width="2" opacity="0.4"/>
+  </g>
+</svg>
