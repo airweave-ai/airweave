@@ -2,11 +2,12 @@
 
 Supports text generation, structured output, embeddings, and reranking.
 Most complete provider with all capabilities.
+Supports both standard OpenAI API and Azure OpenAI endpoints.
 """
 
 from typing import Any, Dict, List, Optional
 
-from openai import AsyncOpenAI
+from openai import AsyncAzureOpenAI, AsyncOpenAI
 from pydantic import BaseModel
 from tiktoken import Encoding
 
@@ -17,7 +18,14 @@ from .schemas import ProviderModelSpec
 
 
 class OpenAIProvider(BaseProvider):
-    """OpenAI LLM provider."""
+    """OpenAI LLM provider.
+
+    Supports both:
+    - Standard OpenAI API (api.openai.com)
+    - Azure OpenAI Service (*.openai.azure.com)
+
+    For Azure OpenAI, provide azure_endpoint, azure_api_version, and deployment names.
+    """
 
     MAX_COMPLETION_TOKENS = 10000
     MAX_STRUCTURED_OUTPUT_TOKENS = 20000
@@ -27,23 +35,84 @@ class OpenAIProvider(BaseProvider):
     TIMEOUT = 1200.0
     MAX_RETRIES = 2
 
-    def __init__(self, api_key: str, model_spec: ProviderModelSpec, ctx: ApiContext) -> None:
-        """Initialize OpenAI provider with model specs from defaults.yml."""
+    def __init__(
+        self,
+        api_key: str,
+        model_spec: ProviderModelSpec,
+        ctx: ApiContext,
+        azure_endpoint: Optional[str] = None,
+        azure_api_version: Optional[str] = None,
+        azure_embedding_deployment: Optional[str] = None,
+        azure_llm_deployment: Optional[str] = None,
+    ) -> None:
+        """Initialize OpenAI provider with model specs from defaults.yml.
+
+        Args:
+            api_key: OpenAI or Azure OpenAI API key
+            model_spec: Model specification from defaults.yml
+            ctx: API context for logging
+            azure_endpoint: Optional Azure OpenAI endpoint (e.g., https://your-resource.openai.azure.com/)
+            azure_api_version: Optional Azure OpenAI API version (e.g., 2024-02-01)
+            azure_embedding_deployment: Optional Azure deployment name for embeddings
+            azure_llm_deployment: Optional Azure deployment name for LLM operations
+        """
         super().__init__(api_key, model_spec, ctx)
 
+        self.is_azure = azure_endpoint is not None
+        self.azure_embedding_deployment = azure_embedding_deployment
+        self.azure_llm_deployment = azure_llm_deployment
+
         try:
-            self.client = AsyncOpenAI(
-                api_key=api_key, timeout=self.TIMEOUT, max_retries=self.MAX_RETRIES
-            )
+            if self.is_azure:
+                # Azure OpenAI client
+                if not azure_api_version:
+                    raise ValueError("azure_api_version is required for Azure OpenAI")
+
+                # Validate that at least one deployment is configured
+                if model_spec.embedding_model and not azure_embedding_deployment:
+                    raise ValueError(
+                        "azure_embedding_deployment is required when using Azure OpenAI for embeddings. "
+                        "Set AZURE_OPENAI_EMBEDDING_DEPLOYMENT in your environment."
+                    )
+
+                if model_spec.llm_model and not azure_llm_deployment:
+                    raise ValueError(
+                        "azure_llm_deployment is required when using Azure OpenAI for LLM operations. "
+                        "Set AZURE_OPENAI_LLM_DEPLOYMENT in your environment."
+                    )
+
+                self.client = AsyncAzureOpenAI(
+                    api_key=api_key,
+                    azure_endpoint=azure_endpoint,
+                    api_version=azure_api_version,
+                    timeout=self.TIMEOUT,
+                    max_retries=self.MAX_RETRIES,
+                )
+                self.ctx.logger.info(
+                    f"[OpenAIProvider] Initialized Azure OpenAI client: {azure_endpoint}, "
+                    f"API version: {azure_api_version}"
+                )
+            else:
+                # Standard OpenAI client
+                self.client = AsyncOpenAI(
+                    api_key=api_key, timeout=self.TIMEOUT, max_retries=self.MAX_RETRIES
+                )
+                self.ctx.logger.info("[OpenAIProvider] Initialized standard OpenAI client")
         except Exception as e:
             raise RuntimeError(f"Failed to initialize OpenAI client: {e}") from e
 
         # Log which embedding model we're using (if any)
         if model_spec.embedding_model:
-            self.ctx.logger.info(
-                f"[OpenAIProvider] Using embedding model: {model_spec.embedding_model.name} "
-                f"({model_spec.embedding_model.dimensions}-dim)"
-            )
+            if self.is_azure and azure_embedding_deployment:
+                self.ctx.logger.info(
+                    f"[OpenAIProvider] Using Azure embedding deployment: {azure_embedding_deployment} "
+                    f"({model_spec.embedding_model.dimensions}-dim)"
+                )
+            else:
+                self.ctx.logger.info(
+                    f"[OpenAIProvider] Using embedding model: {model_spec.embedding_model.name} "
+                    f"({model_spec.embedding_model.dimensions}-dim)"
+                )
 
         self.ctx.logger.debug(f"[OpenAIProvider] Initialized with model spec: {model_spec}")
 
@@ -72,9 +141,15 @@ class OpenAIProvider(BaseProvider):
         if not messages:
             raise ValueError("Cannot generate completion with empty messages")
 
+        # Use Azure deployment name if available, otherwise use model name
+        model_name = (
+            self.azure_llm_deployment if self.is_azure and self.azure_llm_deployment
+            else self.model_spec.llm_model.name
+        )
+
         try:
             response = await self.client.chat.completions.create(
-                model=self.model_spec.llm_model.name,
+                model=model_name,
                 messages=messages,
                 max_completion_tokens=self.MAX_COMPLETION_TOKENS,
             )
@@ -100,9 +175,15 @@ class OpenAIProvider(BaseProvider):
         if not schema:
             raise ValueError("Schema is required for structured output")
 
+        # Use Azure deployment name if available, otherwise use model name
+        model_name = (
+            self.azure_llm_deployment if self.is_azure and self.azure_llm_deployment
+            else self.model_spec.llm_model.name
+        )
+
         try:
             response = await self.client.responses.parse(
-                model=self.model_spec.llm_model.name,
+                model=model_name,
                 input=messages,
                 text_format=schema,
                 max_output_tokens=self.MAX_STRUCTURED_OUTPUT_TOKENS,
@@ -165,10 +246,16 @@ class OpenAIProvider(BaseProvider):
 
     async def _embed_batch(self, batch: List[str], batch_start: int) -> List[List[float]]:
         """Embed a single batch with validation."""
+        # Use Azure deployment name if available, otherwise use model name
+        model_name = (
+            self.azure_embedding_deployment if self.is_azure and self.azure_embedding_deployment
+            else self.model_spec.embedding_model.name
+        )
+
         try:
             response = await self.client.embeddings.create(
                 input=batch,
-                model=self.model_spec.embedding_model.name,
+                model=model_name,
             )
         except Exception as e:
             raise RuntimeError(

@@ -373,6 +373,7 @@ class SearchFactory:
             "groq": getattr(settings, "GROQ_API_KEY", None),
             "openai": getattr(settings, "OPENAI_API_KEY", None),
             "cohere": getattr(settings, "COHERE_API_KEY", None),
+            "azure_openai": getattr(settings, "AZURE_OPENAI_API_KEY", None),
         }
 
     def _create_provider_for_each_operation(
@@ -414,7 +415,7 @@ class SearchFactory:
         )
         if not providers:
             raise ValueError(
-                "Embedding provider required for vector-backed search. Configure OPENAI_API_KEY"
+                "Embedding provider required for vector-backed search. Configure OPENAI_API_KEY or AZURE_OPENAI_API_KEY"
             )
         # Return first (and only) available embedding provider
         return providers[0]
@@ -442,7 +443,7 @@ class SearchFactory:
                 api_keys,
                 ctx,
                 "Query expansion enabled but no provider available. "
-                "Configure CEREBRAS_API_KEY, GROQ_API_KEY, or OPENAI_API_KEY",
+                "Configure CEREBRAS_API_KEY, GROQ_API_KEY, OPENAI_API_KEY, or AZURE_OPENAI_API_KEY",
             )
 
         # Federated search
@@ -454,7 +455,7 @@ class SearchFactory:
                 api_keys,
                 ctx,
                 "Federated sources exist but no provider available for keyword extraction. "
-                "Configure CEREBRAS_API_KEY, GROQ_API_KEY, or OPENAI_API_KEY",
+                "Configure CEREBRAS_API_KEY, GROQ_API_KEY, OPENAI_API_KEY, or AZURE_OPENAI_API_KEY",
             )
 
         # Query interpretation
@@ -466,7 +467,7 @@ class SearchFactory:
                 api_keys,
                 ctx,
                 "Query interpretation enabled but no provider available. "
-                "Configure CEREBRAS_API_KEY, GROQ_API_KEY, or OPENAI_API_KEY",
+                "Configure CEREBRAS_API_KEY, GROQ_API_KEY, OPENAI_API_KEY, or AZURE_OPENAI_API_KEY",
             )
 
         # Reranking
@@ -478,7 +479,7 @@ class SearchFactory:
                 api_keys,
                 ctx,
                 "Reranking enabled but no provider available. "
-                "Configure COHERE_API_KEY, GROQ_API_KEY, or OPENAI_API_KEY",
+                "Configure COHERE_API_KEY, GROQ_API_KEY, OPENAI_API_KEY, or AZURE_OPENAI_API_KEY",
             )
 
         # Answer generation
@@ -490,7 +491,7 @@ class SearchFactory:
                 api_keys,
                 ctx,
                 "Answer generation enabled but no provider available. "
-                "Configure CEREBRAS_API_KEY, GROQ_API_KEY, or OPENAI_API_KEY",
+                "Configure CEREBRAS_API_KEY, GROQ_API_KEY, OPENAI_API_KEY, or AZURE_OPENAI_API_KEY",
             )
 
         return providers
@@ -676,6 +677,34 @@ class SearchFactory:
                         f"[Factory] Attempting to initialize OpenAIProvider for {operation_name}"
                     )
                     provider = OpenAIProvider(api_key=api_key, model_spec=model_spec, ctx=ctx)
+                elif provider_name == "azure_openai":
+                    ctx.logger.debug(
+                        f"[Factory] Attempting to initialize Azure OpenAIProvider for {operation_name}"
+                    )
+                    # Get Azure-specific settings
+                    azure_endpoint = getattr(settings, "AZURE_OPENAI_ENDPOINT", None)
+                    azure_api_version = getattr(settings, "AZURE_OPENAI_API_VERSION", "2024-10-21")
+                    azure_embedding_deployment = getattr(settings, "AZURE_OPENAI_EMBEDDING_DEPLOYMENT", None)
+                    azure_llm_deployment = getattr(settings, "AZURE_OPENAI_LLM_DEPLOYMENT", None)
+
+                    # Validate that Azure endpoint is configured
+                    if not azure_endpoint:
+                        ctx.logger.warning(
+                            f"[Factory] Skipping Azure OpenAI provider for {operation_name}: "
+                            "AZURE_OPENAI_API_KEY is set but AZURE_OPENAI_ENDPOINT is not configured. "
+                            "Set AZURE_OPENAI_ENDPOINT in your environment to use Azure OpenAI."
+                        )
+                        continue
+
+                    provider = OpenAIProvider(
+                        api_key=api_key,
+                        model_spec=model_spec,
+                        ctx=ctx,
+                        azure_endpoint=azure_endpoint,
+                        azure_api_version=azure_api_version,
+                        azure_embedding_deployment=azure_embedding_deployment,
+                        azure_llm_deployment=azure_llm_deployment,
+                    )
                 elif provider_name == "cohere":
                     ctx.logger.debug(
                         f"[Factory] Attempting to initialize CohereProvider for {operation_name}"

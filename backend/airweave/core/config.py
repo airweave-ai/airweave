@@ -135,6 +135,13 @@ class Settings(BaseSettings):
     CEREBRAS_API_KEY: Optional[str] = None
     AZURE_KEYVAULT_NAME: Optional[str] = None
 
+    # Azure OpenAI configuration
+    AZURE_OPENAI_API_KEY: Optional[str] = None
+    AZURE_OPENAI_ENDPOINT: Optional[str] = None
+    AZURE_OPENAI_API_VERSION: str = "2024-10-21"
+    AZURE_OPENAI_EMBEDDING_DEPLOYMENT: Optional[str] = None
+    AZURE_OPENAI_LLM_DEPLOYMENT: Optional[str] = None
+
     # Temporal configuration
     TEMPORAL_HOST: str = "localhost"
     TEMPORAL_PORT: int = 7233
