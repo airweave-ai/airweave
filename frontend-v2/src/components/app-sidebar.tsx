@@ -45,7 +45,7 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 import { useUISettings, type Theme } from "@/stores/ui-settings";
-import { useAuth0 } from "@/lib/auth-provider";
+import { useAuth0, getRedirectUrl } from "@/lib/auth-provider";
 
 const navItems = [
   {
@@ -111,7 +111,7 @@ export function AppSidebar() {
   const handleLogout = () => {
     logout({
       logoutParams: {
-        returnTo: window.location.origin,
+        returnTo: getRedirectUrl(),
       },
     });
   };
