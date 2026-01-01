@@ -4,16 +4,17 @@ import { ExternalLink, Loader2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { ApiForm } from "@/components/ui/api-form";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { useIsDark } from "@/hooks/use-is-dark";
 import {
   createAuthProviderConnection,
   fetchAuthProviderDetail,
@@ -21,7 +22,6 @@ import {
 } from "@/lib/api";
 import { useAuth0 } from "@/lib/auth-provider";
 import { cn } from "@/lib/utils";
-import { useIsDark } from "@/hooks/use-is-dark";
 
 import {
   generateRandomSuffix,
@@ -190,192 +190,227 @@ export function ConfigureDialog({
             }}
             className="flex flex-col flex-1 overflow-hidden"
           >
-            <div className="flex-1 overflow-y-auto space-y-6 py-4">
-              {/* Connection Animation */}
-              <div className="flex justify-center py-4">
-                <div className="flex items-center gap-6">
-                  {/* Airweave Logo */}
-                  <div
-                    className={cn(
-                      "w-14 h-14 rounded-xl flex items-center justify-center p-2.5",
-                      "shadow-lg ring-2 ring-muted-foreground/20",
-                      "bg-card",
-                    )}
-                  >
-                    <img
-                      src={
-                        isDark
-                          ? "/airweave-logo-svg-white-darkbg.svg"
-                          : "/airweave-logo-svg-lightbg-blacklogo.svg"
-                      }
-                      alt="Airweave"
-                      className="w-full h-full object-contain"
-                    />
-                  </div>
+            <ApiForm
+              method="POST"
+              endpoint="https://api.airweave.ai/auth-providers/"
+              className="flex flex-col flex-1 overflow-hidden"
+              body={{
+                name: form.getFieldValue("name"),
+                readable_id: form.getFieldValue("readableId"),
+                short_name: authProvider.short_name,
+                auth_fields: form.getFieldValue("authFields"),
+              }}
+              onBodyChange={(newBody) => {
+                if (typeof newBody.name === "string") {
+                  form.setFieldValue("name", newBody.name);
+                }
+                if (typeof newBody.readable_id === "string") {
+                  form.setFieldValue("readableId", newBody.readable_id);
+                  setUserEditedId(true);
+                }
+                if (
+                  newBody.auth_fields &&
+                  typeof newBody.auth_fields === "object"
+                ) {
+                  form.setFieldValue(
+                    "authFields",
+                    newBody.auth_fields as Record<string, string>,
+                  );
+                }
+              }}
+            >
+              <ApiForm.Toggle />
 
-                  {/* Connecting text */}
-                  <span className="text-sm text-muted-foreground">
-                    Waiting for connection...
-                  </span>
-
-                  {/* Auth Provider Logo */}
-                  <div
-                    className={cn(
-                      "w-14 h-14 rounded-xl flex items-center justify-center p-2.5",
-                      "shadow-lg ring-2 ring-muted-foreground/20",
-                      "bg-card",
-                    )}
-                  >
-                    <img
-                      src={getAuthProviderIconUrl(
-                        authProvider.short_name,
-                        isDark ? "dark" : "light",
+              <ApiForm.FormView className="flex-1 overflow-y-auto space-y-6">
+                {/* Connection Animation */}
+                <div className="flex justify-center py-4">
+                  <div className="flex items-center gap-6">
+                    {/* Airweave Logo */}
+                    <div
+                      className={cn(
+                        "w-14 h-14 rounded-xl flex items-center justify-center p-2.5",
+                        "shadow-lg ring-2 ring-muted-foreground/20",
+                        "bg-card",
                       )}
-                      alt={authProvider.name}
-                      className="w-full h-full object-contain"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Name field */}
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Name
-                </label>
-                <form.Field name="name">
-                  {(field) => (
-                    <Input
-                      value={field.state.value}
-                      onChange={(e) => handleNameChange(e.target.value)}
-                      placeholder="My Connection"
-                    />
-                  )}
-                </form.Field>
-              </div>
-
-              {/* Readable ID field */}
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Readable ID
-                </label>
-                <form.Field name="readableId">
-                  {(field) => (
-                    <Input
-                      value={field.state.value}
-                      onChange={(e) => handleReadableIdChange(e.target.value)}
-                      placeholder="Auto-generated"
-                      className="font-mono text-sm"
-                    />
-                  )}
-                </form.Field>
-              </div>
-
-              {/* Auth fields */}
-              {providerDetails?.auth_fields?.fields &&
-                providerDetails.auth_fields.fields.length > 0 && (
-                  <div className="space-y-4 pt-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                        Authentication
-                      </label>
-
-                      {/* Platform link button */}
-                      {(authProvider.short_name === "composio" ||
-                        authProvider.short_name === "pipedream") && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => {
-                            const url =
-                              authProvider.short_name === "composio"
-                                ? "https://platform.composio.dev/"
-                                : "https://pipedream.com/settings/api";
-                            window.open(url, "_blank");
-                          }}
-                        >
-                          <img
-                            src={getAuthProviderIconUrl(
-                              authProvider.short_name,
-                              isDark ? "dark" : "light",
-                            )}
-                            alt={authProvider.short_name}
-                            className="w-3 h-3 mr-1.5 object-contain"
-                          />
-                          {authProvider.short_name === "composio"
-                            ? "Get API Key from Composio"
-                            : "Get Client ID & Secret from Pipedream"}
-                          <ExternalLink className="w-3 h-3 ml-1.5" />
-                        </Button>
-                      )}
+                    >
+                      <img
+                        src={
+                          isDark
+                            ? "/airweave-logo-svg-white-darkbg.svg"
+                            : "/airweave-logo-svg-lightbg-blacklogo.svg"
+                        }
+                        alt="Airweave"
+                        className="w-full h-full object-contain"
+                      />
                     </div>
 
-                    {providerDetails.auth_fields.fields.map((field) => (
-                      <div key={field.name} className="space-y-2">
-                        <label className="text-sm font-medium">
-                          {field.title || field.name}
-                          {field.required && (
-                            <span className="text-destructive ml-1">*</span>
-                          )}
-                        </label>
-                        {field.description && (
-                          <p className="text-xs text-muted-foreground">
-                            {field.description}
-                          </p>
-                        )}
-                        <form.Field name="authFields">
-                          {() => (
-                            <Input
-                              type={field.secret ? "password" : "text"}
-                              value={
-                                form.getFieldValue("authFields")[field.name] ||
-                                ""
-                              }
-                              onChange={(e) =>
-                                handleAuthFieldChange(
-                                  field.name,
-                                  e.target.value,
-                                )
-                              }
-                              placeholder={
-                                field.secret
-                                  ? "••••••••"
-                                  : `Enter ${field.title || field.name}`
-                              }
-                            />
-                          )}
-                        </form.Field>
-                      </div>
-                    ))}
-                  </div>
-                )}
-            </div>
+                    {/* Connecting text */}
+                    <span className="text-sm text-muted-foreground">
+                      Waiting for connection...
+                    </span>
 
-            <DialogFooter className="pt-4 border-t">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => handleClose(false)}
-                disabled={createMutation.isPending}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={createMutation.isPending || !isFormValid()}
-              >
-                {createMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Connecting...
-                  </>
-                ) : (
-                  "Connect"
-                )}
-              </Button>
-            </DialogFooter>
+                    {/* Auth Provider Logo */}
+                    <div
+                      className={cn(
+                        "w-14 h-14 rounded-xl flex items-center justify-center p-2.5",
+                        "shadow-lg ring-2 ring-muted-foreground/20",
+                        "bg-card",
+                      )}
+                    >
+                      <img
+                        src={getAuthProviderIconUrl(
+                          authProvider.short_name,
+                          isDark ? "dark" : "light",
+                        )}
+                        alt={authProvider.name}
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Name field */}
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Name
+                  </label>
+                  <form.Field name="name">
+                    {(field) => (
+                      <Input
+                        value={field.state.value}
+                        onChange={(e) => handleNameChange(e.target.value)}
+                        placeholder="My Connection"
+                      />
+                    )}
+                  </form.Field>
+                </div>
+
+                {/* Readable ID field */}
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Readable ID
+                  </label>
+                  <form.Field name="readableId">
+                    {(field) => (
+                      <Input
+                        value={field.state.value}
+                        onChange={(e) => handleReadableIdChange(e.target.value)}
+                        placeholder="Auto-generated"
+                        className="font-mono text-sm"
+                      />
+                    )}
+                  </form.Field>
+                </div>
+
+                {/* Auth fields */}
+                {providerDetails?.auth_fields?.fields &&
+                  providerDetails.auth_fields.fields.length > 0 && (
+                    <div className="space-y-4 pt-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                          Authentication
+                        </label>
+
+                        {/* Platform link button */}
+                        {(authProvider.short_name === "composio" ||
+                          authProvider.short_name === "pipedream") && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => {
+                              const url =
+                                authProvider.short_name === "composio"
+                                  ? "https://platform.composio.dev/"
+                                  : "https://pipedream.com/settings/api";
+                              window.open(url, "_blank");
+                            }}
+                          >
+                            <img
+                              src={getAuthProviderIconUrl(
+                                authProvider.short_name,
+                                isDark ? "dark" : "light",
+                              )}
+                              alt={authProvider.short_name}
+                              className="w-3 h-3 mr-1.5 object-contain"
+                            />
+                            {authProvider.short_name === "composio"
+                              ? "Get API Key from Composio"
+                              : "Get Client ID & Secret from Pipedream"}
+                            <ExternalLink className="w-3 h-3 ml-1.5" />
+                          </Button>
+                        )}
+                      </div>
+
+                      {providerDetails.auth_fields.fields.map((field) => (
+                        <div key={field.name} className="space-y-2">
+                          <label className="text-sm font-medium">
+                            {field.title || field.name}
+                            {field.required && (
+                              <span className="text-destructive ml-1">*</span>
+                            )}
+                          </label>
+                          {field.description && (
+                            <p className="text-xs text-muted-foreground">
+                              {field.description}
+                            </p>
+                          )}
+                          <form.Field name="authFields">
+                            {() => (
+                              <Input
+                                type={field.secret ? "password" : "text"}
+                                value={
+                                  form.getFieldValue("authFields")[
+                                    field.name
+                                  ] || ""
+                                }
+                                onChange={(e) =>
+                                  handleAuthFieldChange(
+                                    field.name,
+                                    e.target.value,
+                                  )
+                                }
+                                placeholder={
+                                  field.secret
+                                    ? "••••••••"
+                                    : `Enter ${field.title || field.name}`
+                                }
+                              />
+                            )}
+                          </form.Field>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+              </ApiForm.FormView>
+
+              <ApiForm.CodeView editable className="flex-1 overflow-y-auto" />
+
+              <ApiForm.Footer className="pt-4 border-t">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => handleClose(false)}
+                  disabled={createMutation.isPending}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={createMutation.isPending || !isFormValid()}
+                >
+                  {createMutation.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Connecting...
+                    </>
+                  ) : (
+                    "Connect"
+                  )}
+                </Button>
+              </ApiForm.Footer>
+            </ApiForm>
           </form>
         )}
       </DialogContent>
