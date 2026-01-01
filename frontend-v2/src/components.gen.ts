@@ -33,6 +33,15 @@ export const uiComponents: ComponentInfo[] = [
     ]
   },
   {
+    "name": "avatar",
+    "path": "components/ui/avatar.tsx",
+    "exports": [
+      "Avatar",
+      "AvatarImage",
+      "AvatarFallback"
+    ]
+  },
+  {
     "name": "badge",
     "path": "components/ui/badge.tsx",
     "exports": [

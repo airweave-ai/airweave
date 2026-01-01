@@ -1,33 +1,27 @@
-"use client"
+"use client";
 
-import { Link, useLocation } from "@tanstack/react-router"
+import { Link, useLocation } from "@tanstack/react-router";
 import {
-  Home,
-  Component,
-  Settings,
-  Layers,
-  FileText,
-  Zap,
-  Sun,
-  Moon,
-  Monitor,
+  Cable,
   Check,
+  ChevronsUpDown,
+  FolderOpen,
+  Key,
+  Layers,
+  LayoutDashboard,
+  LogOut,
+  Monitor,
+  Moon,
   Palette,
-} from "lucide-react"
+  Search,
+  Settings,
+  ShieldCheck,
+  Sun,
+  Webhook,
+} from "lucide-react";
 
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarRail,
-} from "@/components/ui/sidebar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,57 +31,87 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { useUISettings, type Theme } from "@/stores/ui-settings"
+} from "@/components/ui/dropdown-menu";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarRail,
+} from "@/components/ui/sidebar";
+import { useUISettings, type Theme } from "@/stores/ui-settings";
 
 const navItems = [
   {
-    title: "Home",
+    title: "Dashboard",
     url: "/",
-    icon: Home,
+    icon: LayoutDashboard,
   },
   {
-    title: "Components",
-    url: "/components",
-    icon: Component,
+    title: "Collections",
+    url: "/collections",
+    icon: FolderOpen,
   },
   {
-    title: "Demo",
-    url: "/demo/start/ssr",
-    icon: Zap,
-  },
-]
-
-const secondaryItems = [
-  {
-    title: "Documentation",
-    url: "/docs",
-    icon: FileText,
+    title: "Logs",
+    url: "/logs",
+    icon: Cable,
   },
   {
-    title: "Settings",
-    url: "/settings",
-    icon: Settings,
+    title: "API Keys",
+    url: "/api-keys",
+    icon: Key,
   },
-]
+  {
+    title: "Webhooks",
+    url: "/webhooks",
+    icon: Webhook,
+  },
+  {
+    title: "Auth Providers",
+    url: "/auth-providers",
+    icon: ShieldCheck,
+  },
+];
 
 const themeOptions: { value: Theme; label: string; icon: typeof Sun }[] = [
   { value: "light", label: "Light", icon: Sun },
   { value: "dark", label: "Dark", icon: Moon },
   { value: "system", label: "System", icon: Monitor },
-]
+];
+
+// Example user data - in a real app this would come from auth context
+const user = {
+  name: "Anand Chowdhary",
+  email: "anand@example.com",
+  avatar: "",
+};
+
+function getInitials(name: string): string {
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+}
 
 export function AppSidebar() {
-  const location = useLocation()
-  const theme = useUISettings((state) => state.theme)
-  const setTheme = useUISettings((state) => state.setTheme)
+  const location = useLocation();
+  const theme = useUISettings((state) => state.theme);
+  const setTheme = useUISettings((state) => state.setTheme);
 
   const isActive = (url: string) => {
     if (url === "/") {
-      return location.pathname === "/"
+      return location.pathname === "/";
     }
-    return location.pathname.startsWith(url)
-  }
+    return location.pathname.startsWith(url);
+  };
 
   return (
     <Sidebar collapsible="icon" side="left">
@@ -107,34 +131,25 @@ export function AppSidebar() {
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <Button
+              className="w-full justify-start gap-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
+              size="sm"
+            >
+              <Search className="size-4" />
+              <span className="group-data-[collapsible=icon]:hidden">
+                Search your data
+              </span>
+            </Button>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {navItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={isActive(item.url)}
-                    tooltip={item.title}
-                  >
-                    <Link to={item.url}>
-                      <item.icon />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        <SidebarGroup>
-          <SidebarGroupLabel>Resources</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {secondaryItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     asChild
@@ -157,12 +172,31 @@ export function AppSidebar() {
           <SidebarMenuItem>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <SidebarMenuButton tooltip="Settings">
-                  <Settings />
-                  <span>Settings</span>
+                <SidebarMenuButton
+                  size="lg"
+                  className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                  tooltip={user.name}
+                >
+                  <Avatar className="size-8 rounded-lg">
+                    <AvatarImage src={user.avatar} alt={user.name} />
+                    <AvatarFallback className="rounded-lg">
+                      {getInitials(user.name)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="grid flex-1 text-left text-sm leading-tight">
+                    <span className="truncate font-semibold">{user.name}</span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {user.email}
+                    </span>
+                  </div>
+                  <ChevronsUpDown className="ml-auto size-4" />
                 </SidebarMenuButton>
               </DropdownMenuTrigger>
-              <DropdownMenuContent side="top" align="start" className="w-48">
+              <DropdownMenuContent
+                side="top"
+                align="start"
+                className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
+              >
                 <DropdownMenuSub>
                   <DropdownMenuSubTrigger>
                     <Palette />
@@ -184,11 +218,14 @@ export function AppSidebar() {
                   </DropdownMenuSubContent>
                 </DropdownMenuSub>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link to="/settings">
-                    <Settings />
-                    <span>All Settings</span>
-                  </Link>
+                <DropdownMenuItem>
+                  <Settings />
+                  <span>Settings</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem>
+                  <LogOut />
+                  <span>Log out</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -197,6 +234,5 @@ export function AppSidebar() {
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
-  )
+  );
 }
-
