@@ -11,6 +11,8 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ComponentsRouteImport } from './routes/components'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ComponentsIndexRouteImport } from './routes/components.index'
+import { Route as ComponentsComponentNameRouteImport } from './routes/components.$componentName'
 import { Route as DemoStartServerFuncsRouteImport } from './routes/demo/start.server-funcs'
 import { Route as DemoStartApiRequestRouteImport } from './routes/demo/start.api-request'
 import { Route as DemoApiNamesRouteImport } from './routes/demo/api.names'
@@ -28,6 +30,16 @@ const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const ComponentsIndexRoute = ComponentsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ComponentsRoute,
+} as any)
+const ComponentsComponentNameRoute = ComponentsComponentNameRouteImport.update({
+  id: '/$componentName',
+  path: '/$componentName',
+  getParentRoute: () => ComponentsRoute,
 } as any)
 const DemoStartServerFuncsRoute = DemoStartServerFuncsRouteImport.update({
   id: '/demo/start/server-funcs',
@@ -67,7 +79,9 @@ const DemoStartSsrDataOnlyRoute = DemoStartSsrDataOnlyRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/components': typeof ComponentsRoute
+  '/components': typeof ComponentsRouteWithChildren
+  '/components/$componentName': typeof ComponentsComponentNameRoute
+  '/components/': typeof ComponentsIndexRoute
   '/demo/api/names': typeof DemoApiNamesRoute
   '/demo/start/api-request': typeof DemoStartApiRequestRoute
   '/demo/start/server-funcs': typeof DemoStartServerFuncsRoute
@@ -78,7 +92,8 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/components': typeof ComponentsRoute
+  '/components/$componentName': typeof ComponentsComponentNameRoute
+  '/components': typeof ComponentsIndexRoute
   '/demo/api/names': typeof DemoApiNamesRoute
   '/demo/start/api-request': typeof DemoStartApiRequestRoute
   '/demo/start/server-funcs': typeof DemoStartServerFuncsRoute
@@ -90,7 +105,9 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/components': typeof ComponentsRoute
+  '/components': typeof ComponentsRouteWithChildren
+  '/components/$componentName': typeof ComponentsComponentNameRoute
+  '/components/': typeof ComponentsIndexRoute
   '/demo/api/names': typeof DemoApiNamesRoute
   '/demo/start/api-request': typeof DemoStartApiRequestRoute
   '/demo/start/server-funcs': typeof DemoStartServerFuncsRoute
@@ -104,6 +121,8 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/components'
+    | '/components/$componentName'
+    | '/components/'
     | '/demo/api/names'
     | '/demo/start/api-request'
     | '/demo/start/server-funcs'
@@ -114,6 +133,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/components/$componentName'
     | '/components'
     | '/demo/api/names'
     | '/demo/start/api-request'
@@ -126,6 +146,8 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/components'
+    | '/components/$componentName'
+    | '/components/'
     | '/demo/api/names'
     | '/demo/start/api-request'
     | '/demo/start/server-funcs'
@@ -137,7 +159,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  ComponentsRoute: typeof ComponentsRoute
+  ComponentsRoute: typeof ComponentsRouteWithChildren
   DemoApiNamesRoute: typeof DemoApiNamesRoute
   DemoStartApiRequestRoute: typeof DemoStartApiRequestRoute
   DemoStartServerFuncsRoute: typeof DemoStartServerFuncsRoute
@@ -162,6 +184,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/components/': {
+      id: '/components/'
+      path: '/'
+      fullPath: '/components/'
+      preLoaderRoute: typeof ComponentsIndexRouteImport
+      parentRoute: typeof ComponentsRoute
+    }
+    '/components/$componentName': {
+      id: '/components/$componentName'
+      path: '/$componentName'
+      fullPath: '/components/$componentName'
+      preLoaderRoute: typeof ComponentsComponentNameRouteImport
+      parentRoute: typeof ComponentsRoute
     }
     '/demo/start/server-funcs': {
       id: '/demo/start/server-funcs'
@@ -215,9 +251,23 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface ComponentsRouteChildren {
+  ComponentsComponentNameRoute: typeof ComponentsComponentNameRoute
+  ComponentsIndexRoute: typeof ComponentsIndexRoute
+}
+
+const ComponentsRouteChildren: ComponentsRouteChildren = {
+  ComponentsComponentNameRoute: ComponentsComponentNameRoute,
+  ComponentsIndexRoute: ComponentsIndexRoute,
+}
+
+const ComponentsRouteWithChildren = ComponentsRoute._addFileChildren(
+  ComponentsRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  ComponentsRoute: ComponentsRoute,
+  ComponentsRoute: ComponentsRouteWithChildren,
   DemoApiNamesRoute: DemoApiNamesRoute,
   DemoStartApiRequestRoute: DemoStartApiRequestRoute,
   DemoStartServerFuncsRoute: DemoStartServerFuncsRoute,

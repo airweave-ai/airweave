@@ -16,6 +16,23 @@ export interface ComponentInfo {
 
 export const uiComponents: ComponentInfo[] = [
   {
+    "name": "alert-dialog",
+    "path": "components/ui/alert-dialog.tsx",
+    "exports": [
+      "AlertDialog",
+      "AlertDialogPortal",
+      "AlertDialogOverlay",
+      "AlertDialogTrigger",
+      "AlertDialogContent",
+      "AlertDialogHeader",
+      "AlertDialogFooter",
+      "AlertDialogTitle",
+      "AlertDialogDescription",
+      "AlertDialogAction",
+      "AlertDialogCancel"
+    ]
+  },
+  {
     "name": "button",
     "path": "components/ui/button.tsx",
     "exports": [

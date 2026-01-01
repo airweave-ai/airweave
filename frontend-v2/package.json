@@ -9,6 +9,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-slot": "^1.2.4",
     "@tailwindcss/vite": "^4.0.6",
     "@tanstack/react-devtools": "^0.7.0",
