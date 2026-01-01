@@ -15,6 +15,7 @@ import {
   SidebarTrigger,
 } from "../components/ui/sidebar";
 import { RightSidebarProvider } from "../components/ui/right-sidebar";
+import { useUISettingsHydrated } from "../stores/ui-settings";
 
 import appCss from "../styles.css?url";
 
@@ -45,8 +46,15 @@ export const Route = createRootRoute({
 });
 
 function RootComponent() {
+  const isHydrated = useUISettingsHydrated();
+
+  // Wait for UI settings to hydrate from localStorage to prevent flash of incorrect state
+  if (!isHydrated) {
+    return null;
+  }
+
   return (
-    <SidebarProvider defaultOpen={true}>
+    <SidebarProvider>
       <RightSidebarProvider>
         <AppSidebar />
         <SidebarInset>

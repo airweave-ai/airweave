@@ -11,6 +11,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { useUISettings } from "@/stores/ui-settings"
 
 const RIGHT_SIDEBAR_WIDTH = "20rem"
 const RIGHT_SIDEBAR_TAB_WIDTH = "3rem"
@@ -62,12 +63,21 @@ function RightSidebarProvider({
   style,
   ...props
 }: React.ComponentProps<"div">) {
-  const [activeTab, setActiveTab] = React.useState<TabId | null>(null)
+  // Use Zustand store for persisted active tab state
+  const {
+    rightSidebarTab,
+    setRightSidebarTab,
+    toggleRightSidebarTab,
+  } = useUISettings()
+
   const [content, setContent] = React.useState<RightSidebarContent>({})
 
+  // Map Zustand state to local types
+  const activeTab = rightSidebarTab as TabId | null
+  const setActiveTab = setRightSidebarTab as (tab: TabId | null) => void
   const toggleTab = React.useCallback((tab: TabId) => {
-    setActiveTab((current) => (current === tab ? null : tab))
-  }, [])
+    toggleRightSidebarTab(tab)
+  }, [toggleRightSidebarTab])
 
   const contextValue = React.useMemo<RightSidebarContextProps>(
     () => ({
