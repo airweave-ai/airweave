@@ -1,10 +1,16 @@
 "use client"
 
 import * as React from "react"
-import { BookOpen, Code2, HelpCircle, PanelRightIcon } from "lucide-react"
+import { BookOpen, Code2, HelpCircle, LayoutGrid, PanelRightIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
 import {
   Tooltip,
   TooltipContent,
@@ -231,11 +237,100 @@ function RightSidebarTrigger({
   )
 }
 
+const mobileTabs: { id: TabId | "app"; label: string; icon: React.ReactNode }[] = [
+  { id: "app", label: "App", icon: <LayoutGrid className="size-5" /> },
+  { id: "docs", label: "Docs", icon: <BookOpen className="size-5" /> },
+  { id: "code", label: "Code", icon: <Code2 className="size-5" /> },
+  { id: "help", label: "Help", icon: <HelpCircle className="size-5" /> },
+]
+
+function MobileBottomNav({ className, ...props }: React.ComponentProps<"div">) {
+  const { activeTab, setActiveTab } = useRightSidebar()
+
+  const handleTabClick = (tabId: TabId | "app") => {
+    if (tabId === "app") {
+      setActiveTab(null)
+    } else {
+      setActiveTab(tabId)
+    }
+  }
+
+  // Determine which tab is active - "app" when no sidebar tab is selected
+  const currentTab = activeTab || "app"
+
+  return (
+    <div
+      data-slot="mobile-bottom-nav"
+      className={cn(
+        "fixed inset-x-0 bottom-0 z-50 flex h-16 items-center justify-around border-t bg-sidebar md:hidden",
+        className
+      )}
+      {...props}
+    >
+      {mobileTabs.map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          className={cn(
+            "flex flex-1 flex-col items-center justify-center gap-1 py-2 text-xs transition-colors",
+            currentTab === tab.id
+              ? "text-sidebar-primary"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+          onClick={() => handleTabClick(tab.id)}
+          aria-pressed={currentTab === tab.id}
+        >
+          {tab.icon}
+          <span>{tab.label}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function MobileRightSidebarSheet({ className, ...props }: React.ComponentProps<typeof Sheet>) {
+  const { activeTab, setActiveTab, content } = useRightSidebar()
+
+  const currentContent = activeTab ? content[activeTab] : null
+  const isOpen = activeTab !== null
+
+  const handleOpenChange = (open: boolean) => {
+    if (!open) {
+      setActiveTab(null)
+    }
+  }
+
+  return (
+    <Sheet open={isOpen} onOpenChange={handleOpenChange} {...props}>
+      <SheetContent
+        side="bottom"
+        className={cn(
+          "h-[70vh] rounded-t-xl md:hidden",
+          className
+        )}
+      >
+        <SheetHeader className="border-b pb-4">
+          <SheetTitle className="capitalize">{activeTab || "Panel"}</SheetTitle>
+        </SheetHeader>
+        <div className="flex-1 overflow-auto py-4">
+          {currentContent || (
+            <div className="text-muted-foreground text-sm">
+              No content available for this tab.
+            </div>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
 export {
   RightSidebarProvider,
   RightSidebarTabs,
   RightSidebarPanel,
   RightSidebarTrigger,
+  MobileBottomNav,
+  MobileRightSidebarSheet,
   useRightSidebar,
   useRightSidebarContent,
   type TabId,

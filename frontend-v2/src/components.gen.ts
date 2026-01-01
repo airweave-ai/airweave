@@ -106,6 +106,8 @@ export const uiComponents: ComponentInfo[] = [
       "RightSidebarTabs",
       "RightSidebarPanel",
       "RightSidebarTrigger",
+      "MobileBottomNav",
+      "MobileRightSidebarSheet",
       "useRightSidebar",
       "useRightSidebarContent",
       "type TabId",

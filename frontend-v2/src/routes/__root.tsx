@@ -67,7 +67,7 @@ function RootComponent() {
             <header className="flex h-14 shrink-0 items-center border-b px-4">
               <SidebarTrigger className="-ml-1" />
             </header>
-            <div className="flex-1 overflow-auto">
+            <div className="flex-1 overflow-auto pb-16 md:pb-0">
               <Outlet />
             </div>
           </SidebarInset>
