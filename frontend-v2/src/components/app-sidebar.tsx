@@ -4,7 +4,6 @@ import { Link, useLocation } from "@tanstack/react-router";
 import {
   Cable,
   Check,
-  ChevronsUpDown,
   FolderOpen,
   Key,
   Layers,
@@ -122,7 +121,7 @@ export function AppSidebar() {
   const userAvatar = user?.picture || "";
 
   return (
-    <Sidebar collapsible="icon" side="left">
+    <Sidebar collapsible="icon" side="left" className="py-2">
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
@@ -181,23 +180,18 @@ export function AppSidebar() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <SidebarMenuButton
-                  size="lg"
                   className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
                   tooltip={userName}
                 >
-                  <Avatar className="size-8 rounded-lg">
+                  <Avatar className="size-5 rounded-lg">
                     <AvatarImage src={userAvatar} alt={userName} />
-                    <AvatarFallback className="rounded-lg">
+                    <AvatarFallback className="rounded-lg text-[80%] bg-red-100">
                       {getInitials(userName)}
                     </AvatarFallback>
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-semibold">{userName}</span>
-                    <span className="truncate text-xs text-muted-foreground">
-                      {userEmail}
-                    </span>
+                    <span className="truncate font-medium">{userName}</span>
                   </div>
-                  <ChevronsUpDown className="ml-auto size-4" />
                 </SidebarMenuButton>
               </DropdownMenuTrigger>
               <DropdownMenuContent

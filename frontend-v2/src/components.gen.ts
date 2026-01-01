@@ -78,6 +78,13 @@ export const uiComponents: ComponentInfo[] = [
     ]
   },
   {
+    "name": "checkbox",
+    "path": "components/ui/checkbox.tsx",
+    "exports": [
+      "Checkbox"
+    ]
+  },
+  {
     "name": "command",
     "path": "components/ui/command.tsx",
     "exports": [

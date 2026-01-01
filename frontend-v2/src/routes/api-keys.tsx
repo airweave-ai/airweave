@@ -85,18 +85,21 @@ function ApiKeysPage() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (keyId: string) => {
+    mutationFn: async (keyIds: string[]) => {
       const token = await getAccessTokenSilently();
-      return deleteApiKey(token, keyId);
+      await Promise.all(keyIds.map((id) => deleteApiKey(token, id)));
     },
-    onMutate: async (keyId) => {
+    onMutate: async (keyIds) => {
       // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: ["api-keys", "list"] });
 
       // Snapshot the previous value
       const previousData = queryClient.getQueryData(["api-keys", "list"]);
 
-      // Optimistically update to remove the key from all pages
+      // Create a Set for faster lookup
+      const keyIdsSet = new Set(keyIds);
+
+      // Optimistically update to remove the keys from all pages
       queryClient.setQueryData(
         ["api-keys", "list"],
         (old: { pages: APIKey[][]; pageParams: number[] } | undefined) => {
@@ -104,7 +107,7 @@ function ApiKeysPage() {
           return {
             ...old,
             pages: old.pages.map((page) =>
-              page.filter((key) => key.id !== keyId),
+              page.filter((key) => !keyIdsSet.has(key.id)),
             ),
           };
         },
@@ -112,14 +115,17 @@ function ApiKeysPage() {
 
       return { previousData };
     },
-    onError: (_err, _keyId, context) => {
+    onError: (_err, _keyIds, context) => {
       // If the mutation fails, use the context returned from onMutate to roll back
       if (context?.previousData) {
         queryClient.setQueryData(["api-keys", "list"], context.previousData);
       }
     },
-    onSuccess: () => {
-      toast.success("API key deleted");
+    onSuccess: (_data, keyIds) => {
+      const count = keyIds.length;
+      toast.success(
+        count > 1 ? `${count} API keys deleted` : "API key deleted",
+      );
     },
     onSettled: () => {
       // Always refetch after error or success to ensure sync with server
@@ -229,7 +235,7 @@ function ApiKeysPage() {
     <div className="p-6 space-y-4">
       <ApiKeysTable
         data={apiKeys}
-        onDelete={(id) => deleteMutation.mutate(id)}
+        onDelete={(ids) => deleteMutation.mutate(ids)}
         selectedKey={selectedKey}
         onSelectKey={setSelectedKey}
         deleteDialogOpen={deleteDialogOpen}
