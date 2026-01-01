@@ -43,9 +43,10 @@ const authEnabled =
   !accessToken && import.meta.env.VITE_ENABLE_AUTH !== "false";
 
 export const authConfig = {
-  domain: "airweave.us.auth0.com",
-  clientId: "jXyLRWR9lg0kZQvVjpJ2YmiSYn1UtUSw",
-  audience: "https://app.airweave.ai/",
+  domain: import.meta.env.VITE_AUTH0_DOMAIN || "airweave.us.auth0.com",
+  clientId:
+    import.meta.env.VITE_AUTH0_CLIENT_ID || "jXyLRWR9lg0kZQvVjpJ2YmiSYn1UtUSw",
+  audience: import.meta.env.VITE_AUTH0_AUDIENCE || "https://app.airweave.ai/",
   redirectUri: getRedirectUrl(),
   /** Access token for local development (skips Auth0 login) */
   accessToken,
@@ -55,7 +56,7 @@ export const authConfig = {
 
 /** Fake user shown when using access token for local development */
 export const devUser = {
-  name: "Anand Chowdhary",
-  email: "anand@chowdhary.org",
+  name: import.meta.env.VITE_DEV_USER_NAME || "Anand Chowdhary",
+  email: import.meta.env.VITE_DEV_USER_EMAIL || "anand@chowdhary.org",
   picture: "",
 };

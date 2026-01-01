@@ -1,11 +1,12 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import {
-  Route as RouteIcon,
-  Server,
-  Shield,
-  Sparkles,
-  Waves,
-  Zap,
+  ArrowRight,
+  Cable,
+  FolderOpen,
+  Key,
+  Plus,
+  ShieldCheck,
+  Webhook,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -19,19 +20,19 @@ import {
 import { useRightSidebarContent } from "@/components/ui/right-sidebar";
 import { DocsContent } from "@/hooks/use-docs-content";
 
-export const Route = createFileRoute("/")({ component: App });
+export const Route = createFileRoute("/")({ component: DashboardPage });
 
-// Sidebar content components for the home page
-function HomePageDocs() {
+// Sidebar content components for the dashboard
+function DashboardDocs() {
   return <DocsContent docPath="welcome.mdx" />;
 }
 
-function HomePageCode() {
+function DashboardCode() {
   return (
     <div className="space-y-4">
-      <h3 className="font-semibold text-base">Example Code</h3>
+      <h3 className="font-semibold text-base">Quick Start</h3>
       <p className="text-sm text-muted-foreground">
-        Here's how to get started with the Airweave API:
+        Get started with the Airweave SDK:
       </p>
       <pre className="bg-muted p-3 rounded-lg text-xs overflow-auto">
         <code>{`import { Airweave } from '@airweave/sdk';
@@ -40,34 +41,51 @@ const client = new Airweave({
   apiKey: process.env.AIRWEAVE_API_KEY
 });
 
-// Sync your data source
+// Create a collection
+const collection = await client.collections.create({
+  name: 'My Knowledge Base'
+});
+
+// Sync data from a source
 await client.sync({
-  source: 'notion',
-  config: { ... }
+  collection: collection.id,
+  source: 'notion'
+});
+
+// Search your data
+const results = await client.search({
+  collection: collection.id,
+  query: 'your search query'
 });`}</code>
       </pre>
     </div>
   );
 }
 
-function HomePageHelp() {
+function DashboardHelp() {
   return (
     <div className="space-y-4">
-      <h3 className="font-semibold text-base">Need Help?</h3>
+      <h3 className="font-semibold text-base">Getting Started</h3>
       <p className="text-sm text-muted-foreground">
-        We're here to help you get the most out of Airweave.
+        Welcome to Airweave! Here's how to get started:
       </p>
       <div className="space-y-3">
         <div className="p-3 bg-muted rounded-lg">
-          <h4 className="font-medium text-sm">Community Support</h4>
+          <h4 className="font-medium text-sm">1. Create a Collection</h4>
           <p className="text-xs text-muted-foreground mt-1">
-            Join our Discord community for help and discussions.
+            Collections are searchable knowledge bases for your data.
           </p>
         </div>
         <div className="p-3 bg-muted rounded-lg">
-          <h4 className="font-medium text-sm">Enterprise Support</h4>
+          <h4 className="font-medium text-sm">2. Connect a Source</h4>
           <p className="text-xs text-muted-foreground mt-1">
-            Contact us for dedicated enterprise support options.
+            Connect Notion, Slack, or other sources to sync your data.
+          </p>
+        </div>
+        <div className="p-3 bg-muted rounded-lg">
+          <h4 className="font-medium text-sm">3. Search & Query</h4>
+          <p className="text-xs text-muted-foreground mt-1">
+            Use the API or MCP to search across all your connected sources.
           </p>
         </div>
       </div>
@@ -75,116 +93,115 @@ function HomePageHelp() {
   );
 }
 
-function App() {
-  // Register sidebar content for this page
+const quickActions = [
+  {
+    title: "Collections",
+    description: "Create and manage searchable knowledge bases",
+    icon: FolderOpen,
+    href: "/collections",
+    action: "New Collection",
+  },
+  {
+    title: "API Keys",
+    description: "Generate keys for programmatic access",
+    icon: Key,
+    href: "/api-keys",
+    action: "Create Key",
+  },
+  {
+    title: "Webhooks",
+    description: "Receive real-time event notifications",
+    icon: Webhook,
+    href: "/webhooks",
+    action: "Add Webhook",
+  },
+  {
+    title: "Auth Providers",
+    description: "Configure OAuth for source connections",
+    icon: ShieldCheck,
+    href: "/auth-providers",
+    action: "Add Provider",
+  },
+];
+
+function DashboardPage() {
   useRightSidebarContent({
-    docs: <HomePageDocs />,
-    code: <HomePageCode />,
-    help: <HomePageHelp />,
+    docs: <DashboardDocs />,
+    code: <DashboardCode />,
+    help: <DashboardHelp />,
   });
 
-  const features = [
-    {
-      icon: <Zap className="w-10 h-10 text-primary" />,
-      title: "Powerful Server Functions",
-      description:
-        "Write server-side code that seamlessly integrates with your client components. Type-safe, secure, and simple.",
-    },
-    {
-      icon: <Server className="w-10 h-10 text-primary" />,
-      title: "Flexible Server Side Rendering",
-      description:
-        "Full-document SSR, streaming, and progressive enhancement out of the box. Control exactly what renders where.",
-    },
-    {
-      icon: <RouteIcon className="w-10 h-10 text-primary" />,
-      title: "API Routes",
-      description:
-        "Build type-safe API endpoints alongside your application. No separate backend needed.",
-    },
-    {
-      icon: <Shield className="w-10 h-10 text-primary" />,
-      title: "Strongly Typed Everything",
-      description:
-        "End-to-end type safety from server to client. Catch errors before they reach production.",
-    },
-    {
-      icon: <Waves className="w-10 h-10 text-primary" />,
-      title: "Full Streaming Support",
-      description:
-        "Stream data from server to client progressively. Perfect for AI applications and real-time updates.",
-    },
-    {
-      icon: <Sparkles className="w-10 h-10 text-primary" />,
-      title: "Next Generation Ready",
-      description:
-        "Built from the ground up for modern web applications. Deploy anywhere JavaScript runs.",
-    },
-  ];
-
   return (
-    <div className="min-h-screen bg-background">
-      <section className="relative py-20 px-6 text-center overflow-hidden">
-        <div className="relative max-w-5xl mx-auto">
-          <div className="flex items-center justify-center gap-6 mb-6">
-            <img
-              src="/tanstack-circle-logo.png"
-              alt="TanStack Logo"
-              className="w-24 h-24 md:w-32 md:h-32"
-            />
-            <h1 className="text-6xl md:text-7xl font-black text-foreground [letter-spacing:-0.08em]">
-              <span className="text-muted-foreground">TANSTACK</span>{" "}
-              <span className="text-primary">START</span>
-            </h1>
-          </div>
-          <p className="text-2xl md:text-3xl text-foreground mb-4 font-light">
-            The framework for next generation AI applications
-          </p>
-          <p className="text-lg text-muted-foreground max-w-3xl mx-auto mb-8">
-            Full-stack framework powered by TanStack Router for React and Solid.
-            Build modern applications with server functions, streaming, and type
-            safety.
-          </p>
-          <div className="flex flex-col items-center gap-4">
-            <Button asChild size="lg">
-              <a
-                href="https://tanstack.com/start"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Documentation
-              </a>
-            </Button>
-            <p className="text-muted-foreground text-sm mt-2">
-              Begin your TanStack Start journey by editing{" "}
-              <code className="px-2 py-1 bg-muted rounded text-primary">
-                /src/routes/index.tsx
-              </code>
-            </p>
-          </div>
-        </div>
-      </section>
+    <div className="p-6 space-y-8">
+      {/* Welcome Section */}
+      <div className="space-y-2">
+        <h1 className="text-3xl font-bold tracking-tight">
+          Welcome to Airweave
+        </h1>
+        <p className="text-muted-foreground text-lg">
+          Make any app searchable for your agent. Sync data from various sources
+          with minimal configuration.
+        </p>
+      </div>
 
-      <section className="py-16 px-6 max-w-7xl mx-auto">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {features.map((feature, index) => (
+      {/* Quick Actions */}
+      <div className="space-y-4">
+        <h2 className="text-xl font-semibold">Quick Actions</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {quickActions.map((item) => (
             <Card
-              key={index}
-              className="hover:shadow-md transition-shadow duration-300"
+              key={item.href}
+              className="group hover:shadow-md transition-shadow"
             >
-              <CardHeader>
-                <div className="mb-2">{feature.icon}</div>
-                <CardTitle>{feature.title}</CardTitle>
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between">
+                  <div className="p-2 rounded-lg bg-primary/10">
+                    <item.icon className="size-5 text-primary" />
+                  </div>
+                  <Button variant="ghost" size="sm" asChild>
+                    <Link to={item.href}>
+                      {item.action}
+                      <ArrowRight className="ml-1 size-4 group-hover:translate-x-0.5 transition-transform" />
+                    </Link>
+                  </Button>
+                </div>
+                <CardTitle className="text-lg">{item.title}</CardTitle>
               </CardHeader>
               <CardContent>
-                <CardDescription className="leading-relaxed">
-                  {feature.description}
-                </CardDescription>
+                <CardDescription>{item.description}</CardDescription>
               </CardContent>
             </Card>
           ))}
         </div>
-      </section>
+      </div>
+
+      {/* Getting Started CTA */}
+      <Card className="bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Plus className="size-5" />
+            Get Started
+          </CardTitle>
+          <CardDescription>
+            Create your first collection to start syncing and searching your
+            data.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex gap-3">
+          <Button asChild>
+            <Link to="/collections">
+              <FolderOpen className="mr-2 size-4" />
+              Create Collection
+            </Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link to="/logs">
+              <Cable className="mr-2 size-4" />
+              View Logs
+            </Link>
+          </Button>
+        </CardContent>
+      </Card>
     </div>
   );
 }

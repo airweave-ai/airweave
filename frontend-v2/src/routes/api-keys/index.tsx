@@ -19,7 +19,7 @@ import {
   ApiKeysHelp,
 } from "@/features/api-keys/components/sidebar-content";
 
-export const Route = createFileRoute("/api-keys")({ component: ApiKeysPage });
+export const Route = createFileRoute("/api-keys/")({ component: ApiKeysPage });
 
 function ApiKeysPage() {
   const { getAccessTokenSilently } = useAuth0();

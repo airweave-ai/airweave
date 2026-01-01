@@ -2,7 +2,8 @@
  * API client for Airweave backend
  */
 
-const API_BASE_URL = "https://api.airweave.ai";
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "https://api.airweave.ai";
 
 /**
  * API Key type matching the backend schema
