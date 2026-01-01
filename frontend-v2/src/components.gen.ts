@@ -20,16 +20,16 @@ export const uiComponents: ComponentInfo[] = [
     "path": "components/ui/alert-dialog.tsx",
     "exports": [
       "AlertDialog",
-      "AlertDialogPortal",
-      "AlertDialogOverlay",
-      "AlertDialogTrigger",
-      "AlertDialogContent",
-      "AlertDialogHeader",
-      "AlertDialogFooter",
-      "AlertDialogTitle",
-      "AlertDialogDescription",
       "AlertDialogAction",
-      "AlertDialogCancel"
+      "AlertDialogCancel",
+      "AlertDialogContent",
+      "AlertDialogDescription",
+      "AlertDialogFooter",
+      "AlertDialogHeader",
+      "AlertDialogOverlay",
+      "AlertDialogPortal",
+      "AlertDialogTitle",
+      "AlertDialogTrigger"
     ]
   },
   {
@@ -115,10 +115,29 @@ export const uiComponents: ComponentInfo[] = [
     ]
   },
   {
+    "name": "empty-state",
+    "path": "components/ui/empty-state.tsx",
+    "exports": [
+      "EmptyState",
+      "type EmptyStateProps"
+    ]
+  },
+  {
     "name": "input",
     "path": "components/ui/input.tsx",
     "exports": [
       "Input"
+    ]
+  },
+  {
+    "name": "page-header",
+    "path": "components/ui/page-header.tsx",
+    "exports": [
+      "PageHeaderContent",
+      "PageHeaderProvider",
+      "usePageHeader",
+      "usePageHeaderContext",
+      "type PageHeaderContent"
     ]
   },
   {

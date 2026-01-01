@@ -2,13 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { FolderOpen, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { usePageHeader } from "@/components/ui/page-header";
 import { useRightSidebarContent } from "@/components/ui/right-sidebar";
 import { DocsContent } from "@/hooks/use-docs-content";
 
@@ -72,6 +67,17 @@ function CollectionsHelp() {
 }
 
 function CollectionsPage() {
+  usePageHeader({
+    title: "Collections",
+    description: "Manage your searchable knowledge bases",
+    actions: (
+      <Button>
+        <Plus className="size-4 mr-2" />
+        New Collection
+      </Button>
+    ),
+  });
+
   useRightSidebarContent({
     docs: <CollectionsDocs />,
     code: <CollectionsCode />,
@@ -80,41 +86,16 @@ function CollectionsPage() {
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Collections</h1>
-          <p className="text-muted-foreground">
-            Manage your searchable knowledge bases
-          </p>
-        </div>
-        <Button>
+      <EmptyState
+        icon={<FolderOpen />}
+        title="Create your first collection"
+        description="Collections help you organize and search your data from multiple sources."
+      >
+        <Button variant="outline">
           <Plus className="size-4 mr-2" />
           New Collection
         </Button>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <Card className="border-dashed">
-          <CardHeader className="text-center">
-            <div className="mx-auto w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-2">
-              <FolderOpen className="size-6 text-muted-foreground" />
-            </div>
-            <CardTitle className="text-lg">
-              Create your first collection
-            </CardTitle>
-            <CardDescription>
-              Collections help you organize and search your data from multiple
-              sources.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="text-center">
-            <Button variant="outline">
-              <Plus className="size-4 mr-2" />
-              New Collection
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+      </EmptyState>
     </div>
   );
 }

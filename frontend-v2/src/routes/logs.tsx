@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Cable, Search } from "lucide-react";
 
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
+import { usePageHeader } from "@/components/ui/page-header";
 import { useRightSidebarContent } from "@/components/ui/right-sidebar";
 
 export const Route = createFileRoute("/logs")({ component: LogsPage });
@@ -65,6 +67,17 @@ function LogsHelp() {
 }
 
 function LogsPage() {
+  usePageHeader({
+    title: "Logs",
+    description: "Monitor synchronization activity",
+    actions: (
+      <div className="relative w-64">
+        <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+        <Input placeholder="Search logs..." className="pl-9" />
+      </div>
+    ),
+  });
+
   useRightSidebarContent({
     docs: <LogsDocs />,
     code: <LogsCode />,
@@ -73,29 +86,11 @@ function LogsPage() {
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Logs</h1>
-          <p className="text-muted-foreground">
-            Monitor synchronization activity
-          </p>
-        </div>
-        <div className="relative w-64">
-          <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-          <Input placeholder="Search logs..." className="pl-9" />
-        </div>
-      </div>
-
-      <div className="flex flex-col items-center justify-center py-16 text-center">
-        <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
-          <Cable className="size-8 text-muted-foreground" />
-        </div>
-        <h2 className="text-lg font-semibold mb-2">No logs yet</h2>
-        <p className="text-muted-foreground max-w-sm">
-          Logs will appear here once you start syncing data from your connected
-          sources.
-        </p>
-      </div>
+      <EmptyState
+        icon={<Cable />}
+        title="No logs yet"
+        description="Logs will appear here once you start syncing data from your connected sources."
+      />
     </div>
   );
 }

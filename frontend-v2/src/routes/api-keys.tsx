@@ -7,21 +7,18 @@ import { toast } from "sonner";
 
 import {
   AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { ApiForm } from "@/components/ui/api-form";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Dialog,
   DialogContent,
@@ -29,6 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { usePageHeader } from "@/components/ui/page-header";
 import { useRightSidebarContent } from "@/components/ui/right-sidebar";
 import { DocsContent } from "@/hooks/use-docs-content";
 import {
@@ -139,10 +137,10 @@ function ApiKeysHelp() {
 
 function ApiKeyItem({
   apiKey,
-  onDeleteClick,
+  onDelete,
 }: {
   apiKey: APIKey;
-  onDeleteClick: (apiKey: APIKey) => void;
+  onDelete: (keyId: string) => void;
 }) {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
@@ -213,15 +211,41 @@ function ApiKeyItem({
                 <Copy className="size-4" />
               )}
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => onDeleteClick(apiKey)}
-              className="size-8 text-muted-foreground hover:text-red-600 dark:hover:text-red-500"
-              title="Delete key"
-            >
-              <Trash2 className="size-4" />
-            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 text-muted-foreground hover:text-red-600 dark:hover:text-red-500"
+                  title="Delete key"
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent className="sm:max-w-md">
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete API key</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action cannot be undone. Any applications using this
+                    key will lose access immediately.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <div className="my-4 rounded-lg border bg-muted p-3">
+                  <code className="text-sm font-mono">
+                    {maskKey(apiKey.decrypted_key)}
+                  </code>
+                </div>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    variant="destructive"
+                    onClick={() => onDelete(apiKey.id)}
+                  >
+                    Delete key
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
       </div>
@@ -232,9 +256,23 @@ function ApiKeyItem({
 function ApiKeysPage() {
   const { getAccessTokenSilently } = useAuth0();
   const queryClient = useQueryClient();
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [keyToDelete, setKeyToDelete] = useState<APIKey | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+
+  const handleOpenCreateDialog = () => {
+    createForm.reset();
+    setCreateDialogOpen(true);
+  };
+
+  usePageHeader({
+    title: "API Keys",
+    description: "Manage your API keys for programmatic access",
+    actions: (
+      <Button onClick={handleOpenCreateDialog}>
+        <Plus className="mr-2 size-4" />
+        Create key
+      </Button>
+    ),
+  });
 
   useRightSidebarContent({
     docs: <ApiKeysDocs />,
@@ -319,10 +357,6 @@ function ApiKeysPage() {
         old?.filter((key) => key.id !== keyId),
       );
 
-      // Close dialog immediately for better UX
-      setDeleteDialogOpen(false);
-      setKeyToDelete(null);
-
       // Return a context object with the snapshotted value
       return { previousKeys };
     },
@@ -338,38 +372,10 @@ function ApiKeysPage() {
     },
   });
 
-  const handleDeleteClick = (apiKey: APIKey) => {
-    setKeyToDelete(apiKey);
-    setDeleteDialogOpen(true);
-  };
-
-  const handleConfirmDelete = () => {
-    if (keyToDelete) {
-      deleteMutation.mutate(keyToDelete.id);
-    }
-  };
-
-  const handleOpenCreateDialog = () => {
-    createForm.reset();
-    setCreateDialogOpen(true);
-  };
-
   // Loading state
   if (isLoading) {
     return (
       <div className="p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold">API Keys</h1>
-            <p className="text-muted-foreground">
-              Manage your API keys for programmatic access
-            </p>
-          </div>
-          <Button onClick={handleOpenCreateDialog}>
-            <Plus className="mr-2 size-4" />
-            Create key
-          </Button>
-        </div>
         <div className="flex items-center justify-center py-20">
           <Loader2 className="size-6 animate-spin text-muted-foreground" />
         </div>
@@ -381,18 +387,6 @@ function ApiKeysPage() {
   if (error) {
     return (
       <div className="p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold">API Keys</h1>
-            <p className="text-muted-foreground">
-              Manage your API keys for programmatic access
-            </p>
-          </div>
-          <Button onClick={handleOpenCreateDialog}>
-            <Plus className="mr-2 size-4" />
-            Create key
-          </Button>
-        </div>
         <div className="rounded-lg border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-900/10 px-4 py-3 text-sm text-red-600 dark:text-red-400">
           {error instanceof Error ? error.message : "Failed to load API keys"}
         </div>
@@ -404,41 +398,16 @@ function ApiKeysPage() {
   if (!apiKeys || apiKeys.length === 0) {
     return (
       <div className="p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold">API Keys</h1>
-            <p className="text-muted-foreground">
-              Manage your API keys for programmatic access
-            </p>
-          </div>
-          <Button onClick={handleOpenCreateDialog}>
+        <EmptyState
+          icon={<Key />}
+          title="No API keys yet"
+          description="Create your first key to start using the API programmatically."
+        >
+          <Button variant="outline" size="sm" onClick={handleOpenCreateDialog}>
             <Plus className="mr-2 size-4" />
             Create key
           </Button>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <Card className="border-dashed">
-            <CardHeader className="text-center">
-              <div className="mx-auto size-12 rounded-full bg-muted flex items-center justify-center mb-2">
-                <Key className="size-6 text-muted-foreground" />
-              </div>
-              <CardTitle className="text-lg">No API keys yet</CardTitle>
-              <CardDescription>
-                Create your first key to start using the API programmatically.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="text-center">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleOpenCreateDialog}
-              >
-                <Plus className="mr-2 size-4" />
-                Create key
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
+        </EmptyState>
 
         {/* Create Dialog */}
         <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
@@ -537,62 +506,15 @@ function ApiKeysPage() {
   // Keys list
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">API Keys</h1>
-          <p className="text-muted-foreground">
-            Manage your API keys for programmatic access
-          </p>
-        </div>
-        <Button onClick={handleOpenCreateDialog}>
-          <Plus className="mr-2 size-4" />
-          Create key
-        </Button>
-      </div>
-
       <div className="space-y-3">
         {apiKeys.map((apiKey) => (
           <ApiKeyItem
             key={apiKey.id}
             apiKey={apiKey}
-            onDeleteClick={handleDeleteClick}
+            onDelete={(id) => deleteMutation.mutate(id)}
           />
         ))}
       </div>
-
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent className="sm:max-w-md">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete API key</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. Any applications using this key will
-              lose access immediately.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-
-          {keyToDelete && (
-            <div className="my-4 rounded-lg border bg-muted p-3">
-              <code className="text-sm font-mono">
-                {maskKey(keyToDelete.decrypted_key)}
-              </code>
-            </div>
-          )}
-
-          <AlertDialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDeleteDialogOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleConfirmDelete}>
-              <Trash2 className="mr-2 size-4" />
-              Delete key
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {/* Create Dialog */}
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>

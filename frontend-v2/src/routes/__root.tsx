@@ -11,7 +11,12 @@ import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 
 import { AppRightSidebar } from "../components/app-right-sidebar";
 import { AppSidebar } from "../components/app-sidebar";
+import {
+  PageHeaderContent,
+  PageHeaderProvider,
+} from "../components/ui/page-header";
 import { RightSidebarProvider } from "../components/ui/right-sidebar";
+import { Separator } from "../components/ui/separator";
 import { Toaster } from "../components/ui/sonner";
 import {
   SidebarInset,
@@ -77,20 +82,24 @@ function RootComponent() {
 
   return (
     <AuthGuard>
-      <SidebarProvider>
-        <RightSidebarProvider>
-          <AppSidebar />
-          <SidebarInset>
-            <header className="flex h-14 shrink-0 items-center border-b px-4">
-              <SidebarTrigger className="-ml-1" />
-            </header>
-            <div className="flex-1 overflow-auto pb-16 md:pb-0">
-              <Outlet />
-            </div>
-          </SidebarInset>
-          <AppRightSidebar />
-        </RightSidebarProvider>
-      </SidebarProvider>
+      <PageHeaderProvider>
+        <SidebarProvider>
+          <RightSidebarProvider>
+            <AppSidebar />
+            <SidebarInset>
+              <header className="flex h-14 shrink-0 items-center border-b px-4">
+                <SidebarTrigger className="-ml-1" />
+                <Separator orientation="vertical" className="mx-2 h-4" />
+                <PageHeaderContent />
+              </header>
+              <div className="flex-1 overflow-auto pb-16 md:pb-0">
+                <Outlet />
+              </div>
+            </SidebarInset>
+            <AppRightSidebar />
+          </RightSidebarProvider>
+        </SidebarProvider>
+      </PageHeaderProvider>
       <Toaster />
     </AuthGuard>
   );

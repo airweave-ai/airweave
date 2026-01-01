@@ -2,13 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Plus, ShieldCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { usePageHeader } from "@/components/ui/page-header";
 import { useRightSidebarContent } from "@/components/ui/right-sidebar";
 import { DocsContent } from "@/hooks/use-docs-content";
 
@@ -79,6 +74,17 @@ function AuthProvidersHelp() {
 }
 
 function AuthProvidersPage() {
+  usePageHeader({
+    title: "Auth Providers",
+    description: "Manage OAuth and authentication providers",
+    actions: (
+      <Button>
+        <Plus className="size-4 mr-2" />
+        Add Provider
+      </Button>
+    ),
+  });
+
   useRightSidebarContent({
     docs: <AuthProvidersDocs />,
     code: <AuthProvidersCode />,
@@ -87,39 +93,16 @@ function AuthProvidersPage() {
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Auth Providers</h1>
-          <p className="text-muted-foreground">
-            Manage OAuth and authentication providers
-          </p>
-        </div>
-        <Button>
+      <EmptyState
+        icon={<ShieldCheck />}
+        title="Configure auth providers"
+        description="Auth providers enable secure OAuth connections to external services."
+      >
+        <Button variant="outline">
           <Plus className="size-4 mr-2" />
           Add Provider
         </Button>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <Card className="border-dashed">
-          <CardHeader className="text-center">
-            <div className="mx-auto w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-2">
-              <ShieldCheck className="size-6 text-muted-foreground" />
-            </div>
-            <CardTitle className="text-lg">Configure auth providers</CardTitle>
-            <CardDescription>
-              Auth providers enable secure OAuth connections to external
-              services.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="text-center">
-            <Button variant="outline">
-              <Plus className="size-4 mr-2" />
-              Add Provider
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+      </EmptyState>
     </div>
   );
 }

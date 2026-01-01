@@ -2,13 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Plus, Webhook } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { usePageHeader } from "@/components/ui/page-header";
 import { useRightSidebarContent } from "@/components/ui/right-sidebar";
 
 export const Route = createFileRoute("/webhooks")({ component: WebhooksPage });
@@ -78,6 +73,17 @@ function WebhooksHelp() {
 }
 
 function WebhooksPage() {
+  usePageHeader({
+    title: "Webhooks",
+    description: "Receive real-time event notifications",
+    actions: (
+      <Button>
+        <Plus className="size-4 mr-2" />
+        Add Webhook
+      </Button>
+    ),
+  });
+
   useRightSidebarContent({
     docs: <WebhooksDocs />,
     code: <WebhooksCode />,
@@ -86,39 +92,16 @@ function WebhooksPage() {
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Webhooks</h1>
-          <p className="text-muted-foreground">
-            Receive real-time event notifications
-          </p>
-        </div>
-        <Button>
+      <EmptyState
+        icon={<Webhook />}
+        title="Add your first webhook"
+        description="Get notified when sync jobs complete, fail, or when new data is available."
+      >
+        <Button variant="outline">
           <Plus className="size-4 mr-2" />
           Add Webhook
         </Button>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <Card className="border-dashed">
-          <CardHeader className="text-center">
-            <div className="mx-auto w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-2">
-              <Webhook className="size-6 text-muted-foreground" />
-            </div>
-            <CardTitle className="text-lg">Add your first webhook</CardTitle>
-            <CardDescription>
-              Get notified when sync jobs complete, fail, or when new data is
-              available.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="text-center">
-            <Button variant="outline">
-              <Plus className="size-4 mr-2" />
-              Add Webhook
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+      </EmptyState>
     </div>
   );
 }
