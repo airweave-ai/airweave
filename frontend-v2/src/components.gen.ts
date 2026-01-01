@@ -33,6 +33,13 @@ export const uiComponents: ComponentInfo[] = [
     ]
   },
   {
+    "name": "api-form",
+    "path": "components/ui/api-form.tsx",
+    "exports": [
+      "ApiForm"
+    ]
+  },
+  {
     "name": "avatar",
     "path": "components/ui/avatar.tsx",
     "exports": [

@@ -25,7 +25,7 @@ jobs:
           cache-dependency-path: "./frontend-v2/package-lock.json"
 
       - name: Install dependencies
-        run: cd frontend-v2 && npm ci
+        run: cd frontend-v2 && npm i
 
       - name: Type check
         run: cd frontend-v2 && npx tsc --noEmit

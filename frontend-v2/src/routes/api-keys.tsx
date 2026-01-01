@@ -12,6 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { ApiForm } from "@/components/ui/api-form";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -24,12 +25,10 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useRightSidebarContent } from "@/components/ui/right-sidebar";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DocsContent } from "@/hooks/use-docs-content";
 import {
   createApiKey,
@@ -48,8 +47,6 @@ const EXPIRATION_PRESETS = [
   { days: 180, label: "180 days" },
   { days: 365, label: "365 days" },
 ];
-
-const API_BASE_URL = "https://api.airweave.ai";
 
 export const Route = createFileRoute("/api-keys")({ component: ApiKeysPage });
 
@@ -237,8 +234,6 @@ function ApiKeysPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [keyToDelete, setKeyToDelete] = useState<APIKey | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [newlyCreatedKey, setNewlyCreatedKey] = useState<APIKey | null>(null);
-  const [copiedNewKey, setCopiedNewKey] = useState(false);
 
   useRightSidebarContent({
     docs: <ApiKeysDocs />,
@@ -273,10 +268,9 @@ function ApiKeysPage() {
       const token = await getAccessTokenSilently();
       return createApiKey(token, expirationDays);
     },
-    onSuccess: (newKey) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["api-keys"] });
       setCreateDialogOpen(false);
-      setNewlyCreatedKey(newKey);
       createForm.reset();
     },
   });
@@ -325,20 +319,6 @@ function ApiKeysPage() {
   const handleConfirmDelete = () => {
     if (keyToDelete) {
       deleteMutation.mutate(keyToDelete.id);
-    }
-  };
-
-  const handleCopyNewKey = () => {
-    if (newlyCreatedKey) {
-      navigator.clipboard.writeText(newlyCreatedKey.decrypted_key).then(
-        () => {
-          setCopiedNewKey(true);
-          setTimeout(() => setCopiedNewKey(false), 2000);
-        },
-        () => {
-          console.error("Failed to copy key");
-        },
-      );
     }
   };
 
@@ -451,17 +431,19 @@ function ApiKeysPage() {
             >
               <createForm.Field name="expirationDays">
                 {(field) => (
-                  <Tabs defaultValue="form" className="w-full">
-                    <TabsList className="w-full">
-                      <TabsTrigger value="form" className="flex-1">
-                        Form
-                      </TabsTrigger>
-                      <TabsTrigger value="code" className="flex-1">
-                        Code
-                      </TabsTrigger>
-                    </TabsList>
+                  <ApiForm
+                    method="POST"
+                    endpoint="https://api.airweave.ai/api-keys"
+                    body={{ expiration_days: field.state.value }}
+                    onBodyChange={(newBody) =>
+                      field.handleChange(
+                        (newBody.expiration_days as number) || 90,
+                      )
+                    }
+                  >
+                    <ApiForm.Toggle />
 
-                    <TabsContent value="form" className="py-4 space-y-2">
+                    <ApiForm.FormView className="space-y-2">
                       {EXPIRATION_PRESETS.map((preset) => (
                         <button
                           key={preset.days}
@@ -491,76 +473,33 @@ function ApiKeysPage() {
                           )}
                         </button>
                       ))}
-                    </TabsContent>
+                    </ApiForm.FormView>
 
-                    <TabsContent value="code" className="py-4">
-                      <div className="rounded-lg bg-zinc-950 p-4 font-mono text-sm">
-                        <div className="flex items-center gap-2 text-emerald-400 mb-3">
-                          <span className="font-semibold">POST</span>
-                          <span className="text-zinc-400">
-                            {API_BASE_URL}/api-keys
-                          </span>
-                        </div>
-                        <div className="text-zinc-400 text-xs mb-2">
-                          Request Body
-                        </div>
-                        <div className="text-zinc-100 text-xs leading-relaxed">
-                          <div>{"{"}</div>
-                          <div className="flex items-center pl-4">
-                            <span className="text-sky-400">
-                              "expiration_days"
-                            </span>
-                            <span className="text-zinc-100">:&nbsp;</span>
-                            <input
-                              type="number"
-                              min={1}
-                              max={365}
-                              value={field.state.value}
-                              onChange={(e) =>
-                                field.handleChange(
-                                  Math.max(
-                                    1,
-                                    Math.min(
-                                      365,
-                                      parseInt(e.target.value) || 1,
-                                    ),
-                                  ),
-                                )
-                              }
-                              className="w-16 bg-zinc-800 text-amber-400 border border-zinc-700 rounded px-1.5 py-0.5 text-xs font-mono focus:outline-none focus:border-emerald-500"
-                            />
-                          </div>
-                          <div>{"}"}</div>
-                        </div>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-3">
-                        Edit the value above or select a preset in the Form tab.
-                      </p>
-                    </TabsContent>
-                  </Tabs>
+                    <ApiForm.CodeView editable />
+
+                    <ApiForm.Footer>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setCreateDialogOpen(false)}
+                        disabled={createMutation.isPending}
+                      >
+                        Cancel
+                      </Button>
+                      <Button type="submit" disabled={createMutation.isPending}>
+                        {createMutation.isPending ? (
+                          <>
+                            <Loader2 className="mr-2 size-4 animate-spin" />
+                            Creating...
+                          </>
+                        ) : (
+                          "Create key"
+                        )}
+                      </Button>
+                    </ApiForm.Footer>
+                  </ApiForm>
                 )}
               </createForm.Field>
-
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setCreateDialogOpen(false)}
-                  disabled={createMutation.isPending}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={createMutation.isPending}>
-                  {createMutation.isPending ? (
-                    <>
-                      <Loader2 className="mr-2 size-4 animate-spin" />
-                      Creating...
-                    </>
-                  ) : (
-                    "Create key"
-                  )}
-                </Button>
-              </DialogFooter>
             </form>
           </DialogContent>
         </Dialog>
@@ -583,46 +522,6 @@ function ApiKeysPage() {
           Create key
         </Button>
       </div>
-
-      {/* Newly Created Key Display */}
-      {newlyCreatedKey && (
-        <div className="mb-6 rounded-lg border p-4">
-          <div className="flex items-start justify-between gap-4 mb-3">
-            <div className="space-y-0.5">
-              <p className="text-sm font-medium">Your new API key</p>
-              <p className="text-xs text-muted-foreground">
-                Copy and save it now — you won't see it again
-              </p>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setNewlyCreatedKey(null)}
-              className="h-6 text-xs"
-            >
-              Dismiss
-            </Button>
-          </div>
-          <div className="flex items-center gap-2">
-            <code className="flex-1 text-xs font-mono px-3 py-2 rounded-md bg-muted border">
-              {newlyCreatedKey.decrypted_key}
-            </code>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={handleCopyNewKey}
-              className="gap-2"
-            >
-              {copiedNewKey ? (
-                <CheckCircle2 className="size-4" />
-              ) : (
-                <Copy className="size-4" />
-              )}
-              Copy
-            </Button>
-          </div>
-        </div>
-      )}
 
       <div className="space-y-3">
         {apiKeys.map((apiKey) => (
@@ -657,26 +556,12 @@ function ApiKeysPage() {
             <Button
               variant="outline"
               onClick={() => setDeleteDialogOpen(false)}
-              disabled={deleteMutation.isPending}
             >
               Cancel
             </Button>
-            <Button
-              variant="destructive"
-              onClick={handleConfirmDelete}
-              disabled={deleteMutation.isPending}
-            >
-              {deleteMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 size-4 animate-spin" />
-                  Deleting...
-                </>
-              ) : (
-                <>
-                  <Trash2 className="mr-2 size-4" />
-                  Delete key
-                </>
-              )}
+            <Button variant="destructive" onClick={handleConfirmDelete}>
+              <Trash2 className="mr-2 size-4" />
+              Delete key
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -700,17 +585,19 @@ function ApiKeysPage() {
           >
             <createForm.Field name="expirationDays">
               {(field) => (
-                <Tabs defaultValue="form" className="w-full">
-                  <TabsList className="w-full">
-                    <TabsTrigger value="form" className="flex-1">
-                      Form
-                    </TabsTrigger>
-                    <TabsTrigger value="code" className="flex-1">
-                      Code
-                    </TabsTrigger>
-                  </TabsList>
+                <ApiForm
+                  method="POST"
+                  endpoint="https://api.airweave.ai/api-keys"
+                  body={{ expiration_days: field.state.value }}
+                  onBodyChange={(newBody) =>
+                    field.handleChange(
+                      (newBody.expiration_days as number) || 90,
+                    )
+                  }
+                >
+                  <ApiForm.Toggle />
 
-                  <TabsContent value="form" className="py-4 space-y-2">
+                  <ApiForm.FormView className="space-y-2">
                     {EXPIRATION_PRESETS.map((preset) => (
                       <button
                         key={preset.days}
@@ -740,73 +627,33 @@ function ApiKeysPage() {
                         )}
                       </button>
                     ))}
-                  </TabsContent>
+                  </ApiForm.FormView>
 
-                  <TabsContent value="code" className="py-4">
-                    <div className="rounded-lg bg-zinc-950 p-4 font-mono text-sm">
-                      <div className="flex items-center gap-2 text-emerald-400 mb-3">
-                        <span className="font-semibold">POST</span>
-                        <span className="text-zinc-400">
-                          {API_BASE_URL}/api-keys
-                        </span>
-                      </div>
-                      <div className="text-zinc-400 text-xs mb-2">
-                        Request Body
-                      </div>
-                      <div className="text-zinc-100 text-xs leading-relaxed">
-                        <div>{"{"}</div>
-                        <div className="flex items-center pl-4">
-                          <span className="text-sky-400">
-                            "expiration_days"
-                          </span>
-                          <span className="text-zinc-100">:&nbsp;</span>
-                          <input
-                            type="number"
-                            min={1}
-                            max={365}
-                            value={field.state.value}
-                            onChange={(e) =>
-                              field.handleChange(
-                                Math.max(
-                                  1,
-                                  Math.min(365, parseInt(e.target.value) || 1),
-                                ),
-                              )
-                            }
-                            className="w-16 bg-zinc-800 text-amber-400 border border-zinc-700 rounded px-1.5 py-0.5 text-xs font-mono focus:outline-none focus:border-emerald-500"
-                          />
-                        </div>
-                        <div>{"}"}</div>
-                      </div>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-3">
-                      Edit the value above or select a preset in the Form tab.
-                    </p>
-                  </TabsContent>
-                </Tabs>
+                  <ApiForm.CodeView editable />
+
+                  <ApiForm.Footer>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setCreateDialogOpen(false)}
+                      disabled={createMutation.isPending}
+                    >
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={createMutation.isPending}>
+                      {createMutation.isPending ? (
+                        <>
+                          <Loader2 className="mr-2 size-4 animate-spin" />
+                          Creating...
+                        </>
+                      ) : (
+                        "Create key"
+                      )}
+                    </Button>
+                  </ApiForm.Footer>
+                </ApiForm>
               )}
             </createForm.Field>
-
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setCreateDialogOpen(false)}
-                disabled={createMutation.isPending}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={createMutation.isPending}>
-                {createMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 size-4 animate-spin" />
-                    Creating...
-                  </>
-                ) : (
-                  "Create key"
-                )}
-              </Button>
-            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
