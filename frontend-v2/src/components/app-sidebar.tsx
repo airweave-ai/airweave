@@ -45,6 +45,7 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 import { useUISettings, type Theme } from "@/stores/ui-settings";
+import { useAuth0 } from "@/lib/auth-provider";
 
 const navItems = [
   {
@@ -85,13 +86,6 @@ const themeOptions: { value: Theme; label: string; icon: typeof Sun }[] = [
   { value: "system", label: "System", icon: Monitor },
 ];
 
-// Example user data - in a real app this would come from auth context
-const user = {
-  name: "Anand Chowdhary",
-  email: "anand@example.com",
-  avatar: "",
-};
-
 function getInitials(name: string): string {
   return name
     .split(" ")
@@ -105,6 +99,7 @@ export function AppSidebar() {
   const location = useLocation();
   const theme = useUISettings((state) => state.theme);
   const setTheme = useUISettings((state) => state.setTheme);
+  const { user, logout } = useAuth0();
 
   const isActive = (url: string) => {
     if (url === "/") {
@@ -112,6 +107,19 @@ export function AppSidebar() {
     }
     return location.pathname.startsWith(url);
   };
+
+  const handleLogout = () => {
+    logout({
+      logoutParams: {
+        returnTo: window.location.origin,
+      },
+    });
+  };
+
+  // Get user display info with fallbacks
+  const userName = user?.name || user?.email || "User";
+  const userEmail = user?.email || "";
+  const userAvatar = user?.picture || "";
 
   return (
     <Sidebar collapsible="icon" side="left">
@@ -175,18 +183,18 @@ export function AppSidebar() {
                 <SidebarMenuButton
                   size="lg"
                   className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-                  tooltip={user.name}
+                  tooltip={userName}
                 >
                   <Avatar className="size-8 rounded-lg">
-                    <AvatarImage src={user.avatar} alt={user.name} />
+                    <AvatarImage src={userAvatar} alt={userName} />
                     <AvatarFallback className="rounded-lg">
-                      {getInitials(user.name)}
+                      {getInitials(userName)}
                     </AvatarFallback>
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-semibold">{user.name}</span>
+                    <span className="truncate font-semibold">{userName}</span>
                     <span className="truncate text-xs text-muted-foreground">
-                      {user.email}
+                      {userEmail}
                     </span>
                   </div>
                   <ChevronsUpDown className="ml-auto size-4" />
@@ -223,7 +231,7 @@ export function AppSidebar() {
                   <span>Settings</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>
+                <DropdownMenuItem onClick={handleLogout}>
                   <LogOut />
                   <span>Log out</span>
                 </DropdownMenuItem>

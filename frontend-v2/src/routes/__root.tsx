@@ -17,6 +17,7 @@ import {
 import { RightSidebarProvider } from "../components/ui/right-sidebar";
 import { useUISettingsHydrated } from "../stores/ui-settings";
 import { useThemeEffect } from "../hooks/use-theme-effect";
+import { AuthProvider, AuthGuard } from "../lib/auth-provider";
 
 import appCss from "../styles.css?url";
 
@@ -58,20 +59,22 @@ function RootComponent() {
   }
 
   return (
-    <SidebarProvider>
-      <RightSidebarProvider>
-        <AppSidebar />
-        <SidebarInset>
-          <header className="flex h-14 shrink-0 items-center border-b px-4">
-            <SidebarTrigger className="-ml-1" />
-          </header>
-          <div className="flex-1 overflow-auto">
-            <Outlet />
-          </div>
-        </SidebarInset>
-        <AppRightSidebar />
-      </RightSidebarProvider>
-    </SidebarProvider>
+    <AuthGuard>
+      <SidebarProvider>
+        <RightSidebarProvider>
+          <AppSidebar />
+          <SidebarInset>
+            <header className="flex h-14 shrink-0 items-center border-b px-4">
+              <SidebarTrigger className="-ml-1" />
+            </header>
+            <div className="flex-1 overflow-auto">
+              <Outlet />
+            </div>
+          </SidebarInset>
+          <AppRightSidebar />
+        </RightSidebarProvider>
+      </SidebarProvider>
+    </AuthGuard>
   );
 }
 
@@ -82,7 +85,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        {children}
+        <AuthProvider>
+          {children}
+        </AuthProvider>
         <TanStackDevtools
           config={{
             position: "bottom-right",

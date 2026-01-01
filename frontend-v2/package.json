@@ -9,6 +9,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@auth0/auth0-react": "^2.11.0",
     "@mdx-js/react": "^3.1.1",
     "@mdx-js/rollup": "^3.1.1",
     "@radix-ui/react-alert-dialog": "^1.1.15",

@@ -1,101 +1,40 @@
-import {
-  BookOpen,
-  Brain,
-  Database,
-  ExternalLink,
-  FileText,
-  Github,
-  Globe,
-  Headphones,
-  Home,
-  Layers,
-  Link as LinkIcon,
-  MessageSquare,
-  Play,
-  Plug,
-  Rocket,
-} from "lucide-react";
+import { AlertTriangle, ChevronDown, Info, Lightbulb } from "lucide-react";
 import type { MDXComponents } from "mdx/types";
 import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-// Map Font Awesome icons to Lucide icons
-const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
-  "fa-solid fa-rocket": Rocket,
-  "fa-solid fa-globe": Globe,
-  "fa-brands fa-discord": MessageSquare,
-  "fa-brands fa-github": Github,
-  "fa-solid fa-brain": Brain,
-  "fa-solid fa-headset": Headphones,
-  "fa-solid fa-database": Database,
-  "fa-solid fa-play": Play,
-  "fa-solid fa-book": BookOpen,
-  "fa-solid fa-home": Home,
-  "fa-solid fa-plug": Plug,
-  "fa-solid fa-link": LinkIcon,
-  "fa-solid fa-layer-group": Layers,
-  "fa-solid fa-file-alt": FileText,
-};
+const DOCS_BASE_URL = "https://docs.airweave.ai";
 
-// Icon component that maps Font Awesome names to Lucide icons
-function Icon({
-  icon,
-  size = 4,
-  className,
-}: {
-  icon: string;
-  size?: number | string;
-  color?: string;
-  className?: string;
-}) {
-  const IconComponent = iconMap[icon] || Database;
-  const sizeClass = typeof size === "number" ? `size-${size}` : size;
-  return <IconComponent className={cn(sizeClass, "inline-block", className)} />;
-}
-
-// Card component
+// Card component (without icon support)
 function Card({
   title,
-  icon,
   href,
   children,
 }: {
   title: string;
-  icon?: string;
   href?: string;
   children?: React.ReactNode;
 }) {
   const content = (
     <div className="rounded-lg border bg-card p-4 hover:bg-muted/50 transition-colors h-full">
-      <div className="flex items-start gap-3">
-        {icon && (
-          <div className="text-primary shrink-0">
-            <Icon icon={icon} size={5} />
-          </div>
-        )}
-        <div className="flex-1 min-w-0">
-          <h4 className="font-semibold text-sm mb-1 flex items-center gap-1">
-            {title}
-            {href?.startsWith("http") && (
-              <ExternalLink className="size-3 text-muted-foreground" />
-            )}
-          </h4>
-          {children && (
-            <div className="text-xs text-muted-foreground">{children}</div>
-          )}
-        </div>
-      </div>
+      <h4 className="font-semibold text-sm mb-1">{title}</h4>
+      {children && (
+        <div className="text-xs text-muted-foreground">{children}</div>
+      )}
     </div>
   );
 
   if (href) {
-    const isExternal = href.startsWith("http");
+    // All links open in new tab - relative links get docs base URL prepended
+    const finalHref = href.startsWith("http")
+      ? href
+      : `${DOCS_BASE_URL}${href}`;
     return (
       <a
-        href={href}
-        target={isExternal ? "_blank" : undefined}
-        rel={isExternal ? "noopener noreferrer" : undefined}
+        href={finalHref}
+        target="_blank"
+        rel="noopener noreferrer"
         className="block no-underline"
       >
         {content}
@@ -160,7 +99,8 @@ function CodeBlocks({ children }: { children: React.ReactNode }) {
   // Extract titles from code blocks
   const tabs = blocks.map((block, index) => {
     if (React.isValidElement(block)) {
-      const codeElement = block.props.children;
+      const blockProps = block.props as { children?: React.ReactNode };
+      const codeElement = blockProps.children;
       if (React.isValidElement(codeElement)) {
         const title =
           (codeElement.props as { title?: string }).title || `Tab ${index + 1}`;
@@ -193,15 +133,152 @@ function CodeBlocks({ children }: { children: React.ReactNode }) {
   );
 }
 
+// CodeGroup - alias for CodeBlocks
+const CodeGroup = CodeBlocks;
+
+// CodeBlock - single code block with title (renders as-is, title handled by code element)
+function CodeBlock({
+  children,
+}: {
+  children: React.ReactNode;
+  title?: string;
+}) {
+  return <div className="my-3">{children}</div>;
+}
+
+// Warning callout
+function Warning({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="my-4 rounded-lg border border-amber-500/50 bg-amber-500/10 p-4">
+      <div className="flex gap-3">
+        <AlertTriangle className="size-5 text-amber-500 shrink-0 mt-0.5" />
+        <div className="text-sm text-amber-900 dark:text-amber-100 [&>p]:mb-2 [&>p:last-child]:mb-0">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Note callout
+function Note({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="my-4 rounded-lg border border-blue-500/50 bg-blue-500/10 p-4">
+      <div className="flex gap-3">
+        <Info className="size-5 text-blue-500 shrink-0 mt-0.5" />
+        <div className="text-sm text-blue-900 dark:text-blue-100 [&>p]:mb-2 [&>p:last-child]:mb-0">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Tip callout
+function Tip({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="my-4 rounded-lg border border-green-500/50 bg-green-500/10 p-4">
+      <div className="flex gap-3">
+        <Lightbulb className="size-5 text-green-500 shrink-0 mt-0.5" />
+        <div className="text-sm text-green-900 dark:text-green-100 [&>p]:mb-2 [&>p:last-child]:mb-0">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Accordion component
+function Accordion({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  const [isOpen, setIsOpen] = React.useState(false);
+
+  return (
+    <div className="my-3 border rounded-lg">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center justify-between w-full p-3 text-left text-sm font-medium hover:bg-muted/50 transition-colors"
+      >
+        <span>{title}</span>
+        <ChevronDown
+          className={cn("size-4 transition-transform", isOpen && "rotate-180")}
+        />
+      </button>
+      {isOpen && (
+        <div className="p-3 pt-0 text-sm text-muted-foreground border-t">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Tabs container
+function Tabs({ children }: { children: React.ReactNode }) {
+  const [activeTab, setActiveTab] = React.useState(0);
+  const tabs = React.Children.toArray(children).filter((child) =>
+    React.isValidElement(child),
+  );
+
+  // Extract titles from Tab components
+  const tabTitles = tabs.map((tab, index) => {
+    if (React.isValidElement(tab)) {
+      return (tab.props as { title?: string }).title || `Tab ${index + 1}`;
+    }
+    return `Tab ${index + 1}`;
+  });
+
+  return (
+    <div className="my-4">
+      <div className="flex gap-1 border-b overflow-x-auto">
+        {tabTitles.map((title, index) => (
+          <button
+            key={index}
+            onClick={() => setActiveTab(index)}
+            className={cn(
+              "px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap",
+              activeTab === index
+                ? "border-b-2 border-primary text-primary"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {title}
+          </button>
+        ))}
+      </div>
+      <div className="mt-3">{tabs[activeTab]}</div>
+    </div>
+  );
+}
+
+// Tab component (just renders children)
+function Tab({ children }: { title?: string; children: React.ReactNode }) {
+  return <div>{children}</div>;
+}
+
 // Custom components for MDX
 export const mdxComponents: MDXComponents = {
   // Custom components
-  Icon,
   Card,
   CardGroup,
   Steps,
   Step,
   CodeBlocks,
+  CodeGroup,
+  CodeBlock,
+  Warning,
+  Note,
+  Tip,
+  Accordion,
+  Tabs,
+  Tab,
+  // Icon component - render nothing (icons removed)
+  Icon: () => null,
 
   // Override default elements for styling
   h1: ({ children, ...props }) => (
@@ -248,17 +325,19 @@ export const mdxComponents: MDXComponents = {
     </li>
   ),
   a: ({ href, children, ...props }) => {
-    const isExternal = href?.startsWith("http");
+    // All links open in new tab - relative links get docs base URL prepended
+    const finalHref = href?.startsWith("http")
+      ? href
+      : `${DOCS_BASE_URL}${href}`;
     return (
       <a
-        href={href}
-        target={isExternal ? "_blank" : undefined}
-        rel={isExternal ? "noopener noreferrer" : undefined}
-        className="text-primary hover:underline inline-flex items-center gap-1"
+        href={finalHref}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-primary hover:underline"
         {...props}
       >
         {children}
-        {isExternal && <ExternalLink className="size-3" />}
       </a>
     );
   },
