@@ -144,7 +144,7 @@ function RightSidebarTabs({
     <div
       data-slot="right-sidebar-tabs"
       className={cn(
-        "fixed inset-y-0 right-0 z-10 hidden w-(--right-sidebar-tab-width) flex-col items-center border-l bg-sidebar py-4 md:flex",
+        "fixed inset-y-0 right-0 z-10 hidden w-(--right-sidebar-tab-width) flex-col items-center bg-sidebar py-4 md:flex",
         className,
       )}
       {...props}
@@ -206,7 +206,7 @@ function RightSidebarPanel({
         data-slot="right-sidebar-panel"
         data-state={activeTab ? "open" : "closed"}
         className={cn(
-          "fixed inset-y-0 z-10 hidden h-svh w-(--right-sidebar-width) border-l bg-sidebar transition-[right] duration-200 ease-linear md:block",
+          "fixed inset-y-0 z-10 hidden h-svh w-(--right-sidebar-width) transition-[right] duration-200 ease-linear md:block",
           activeTab
             ? "right-(--right-sidebar-tab-width)"
             : "right-[calc(var(--right-sidebar-width)*-1)]",

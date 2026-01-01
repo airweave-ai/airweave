@@ -44,8 +44,8 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import { getRedirectUrl, useAuth0 } from "@/lib/auth-provider";
 import { useUISettings, type Theme } from "@/stores/ui-settings";
-import { useAuth0, getRedirectUrl } from "@/lib/auth-provider";
 
 const navItems = [
   {

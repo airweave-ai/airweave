@@ -16,13 +16,12 @@ import {
   PageHeaderProvider,
 } from "../components/ui/page-header";
 import { RightSidebarProvider } from "../components/ui/right-sidebar";
-import { Separator } from "../components/ui/separator";
-import { Toaster } from "../components/ui/sonner";
 import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
 } from "../components/ui/sidebar";
+import { Toaster } from "../components/ui/sonner";
 import { useThemeEffect } from "../hooks/use-theme-effect";
 import { AuthGuard, AuthProvider } from "../lib/auth-provider";
 import { CACHE_MAX_AGE, createIDBPersister } from "../lib/query-persister";
@@ -87,13 +86,16 @@ function RootComponent() {
           <RightSidebarProvider>
             <AppSidebar />
             <SidebarInset>
-              <header className="flex h-14 shrink-0 items-center border-b px-4">
-                <SidebarTrigger className="-ml-1" />
-                <Separator orientation="vertical" className="mx-2 h-4" />
-                <PageHeaderContent />
-              </header>
-              <div className="flex-1 overflow-auto pb-16 md:pb-0">
-                <Outlet />
+              <div className="bg-sidebar h-full px-1 py-4">
+                <div className="bg-background rounded-lg border border-border/50 flex flex-col h-full shadow-sm">
+                  <header className="flex h-14 shrink-0 items-center border-b px-4">
+                    <SidebarTrigger className="-ml-1 mr-1.5" />
+                    <PageHeaderContent />
+                  </header>
+                  <div className="flex-1 overflow-auto pb-16 md:pb-0">
+                    <Outlet />
+                  </div>
+                </div>
               </div>
             </SidebarInset>
             <AppRightSidebar />

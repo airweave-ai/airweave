@@ -77,7 +77,7 @@ function PageHeaderContent() {
   return (
     <div className="flex flex-1 items-center justify-between gap-4">
       <div className="flex items-center gap-2 min-w-0">
-        <h1 className="text-base font-semibold truncate">{content.title}</h1>
+        <h1 className="text-sm font-semibold truncate">{content.title}</h1>
         {content.description && (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -96,7 +96,9 @@ function PageHeaderContent() {
         )}
       </div>
       {content.actions && (
-        <div className="flex items-center gap-2 shrink-0">{content.actions}</div>
+        <div className="flex items-center gap-2 shrink-0">
+          {content.actions}
+        </div>
       )}
     </div>
   );
@@ -109,4 +111,3 @@ export {
   usePageHeaderContext,
   type PageHeaderContent as PageHeaderContentType,
 };
-
