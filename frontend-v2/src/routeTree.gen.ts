@@ -9,7 +9,12 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as WebhooksRouteImport } from './routes/webhooks'
+import { Route as LogsRouteImport } from './routes/logs'
 import { Route as ComponentsRouteImport } from './routes/components'
+import { Route as CollectionsRouteImport } from './routes/collections'
+import { Route as AuthProvidersRouteImport } from './routes/auth-providers'
+import { Route as ApiKeysRouteImport } from './routes/api-keys'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ComponentsIndexRouteImport } from './routes/components.index'
 import { Route as ComponentsComponentNameRouteImport } from './routes/components.$componentName'
@@ -21,9 +26,34 @@ import { Route as DemoStartSsrSpaModeRouteImport } from './routes/demo/start.ssr
 import { Route as DemoStartSsrFullSsrRouteImport } from './routes/demo/start.ssr.full-ssr'
 import { Route as DemoStartSsrDataOnlyRouteImport } from './routes/demo/start.ssr.data-only'
 
+const WebhooksRoute = WebhooksRouteImport.update({
+  id: '/webhooks',
+  path: '/webhooks',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LogsRoute = LogsRouteImport.update({
+  id: '/logs',
+  path: '/logs',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ComponentsRoute = ComponentsRouteImport.update({
   id: '/components',
   path: '/components',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CollectionsRoute = CollectionsRouteImport.update({
+  id: '/collections',
+  path: '/collections',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthProvidersRoute = AuthProvidersRouteImport.update({
+  id: '/auth-providers',
+  path: '/auth-providers',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiKeysRoute = ApiKeysRouteImport.update({
+  id: '/api-keys',
+  path: '/api-keys',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -79,7 +109,12 @@ const DemoStartSsrDataOnlyRoute = DemoStartSsrDataOnlyRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api-keys': typeof ApiKeysRoute
+  '/auth-providers': typeof AuthProvidersRoute
+  '/collections': typeof CollectionsRoute
   '/components': typeof ComponentsRouteWithChildren
+  '/logs': typeof LogsRoute
+  '/webhooks': typeof WebhooksRoute
   '/components/$componentName': typeof ComponentsComponentNameRoute
   '/components/': typeof ComponentsIndexRoute
   '/demo/api/names': typeof DemoApiNamesRoute
@@ -92,6 +127,11 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api-keys': typeof ApiKeysRoute
+  '/auth-providers': typeof AuthProvidersRoute
+  '/collections': typeof CollectionsRoute
+  '/logs': typeof LogsRoute
+  '/webhooks': typeof WebhooksRoute
   '/components/$componentName': typeof ComponentsComponentNameRoute
   '/components': typeof ComponentsIndexRoute
   '/demo/api/names': typeof DemoApiNamesRoute
@@ -105,7 +145,12 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api-keys': typeof ApiKeysRoute
+  '/auth-providers': typeof AuthProvidersRoute
+  '/collections': typeof CollectionsRoute
   '/components': typeof ComponentsRouteWithChildren
+  '/logs': typeof LogsRoute
+  '/webhooks': typeof WebhooksRoute
   '/components/$componentName': typeof ComponentsComponentNameRoute
   '/components/': typeof ComponentsIndexRoute
   '/demo/api/names': typeof DemoApiNamesRoute
@@ -120,7 +165,12 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/api-keys'
+    | '/auth-providers'
+    | '/collections'
     | '/components'
+    | '/logs'
+    | '/webhooks'
     | '/components/$componentName'
     | '/components/'
     | '/demo/api/names'
@@ -133,6 +183,11 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/api-keys'
+    | '/auth-providers'
+    | '/collections'
+    | '/logs'
+    | '/webhooks'
     | '/components/$componentName'
     | '/components'
     | '/demo/api/names'
@@ -145,7 +200,12 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/api-keys'
+    | '/auth-providers'
+    | '/collections'
     | '/components'
+    | '/logs'
+    | '/webhooks'
     | '/components/$componentName'
     | '/components/'
     | '/demo/api/names'
@@ -159,7 +219,12 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiKeysRoute: typeof ApiKeysRoute
+  AuthProvidersRoute: typeof AuthProvidersRoute
+  CollectionsRoute: typeof CollectionsRoute
   ComponentsRoute: typeof ComponentsRouteWithChildren
+  LogsRoute: typeof LogsRoute
+  WebhooksRoute: typeof WebhooksRoute
   DemoApiNamesRoute: typeof DemoApiNamesRoute
   DemoStartApiRequestRoute: typeof DemoStartApiRequestRoute
   DemoStartServerFuncsRoute: typeof DemoStartServerFuncsRoute
@@ -171,11 +236,46 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/webhooks': {
+      id: '/webhooks'
+      path: '/webhooks'
+      fullPath: '/webhooks'
+      preLoaderRoute: typeof WebhooksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/logs': {
+      id: '/logs'
+      path: '/logs'
+      fullPath: '/logs'
+      preLoaderRoute: typeof LogsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/components': {
       id: '/components'
       path: '/components'
       fullPath: '/components'
       preLoaderRoute: typeof ComponentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/collections': {
+      id: '/collections'
+      path: '/collections'
+      fullPath: '/collections'
+      preLoaderRoute: typeof CollectionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth-providers': {
+      id: '/auth-providers'
+      path: '/auth-providers'
+      fullPath: '/auth-providers'
+      preLoaderRoute: typeof AuthProvidersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api-keys': {
+      id: '/api-keys'
+      path: '/api-keys'
+      fullPath: '/api-keys'
+      preLoaderRoute: typeof ApiKeysRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -267,7 +367,12 @@ const ComponentsRouteWithChildren = ComponentsRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiKeysRoute: ApiKeysRoute,
+  AuthProvidersRoute: AuthProvidersRoute,
+  CollectionsRoute: CollectionsRoute,
   ComponentsRoute: ComponentsRouteWithChildren,
+  LogsRoute: LogsRoute,
+  WebhooksRoute: WebhooksRoute,
   DemoApiNamesRoute: DemoApiNamesRoute,
   DemoStartApiRequestRoute: DemoStartApiRequestRoute,
   DemoStartServerFuncsRoute: DemoStartServerFuncsRoute,

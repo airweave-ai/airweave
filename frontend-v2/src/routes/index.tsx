@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
 import {
-  ExternalLink,
   Route as RouteIcon,
   Server,
   Shield,
@@ -18,45 +17,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useRightSidebarContent } from "@/components/ui/right-sidebar";
+import { DocsContent } from "@/hooks/use-docs-content";
 
 export const Route = createFileRoute("/")({ component: App });
 
 // Sidebar content components for the home page
 function HomePageDocs() {
-  return (
-    <div className="space-y-4">
-      <h3 className="font-semibold text-base">Getting Started</h3>
-      <p className="text-sm text-muted-foreground">
-        Welcome to Airweave! This platform helps you make any app searchable for
-        your agent by syncing data from various sources.
-      </p>
-      <div className="space-y-2">
-        <h4 className="font-medium text-sm">Quick Links</h4>
-        <ul className="space-y-1 text-sm">
-          <li>
-            <a
-              href="https://docs.airweave.ai"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary hover:underline inline-flex items-center gap-1"
-            >
-              Documentation <ExternalLink className="size-3" />
-            </a>
-          </li>
-          <li>
-            <a
-              href="https://github.com/airweave-ai/airweave"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary hover:underline inline-flex items-center gap-1"
-            >
-              GitHub Repository <ExternalLink className="size-3" />
-            </a>
-          </li>
-        </ul>
-      </div>
-    </div>
-  );
+  return <DocsContent docPath="welcome.mdx" />;
 }
 
 function HomePageCode() {
