@@ -36,4 +36,3 @@ export function useIsDark(): boolean {
 
   return isDark;
 }
-

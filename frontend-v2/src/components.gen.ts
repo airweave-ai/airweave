@@ -145,10 +145,24 @@ export const uiComponents: ComponentInfo[] = [
     ]
   },
   {
+    "name": "error-state",
+    "path": "components/ui/error-state.tsx",
+    "exports": [
+      "ErrorState"
+    ]
+  },
+  {
     "name": "input",
     "path": "components/ui/input.tsx",
     "exports": [
       "Input"
+    ]
+  },
+  {
+    "name": "loading-state",
+    "path": "components/ui/loading-state.tsx",
+    "exports": [
+      "LoadingState"
     ]
   },
   {

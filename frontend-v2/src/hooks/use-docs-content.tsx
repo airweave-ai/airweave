@@ -96,7 +96,7 @@ export function DocsContent({
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <div className="animate-pulse text-sm text-muted-foreground">
+        <div className="text-muted-foreground animate-pulse text-sm">
           Loading documentation...
         </div>
       </div>
@@ -105,7 +105,7 @@ export function DocsContent({
 
   if (error) {
     return (
-      <div className="text-sm text-muted-foreground py-4">
+      <div className="text-muted-foreground py-4 text-sm">
         {fallback || "Documentation not available."}
       </div>
     );
@@ -113,7 +113,7 @@ export function DocsContent({
 
   if (!content) {
     return (
-      <div className="text-sm text-muted-foreground py-4">
+      <div className="text-muted-foreground py-4 text-sm">
         {fallback || "No documentation available for this page."}
       </div>
     );

@@ -84,6 +84,7 @@ export function EditDialog({
     if (connectionDetails) {
       form.setFieldValue("name", connectionDetails.name);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- form.setFieldValue is stable
   }, [connectionDetails]);
 
   // Update mutation
@@ -112,7 +113,7 @@ export function EditDialog({
         .filter(([, value]) => value && String(value).trim() !== "")
         .reduce(
           (acc, [key, value]) => ({ ...acc, [key]: value }),
-          {} as Record<string, string>,
+          {} as Record<string, string>
         );
 
       if (Object.keys(filledAuthFields).length > 0) {
@@ -127,7 +128,7 @@ export function EditDialog({
       return updateAuthProviderConnection(
         token,
         connection.readable_id,
-        updateData,
+        updateData
       );
     },
     onSuccess: (result) => {
@@ -172,7 +173,7 @@ export function EditDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Edit {authProvider.name} Connection</DialogTitle>
           <DialogDescription>
@@ -182,8 +183,8 @@ export function EditDialog({
         </DialogHeader>
 
         {isLoading ? (
-          <div className="flex justify-center items-center py-8">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="text-muted-foreground h-8 w-8 animate-spin" />
           </div>
         ) : (
           <form
@@ -191,25 +192,25 @@ export function EditDialog({
               e.preventDefault();
               form.handleSubmit();
             }}
-            className="flex flex-col flex-1 overflow-hidden"
+            className="flex flex-1 flex-col overflow-hidden"
           >
-            <div className="flex-1 overflow-y-auto space-y-6 py-4">
+            <div className="flex-1 space-y-6 overflow-y-auto py-4">
               {/* Auth Provider Icon */}
               <div className="flex justify-center py-4">
                 <div
                   className={cn(
-                    "w-20 h-20 rounded-xl flex items-center justify-center p-3",
+                    "flex h-20 w-20 items-center justify-center rounded-xl p-3",
                     "border shadow-sm",
-                    "bg-card",
+                    "bg-card"
                   )}
                 >
                   <img
                     src={getAuthProviderIconUrl(
                       authProvider.short_name,
-                      isDark ? "dark" : "light",
+                      isDark ? "dark" : "light"
                     )}
                     alt={authProvider.name}
-                    className="w-full h-full object-contain"
+                    className="h-full w-full object-contain"
                   />
                 </div>
               </div>
@@ -232,7 +233,7 @@ export function EditDialog({
               {providerDetails?.auth_fields?.fields &&
                 providerDetails.auth_fields.fields.length > 0 && (
                   <div className="space-y-4 pt-2">
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-muted-foreground text-sm">
                       Update authentication credentials (leave empty to keep
                       current values)
                     </p>
@@ -243,7 +244,7 @@ export function EditDialog({
                           {field.title || field.name}
                         </label>
                         {field.description && (
-                          <p className="text-xs text-muted-foreground">
+                          <p className="text-muted-foreground text-xs">
                             {field.description}
                           </p>
                         )}
@@ -258,7 +259,7 @@ export function EditDialog({
                               onChange={(e) =>
                                 handleAuthFieldChange(
                                   field.name,
-                                  e.target.value,
+                                  e.target.value
                                 )
                               }
                               placeholder={
@@ -275,7 +276,7 @@ export function EditDialog({
                 )}
             </div>
 
-            <DialogFooter className="pt-4 border-t">
+            <DialogFooter className="border-t pt-4">
               <Button
                 type="button"
                 variant="outline"

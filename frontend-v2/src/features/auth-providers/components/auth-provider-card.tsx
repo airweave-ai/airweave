@@ -50,21 +50,21 @@ export function AuthProviderCard({
   return (
     <div
       className={cn(
-        "border rounded-lg overflow-hidden transition-all min-w-[150px] relative",
-        isComingSoon ? "cursor-not-allowed opacity-60" : "cursor-pointer group",
+        "relative min-w-[150px] overflow-hidden rounded-lg border transition-all",
+        isComingSoon ? "cursor-not-allowed opacity-60" : "group cursor-pointer",
         "border-border hover:border-muted-foreground/30 bg-card hover:bg-accent/50",
-        isComingSoon && "hover:border-border hover:bg-card",
+        isComingSoon && "hover:border-border hover:bg-card"
       )}
       onClick={handleClick}
     >
-      <div className="p-3 sm:p-4 flex items-center justify-between">
+      <div className="flex items-center justify-between p-3 sm:p-4">
         <div className="flex items-center gap-3">
           {/* Auth Provider Icon */}
-          <div className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 overflow-hidden rounded-md flex-shrink-0">
+          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-md sm:h-10 sm:w-10">
             <img
               src={getAuthProviderIconUrl(shortName, isDark ? "dark" : "light")}
               alt={`${shortName} icon`}
-              className="w-8 h-8 sm:w-9 sm:h-9 object-contain rounded"
+              className="h-8 w-8 rounded object-contain sm:h-9 sm:w-9"
               onError={(e) => {
                 // Fallback to initials if icon fails to load
                 e.currentTarget.style.display = "none";
@@ -79,9 +79,9 @@ export function AuthProviderCard({
 
           {/* Name and status */}
           <div className="flex flex-col">
-            <span className="text-sm font-medium truncate">{name}</span>
+            <span className="truncate text-sm font-medium">{name}</span>
             {isComingSoon && (
-              <span className="text-xs text-muted-foreground">Coming soon</span>
+              <span className="text-muted-foreground text-xs">Coming soon</span>
             )}
           </div>
         </div>
@@ -92,16 +92,16 @@ export function AuthProviderCard({
             size="icon"
             variant="ghost"
             className={cn(
-              "h-7 w-7 sm:h-8 sm:w-8 rounded-full flex-shrink-0",
+              "h-7 w-7 flex-shrink-0 rounded-full sm:h-8 sm:w-8",
               isConnected
-                ? "bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-800/30"
-                : "bg-muted text-primary hover:bg-primary/10 group-hover:bg-primary/20",
+                ? "bg-green-100 text-green-600 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-800/30"
+                : "bg-muted text-primary hover:bg-primary/10 group-hover:bg-primary/20"
             )}
           >
             {isConnected ? (
               <Check className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             ) : (
-              <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4 group-hover:scale-110 transition-transform" />
+              <Plus className="h-3.5 w-3.5 transition-transform group-hover:scale-110 sm:h-4 sm:w-4" />
             )}
           </Button>
         )}

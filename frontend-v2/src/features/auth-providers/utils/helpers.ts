@@ -1,3 +1,5 @@
+import { formatDate as sharedFormatDate } from "@/lib/date";
+
 /**
  * Generates a random suffix for the readable ID
  * This ensures uniqueness for similar connection names
@@ -50,7 +52,7 @@ export function generateReadableId(name: string, suffix: string): string {
  */
 export function getAuthProviderIconUrl(
   shortName: string,
-  theme?: string,
+  theme?: string
 ): string {
   // Special cases for providers with specific file formats
   const specialCases: Record<string, string> = {
@@ -72,22 +74,11 @@ export function getAuthProviderIconUrl(
 }
 
 /**
- * Format a date string to a human-readable format
+ * Format a date string to a human-readable format with time.
+ * Re-exports from shared date utilities with datetime style.
  */
-export function formatDate(dateString: string): string {
-  try {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  } catch {
-    return dateString;
-  }
-}
+export const formatDate = (dateString: string): string =>
+  sharedFormatDate(dateString, "datetime");
 
 /**
  * Coming soon providers list

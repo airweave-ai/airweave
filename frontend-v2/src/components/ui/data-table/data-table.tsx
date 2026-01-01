@@ -1,5 +1,3 @@
-"use client";
-
 import {
   Table,
   TableBody,
@@ -22,7 +20,7 @@ import {
   type SortingState,
   type Table as TanstackTable,
 } from "@tanstack/react-table";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
  * Meta type for shift-select functionality.
@@ -121,7 +119,7 @@ export function DataTable<TData, TValue>({
         rows[i]?.toggleSelected(isSelecting);
       }
     },
-    [],
+    []
   );
 
   const table = useReactTable({
@@ -158,7 +156,7 @@ export function DataTable<TData, TValue>({
     const rows = table.getRowModel().rows;
     const highlightedId = getRowId(highlightedRow);
     const index = rows.findIndex(
-      (row) => getRowId(row.original) === highlightedId,
+      (row) => getRowId(row.original) === highlightedId
     );
     return index >= 0 ? index : null;
   }, [highlightedRow, getRowId, table]);
@@ -254,9 +252,7 @@ export function DataTable<TData, TValue>({
   ]);
 
   // Get selected rows for floating toolbar
-  const selectedRows = useMemo(() => {
-    return table.getSelectedRowModel().rows;
-  }, [table.getSelectedRowModel().rows]);
+  const selectedRows = table.getSelectedRowModel().rows;
 
   // Check if a row is the highlighted row
   const isHighlightedRow = (row: TData): boolean => {
@@ -289,7 +285,7 @@ export function DataTable<TData, TValue>({
                       ? null
                       : flexRender(
                           header.column.columnDef.header,
-                          header.getContext(),
+                          header.getContext()
                         )}
                   </TableHead>
                 ))}
@@ -320,7 +316,7 @@ export function DataTable<TData, TValue>({
                         ? "bg-muted/50"
                         : isHovered
                           ? "bg-muted/30"
-                          : "",
+                          : ""
                     )}
                     onClick={() => onRowClick?.(row.original)}
                     onMouseEnter={() => onRowHover?.(row.original)}
@@ -329,7 +325,7 @@ export function DataTable<TData, TValue>({
                       <TableCell key={cell.id}>
                         {flexRender(
                           cell.column.columnDef.cell,
-                          cell.getContext(),
+                          cell.getContext()
                         )}
                       </TableCell>
                     ))}
@@ -340,7 +336,7 @@ export function DataTable<TData, TValue>({
               <TableRow>
                 <TableCell
                   colSpan={columns.length}
-                  className="h-24 text-center text-muted-foreground"
+                  className="text-muted-foreground h-24 text-center"
                 >
                   {emptyMessage}
                 </TableCell>

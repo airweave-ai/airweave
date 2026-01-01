@@ -1,5 +1,3 @@
-"use client";
-
 import { Link, useLocation } from "@tanstack/react-router";
 import { Check, Layers, LogOut, Palette, Search, Settings } from "lucide-react";
 
@@ -77,7 +75,7 @@ export function AppSidebar() {
                 </div>
                 <div className="flex flex-col gap-0.5 leading-none">
                   <span className="font-semibold">Airweave</span>
-                  <span className="text-xs text-muted-foreground">v2.0</span>
+                  <span className="text-muted-foreground text-xs">v2.0</span>
                 </div>
               </Link>
             </SidebarMenuButton>
@@ -130,7 +128,7 @@ export function AppSidebar() {
                 >
                   <Avatar className="size-5 rounded-lg">
                     <AvatarImage src={userAvatar} alt={userName} />
-                    <AvatarFallback className="rounded-lg text-[60%] font-medium bg-slate-300 dark:bg-slate-700">
+                    <AvatarFallback className="rounded-lg bg-slate-300 text-[60%] font-medium dark:bg-slate-700">
                       {getInitials(userName)}
                     </AvatarFallback>
                   </Avatar>

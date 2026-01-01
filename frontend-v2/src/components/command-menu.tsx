@@ -1,5 +1,3 @@
-"use client";
-
 import { useNavigate } from "@tanstack/react-router";
 import { BookOpen, Code2, HelpCircle, PanelLeftIcon } from "lucide-react";
 import { useEffect } from "react";
@@ -26,7 +24,7 @@ export function CommandMenu() {
   const setTheme = useUISettings((state) => state.setTheme);
   const toggleLeftSidebar = useUISettings((state) => state.toggleLeftSidebar);
   const toggleRightSidebarTab = useUISettings(
-    (state) => state.toggleRightSidebarTab,
+    (state) => state.toggleRightSidebarTab
   );
 
   // Get commands from store

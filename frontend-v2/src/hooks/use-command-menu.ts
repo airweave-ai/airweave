@@ -38,24 +38,24 @@ export function useCommandMenu({
   const setPageCommands = useCommandStore((state) => state.setPageCommands);
   const clearPageCommands = useCommandStore((state) => state.clearPageCommands);
   const setContextCommands = useCommandStore(
-    (state) => state.setContextCommands,
+    (state) => state.setContextCommands
   );
   const clearContextCommands = useCommandStore(
-    (state) => state.clearContextCommands,
+    (state) => state.clearContextCommands
   );
 
   // Register page commands when component mounts, clear on unmount
   useEffect(() => {
     setPageCommands(pageTitle ?? null, pageCommands);
     return () => clearPageCommands();
-    // We stringify to detect actual content changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Stringify used to detect content changes
   }, [pageTitle, JSON.stringify(pageCommands.map((c) => c.id))]);
 
   // Register context commands reactively
   useEffect(() => {
     setContextCommands(contextTitle ?? null, contextCommands);
     return () => clearContextCommands();
-    // We stringify to detect actual content changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Stringify used to detect content changes
   }, [contextTitle, JSON.stringify(contextCommands.map((c) => c.id))]);
 }
 
@@ -69,4 +69,3 @@ export function useCommandMenuOpen() {
 
   return { open, setOpen, toggle };
 }
-

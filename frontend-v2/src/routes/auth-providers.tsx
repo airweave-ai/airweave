@@ -1,9 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { Loader2, ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
+import { LoadingState } from "@/components/ui/loading-state";
 import { usePageHeader } from "@/components/ui/page-header";
 import { useRightSidebarContent } from "@/components/ui/right-sidebar";
 import {
@@ -36,7 +38,7 @@ function AuthProvidersPage() {
   // Dialog state
   const [dialogMode, setDialogMode] = useState<DialogMode>(null);
   const [selectedProvider, setSelectedProvider] = useState<AuthProvider | null>(
-    null,
+    null
   );
   const [selectedConnection, setSelectedConnection] =
     useState<AuthProviderConnection | null>(null);
@@ -91,7 +93,7 @@ function AuthProvidersPage() {
 
   // Handle provider card click
   const handleProviderClick = (
-    provider: AuthProvider | (typeof COMING_SOON_PROVIDERS)[0],
+    provider: AuthProvider | (typeof COMING_SOON_PROVIDERS)[0]
   ) => {
     // Don't handle clicks for coming soon providers
     if ("isComingSoon" in provider && provider.isComingSoon) return;
@@ -127,7 +129,7 @@ function AuthProvidersPage() {
   const handleConfigureSuccess = (connectionId: string) => {
     // Find the newly created connection
     const newConnection = connections?.find(
-      (conn) => conn.readable_id === connectionId,
+      (conn) => conn.readable_id === connectionId
     );
     if (newConnection && selectedProvider) {
       setSelectedConnection(newConnection);
@@ -150,9 +152,7 @@ function AuthProvidersPage() {
   if (isLoading) {
     return (
       <div className="p-6">
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="size-6 animate-spin text-muted-foreground" />
-        </div>
+        <LoadingState />
       </div>
     );
   }
@@ -161,11 +161,11 @@ function AuthProvidersPage() {
   if (error) {
     return (
       <div className="p-6">
-        <div className="rounded-lg border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-900/10 px-4 py-3 text-sm text-red-600 dark:text-red-400">
-          {error instanceof Error
-            ? error.message
-            : "Failed to load auth providers"}
-        </div>
+        <ErrorState
+          error={
+            error instanceof Error ? error : "Failed to load auth providers"
+          }
+        />
       </div>
     );
   }
@@ -186,7 +186,7 @@ function AuthProvidersPage() {
   // Main content - provider grid
   return (
     <div className="p-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         {allProviders.map((provider) => {
           const connection = getConnectionForProvider(provider.short_name);
           const isComingSoon =

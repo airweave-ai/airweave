@@ -1,5 +1,3 @@
-"use client";
-
 import { HelpCircle } from "lucide-react";
 import * as React from "react";
 
@@ -21,14 +19,14 @@ type PageHeaderContextProps = {
 };
 
 const PageHeaderContext = React.createContext<PageHeaderContextProps | null>(
-  null,
+  null
 );
 
 function usePageHeaderContext() {
   const context = React.useContext(PageHeaderContext);
   if (!context) {
     throw new Error(
-      "usePageHeaderContext must be used within a PageHeaderProvider.",
+      "usePageHeaderContext must be used within a PageHeaderProvider."
     );
   }
   return context;
@@ -57,7 +55,7 @@ function PageHeaderProvider({ children }: { children: React.ReactNode }) {
       content,
       setContent,
     }),
-    [content],
+    [content]
   );
 
   return (
@@ -76,14 +74,14 @@ function PageHeaderContent() {
 
   return (
     <div className="flex flex-1 items-center justify-between gap-4">
-      <div className="flex items-center gap-2 min-w-0">
-        <h1 className="text-sm font-semibold truncate">{content.title}</h1>
+      <div className="flex min-w-0 items-center gap-2">
+        <h1 className="truncate text-sm font-semibold">{content.title}</h1>
         {content.description && (
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className="inline-flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+                className="text-muted-foreground hover:text-foreground inline-flex items-center justify-center transition-colors"
               >
                 <HelpCircle className="size-4" />
                 <span className="sr-only">More info</span>
@@ -96,7 +94,7 @@ function PageHeaderContent() {
         )}
       </div>
       {content.actions && (
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex shrink-0 items-center gap-2">
           {content.actions}
         </div>
       )}

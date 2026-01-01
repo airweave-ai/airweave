@@ -15,22 +15,22 @@ function toDisplayName(name: string) {
 
 function ComponentsLayout() {
   return (
-    <div className="min-h-screen bg-background flex">
+    <div className="bg-background flex min-h-screen">
       {/* Left Sidebar */}
-      <aside className="w-64 border-r bg-sidebar flex-shrink-0">
+      <aside className="bg-sidebar w-64 flex-shrink-0 border-r">
         <div className="sticky top-0 h-screen overflow-y-auto">
           {/* Sidebar Header */}
-          <div className="p-4 border-b">
+          <div className="border-b p-4">
             <Link
               to="/components"
-              className="flex items-center gap-3 text-sidebar-foreground hover:text-sidebar-primary transition-colors"
+              className="text-sidebar-foreground hover:text-sidebar-primary flex items-center gap-3 transition-colors"
             >
-              <div className="p-2 bg-sidebar-accent rounded-lg">
-                <Layers className="w-5 h-5 text-sidebar-primary" />
+              <div className="bg-sidebar-accent rounded-lg p-2">
+                <Layers className="text-sidebar-primary h-5 w-5" />
               </div>
               <div>
                 <h2 className="font-semibold">UI Components</h2>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-muted-foreground text-xs">
                   {uiComponents.length} component
                   {uiComponents.length !== 1 ? "s" : ""}
                 </p>
@@ -46,17 +46,17 @@ function ComponentsLayout() {
                   <Link
                     to="/components/$componentName"
                     params={{ componentName: component.name }}
-                    className="group flex items-center gap-3 px-3 py-2.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
+                    className="group text-muted-foreground hover:text-foreground hover:bg-accent flex items-center gap-3 rounded-lg px-3 py-2.5 transition-all"
                     activeProps={{
                       className:
                         "bg-sidebar-accent text-sidebar-primary border border-sidebar-border",
                     }}
                   >
-                    <Package className="w-4 h-4 flex-shrink-0" />
+                    <Package className="h-4 w-4 flex-shrink-0" />
                     <span className="flex-1 truncate font-medium">
                       {toDisplayName(component.name)}
                     </span>
-                    <ChevronRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <ChevronRight className="h-4 w-4 opacity-0 transition-opacity group-hover:opacity-100" />
                   </Link>
                 </li>
               ))}
@@ -64,8 +64,8 @@ function ComponentsLayout() {
           </nav>
 
           {/* Sidebar Footer */}
-          <div className="p-4 border-t mt-auto">
-            <p className="text-xs text-muted-foreground text-center">
+          <div className="mt-auto border-t p-4">
+            <p className="text-muted-foreground text-center text-xs">
               Auto-generated from{" "}
               <code className="text-muted-foreground">components.gen.ts</code>
             </p>

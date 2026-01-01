@@ -7,11 +7,11 @@ export function AuthProvidersDocs() {
 export function AuthProvidersCode() {
   return (
     <div className="space-y-4">
-      <h3 className="font-semibold text-base">Auth Provider Setup</h3>
-      <p className="text-sm text-muted-foreground">
+      <h3 className="text-base font-semibold">Auth Provider Setup</h3>
+      <p className="text-muted-foreground text-sm">
         Configure authentication for your source connections:
       </p>
-      <pre className="bg-muted p-3 rounded-lg text-xs overflow-auto">
+      <pre className="bg-muted overflow-auto rounded-lg p-3 text-xs">
         <code>{`// Using OAuth flow with Composio
 const connection = await client.sourceConnections.create({
   name: 'My Notion Connection',
@@ -40,25 +40,25 @@ const connection = await client.sourceConnections.create({
 export function AuthProvidersHelp() {
   return (
     <div className="space-y-4">
-      <h3 className="font-semibold text-base">About Auth Providers</h3>
-      <p className="text-sm text-muted-foreground">
+      <h3 className="text-base font-semibold">About Auth Providers</h3>
+      <p className="text-muted-foreground text-sm">
         Auth providers help manage OAuth connections to external services,
         allowing Airweave to securely authenticate with your data sources.
       </p>
       <div className="space-y-3">
-        <div className="p-3 bg-muted rounded-lg">
-          <h4 className="font-medium text-sm">Supported Providers</h4>
-          <ul className="text-xs text-muted-foreground mt-2 space-y-1.5">
+        <div className="bg-muted rounded-lg p-3">
+          <h4 className="text-sm font-medium">Supported Providers</h4>
+          <ul className="text-muted-foreground mt-2 space-y-1.5 text-xs">
             <li className="flex items-start gap-2">
-              <span className="font-medium text-foreground">Composio</span>
+              <span className="text-foreground font-medium">Composio</span>
               <span>- Multi-app OAuth with 100+ integrations</span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="font-medium text-foreground">Pipedream</span>
+              <span className="text-foreground font-medium">Pipedream</span>
               <span>- Workflow automation with OAuth support</span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="font-medium text-foreground text-muted-foreground">
+              <span className="text-foreground text-muted-foreground font-medium">
                 Klavis
               </span>
               <span className="text-muted-foreground/70">
@@ -68,9 +68,9 @@ export function AuthProvidersHelp() {
           </ul>
         </div>
 
-        <div className="p-3 bg-muted rounded-lg">
-          <h4 className="font-medium text-sm">How it works</h4>
-          <ol className="text-xs text-muted-foreground mt-2 space-y-1.5 list-decimal list-inside">
+        <div className="bg-muted rounded-lg p-3">
+          <h4 className="text-sm font-medium">How it works</h4>
+          <ol className="text-muted-foreground mt-2 list-inside list-decimal space-y-1.5 text-xs">
             <li>Create an auth provider connection with your API keys</li>
             <li>When creating a source connection, select the auth provider</li>
             <li>
@@ -80,11 +80,11 @@ export function AuthProvidersHelp() {
           </ol>
         </div>
 
-        <div className="p-3 bg-muted rounded-lg">
-          <h4 className="font-medium text-sm">Getting Started</h4>
-          <div className="text-xs text-muted-foreground mt-2 space-y-2">
+        <div className="bg-muted rounded-lg p-3">
+          <h4 className="text-sm font-medium">Getting Started</h4>
+          <div className="text-muted-foreground mt-2 space-y-2 text-xs">
             <p>
-              <span className="font-medium text-foreground">Composio:</span>{" "}
+              <span className="text-foreground font-medium">Composio:</span>{" "}
               Sign up at{" "}
               <a
                 href="https://platform.composio.dev"
@@ -97,7 +97,7 @@ export function AuthProvidersHelp() {
               and get your API key from the dashboard.
             </p>
             <p>
-              <span className="font-medium text-foreground">Pipedream:</span>{" "}
+              <span className="text-foreground font-medium">Pipedream:</span>{" "}
               Get your Client ID and Secret from{" "}
               <a
                 href="https://pipedream.com/settings/api"

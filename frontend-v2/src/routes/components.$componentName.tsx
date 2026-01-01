@@ -40,20 +40,20 @@ function CodeBlock({
   };
 
   return (
-    <div className="relative group">
-      <pre className="bg-muted border rounded-lg p-4 overflow-x-auto">
-        <code className="text-sm font-mono">{code}</code>
+    <div className="group relative">
+      <pre className="bg-muted overflow-x-auto rounded-lg border p-4">
+        <code className="font-mono text-sm">{code}</code>
       </pre>
       <Button
         variant="ghost"
         size="icon-sm"
         onClick={handleCopy}
-        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
+        className="absolute top-2 right-2 opacity-0 transition-opacity group-hover:opacity-100"
       >
         {copied ? (
-          <Check className="w-4 h-4 text-primary" />
+          <Check className="text-primary h-4 w-4" />
         ) : (
-          <Copy className="w-4 h-4" />
+          <Copy className="h-4 w-4" />
         )}
       </Button>
     </div>
@@ -77,7 +77,7 @@ function VariantPreview({
         <CardTitle className="text-base">{title}</CardTitle>
         {description && <CardDescription>{description}</CardDescription>}
       </CardHeader>
-      <CardContent className="p-6 bg-muted/30 flex items-center justify-center min-h-[120px]">
+      <CardContent className="bg-muted/30 flex min-h-[120px] items-center justify-center p-6">
         <div className="flex flex-wrap items-center gap-4">{children}</div>
       </CardContent>
       <div className="border-t">
@@ -94,11 +94,11 @@ function ComponentDetailPage() {
   if (!component) {
     return (
       <div className="p-8">
-        <div className="text-center py-20">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-muted rounded-full mb-4">
-            <Package className="w-8 h-8 text-muted-foreground" />
+        <div className="py-20 text-center">
+          <div className="bg-muted mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full">
+            <Package className="text-muted-foreground h-8 w-8" />
           </div>
-          <h3 className="text-xl font-semibold text-foreground mb-2">
+          <h3 className="text-foreground mb-2 text-xl font-semibold">
             Component not found
           </h3>
           <p className="text-muted-foreground mb-4">
@@ -106,7 +106,7 @@ function ComponentDetailPage() {
           </p>
           <Button variant="ghost" asChild>
             <Link to="/components">
-              <ArrowLeft className="w-4 h-4" />
+              <ArrowLeft className="h-4 w-4" />
               Back to components
             </Link>
           </Button>
@@ -124,16 +124,16 @@ function ComponentDetailPage() {
       <div className="mb-8">
         <Button variant="ghost" asChild className="mb-4">
           <Link to="/components">
-            <ArrowLeft className="w-4 h-4" />
+            <ArrowLeft className="h-4 w-4" />
             Back to components
           </Link>
         </Button>
         <div className="flex items-center gap-4">
-          <div className="p-3 bg-muted rounded-xl">
-            <Package className="w-8 h-8 text-primary" />
+          <div className="bg-muted rounded-xl p-3">
+            <Package className="text-primary h-8 w-8" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-foreground">
+            <h1 className="text-foreground text-3xl font-bold">
               {displayName}
             </h1>
             <p className="text-muted-foreground font-mono text-sm">
@@ -146,8 +146,8 @@ function ComponentDetailPage() {
       {/* Exports */}
       {component.exports.length > 0 && (
         <div className="mb-8">
-          <h2 className="text-lg font-semibold text-foreground mb-3 flex items-center gap-2">
-            <Code className="w-5 h-5 text-primary" />
+          <h2 className="text-foreground mb-3 flex items-center gap-2 text-lg font-semibold">
+            <Code className="text-primary h-5 w-5" />
             Exports
           </h2>
           <div className="flex flex-wrap gap-2">
@@ -162,7 +162,7 @@ function ComponentDetailPage() {
 
       {/* Import Example */}
       <div className="mb-8">
-        <h2 className="text-lg font-semibold text-foreground mb-3">Import</h2>
+        <h2 className="text-foreground mb-3 text-lg font-semibold">Import</h2>
         <CodeBlock
           code={`import { ${component.exports.filter((e) => e !== "default").join(", ")} } from "@/components/ui/${component.name}";`}
         />
@@ -171,7 +171,7 @@ function ComponentDetailPage() {
       {/* Variants Preview */}
       {previews ? (
         <div className="space-y-6">
-          <h2 className="text-lg font-semibold text-foreground">Examples</h2>
+          <h2 className="text-foreground text-lg font-semibold">Examples</h2>
           {previews.variants.map((variant, index) => (
             <VariantPreview
               key={index}
@@ -184,12 +184,12 @@ function ComponentDetailPage() {
           ))}
         </div>
       ) : (
-        <Card className="text-center p-8">
+        <Card className="p-8 text-center">
           <CardContent className="pt-0">
             <p className="text-muted-foreground">
               No preview configuration available for this component yet.
             </p>
-            <p className="text-muted-foreground text-sm mt-2">
+            <p className="text-muted-foreground mt-2 text-sm">
               Add a preview file in{" "}
               <code className="text-primary">src/previews/</code>
             </p>

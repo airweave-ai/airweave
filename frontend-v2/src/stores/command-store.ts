@@ -38,13 +38,14 @@ export const useCommandStore = create<CommandStoreState>((set) => ({
   // Page commands
   pageTitle: null,
   pageCommands: [],
-  setPageCommands: (title, commands) => set({ pageTitle: title, pageCommands: commands }),
+  setPageCommands: (title, commands) =>
+    set({ pageTitle: title, pageCommands: commands }),
   clearPageCommands: () => set({ pageTitle: null, pageCommands: [] }),
 
   // Context commands
   contextTitle: null,
   contextCommands: [],
-  setContextCommands: (title, commands) => set({ contextTitle: title, contextCommands: commands }),
+  setContextCommands: (title, commands) =>
+    set({ contextTitle: title, contextCommands: commands }),
   clearContextCommands: () => set({ contextTitle: null, contextCommands: [] }),
 }));
-

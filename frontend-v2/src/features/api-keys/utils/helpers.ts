@@ -2,6 +2,8 @@
  * API Keys helper utilities
  */
 
+import { formatDate as sharedFormatDate, getDaysFromNow } from "@/lib/date";
+
 interface ExpirationPreset {
   days: number;
   label: string;
@@ -25,18 +27,10 @@ export function maskKey(key: string): string {
 }
 
 /**
- * Calculate days remaining until expiration
+ * Calculate days remaining until expiration.
+ * Re-exports getDaysFromNow for backwards compatibility.
  */
-export function getDaysRemaining(expirationDate: string): number {
-  try {
-    const expDate = new Date(expirationDate);
-    const now = new Date();
-    const diffTime = expDate.getTime() - now.getTime();
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  } catch {
-    return 0;
-  }
-}
+export const getDaysRemaining = getDaysFromNow;
 
 /**
  * Get status color class based on days remaining
@@ -48,19 +42,11 @@ export function getStatusColor(daysRemaining: number): string {
 }
 
 /**
- * Format a date string for display
+ * Format a date string for display (short format).
+ * Re-exports from shared date utilities.
  */
-export function formatDate(dateString: string): string {
-  try {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  } catch {
-    return dateString;
-  }
-}
+export const formatDate = (dateString: string): string =>
+  sharedFormatDate(dateString, "short");
 
 /**
  * Action definition for API key operations

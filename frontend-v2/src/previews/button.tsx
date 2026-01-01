@@ -33,7 +33,7 @@ export const buttonPreview: ComponentPreviewConfig = {
           <Button size="default">Default</Button>
           <Button size="lg">Large</Button>
           <Button size="icon">
-            <Package className="w-4 h-4" />
+            <Package className="h-4 w-4" />
           </Button>
         </>
       ),
@@ -60,4 +60,3 @@ export const buttonPreview: ComponentPreviewConfig = {
     },
   ],
 };
-

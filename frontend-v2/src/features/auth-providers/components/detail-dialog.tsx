@@ -130,7 +130,7 @@ export function DetailDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-lg">
           <DialogHeader className="flex flex-row items-start justify-between space-y-0">
             <div>
               <DialogTitle>{authProvider.name} Connection</DialogTitle>
@@ -151,7 +151,7 @@ export function DetailDialog({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 hover:text-destructive"
+                className="hover:text-destructive h-8 w-8"
                 onClick={() => setShowDeleteDialog(true)}
                 title="Delete connection"
               >
@@ -161,11 +161,11 @@ export function DetailDialog({
           </DialogHeader>
 
           {isLoading ? (
-            <div className="flex justify-center items-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="text-muted-foreground h-8 w-8 animate-spin" />
             </div>
           ) : connectionDetails ? (
-            <div className="flex-1 overflow-y-auto space-y-6 py-4">
+            <div className="flex-1 space-y-6 overflow-y-auto py-4">
               {/* Connected Animation */}
               <div className="flex justify-center py-4">
                 <div className="flex items-center gap-8">
@@ -173,9 +173,9 @@ export function DetailDialog({
                   <div className="relative">
                     <div
                       className={cn(
-                        "w-14 h-14 rounded-xl flex items-center justify-center p-2.5",
+                        "flex h-14 w-14 items-center justify-center rounded-xl p-2.5",
                         "shadow-lg ring-2 ring-green-400/30",
-                        "bg-card",
+                        "bg-card"
                       )}
                     >
                       <img
@@ -185,15 +185,15 @@ export function DetailDialog({
                             : "/airweave-logo-svg-lightbg-blacklogo.svg"
                         }
                         alt="Airweave"
-                        className="w-full h-full object-contain"
+                        className="h-full w-full object-contain"
                       />
                     </div>
                     {/* Connection icon */}
-                    <div className="absolute -bottom-1 -right-1">
+                    <div className="absolute -right-1 -bottom-1">
                       <div
                         className={cn(
-                          "w-5 h-5 rounded-full flex items-center justify-center border-2",
-                          "border-green-500 bg-background",
+                          "flex h-5 w-5 items-center justify-center rounded-full border-2",
+                          "bg-background border-green-500"
                         )}
                       >
                         <Link className="h-2.5 w-2.5 text-green-500" />
@@ -210,26 +210,26 @@ export function DetailDialog({
                   <div className="relative">
                     <div
                       className={cn(
-                        "w-14 h-14 rounded-xl flex items-center justify-center p-2.5",
+                        "flex h-14 w-14 items-center justify-center rounded-xl p-2.5",
                         "shadow-lg ring-2 ring-green-400/30",
-                        "bg-card",
+                        "bg-card"
                       )}
                     >
                       <img
                         src={getAuthProviderIconUrl(
                           authProvider.short_name,
-                          isDark ? "dark" : "light",
+                          isDark ? "dark" : "light"
                         )}
                         alt={authProvider.name}
-                        className="w-full h-full object-contain"
+                        className="h-full w-full object-contain"
                       />
                     </div>
                     {/* Connection icon */}
-                    <div className="absolute -bottom-1 -right-1">
+                    <div className="absolute -right-1 -bottom-1">
                       <div
                         className={cn(
-                          "w-5 h-5 rounded-full flex items-center justify-center border-2",
-                          "border-green-500 bg-background",
+                          "flex h-5 w-5 items-center justify-center rounded-full border-2",
+                          "bg-background border-green-500"
                         )}
                       >
                         <Link className="h-2.5 w-2.5 text-green-500" />
@@ -243,27 +243,27 @@ export function DetailDialog({
               <div className="space-y-4">
                 {/* Name */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <label className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
                     Name
                   </label>
-                  <div className="px-3 py-2 rounded-md border bg-muted/50 text-sm">
+                  <div className="bg-muted/50 rounded-md border px-3 py-2 text-sm">
                     {connectionDetails.name}
                   </div>
                 </div>
 
                 {/* Readable ID */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <label className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
                     Readable ID
                   </label>
-                  <div className="px-3 py-2 rounded-md border bg-muted/50 text-sm flex items-center justify-between group">
+                  <div className="bg-muted/50 group flex items-center justify-between rounded-md border px-3 py-2 text-sm">
                     <span className="font-mono break-all">
                       {connectionDetails.readable_id}
                     </span>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100"
                       onClick={() =>
                         handleCopy(connectionDetails.readable_id, "Readable ID")
                       }
@@ -280,10 +280,10 @@ export function DetailDialog({
                 {/* Created By */}
                 {connectionDetails.created_by_email && (
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <label className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
                       Created By
                     </label>
-                    <div className="px-3 py-2 rounded-md border bg-muted/50 text-sm">
+                    <div className="bg-muted/50 rounded-md border px-3 py-2 text-sm">
                       {connectionDetails.created_by_email}
                     </div>
                   </div>
@@ -291,20 +291,20 @@ export function DetailDialog({
 
                 {/* Created At */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <label className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
                     Created At
                   </label>
-                  <div className="px-3 py-2 rounded-md border bg-muted/50 text-sm">
+                  <div className="bg-muted/50 rounded-md border px-3 py-2 text-sm">
                     {formatDate(connectionDetails.created_at)}
                   </div>
                 </div>
 
                 {/* Modified At */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <label className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
                     Modified At
                   </label>
-                  <div className="px-3 py-2 rounded-md border bg-muted/50 text-sm">
+                  <div className="bg-muted/50 rounded-md border px-3 py-2 text-sm">
                     {formatDate(connectionDetails.modified_at)}
                   </div>
                 </div>
@@ -312,21 +312,21 @@ export function DetailDialog({
                 {/* Client ID (if available) */}
                 {connectionDetails.masked_client_id && (
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <label className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
                       Client ID
                     </label>
-                    <div className="px-3 py-2 rounded-md border bg-muted/50 text-sm flex items-center justify-between group">
+                    <div className="bg-muted/50 group flex items-center justify-between rounded-md border px-3 py-2 text-sm">
                       <span className="font-mono">
                         {connectionDetails.masked_client_id}
                       </span>
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100"
                         onClick={() =>
                           handleCopy(
                             connectionDetails.masked_client_id!,
-                            "Client ID",
+                            "Client ID"
                           )
                         }
                       >
@@ -342,12 +342,12 @@ export function DetailDialog({
               </div>
             </div>
           ) : (
-            <div className="text-center py-8 text-muted-foreground">
+            <div className="text-muted-foreground py-8 text-center">
               No connection details available
             </div>
           )}
 
-          <DialogFooter className="pt-4 border-t">
+          <DialogFooter className="border-t pt-4">
             <Button
               variant="outline"
               onClick={() => handleClose(false)}
@@ -364,14 +364,14 @@ export function DetailDialog({
         <AlertDialogContent className="sm:max-w-md">
           <AlertDialogHeader className="space-y-4">
             <div className="flex items-center gap-3">
-              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center">
-                <AlertTriangle className="w-5 h-5 text-destructive" />
+              <div className="bg-destructive/10 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full">
+                <AlertTriangle className="text-destructive h-5 w-5" />
               </div>
               <div>
                 <AlertDialogTitle>
                   Delete Auth Provider Connection
                 </AlertDialogTitle>
-                <p className="text-sm text-muted-foreground mt-1">
+                <p className="text-muted-foreground mt-1 text-sm">
                   This action cannot be undone
                 </p>
               </div>
@@ -379,34 +379,34 @@ export function DetailDialog({
 
             <AlertDialogDescription asChild>
               <div className="space-y-4">
-                <div className="bg-destructive/5 border border-destructive/20 rounded-lg p-4">
-                  <p className="font-medium text-foreground mb-3">
+                <div className="bg-destructive/5 border-destructive/20 rounded-lg border p-4">
+                  <p className="text-foreground mb-3 font-medium">
                     This will permanently delete:
                   </p>
-                  <ul className="space-y-2 text-sm text-muted-foreground">
+                  <ul className="text-muted-foreground space-y-2 text-sm">
                     <li className="flex items-start gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-destructive/60 mt-2 flex-shrink-0" />
+                      <div className="bg-destructive/60 mt-2 h-1.5 w-1.5 flex-shrink-0 rounded-full" />
                       <span>This auth provider connection</span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-destructive/60 mt-2 flex-shrink-0" />
+                      <div className="bg-destructive/60 mt-2 h-1.5 w-1.5 flex-shrink-0 rounded-full" />
                       <span>
                         All source connections using this auth provider
                       </span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-destructive/60 mt-2 flex-shrink-0" />
+                      <div className="bg-destructive/60 mt-2 h-1.5 w-1.5 flex-shrink-0 rounded-full" />
                       <span>All associated sync configurations and data</span>
                     </li>
                   </ul>
                 </div>
 
                 {/* Critical warning */}
-                <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/20">
                   <div className="flex items-start gap-2">
-                    <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                    <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-400" />
                     <div className="text-sm">
-                      <p className="font-medium text-amber-800 dark:text-amber-200 mb-1">
+                      <p className="mb-1 font-medium text-amber-800 dark:text-amber-200">
                         Critical Impact
                       </p>
                       <p className="text-amber-700 dark:text-amber-300">
@@ -422,10 +422,10 @@ export function DetailDialog({
                   <div>
                     <label
                       htmlFor="confirm-delete"
-                      className="text-sm font-medium text-foreground block mb-2"
+                      className="text-foreground mb-2 block text-sm font-medium"
                     >
                       Type{" "}
-                      <span className="font-mono font-semibold text-destructive bg-destructive/10 px-1.5 py-0.5 rounded">
+                      <span className="text-destructive bg-destructive/10 rounded px-1.5 py-0.5 font-mono font-semibold">
                         {connectionDetails?.readable_id}
                       </span>{" "}
                       to confirm deletion
@@ -441,7 +441,7 @@ export function DetailDialog({
                           ? "border-green-500 focus-visible:ring-green-500/20"
                           : confirmText.length > 0
                             ? "border-destructive focus-visible:ring-destructive/20"
-                            : "",
+                            : ""
                       )}
                       placeholder={connectionDetails?.readable_id}
                     />
@@ -452,14 +452,14 @@ export function DetailDialog({
                     <div className="flex items-center gap-2 text-sm">
                       {isConfirmValid ? (
                         <>
-                          <Check className="w-4 h-4 text-green-500" />
+                          <Check className="h-4 w-4 text-green-500" />
                           <span className="text-green-600 dark:text-green-400">
                             Confirmation matches
                           </span>
                         </>
                       ) : (
                         <>
-                          <AlertCircle className="w-4 h-4 text-destructive" />
+                          <AlertCircle className="text-destructive h-4 w-4" />
                           <span className="text-destructive">
                             Confirmation does not match
                           </span>
@@ -488,12 +488,12 @@ export function DetailDialog({
             >
               {deleteMutation.isPending ? (
                 <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Deleting...
                 </>
               ) : (
                 <>
-                  <Trash className="w-4 h-4 mr-2" />
+                  <Trash className="mr-2 h-4 w-4" />
                   Delete Connection
                 </>
               )}

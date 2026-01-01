@@ -42,36 +42,36 @@ export function ApiKeyItem({ apiKey, onDelete }: ApiKeyItemProps) {
       },
       () => {
         console.error("Failed to copy key");
-      },
+      }
     );
   };
 
   return (
     <div
-      className={`rounded-lg border bg-card ${
+      className={`bg-card rounded-lg border ${
         isExpired ? "border-red-200 dark:border-red-900/50" : ""
       }`}
     >
       <div className="p-4">
         <div className="flex items-start justify-between gap-4">
           {/* Key Info */}
-          <div className="flex-1 min-w-0 space-y-3">
+          <div className="min-w-0 flex-1 space-y-3">
             <div className="flex items-center gap-3">
-              <code className="text-xs font-mono font-medium">
+              <code className="font-mono text-xs font-medium">
                 {maskKey(apiKey.decrypted_key)}
               </code>
               {isExpired && (
-                <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400">
                   Expired
                 </span>
               )}
               {isExpiringSoon && !isExpired && (
-                <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
                   Expiring soon
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+            <div className="text-muted-foreground flex items-center gap-4 text-xs">
               <span>Created {formatDate(apiKey.created_at)}</span>
               <span className="text-muted-foreground/50">•</span>
               <span className={getStatusColor(daysRemaining)}>
@@ -102,7 +102,7 @@ export function ApiKeyItem({ apiKey, onDelete }: ApiKeyItemProps) {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="size-8 text-muted-foreground hover:text-red-600 dark:hover:text-red-500"
+                  className="text-muted-foreground size-8 hover:text-red-600 dark:hover:text-red-500"
                   title="Delete key"
                 >
                   <Trash2 className="size-4" />
@@ -116,8 +116,8 @@ export function ApiKeyItem({ apiKey, onDelete }: ApiKeyItemProps) {
                     key will lose access immediately.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
-                <div className="my-4 rounded-lg border bg-muted p-3">
-                  <code className="text-sm font-mono">
+                <div className="bg-muted my-4 rounded-lg border p-3">
+                  <code className="font-mono text-sm">
                     {maskKey(apiKey.decrypted_key)}
                   </code>
                 </div>
@@ -138,4 +138,3 @@ export function ApiKeyItem({ apiKey, onDelete }: ApiKeyItemProps) {
     </div>
   );
 }
-

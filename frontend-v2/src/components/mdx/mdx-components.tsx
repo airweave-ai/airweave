@@ -17,10 +17,10 @@ function Card({
   children?: React.ReactNode;
 }) {
   const content = (
-    <div className="rounded-lg border bg-card p-4 hover:bg-muted/50 transition-colors h-full">
-      <h4 className="font-semibold text-sm mb-1">{title}</h4>
+    <div className="bg-card hover:bg-muted/50 h-full rounded-lg border p-4 transition-colors">
+      <h4 className="mb-1 text-sm font-semibold">{title}</h4>
       {children && (
-        <div className="text-xs text-muted-foreground">{children}</div>
+        <div className="text-muted-foreground text-xs">{children}</div>
       )}
     </div>
   );
@@ -60,12 +60,12 @@ function CardGroup({
       3: "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3",
     }[cols] || "grid-cols-1 sm:grid-cols-2";
 
-  return <div className={cn("grid gap-3 my-4", gridCols)}>{children}</div>;
+  return <div className={cn("my-4 grid gap-3", gridCols)}>{children}</div>;
 }
 
 // Steps container
 function Steps({ children }: { children: React.ReactNode }) {
-  return <div className="space-y-4 my-4">{children}</div>;
+  return <div className="my-4 space-y-4">{children}</div>;
 }
 
 // Step component
@@ -78,9 +78,9 @@ function Step({
   children: React.ReactNode;
 }) {
   return (
-    <div className="border-l-2 border-primary pl-4 py-2">
-      <h4 className="font-semibold text-sm mb-2">{title}</h4>
-      <div className="text-sm text-muted-foreground">{children}</div>
+    <div className="border-primary border-l-2 py-2 pl-4">
+      <h4 className="mb-2 text-sm font-semibold">{title}</h4>
+      <div className="text-muted-foreground text-sm">{children}</div>
     </div>
   );
 }
@@ -89,7 +89,7 @@ function Step({
 function CodeBlocks({ children }: { children: React.ReactNode }) {
   const [activeTab, setActiveTab] = React.useState(0);
   const blocks = React.Children.toArray(children).filter(
-    (child) => React.isValidElement(child) && child.type === "pre",
+    (child) => React.isValidElement(child) && child.type === "pre"
   );
 
   if (blocks.length === 0) {
@@ -120,8 +120,8 @@ function CodeBlocks({ children }: { children: React.ReactNode }) {
             className={cn(
               "px-3 py-1 text-xs font-medium transition-colors",
               activeTab === index
-                ? "border-b-2 border-primary text-primary"
-                : "text-muted-foreground hover:text-foreground",
+                ? "border-primary text-primary border-b-2"
+                : "text-muted-foreground hover:text-foreground"
             )}
           >
             {tab}
@@ -151,7 +151,7 @@ function Warning({ children }: { children: React.ReactNode }) {
   return (
     <div className="my-4 rounded-lg border border-amber-500/50 bg-amber-500/10 p-4">
       <div className="flex gap-3">
-        <AlertTriangle className="size-5 text-amber-500 shrink-0 mt-0.5" />
+        <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-500" />
         <div className="text-sm text-amber-900 dark:text-amber-100 [&>p]:mb-2 [&>p:last-child]:mb-0">
           {children}
         </div>
@@ -165,7 +165,7 @@ function Note({ children }: { children: React.ReactNode }) {
   return (
     <div className="my-4 rounded-lg border border-blue-500/50 bg-blue-500/10 p-4">
       <div className="flex gap-3">
-        <Info className="size-5 text-blue-500 shrink-0 mt-0.5" />
+        <Info className="mt-0.5 size-5 shrink-0 text-blue-500" />
         <div className="text-sm text-blue-900 dark:text-blue-100 [&>p]:mb-2 [&>p:last-child]:mb-0">
           {children}
         </div>
@@ -179,7 +179,7 @@ function Tip({ children }: { children: React.ReactNode }) {
   return (
     <div className="my-4 rounded-lg border border-green-500/50 bg-green-500/10 p-4">
       <div className="flex gap-3">
-        <Lightbulb className="size-5 text-green-500 shrink-0 mt-0.5" />
+        <Lightbulb className="mt-0.5 size-5 shrink-0 text-green-500" />
         <div className="text-sm text-green-900 dark:text-green-100 [&>p]:mb-2 [&>p:last-child]:mb-0">
           {children}
         </div>
@@ -199,10 +199,10 @@ function Accordion({
   const [isOpen, setIsOpen] = React.useState(false);
 
   return (
-    <div className="my-3 border rounded-lg">
+    <div className="my-3 rounded-lg border">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center justify-between w-full p-3 text-left text-sm font-medium hover:bg-muted/50 transition-colors"
+        className="hover:bg-muted/50 flex w-full items-center justify-between p-3 text-left text-sm font-medium transition-colors"
       >
         <span>{title}</span>
         <ChevronDown
@@ -210,7 +210,7 @@ function Accordion({
         />
       </button>
       {isOpen && (
-        <div className="p-3 pt-0 text-sm text-muted-foreground border-t">
+        <div className="text-muted-foreground border-t p-3 pt-0 text-sm">
           {children}
         </div>
       )}
@@ -222,7 +222,7 @@ function Accordion({
 function Tabs({ children }: { children: React.ReactNode }) {
   const [activeTab, setActiveTab] = React.useState(0);
   const tabs = React.Children.toArray(children).filter((child) =>
-    React.isValidElement(child),
+    React.isValidElement(child)
   );
 
   // Extract titles from Tab components
@@ -235,16 +235,16 @@ function Tabs({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="my-4">
-      <div className="flex gap-1 border-b overflow-x-auto">
+      <div className="flex gap-1 overflow-x-auto border-b">
         {tabTitles.map((title, index) => (
           <button
             key={index}
             onClick={() => setActiveTab(index)}
             className={cn(
-              "px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap",
+              "px-3 py-2 text-xs font-medium whitespace-nowrap transition-colors",
               activeTab === index
-                ? "border-b-2 border-primary text-primary"
-                : "text-muted-foreground hover:text-foreground",
+                ? "border-primary text-primary border-b-2"
+                : "text-muted-foreground hover:text-foreground"
             )}
           >
             {title}
@@ -282,40 +282,40 @@ export const mdxComponents: MDXComponents = {
 
   // Override default elements for styling
   h1: ({ children, ...props }) => (
-    <h1 className="text-xl font-bold mb-3 mt-4 first:mt-0" {...props}>
+    <h1 className="mt-4 mb-3 text-xl font-bold first:mt-0" {...props}>
       {children}
     </h1>
   ),
   h2: ({ children, ...props }) => (
-    <h2 className="text-lg font-semibold mb-2 mt-4 first:mt-0" {...props}>
+    <h2 className="mt-4 mb-2 text-lg font-semibold first:mt-0" {...props}>
       {children}
     </h2>
   ),
   h3: ({ children, ...props }) => (
-    <h3 className="text-base font-semibold mb-2 mt-3" {...props}>
+    <h3 className="mt-3 mb-2 text-base font-semibold" {...props}>
       {children}
     </h3>
   ),
   h4: ({ children, ...props }) => (
-    <h4 className="text-sm font-semibold mb-1 mt-2" {...props}>
+    <h4 className="mt-2 mb-1 text-sm font-semibold" {...props}>
       {children}
     </h4>
   ),
   p: ({ children, ...props }) => (
     <p
-      className="text-sm text-muted-foreground mb-3 leading-relaxed"
+      className="text-muted-foreground mb-3 text-sm leading-relaxed"
       {...props}
     >
       {children}
     </p>
   ),
   ul: ({ children, ...props }) => (
-    <ul className="text-sm list-disc list-inside mb-3 space-y-1" {...props}>
+    <ul className="mb-3 list-inside list-disc space-y-1 text-sm" {...props}>
       {children}
     </ul>
   ),
   ol: ({ children, ...props }) => (
-    <ol className="text-sm list-decimal list-inside mb-3 space-y-1" {...props}>
+    <ol className="mb-3 list-inside list-decimal space-y-1 text-sm" {...props}>
       {children}
     </ol>
   ),
@@ -343,7 +343,7 @@ export const mdxComponents: MDXComponents = {
   },
   pre: ({ children, ...props }) => (
     <pre
-      className="bg-muted p-3 rounded-lg text-xs overflow-auto mb-3"
+      className="bg-muted mb-3 overflow-auto rounded-lg p-3 text-xs"
       {...props}
     >
       {children}
@@ -355,7 +355,7 @@ export const mdxComponents: MDXComponents = {
     if (isInline) {
       return (
         <code
-          className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono"
+          className="bg-muted rounded px-1.5 py-0.5 font-mono text-xs"
           {...props}
         >
           {children}
@@ -363,22 +363,22 @@ export const mdxComponents: MDXComponents = {
       );
     }
     return (
-      <code className="text-xs font-mono" {...props}>
+      <code className="font-mono text-xs" {...props}>
         {children}
       </code>
     );
   },
   blockquote: ({ children, ...props }) => (
     <blockquote
-      className="border-l-2 border-primary pl-4 italic text-sm text-muted-foreground mb-3"
+      className="border-primary text-muted-foreground mb-3 border-l-2 pl-4 text-sm italic"
       {...props}
     >
       {children}
     </blockquote>
   ),
-  hr: (props) => <hr className="my-4 border-border" {...props} />,
+  hr: (props) => <hr className="border-border my-4" {...props} />,
   table: ({ children, ...props }) => (
-    <div className="overflow-auto mb-3">
+    <div className="mb-3 overflow-auto">
       <table className="w-full text-sm" {...props}>
         {children}
       </table>
@@ -386,22 +386,22 @@ export const mdxComponents: MDXComponents = {
   ),
   th: ({ children, ...props }) => (
     <th
-      className="border border-border px-3 py-2 text-left font-semibold bg-muted"
+      className="border-border bg-muted border px-3 py-2 text-left font-semibold"
       {...props}
     >
       {children}
     </th>
   ),
   td: ({ children, ...props }) => (
-    <td className="border border-border px-3 py-2" {...props}>
+    <td className="border-border border px-3 py-2" {...props}>
       {children}
     </td>
   ),
   // Video component
-  video: (props) => <video className="rounded-lg max-w-full my-3" {...props} />,
+  video: (props) => <video className="my-3 max-w-full rounded-lg" {...props} />,
   // Strong/Bold
   strong: ({ children, ...props }) => (
-    <strong className="font-semibold text-foreground" {...props}>
+    <strong className="text-foreground font-semibold" {...props}>
       {children}
     </strong>
   ),

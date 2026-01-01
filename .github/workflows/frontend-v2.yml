@@ -5,15 +5,21 @@ on:
     branches: ["main"]
     paths:
       - "frontend-v2/**"
+      - ".github/workflows/frontend-v2.yml"
   pull_request:
     branches: ["main"]
     paths:
       - "frontend-v2/**"
+      - ".github/workflows/frontend-v2.yml"
+
+defaults:
+  run:
+    working-directory: frontend-v2
 
 jobs:
-  build-and-test:
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
@@ -25,13 +31,68 @@ jobs:
           cache-dependency-path: "./frontend-v2/package-lock.json"
 
       - name: Install dependencies
-        run: cd frontend-v2 && npm i
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
+
+  typecheck:
+    name: Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+          cache: "npm"
+          cache-dependency-path: "./frontend-v2/package-lock.json"
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Type check
-        run: cd frontend-v2 && npx tsc --noEmit
+        run: npm run typecheck
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+          cache: "npm"
+          cache-dependency-path: "./frontend-v2/package-lock.json"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm run test
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck, test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+          cache: "npm"
+          cache-dependency-path: "./frontend-v2/package-lock.json"
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Build
-        run: cd frontend-v2 && npm run build
-
-      - name: Test
-        run: cd frontend-v2 && npx vitest run --passWithNoTests
+        run: npm run build

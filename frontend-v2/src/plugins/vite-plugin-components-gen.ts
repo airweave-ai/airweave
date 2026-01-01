@@ -32,7 +32,10 @@ function parseExports(filePath: string): string[] {
   );
   if (directExportMatch) {
     directExportMatch.forEach((match) => {
-      const name = match.replace(/export\s+(?:function|const|class|let|var)\s+/, "");
+      const name = match.replace(
+        /export\s+(?:function|const|class|let|var)\s+/,
+        ""
+      );
       if (name && !exports.includes(name)) {
         exports.push(name);
       }
@@ -54,7 +57,9 @@ function generateComponentsFile(uiDir: string, outputPath: string): void {
 
   const files = fs.readdirSync(uiDir).filter((file) => {
     const ext = path.extname(file);
-    return [".tsx", ".ts", ".jsx", ".js"].includes(ext) && !file.startsWith("_");
+    return (
+      [".tsx", ".ts", ".jsx", ".js"].includes(ext) && !file.startsWith("_")
+    );
   });
 
   const components: ComponentInfo[] = files.map((file) => {
@@ -108,25 +113,33 @@ export function componentsGen(): Plugin {
     configureServer(server) {
       // Watch for changes in the ui directory
       server.watcher.add(uiDir);
-      
+
       server.watcher.on("add", (filePath) => {
-        if (filePath.startsWith(uiDir) && !filePath.includes("components.gen")) {
+        if (
+          filePath.startsWith(uiDir) &&
+          !filePath.includes("components.gen")
+        ) {
           generateComponentsFile(uiDir, outputPath);
         }
       });
 
       server.watcher.on("unlink", (filePath) => {
-        if (filePath.startsWith(uiDir) && !filePath.includes("components.gen")) {
+        if (
+          filePath.startsWith(uiDir) &&
+          !filePath.includes("components.gen")
+        ) {
           generateComponentsFile(uiDir, outputPath);
         }
       });
 
       server.watcher.on("change", (filePath) => {
-        if (filePath.startsWith(uiDir) && !filePath.includes("components.gen")) {
+        if (
+          filePath.startsWith(uiDir) &&
+          !filePath.includes("components.gen")
+        ) {
           generateComponentsFile(uiDir, outputPath);
         }
       });
     },
   };
 }
-

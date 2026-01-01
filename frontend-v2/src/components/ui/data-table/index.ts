@@ -21,4 +21,3 @@ export type {
   SortingState,
   TanstackTable,
 } from "./data-table";
-

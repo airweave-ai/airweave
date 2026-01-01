@@ -1,11 +1,9 @@
-"use client"
-
 import {
   RightSidebarTabs,
   RightSidebarPanel,
   MobileBottomNav,
   MobileRightSidebarSheet,
-} from "@/components/ui/right-sidebar"
+} from "@/components/ui/right-sidebar";
 
 export function AppRightSidebar() {
   return (
@@ -17,6 +15,5 @@ export function AppRightSidebar() {
       <MobileBottomNav />
       <MobileRightSidebarSheet />
     </>
-  )
+  );
 }
-

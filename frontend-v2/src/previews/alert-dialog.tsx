@@ -75,7 +75,7 @@ export const alertDialogPreview: ComponentPreviewConfig = {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction className="bg-destructive text-white hover:bg-destructive/90">
+              <AlertDialogAction className="bg-destructive hover:bg-destructive/90 text-white">
                 Delete
               </AlertDialogAction>
             </AlertDialogFooter>

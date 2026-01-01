@@ -1,4 +1,7 @@
-import type { PersistedClient, Persister } from "@tanstack/react-query-persist-client";
+import type {
+  PersistedClient,
+  Persister,
+} from "@tanstack/react-query-persist-client";
 import { del, get, set } from "idb-keyval";
 
 const IDB_KEY = "airweave-query-cache";
@@ -39,4 +42,3 @@ export function createIDBPersister(): Persister {
  * Data older than this will be considered stale and refetched.
  */
 export const CACHE_MAX_AGE = 1000 * 60 * 60; // 1 hour
-

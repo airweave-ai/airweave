@@ -30,11 +30,11 @@ function DashboardDocs() {
 function DashboardCode() {
   return (
     <div className="space-y-4">
-      <h3 className="font-semibold text-base">Quick Start</h3>
-      <p className="text-sm text-muted-foreground">
+      <h3 className="text-base font-semibold">Quick Start</h3>
+      <p className="text-muted-foreground text-sm">
         Get started with the Airweave SDK:
       </p>
-      <pre className="bg-muted p-3 rounded-lg text-xs overflow-auto">
+      <pre className="bg-muted overflow-auto rounded-lg p-3 text-xs">
         <code>{`import { Airweave } from '@airweave/sdk';
 
 const client = new Airweave({
@@ -65,26 +65,26 @@ const results = await client.search({
 function DashboardHelp() {
   return (
     <div className="space-y-4">
-      <h3 className="font-semibold text-base">Getting Started</h3>
-      <p className="text-sm text-muted-foreground">
+      <h3 className="text-base font-semibold">Getting Started</h3>
+      <p className="text-muted-foreground text-sm">
         Welcome to Airweave! Here's how to get started:
       </p>
       <div className="space-y-3">
-        <div className="p-3 bg-muted rounded-lg">
-          <h4 className="font-medium text-sm">1. Create a Collection</h4>
-          <p className="text-xs text-muted-foreground mt-1">
+        <div className="bg-muted rounded-lg p-3">
+          <h4 className="text-sm font-medium">1. Create a Collection</h4>
+          <p className="text-muted-foreground mt-1 text-xs">
             Collections are searchable knowledge bases for your data.
           </p>
         </div>
-        <div className="p-3 bg-muted rounded-lg">
-          <h4 className="font-medium text-sm">2. Connect a Source</h4>
-          <p className="text-xs text-muted-foreground mt-1">
+        <div className="bg-muted rounded-lg p-3">
+          <h4 className="text-sm font-medium">2. Connect a Source</h4>
+          <p className="text-muted-foreground mt-1 text-xs">
             Connect Notion, Slack, or other sources to sync your data.
           </p>
         </div>
-        <div className="p-3 bg-muted rounded-lg">
-          <h4 className="font-medium text-sm">3. Search & Query</h4>
-          <p className="text-xs text-muted-foreground mt-1">
+        <div className="bg-muted rounded-lg p-3">
+          <h4 className="text-sm font-medium">3. Search & Query</h4>
+          <p className="text-muted-foreground mt-1 text-xs">
             Use the API or MCP to search across all your connected sources.
           </p>
         </div>
@@ -132,7 +132,7 @@ function DashboardPage() {
   });
 
   return (
-    <div className="p-6 space-y-8">
+    <div className="space-y-8 p-6">
       {/* Welcome Section */}
       <div className="space-y-2">
         <h1 className="text-3xl font-bold tracking-tight">
@@ -147,21 +147,21 @@ function DashboardPage() {
       {/* Quick Actions */}
       <div className="space-y-4">
         <h2 className="text-xl font-semibold">Quick Actions</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {quickActions.map((item) => (
             <Card
               key={item.href}
-              className="group hover:shadow-md transition-shadow"
+              className="group transition-shadow hover:shadow-md"
             >
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between">
-                  <div className="p-2 rounded-lg bg-primary/10">
-                    <item.icon className="size-5 text-primary" />
+                  <div className="bg-primary/10 rounded-lg p-2">
+                    <item.icon className="text-primary size-5" />
                   </div>
                   <Button variant="ghost" size="sm" asChild>
                     <Link to={item.href}>
                       {item.action}
-                      <ArrowRight className="ml-1 size-4 group-hover:translate-x-0.5 transition-transform" />
+                      <ArrowRight className="ml-1 size-4 transition-transform group-hover:translate-x-0.5" />
                     </Link>
                   </Button>
                 </div>
@@ -176,7 +176,7 @@ function DashboardPage() {
       </div>
 
       {/* Getting Started CTA */}
-      <Card className="bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
+      <Card className="from-primary/5 to-primary/10 border-primary/20 bg-gradient-to-br">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Plus className="size-5" />

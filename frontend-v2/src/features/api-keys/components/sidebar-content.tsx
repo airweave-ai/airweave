@@ -7,11 +7,11 @@ export function ApiKeysDocs() {
 export function ApiKeysCode() {
   return (
     <div className="space-y-4">
-      <h3 className="font-semibold text-base">Using API Keys</h3>
-      <p className="text-sm text-muted-foreground">
+      <h3 className="text-base font-semibold">Using API Keys</h3>
+      <p className="text-muted-foreground text-sm">
         Authenticate your requests with your API key:
       </p>
-      <pre className="bg-muted p-3 rounded-lg text-xs overflow-auto">
+      <pre className="bg-muted overflow-auto rounded-lg p-3 text-xs">
         <code>{`import { AirweaveSDK } from '@airweave/sdk';
 
 const client = new AirweaveSDK({
@@ -33,14 +33,14 @@ fetch('https://api.airweave.ai/collections', {
 export function ApiKeysHelp() {
   return (
     <div className="space-y-4">
-      <h3 className="font-semibold text-base">API Key Security</h3>
-      <p className="text-sm text-muted-foreground">
+      <h3 className="text-base font-semibold">API Key Security</h3>
+      <p className="text-muted-foreground text-sm">
         Keep your API keys secure and never expose them in client-side code.
       </p>
       <div className="space-y-3">
-        <div className="p-3 bg-muted rounded-lg">
-          <h4 className="font-medium text-sm">Best Practices</h4>
-          <ul className="text-xs text-muted-foreground mt-1 space-y-1">
+        <div className="bg-muted rounded-lg p-3">
+          <h4 className="text-sm font-medium">Best Practices</h4>
+          <ul className="text-muted-foreground mt-1 space-y-1 text-xs">
             <li>Store keys in environment variables</li>
             <li>Rotate keys periodically</li>
             <li>Use different keys for dev/prod</li>

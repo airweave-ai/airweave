@@ -152,7 +152,7 @@ function JsonValue({
           <button
             type="button"
             onClick={() => onValueChange(path, !value)}
-            className="text-amber-400 hover:text-amber-300 underline underline-offset-2"
+            className="text-amber-400 underline underline-offset-2 hover:text-amber-300"
           >
             {value.toString()}
           </button>
@@ -178,7 +178,7 @@ function JsonValue({
                 onValueChange(path, parsed);
               }
             }}
-            className="w-20 bg-zinc-800 text-amber-400 border border-zinc-700 rounded px-1.5 py-0.5 text-xs font-mono focus:outline-none focus:border-emerald-500"
+            className="w-20 rounded border border-zinc-700 bg-zinc-800 px-1.5 py-0.5 font-mono text-xs text-amber-400 focus:border-emerald-500 focus:outline-none"
           />
         ) : (
           <span className="text-amber-400">{value}</span>
@@ -199,7 +199,7 @@ function JsonValue({
               type="text"
               value={value}
               onChange={(e) => onValueChange(path, e.target.value)}
-              className="bg-zinc-800 text-emerald-400 border border-zinc-700 rounded px-1.5 py-0.5 text-xs font-mono focus:outline-none focus:border-emerald-500 min-w-[60px]"
+              className="min-w-[60px] rounded border border-zinc-700 bg-zinc-800 px-1.5 py-0.5 font-mono text-xs text-emerald-400 focus:border-emerald-500 focus:outline-none"
               style={{ width: `${Math.max(60, value.length * 8)}px` }}
             />
             <span className="text-emerald-400">"</span>
@@ -319,7 +319,7 @@ function CodeView({ editable = false, className }: CodeViewProps) {
     <TabsContent value="code" className={cn("py-4", className)}>
       <div className="rounded-lg bg-zinc-950 p-4 font-mono text-sm">
         {/* Method and endpoint */}
-        <div className="flex items-center gap-2 mb-3">
+        <div className="mb-3 flex items-center gap-2">
           <span className={cn("font-semibold", methodColors[method])}>
             {method}
           </span>
@@ -329,8 +329,8 @@ function CodeView({ editable = false, className }: CodeViewProps) {
         {/* Request body */}
         {hasBody && (
           <>
-            <div className="text-zinc-400 text-xs mb-2">Request Body</div>
-            <div className="text-zinc-100 text-xs leading-relaxed">
+            <div className="mb-2 text-xs text-zinc-400">Request Body</div>
+            <div className="text-xs leading-relaxed text-zinc-100">
               <div>{"{"}</div>
               {entries.map(([key, value], idx) => (
                 <React.Fragment key={key}>
@@ -343,7 +343,7 @@ function CodeView({ editable = false, className }: CodeViewProps) {
                     indent={1}
                   />
                   {idx < entries.length - 1 && (
-                    <span className="text-zinc-500 pl-4">,</span>
+                    <span className="pl-4 text-zinc-500">,</span>
                   )}
                 </React.Fragment>
               ))}
@@ -354,7 +354,7 @@ function CodeView({ editable = false, className }: CodeViewProps) {
       </div>
 
       {editable && onBodyChange && (
-        <p className="text-xs text-muted-foreground mt-3">
+        <p className="text-muted-foreground mt-3 text-xs">
           Edit values above or use the Form tab for a guided experience.
         </p>
       )}
@@ -373,7 +373,7 @@ function Footer({ children, className }: FooterProps) {
     <div
       className={cn(
         "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
-        className,
+        className
       )}
     >
       {children}

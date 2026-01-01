@@ -25,6 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { APIKey } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { DeleteApiKeyDialog } from "./delete-dialog";
 
 import {
@@ -54,7 +55,7 @@ function CopyButton({ value }: { value: string }) {
       },
       () => {
         console.error("Failed to copy key");
-      },
+      }
     );
   };
 
@@ -82,7 +83,7 @@ function StatusBadge({ expirationDate }: { expirationDate: string }) {
 
   if (isExpired) {
     return (
-      <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-transparent">
+      <Badge className="border-transparent bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
         Expired
       </Badge>
     );
@@ -90,14 +91,14 @@ function StatusBadge({ expirationDate }: { expirationDate: string }) {
 
   if (isExpiringSoon) {
     return (
-      <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-transparent">
+      <Badge className="border-transparent bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
         Expiring soon
       </Badge>
     );
   }
 
   return (
-    <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-transparent">
+    <Badge className="border-transparent bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
       Active
     </Badge>
   );
@@ -111,15 +112,20 @@ function ActionsDropdown({
   onDelete: (keyIds: string[]) => void;
 }) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
 
   return (
     <>
-      <DropdownMenu>
+      <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
             size="icon"
-            className="size-8 text-muted-foreground"
+            className={cn(
+              "text-muted-foreground size-8 transition-opacity",
+              isOpen ? "opacity-100" : "opacity-10 group-hover:opacity-50"
+            )}
+            onClick={(e) => e.stopPropagation()}
           >
             <MoreHorizontal className="size-4" />
             <span className="sr-only">Open menu</span>
@@ -185,7 +191,7 @@ export function ApiKeysTable({
         header: "Key",
         cell: ({ row }) => (
           <div className="flex items-center gap-2">
-            <code className="text-xs font-mono font-medium">
+            <code className="font-mono text-xs font-medium">
               {maskKey(row.original.decrypted_key)}
             </code>
             <CopyButton value={row.original.decrypted_key} />
@@ -207,7 +213,7 @@ export function ApiKeysTable({
         accessorKey: "created_at",
         header: "Created",
         cell: ({ row }) => (
-          <span className="text-sm text-muted-foreground">
+          <span className="text-muted-foreground text-sm">
             {formatDate(row.original.created_at)}
           </span>
         ),
@@ -238,7 +244,7 @@ export function ApiKeysTable({
         ),
       },
     ],
-    [onDelete],
+    [onDelete]
   );
 
   return (
@@ -268,7 +274,7 @@ export function ApiKeysTable({
                       .writeText(JSON.stringify(selectedKeys, null, 2))
                       .then(() => {
                         toast.success(
-                          `Copied ${selectedKeys.length} key${selectedKeys.length > 1 ? "s" : ""} as JSON`,
+                          `Copied ${selectedKeys.length} key${selectedKeys.length > 1 ? "s" : ""} as JSON`
                         );
                       });
                   },

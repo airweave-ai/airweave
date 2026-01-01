@@ -46,6 +46,7 @@ export function ConfigureDialog({
   const queryClient = useQueryClient();
 
   // Generate a random suffix once per dialog open
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Intentionally regenerate when dialog opens
   const randomSuffix = useMemo(() => generateRandomSuffix(), [open]);
 
   // Track if user has manually edited the readable ID
@@ -121,7 +122,7 @@ export function ConfigureDialog({
     if (!userEditedId) {
       form.setFieldValue(
         "readableId",
-        generateReadableId(newName, randomSuffix),
+        generateReadableId(newName, randomSuffix)
       );
     }
   };
@@ -169,7 +170,7 @@ export function ConfigureDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Connect to {authProvider.name}</DialogTitle>
           <DialogDescription>
@@ -179,8 +180,8 @@ export function ConfigureDialog({
         </DialogHeader>
 
         {isLoadingDetails ? (
-          <div className="flex justify-center items-center py-8">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="text-muted-foreground h-8 w-8 animate-spin" />
           </div>
         ) : (
           <form
@@ -188,12 +189,12 @@ export function ConfigureDialog({
               e.preventDefault();
               form.handleSubmit();
             }}
-            className="flex flex-col flex-1 overflow-hidden"
+            className="flex flex-1 flex-col overflow-hidden"
           >
             <ApiForm
               method="POST"
               endpoint="https://api.airweave.ai/auth-providers/"
-              className="flex flex-col flex-1 overflow-hidden"
+              className="flex flex-1 flex-col overflow-hidden"
               body={{
                 name: form.getFieldValue("name"),
                 readable_id: form.getFieldValue("readableId"),
@@ -214,23 +215,23 @@ export function ConfigureDialog({
                 ) {
                   form.setFieldValue(
                     "authFields",
-                    newBody.auth_fields as Record<string, string>,
+                    newBody.auth_fields as Record<string, string>
                   );
                 }
               }}
             >
               <ApiForm.Toggle />
 
-              <ApiForm.FormView className="flex-1 overflow-y-auto space-y-6">
+              <ApiForm.FormView className="flex-1 space-y-6 overflow-y-auto">
                 {/* Connection Animation */}
                 <div className="flex justify-center py-4">
                   <div className="flex items-center gap-6">
                     {/* Airweave Logo */}
                     <div
                       className={cn(
-                        "w-14 h-14 rounded-xl flex items-center justify-center p-2.5",
-                        "shadow-lg ring-2 ring-muted-foreground/20",
-                        "bg-card",
+                        "flex h-14 w-14 items-center justify-center rounded-xl p-2.5",
+                        "ring-muted-foreground/20 shadow-lg ring-2",
+                        "bg-card"
                       )}
                     >
                       <img
@@ -240,30 +241,30 @@ export function ConfigureDialog({
                             : "/airweave-logo-svg-lightbg-blacklogo.svg"
                         }
                         alt="Airweave"
-                        className="w-full h-full object-contain"
+                        className="h-full w-full object-contain"
                       />
                     </div>
 
                     {/* Connecting text */}
-                    <span className="text-sm text-muted-foreground">
+                    <span className="text-muted-foreground text-sm">
                       Waiting for connection...
                     </span>
 
                     {/* Auth Provider Logo */}
                     <div
                       className={cn(
-                        "w-14 h-14 rounded-xl flex items-center justify-center p-2.5",
-                        "shadow-lg ring-2 ring-muted-foreground/20",
-                        "bg-card",
+                        "flex h-14 w-14 items-center justify-center rounded-xl p-2.5",
+                        "ring-muted-foreground/20 shadow-lg ring-2",
+                        "bg-card"
                       )}
                     >
                       <img
                         src={getAuthProviderIconUrl(
                           authProvider.short_name,
-                          isDark ? "dark" : "light",
+                          isDark ? "dark" : "light"
                         )}
                         alt={authProvider.name}
-                        className="w-full h-full object-contain"
+                        className="h-full w-full object-contain"
                       />
                     </div>
                   </div>
@@ -271,7 +272,7 @@ export function ConfigureDialog({
 
                 {/* Name field */}
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <label className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
                     Name
                   </label>
                   <form.Field name="name">
@@ -287,7 +288,7 @@ export function ConfigureDialog({
 
                 {/* Readable ID field */}
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <label className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
                     Readable ID
                   </label>
                   <form.Field name="readableId">
@@ -307,7 +308,7 @@ export function ConfigureDialog({
                   providerDetails.auth_fields.fields.length > 0 && (
                     <div className="space-y-4 pt-2">
                       <div className="flex items-center justify-between">
-                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        <label className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
                           Authentication
                         </label>
 
@@ -330,15 +331,15 @@ export function ConfigureDialog({
                             <img
                               src={getAuthProviderIconUrl(
                                 authProvider.short_name,
-                                isDark ? "dark" : "light",
+                                isDark ? "dark" : "light"
                               )}
                               alt={authProvider.short_name}
-                              className="w-3 h-3 mr-1.5 object-contain"
+                              className="mr-1.5 h-3 w-3 object-contain"
                             />
                             {authProvider.short_name === "composio"
                               ? "Get API Key from Composio"
                               : "Get Client ID & Secret from Pipedream"}
-                            <ExternalLink className="w-3 h-3 ml-1.5" />
+                            <ExternalLink className="ml-1.5 h-3 w-3" />
                           </Button>
                         )}
                       </div>
@@ -352,7 +353,7 @@ export function ConfigureDialog({
                             )}
                           </label>
                           {field.description && (
-                            <p className="text-xs text-muted-foreground">
+                            <p className="text-muted-foreground text-xs">
                               {field.description}
                             </p>
                           )}
@@ -368,7 +369,7 @@ export function ConfigureDialog({
                                 onChange={(e) =>
                                   handleAuthFieldChange(
                                     field.name,
-                                    e.target.value,
+                                    e.target.value
                                   )
                                 }
                                 placeholder={
@@ -387,7 +388,7 @@ export function ConfigureDialog({
 
               <ApiForm.CodeView editable className="flex-1 overflow-y-auto" />
 
-              <ApiForm.Footer className="pt-4 border-t">
+              <ApiForm.Footer className="border-t pt-4">
                 <Button
                   type="button"
                   variant="outline"

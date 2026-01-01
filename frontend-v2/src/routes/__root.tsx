@@ -89,9 +89,9 @@ function RootComponent() {
             <AppSidebar />
             <SidebarInset>
               <div className="bg-sidebar h-full px-1 py-4">
-                <div className="bg-background rounded-lg border border-border/50 flex flex-col h-full shadow-sm">
+                <div className="bg-background border-border/50 flex h-full flex-col rounded-lg border shadow-sm">
                   <header className="flex h-14 shrink-0 items-center border-b px-4">
-                    <SidebarTrigger className="-ml-1 mr-1.5" />
+                    <SidebarTrigger className="mr-1.5 -ml-1" />
                     <PageHeaderContent />
                   </header>
                   <div className="flex-1 overflow-auto pb-16 md:pb-0">

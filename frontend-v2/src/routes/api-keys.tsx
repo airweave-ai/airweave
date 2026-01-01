@@ -10,6 +10,8 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
+import { LoadingState } from "@/components/ui/loading-state";
 import { usePageHeader } from "@/components/ui/page-header";
 import { useRightSidebarContent } from "@/components/ui/right-sidebar";
 import { useCommandMenu } from "@/hooks/use-command-menu";
@@ -109,10 +111,10 @@ function ApiKeysPage() {
           return {
             ...old,
             pages: old.pages.map((page) =>
-              page.filter((key) => !keyIdsSet.has(key.id)),
+              page.filter((key) => !keyIdsSet.has(key.id))
             ),
           };
-        },
+        }
       );
 
       return { previousData };
@@ -126,7 +128,7 @@ function ApiKeysPage() {
     onSuccess: (_data, keyIds) => {
       const count = keyIds.length;
       toast.success(
-        count > 1 ? `${count} API keys deleted` : "API key deleted",
+        count > 1 ? `${count} API keys deleted` : "API key deleted"
       );
     },
     onSettled: () => {
@@ -135,8 +137,8 @@ function ApiKeysPage() {
     },
   });
 
-  // Flatten all pages into a single array
-  const apiKeys = data?.pages.flat() ?? [];
+  // Flatten all pages into a single array - memoized to prevent unnecessary re-renders
+  const apiKeys = useMemo(() => data?.pages.flat() ?? [], [data?.pages]);
 
   // Auto-select the first item when data loads or changes
   useEffect(() => {
@@ -184,9 +186,7 @@ function ApiKeysPage() {
   if (isLoading) {
     return (
       <div className="p-6">
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="size-6 animate-spin text-muted-foreground" />
-        </div>
+        <LoadingState />
       </div>
     );
   }
@@ -195,9 +195,9 @@ function ApiKeysPage() {
   if (error) {
     return (
       <div className="p-6">
-        <div className="rounded-lg border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-900/10 px-4 py-3 text-sm text-red-600 dark:text-red-400">
-          {error instanceof Error ? error.message : "Failed to load API keys"}
-        </div>
+        <ErrorState
+          error={error instanceof Error ? error : "Failed to load API keys"}
+        />
       </div>
     );
   }

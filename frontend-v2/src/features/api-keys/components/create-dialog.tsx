@@ -58,7 +58,7 @@ export function CreateApiKeyDialog({
           toast.success("API key created", {
             description: "Failed to copy to clipboard automatically",
           });
-        },
+        }
       );
     },
     onError: (error: Error) => {
@@ -119,10 +119,10 @@ export function CreateApiKeyDialog({
                       type="button"
                       onClick={() => field.handleChange(preset.days)}
                       className={cn(
-                        "w-full flex items-center justify-between px-4 py-3.5 rounded-lg border text-left transition-colors",
+                        "flex w-full items-center justify-between rounded-lg border px-4 py-3.5 text-left transition-colors",
                         field.state.value === preset.days
                           ? "border-primary bg-primary/5 dark:bg-primary/10"
-                          : "border-border hover:border-muted-foreground/25",
+                          : "border-border hover:border-muted-foreground/25"
                       )}
                     >
                       <span
@@ -130,13 +130,13 @@ export function CreateApiKeyDialog({
                           "text-sm font-medium",
                           field.state.value === preset.days
                             ? "text-foreground"
-                            : "text-muted-foreground",
+                            : "text-muted-foreground"
                         )}
                       >
                         {preset.label}
                       </span>
                       {preset.recommended && (
-                        <span className="text-xs px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium">
+                        <span className="rounded-md bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-600 dark:text-blue-400">
                           Recommended
                         </span>
                       )}
@@ -174,4 +174,3 @@ export function CreateApiKeyDialog({
     </Dialog>
   );
 }
-

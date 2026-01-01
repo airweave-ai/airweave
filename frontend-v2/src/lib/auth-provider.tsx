@@ -60,10 +60,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
       isLoading: false,
       user: devUser as User,
       logout: () => {
-        console.log("Logout called in dev mode - no action taken");
+        // Dev mode - no-op
       },
       loginWithRedirect: () => {
-        console.log("Login called in dev mode - no action taken");
+        // Dev mode - no-op
       },
       getAccessTokenSilently: async () => {
         return authConfig.accessToken;
@@ -109,10 +109,10 @@ export function AuthGuard({ children }: { children: ReactNode }) {
   // Show loading state while Auth0 initializes
   if (isLoading) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-background">
+      <div className="bg-background flex h-screen w-screen items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-          <p className="text-sm text-muted-foreground">Loading...</p>
+          <div className="border-primary h-8 w-8 animate-spin rounded-full border-4 border-t-transparent" />
+          <p className="text-muted-foreground text-sm">Loading...</p>
         </div>
       </div>
     );
@@ -122,10 +122,10 @@ export function AuthGuard({ children }: { children: ReactNode }) {
   if (!isAuthenticated) {
     loginWithRedirect();
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-background">
+      <div className="bg-background flex h-screen w-screen items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-          <p className="text-sm text-muted-foreground">
+          <div className="border-primary h-8 w-8 animate-spin rounded-full border-4 border-t-transparent" />
+          <p className="text-muted-foreground text-sm">
             Redirecting to login...
           </p>
         </div>

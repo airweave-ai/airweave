@@ -11,14 +11,14 @@ export const Route = createFileRoute("/webhooks")({ component: WebhooksPage });
 function WebhooksDocs() {
   return (
     <div className="space-y-4">
-      <h3 className="font-semibold text-base">Webhooks</h3>
-      <p className="text-sm text-muted-foreground">
+      <h3 className="text-base font-semibold">Webhooks</h3>
+      <p className="text-muted-foreground text-sm">
         Webhooks allow you to receive real-time notifications when events occur
         in your Airweave account.
       </p>
       <div className="space-y-2">
-        <h4 className="font-medium text-sm">Supported Events</h4>
-        <ul className="text-sm text-muted-foreground space-y-1">
+        <h4 className="text-sm font-medium">Supported Events</h4>
+        <ul className="text-muted-foreground space-y-1 text-sm">
           <li>Sync completed</li>
           <li>Sync failed</li>
           <li>New entities added</li>
@@ -32,11 +32,11 @@ function WebhooksDocs() {
 function WebhooksCode() {
   return (
     <div className="space-y-4">
-      <h3 className="font-semibold text-base">Webhook Payload</h3>
-      <p className="text-sm text-muted-foreground">
+      <h3 className="text-base font-semibold">Webhook Payload</h3>
+      <p className="text-muted-foreground text-sm">
         Example webhook payload structure:
       </p>
-      <pre className="bg-muted p-3 rounded-lg text-xs overflow-auto">
+      <pre className="bg-muted overflow-auto rounded-lg p-3 text-xs">
         <code>{`{
   "event": "sync.completed",
   "timestamp": "2024-01-15T10:30:00Z",
@@ -55,14 +55,14 @@ function WebhooksCode() {
 function WebhooksHelp() {
   return (
     <div className="space-y-4">
-      <h3 className="font-semibold text-base">Setting Up Webhooks</h3>
-      <p className="text-sm text-muted-foreground">
+      <h3 className="text-base font-semibold">Setting Up Webhooks</h3>
+      <p className="text-muted-foreground text-sm">
         Webhooks are HTTP callbacks that receive POST requests when events
         occur.
       </p>
-      <div className="p-3 bg-muted rounded-lg">
-        <h4 className="font-medium text-sm">Requirements</h4>
-        <ul className="text-xs text-muted-foreground mt-1 space-y-1">
+      <div className="bg-muted rounded-lg p-3">
+        <h4 className="text-sm font-medium">Requirements</h4>
+        <ul className="text-muted-foreground mt-1 space-y-1 text-xs">
           <li>HTTPS endpoint required</li>
           <li>Must respond with 2xx status</li>
           <li>Timeout: 30 seconds</li>
@@ -78,7 +78,7 @@ function WebhooksPage() {
     description: "Receive real-time event notifications",
     actions: (
       <Button>
-        <Plus className="size-4 mr-2" />
+        <Plus className="mr-2 size-4" />
         Add Webhook
       </Button>
     ),
@@ -98,7 +98,7 @@ function WebhooksPage() {
         description="Get notified when sync jobs complete, fail, or when new data is available."
       >
         <Button variant="outline">
-          <Plus className="size-4 mr-2" />
+          <Plus className="mr-2 size-4" />
           Add Webhook
         </Button>
       </EmptyState>

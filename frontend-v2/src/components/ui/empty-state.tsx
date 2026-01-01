@@ -21,10 +21,10 @@ function EmptyState({
     <div
       className={cn(
         "flex flex-col items-center justify-center py-16 text-center",
-        className,
+        className
       )}
     >
-      <div className="size-16 rounded-full bg-muted flex items-center justify-center mb-4">
+      <div className="bg-muted mb-4 flex size-16 items-center justify-center rounded-full">
         {React.isValidElement(icon)
           ? React.cloneElement(
               icon as React.ReactElement<{ className?: string }>,
@@ -32,13 +32,13 @@ function EmptyState({
                 className: cn(
                   "size-8 text-muted-foreground",
                   (icon as React.ReactElement<{ className?: string }>).props
-                    ?.className,
+                    ?.className
                 ),
-              },
+              }
             )
           : icon}
       </div>
-      <h2 className="text-lg font-semibold mb-2">{title}</h2>
+      <h2 className="mb-2 text-lg font-semibold">{title}</h2>
       <p className="text-muted-foreground max-w-sm">{description}</p>
       {children && <div className="mt-4">{children}</div>}
     </div>

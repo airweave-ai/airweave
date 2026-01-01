@@ -61,8 +61,8 @@ export const useUISettings = create<UISettingsState>()(
         rightSidebarTab: state.rightSidebarTab,
         theme: state.theme,
       }),
-    },
-  ),
+    }
+  )
 );
 
 /**
@@ -79,7 +79,7 @@ export function useUISettingsHydrated() {
 
   useEffect(() => {
     const unsubscribe = useUISettings.subscribe((state) =>
-      setHydrated(state._hasHydrated),
+      setHydrated(state._hasHydrated)
     );
     // Check immediately in case it hydrated before subscription
     setHydrated(useUISettings.getState()._hasHydrated);

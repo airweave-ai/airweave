@@ -48,10 +48,10 @@ export function DeleteApiKeyDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <div
-          className={`my-4 rounded-lg border bg-muted p-3 ${isMultiple ? "max-h-32 overflow-y-auto space-y-1" : ""}`}
+          className={`bg-muted my-4 rounded-lg border p-3 ${isMultiple ? "max-h-32 space-y-1 overflow-y-auto" : ""}`}
         >
           {keys.map((key) => (
-            <code key={key.id} className="block text-sm font-mono">
+            <code key={key.id} className="block font-mono text-sm">
               {maskKey(key.decrypted_key)}
             </code>
           ))}
@@ -59,7 +59,7 @@ export function DeleteApiKeyDialog({
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <AlertDialogAction
-            className="bg-destructive text-white hover:bg-destructive/90"
+            className="bg-destructive hover:bg-destructive/90 text-white"
             onClick={() => {
               onConfirm();
               onOpenChange(false);

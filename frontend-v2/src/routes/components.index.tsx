@@ -28,23 +28,26 @@ function ComponentCard({ component }: { component: ComponentInfo }) {
     <Link
       to="/components/$componentName"
       params={{ componentName: component.name }}
-      className="block group"
+      className="group block"
     >
-      <Card className="h-full hover:shadow-md transition-all duration-300 hover:border-primary/50">
+      <Card className="hover:border-primary/50 h-full transition-all duration-300 hover:shadow-md">
         <CardHeader>
           <div className="flex items-start justify-between">
-            <div className="p-3 bg-muted rounded-lg">
-              <Package className="w-6 h-6 text-primary" />
+            <div className="bg-muted rounded-lg p-3">
+              <Package className="text-primary h-6 w-6" />
             </div>
             <Badge variant="secondary">.tsx</Badge>
           </div>
           <CardTitle className="flex items-center gap-2">
             {displayName}
-            <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
+            <ArrowRight className="h-4 w-4 opacity-0 transition-all group-hover:translate-x-1 group-hover:opacity-100" />
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <CardDescription className="font-mono truncate" title={component.path}>
+          <CardDescription
+            className="truncate font-mono"
+            title={component.path}
+          >
             {component.path}
           </CardDescription>
         </CardContent>
@@ -58,7 +61,9 @@ function ComponentsIndexPage() {
     <div className="p-8">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-foreground mb-2">All Components</h1>
+        <h1 className="text-foreground mb-2 text-3xl font-bold">
+          All Components
+        </h1>
         <p className="text-muted-foreground">
           Browse and explore all available UI components. Click on a component
           to see its variants and usage examples.
@@ -67,22 +72,22 @@ function ComponentsIndexPage() {
 
       {/* Components Grid */}
       {uiComponents.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
           {uiComponents.map((component) => (
             <ComponentCard key={component.name} component={component} />
           ))}
         </div>
       ) : (
-        <div className="text-center py-20">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-muted rounded-full mb-4">
-            <Package className="w-8 h-8 text-muted-foreground" />
+        <div className="py-20 text-center">
+          <div className="bg-muted mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full">
+            <Package className="text-muted-foreground h-8 w-8" />
           </div>
-          <h3 className="text-xl font-semibold text-foreground mb-2">
+          <h3 className="text-foreground mb-2 text-xl font-semibold">
             No components found
           </h3>
-          <p className="text-muted-foreground max-w-md mx-auto">
+          <p className="text-muted-foreground mx-auto max-w-md">
             Add components to{" "}
-            <code className="px-2 py-0.5 bg-muted rounded text-primary text-sm">
+            <code className="bg-muted text-primary rounded px-2 py-0.5 text-sm">
               src/components/ui/
             </code>{" "}
             and they will appear here automatically.

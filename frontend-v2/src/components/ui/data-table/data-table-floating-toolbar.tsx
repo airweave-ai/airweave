@@ -1,5 +1,3 @@
-"use client";
-
 import type { LucideIcon } from "lucide-react";
 import { X } from "lucide-react";
 
@@ -33,12 +31,12 @@ export function DataTableFloatingToolbar({
   if (selectedCount === 0) return null;
 
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-4 fade-in duration-200">
-      <div className="flex items-center gap-3 rounded-lg border bg-background px-4 py-3 shadow-lg">
-        <span className="text-sm font-medium text-muted-foreground">
+    <div className="animate-in slide-in-from-bottom-4 fade-in fixed bottom-6 left-1/2 z-50 -translate-x-1/2 duration-200">
+      <div className="bg-background flex items-center gap-3 rounded-lg border px-4 py-3 shadow-lg">
+        <span className="text-muted-foreground text-sm font-medium">
           {selectedCount} selected
         </span>
-        <div className="h-4 w-px bg-border" />
+        <div className="bg-border h-4 w-px" />
         {actions.map((action) => {
           const buttonVariant =
             action.variant === "destructive"
@@ -63,7 +61,7 @@ export function DataTableFloatingToolbar({
           );
         })}
         {children}
-        <div className="h-4 w-px bg-border" />
+        <div className="bg-border h-4 w-px" />
         <Button
           variant="ghost"
           size="icon"

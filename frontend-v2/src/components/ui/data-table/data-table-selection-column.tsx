@@ -1,5 +1,3 @@
-"use client";
-
 import { type ColumnDef } from "@tanstack/react-table";
 
 import { Checkbox } from "@/components/ui/checkbox";
@@ -29,7 +27,7 @@ export function getSelectionColumn<TData>(): ColumnDef<TData> {
           aria-label="Select all"
           className={cn(
             "translate-y-px transition-opacity",
-            hasSelection ? "opacity-100" : "opacity-20 hover:opacity-100",
+            hasSelection ? "opacity-100" : "opacity-10 hover:opacity-50"
           )}
         />
       );
@@ -45,7 +43,7 @@ export function getSelectionColumn<TData>(): ColumnDef<TData> {
           aria-label="Select row"
           className={cn(
             "transition-opacity",
-            isSelected ? "opacity-100" : "opacity-20 group-hover:opacity-100",
+            isSelected ? "opacity-100" : "opacity-10 group-hover:opacity-50"
           )}
           onClick={(e) => {
             e.stopPropagation();

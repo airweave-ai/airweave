@@ -9,10 +9,10 @@ export const separatorPreview: ComponentPreviewConfig = {
       preview: (
         <div className="w-full max-w-md">
           <div className="space-y-1">
-            <h4 className="text-sm font-medium leading-none">
+            <h4 className="text-sm leading-none font-medium">
               Radix Primitives
             </h4>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-muted-foreground text-sm">
               An open-source UI component library.
             </p>
           </div>

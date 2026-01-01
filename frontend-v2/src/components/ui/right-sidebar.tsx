@@ -1,5 +1,3 @@
-"use client";
-
 import {
   BookOpen,
   Code2,
@@ -52,7 +50,7 @@ function useRightSidebar() {
   const context = React.useContext(RightSidebarContext);
   if (!context) {
     throw new Error(
-      "useRightSidebar must be used within a RightSidebarProvider.",
+      "useRightSidebar must be used within a RightSidebarProvider."
     );
   }
   return context;
@@ -92,7 +90,7 @@ function RightSidebarProvider({
     (tab: TabId) => {
       toggleRightSidebarTab(tab);
     },
-    [toggleRightSidebarTab],
+    [toggleRightSidebarTab]
   );
 
   const contextValue = React.useMemo<RightSidebarContextProps>(
@@ -103,7 +101,7 @@ function RightSidebarProvider({
       content,
       setContent,
     }),
-    [activeTab, toggleTab, content],
+    [activeTab, setActiveTab, toggleTab, content, setContent]
   );
 
   return (
@@ -144,8 +142,8 @@ function RightSidebarTabs({
     <div
       data-slot="right-sidebar-tabs"
       className={cn(
-        "fixed inset-y-0 right-0 z-10 hidden w-(--right-sidebar-tab-width) flex-col items-center bg-sidebar py-4 md:flex",
-        className,
+        "bg-sidebar fixed inset-y-0 right-0 z-10 hidden w-(--right-sidebar-tab-width) flex-col items-center py-4 md:flex",
+        className
       )}
       {...props}
     >
@@ -157,9 +155,9 @@ function RightSidebarTabs({
                 variant={activeTab === tab.id ? "secondary" : "ghost"}
                 size="icon"
                 className={cn(
-                  "py-2 px-4 h-auto w-10 rounded-lg transition-colors flex-col border uppercase font-mono text-xs",
+                  "h-auto w-10 flex-col rounded-lg border px-4 py-2 font-mono text-xs uppercase transition-colors",
                   activeTab === tab.id &&
-                    "bg-sidebar-accent text-sidebar-accent-foreground",
+                    "bg-sidebar-accent text-sidebar-accent-foreground"
                 )}
                 onClick={() => toggleTab(tab.id)}
                 aria-pressed={activeTab === tab.id}
@@ -198,7 +196,7 @@ function RightSidebarPanel({
         data-slot="right-sidebar-panel-spacer"
         className={cn(
           "hidden shrink-0 transition-[width] duration-200 ease-linear md:block",
-          activeTab ? "w-(--right-sidebar-width)" : "w-0",
+          activeTab ? "w-(--right-sidebar-width)" : "w-0"
         )}
       />
       {/* The actual panel */}
@@ -210,7 +208,7 @@ function RightSidebarPanel({
           activeTab
             ? "right-(--right-sidebar-tab-width)"
             : "right-[calc(var(--right-sidebar-width)*-1)]",
-          className,
+          className
         )}
         {...props}
       >
@@ -283,8 +281,8 @@ function MobileBottomNav({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="mobile-bottom-nav"
       className={cn(
-        "fixed inset-x-0 bottom-0 z-50 flex h-16 items-center justify-around border-t bg-sidebar md:hidden",
-        className,
+        "bg-sidebar fixed inset-x-0 bottom-0 z-50 flex h-16 items-center justify-around border-t md:hidden",
+        className
       )}
       {...props}
     >
@@ -296,7 +294,7 @@ function MobileBottomNav({ className, ...props }: React.ComponentProps<"div">) {
             "flex flex-1 flex-col items-center justify-center gap-1 py-2 text-xs transition-colors",
             currentTab === tab.id
               ? "text-sidebar-primary"
-              : "text-muted-foreground hover:text-foreground",
+              : "text-muted-foreground hover:text-foreground"
           )}
           onClick={() => handleTabClick(tab.id)}
           aria-pressed={currentTab === tab.id}

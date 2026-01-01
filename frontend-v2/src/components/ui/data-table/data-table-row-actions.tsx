@@ -1,8 +1,7 @@
-"use client";
-
 import { type Row } from "@tanstack/react-table";
-import { MoreHorizontal } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { MoreHorizontal } from "lucide-react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -12,6 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 
 export interface RowAction<TData> {
   id: string;
@@ -31,13 +31,19 @@ export function DataTableRowActions<TData>({
   row,
   actions,
 }: DataTableRowActionsProps<TData>) {
+  const [isOpen, setIsOpen] = useState(false);
+
   return (
-    <DropdownMenu>
+    <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
           size="icon"
-          className="size-8 text-muted-foreground"
+          className={cn(
+            "text-muted-foreground size-8 transition-opacity",
+            isOpen ? "opacity-100" : "opacity-10 group-hover:opacity-50"
+          )}
+          onClick={(e) => e.stopPropagation()}
         >
           <MoreHorizontal className="size-4" />
           <span className="sr-only">Open menu</span>
@@ -60,4 +66,3 @@ export function DataTableRowActions<TData>({
     </DropdownMenu>
   );
 }
-

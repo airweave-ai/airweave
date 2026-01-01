@@ -18,11 +18,11 @@ function CollectionsDocs() {
 function CollectionsCode() {
   return (
     <div className="space-y-4">
-      <h3 className="font-semibold text-base">Collections API</h3>
-      <p className="text-sm text-muted-foreground">
+      <h3 className="text-base font-semibold">Collections API</h3>
+      <p className="text-muted-foreground text-sm">
         Create and manage collections programmatically:
       </p>
-      <pre className="bg-muted p-3 rounded-lg text-xs overflow-auto">
+      <pre className="bg-muted overflow-auto rounded-lg p-3 text-xs">
         <code>{`import { Airweave } from '@airweave/sdk';
 
 const client = new Airweave({
@@ -47,15 +47,15 @@ const results = await client.collections.search(
 function CollectionsHelp() {
   return (
     <div className="space-y-4">
-      <h3 className="font-semibold text-base">About Collections</h3>
-      <p className="text-sm text-muted-foreground">
+      <h3 className="text-base font-semibold">About Collections</h3>
+      <p className="text-muted-foreground text-sm">
         Collections are searchable knowledge bases made up of synced data from
         one or more source connections.
       </p>
       <div className="space-y-3">
-        <div className="p-3 bg-muted rounded-lg">
-          <h4 className="font-medium text-sm">Key Features</h4>
-          <ul className="text-xs text-muted-foreground mt-1 space-y-1">
+        <div className="bg-muted rounded-lg p-3">
+          <h4 className="text-sm font-medium">Key Features</h4>
+          <ul className="text-muted-foreground mt-1 space-y-1 text-xs">
             <li>Unified search across multiple sources</li>
             <li>Vector embeddings for semantic search</li>
             <li>Real-time data synchronization</li>
@@ -72,7 +72,7 @@ function CollectionsPage() {
     description: "Manage your searchable knowledge bases",
     actions: (
       <Button>
-        <Plus className="size-4 mr-2" />
+        <Plus className="mr-2 size-4" />
         New Collection
       </Button>
     ),
@@ -92,7 +92,7 @@ function CollectionsPage() {
         description="Collections help you organize and search your data from multiple sources."
       >
         <Button variant="outline">
-          <Plus className="size-4 mr-2" />
+          <Plus className="mr-2 size-4" />
           New Collection
         </Button>
       </EmptyState>
