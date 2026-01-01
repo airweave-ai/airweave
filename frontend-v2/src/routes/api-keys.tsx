@@ -4,7 +4,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { Braces, Key, Loader2, Plus, Trash2 } from "lucide-react";
+import { Key, Loader2, Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -16,13 +16,15 @@ import { useCommandMenu } from "@/hooks/use-command-menu";
 import { deleteApiKey, fetchApiKeys, type APIKey } from "@/lib/api";
 import { useAuth0 } from "@/lib/auth-provider";
 
-import { ApiKeysTable } from "@/features/api-keys/components/api-keys-table";
-import { CreateApiKeyDialog } from "@/features/api-keys/components/create-dialog";
 import {
   ApiKeysCode,
   ApiKeysDocs,
   ApiKeysHelp,
-} from "@/features/api-keys/components/sidebar-content";
+  ApiKeysTable,
+  CreateApiKeyDialog,
+  getApiKeyActions,
+  maskKey,
+} from "@/features/api-keys";
 
 export const Route = createFileRoute("/api-keys")({ component: ApiKeysPage });
 
@@ -150,25 +152,17 @@ function ApiKeysPage() {
   // Build context commands based on selected key
   const contextCommands = useMemo(() => {
     if (!selectedKey) return [];
-    return [
-      {
-        id: "copy-json",
-        label: `Copy "${selectedKey.decrypted_key.slice(0, 8)}..." as JSON`,
-        icon: Braces,
-        onSelect: () => {
-          navigator.clipboard.writeText(JSON.stringify(selectedKey, null, 2));
-          toast.success("Copied to clipboard");
-        },
+    const actions = getApiKeyActions({
+      apiKey: selectedKey,
+      onCopyAsJson: () => {
+        navigator.clipboard.writeText(JSON.stringify(selectedKey, null, 2));
+        toast.success("Copied to clipboard");
       },
-      {
-        id: "delete-key",
-        label: `Delete "${selectedKey.decrypted_key.slice(0, 8)}..."`,
-        icon: Trash2,
-        onSelect: () => {
-          setDeleteDialogOpen(true);
-        },
+      onDelete: () => {
+        setDeleteDialogOpen(true);
       },
-    ];
+    });
+    return actions;
   }, [selectedKey]);
 
   // Register commands with the command menu
@@ -182,6 +176,7 @@ function ApiKeysPage() {
         onSelect: handleOpenCreateDialog,
       },
     ],
+    contextTitle: selectedKey ? maskKey(selectedKey.decrypted_key) : undefined,
     contextCommands,
   });
 

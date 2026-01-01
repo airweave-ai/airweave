@@ -21,17 +21,21 @@ function EmptyState({
     <div
       className={cn(
         "flex flex-col items-center justify-center py-16 text-center",
-        className
+        className,
       )}
     >
       <div className="size-16 rounded-full bg-muted flex items-center justify-center mb-4">
         {React.isValidElement(icon)
-          ? React.cloneElement(icon as React.ReactElement, {
-              className: cn(
-                "size-8 text-muted-foreground",
-                (icon as React.ReactElement).props?.className
-              ),
-            })
+          ? React.cloneElement(
+              icon as React.ReactElement<{ className?: string }>,
+              {
+                className: cn(
+                  "size-8 text-muted-foreground",
+                  (icon as React.ReactElement<{ className?: string }>).props
+                    ?.className,
+                ),
+              },
+            )
           : icon}
       </div>
       <h2 className="text-lg font-semibold mb-2">{title}</h2>
@@ -42,4 +46,3 @@ function EmptyState({
 }
 
 export { EmptyState, type EmptyStateProps };
-

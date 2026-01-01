@@ -1,17 +1,6 @@
 "use client";
 
 import { useNavigate } from "@tanstack/react-router";
-import {
-  Cable,
-  FolderOpen,
-  Key,
-  LayoutDashboard,
-  Monitor,
-  Moon,
-  ShieldCheck,
-  Sun,
-  Webhook,
-} from "lucide-react";
 import { useEffect } from "react";
 
 import {
@@ -24,49 +13,11 @@ import {
   CommandSeparator,
   CommandShortcut,
 } from "@/components/ui/command";
+import { navItems } from "@/config/navigation";
+import { themeOptions } from "@/config/theme";
 import { useCommandMenuOpen } from "@/hooks/use-command-menu";
 import { useCommandStore } from "@/stores/command-store";
-import { useUISettings, type Theme } from "@/stores/ui-settings";
-
-// Navigation items matching the sidebar
-const navItems = [
-  {
-    title: "Dashboard",
-    url: "/",
-    icon: LayoutDashboard,
-  },
-  {
-    title: "Collections",
-    url: "/collections",
-    icon: FolderOpen,
-  },
-  {
-    title: "Logs",
-    url: "/logs",
-    icon: Cable,
-  },
-  {
-    title: "API Keys",
-    url: "/api-keys",
-    icon: Key,
-  },
-  {
-    title: "Webhooks",
-    url: "/webhooks",
-    icon: Webhook,
-  },
-  {
-    title: "Auth Providers",
-    url: "/auth-providers",
-    icon: ShieldCheck,
-  },
-];
-
-const themeOptions: { value: Theme; label: string; icon: typeof Sun }[] = [
-  { value: "light", label: "Light Theme", icon: Sun },
-  { value: "dark", label: "Dark Theme", icon: Moon },
-  { value: "system", label: "System Theme", icon: Monitor },
-];
+import { useUISettings } from "@/stores/ui-settings";
 
 export function CommandMenu() {
   const { open, setOpen } = useCommandMenuOpen();
@@ -76,6 +27,7 @@ export function CommandMenu() {
   // Get commands from store
   const pageTitle = useCommandStore((state) => state.pageTitle);
   const pageCommands = useCommandStore((state) => state.pageCommands);
+  const contextTitle = useCommandStore((state) => state.contextTitle);
   const contextCommands = useCommandStore((state) => state.contextCommands);
 
   // Register keyboard shortcut
@@ -105,7 +57,7 @@ export function CommandMenu() {
         {/* Context Commands - Show first when available */}
         {contextCommands.length > 0 && (
           <>
-            <CommandGroup heading="Actions">
+            <CommandGroup heading={contextTitle ?? "Actions"}>
               {contextCommands.map((command) => (
                 <CommandItem
                   key={command.id}
@@ -181,4 +133,3 @@ export function CommandMenu() {
     </CommandDialog>
   );
 }
-

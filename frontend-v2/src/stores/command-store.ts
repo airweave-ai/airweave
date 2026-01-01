@@ -23,8 +23,9 @@ interface CommandStoreState {
   clearPageCommands: () => void;
 
   // Context commands (for focused/selected items)
+  contextTitle: string | null;
   contextCommands: Command[];
-  setContextCommands: (commands: Command[]) => void;
+  setContextCommands: (title: string | null, commands: Command[]) => void;
   clearContextCommands: () => void;
 }
 
@@ -41,8 +42,9 @@ export const useCommandStore = create<CommandStoreState>((set) => ({
   clearPageCommands: () => set({ pageTitle: null, pageCommands: [] }),
 
   // Context commands
+  contextTitle: null,
   contextCommands: [],
-  setContextCommands: (commands) => set({ contextCommands: commands }),
-  clearContextCommands: () => set({ contextCommands: [] }),
+  setContextCommands: (title, commands) => set({ contextTitle: title, contextCommands: commands }),
+  clearContextCommands: () => set({ contextTitle: null, contextCommands: [] }),
 }));
 

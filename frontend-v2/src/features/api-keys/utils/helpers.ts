@@ -2,14 +2,19 @@
  * API Keys helper utilities
  */
 
-// Expiration presets for API keys
-export const EXPIRATION_PRESETS = [
+interface ExpirationPreset {
+  days: number;
+  label: string;
+  recommended?: boolean;
+}
+
+export const EXPIRATION_PRESETS: ExpirationPreset[] = [
   { days: 30, label: "30 days" },
   { days: 60, label: "60 days" },
   { days: 90, label: "90 days", recommended: true },
   { days: 180, label: "180 days" },
   { days: 365, label: "365 days" },
-] as const;
+];
 
 /**
  * Mask an API key for display, showing only first 8 characters
@@ -57,3 +62,36 @@ export function formatDate(dateString: string): string {
   }
 }
 
+/**
+ * Action definition for API key operations
+ */
+export interface ApiKeyAction {
+  id: string;
+  label: string;
+  variant?: "destructive";
+  onSelect: () => void;
+}
+
+/**
+ * Get shared action definitions for an API key.
+ * Used by both the dropdown menu and the command menu to keep actions in sync.
+ */
+export function getApiKeyActions(options: {
+  apiKey: { id: string; decrypted_key: string };
+  onCopyAsJson: () => void;
+  onDelete: () => void;
+}): ApiKeyAction[] {
+  return [
+    {
+      id: "copy-json",
+      label: "Copy as JSON",
+      onSelect: options.onCopyAsJson,
+    },
+    {
+      id: "delete-key",
+      label: "Delete API key",
+      variant: "destructive",
+      onSelect: options.onDelete,
+    },
+  ];
+}

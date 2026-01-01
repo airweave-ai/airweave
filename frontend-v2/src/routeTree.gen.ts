@@ -17,7 +17,6 @@ import { Route as AuthProvidersRouteImport } from './routes/auth-providers'
 import { Route as ApiKeysRouteImport } from './routes/api-keys'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ComponentsIndexRouteImport } from './routes/components.index'
-import { Route as ApiKeysIndexRouteImport } from './routes/api-keys/index'
 import { Route as ComponentsComponentNameRouteImport } from './routes/components.$componentName'
 
 const WebhooksRoute = WebhooksRouteImport.update({
@@ -60,11 +59,6 @@ const ComponentsIndexRoute = ComponentsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => ComponentsRoute,
 } as any)
-const ApiKeysIndexRoute = ApiKeysIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => ApiKeysRoute,
-} as any)
 const ComponentsComponentNameRoute = ComponentsComponentNameRouteImport.update({
   id: '/$componentName',
   path: '/$componentName',
@@ -73,37 +67,35 @@ const ComponentsComponentNameRoute = ComponentsComponentNameRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/api-keys': typeof ApiKeysRouteWithChildren
+  '/api-keys': typeof ApiKeysRoute
   '/auth-providers': typeof AuthProvidersRoute
   '/collections': typeof CollectionsRoute
   '/components': typeof ComponentsRouteWithChildren
   '/logs': typeof LogsRoute
   '/webhooks': typeof WebhooksRoute
   '/components/$componentName': typeof ComponentsComponentNameRoute
-  '/api-keys/': typeof ApiKeysIndexRoute
   '/components/': typeof ComponentsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api-keys': typeof ApiKeysRoute
   '/auth-providers': typeof AuthProvidersRoute
   '/collections': typeof CollectionsRoute
   '/logs': typeof LogsRoute
   '/webhooks': typeof WebhooksRoute
   '/components/$componentName': typeof ComponentsComponentNameRoute
-  '/api-keys': typeof ApiKeysIndexRoute
   '/components': typeof ComponentsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/api-keys': typeof ApiKeysRouteWithChildren
+  '/api-keys': typeof ApiKeysRoute
   '/auth-providers': typeof AuthProvidersRoute
   '/collections': typeof CollectionsRoute
   '/components': typeof ComponentsRouteWithChildren
   '/logs': typeof LogsRoute
   '/webhooks': typeof WebhooksRoute
   '/components/$componentName': typeof ComponentsComponentNameRoute
-  '/api-keys/': typeof ApiKeysIndexRoute
   '/components/': typeof ComponentsIndexRoute
 }
 export interface FileRouteTypes {
@@ -117,17 +109,16 @@ export interface FileRouteTypes {
     | '/logs'
     | '/webhooks'
     | '/components/$componentName'
-    | '/api-keys/'
     | '/components/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/api-keys'
     | '/auth-providers'
     | '/collections'
     | '/logs'
     | '/webhooks'
     | '/components/$componentName'
-    | '/api-keys'
     | '/components'
   id:
     | '__root__'
@@ -139,13 +130,12 @@ export interface FileRouteTypes {
     | '/logs'
     | '/webhooks'
     | '/components/$componentName'
-    | '/api-keys/'
     | '/components/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  ApiKeysRoute: typeof ApiKeysRouteWithChildren
+  ApiKeysRoute: typeof ApiKeysRoute
   AuthProvidersRoute: typeof AuthProvidersRoute
   CollectionsRoute: typeof CollectionsRoute
   ComponentsRoute: typeof ComponentsRouteWithChildren
@@ -211,13 +201,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ComponentsIndexRouteImport
       parentRoute: typeof ComponentsRoute
     }
-    '/api-keys/': {
-      id: '/api-keys/'
-      path: '/'
-      fullPath: '/api-keys/'
-      preLoaderRoute: typeof ApiKeysIndexRouteImport
-      parentRoute: typeof ApiKeysRoute
-    }
     '/components/$componentName': {
       id: '/components/$componentName'
       path: '/$componentName'
@@ -227,17 +210,6 @@ declare module '@tanstack/react-router' {
     }
   }
 }
-
-interface ApiKeysRouteChildren {
-  ApiKeysIndexRoute: typeof ApiKeysIndexRoute
-}
-
-const ApiKeysRouteChildren: ApiKeysRouteChildren = {
-  ApiKeysIndexRoute: ApiKeysIndexRoute,
-}
-
-const ApiKeysRouteWithChildren =
-  ApiKeysRoute._addFileChildren(ApiKeysRouteChildren)
 
 interface ComponentsRouteChildren {
   ComponentsComponentNameRoute: typeof ComponentsComponentNameRoute
@@ -255,7 +227,7 @@ const ComponentsRouteWithChildren = ComponentsRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  ApiKeysRoute: ApiKeysRouteWithChildren,
+  ApiKeysRoute: ApiKeysRoute,
   AuthProvidersRoute: AuthProvidersRoute,
   CollectionsRoute: CollectionsRoute,
   ComponentsRoute: ComponentsRouteWithChildren,

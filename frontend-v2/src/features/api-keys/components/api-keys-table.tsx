@@ -35,7 +35,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -51,6 +50,7 @@ import type { APIKey } from "@/lib/api";
 
 import {
   formatDate,
+  getApiKeyActions,
   getDaysRemaining,
   getStatusColor,
   maskKey,
@@ -106,6 +106,15 @@ function ActionsDropdown({
 }) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
+  const actions = getApiKeyActions({
+    apiKey,
+    onCopyAsJson: () => {
+      navigator.clipboard.writeText(JSON.stringify(apiKey, null, 2));
+      toast.success("Copied to clipboard");
+    },
+    onDelete: () => setShowDeleteDialog(true),
+  });
+
   return (
     <>
       <DropdownMenu>
@@ -120,23 +129,17 @@ function ActionsDropdown({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem
-            onClick={() => {
-              navigator.clipboard.writeText(JSON.stringify(apiKey, null, 2));
-              toast.success("Copied to clipboard");
-            }}
-          >
-            <Braces className="size-4" />
-            Copy as JSON
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            variant="destructive"
-            onClick={() => setShowDeleteDialog(true)}
-          >
-            <Trash2 className="size-4" />
-            Delete API key
-          </DropdownMenuItem>
+          {actions.map((action) => (
+            <DropdownMenuItem
+              key={action.id}
+              variant={action.variant}
+              onClick={action.onSelect}
+            >
+              {action.id === "copy-json" && <Braces className="size-4" />}
+              {action.id === "delete-key" && <Trash2 className="size-4" />}
+              {action.label}
+            </DropdownMenuItem>
+          ))}
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -405,9 +408,7 @@ export function ApiKeysTable({
 
   // Get selected keys for bulk actions
   const selectedKeys = useMemo(() => {
-    return table
-      .getSelectedRowModel()
-      .rows.map((row) => row.original);
+    return table.getSelectedRowModel().rows.map((row) => row.original);
   }, [table.getSelectedRowModel().rows]);
 
   const handleBulkCopyAsJson = () => {
@@ -527,7 +528,10 @@ export function ApiKeysTable({
 
       {/* Delete dialog controlled from parent (for command menu) */}
       {selectedKey && (
-        <AlertDialog open={deleteDialogOpen} onOpenChange={onDeleteDialogChange}>
+        <AlertDialog
+          open={deleteDialogOpen}
+          onOpenChange={onDeleteDialogChange}
+        >
           <AlertDialogContent className="sm:max-w-md">
             <AlertDialogHeader>
               <AlertDialogTitle>Delete API key</AlertDialogTitle>

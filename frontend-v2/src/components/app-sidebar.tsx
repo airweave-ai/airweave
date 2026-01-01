@@ -1,23 +1,7 @@
 "use client";
 
 import { Link, useLocation } from "@tanstack/react-router";
-import {
-  Cable,
-  Check,
-  FolderOpen,
-  Key,
-  Layers,
-  LayoutDashboard,
-  LogOut,
-  Monitor,
-  Moon,
-  Palette,
-  Search,
-  Settings,
-  ShieldCheck,
-  Sun,
-  Webhook,
-} from "lucide-react";
+import { Check, Layers, LogOut, Palette, Search, Settings } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -43,47 +27,10 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import { navItems } from "@/config/navigation";
+import { themeOptions } from "@/config/theme";
 import { getRedirectUrl, useAuth0 } from "@/lib/auth-provider";
-import { useUISettings, type Theme } from "@/stores/ui-settings";
-
-const navItems = [
-  {
-    title: "Dashboard",
-    url: "/",
-    icon: LayoutDashboard,
-  },
-  {
-    title: "Collections",
-    url: "/collections",
-    icon: FolderOpen,
-  },
-  {
-    title: "Logs",
-    url: "/logs",
-    icon: Cable,
-  },
-  {
-    title: "API Keys",
-    url: "/api-keys",
-    icon: Key,
-  },
-  {
-    title: "Webhooks",
-    url: "/webhooks",
-    icon: Webhook,
-  },
-  {
-    title: "Auth Providers",
-    url: "/auth-providers",
-    icon: ShieldCheck,
-  },
-];
-
-const themeOptions: { value: Theme; label: string; icon: typeof Sun }[] = [
-  { value: "light", label: "Light", icon: Sun },
-  { value: "dark", label: "Dark", icon: Moon },
-  { value: "system", label: "System", icon: Monitor },
-];
+import { useUISettings } from "@/stores/ui-settings";
 
 function getInitials(name: string): string {
   return name
@@ -115,9 +62,7 @@ export function AppSidebar() {
     });
   };
 
-  // Get user display info with fallbacks
   const userName = user?.name || user?.email || "User";
-  const userEmail = user?.email || "";
   const userAvatar = user?.picture || "";
 
   return (

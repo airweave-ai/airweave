@@ -7,6 +7,8 @@ interface UseCommandMenuOptions {
   pageTitle?: string;
   /** Commands specific to the current page (e.g., "Create API Key" on API Keys page) */
   pageCommands?: Command[];
+  /** Title for the context commands group (e.g., the selected item's name) */
+  contextTitle?: string;
   /** Commands for the currently focused/selected item (e.g., "Delete" when a row is selected) */
   contextCommands?: Command[];
 }
@@ -30,6 +32,7 @@ interface UseCommandMenuOptions {
 export function useCommandMenu({
   pageTitle,
   pageCommands = [],
+  contextTitle,
   contextCommands = [],
 }: UseCommandMenuOptions = {}) {
   const setPageCommands = useCommandStore((state) => state.setPageCommands);
@@ -50,10 +53,10 @@ export function useCommandMenu({
 
   // Register context commands reactively
   useEffect(() => {
-    setContextCommands(contextCommands);
+    setContextCommands(contextTitle ?? null, contextCommands);
     return () => clearContextCommands();
     // We stringify to detect actual content changes
-  }, [JSON.stringify(contextCommands.map((c) => c.id))]);
+  }, [contextTitle, JSON.stringify(contextCommands.map((c) => c.id))]);
 }
 
 /**
