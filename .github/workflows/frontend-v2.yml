@@ -13,9 +13,6 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./frontend-v2
 
     steps:
       - uses: actions/checkout@v4
@@ -28,13 +25,13 @@ jobs:
           cache-dependency-path: "./frontend-v2/package-lock.json"
 
       - name: Install dependencies
-        run: npm ci
+        run: cd frontend-v2 && npm ci
 
       - name: Type check
-        run: npx tsc --noEmit
+        run: cd frontend-v2 && npx tsc --noEmit
 
       - name: Build
-        run: npm run build
+        run: cd frontend-v2 && npm run build
 
       - name: Test
-        run: npx vitest run --passWithNoTests
+        run: cd frontend-v2 && npx vitest run --passWithNoTests
