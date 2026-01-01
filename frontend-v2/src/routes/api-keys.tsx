@@ -227,7 +227,7 @@ function ApiKeysPage() {
 
   // Keys table
   return (
-    <div className="p-6 space-y-4">
+    <div>
       <ApiKeysTable
         data={apiKeys}
         onDelete={(ids) => deleteMutation.mutate(ids)}

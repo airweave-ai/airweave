@@ -3,6 +3,8 @@ import {
   Braces,
   CheckCircle2,
   Copy,
+  CopyIcon,
+  Download,
   MoreHorizontal,
   Trash2,
 } from "lucide-react";
@@ -15,13 +17,11 @@ import {
   DataTable,
   DataTableFloatingToolbar,
   getSelectionColumn,
-  type FloatingToolbarAction,
 } from "@/components/ui/data-table";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { APIKey } from "@/lib/api";
@@ -128,6 +128,15 @@ function ActionsDropdown({
         <DropdownMenuContent align="end">
           <DropdownMenuItem
             onClick={() => {
+              navigator.clipboard.writeText(apiKey.id);
+              toast.success("Copied to clipboard");
+            }}
+          >
+            <CopyIcon className="size-4" />
+            Copy ID
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => {
               navigator.clipboard.writeText(JSON.stringify(apiKey, null, 2));
               toast.success("Copied to clipboard");
             }}
@@ -135,13 +144,12 @@ function ActionsDropdown({
             <Braces className="size-4" />
             Copy as JSON
           </DropdownMenuItem>
-          <DropdownMenuSeparator />
           <DropdownMenuItem
             variant="destructive"
             onClick={() => setShowDeleteDialog(true)}
           >
             <Trash2 className="size-4" />
-            Delete API key
+            Delete
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -166,9 +174,7 @@ export function ApiKeysTable({
 }: ApiKeysTableProps) {
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
-  const [selectedKeysForBulkDelete, setSelectedKeysForBulkDelete] = useState<
-    APIKey[]
-  >([]);
+  const [keysToDelete, setKeysToDelete] = useState<APIKey[]>([]);
 
   // Build columns with domain-specific renderers
   const columns: ColumnDef<APIKey>[] = useMemo(
@@ -235,89 +241,64 @@ export function ApiKeysTable({
     [onDelete],
   );
 
-  // Get selected keys from selection state
-  const selectedKeys = useMemo(() => {
-    return Object.keys(rowSelection)
-      .filter((id) => rowSelection[id])
-      .map((id) => data.find((key) => key.id === id))
-      .filter((key): key is APIKey => key !== undefined);
-  }, [rowSelection, data]);
-
-  const handleBulkCopyAsJson = () => {
-    const jsonData = JSON.stringify(selectedKeys, null, 2);
-    navigator.clipboard.writeText(jsonData).then(
-      () => {
-        toast.success(
-          `Copied ${selectedKeys.length} key${selectedKeys.length > 1 ? "s" : ""} as JSON`,
-        );
-      },
-      () => {
-        toast.error("Failed to copy to clipboard");
-      },
-    );
-  };
-
-  const handleBulkDelete = () => {
-    const keyIds = selectedKeys.map((key) => key.id);
-    onDelete(keyIds);
-    setRowSelection({});
-    setBulkDeleteDialogOpen(false);
-  };
-
-  const handleClearSelection = () => {
-    setRowSelection({});
-  };
-
-  // Floating toolbar actions
-  const floatingToolbarActions: FloatingToolbarAction[] = [
-    {
-      id: "copy-json",
-      label: "Copy as JSON",
-      icon: Braces,
-      onClick: handleBulkCopyAsJson,
-    },
-    {
-      id: "delete",
-      label: "Delete selected",
-      icon: Trash2,
-      variant: "destructive",
-      onClick: () => {
-        setSelectedKeysForBulkDelete(selectedKeys);
-        setBulkDeleteDialogOpen(true);
-      },
-    },
-  ];
-
   return (
     <>
       <DataTable
         columns={columns}
         data={data}
         enableRowSelection
-        enableFiltering
-        filterColumn="decrypted_key"
-        filterPlaceholder="Filter by key prefix..."
         emptyMessage="No API keys found."
         getRowId={(row) => row.id}
         rowSelection={rowSelection}
         onRowSelectionChange={setRowSelection}
         highlightedRow={selectedKey}
         onRowHover={onSelectKey}
-        renderFloatingToolbar={() => (
-          <DataTableFloatingToolbar
-            selectedCount={selectedKeys.length}
-            actions={floatingToolbarActions}
-            onClearSelection={handleClearSelection}
-          />
-        )}
+        renderFloatingToolbar={({ selectedRows, table }) => {
+          const selectedKeys = selectedRows.map((row) => row.original);
+          return (
+            <DataTableFloatingToolbar
+              selectedCount={selectedKeys.length}
+              actions={[
+                {
+                  id: "copy-json",
+                  label: "Export",
+                  icon: Download,
+                  onClick: () => {
+                    navigator.clipboard
+                      .writeText(JSON.stringify(selectedKeys, null, 2))
+                      .then(() => {
+                        toast.success(
+                          `Copied ${selectedKeys.length} key${selectedKeys.length > 1 ? "s" : ""} as JSON`,
+                        );
+                      });
+                  },
+                },
+                {
+                  id: "delete",
+                  label: "Delete",
+                  icon: Trash2,
+                  variant: "destructive",
+                  onClick: () => {
+                    setKeysToDelete(selectedKeys);
+                    setBulkDeleteDialogOpen(true);
+                  },
+                },
+              ]}
+              onClearSelection={() => table.resetRowSelection()}
+            />
+          );
+        }}
       />
 
       {/* Bulk delete dialog */}
       <DeleteApiKeyDialog
         open={bulkDeleteDialogOpen}
         onOpenChange={setBulkDeleteDialogOpen}
-        keys={selectedKeysForBulkDelete}
-        onConfirm={handleBulkDelete}
+        keys={keysToDelete}
+        onConfirm={() => {
+          onDelete(keysToDelete.map((k) => k.id));
+          setRowSelection({});
+        }}
       />
 
       {/* Delete dialog controlled from parent (for command menu) */}

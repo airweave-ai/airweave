@@ -1,7 +1,7 @@
 "use client";
 
-import { X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
@@ -43,7 +43,7 @@ export function DataTableFloatingToolbar({
           const buttonVariant =
             action.variant === "destructive"
               ? "ghost"
-              : action.variant ?? "ghost";
+              : (action.variant ?? "ghost");
 
           return (
             <Button
@@ -77,4 +77,3 @@ export function DataTableFloatingToolbar({
     </div>
   );
 }
-

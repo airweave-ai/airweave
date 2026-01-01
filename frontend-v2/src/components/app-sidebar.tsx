@@ -130,7 +130,7 @@ export function AppSidebar() {
                 >
                   <Avatar className="size-5 rounded-lg">
                     <AvatarImage src={userAvatar} alt={userName} />
-                    <AvatarFallback className="rounded-lg text-[80%] bg-red-100">
+                    <AvatarFallback className="rounded-lg text-[60%] font-medium bg-slate-300 dark:bg-slate-700">
                       {getInitials(userName)}
                     </AvatarFallback>
                   </Avatar>

@@ -17,6 +17,7 @@ export type {
   OnChangeFn,
   Row,
   RowSelectionState,
+  ShiftSelectMeta,
   SortingState,
   TanstackTable,
 } from "./data-table";

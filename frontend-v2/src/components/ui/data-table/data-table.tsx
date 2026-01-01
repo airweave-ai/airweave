@@ -1,24 +1,6 @@
 "use client";
 
 import {
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
-  type ColumnDef,
-  type ColumnFiltersState,
-  type OnChangeFn,
-  type Row,
-  type RowSelectionState,
-  type SortingState,
-  type Table as TanstackTable,
-} from "@tanstack/react-table";
-import { useMemo, useState } from "react";
-
-import { Input } from "@/components/ui/input";
-import {
   Table,
   TableBody,
   TableCell,
@@ -27,6 +9,29 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import {
+  flexRender,
+  getCoreRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  useReactTable,
+  type ColumnDef,
+  type OnChangeFn,
+  type Row,
+  type RowSelectionState,
+  type SortingState,
+  type Table as TanstackTable,
+} from "@tanstack/react-table";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+/**
+ * Meta type for shift-select functionality.
+ * Passed via table.options.meta to selection columns.
+ */
+export interface ShiftSelectMeta {
+  lastClickedRowRef: React.MutableRefObject<number | null>;
+  handleShiftSelect: (currentIndex: number, isSelecting: boolean) => void;
+}
 
 export interface DataTableProps<TData, TValue> {
   /** Column definitions for the table */
@@ -35,12 +40,6 @@ export interface DataTableProps<TData, TValue> {
   data: TData[];
   /** Enable row selection with checkboxes */
   enableRowSelection?: boolean;
-  /** Enable column filtering */
-  enableFiltering?: boolean;
-  /** Column key to filter on */
-  filterColumn?: string;
-  /** Placeholder text for filter input */
-  filterPlaceholder?: string;
   /** Message to show when no data */
   emptyMessage?: string;
   /** Enable sorting */
@@ -76,9 +75,6 @@ export function DataTable<TData, TValue>({
   columns,
   data,
   enableRowSelection = false,
-  enableFiltering = false,
-  filterColumn,
-  filterPlaceholder = "Filter...",
   emptyMessage = "No results.",
   enableSorting = false,
   enablePagination = false,
@@ -96,28 +92,50 @@ export function DataTable<TData, TValue>({
   // Internal state for uncontrolled mode
   const [internalRowSelection, setInternalRowSelection] =
     useState<RowSelectionState>({});
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [sorting, setSorting] = useState<SortingState>([]);
+
+  // Row refs for scroll-into-view on keyboard navigation
+  const rowRefs = useRef<Map<number, HTMLTableRowElement>>(new Map());
 
   // Use controlled or uncontrolled selection
   const rowSelection = controlledRowSelection ?? internalRowSelection;
-  const handleRowSelectionChange = onRowSelectionChange ?? setInternalRowSelection;
+  const handleRowSelectionChange =
+    onRowSelectionChange ?? setInternalRowSelection;
+
+  // Shift-select support: track last clicked row and table reference
+  const lastClickedRowRef = useRef<number | null>(null);
+  const tableRef = useRef<TanstackTable<TData> | null>(null);
+
+  const handleShiftSelect = useCallback(
+    (currentIndex: number, isSelecting: boolean) => {
+      const lastIndex = lastClickedRowRef.current;
+      if (lastIndex === null || !tableRef.current) return;
+
+      const rows = tableRef.current.getRowModel().rows;
+      const [start, end] = [
+        Math.min(lastIndex, currentIndex),
+        Math.max(lastIndex, currentIndex),
+      ];
+
+      for (let i = start; i <= end; i++) {
+        rows[i]?.toggleSelected(isSelecting);
+      }
+    },
+    [],
+  );
 
   const table = useReactTable({
     data,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    ...(enableFiltering && { getFilteredRowModel: getFilteredRowModel() }),
     ...(enableSorting && { getSortedRowModel: getSortedRowModel() }),
     ...(enablePagination && { getPaginationRowModel: getPaginationRowModel() }),
     enableRowSelection,
     onRowSelectionChange: handleRowSelectionChange,
-    onColumnFiltersChange: setColumnFilters,
     onSortingChange: setSorting,
     ...(getRowId && { getRowId }),
     state: {
       rowSelection,
-      columnFilters,
       sorting,
     },
     initialState: {
@@ -125,7 +143,115 @@ export function DataTable<TData, TValue>({
         pageSize,
       },
     },
+    meta: {
+      lastClickedRowRef,
+      handleShiftSelect,
+    } satisfies ShiftSelectMeta,
   });
+
+  // Update table ref for shift-select handler
+  tableRef.current = table;
+
+  // Find the index of the currently highlighted row
+  const getHighlightedRowIndex = useCallback((): number | null => {
+    if (!highlightedRow || !getRowId) return null;
+    const rows = table.getRowModel().rows;
+    const highlightedId = getRowId(highlightedRow);
+    const index = rows.findIndex(
+      (row) => getRowId(row.original) === highlightedId,
+    );
+    return index >= 0 ? index : null;
+  }, [highlightedRow, getRowId, table]);
+
+  // Global keyboard navigation
+  useEffect(() => {
+    const rows = table.getRowModel().rows;
+    const rowCount = rows.length;
+
+    if (rowCount === 0 || !onRowHover) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check if nothing specific is focused (for Space/Enter handling)
+      const activeElement = document.activeElement;
+      const nothingFocused =
+        !activeElement ||
+        activeElement === document.body ||
+        activeElement === document.documentElement;
+
+      const currentIndex = getHighlightedRowIndex();
+
+      switch (e.key) {
+        // Arrow keys always work for navigation
+        case "ArrowDown": {
+          e.preventDefault();
+          const nextIndex =
+            currentIndex === null
+              ? 0
+              : Math.min(currentIndex + 1, rowCount - 1);
+          const nextRow = rows[nextIndex];
+          if (nextRow) {
+            onRowHover(nextRow.original);
+            // Scroll into view
+            const rowEl = rowRefs.current.get(nextIndex);
+            rowEl?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+          }
+          break;
+        }
+        case "ArrowUp": {
+          e.preventDefault();
+          const prevIndex =
+            currentIndex === null
+              ? rowCount - 1
+              : Math.max(currentIndex - 1, 0);
+          const prevRow = rows[prevIndex];
+          if (prevRow) {
+            onRowHover(prevRow.original);
+            // Scroll into view
+            const rowEl = rowRefs.current.get(prevIndex);
+            rowEl?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+          }
+          break;
+        }
+        // Space/Enter only work when nothing is focused
+        case " ": {
+          if (!nothingFocused) return;
+          // Space - toggle selection
+          if (currentIndex !== null && enableRowSelection) {
+            e.preventDefault();
+            const row = rows[currentIndex];
+            row?.toggleSelected();
+          }
+          break;
+        }
+        case "Enter": {
+          if (!nothingFocused) return;
+          // Enter - trigger row click
+          if (currentIndex !== null && onRowClick) {
+            e.preventDefault();
+            const row = rows[currentIndex];
+            if (row) {
+              onRowClick(row.original);
+            }
+          }
+          break;
+        }
+        case "Escape": {
+          // Clear highlight
+          onRowHover(null);
+          break;
+        }
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [
+    table,
+    getHighlightedRowIndex,
+    enableRowSelection,
+    onRowClick,
+    onRowHover,
+  ]);
 
   // Get selected rows for floating toolbar
   const selectedRows = useMemo(() => {
@@ -140,26 +266,11 @@ export function DataTable<TData, TValue>({
 
   return (
     <div className={cn("space-y-4", className)}>
-      {/* Custom toolbar or default filter */}
-      {renderToolbar ? (
-        renderToolbar(table)
-      ) : enableFiltering && filterColumn ? (
-        <div className="flex items-center">
-          <Input
-            placeholder={filterPlaceholder}
-            value={
-              (table.getColumn(filterColumn)?.getFilterValue() as string) ?? ""
-            }
-            onChange={(event) =>
-              table.getColumn(filterColumn)?.setFilterValue(event.target.value)
-            }
-            className="max-w-sm"
-          />
-        </div>
-      ) : null}
+      {/* Custom toolbar */}
+      {renderToolbar?.(table)}
 
       {/* Table */}
-      <div className="rounded-lg border">
+      <div className="border-b">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -187,15 +298,23 @@ export function DataTable<TData, TValue>({
           </TableHeader>
           <TableBody>
             {table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row) => {
+              table.getRowModel().rows.map((row, index) => {
                 const isSelected = row.getIsSelected();
                 const isHovered = isHighlightedRow(row.original);
 
                 return (
                   <TableRow
                     key={row.id}
+                    ref={(el) => {
+                      if (el) {
+                        rowRefs.current.set(index, el);
+                      } else {
+                        rowRefs.current.delete(index);
+                      }
+                    }}
                     data-state={isSelected ? "selected" : undefined}
                     className={cn(
+                      "group",
                       onRowClick && "cursor-pointer",
                       isSelected
                         ? "bg-muted/50"
@@ -232,9 +351,9 @@ export function DataTable<TData, TValue>({
       </div>
 
       {/* Floating toolbar for bulk actions */}
-      {renderFloatingToolbar && selectedRows.length > 0 && (
-        renderFloatingToolbar({ table, selectedRows })
-      )}
+      {renderFloatingToolbar &&
+        selectedRows.length > 0 &&
+        renderFloatingToolbar({ table, selectedRows })}
     </div>
   );
 }
@@ -248,4 +367,3 @@ export type {
   SortingState,
   TanstackTable,
 };
-

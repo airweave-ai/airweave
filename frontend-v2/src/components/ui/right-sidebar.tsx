@@ -129,7 +129,7 @@ function RightSidebarProvider({
 }
 
 const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
-  { id: "docs", label: "Documentation", icon: <BookOpen className="size-5" /> },
+  { id: "docs", label: "Docs", icon: <BookOpen className="size-5" /> },
   { id: "code", label: "Code", icon: <Code2 className="size-5" /> },
   { id: "help", label: "Help", icon: <HelpCircle className="size-5" /> },
 ];
@@ -157,7 +157,7 @@ function RightSidebarTabs({
                 variant={activeTab === tab.id ? "secondary" : "ghost"}
                 size="icon"
                 className={cn(
-                  "size-10 rounded-lg transition-colors",
+                  "py-2 px-4 h-auto w-10 rounded-lg transition-colors flex-col border uppercase font-mono text-xs",
                   activeTab === tab.id &&
                     "bg-sidebar-accent text-sidebar-accent-foreground",
                 )}
@@ -165,7 +165,7 @@ function RightSidebarTabs({
                 aria-pressed={activeTab === tab.id}
               >
                 {tab.icon}
-                <span className="sr-only">{tab.label}</span>
+                <span>{tab.label}</span>
               </Button>
             </TooltipTrigger>
             <TooltipContent side="left" align="center">

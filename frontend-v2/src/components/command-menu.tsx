@@ -1,6 +1,7 @@
 "use client";
 
 import { useNavigate } from "@tanstack/react-router";
+import { BookOpen, Code2, HelpCircle, PanelLeftIcon } from "lucide-react";
 import { useEffect } from "react";
 
 import {
@@ -23,6 +24,10 @@ export function CommandMenu() {
   const { open, setOpen } = useCommandMenuOpen();
   const navigate = useNavigate();
   const setTheme = useUISettings((state) => state.setTheme);
+  const toggleLeftSidebar = useUISettings((state) => state.toggleLeftSidebar);
+  const toggleRightSidebarTab = useUISettings(
+    (state) => state.toggleRightSidebarTab,
+  );
 
   // Get commands from store
   const pageTitle = useCommandStore((state) => state.pageTitle);
@@ -112,6 +117,45 @@ export function CommandMenu() {
               <span>Go to {item.title}</span>
             </CommandItem>
           ))}
+        </CommandGroup>
+
+        <CommandSeparator />
+
+        {/* View */}
+        <CommandGroup heading="View">
+          <CommandItem
+            value="Toggle Sidebar"
+            keywords={["collapse", "expand", "navigation", "menu"]}
+            onSelect={() => runCommand(toggleLeftSidebar)}
+          >
+            <PanelLeftIcon className="size-4" />
+            <span>Toggle Sidebar</span>
+            <CommandShortcut>⌘B</CommandShortcut>
+          </CommandItem>
+          <CommandItem
+            value="Open Documentation"
+            keywords={["docs", "help", "guide", "panel"]}
+            onSelect={() => runCommand(() => toggleRightSidebarTab("docs"))}
+          >
+            <BookOpen className="size-4" />
+            <span>Open Documentation</span>
+          </CommandItem>
+          <CommandItem
+            value="Open Code"
+            keywords={["snippet", "example", "panel"]}
+            onSelect={() => runCommand(() => toggleRightSidebarTab("code"))}
+          >
+            <Code2 className="size-4" />
+            <span>Open Code</span>
+          </CommandItem>
+          <CommandItem
+            value="Open Help"
+            keywords={["support", "faq", "panel"]}
+            onSelect={() => runCommand(() => toggleRightSidebarTab("help"))}
+          >
+            <HelpCircle className="size-4" />
+            <span>Open Help</span>
+          </CommandItem>
         </CommandGroup>
 
         <CommandSeparator />
