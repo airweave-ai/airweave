@@ -1,11 +1,17 @@
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, Check, Code, Copy, Package } from "lucide-react";
 import { useState } from "react";
 import { uiComponents } from "../components.gen";
 import { componentPreviews } from "../previews";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const Route = createFileRoute("/components/$componentName")({
   component: ComponentDetailPage,
@@ -20,7 +26,7 @@ function toDisplayName(name: string) {
 
 function CodeBlock({
   code,
-  language = "tsx",
+  language: _language = "tsx",
 }: {
   code: string;
   language?: string;
@@ -69,9 +75,7 @@ function VariantPreview({
     <Card className="overflow-hidden">
       <CardHeader className="border-b">
         <CardTitle className="text-base">{title}</CardTitle>
-        {description && (
-          <CardDescription>{description}</CardDescription>
-        )}
+        {description && <CardDescription>{description}</CardDescription>}
       </CardHeader>
       <CardContent className="p-6 bg-muted/30 flex items-center justify-center min-h-[120px]">
         <div className="flex flex-wrap items-center gap-4">{children}</div>
@@ -129,8 +133,12 @@ function ComponentDetailPage() {
             <Package className="w-8 h-8 text-primary" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-foreground">{displayName}</h1>
-            <p className="text-muted-foreground font-mono text-sm">{component.path}</p>
+            <h1 className="text-3xl font-bold text-foreground">
+              {displayName}
+            </h1>
+            <p className="text-muted-foreground font-mono text-sm">
+              {component.path}
+            </p>
           </div>
         </div>
       </div>
