@@ -21,15 +21,22 @@ export interface APIKey {
 }
 
 /**
- * Fetch all API keys for the current organization
+ * Fetch API keys for the current organization with pagination
  */
-export async function fetchApiKeys(token: string): Promise<APIKey[]> {
-  const response = await fetch(`${API_BASE_URL}/api-keys`, {
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+export async function fetchApiKeys(
+  token: string,
+  skip = 0,
+  limit = 20,
+): Promise<APIKey[]> {
+  const response = await fetch(
+    `${API_BASE_URL}/api-keys?skip=${skip}&limit=${limit}`,
+    {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
     },
-  });
+  );
 
   if (!response.ok) {
     throw new Error(`Failed to fetch API keys: ${response.status}`);

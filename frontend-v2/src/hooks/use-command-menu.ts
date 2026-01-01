@@ -1,0 +1,69 @@
+import { useEffect } from "react";
+
+import { type Command, useCommandStore } from "@/stores/command-store";
+
+interface UseCommandMenuOptions {
+  /** Title for the page commands group (e.g., "API Keys") */
+  pageTitle?: string;
+  /** Commands specific to the current page (e.g., "Create API Key" on API Keys page) */
+  pageCommands?: Command[];
+  /** Commands for the currently focused/selected item (e.g., "Delete" when a row is selected) */
+  contextCommands?: Command[];
+}
+
+/**
+ * Hook for pages to register their commands with the global command palette.
+ *
+ * @example
+ * ```tsx
+ * useCommandMenu({
+ *   pageTitle: "API Keys",
+ *   pageCommands: [
+ *     { id: "create-key", label: "Create API Key", icon: Plus, onSelect: handleCreate }
+ *   ],
+ *   contextCommands: selectedKey ? [
+ *     { id: "delete-key", label: "Delete API Key", icon: Trash2, onSelect: handleDelete }
+ *   ] : []
+ * });
+ * ```
+ */
+export function useCommandMenu({
+  pageTitle,
+  pageCommands = [],
+  contextCommands = [],
+}: UseCommandMenuOptions = {}) {
+  const setPageCommands = useCommandStore((state) => state.setPageCommands);
+  const clearPageCommands = useCommandStore((state) => state.clearPageCommands);
+  const setContextCommands = useCommandStore(
+    (state) => state.setContextCommands,
+  );
+  const clearContextCommands = useCommandStore(
+    (state) => state.clearContextCommands,
+  );
+
+  // Register page commands when component mounts, clear on unmount
+  useEffect(() => {
+    setPageCommands(pageTitle ?? null, pageCommands);
+    return () => clearPageCommands();
+    // We stringify to detect actual content changes
+  }, [pageTitle, JSON.stringify(pageCommands.map((c) => c.id))]);
+
+  // Register context commands reactively
+  useEffect(() => {
+    setContextCommands(contextCommands);
+    return () => clearContextCommands();
+    // We stringify to detect actual content changes
+  }, [JSON.stringify(contextCommands.map((c) => c.id))]);
+}
+
+/**
+ * Hook to control the command menu open state.
+ */
+export function useCommandMenuOpen() {
+  const open = useCommandStore((state) => state.open);
+  const setOpen = useCommandStore((state) => state.setOpen);
+  const toggle = useCommandStore((state) => state.toggle);
+
+  return { open, setOpen, toggle };
+}
+

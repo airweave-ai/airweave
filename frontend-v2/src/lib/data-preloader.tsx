@@ -5,8 +5,11 @@ import {
   fetchApiKeys,
   fetchAuthProviderConnections,
   fetchAuthProviders,
+  type APIKey,
 } from "./api";
 import { useAuth0 } from "./auth-provider";
+
+const API_KEYS_PAGE_SIZE = 20;
 
 interface DataPreloaderProps {
   children: ReactNode;
@@ -38,7 +41,8 @@ export function DataPreloader({ children }: DataPreloaderProps) {
 
   // Check if we have cached data (only valid after restoration completes)
   const hasApiKeysCache =
-    !isRestoring && queryClient.getQueryData(["api-keys"]) !== undefined;
+    !isRestoring &&
+    queryClient.getQueryData(["api-keys", "list"]) !== undefined;
   const hasAuthProvidersCache =
     !isRestoring && queryClient.getQueryData(["auth-providers"]) !== undefined;
   const hasAuthProviderConnectionsCache =
@@ -87,9 +91,16 @@ export function DataPreloader({ children }: DataPreloaderProps) {
       hasAuthProviderConnectionsCache;
     if (hasAllCaches) {
       getAccessTokenSilently().then((token) => {
-        queryClient.prefetchQuery({
-          queryKey: ["api-keys"],
-          queryFn: () => fetchApiKeys(token),
+        queryClient.prefetchInfiniteQuery({
+          queryKey: ["api-keys", "list"],
+          queryFn: ({ pageParam = 0 }) =>
+            fetchApiKeys(token, pageParam, API_KEYS_PAGE_SIZE),
+          initialPageParam: 0,
+          getNextPageParam: (lastPage: APIKey[], allPages: APIKey[][]) => {
+            if (!lastPage || lastPage.length < API_KEYS_PAGE_SIZE)
+              return undefined;
+            return allPages.flat().length;
+          },
           staleTime: 1000 * 60 * 5,
         });
         queryClient.prefetchQuery({
@@ -113,9 +124,16 @@ export function DataPreloader({ children }: DataPreloaderProps) {
         const token = await getAccessTokenSilently();
 
         await Promise.all([
-          queryClient.prefetchQuery({
-            queryKey: ["api-keys"],
-            queryFn: () => fetchApiKeys(token),
+          queryClient.prefetchInfiniteQuery({
+            queryKey: ["api-keys", "list"],
+            queryFn: ({ pageParam = 0 }) =>
+              fetchApiKeys(token, pageParam, API_KEYS_PAGE_SIZE),
+            initialPageParam: 0,
+            getNextPageParam: (lastPage: APIKey[], allPages: APIKey[][]) => {
+              if (!lastPage || lastPage.length < API_KEYS_PAGE_SIZE)
+                return undefined;
+              return allPages.flat().length;
+            },
             staleTime: 1000 * 60 * 5,
           }),
           queryClient.prefetchQuery({

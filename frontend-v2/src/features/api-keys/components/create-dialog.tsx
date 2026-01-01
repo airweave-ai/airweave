@@ -45,7 +45,7 @@ export function CreateApiKeyDialog({
       return createApiKey(token, expirationDays);
     },
     onSuccess: (newKey) => {
-      queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+      queryClient.invalidateQueries({ queryKey: ["api-keys", "list"] });
       onOpenChange(false);
       createForm.reset();
 

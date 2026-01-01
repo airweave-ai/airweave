@@ -11,6 +11,7 @@ import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 
 import { AppRightSidebar } from "../components/app-right-sidebar";
 import { AppSidebar } from "../components/app-sidebar";
+import { CommandMenu } from "../components/command-menu";
 import {
   PageHeaderContent,
   PageHeaderProvider,
@@ -81,6 +82,7 @@ function RootComponent() {
 
   return (
     <AuthGuard>
+      <CommandMenu />
       <PageHeaderProvider>
         <SidebarProvider>
           <RightSidebarProvider>

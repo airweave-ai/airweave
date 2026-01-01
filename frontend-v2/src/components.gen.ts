@@ -78,6 +78,21 @@ export const uiComponents: ComponentInfo[] = [
     ]
   },
   {
+    "name": "command",
+    "path": "components/ui/command.tsx",
+    "exports": [
+      "Command",
+      "CommandDialog",
+      "CommandInput",
+      "CommandList",
+      "CommandEmpty",
+      "CommandGroup",
+      "CommandItem",
+      "CommandShortcut",
+      "CommandSeparator"
+    ]
+  },
+  {
     "name": "dialog",
     "path": "components/ui/dialog.tsx",
     "exports": [
@@ -219,6 +234,20 @@ export const uiComponents: ComponentInfo[] = [
     "path": "components/ui/sonner.tsx",
     "exports": [
       "Toaster"
+    ]
+  },
+  {
+    "name": "table",
+    "path": "components/ui/table.tsx",
+    "exports": [
+      "Table",
+      "TableBody",
+      "TableCaption",
+      "TableCell",
+      "TableFooter",
+      "TableHead",
+      "TableHeader",
+      "TableRow"
     ]
   },
   {

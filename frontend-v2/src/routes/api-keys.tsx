@@ -1,17 +1,22 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { Key, Loader2, Plus } from "lucide-react";
-import { useState } from "react";
+import { Braces, Key, Loader2, Plus, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { usePageHeader } from "@/components/ui/page-header";
 import { useRightSidebarContent } from "@/components/ui/right-sidebar";
+import { useCommandMenu } from "@/hooks/use-command-menu";
 import { deleteApiKey, fetchApiKeys, type APIKey } from "@/lib/api";
 import { useAuth0 } from "@/lib/auth-provider";
 
-import { ApiKeyItem } from "@/features/api-keys/components/api-key-item";
+import { ApiKeysTable } from "@/features/api-keys/components/api-keys-table";
 import { CreateApiKeyDialog } from "@/features/api-keys/components/create-dialog";
 import {
   ApiKeysCode,
@@ -21,10 +26,14 @@ import {
 
 export const Route = createFileRoute("/api-keys")({ component: ApiKeysPage });
 
+const PAGE_SIZE = 20;
+
 function ApiKeysPage() {
   const { getAccessTokenSilently } = useAuth0();
   const queryClient = useQueryClient();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [selectedKey, setSelectedKey] = useState<APIKey | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   const handleOpenCreateDialog = () => {
     setCreateDialogOpen(true);
@@ -48,14 +57,30 @@ function ApiKeysPage() {
   });
 
   const {
-    data: apiKeys,
+    data,
     isLoading,
     error,
-  } = useQuery({
-    queryKey: ["api-keys"],
-    queryFn: async () => {
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
+    queryKey: ["api-keys", "list"],
+    queryFn: async ({ pageParam = 0 }) => {
       const token = await getAccessTokenSilently();
-      return fetchApiKeys(token);
+      return fetchApiKeys(token, pageParam, PAGE_SIZE);
+    },
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      // Handle case where lastPage might be undefined (stale cache)
+      if (!lastPage || !Array.isArray(lastPage)) {
+        return undefined;
+      }
+      // If we got less than PAGE_SIZE items, there are no more pages
+      if (lastPage.length < PAGE_SIZE) {
+        return undefined;
+      }
+      // Next page starts after all current items
+      return allPages.flat().length;
     },
   });
 
@@ -66,23 +91,31 @@ function ApiKeysPage() {
     },
     onMutate: async (keyId) => {
       // Cancel any outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ["api-keys"] });
+      await queryClient.cancelQueries({ queryKey: ["api-keys", "list"] });
 
       // Snapshot the previous value
-      const previousKeys = queryClient.getQueryData<APIKey[]>(["api-keys"]);
+      const previousData = queryClient.getQueryData(["api-keys", "list"]);
 
-      // Optimistically update to the new value
-      queryClient.setQueryData<APIKey[]>(["api-keys"], (old) =>
-        old?.filter((key) => key.id !== keyId),
+      // Optimistically update to remove the key from all pages
+      queryClient.setQueryData(
+        ["api-keys", "list"],
+        (old: { pages: APIKey[][]; pageParams: number[] } | undefined) => {
+          if (!old) return old;
+          return {
+            ...old,
+            pages: old.pages.map((page) =>
+              page.filter((key) => key.id !== keyId),
+            ),
+          };
+        },
       );
 
-      // Return a context object with the snapshotted value
-      return { previousKeys };
+      return { previousData };
     },
     onError: (_err, _keyId, context) => {
       // If the mutation fails, use the context returned from onMutate to roll back
-      if (context?.previousKeys) {
-        queryClient.setQueryData(["api-keys"], context.previousKeys);
+      if (context?.previousData) {
+        queryClient.setQueryData(["api-keys", "list"], context.previousData);
       }
     },
     onSuccess: () => {
@@ -90,8 +123,60 @@ function ApiKeysPage() {
     },
     onSettled: () => {
       // Always refetch after error or success to ensure sync with server
-      queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+      queryClient.invalidateQueries({ queryKey: ["api-keys", "list"] });
     },
+  });
+
+  // Flatten all pages into a single array
+  const apiKeys = data?.pages.flat() ?? [];
+
+  // Auto-select the first item when data loads or changes
+  useEffect(() => {
+    if (apiKeys.length > 0 && !selectedKey) {
+      setSelectedKey(apiKeys[0]);
+    }
+    // If selected key was deleted, select the first item
+    if (selectedKey && !apiKeys.find((k) => k.id === selectedKey.id)) {
+      setSelectedKey(apiKeys[0] ?? null);
+    }
+  }, [apiKeys, selectedKey]);
+
+  // Build context commands based on selected key
+  const contextCommands = useMemo(() => {
+    if (!selectedKey) return [];
+    return [
+      {
+        id: "copy-json",
+        label: `Copy "${selectedKey.decrypted_key.slice(0, 8)}..." as JSON`,
+        icon: Braces,
+        onSelect: () => {
+          navigator.clipboard.writeText(JSON.stringify(selectedKey, null, 2));
+          toast.success("Copied to clipboard");
+        },
+      },
+      {
+        id: "delete-key",
+        label: `Delete "${selectedKey.decrypted_key.slice(0, 8)}..."`,
+        icon: Trash2,
+        onSelect: () => {
+          setDeleteDialogOpen(true);
+        },
+      },
+    ];
+  }, [selectedKey]);
+
+  // Register commands with the command menu
+  useCommandMenu({
+    pageTitle: "API Keys",
+    pageCommands: [
+      {
+        id: "create-api-key",
+        label: "Create API Key",
+        icon: Plus,
+        onSelect: handleOpenCreateDialog,
+      },
+    ],
+    contextCommands,
   });
 
   // Loading state
@@ -117,7 +202,7 @@ function ApiKeysPage() {
   }
 
   // Empty state
-  if (!apiKeys || apiKeys.length === 0) {
+  if (apiKeys.length === 0) {
     return (
       <div className="p-6">
         <EmptyState
@@ -139,18 +224,36 @@ function ApiKeysPage() {
     );
   }
 
-  // Keys list
+  // Keys table
   return (
-    <div className="p-6">
-      <div className="space-y-3">
-        {apiKeys.map((apiKey) => (
-          <ApiKeyItem
-            key={apiKey.id}
-            apiKey={apiKey}
-            onDelete={(id) => deleteMutation.mutate(id)}
-          />
-        ))}
-      </div>
+    <div className="p-6 space-y-4">
+      <ApiKeysTable
+        data={apiKeys}
+        onDelete={(id) => deleteMutation.mutate(id)}
+        selectedKey={selectedKey}
+        onSelectKey={setSelectedKey}
+        deleteDialogOpen={deleteDialogOpen}
+        onDeleteDialogChange={setDeleteDialogOpen}
+      />
+
+      {hasNextPage && (
+        <div className="flex justify-center pt-4">
+          <Button
+            variant="outline"
+            onClick={() => fetchNextPage()}
+            disabled={isFetchingNextPage}
+          >
+            {isFetchingNextPage ? (
+              <>
+                <Loader2 className="mr-2 size-4 animate-spin" />
+                Loading...
+              </>
+            ) : (
+              "Load more"
+            )}
+          </Button>
+        </div>
+      )}
 
       <CreateApiKeyDialog
         open={createDialogOpen}
@@ -159,4 +262,3 @@ function ApiKeysPage() {
     </div>
   );
 }
-
