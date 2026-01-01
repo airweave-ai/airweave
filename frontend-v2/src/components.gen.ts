@@ -118,16 +118,16 @@ export const uiComponents: ComponentInfo[] = [
     "name": "right-sidebar",
     "path": "components/ui/right-sidebar.tsx",
     "exports": [
-      "RightSidebarProvider",
-      "RightSidebarTabs",
-      "RightSidebarPanel",
-      "RightSidebarTrigger",
       "MobileBottomNav",
       "MobileRightSidebarSheet",
+      "RightSidebarPanel",
+      "RightSidebarProvider",
+      "RightSidebarTabs",
+      "RightSidebarTrigger",
       "useRightSidebar",
       "useRightSidebarContent",
-      "type TabId",
-      "type RightSidebarContent"
+      "type RightSidebarContent",
+      "type TabId"
     ]
   },
   {
@@ -186,6 +186,16 @@ export const uiComponents: ComponentInfo[] = [
     "path": "components/ui/skeleton.tsx",
     "exports": [
       "Skeleton"
+    ]
+  },
+  {
+    "name": "tabs",
+    "path": "components/ui/tabs.tsx",
+    "exports": [
+      "Tabs",
+      "TabsList",
+      "TabsTrigger",
+      "TabsContent"
     ]
   },
   {

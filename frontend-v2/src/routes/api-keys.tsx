@@ -29,6 +29,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useRightSidebarContent } from "@/components/ui/right-sidebar";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DocsContent } from "@/hooks/use-docs-content";
 import {
   createApiKey,
@@ -47,6 +48,8 @@ const EXPIRATION_PRESETS = [
   { days: 180, label: "180 days" },
   { days: 365, label: "365 days" },
 ];
+
+const API_BASE_URL = "https://api.airweave.ai";
 
 export const Route = createFileRoute("/api-keys")({ component: ApiKeysPage });
 
@@ -446,10 +449,19 @@ function ApiKeysPage() {
                 createForm.handleSubmit();
               }}
             >
-              <div className="py-4 space-y-2">
-                <createForm.Field name="expirationDays">
-                  {(field) => (
-                    <>
+              <createForm.Field name="expirationDays">
+                {(field) => (
+                  <Tabs defaultValue="form" className="w-full">
+                    <TabsList className="w-full">
+                      <TabsTrigger value="form" className="flex-1">
+                        Form
+                      </TabsTrigger>
+                      <TabsTrigger value="code" className="flex-1">
+                        Code
+                      </TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="form" className="py-4 space-y-2">
                       {EXPIRATION_PRESETS.map((preset) => (
                         <button
                           key={preset.days}
@@ -479,10 +491,55 @@ function ApiKeysPage() {
                           )}
                         </button>
                       ))}
-                    </>
-                  )}
-                </createForm.Field>
-              </div>
+                    </TabsContent>
+
+                    <TabsContent value="code" className="py-4">
+                      <div className="rounded-lg bg-zinc-950 p-4 font-mono text-sm">
+                        <div className="flex items-center gap-2 text-emerald-400 mb-3">
+                          <span className="font-semibold">POST</span>
+                          <span className="text-zinc-400">
+                            {API_BASE_URL}/api-keys
+                          </span>
+                        </div>
+                        <div className="text-zinc-400 text-xs mb-2">
+                          Request Body
+                        </div>
+                        <div className="text-zinc-100 text-xs leading-relaxed">
+                          <div>{"{"}</div>
+                          <div className="flex items-center pl-4">
+                            <span className="text-sky-400">
+                              "expiration_days"
+                            </span>
+                            <span className="text-zinc-100">:&nbsp;</span>
+                            <input
+                              type="number"
+                              min={1}
+                              max={365}
+                              value={field.state.value}
+                              onChange={(e) =>
+                                field.handleChange(
+                                  Math.max(
+                                    1,
+                                    Math.min(
+                                      365,
+                                      parseInt(e.target.value) || 1,
+                                    ),
+                                  ),
+                                )
+                              }
+                              className="w-16 bg-zinc-800 text-amber-400 border border-zinc-700 rounded px-1.5 py-0.5 text-xs font-mono focus:outline-none focus:border-emerald-500"
+                            />
+                          </div>
+                          <div>{"}"}</div>
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-3">
+                        Edit the value above or select a preset in the Form tab.
+                      </p>
+                    </TabsContent>
+                  </Tabs>
+                )}
+              </createForm.Field>
 
               <DialogFooter>
                 <Button
@@ -641,10 +698,19 @@ function ApiKeysPage() {
               createForm.handleSubmit();
             }}
           >
-            <div className="py-4 space-y-2">
-              <createForm.Field name="expirationDays">
-                {(field) => (
-                  <>
+            <createForm.Field name="expirationDays">
+              {(field) => (
+                <Tabs defaultValue="form" className="w-full">
+                  <TabsList className="w-full">
+                    <TabsTrigger value="form" className="flex-1">
+                      Form
+                    </TabsTrigger>
+                    <TabsTrigger value="code" className="flex-1">
+                      Code
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="form" className="py-4 space-y-2">
                     {EXPIRATION_PRESETS.map((preset) => (
                       <button
                         key={preset.days}
@@ -674,10 +740,52 @@ function ApiKeysPage() {
                         )}
                       </button>
                     ))}
-                  </>
-                )}
-              </createForm.Field>
-            </div>
+                  </TabsContent>
+
+                  <TabsContent value="code" className="py-4">
+                    <div className="rounded-lg bg-zinc-950 p-4 font-mono text-sm">
+                      <div className="flex items-center gap-2 text-emerald-400 mb-3">
+                        <span className="font-semibold">POST</span>
+                        <span className="text-zinc-400">
+                          {API_BASE_URL}/api-keys
+                        </span>
+                      </div>
+                      <div className="text-zinc-400 text-xs mb-2">
+                        Request Body
+                      </div>
+                      <div className="text-zinc-100 text-xs leading-relaxed">
+                        <div>{"{"}</div>
+                        <div className="flex items-center pl-4">
+                          <span className="text-sky-400">
+                            "expiration_days"
+                          </span>
+                          <span className="text-zinc-100">:&nbsp;</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={365}
+                            value={field.state.value}
+                            onChange={(e) =>
+                              field.handleChange(
+                                Math.max(
+                                  1,
+                                  Math.min(365, parseInt(e.target.value) || 1),
+                                ),
+                              )
+                            }
+                            className="w-16 bg-zinc-800 text-amber-400 border border-zinc-700 rounded px-1.5 py-0.5 text-xs font-mono focus:outline-none focus:border-emerald-500"
+                          />
+                        </div>
+                        <div>{"}"}</div>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-3">
+                      Edit the value above or select a preset in the Form tab.
+                    </p>
+                  </TabsContent>
+                </Tabs>
+              )}
+            </createForm.Field>
 
             <DialogFooter>
               <Button

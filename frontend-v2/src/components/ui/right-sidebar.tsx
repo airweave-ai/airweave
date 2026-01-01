@@ -1,51 +1,61 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { BookOpen, Code2, HelpCircle, LayoutGrid, PanelRightIcon } from "lucide-react"
+import {
+  BookOpen,
+  Code2,
+  HelpCircle,
+  LayoutGrid,
+  PanelRightIcon,
+} from "lucide-react";
+import * as React from "react";
 
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+import { Button } from "@/components/ui/button";
 import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
-} from "@/components/ui/sheet"
+} from "@/components/ui/sheet";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip"
-import { useUISettings } from "@/stores/ui-settings"
+} from "@/components/ui/tooltip";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { cn } from "@/lib/utils";
+import { useUISettings } from "@/stores/ui-settings";
 
-const RIGHT_SIDEBAR_WIDTH = "20rem"
-const RIGHT_SIDEBAR_TAB_WIDTH = "3rem"
+const RIGHT_SIDEBAR_WIDTH = "20rem";
+const RIGHT_SIDEBAR_TAB_WIDTH = "3rem";
 
-type TabId = "docs" | "code" | "help"
+type TabId = "docs" | "code" | "help";
 
 type RightSidebarContent = {
-  docs?: React.ReactNode
-  code?: React.ReactNode
-  help?: React.ReactNode
-}
+  docs?: React.ReactNode;
+  code?: React.ReactNode;
+  help?: React.ReactNode;
+};
 
 type RightSidebarContextProps = {
-  activeTab: TabId | null
-  setActiveTab: (tab: TabId | null) => void
-  toggleTab: (tab: TabId) => void
-  content: RightSidebarContent
-  setContent: (content: RightSidebarContent) => void
-}
+  activeTab: TabId | null;
+  setActiveTab: (tab: TabId | null) => void;
+  toggleTab: (tab: TabId) => void;
+  content: RightSidebarContent;
+  setContent: (content: RightSidebarContent) => void;
+};
 
-const RightSidebarContext = React.createContext<RightSidebarContextProps | null>(null)
+const RightSidebarContext =
+  React.createContext<RightSidebarContextProps | null>(null);
 
 function useRightSidebar() {
-  const context = React.useContext(RightSidebarContext)
+  const context = React.useContext(RightSidebarContext);
   if (!context) {
-    throw new Error("useRightSidebar must be used within a RightSidebarProvider.")
+    throw new Error(
+      "useRightSidebar must be used within a RightSidebarProvider.",
+    );
   }
-  return context
+  return context;
 }
 
 /**
@@ -53,14 +63,14 @@ function useRightSidebar() {
  * Content is automatically cleared when the component unmounts.
  */
 function useRightSidebarContent(content: RightSidebarContent) {
-  const { setContent } = useRightSidebar()
+  const { setContent } = useRightSidebar();
 
   React.useEffect(() => {
-    setContent(content)
+    setContent(content);
     return () => {
-      setContent({})
-    }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+      setContent({});
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 function RightSidebarProvider({
@@ -70,20 +80,20 @@ function RightSidebarProvider({
   ...props
 }: React.ComponentProps<"div">) {
   // Use Zustand store for persisted active tab state
-  const {
-    rightSidebarTab,
-    setRightSidebarTab,
-    toggleRightSidebarTab,
-  } = useUISettings()
+  const { rightSidebarTab, setRightSidebarTab, toggleRightSidebarTab } =
+    useUISettings();
 
-  const [content, setContent] = React.useState<RightSidebarContent>({})
+  const [content, setContent] = React.useState<RightSidebarContent>({});
 
   // Map Zustand state to local types
-  const activeTab = rightSidebarTab as TabId | null
-  const setActiveTab = setRightSidebarTab as (tab: TabId | null) => void
-  const toggleTab = React.useCallback((tab: TabId) => {
-    toggleRightSidebarTab(tab)
-  }, [toggleRightSidebarTab])
+  const activeTab = rightSidebarTab as TabId | null;
+  const setActiveTab = setRightSidebarTab as (tab: TabId | null) => void;
+  const toggleTab = React.useCallback(
+    (tab: TabId) => {
+      toggleRightSidebarTab(tab);
+    },
+    [toggleRightSidebarTab],
+  );
 
   const contextValue = React.useMemo<RightSidebarContextProps>(
     () => ({
@@ -93,8 +103,8 @@ function RightSidebarProvider({
       content,
       setContent,
     }),
-    [activeTab, toggleTab, content]
-  )
+    [activeTab, toggleTab, content],
+  );
 
   return (
     <RightSidebarContext.Provider value={contextValue}>
@@ -115,24 +125,27 @@ function RightSidebarProvider({
         </div>
       </TooltipProvider>
     </RightSidebarContext.Provider>
-  )
+  );
 }
 
 const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: "docs", label: "Documentation", icon: <BookOpen className="size-5" /> },
   { id: "code", label: "Code", icon: <Code2 className="size-5" /> },
   { id: "help", label: "Help", icon: <HelpCircle className="size-5" /> },
-]
+];
 
-function RightSidebarTabs({ className, ...props }: React.ComponentProps<"div">) {
-  const { activeTab, toggleTab } = useRightSidebar()
+function RightSidebarTabs({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
+  const { activeTab, toggleTab } = useRightSidebar();
 
   return (
     <div
       data-slot="right-sidebar-tabs"
       className={cn(
         "fixed inset-y-0 right-0 z-10 hidden w-(--right-sidebar-tab-width) flex-col items-center border-l bg-sidebar py-4 md:flex",
-        className
+        className,
       )}
       {...props}
     >
@@ -145,7 +158,8 @@ function RightSidebarTabs({ className, ...props }: React.ComponentProps<"div">) 
                 size="icon"
                 className={cn(
                   "size-10 rounded-lg transition-colors",
-                  activeTab === tab.id && "bg-sidebar-accent text-sidebar-accent-foreground"
+                  activeTab === tab.id &&
+                    "bg-sidebar-accent text-sidebar-accent-foreground",
                 )}
                 onClick={() => toggleTab(tab.id)}
                 aria-pressed={activeTab === tab.id}
@@ -161,13 +175,16 @@ function RightSidebarTabs({ className, ...props }: React.ComponentProps<"div">) 
         ))}
       </div>
     </div>
-  )
+  );
 }
 
-function RightSidebarPanel({ className, ...props }: React.ComponentProps<"div">) {
-  const { activeTab, content } = useRightSidebar()
+function RightSidebarPanel({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
+  const { activeTab, content } = useRightSidebar();
 
-  const currentContent = activeTab ? content[activeTab] : null
+  const currentContent = activeTab ? content[activeTab] : null;
 
   return (
     <>
@@ -181,7 +198,7 @@ function RightSidebarPanel({ className, ...props }: React.ComponentProps<"div">)
         data-slot="right-sidebar-panel-spacer"
         className={cn(
           "hidden shrink-0 transition-[width] duration-200 ease-linear md:block",
-          activeTab ? "w-(--right-sidebar-width)" : "w-0"
+          activeTab ? "w-(--right-sidebar-width)" : "w-0",
         )}
       />
       {/* The actual panel */}
@@ -193,7 +210,7 @@ function RightSidebarPanel({ className, ...props }: React.ComponentProps<"div">)
           activeTab
             ? "right-(--right-sidebar-tab-width)"
             : "right-[calc(var(--right-sidebar-width)*-1)]",
-          className
+          className,
         )}
         {...props}
       >
@@ -213,14 +230,14 @@ function RightSidebarPanel({ className, ...props }: React.ComponentProps<"div">)
         </div>
       </div>
     </>
-  )
+  );
 }
 
 function RightSidebarTrigger({
   className,
   ...props
 }: React.ComponentProps<typeof Button>) {
-  const { activeTab, setActiveTab } = useRightSidebar()
+  const { activeTab, setActiveTab } = useRightSidebar();
 
   return (
     <Button
@@ -234,36 +251,40 @@ function RightSidebarTrigger({
       <PanelRightIcon />
       <span className="sr-only">Toggle Right Sidebar</span>
     </Button>
-  )
+  );
 }
 
-const mobileTabs: { id: TabId | "app"; label: string; icon: React.ReactNode }[] = [
+const mobileTabs: {
+  id: TabId | "app";
+  label: string;
+  icon: React.ReactNode;
+}[] = [
   { id: "app", label: "App", icon: <LayoutGrid className="size-5" /> },
   { id: "docs", label: "Docs", icon: <BookOpen className="size-5" /> },
   { id: "code", label: "Code", icon: <Code2 className="size-5" /> },
   { id: "help", label: "Help", icon: <HelpCircle className="size-5" /> },
-]
+];
 
 function MobileBottomNav({ className, ...props }: React.ComponentProps<"div">) {
-  const { activeTab, setActiveTab } = useRightSidebar()
+  const { activeTab, setActiveTab } = useRightSidebar();
 
   const handleTabClick = (tabId: TabId | "app") => {
     if (tabId === "app") {
-      setActiveTab(null)
+      setActiveTab(null);
     } else {
-      setActiveTab(tabId)
+      setActiveTab(tabId);
     }
-  }
+  };
 
   // Determine which tab is active - "app" when no sidebar tab is selected
-  const currentTab = activeTab || "app"
+  const currentTab = activeTab || "app";
 
   return (
     <div
       data-slot="mobile-bottom-nav"
       className={cn(
         "fixed inset-x-0 bottom-0 z-50 flex h-16 items-center justify-around border-t bg-sidebar md:hidden",
-        className
+        className,
       )}
       {...props}
     >
@@ -275,7 +296,7 @@ function MobileBottomNav({ className, ...props }: React.ComponentProps<"div">) {
             "flex flex-1 flex-col items-center justify-center gap-1 py-2 text-xs transition-colors",
             currentTab === tab.id
               ? "text-sidebar-primary"
-              : "text-muted-foreground hover:text-foreground"
+              : "text-muted-foreground hover:text-foreground",
           )}
           onClick={() => handleTabClick(tab.id)}
           aria-pressed={currentTab === tab.id}
@@ -285,29 +306,35 @@ function MobileBottomNav({ className, ...props }: React.ComponentProps<"div">) {
         </button>
       ))}
     </div>
-  )
+  );
 }
 
-function MobileRightSidebarSheet({ className, ...props }: React.ComponentProps<typeof Sheet>) {
-  const { activeTab, setActiveTab, content } = useRightSidebar()
+function MobileRightSidebarSheet({
+  className,
+  ...props
+}: React.ComponentProps<typeof Sheet> & { className?: string }) {
+  const { activeTab, setActiveTab, content } = useRightSidebar();
+  const isMobile = useIsMobile();
 
-  const currentContent = activeTab ? content[activeTab] : null
-  const isOpen = activeTab !== null
+  const currentContent = activeTab ? content[activeTab] : null;
+  const isOpen = activeTab !== null;
 
   const handleOpenChange = (open: boolean) => {
     if (!open) {
-      setActiveTab(null)
+      setActiveTab(null);
     }
+  };
+
+  // Don't render the sheet on desktop - desktop uses RightSidebarPanel instead
+  if (!isMobile) {
+    return null;
   }
 
   return (
     <Sheet open={isOpen} onOpenChange={handleOpenChange} {...props}>
       <SheetContent
         side="bottom"
-        className={cn(
-          "h-[70vh] rounded-t-xl md:hidden",
-          className
-        )}
+        className={cn("h-[70vh] rounded-t-xl", className)}
       >
         <SheetHeader className="border-b pb-4">
           <SheetTitle className="capitalize">{activeTab || "Panel"}</SheetTitle>
@@ -321,19 +348,18 @@ function MobileRightSidebarSheet({ className, ...props }: React.ComponentProps<t
         </div>
       </SheetContent>
     </Sheet>
-  )
+  );
 }
 
 export {
-  RightSidebarProvider,
-  RightSidebarTabs,
-  RightSidebarPanel,
-  RightSidebarTrigger,
   MobileBottomNav,
   MobileRightSidebarSheet,
+  RightSidebarPanel,
+  RightSidebarProvider,
+  RightSidebarTabs,
+  RightSidebarTrigger,
   useRightSidebar,
   useRightSidebarContent,
-  type TabId,
   type RightSidebarContent,
-}
-
+  type TabId,
+};
