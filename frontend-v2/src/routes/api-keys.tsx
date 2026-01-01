@@ -1,6 +1,7 @@
+import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { CheckCircle2, Copy, Key, Loader2, Trash2 } from "lucide-react";
+import { CheckCircle2, Copy, Key, Loader2, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import {
@@ -19,10 +20,33 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useRightSidebarContent } from "@/components/ui/right-sidebar";
 import { DocsContent } from "@/hooks/use-docs-content";
-import { deleteApiKey, fetchApiKeys, type APIKey } from "@/lib/api";
+import {
+  createApiKey,
+  deleteApiKey,
+  fetchApiKeys,
+  type APIKey,
+} from "@/lib/api";
 import { useAuth0 } from "@/lib/auth-provider";
+import { cn } from "@/lib/utils";
+
+// Expiration presets for API keys
+const EXPIRATION_PRESETS = [
+  { days: 30, label: "30 days" },
+  { days: 60, label: "60 days" },
+  { days: 90, label: "90 days", recommended: true },
+  { days: 180, label: "180 days" },
+  { days: 365, label: "365 days" },
+];
 
 export const Route = createFileRoute("/api-keys")({ component: ApiKeysPage });
 
@@ -209,6 +233,9 @@ function ApiKeysPage() {
   const queryClient = useQueryClient();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [keyToDelete, setKeyToDelete] = useState<APIKey | null>(null);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [newlyCreatedKey, setNewlyCreatedKey] = useState<APIKey | null>(null);
+  const [copiedNewKey, setCopiedNewKey] = useState(false);
 
   useRightSidebarContent({
     docs: <ApiKeysDocs />,
@@ -225,6 +252,29 @@ function ApiKeysPage() {
     queryFn: async () => {
       const token = await getAccessTokenSilently();
       return fetchApiKeys(token);
+    },
+  });
+
+  // TanStack Form for create dialog
+  const createForm = useForm({
+    defaultValues: {
+      expirationDays: 90,
+    },
+    onSubmit: async ({ value }) => {
+      createMutation.mutate(value.expirationDays);
+    },
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (expirationDays: number) => {
+      const token = await getAccessTokenSilently();
+      return createApiKey(token, expirationDays);
+    },
+    onSuccess: (newKey) => {
+      queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+      setCreateDialogOpen(false);
+      setNewlyCreatedKey(newKey);
+      createForm.reset();
     },
   });
 
@@ -275,6 +325,25 @@ function ApiKeysPage() {
     }
   };
 
+  const handleCopyNewKey = () => {
+    if (newlyCreatedKey) {
+      navigator.clipboard.writeText(newlyCreatedKey.decrypted_key).then(
+        () => {
+          setCopiedNewKey(true);
+          setTimeout(() => setCopiedNewKey(false), 2000);
+        },
+        () => {
+          console.error("Failed to copy key");
+        },
+      );
+    }
+  };
+
+  const handleOpenCreateDialog = () => {
+    createForm.reset();
+    setCreateDialogOpen(true);
+  };
+
   // Loading state
   if (isLoading) {
     return (
@@ -286,6 +355,10 @@ function ApiKeysPage() {
               Manage your API keys for programmatic access
             </p>
           </div>
+          <Button onClick={handleOpenCreateDialog}>
+            <Plus className="mr-2 size-4" />
+            Create key
+          </Button>
         </div>
         <div className="flex items-center justify-center py-20">
           <Loader2 className="size-6 animate-spin text-muted-foreground" />
@@ -305,6 +378,10 @@ function ApiKeysPage() {
               Manage your API keys for programmatic access
             </p>
           </div>
+          <Button onClick={handleOpenCreateDialog}>
+            <Plus className="mr-2 size-4" />
+            Create key
+          </Button>
         </div>
         <div className="rounded-lg border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-900/10 px-4 py-3 text-sm text-red-600 dark:text-red-400">
           {error instanceof Error ? error.message : "Failed to load API keys"}
@@ -324,6 +401,10 @@ function ApiKeysPage() {
               Manage your API keys for programmatic access
             </p>
           </div>
+          <Button onClick={handleOpenCreateDialog}>
+            <Plus className="mr-2 size-4" />
+            Create key
+          </Button>
         </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <Card className="border-dashed">
@@ -337,12 +418,95 @@ function ApiKeysPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="text-center">
-              <p className="text-sm text-muted-foreground">
-                API key creation coming soon
-              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleOpenCreateDialog}
+              >
+                <Plus className="mr-2 size-4" />
+                Create key
+              </Button>
             </CardContent>
           </Card>
         </div>
+
+        {/* Create Dialog */}
+        <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Create API key</DialogTitle>
+              <DialogDescription>
+                Choose how long this key should remain valid
+              </DialogDescription>
+            </DialogHeader>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                createForm.handleSubmit();
+              }}
+            >
+              <div className="py-4 space-y-2">
+                <createForm.Field name="expirationDays">
+                  {(field) => (
+                    <>
+                      {EXPIRATION_PRESETS.map((preset) => (
+                        <button
+                          key={preset.days}
+                          type="button"
+                          onClick={() => field.handleChange(preset.days)}
+                          className={cn(
+                            "w-full flex items-center justify-between px-4 py-3.5 rounded-lg border text-left transition-colors",
+                            field.state.value === preset.days
+                              ? "border-primary bg-primary/5 dark:bg-primary/10"
+                              : "border-border hover:border-muted-foreground/25",
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              "text-sm font-medium",
+                              field.state.value === preset.days
+                                ? "text-foreground"
+                                : "text-muted-foreground",
+                            )}
+                          >
+                            {preset.label}
+                          </span>
+                          {preset.recommended && (
+                            <span className="text-xs px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium">
+                              Recommended
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </>
+                  )}
+                </createForm.Field>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setCreateDialogOpen(false)}
+                  disabled={createMutation.isPending}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={createMutation.isPending}>
+                  {createMutation.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 size-4 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    "Create key"
+                  )}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
     );
   }
@@ -357,7 +521,51 @@ function ApiKeysPage() {
             Manage your API keys for programmatic access
           </p>
         </div>
+        <Button onClick={handleOpenCreateDialog}>
+          <Plus className="mr-2 size-4" />
+          Create key
+        </Button>
       </div>
+
+      {/* Newly Created Key Display */}
+      {newlyCreatedKey && (
+        <div className="mb-6 rounded-lg border p-4">
+          <div className="flex items-start justify-between gap-4 mb-3">
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium">Your new API key</p>
+              <p className="text-xs text-muted-foreground">
+                Copy and save it now — you won't see it again
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setNewlyCreatedKey(null)}
+              className="h-6 text-xs"
+            >
+              Dismiss
+            </Button>
+          </div>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 text-xs font-mono px-3 py-2 rounded-md bg-muted border">
+              {newlyCreatedKey.decrypted_key}
+            </code>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleCopyNewKey}
+              className="gap-2"
+            >
+              {copiedNewKey ? (
+                <CheckCircle2 className="size-4" />
+              ) : (
+                <Copy className="size-4" />
+              )}
+              Copy
+            </Button>
+          </div>
+        </div>
+      )}
 
       <div className="space-y-3">
         {apiKeys.map((apiKey) => (
@@ -416,6 +624,84 @@ function ApiKeysPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Create Dialog */}
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create API key</DialogTitle>
+            <DialogDescription>
+              Choose how long this key should remain valid
+            </DialogDescription>
+          </DialogHeader>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              createForm.handleSubmit();
+            }}
+          >
+            <div className="py-4 space-y-2">
+              <createForm.Field name="expirationDays">
+                {(field) => (
+                  <>
+                    {EXPIRATION_PRESETS.map((preset) => (
+                      <button
+                        key={preset.days}
+                        type="button"
+                        onClick={() => field.handleChange(preset.days)}
+                        className={cn(
+                          "w-full flex items-center justify-between px-4 py-3.5 rounded-lg border text-left transition-colors",
+                          field.state.value === preset.days
+                            ? "border-primary bg-primary/5 dark:bg-primary/10"
+                            : "border-border hover:border-muted-foreground/25",
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "text-sm font-medium",
+                            field.state.value === preset.days
+                              ? "text-foreground"
+                              : "text-muted-foreground",
+                          )}
+                        >
+                          {preset.label}
+                        </span>
+                        {preset.recommended && (
+                          <span className="text-xs px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium">
+                            Recommended
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </>
+                )}
+              </createForm.Field>
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCreateDialogOpen(false)}
+                disabled={createMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={createMutation.isPending}>
+                {createMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  "Create key"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

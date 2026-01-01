@@ -71,6 +71,22 @@ export const uiComponents: ComponentInfo[] = [
     ]
   },
   {
+    "name": "dialog",
+    "path": "components/ui/dialog.tsx",
+    "exports": [
+      "Dialog",
+      "DialogClose",
+      "DialogContent",
+      "DialogDescription",
+      "DialogFooter",
+      "DialogHeader",
+      "DialogOverlay",
+      "DialogPortal",
+      "DialogTitle",
+      "DialogTrigger"
+    ]
+  },
+  {
     "name": "dropdown-menu",
     "path": "components/ui/dropdown-menu.tsx",
     "exports": [

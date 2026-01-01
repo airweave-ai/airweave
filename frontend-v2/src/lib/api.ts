@@ -53,3 +53,28 @@ export async function deleteApiKey(
     throw new Error(`Failed to delete API key: ${response.status}`);
   }
 }
+
+/**
+ * Create a new API key
+ */
+export async function createApiKey(
+  token: string,
+  expirationDays?: number,
+): Promise<APIKey> {
+  const response = await fetch(`${API_BASE_URL}/api-keys`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(
+      expirationDays ? { expiration_days: expirationDays } : {},
+    ),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to create API key: ${response.status}`);
+  }
+
+  return response.json();
+}
