@@ -1,5 +1,6 @@
 import { TanStackDevtools } from "@tanstack/react-devtools";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient } from "@tanstack/react-query";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import {
   HeadContent,
   Outlet,
@@ -18,11 +19,23 @@ import {
 } from "../components/ui/sidebar";
 import { useThemeEffect } from "../hooks/use-theme-effect";
 import { AuthGuard, AuthProvider } from "../lib/auth-provider";
+import { CACHE_MAX_AGE, createIDBPersister } from "../lib/query-persister";
 import { useUISettingsHydrated } from "../stores/ui-settings";
 
 import appCss from "../styles.css?url";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Keep unused query data in memory for 1 hour (matches IndexedDB persistence)
+      gcTime: CACHE_MAX_AGE,
+      // Consider data fresh for 5 minutes before refetching in background
+      staleTime: 1000 * 60 * 5,
+    },
+  },
+});
+
+const persister = createIDBPersister();
 
 export const Route = createRootRoute({
   head: () => ({
@@ -88,9 +101,15 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        <QueryClientProvider client={queryClient}>
+        <PersistQueryClientProvider
+          client={queryClient}
+          persistOptions={{
+            persister,
+            maxAge: CACHE_MAX_AGE,
+          }}
+        >
           <AuthProvider>{children}</AuthProvider>
-        </QueryClientProvider>
+        </PersistQueryClientProvider>
         <TanStackDevtools
           config={{
             position: "bottom-right",

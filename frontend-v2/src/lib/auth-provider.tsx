@@ -5,6 +5,7 @@ import {
 } from "@auth0/auth0-react";
 import { createContext, ReactNode, useContext } from "react";
 import { authConfig, devUser, getRedirectUrl } from "../config/auth";
+import { DataPreloader } from "./data-preloader";
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -100,9 +101,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
 export function AuthGuard({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading, loginWithRedirect } = useAuth0();
 
-  // In dev mode, always render children
+  // In dev mode, always render children (with preloading)
   if (!authConfig.authEnabled) {
-    return <>{children}</>;
+    return <DataPreloader>{children}</DataPreloader>;
   }
 
   // Show loading state while Auth0 initializes
@@ -132,7 +133,8 @@ export function AuthGuard({ children }: { children: ReactNode }) {
     );
   }
 
-  return <>{children}</>;
+  // User is authenticated - preload data and render children
+  return <DataPreloader>{children}</DataPreloader>;
 }
 
 // Re-export getRedirectUrl for convenience
