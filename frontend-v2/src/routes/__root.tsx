@@ -1,3 +1,5 @@
+import { TanStackDevtools } from "@tanstack/react-devtools";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   HeadContent,
   Outlet,
@@ -5,21 +7,22 @@ import {
   createRootRoute,
 } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
-import { TanStackDevtools } from "@tanstack/react-devtools";
 
-import { AppSidebar } from "../components/app-sidebar";
 import { AppRightSidebar } from "../components/app-right-sidebar";
+import { AppSidebar } from "../components/app-sidebar";
+import { RightSidebarProvider } from "../components/ui/right-sidebar";
 import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
 } from "../components/ui/sidebar";
-import { RightSidebarProvider } from "../components/ui/right-sidebar";
-import { useUISettingsHydrated } from "../stores/ui-settings";
 import { useThemeEffect } from "../hooks/use-theme-effect";
-import { AuthProvider, AuthGuard } from "../lib/auth-provider";
+import { AuthGuard, AuthProvider } from "../lib/auth-provider";
+import { useUISettingsHydrated } from "../stores/ui-settings";
 
 import appCss from "../styles.css?url";
+
+const queryClient = new QueryClient();
 
 export const Route = createRootRoute({
   head: () => ({
@@ -85,9 +88,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        <AuthProvider>
-          {children}
-        </AuthProvider>
+        <QueryClientProvider client={queryClient}>
+          <AuthProvider>{children}</AuthProvider>
+        </QueryClientProvider>
         <TanStackDevtools
           config={{
             position: "bottom-right",
