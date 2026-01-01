@@ -73,6 +73,14 @@ export async function createApiKey(
   });
 
   if (!response.ok) {
+    // Try to get error details from response body
+    const errorBody = await response.json().catch(() => null);
+    if (errorBody?.errors && Array.isArray(errorBody.errors)) {
+      const messages = errorBody.errors
+        .map((err: Record<string, string>) => Object.values(err).join(", "))
+        .join("; ");
+      throw new Error(messages);
+    }
     throw new Error(`Failed to create API key: ${response.status}`);
   }
 

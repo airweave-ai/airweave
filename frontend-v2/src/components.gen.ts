@@ -196,6 +196,13 @@ export const uiComponents: ComponentInfo[] = [
     ]
   },
   {
+    "name": "sonner",
+    "path": "components/ui/sonner.tsx",
+    "exports": [
+      "Toaster"
+    ]
+  },
+  {
     "name": "tabs",
     "path": "components/ui/tabs.tsx",
     "exports": [

@@ -12,6 +12,7 @@ import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { AppRightSidebar } from "../components/app-right-sidebar";
 import { AppSidebar } from "../components/app-sidebar";
 import { RightSidebarProvider } from "../components/ui/right-sidebar";
+import { Toaster } from "../components/ui/sonner";
 import {
   SidebarInset,
   SidebarProvider,
@@ -90,6 +91,7 @@ function RootComponent() {
           <AppRightSidebar />
         </RightSidebarProvider>
       </SidebarProvider>
+      <Toaster />
     </AuthGuard>
   );
 }
