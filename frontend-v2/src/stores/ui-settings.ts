@@ -68,11 +68,14 @@ export const useUISettings = create<UISettingsState>()(
 /**
  * Hook to check if UI settings have been hydrated from localStorage.
  * Use this to prevent flash of incorrect content on initial load.
+ *
+ * IMPORTANT: Always starts as `false` to match server-rendered HTML.
+ * Only updates to `true` after useEffect runs (client-side only).
+ * This prevents React hydration mismatches.
  */
 export function useUISettingsHydrated() {
-  const [hydrated, setHydrated] = useState(
-    useUISettings.getState()._hasHydrated,
-  );
+  // Always start false to match server render and avoid hydration mismatch
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     const unsubscribe = useUISettings.subscribe((state) =>
