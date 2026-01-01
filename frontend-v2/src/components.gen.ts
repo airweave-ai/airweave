@@ -33,11 +33,53 @@ export const uiComponents: ComponentInfo[] = [
     ]
   },
   {
+    "name": "badge",
+    "path": "components/ui/badge.tsx",
+    "exports": [
+      "Badge",
+      "badgeVariants"
+    ]
+  },
+  {
     "name": "button",
     "path": "components/ui/button.tsx",
     "exports": [
       "Button",
       "buttonVariants"
+    ]
+  },
+  {
+    "name": "card",
+    "path": "components/ui/card.tsx",
+    "exports": [
+      "Card",
+      "CardHeader",
+      "CardFooter",
+      "CardTitle",
+      "CardAction",
+      "CardDescription",
+      "CardContent"
+    ]
+  },
+  {
+    "name": "dropdown-menu",
+    "path": "components/ui/dropdown-menu.tsx",
+    "exports": [
+      "DropdownMenu",
+      "DropdownMenuPortal",
+      "DropdownMenuTrigger",
+      "DropdownMenuContent",
+      "DropdownMenuGroup",
+      "DropdownMenuLabel",
+      "DropdownMenuItem",
+      "DropdownMenuCheckboxItem",
+      "DropdownMenuRadioGroup",
+      "DropdownMenuRadioItem",
+      "DropdownMenuSeparator",
+      "DropdownMenuShortcut",
+      "DropdownMenuSub",
+      "DropdownMenuSubTrigger",
+      "DropdownMenuSubContent"
     ]
   },
   {

@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 type RightSidebarTab = "docs" | "code" | "help" | null;
+export type Theme = "light" | "dark" | "system";
 
 interface UISettingsState {
   // Left sidebar
@@ -14,6 +15,10 @@ interface UISettingsState {
   rightSidebarTab: RightSidebarTab;
   setRightSidebarTab: (tab: RightSidebarTab) => void;
   toggleRightSidebarTab: (tab: "docs" | "code" | "help") => void;
+
+  // Theme
+  theme: Theme;
+  setTheme: (theme: Theme) => void;
 
   // Hydration tracking
   _hasHydrated: boolean;
@@ -37,6 +42,10 @@ export const useUISettings = create<UISettingsState>()(
           rightSidebarTab: state.rightSidebarTab === tab ? null : tab,
         })),
 
+      // Theme - default to system
+      theme: "system",
+      setTheme: (theme) => set({ theme }),
+
       // Hydration tracking (not persisted)
       _hasHydrated: false,
       setHasHydrated: (hydrated) => set({ _hasHydrated: hydrated }),
@@ -50,6 +59,7 @@ export const useUISettings = create<UISettingsState>()(
         // Only persist these fields (exclude hydration state)
         leftSidebarOpen: state.leftSidebarOpen,
         rightSidebarTab: state.rightSidebarTab,
+        theme: state.theme,
       }),
     },
   ),

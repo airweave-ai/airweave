@@ -3,6 +3,9 @@ import { ArrowLeft, Check, Code, Copy, Package } from "lucide-react";
 import { useState } from "react";
 import { uiComponents } from "../components.gen";
 import { componentPreviews } from "../previews";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const Route = createFileRoute("/components/$componentName")({
   component: ComponentDetailPage,
@@ -32,19 +35,21 @@ function CodeBlock({
 
   return (
     <div className="relative group">
-      <pre className="bg-slate-950 border border-slate-800 rounded-lg p-4 overflow-x-auto">
-        <code className="text-sm text-slate-300 font-mono">{code}</code>
+      <pre className="bg-muted border rounded-lg p-4 overflow-x-auto">
+        <code className="text-sm font-mono">{code}</code>
       </pre>
-      <button
+      <Button
+        variant="ghost"
+        size="icon-sm"
         onClick={handleCopy}
-        className="absolute top-2 right-2 p-2 bg-slate-800 hover:bg-slate-700 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
+        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
       >
         {copied ? (
-          <Check className="w-4 h-4 text-emerald-400" />
+          <Check className="w-4 h-4 text-primary" />
         ) : (
-          <Copy className="w-4 h-4 text-slate-400" />
+          <Copy className="w-4 h-4" />
         )}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -61,20 +66,20 @@ function VariantPreview({
   code: string;
 }) {
   return (
-    <div className="border border-slate-700 rounded-xl overflow-hidden">
-      <div className="p-4 border-b border-slate-700 bg-slate-800/30">
-        <h3 className="font-semibold text-white">{title}</h3>
+    <Card className="overflow-hidden">
+      <CardHeader className="border-b">
+        <CardTitle className="text-base">{title}</CardTitle>
         {description && (
-          <p className="text-sm text-slate-400 mt-1">{description}</p>
+          <CardDescription>{description}</CardDescription>
         )}
-      </div>
-      <div className="p-6 bg-slate-900/50 flex items-center justify-center min-h-[120px]">
+      </CardHeader>
+      <CardContent className="p-6 bg-muted/30 flex items-center justify-center min-h-[120px]">
         <div className="flex flex-wrap items-center gap-4">{children}</div>
-      </div>
-      <div className="border-t border-slate-700">
+      </CardContent>
+      <div className="border-t">
         <CodeBlock code={code} />
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -86,22 +91,21 @@ function ComponentDetailPage() {
     return (
       <div className="p-8">
         <div className="text-center py-20">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-slate-800 rounded-full mb-4">
-            <Package className="w-8 h-8 text-slate-600" />
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-muted rounded-full mb-4">
+            <Package className="w-8 h-8 text-muted-foreground" />
           </div>
-          <h3 className="text-xl font-semibold text-white mb-2">
+          <h3 className="text-xl font-semibold text-foreground mb-2">
             Component not found
           </h3>
-          <p className="text-slate-400 mb-4">
+          <p className="text-muted-foreground mb-4">
             The component "{componentName}" doesn't exist.
           </p>
-          <Link
-            to="/components"
-            className="inline-flex items-center gap-2 text-emerald-400 hover:text-emerald-300"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to components
-          </Link>
+          <Button variant="ghost" asChild>
+            <Link to="/components">
+              <ArrowLeft className="w-4 h-4" />
+              Back to components
+            </Link>
+          </Button>
         </div>
       </div>
     );
@@ -114,20 +118,19 @@ function ComponentDetailPage() {
     <div className="p-8">
       {/* Header */}
       <div className="mb-8">
-        <Link
-          to="/components"
-          className="inline-flex items-center gap-2 text-slate-400 hover:text-white mb-4 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to components
-        </Link>
+        <Button variant="ghost" asChild className="mb-4">
+          <Link to="/components">
+            <ArrowLeft className="w-4 h-4" />
+            Back to components
+          </Link>
+        </Button>
         <div className="flex items-center gap-4">
-          <div className="p-3 bg-emerald-500/20 rounded-xl">
-            <Package className="w-8 h-8 text-emerald-400" />
+          <div className="p-3 bg-muted rounded-xl">
+            <Package className="w-8 h-8 text-primary" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-white">{displayName}</h1>
-            <p className="text-slate-400 font-mono text-sm">{component.path}</p>
+            <h1 className="text-3xl font-bold text-foreground">{displayName}</h1>
+            <p className="text-muted-foreground font-mono text-sm">{component.path}</p>
           </div>
         </div>
       </div>
@@ -135,18 +138,15 @@ function ComponentDetailPage() {
       {/* Exports */}
       {component.exports.length > 0 && (
         <div className="mb-8">
-          <h2 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-            <Code className="w-5 h-5 text-emerald-400" />
+          <h2 className="text-lg font-semibold text-foreground mb-3 flex items-center gap-2">
+            <Code className="w-5 h-5 text-primary" />
             Exports
           </h2>
           <div className="flex flex-wrap gap-2">
             {component.exports.map((exp) => (
-              <span
-                key={exp}
-                className="px-3 py-1.5 bg-slate-800 text-emerald-400 rounded-lg font-mono text-sm border border-slate-700"
-              >
+              <Badge key={exp} variant="outline" className="font-mono">
                 {exp}
-              </span>
+              </Badge>
             ))}
           </div>
         </div>
@@ -154,7 +154,7 @@ function ComponentDetailPage() {
 
       {/* Import Example */}
       <div className="mb-8">
-        <h2 className="text-lg font-semibold text-white mb-3">Import</h2>
+        <h2 className="text-lg font-semibold text-foreground mb-3">Import</h2>
         <CodeBlock
           code={`import { ${component.exports.filter((e) => e !== "default").join(", ")} } from "@/components/ui/${component.name}";`}
         />
@@ -163,7 +163,7 @@ function ComponentDetailPage() {
       {/* Variants Preview */}
       {previews ? (
         <div className="space-y-6">
-          <h2 className="text-lg font-semibold text-white">Examples</h2>
+          <h2 className="text-lg font-semibold text-foreground">Examples</h2>
           {previews.variants.map((variant, index) => (
             <VariantPreview
               key={index}
@@ -176,15 +176,17 @@ function ComponentDetailPage() {
           ))}
         </div>
       ) : (
-        <div className="border border-slate-700 rounded-xl p-8 text-center">
-          <p className="text-slate-400">
-            No preview configuration available for this component yet.
-          </p>
-          <p className="text-slate-500 text-sm mt-2">
-            Add a preview file in{" "}
-            <code className="text-emerald-400">src/previews/</code>
-          </p>
-        </div>
+        <Card className="text-center p-8">
+          <CardContent className="pt-0">
+            <p className="text-muted-foreground">
+              No preview configuration available for this component yet.
+            </p>
+            <p className="text-muted-foreground text-sm mt-2">
+              Add a preview file in{" "}
+              <code className="text-primary">src/previews/</code>
+            </p>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

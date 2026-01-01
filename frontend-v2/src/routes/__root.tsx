@@ -16,6 +16,7 @@ import {
 } from "../components/ui/sidebar";
 import { RightSidebarProvider } from "../components/ui/right-sidebar";
 import { useUISettingsHydrated } from "../stores/ui-settings";
+import { useThemeEffect } from "../hooks/use-theme-effect";
 
 import appCss from "../styles.css?url";
 
@@ -47,6 +48,9 @@ export const Route = createRootRoute({
 
 function RootComponent() {
   const isHydrated = useUISettingsHydrated();
+
+  // Apply theme based on user preference (system/light/dark)
+  useThemeEffect();
 
   // Wait for UI settings to hydrate from localStorage to prevent flash of incorrect state
   if (!isHydrated) {

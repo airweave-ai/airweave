@@ -8,6 +8,11 @@ import {
   Layers,
   FileText,
   Zap,
+  Sun,
+  Moon,
+  Monitor,
+  Check,
+  Palette,
 } from "lucide-react"
 
 import {
@@ -23,6 +28,17 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { useUISettings, type Theme } from "@/stores/ui-settings"
 
 const navItems = [
   {
@@ -55,8 +71,16 @@ const secondaryItems = [
   },
 ]
 
+const themeOptions: { value: Theme; label: string; icon: typeof Sun }[] = [
+  { value: "light", label: "Light", icon: Sun },
+  { value: "dark", label: "Dark", icon: Moon },
+  { value: "system", label: "System", icon: Monitor },
+]
+
 export function AppSidebar() {
   const location = useLocation()
+  const theme = useUISettings((state) => state.theme)
+  const setTheme = useUISettings((state) => state.setTheme)
 
   const isActive = (url: string) => {
     if (url === "/") {
@@ -131,12 +155,43 @@ export function AppSidebar() {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton tooltip="Settings" asChild>
-              <Link to="/settings">
-                <Settings />
-                <span>Settings</span>
-              </Link>
-            </SidebarMenuButton>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <SidebarMenuButton tooltip="Settings">
+                  <Settings />
+                  <span>Settings</span>
+                </SidebarMenuButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="top" align="start" className="w-48">
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <Palette />
+                    <span>Theme</span>
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    {themeOptions.map((option) => (
+                      <DropdownMenuItem
+                        key={option.value}
+                        onClick={() => setTheme(option.value)}
+                      >
+                        <option.icon />
+                        <span>{option.label}</span>
+                        {theme === option.value && (
+                          <Check className="ml-auto size-4" />
+                        )}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link to="/settings">
+                    <Settings />
+                    <span>All Settings</span>
+                  </Link>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
