@@ -1,0 +1,12 @@
+{
+  "projectName": "shadcn",
+  "mode": "file-router",
+  "typescript": true,
+  "tailwind": true,
+  "packageManager": "npm",
+  "git": true,
+  "addOnOptions": {},
+  "version": 1,
+  "framework": "react-cra",
+  "chosenAddOns": ["start", "nitro"]
+}
