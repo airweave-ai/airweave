@@ -42,8 +42,8 @@ export const useUISettings = create<UISettingsState>()(
           rightSidebarTab: state.rightSidebarTab === tab ? null : tab,
         })),
 
-      // Theme - default to system
-      theme: "system",
+      // Theme - default to dark as it's a dev tool
+      theme: "dark",
       setTheme: (theme) => set({ theme }),
 
       // Hydration tracking (not persisted)
