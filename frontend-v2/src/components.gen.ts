@@ -39,5 +39,94 @@ export const uiComponents: ComponentInfo[] = [
       "Button",
       "buttonVariants"
     ]
+  },
+  {
+    "name": "input",
+    "path": "components/ui/input.tsx",
+    "exports": [
+      "Input"
+    ]
+  },
+  {
+    "name": "right-sidebar",
+    "path": "components/ui/right-sidebar.tsx",
+    "exports": [
+      "RightSidebarProvider",
+      "RightSidebarTabs",
+      "RightSidebarPanel",
+      "RightSidebarTrigger",
+      "useRightSidebar",
+      "useRightSidebarContent",
+      "type TabId",
+      "type RightSidebarContent"
+    ]
+  },
+  {
+    "name": "separator",
+    "path": "components/ui/separator.tsx",
+    "exports": [
+      "Separator"
+    ]
+  },
+  {
+    "name": "sheet",
+    "path": "components/ui/sheet.tsx",
+    "exports": [
+      "Sheet",
+      "SheetTrigger",
+      "SheetClose",
+      "SheetContent",
+      "SheetHeader",
+      "SheetFooter",
+      "SheetTitle",
+      "SheetDescription"
+    ]
+  },
+  {
+    "name": "sidebar",
+    "path": "components/ui/sidebar.tsx",
+    "exports": [
+      "Sidebar",
+      "SidebarContent",
+      "SidebarFooter",
+      "SidebarGroup",
+      "SidebarGroupAction",
+      "SidebarGroupContent",
+      "SidebarGroupLabel",
+      "SidebarHeader",
+      "SidebarInput",
+      "SidebarInset",
+      "SidebarMenu",
+      "SidebarMenuAction",
+      "SidebarMenuBadge",
+      "SidebarMenuButton",
+      "SidebarMenuItem",
+      "SidebarMenuSkeleton",
+      "SidebarMenuSub",
+      "SidebarMenuSubButton",
+      "SidebarMenuSubItem",
+      "SidebarProvider",
+      "SidebarRail",
+      "SidebarSeparator",
+      "SidebarTrigger",
+      "useSidebar"
+    ]
+  },
+  {
+    "name": "skeleton",
+    "path": "components/ui/skeleton.tsx",
+    "exports": [
+      "Skeleton"
+    ]
+  },
+  {
+    "name": "tooltip",
+    "path": "components/ui/tooltip.tsx",
+    "exports": [
+      "Tooltip",
+      "TooltipTrigger",
+      "TooltipContent",
+      "TooltipProvider"
+    ]
   }
 ];
