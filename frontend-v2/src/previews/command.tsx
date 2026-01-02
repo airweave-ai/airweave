@@ -128,4 +128,3 @@ export const commandPreview: ComponentPreviewConfig = {
     },
   ],
 };
-

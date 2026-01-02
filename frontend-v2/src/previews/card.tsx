@@ -66,13 +66,13 @@ export const cardPreview: ComponentPreviewConfig = {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              <div className="rounded-md bg-muted p-3 text-sm">
+              <div className="bg-muted rounded-md p-3 text-sm">
                 New message from John
               </div>
-              <div className="rounded-md bg-muted p-3 text-sm">
+              <div className="bg-muted rounded-md p-3 text-sm">
                 Meeting reminder for tomorrow
               </div>
-              <div className="rounded-md bg-muted p-3 text-sm">
+              <div className="bg-muted rounded-md p-3 text-sm">
                 Your report is ready
               </div>
             </div>
@@ -99,7 +99,9 @@ export const cardPreview: ComponentPreviewConfig = {
         <Card className="w-[350px]">
           <CardHeader>
             <CardTitle>Create project</CardTitle>
-            <CardDescription>Deploy your new project in one-click.</CardDescription>
+            <CardDescription>
+              Deploy your new project in one-click.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <form>
@@ -142,4 +144,3 @@ export const cardPreview: ComponentPreviewConfig = {
     },
   ],
 };
-

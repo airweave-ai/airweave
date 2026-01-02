@@ -79,7 +79,8 @@ export const dialogPreview: ComponentPreviewConfig = {
     },
     {
       title: "Confirmation Dialog",
-      description: "A simple confirmation dialog with cancel and confirm actions",
+      description:
+        "A simple confirmation dialog with cancel and confirm actions",
       preview: (
         <Dialog>
           <DialogTrigger asChild>
@@ -124,4 +125,3 @@ export const dialogPreview: ComponentPreviewConfig = {
     },
   ],
 };
-

@@ -11,7 +11,7 @@ export const checkboxPreview: ComponentPreviewConfig = {
           <Checkbox id="terms" />
           <label
             htmlFor="terms"
-            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+            className="text-sm leading-none font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
           >
             Accept terms and conditions
           </label>
@@ -26,7 +26,8 @@ export const checkboxPreview: ComponentPreviewConfig = {
     },
     {
       title: "States",
-      description: "Checkbox in different states: unchecked, checked, and disabled",
+      description:
+        "Checkbox in different states: unchecked, checked, and disabled",
       preview: (
         <div className="flex flex-col gap-4">
           <div className="flex items-center space-x-2">
@@ -75,4 +76,3 @@ export const checkboxPreview: ComponentPreviewConfig = {
     },
   ],
 };
-

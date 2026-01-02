@@ -8,7 +8,12 @@ import {
   CardTitle,
 } from "../components/ui/card";
 import { Input } from "../components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "../components/ui/tabs";
 import type { ComponentPreviewConfig } from "./types";
 
 export const tabsPreview: ComponentPreviewConfig = {
@@ -27,7 +32,8 @@ export const tabsPreview: ComponentPreviewConfig = {
               <CardHeader>
                 <CardTitle>Account</CardTitle>
                 <CardDescription>
-                  Make changes to your account here. Click save when you're done.
+                  Make changes to your account here. Click save when you're
+                  done.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-2">
@@ -113,17 +119,18 @@ export const tabsPreview: ComponentPreviewConfig = {
             <TabsTrigger value="reports">Reports</TabsTrigger>
           </TabsList>
           <TabsContent value="overview" className="p-4">
-            <p className="text-sm text-muted-foreground">
-              Your overview content goes here. This tab shows a summary of your data.
+            <p className="text-muted-foreground text-sm">
+              Your overview content goes here. This tab shows a summary of your
+              data.
             </p>
           </TabsContent>
           <TabsContent value="analytics" className="p-4">
-            <p className="text-sm text-muted-foreground">
+            <p className="text-muted-foreground text-sm">
               Analytics content with charts and metrics would appear here.
             </p>
           </TabsContent>
           <TabsContent value="reports" className="p-4">
-            <p className="text-sm text-muted-foreground">
+            <p className="text-muted-foreground text-sm">
               View and download your reports from this section.
             </p>
           </TabsContent>
@@ -148,4 +155,3 @@ export const tabsPreview: ComponentPreviewConfig = {
     },
   ],
 };
-

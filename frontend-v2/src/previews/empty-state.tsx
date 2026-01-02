@@ -63,4 +63,3 @@ export const emptyStatePreview: ComponentPreviewConfig = {
     },
   ],
 };
-

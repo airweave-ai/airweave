@@ -170,4 +170,3 @@ export const dropdownMenuPreview: ComponentPreviewConfig = {
     },
   ],
 };
-

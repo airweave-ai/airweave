@@ -1,8 +1,4 @@
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "../components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import type { ComponentPreviewConfig } from "./types";
 
 export const avatarPreview: ComponentPreviewConfig = {
@@ -83,4 +79,3 @@ export const avatarPreview: ComponentPreviewConfig = {
     },
   ],
 };
-

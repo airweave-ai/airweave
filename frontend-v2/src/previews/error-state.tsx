@@ -67,4 +67,3 @@ export const errorStatePreview: ComponentPreviewConfig = {
     },
   ],
 };
-

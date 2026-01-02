@@ -10,15 +10,15 @@ export const loadingStatePreview: ComponentPreviewConfig = {
         <div className="flex items-start gap-8">
           <div className="text-center">
             <LoadingState size="sm" />
-            <p className="text-xs text-muted-foreground mt-2">Small</p>
+            <p className="text-muted-foreground mt-2 text-xs">Small</p>
           </div>
           <div className="text-center">
             <LoadingState size="md" />
-            <p className="text-xs text-muted-foreground mt-2">Medium</p>
+            <p className="text-muted-foreground mt-2 text-xs">Medium</p>
           </div>
           <div className="text-center">
             <LoadingState size="lg" />
-            <p className="text-xs text-muted-foreground mt-2">Large</p>
+            <p className="text-muted-foreground mt-2 text-xs">Large</p>
           </div>
         </div>
       ),
@@ -29,9 +29,7 @@ export const loadingStatePreview: ComponentPreviewConfig = {
     {
       title: "With Message",
       description: "Loading state with a descriptive message",
-      preview: (
-        <LoadingState size="md" message="Loading your data..." />
-      ),
+      preview: <LoadingState size="md" message="Loading your data..." />,
       code: `<LoadingState size="md" message="Loading your data..." />`,
     },
     {
@@ -50,4 +48,3 @@ export const loadingStatePreview: ComponentPreviewConfig = {
     },
   ],
 };
-

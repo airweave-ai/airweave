@@ -1,4 +1,4 @@
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useParams } from "@tanstack/react-router";
 import { BookOpen, Code2, HelpCircle, PanelLeftIcon } from "lucide-react";
 import { useEffect } from "react";
 
@@ -21,6 +21,8 @@ import { useUISettings } from "@/stores/ui-settings";
 export function CommandMenu() {
   const { open, setOpen } = useCommandMenuOpen();
   const navigate = useNavigate();
+  const params = useParams({ strict: false }) as { orgSlug?: string };
+  const orgSlug = params.orgSlug;
   const setTheme = useUISettings((state) => state.setTheme);
   const toggleLeftSidebar = useUISettings((state) => state.toggleLeftSidebar);
   const toggleRightSidebarTab = useUISettings(
@@ -104,18 +106,24 @@ export function CommandMenu() {
         )}
 
         {/* Navigation */}
-        <CommandGroup heading="Navigation">
-          {navItems.map((item) => (
-            <CommandItem
-              key={item.url}
-              value={item.title}
-              onSelect={() => runCommand(() => navigate({ to: item.url }))}
-            >
-              <item.icon className="size-4" />
-              <span>Go to {item.title}</span>
-            </CommandItem>
-          ))}
-        </CommandGroup>
+        {orgSlug && (
+          <CommandGroup heading="Navigation">
+            {navItems.map((item) => (
+              <CommandItem
+                key={item.to}
+                value={item.title}
+                onSelect={() =>
+                  runCommand(() =>
+                    navigate({ to: item.to, params: { orgSlug } })
+                  )
+                }
+              >
+                <item.icon className="size-4" />
+                <span>Go to {item.title}</span>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        )}
 
         <CommandSeparator />
 

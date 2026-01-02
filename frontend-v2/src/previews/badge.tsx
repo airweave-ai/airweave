@@ -5,7 +5,8 @@ export const badgePreview: ComponentPreviewConfig = {
   variants: [
     {
       title: "Default Variants",
-      description: "Badges come in different visual styles for various contexts",
+      description:
+        "Badges come in different visual styles for various contexts",
       preview: (
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="default">Default</Badge>
@@ -109,4 +110,3 @@ export const badgePreview: ComponentPreviewConfig = {
     },
   ],
 };
-
