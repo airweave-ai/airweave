@@ -1488,6 +1488,7 @@ class SourceConnectionService:
         id: UUID,
         ctx: ApiContext,
         force_full_sync: bool = False,
+        execution_config: Optional[Dict[str, Any]] = None,
     ) -> schemas.SourceConnectionJob:
         """Trigger a sync run for a source connection.
 
@@ -1498,6 +1499,7 @@ class SourceConnectionService:
             force_full_sync: If True, forces a full sync with orphaned entity cleanup.
                            Only allowed for continuous syncs (syncs with cursor data).
                            Raises HTTPException if used on non-continuous syncs.
+            execution_config: Optional execution config dict to persist in DB for worker
         """
         source_conn = await crud.source_connection.get(db, id=id, ctx=ctx)
         if not source_conn:
@@ -1541,9 +1543,9 @@ class SourceConnectionService:
             db=db, source_connection=source_conn, ctx=ctx
         )
 
-        # Trigger sync through Temporal only
+        # Trigger sync through Temporal only (stores execution_config in DB)
         sync, sync_job = await sync_service.trigger_sync_run(
-            db, sync_id=source_conn.sync_id, ctx=ctx
+            db, sync_id=source_conn.sync_id, ctx=ctx, execution_config=execution_config
         )
 
         await temporal_service.run_source_connection_workflow(

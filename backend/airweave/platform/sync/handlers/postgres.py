@@ -149,10 +149,15 @@ class PostgresMetadataHandler(ActionHandler):
         if not deduped:
             return
 
+        # Check if hash updates should be skipped
+        skip_hashes = (
+            sync_context.execution_config and sync_context.execution_config.skip_hash_updates
+        )
+
         # Build create objects with deterministic ordering
         create_objs = []
         for action in deduped:
-            if not action.entity.airweave_system_metadata.hash:
+            if not skip_hashes and not action.entity.airweave_system_metadata.hash:
                 raise SyncFailureError(f"Entity {action.entity_id} missing hash")
 
             create_objs.append(
@@ -161,7 +166,7 @@ class PostgresMetadataHandler(ActionHandler):
                     sync_id=sync_context.sync.id,
                     entity_id=action.entity_id,
                     entity_definition_id=action.entity_definition_id,
-                    hash=action.entity.airweave_system_metadata.hash,
+                    hash=None if skip_hashes else action.entity.airweave_system_metadata.hash,
                 )
             )
 
@@ -170,8 +175,9 @@ class PostgresMetadataHandler(ActionHandler):
 
         # Log for debugging
         sample_ids = [obj.entity_id for obj in create_objs[:10]]
+        hash_note = " (without hashes)" if skip_hashes else ""
         sync_context.logger.debug(
-            f"[Postgres] Upserting {len(create_objs)} inserts (sample: {sample_ids})"
+            f"[Postgres] Upserting {len(create_objs)} inserts{hash_note} (sample: {sample_ids})"
         )
 
         await crud.entity.bulk_create(db, objs=create_objs, ctx=sync_context.ctx)
@@ -191,6 +197,13 @@ class PostgresMetadataHandler(ActionHandler):
             sync_context: Sync context
             db: Database session
         """
+        # Check if hash updates should be skipped
+        if sync_context.execution_config and sync_context.execution_config.skip_hash_updates:
+            sync_context.logger.info(
+                f"[Postgres] Skipping hash updates for {len(actions)} entities (skip_hash_updates=True)"
+            )
+            return
+
         update_pairs = []
 
         for action in actions:

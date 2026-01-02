@@ -4,6 +4,7 @@ This is an internal implementation detail of the factory module.
 """
 
 import asyncio
+from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +15,7 @@ from airweave.core.logging import ContextualLogger
 from airweave.core.sync_cursor_service import sync_cursor_service
 from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.sources._base import BaseSource
+from airweave.platform.sync.config import SyncExecutionConfig
 from airweave.platform.sync.context import SyncContext
 from airweave.platform.sync.cursor import SyncCursor
 from airweave.platform.sync.pipeline.entity_tracker import EntityTracker
@@ -52,6 +54,7 @@ class ContextBuilder:
         collection: schemas.Collection,
         entity_map: dict,
         force_full_sync: bool = False,
+        execution_config: Optional[SyncExecutionConfig] = None,
     ) -> SyncContext:
         """Build a complete SyncContext."""
         # 1. Load initial entity counts
@@ -112,6 +115,7 @@ class ContextBuilder:
             guard_rail=guard_rail,
             force_full_sync=force_full_sync,
             has_keyword_index=has_keyword_index,
+            execution_config=execution_config,
         )
 
         # 8. Set cursor on source

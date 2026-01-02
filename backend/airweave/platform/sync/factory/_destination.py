@@ -15,6 +15,7 @@ from airweave.core.constants.reserved_ids import NATIVE_QDRANT_UUID
 from airweave.core.logging import ContextualLogger
 from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.locator import resource_locator
+from airweave.platform.sync.config import SyncExecutionConfig
 
 
 class DestinationBuilder:
@@ -42,6 +43,7 @@ class DestinationBuilder:
         self,
         sync: schemas.Sync,
         collection: schemas.Collection,
+        execution_config: Optional[SyncExecutionConfig] = None,
     ) -> list[BaseDestination]:
         """Build destination instances for a sync.
 
@@ -49,8 +51,10 @@ class DestinationBuilder:
         - ACTIVE: receives writes + serves queries
         - SHADOW: receives writes only (migration testing)
         - DEPRECATED: skipped (no writes)
+        
+        Also respects execution_config for destination filtering.
         """
-        destination_ids = await self._get_active_ids(sync)
+        destination_ids = await self._get_destination_ids(sync, execution_config)
 
         destinations = await self.build_for_ids(
             destination_ids=destination_ids,
@@ -70,6 +74,43 @@ class DestinationBuilder:
         )
 
         return destinations
+    
+    async def _get_destination_ids(
+        self, 
+        sync: schemas.Sync, 
+        execution_config: Optional[SyncExecutionConfig],
+    ) -> list[UUID]:
+        """Get destination IDs based on roles and execution config.
+        
+        Priority:
+        1. execution_config.target_destinations (if set, use only these)
+        2. execution_config.exclude_destinations (filter out from active/shadow)
+        3. Default: all active+shadow destinations
+        """
+        # If target_destinations is set, use only those (highest priority)
+        if execution_config and execution_config.target_destinations:
+            self.logger.info(
+                f"Using target_destinations from config: {execution_config.target_destinations}"
+            )
+            return execution_config.target_destinations
+        
+        # Get base destination IDs (active + shadow by default)
+        destination_ids = await self._get_active_ids(sync)
+        
+        # If exclude_destinations is set, filter them out
+        if execution_config and execution_config.exclude_destinations:
+            original_count = len(destination_ids)
+            destination_ids = [
+                dest_id for dest_id in destination_ids 
+                if dest_id not in execution_config.exclude_destinations
+            ]
+            excluded_count = original_count - len(destination_ids)
+            if excluded_count > 0:
+                self.logger.info(
+                    f"Excluded {excluded_count} destination(s) based on config"
+                )
+        
+        return destination_ids
 
     async def build_for_ids(
         self,

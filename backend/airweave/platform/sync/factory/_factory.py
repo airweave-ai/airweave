@@ -17,6 +17,7 @@ from airweave.core.constants.reserved_ids import RESERVED_TABLE_ENTITY_ID
 from airweave.core.logging import LoggerConfigurator, logger
 from airweave.db.init_db_native import init_db_with_entity_definitions
 from airweave.platform.entities._base import BaseEntity
+from airweave.platform.sync.config import SyncExecutionConfig
 from airweave.platform.sync.factory._context import ContextBuilder
 from airweave.platform.sync.factory._destination import DestinationBuilder
 from airweave.platform.sync.factory._pipeline import PipelineBuilder
@@ -55,6 +56,7 @@ class SyncFactory:
         access_token: Optional[str] = None,
         max_workers: Optional[int] = None,
         force_full_sync: bool = False,
+        execution_config: Optional[SyncExecutionConfig] = None,
     ) -> SyncOrchestrator:
         """Create a sync orchestrator with all required components.
 
@@ -68,6 +70,7 @@ class SyncFactory:
             access_token: Optional token override
             max_workers: Max concurrent workers (default: from settings)
             force_full_sync: Whether to force full sync (skips cursor)
+            execution_config: Optional execution config for controlling sync behavior
 
         Returns:
             Configured SyncOrchestrator ready to run
@@ -115,7 +118,9 @@ class SyncFactory:
 
         # 3. Build destinations
         dest_builder = DestinationBuilder(db, ctx, sync_logger)
-        destinations = await dest_builder.build(sync=sync, collection=collection)
+        destinations = await dest_builder.build(
+            sync=sync, collection=collection, execution_config=execution_config
+        )
 
         # 4. Get entity map
         entity_map = await cls._get_entity_definition_map(db)
@@ -131,6 +136,7 @@ class SyncFactory:
             collection=collection,
             entity_map=entity_map,
             force_full_sync=force_full_sync,
+            execution_config=execution_config,
         )
 
         # 6. Build pipeline

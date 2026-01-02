@@ -65,6 +65,13 @@ class ActionResolver:
         Raises:
             SyncFailureError: If entity type not found in entity_map or missing hash
         """
+        # Check if skip_hash_comparison is enabled
+        if sync_context.execution_config and sync_context.execution_config.skip_hash_comparison:
+            sync_context.logger.info(
+                "skip_hash_comparison enabled: Forcing all entities as INSERT actions"
+            )
+            return self._force_all_inserts(entities, sync_context)
+
         # Step 1: Separate deletions from non-deletions
         delete_entities, non_delete_entities = self._separate_deletions(entities)
 
@@ -87,6 +94,44 @@ class ActionResolver:
         sync_context.logger.debug(f"Action resolution: {batch.summary()}")
 
         return batch
+
+    def _force_all_inserts(
+        self,
+        entities: List[BaseEntity],
+        sync_context: "SyncContext",
+    ) -> ActionBatch:
+        """Force all entities as INSERT actions (skip hash comparison).
+
+        Used for ARF replay or when execution_config.skip_hash_comparison is True.
+
+        Args:
+            entities: Entities to process
+            sync_context: Sync context
+
+        Returns:
+            ActionBatch with all entities as inserts
+        """
+        inserts: List[InsertAction] = []
+        deletes: List[DeleteAction] = []
+
+        for entity in entities:
+            if isinstance(entity, DeletionEntity):
+                deletes.append(self._create_delete_action(entity, {}, sync_context))
+            else:
+                entity_definition_id = self.resolve_entity_definition_id(entity)
+                if not entity_definition_id:
+                    raise SyncFailureError(
+                        f"Entity type {entity.__class__.__name__} not in entity_map"
+                    )
+                inserts.append(InsertAction(entity=entity, entity_definition_id=entity_definition_id))
+
+        return ActionBatch(
+            inserts=inserts,
+            updates=[],
+            keeps=[],
+            deletes=deletes,
+            existing_map={},
+        )
 
     def resolve_entity_definition_id(self, entity: BaseEntity) -> Optional[UUID]:
         """Resolve entity definition ID with polymorphic fallback.

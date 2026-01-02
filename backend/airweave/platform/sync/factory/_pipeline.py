@@ -37,6 +37,7 @@ class PipelineBuilder:
             destinations=sync_context.destinations,
             logger=sync_context.logger,
             include_raw_data_handler=include_raw_data_handler,
+            sync_context=sync_context,
         )
 
         action_dispatcher = ActionDispatcher(handlers=handlers)
@@ -78,9 +79,16 @@ class PipelineBuilder:
         destinations: list[BaseDestination],
         logger,
         include_raw_data_handler: bool = True,
+        sync_context: SyncContext = None,
     ) -> list[ActionHandler]:
-        """Create handlers based on destination requirements."""
+        """Create handlers based on destination requirements and execution config."""
         handlers: list[ActionHandler] = []
+
+        # Check execution config for handler toggles
+        config = sync_context.execution_config if sync_context else None
+        enable_vector = config is None or config.enable_vector_handlers
+        enable_raw = config is None or config.enable_raw_data_handler
+        enable_postgres = config is None or config.enable_postgres_handler
 
         vector_db_destinations: list[BaseDestination] = []
         self_processing_destinations: list[BaseDestination] = []
@@ -99,7 +107,8 @@ class PipelineBuilder:
                     )
                 vector_db_destinations.append(dest)
 
-        if vector_db_destinations:
+        # Only add VectorDBHandler if enabled
+        if vector_db_destinations and enable_vector:
             vector_handler = VectorDBHandler(destinations=vector_db_destinations)
             handlers.append(vector_handler)
             if logger:
@@ -107,11 +116,25 @@ class PipelineBuilder:
                     f"Created VectorDBHandler for {len(vector_db_destinations)} destination(s): "
                     f"{[d.__class__.__name__ for d in vector_db_destinations]}"
                 )
+        elif vector_db_destinations and not enable_vector:
+            if logger:
+                logger.info(
+                    f"Skipping VectorDBHandler (disabled by execution_config) for "
+                    f"{len(vector_db_destinations)} destination(s)"
+                )
 
-        if include_raw_data_handler:
+        # Only add RawDataHandler if enabled
+        if include_raw_data_handler and enable_raw:
             handlers.append(RawDataHandler())
+        elif include_raw_data_handler and not enable_raw:
+            if logger:
+                logger.info("Skipping RawDataHandler (disabled by execution_config)")
 
-        handlers.append(PostgresMetadataHandler())
+        # Only add PostgresMetadataHandler if enabled
+        if enable_postgres:
+            handlers.append(PostgresMetadataHandler())
+        elif logger:
+            logger.info("Skipping PostgresMetadataHandler (disabled by execution_config)")
 
         if not handlers and logger:
             logger.warning("No destination handlers created - sync has no valid destinations")

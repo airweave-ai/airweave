@@ -293,10 +293,10 @@ class SyncMultiplexer:
         self,
         sync_id: UUID,
     ) -> schemas.SyncJob:
-        """Trigger full sync from source to refresh ARF.
+        """Trigger ARF-only sync from source to refresh ARF store.
 
         Ensures ARF is up-to-date before forking to a new destination.
-        Uses force_full_sync=True to bypass cursor and get all entities.
+        Uses ARF-only execution config to skip vector DB writes and hash updates.
 
         Args:
             sync_id: Sync ID
@@ -305,6 +305,7 @@ class SyncMultiplexer:
             SyncJob for tracking progress
         """
         from airweave.core import source_connection_service
+        from airweave.platform.sync.config import SyncExecutionConfig
 
         # 1. Validate sync exists
         sync = await crud.sync.get(self.db, id=sync_id, ctx=self.ctx, with_connections=False)
@@ -320,17 +321,25 @@ class SyncMultiplexer:
                 status_code=404, detail=f"No source connection found for sync {sync_id}"
             )
 
+        # 3. Create ARF-only execution config
+        config = SyncExecutionConfig.arf_capture_only()
+
         self.logger.info(
-            "Triggering full resync from source for ARF refresh",
-            extra={"sync_id": str(sync_id), "source_connection_id": str(source_conn.id)},
+            "Triggering ARF-only resync from source (no vector DB writes)",
+            extra={
+                "sync_id": str(sync_id),
+                "source_connection_id": str(source_conn.id),
+                "execution_config": config.model_dump(),
+            },
         )
 
-        # 3. Trigger via existing service (force_full_sync=True)
+        # 4. Trigger via existing service with ARF-only config
         job = await source_connection_service.run(
             self.db,
             id=source_conn.id,
             ctx=self.ctx,
             force_full_sync=True,
+            execution_config=config.model_dump(),
         )
 
         # Convert SourceConnectionJob to SyncJob

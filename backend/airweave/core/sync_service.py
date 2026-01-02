@@ -1,6 +1,6 @@
 """Refactored sync service with Temporal-only execution."""
 
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -15,6 +15,7 @@ from airweave.db.session import get_db_context
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models.sync import Sync
 from airweave.models.sync_job import SyncJob
+from airweave.platform.sync.config import SyncExecutionConfig
 from airweave.platform.sync.factory import SyncFactory
 from airweave.platform.temporal.schedule_service import temporal_schedule_service
 
@@ -100,6 +101,7 @@ class SyncService:
         ctx: ApiContext,
         access_token: Optional[str] = None,
         force_full_sync: bool = False,
+        execution_config: Optional[SyncExecutionConfig] = None,
     ) -> schemas.Sync:
         """Run a sync.
 
@@ -113,6 +115,8 @@ class SyncService:
             access_token (Optional[str]): Optional access token to use
                 instead of stored credentials.
             force_full_sync (bool): If True, forces a full sync with orphaned entity deletion.
+            execution_config (Optional[SyncExecutionConfig]): Optional execution config
+                for controlling sync behavior (destination filtering, handler toggles, etc.)
 
         Returns:
         -------
@@ -130,6 +134,7 @@ class SyncService:
                     ctx=ctx,
                     access_token=access_token,
                     force_full_sync=force_full_sync,
+                    execution_config=execution_config,
                 )
         except Exception as e:
             ctx.logger.error(f"Error during sync orchestrator creation: {e}")
@@ -151,6 +156,7 @@ class SyncService:
         db: AsyncSession,
         sync_id: UUID,
         ctx: ApiContext,
+        execution_config: Optional[Dict[str, Any]] = None,
     ) -> Tuple[schemas.Sync, schemas.SyncJob]:
         """Trigger a manual sync run.
 
@@ -158,6 +164,7 @@ class SyncService:
             db: Database session
             sync_id: Sync ID to run
             ctx: API context
+            execution_config: Optional execution config dict to persist in DB
 
         Returns:
             Tuple of (sync, sync_job) schemas
@@ -192,7 +199,9 @@ class SyncService:
 
         # Create sync job
         async with UnitOfWork(db) as uow:
-            sync_job = await self._create_sync_job(uow.session, sync_id, ctx, uow)
+            sync_job = await self._create_sync_job(
+                uow.session, sync_id, ctx, uow, execution_config
+            )
 
             await uow.commit()
             await uow.session.refresh(sync_job)
@@ -206,11 +215,13 @@ class SyncService:
         sync_id: UUID,
         ctx: ApiContext,
         uow: UnitOfWork,
+        execution_config: Optional[Dict[str, Any]] = None,
     ) -> SyncJob:
         """Create a sync job record."""
         sync_job_in = schemas.SyncJobCreate(
             sync_id=sync_id,
             status=SyncJobStatus.PENDING,
+            execution_config_json=execution_config,
         )
 
         return await crud.sync_job.create(db, obj_in=sync_job_in, ctx=ctx, uow=uow)

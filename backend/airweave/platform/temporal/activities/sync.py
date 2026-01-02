@@ -21,8 +21,24 @@ async def _run_sync_task(
     force_full_sync=False,
 ):
     """Run the actual sync service."""
+    from airweave import crud
     from airweave.core.exceptions import NotFoundException
     from airweave.core.sync_service import sync_service
+    from airweave.db.session import get_db_context
+    from airweave.platform.sync.config import SyncExecutionConfig
+
+    # Refetch sync_job from DB to get execution_config_json
+    execution_config = None
+    try:
+        async with get_db_context() as db:
+            sync_job_model = await crud.sync_job.get(db, id=sync_job.id)
+            if sync_job_model and sync_job_model.execution_config_json:
+                execution_config = SyncExecutionConfig(**sync_job_model.execution_config_json)
+                ctx.logger.info(
+                    f"Loaded execution config from DB: {sync_job_model.execution_config_json}"
+                )
+    except Exception as e:
+        ctx.logger.warning(f"Failed to load execution config from DB: {e}")
 
     try:
         return await sync_service.run(
@@ -33,6 +49,7 @@ async def _run_sync_task(
             ctx=ctx,
             access_token=access_token,
             force_full_sync=force_full_sync,
+            execution_config=execution_config,
         )
     except NotFoundException as e:
         # Check if this is the specific "Source connection record not found" error
