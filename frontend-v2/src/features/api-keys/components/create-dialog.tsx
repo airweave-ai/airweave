@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { createApiKey } from "@/lib/api";
 import { useAuth0 } from "@/lib/auth-provider";
+import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 
 import { EXPIRATION_PRESETS } from "../utils/helpers";
@@ -21,11 +22,13 @@ import { EXPIRATION_PRESETS } from "../utils/helpers";
 interface CreateApiKeyDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  orgId: string;
 }
 
 export function CreateApiKeyDialog({
   open,
   onOpenChange,
+  orgId,
 }: CreateApiKeyDialogProps) {
   const { getAccessTokenSilently } = useAuth0();
   const queryClient = useQueryClient();
@@ -42,10 +45,10 @@ export function CreateApiKeyDialog({
   const createMutation = useMutation({
     mutationFn: async (expirationDays: number) => {
       const token = await getAccessTokenSilently();
-      return createApiKey(token, expirationDays);
+      return createApiKey(token, orgId, expirationDays);
     },
     onSuccess: (newKey) => {
-      queryClient.invalidateQueries({ queryKey: ["api-keys", "list"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.apiKeys.list(orgId) });
       onOpenChange(false);
       createForm.reset();
 

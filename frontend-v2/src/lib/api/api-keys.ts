@@ -24,13 +24,14 @@ export interface APIKey {
  */
 export async function fetchApiKeys(
   token: string,
+  orgId: string,
   skip = 0,
   limit = 20
 ): Promise<APIKey[]> {
   const response = await fetch(
     `${API_BASE_URL}/api-keys?skip=${skip}&limit=${limit}`,
     {
-      headers: getAuthHeaders(token),
+      headers: getAuthHeaders(token, orgId),
     }
   );
 
@@ -46,11 +47,12 @@ export async function fetchApiKeys(
  */
 export async function deleteApiKey(
   token: string,
+  orgId: string,
   keyId: string
 ): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/api-keys?id=${keyId}`, {
     method: "DELETE",
-    headers: { Authorization: `Bearer ${token}` },
+    headers: getAuthHeaders(token, orgId),
   });
 
   if (!response.ok) {
@@ -63,11 +65,12 @@ export async function deleteApiKey(
  */
 export async function createApiKey(
   token: string,
+  orgId: string,
   expirationDays?: number
 ): Promise<APIKey> {
   const response = await fetch(`${API_BASE_URL}/api-keys`, {
     method: "POST",
-    headers: getAuthHeaders(token),
+    headers: getAuthHeaders(token, orgId),
     body: JSON.stringify(
       expirationDays ? { expiration_days: expirationDays } : {}
     ),

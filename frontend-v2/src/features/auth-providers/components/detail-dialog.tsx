@@ -39,6 +39,7 @@ import {
   type AuthProviderConnection,
 } from "@/lib/api";
 import { useAuth0 } from "@/lib/auth-provider";
+import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 import { useIsDark } from "@/hooks/use-is-dark";
 
@@ -50,6 +51,7 @@ interface DetailDialogProps {
   authProvider: AuthProvider | null;
   connection: AuthProviderConnection | null;
   onEdit?: () => void;
+  orgId: string;
 }
 
 export function DetailDialog({
@@ -58,6 +60,7 @@ export function DetailDialog({
   authProvider,
   connection,
   onEdit,
+  orgId,
 }: DetailDialogProps) {
   const { getAccessTokenSilently } = useAuth0();
   const queryClient = useQueryClient();
@@ -70,11 +73,11 @@ export function DetailDialog({
 
   // Fetch connection details
   const { data: connectionDetails, isLoading } = useQuery({
-    queryKey: ["auth-provider-connection", connection?.readable_id],
+    queryKey: queryKeys.authProviders.connection(orgId, connection?.readable_id ?? ""),
     queryFn: async () => {
       if (!connection?.readable_id) return null;
       const token = await getAccessTokenSilently();
-      return fetchAuthProviderConnection(token, connection.readable_id);
+      return fetchAuthProviderConnection(token, orgId, connection.readable_id);
     },
     enabled: open && !!connection?.readable_id,
   });
@@ -84,11 +87,11 @@ export function DetailDialog({
     mutationFn: async () => {
       if (!connection?.readable_id) return;
       const token = await getAccessTokenSilently();
-      return deleteAuthProviderConnection(token, connection.readable_id);
+      return deleteAuthProviderConnection(token, orgId, connection.readable_id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["auth-provider-connections"],
+        queryKey: queryKeys.authProviders.connections(orgId),
       });
       toast.success("Auth provider connection deleted successfully");
       setShowDeleteDialog(false);

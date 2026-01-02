@@ -17,6 +17,7 @@ import {
 import { fetchOrganizations, type Organization } from "./api/organizations";
 import { useAuth0 } from "./auth-provider";
 import { findOrgBySlug, generateOrgSlug, getPrimaryOrg } from "./org-utils";
+import { queryKeys } from "./query-keys";
 
 interface OrgContextValue {
   /** Current organization based on URL */
@@ -53,7 +54,7 @@ export function OrgProvider({ children }: OrgProviderProps) {
     isLoading,
     error,
   } = useQuery({
-    queryKey: ["organizations"],
+    queryKey: queryKeys.organizations.all,
     queryFn: async () => {
       const token = await getAccessTokenSilently();
       return fetchOrganizations(token);

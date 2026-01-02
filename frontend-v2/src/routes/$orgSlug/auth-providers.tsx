@@ -25,6 +25,8 @@ import {
   type AuthProviderConnection,
 } from "@/lib/api";
 import { useAuth0 } from "@/lib/auth-provider";
+import { useOrg } from "@/lib/org-context";
+import { queryKeys } from "@/lib/query-keys";
 
 export const Route = createFileRoute("/$orgSlug/auth-providers")({
   component: AuthProvidersPage,
@@ -34,6 +36,13 @@ type DialogMode = "configure" | "detail" | "edit" | null;
 
 function AuthProvidersPage() {
   const { getAccessTokenSilently } = useAuth0();
+  const { organization } = useOrg();
+
+  // Organization is guaranteed to be available (layout shows loading state)
+  if (!organization) {
+    throw new Error("Organization context is required but not available");
+  }
+  const orgId = organization.id;
 
   // Dialog state
   const [dialogMode, setDialogMode] = useState<DialogMode>(null);
@@ -60,10 +69,10 @@ function AuthProvidersPage() {
     isLoading: isLoadingProviders,
     error: providersError,
   } = useQuery({
-    queryKey: ["auth-providers"],
+    queryKey: queryKeys.authProviders.list(orgId),
     queryFn: async () => {
       const token = await getAccessTokenSilently();
-      return fetchAuthProviders(token);
+      return fetchAuthProviders(token, orgId);
     },
   });
 
@@ -73,10 +82,10 @@ function AuthProvidersPage() {
     isLoading: isLoadingConnections,
     error: connectionsError,
   } = useQuery({
-    queryKey: ["auth-provider-connections"],
+    queryKey: queryKeys.authProviders.connections(orgId),
     queryFn: async () => {
       const token = await getAccessTokenSilently();
-      return fetchAuthProviderConnections(token);
+      return fetchAuthProviderConnections(token, orgId);
     },
   });
 
@@ -214,6 +223,7 @@ function AuthProvidersPage() {
         }}
         authProvider={selectedProvider}
         onSuccess={handleConfigureSuccess}
+        orgId={orgId}
       />
 
       {/* Detail Dialog */}
@@ -225,6 +235,7 @@ function AuthProvidersPage() {
         authProvider={selectedProvider}
         connection={selectedConnection}
         onEdit={handleEdit}
+        orgId={orgId}
       />
 
       {/* Edit Dialog */}
@@ -239,6 +250,7 @@ function AuthProvidersPage() {
         authProvider={selectedProvider}
         connection={selectedConnection}
         onSuccess={handleEditSuccess}
+        orgId={orgId}
       />
     </div>
   );

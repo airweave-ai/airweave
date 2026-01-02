@@ -7,11 +7,17 @@ export const API_BASE_URL =
 
 /**
  * Common request headers for authenticated API calls
+ * @param token - Auth0 access token
+ * @param organizationId - Optional organization ID to scope the request
  */
-export function getAuthHeaders(token: string): HeadersInit {
+export function getAuthHeaders(
+  token: string,
+  organizationId?: string
+): HeadersInit {
   return {
     "Content-Type": "application/json",
     Authorization: `Bearer ${token}`,
+    ...(organizationId && { "X-Organization-ID": organizationId }),
   };
 }
 

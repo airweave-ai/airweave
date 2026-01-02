@@ -22,6 +22,7 @@ import {
   type AuthProviderConnection,
 } from "@/lib/api";
 import { useAuth0 } from "@/lib/auth-provider";
+import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 import { useIsDark } from "@/hooks/use-is-dark";
 
@@ -33,6 +34,7 @@ interface EditDialogProps {
   authProvider: AuthProvider | null;
   connection: AuthProviderConnection | null;
   onSuccess?: () => void;
+  orgId: string;
 }
 
 export function EditDialog({
@@ -41,6 +43,7 @@ export function EditDialog({
   authProvider,
   connection,
   onSuccess,
+  orgId,
 }: EditDialogProps) {
   const { getAccessTokenSilently } = useAuth0();
   const queryClient = useQueryClient();
@@ -48,22 +51,22 @@ export function EditDialog({
 
   // Fetch connection details
   const { data: connectionDetails, isLoading: isLoadingConnection } = useQuery({
-    queryKey: ["auth-provider-connection-edit", connection?.readable_id],
+    queryKey: queryKeys.authProviders.connection(orgId, connection?.readable_id ?? ""),
     queryFn: async () => {
       if (!connection?.readable_id) return null;
       const token = await getAccessTokenSilently();
-      return fetchAuthProviderConnection(token, connection.readable_id);
+      return fetchAuthProviderConnection(token, orgId, connection.readable_id);
     },
     enabled: open && !!connection?.readable_id,
   });
 
   // Fetch auth provider details for auth fields
   const { data: providerDetails, isLoading: isLoadingProvider } = useQuery({
-    queryKey: ["auth-provider-detail-edit", authProvider?.short_name],
+    queryKey: queryKeys.authProviders.detail(orgId, authProvider?.short_name ?? ""),
     queryFn: async () => {
       if (!authProvider?.short_name) return null;
       const token = await getAccessTokenSilently();
-      return fetchAuthProviderDetail(token, authProvider.short_name);
+      return fetchAuthProviderDetail(token, orgId, authProvider.short_name);
     },
     enabled: open && !!authProvider?.short_name,
   });
@@ -127,6 +130,7 @@ export function EditDialog({
 
       return updateAuthProviderConnection(
         token,
+        orgId,
         connection.readable_id,
         updateData
       );
@@ -139,10 +143,10 @@ export function EditDialog({
       }
 
       queryClient.invalidateQueries({
-        queryKey: ["auth-provider-connections"],
+        queryKey: queryKeys.authProviders.connections(orgId),
       });
       queryClient.invalidateQueries({
-        queryKey: ["auth-provider-connection", connection?.readable_id],
+        queryKey: queryKeys.authProviders.connection(orgId, connection?.readable_id ?? ""),
       });
       toast.success(`Successfully updated ${authProvider?.name} connection`);
       onOpenChange(false);

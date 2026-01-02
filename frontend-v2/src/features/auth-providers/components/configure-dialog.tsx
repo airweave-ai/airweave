@@ -21,6 +21,7 @@ import {
   type AuthProvider,
 } from "@/lib/api";
 import { useAuth0 } from "@/lib/auth-provider";
+import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 
 import {
@@ -34,6 +35,7 @@ interface ConfigureDialogProps {
   onOpenChange: (open: boolean) => void;
   authProvider: AuthProvider | null;
   onSuccess?: (connectionId: string) => void;
+  orgId: string;
 }
 
 export function ConfigureDialog({
@@ -41,6 +43,7 @@ export function ConfigureDialog({
   onOpenChange,
   authProvider,
   onSuccess,
+  orgId,
 }: ConfigureDialogProps) {
   const { getAccessTokenSilently } = useAuth0();
   const queryClient = useQueryClient();
@@ -61,11 +64,11 @@ export function ConfigureDialog({
 
   // Fetch auth provider details for auth fields
   const { data: providerDetails, isLoading: isLoadingDetails } = useQuery({
-    queryKey: ["auth-provider-detail", authProvider?.short_name],
+    queryKey: queryKeys.authProviders.detail(orgId, authProvider?.short_name ?? ""),
     queryFn: async () => {
       if (!authProvider?.short_name) return null;
       const token = await getAccessTokenSilently();
-      return fetchAuthProviderDetail(token, authProvider.short_name);
+      return fetchAuthProviderDetail(token, orgId, authProvider.short_name);
     },
     enabled: open && !!authProvider?.short_name,
   });
@@ -90,7 +93,7 @@ export function ConfigureDialog({
       authFields: Record<string, string>;
     }) => {
       const token = await getAccessTokenSilently();
-      return createAuthProviderConnection(token, {
+      return createAuthProviderConnection(token, orgId, {
         name: values.name,
         readable_id: values.readableId,
         short_name: authProvider?.short_name || "",
@@ -99,7 +102,7 @@ export function ConfigureDialog({
     },
     onSuccess: (connection) => {
       queryClient.invalidateQueries({
-        queryKey: ["auth-provider-connections"],
+        queryKey: queryKeys.authProviders.connections(orgId),
       });
       toast.success(`Successfully connected to ${authProvider?.name}`, {
         description: "Your connection is now active and ready to use.",

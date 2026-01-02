@@ -19,6 +19,7 @@ import { themeOptions } from "@/config/theme";
 import { fetchOrganizations, type Organization } from "@/lib/api/organizations";
 import { getRedirectUrl, useAuth0 } from "@/lib/auth-provider";
 import { findOrgBySlug, generateOrgSlug } from "@/lib/org-utils";
+import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 import { useUISettings } from "@/stores/ui-settings";
 
@@ -52,7 +53,7 @@ export function UserAccountDropdown({
 
   // Fetch organizations
   const { data: organizations = [] } = useQuery({
-    queryKey: ["organizations"],
+    queryKey: queryKeys.organizations.all,
     queryFn: async () => {
       const token = await getAccessTokenSilently();
       return fetchOrganizations(token);

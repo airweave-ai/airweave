@@ -79,10 +79,11 @@ export interface UpdateAuthProviderConnectionRequest {
  * Fetch all available auth providers
  */
 export async function fetchAuthProviders(
-  token: string
+  token: string,
+  orgId: string
 ): Promise<AuthProvider[]> {
   const response = await fetch(`${API_BASE_URL}/auth-providers/list`, {
-    headers: getAuthHeaders(token),
+    headers: getAuthHeaders(token, orgId),
   });
 
   if (!response.ok) {
@@ -96,10 +97,11 @@ export async function fetchAuthProviders(
  * Fetch all auth provider connections for the current organization
  */
 export async function fetchAuthProviderConnections(
-  token: string
+  token: string,
+  orgId: string
 ): Promise<AuthProviderConnection[]> {
   const response = await fetch(`${API_BASE_URL}/auth-providers/connections/`, {
-    headers: getAuthHeaders(token),
+    headers: getAuthHeaders(token, orgId),
   });
 
   if (!response.ok) {
@@ -116,12 +118,13 @@ export async function fetchAuthProviderConnections(
  */
 export async function fetchAuthProviderDetail(
   token: string,
+  orgId: string,
   shortName: string
 ): Promise<AuthProvider> {
   const response = await fetch(
     `${API_BASE_URL}/auth-providers/detail/${shortName}`,
     {
-      headers: getAuthHeaders(token),
+      headers: getAuthHeaders(token, orgId),
     }
   );
 
@@ -139,12 +142,13 @@ export async function fetchAuthProviderDetail(
  */
 export async function fetchAuthProviderConnection(
   token: string,
+  orgId: string,
   readableId: string
 ): Promise<AuthProviderConnection> {
   const response = await fetch(
     `${API_BASE_URL}/auth-providers/connections/${readableId}`,
     {
-      headers: getAuthHeaders(token),
+      headers: getAuthHeaders(token, orgId),
     }
   );
 
@@ -162,11 +166,12 @@ export async function fetchAuthProviderConnection(
  */
 export async function createAuthProviderConnection(
   token: string,
+  orgId: string,
   data: CreateAuthProviderConnectionRequest
 ): Promise<AuthProviderConnection> {
   const response = await fetch(`${API_BASE_URL}/auth-providers/`, {
     method: "POST",
-    headers: getAuthHeaders(token),
+    headers: getAuthHeaders(token, orgId),
     body: JSON.stringify(data),
   });
 
@@ -186,12 +191,13 @@ export async function createAuthProviderConnection(
  */
 export async function updateAuthProviderConnection(
   token: string,
+  orgId: string,
   readableId: string,
   data: UpdateAuthProviderConnectionRequest
 ): Promise<AuthProviderConnection> {
   const response = await fetch(`${API_BASE_URL}/auth-providers/${readableId}`, {
     method: "PUT",
-    headers: getAuthHeaders(token),
+    headers: getAuthHeaders(token, orgId),
     body: JSON.stringify(data),
   });
 
@@ -211,11 +217,12 @@ export async function updateAuthProviderConnection(
  */
 export async function deleteAuthProviderConnection(
   token: string,
+  orgId: string,
   readableId: string
 ): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/auth-providers/${readableId}`, {
     method: "DELETE",
-    headers: { Authorization: `Bearer ${token}` },
+    headers: getAuthHeaders(token, orgId),
   });
 
   if (!response.ok) {

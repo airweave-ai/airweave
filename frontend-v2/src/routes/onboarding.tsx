@@ -31,6 +31,7 @@ import {
 } from "@/lib/api/organizations";
 import { useAuth0 } from "@/lib/auth-provider";
 import { generateOrgSlug } from "@/lib/org-utils";
+import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/onboarding")({
@@ -52,7 +53,7 @@ function OnboardingPage() {
 
   // Check if user already has organizations
   const { data: organizations = [] } = useQuery({
-    queryKey: ["organizations"],
+    queryKey: queryKeys.organizations.all,
     queryFn: async () => {
       const token = await getAccessTokenSilently();
       return fetchOrganizations(token);

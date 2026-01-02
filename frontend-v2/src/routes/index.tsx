@@ -9,6 +9,7 @@ import { useEffect } from "react";
 import { fetchOrganizations } from "@/lib/api/organizations";
 import { useAuth0 } from "@/lib/auth-provider";
 import { generateOrgSlug, getPrimaryOrg } from "@/lib/org-utils";
+import { queryKeys } from "@/lib/query-keys";
 
 export const Route = createFileRoute("/")({
   component: RootRedirect,
@@ -19,7 +20,7 @@ function RootRedirect() {
   const navigate = useNavigate();
 
   const { data: organizations, isLoading } = useQuery({
-    queryKey: ["organizations"],
+    queryKey: queryKeys.organizations.all,
     queryFn: async () => {
       const token = await getAccessTokenSilently();
       return fetchOrganizations(token);

@@ -1,15 +1,9 @@
 import { useIsRestoring, useQueryClient } from "@tanstack/react-query";
 import { ReactNode, useEffect, useRef, useState } from "react";
 
-import {
-  fetchApiKeys,
-  fetchAuthProviderConnections,
-  fetchAuthProviders,
-  type APIKey,
-} from "./api";
+import { fetchOrganizations } from "./api/organizations";
 import { useAuth0 } from "./auth-provider";
-
-const API_KEYS_PAGE_SIZE = 20;
+import { queryKeys } from "./query-keys";
 
 interface DataPreloaderProps {
   children: ReactNode;
@@ -23,6 +17,11 @@ const LOADING_TIMEOUT_MS = 10_000;
 
 /**
  * Preloads commonly needed data after authentication.
+ *
+ * This preloader handles user-level data (like organizations) that doesn't
+ * require org context. Org-scoped data (api-keys, auth-providers, etc.) is
+ * fetched by org-scoped routes with proper org context.
+ *
  * Waits for IndexedDB cache restoration, then:
  * - If data is cached: renders immediately (instant load)
  * - If no cache: shows loading while fetching essential data
@@ -40,14 +39,9 @@ export function DataPreloader({ children }: DataPreloaderProps) {
   const isRestoring = useIsRestoring();
 
   // Check if we have cached data (only valid after restoration completes)
-  const hasApiKeysCache =
+  const hasOrganizationsCache =
     !isRestoring &&
-    queryClient.getQueryData(["api-keys", "list"]) !== undefined;
-  const hasAuthProvidersCache =
-    !isRestoring && queryClient.getQueryData(["auth-providers"]) !== undefined;
-  const hasAuthProviderConnectionsCache =
-    !isRestoring &&
-    queryClient.getQueryData(["auth-provider-connections"]) !== undefined;
+    queryClient.getQueryData(queryKeys.organizations.all) !== undefined;
 
   // Delay showing the loading indicator to prevent flash
   const isLoading = (isRestoring || isFetching) && !timedOut;
@@ -84,33 +78,12 @@ export function DataPreloader({ children }: DataPreloaderProps) {
     if (hasStartedPreloading.current) return;
     hasStartedPreloading.current = true;
 
-    // If we already have all caches, just do a background refresh (non-blocking)
-    const hasAllCaches =
-      hasApiKeysCache &&
-      hasAuthProvidersCache &&
-      hasAuthProviderConnectionsCache;
-    if (hasAllCaches) {
+    // If we already have cache, just do a background refresh (non-blocking)
+    if (hasOrganizationsCache) {
       getAccessTokenSilently().then((token) => {
-        queryClient.prefetchInfiniteQuery({
-          queryKey: ["api-keys", "list"],
-          queryFn: ({ pageParam = 0 }) =>
-            fetchApiKeys(token, pageParam, API_KEYS_PAGE_SIZE),
-          initialPageParam: 0,
-          getNextPageParam: (lastPage: APIKey[], allPages: APIKey[][]) => {
-            if (!lastPage || lastPage.length < API_KEYS_PAGE_SIZE)
-              return undefined;
-            return allPages.flat().length;
-          },
-          staleTime: 1000 * 60 * 5,
-        });
         queryClient.prefetchQuery({
-          queryKey: ["auth-providers"],
-          queryFn: () => fetchAuthProviders(token),
-          staleTime: 1000 * 60 * 5,
-        });
-        queryClient.prefetchQuery({
-          queryKey: ["auth-provider-connections"],
-          queryFn: () => fetchAuthProviderConnections(token),
+          queryKey: queryKeys.organizations.all,
+          queryFn: () => fetchOrganizations(token),
           staleTime: 1000 * 60 * 5,
         });
       });
@@ -123,30 +96,11 @@ export function DataPreloader({ children }: DataPreloaderProps) {
       try {
         const token = await getAccessTokenSilently();
 
-        await Promise.all([
-          queryClient.prefetchInfiniteQuery({
-            queryKey: ["api-keys", "list"],
-            queryFn: ({ pageParam = 0 }) =>
-              fetchApiKeys(token, pageParam, API_KEYS_PAGE_SIZE),
-            initialPageParam: 0,
-            getNextPageParam: (lastPage: APIKey[], allPages: APIKey[][]) => {
-              if (!lastPage || lastPage.length < API_KEYS_PAGE_SIZE)
-                return undefined;
-              return allPages.flat().length;
-            },
-            staleTime: 1000 * 60 * 5,
-          }),
-          queryClient.prefetchQuery({
-            queryKey: ["auth-providers"],
-            queryFn: () => fetchAuthProviders(token),
-            staleTime: 1000 * 60 * 5,
-          }),
-          queryClient.prefetchQuery({
-            queryKey: ["auth-provider-connections"],
-            queryFn: () => fetchAuthProviderConnections(token),
-            staleTime: 1000 * 60 * 5,
-          }),
-        ]);
+        await queryClient.prefetchQuery({
+          queryKey: queryKeys.organizations.all,
+          queryFn: () => fetchOrganizations(token),
+          staleTime: 1000 * 60 * 5,
+        });
       } catch (error) {
         console.debug("Data preloading failed:", error);
       } finally {
@@ -155,14 +109,7 @@ export function DataPreloader({ children }: DataPreloaderProps) {
     };
 
     prefetchData();
-  }, [
-    queryClient,
-    getAccessTokenSilently,
-    isRestoring,
-    hasApiKeysCache,
-    hasAuthProvidersCache,
-    hasAuthProviderConnectionsCache,
-  ]);
+  }, [queryClient, getAccessTokenSilently, isRestoring, hasOrganizationsCache]);
 
   // Show loading only after delay (prevents flash for fast loads)
   if (showLoading) {

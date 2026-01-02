@@ -17,6 +17,8 @@ import { useRightSidebarContent } from "@/components/ui/right-sidebar";
 import { useCommandMenu } from "@/hooks/use-command-menu";
 import { deleteApiKey, fetchApiKeys, type APIKey } from "@/lib/api";
 import { useAuth0 } from "@/lib/auth-provider";
+import { useOrg } from "@/lib/org-context";
+import { queryKeys } from "@/lib/query-keys";
 
 import {
   ApiKeysCode,
@@ -36,10 +38,17 @@ const PAGE_SIZE = 20;
 
 function ApiKeysPage() {
   const { getAccessTokenSilently } = useAuth0();
+  const { organization } = useOrg();
   const queryClient = useQueryClient();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [selectedKey, setSelectedKey] = useState<APIKey | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+
+  // Organization is guaranteed to be available (layout shows loading state)
+  if (!organization) {
+    throw new Error("Organization context is required but not available");
+  }
+  const orgId = organization.id;
 
   const handleOpenCreateDialog = () => {
     setCreateDialogOpen(true);
@@ -70,10 +79,10 @@ function ApiKeysPage() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ["api-keys", "list"],
+    queryKey: queryKeys.apiKeys.list(orgId),
     queryFn: async ({ pageParam = 0 }) => {
       const token = await getAccessTokenSilently();
-      return fetchApiKeys(token, pageParam, PAGE_SIZE);
+      return fetchApiKeys(token, orgId, pageParam, PAGE_SIZE);
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {
@@ -93,21 +102,23 @@ function ApiKeysPage() {
   const deleteMutation = useMutation({
     mutationFn: async (keyIds: string[]) => {
       const token = await getAccessTokenSilently();
-      await Promise.all(keyIds.map((id) => deleteApiKey(token, id)));
+      await Promise.all(keyIds.map((id) => deleteApiKey(token, orgId, id)));
     },
     onMutate: async (keyIds) => {
+      const listKey = queryKeys.apiKeys.list(orgId);
+
       // Cancel any outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ["api-keys", "list"] });
+      await queryClient.cancelQueries({ queryKey: listKey });
 
       // Snapshot the previous value
-      const previousData = queryClient.getQueryData(["api-keys", "list"]);
+      const previousData = queryClient.getQueryData(listKey);
 
       // Create a Set for faster lookup
       const keyIdsSet = new Set(keyIds);
 
       // Optimistically update to remove the keys from all pages
       queryClient.setQueryData(
-        ["api-keys", "list"],
+        listKey,
         (old: { pages: APIKey[][]; pageParams: number[] } | undefined) => {
           if (!old) return old;
           return {
@@ -124,7 +135,10 @@ function ApiKeysPage() {
     onError: (_err, _keyIds, context) => {
       // If the mutation fails, use the context returned from onMutate to roll back
       if (context?.previousData) {
-        queryClient.setQueryData(["api-keys", "list"], context.previousData);
+        queryClient.setQueryData(
+          queryKeys.apiKeys.list(orgId),
+          context.previousData
+        );
       }
     },
     onSuccess: (_data, keyIds) => {
@@ -135,7 +149,9 @@ function ApiKeysPage() {
     },
     onSettled: () => {
       // Always refetch after error or success to ensure sync with server
-      queryClient.invalidateQueries({ queryKey: ["api-keys", "list"] });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.apiKeys.list(orgId),
+      });
     },
   });
 
@@ -222,6 +238,7 @@ function ApiKeysPage() {
         <CreateApiKeyDialog
           open={createDialogOpen}
           onOpenChange={setCreateDialogOpen}
+          orgId={orgId}
         />
       </div>
     );
@@ -261,6 +278,7 @@ function ApiKeysPage() {
       <CreateApiKeyDialog
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
+        orgId={orgId}
       />
     </div>
   );
