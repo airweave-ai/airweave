@@ -106,7 +106,6 @@ class ContextBuilder:
             sync_job=sync_job,
             collection=collection,
             connection=None,
-            source_connection_id=source_connection_data.get("source_connection_id"),
             entity_tracker=entity_tracker,
             state_publisher=state_publisher,
             cursor=cursor,

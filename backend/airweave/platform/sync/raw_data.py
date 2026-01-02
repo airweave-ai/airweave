@@ -51,7 +51,6 @@ class SyncManifest(BaseModel):
 
     sync_id: str
     source_short_name: str
-    source_connection_id: Optional[str] = None
     collection_id: str
     collection_readable_id: str
     organization_id: str
@@ -451,7 +450,6 @@ class RawDataService:
             manifest = SyncManifest(
                 sync_id=sync_id,
                 source_short_name=self._get_source_short_name(sync_context),
-                source_connection_id=str(sync_context.source_connection_id) if sync_context.source_connection_id else None,
                 collection_id=str(sync_context.collection.id),
                 collection_readable_id=sync_context.collection.readable_id,
                 organization_id=str(sync_context.collection.organization_id),

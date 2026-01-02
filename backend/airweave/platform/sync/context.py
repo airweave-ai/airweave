@@ -48,7 +48,6 @@ class SyncContext:
     cursor: SyncCursor
     collection: schemas.Collection
     connection: schemas.Connection
-    source_connection_id: Optional[UUID] = None
     entity_map: dict[type[BaseEntity], UUID]
     ctx: ApiContext
     guard_rail: GuardRailService
@@ -80,7 +79,6 @@ class SyncContext:
         ctx: ApiContext,
         guard_rail: GuardRailService,
         logger: ContextualLogger,
-        source_connection_id: Optional[UUID] = None,
         force_full_sync: bool = False,
         # Micro-batching controls
         should_batch: bool = True,
@@ -99,7 +97,6 @@ class SyncContext:
         self.cursor = cursor
         self.collection = collection
         self.connection = connection
-        self.source_connection_id = source_connection_id
         self.entity_map = entity_map
         self.ctx = ctx
         self.guard_rail = guard_rail
