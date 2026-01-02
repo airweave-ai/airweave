@@ -35,6 +35,9 @@ class SyncExecutionConfig(BaseModel):
     skip_hash_updates: bool = Field(
         False, description="Don't update content_hash column"
     )
+    skip_cursor_updates: bool = Field(
+        False, description="Don't save cursor progress (for ARF-only syncs)"
+    )
 
     # Performance
     max_workers: int = Field(20, description="Max concurrent workers")
@@ -54,7 +57,9 @@ class SyncExecutionConfig(BaseModel):
         """
         return cls(
             enable_vector_handlers=False,
+            enable_postgres_handler=False,
             skip_hash_updates=True,
+            skip_cursor_updates=True,
         )
 
     @classmethod

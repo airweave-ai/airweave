@@ -218,13 +218,17 @@ class SyncService:
         execution_config: Optional[Dict[str, Any]] = None,
     ) -> SyncJob:
         """Create a sync job record."""
+        ctx.logger.info(f"Creating sync job with execution_config: {execution_config}")
         sync_job_in = schemas.SyncJobCreate(
             sync_id=sync_id,
             status=SyncJobStatus.PENDING,
             execution_config_json=execution_config,
         )
+        ctx.logger.info(f"SyncJobCreate schema: {sync_job_in.model_dump()}")
 
-        return await crud.sync_job.create(db, obj_in=sync_job_in, ctx=ctx, uow=uow)
+        result = await crud.sync_job.create(db, obj_in=sync_job_in, ctx=ctx, uow=uow)
+        ctx.logger.info(f"Created sync job with execution_config_json: {result.execution_config_json}")
+        return result
 
     async def list_sync_jobs(
         self,

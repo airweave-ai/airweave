@@ -166,7 +166,7 @@ class PostgresMetadataHandler(ActionHandler):
                     sync_id=sync_context.sync.id,
                     entity_id=action.entity_id,
                     entity_definition_id=action.entity_definition_id,
-                    hash=None if skip_hashes else action.entity.airweave_system_metadata.hash,
+                    hash="" if skip_hashes else action.entity.airweave_system_metadata.hash,
                 )
             )
 

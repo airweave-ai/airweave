@@ -31,7 +31,7 @@ async def _run_sync_task(
     execution_config = None
     try:
         async with get_db_context() as db:
-            sync_job_model = await crud.sync_job.get(db, id=sync_job.id)
+            sync_job_model = await crud.sync_job.get(db, id=sync_job.id, ctx=ctx)
             if sync_job_model and sync_job_model.execution_config_json:
                 execution_config = SyncExecutionConfig(**sync_job_model.execution_config_json)
                 ctx.logger.info(

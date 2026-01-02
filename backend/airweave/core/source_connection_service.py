@@ -1,7 +1,7 @@
 """Clean source connection service with auth method inference."""
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from uuid import UUID
 
 if TYPE_CHECKING:

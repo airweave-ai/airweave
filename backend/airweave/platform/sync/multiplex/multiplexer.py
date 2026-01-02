@@ -304,7 +304,7 @@ class SyncMultiplexer:
         Returns:
             SyncJob for tracking progress
         """
-        from airweave.core import source_connection_service
+        from airweave.core.source_connection_service import source_connection_service
         from airweave.platform.sync.config import SyncExecutionConfig
 
         # 1. Validate sync exists
@@ -334,11 +334,11 @@ class SyncMultiplexer:
         )
 
         # 4. Trigger via existing service with ARF-only config
+        # Note: Don't use force_full_sync for non-continuous sources (always full anyway)
         job = await source_connection_service.run(
             self.db,
             id=source_conn.id,
             ctx=self.ctx,
-            force_full_sync=True,
             execution_config=config.model_dump(),
         )
 
