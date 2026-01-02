@@ -196,4 +196,3 @@ export const DEFAULT_ONBOARDING_DATA: OnboardingData = {
   teamMembers: [],
   billingPeriod: "monthly",
 };
-

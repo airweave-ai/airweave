@@ -48,7 +48,9 @@ export function StepTeamInvites({
         currentUserEmail &&
         email.toLowerCase() === currentUserEmail.toLowerCase()
       ) {
-        setEmailError("You don't need to invite yourself - you'll be the owner");
+        setEmailError(
+          "You don't need to invite yourself - you'll be the owner"
+        );
         return false;
       }
 
@@ -173,7 +175,7 @@ export function StepTeamInvites({
               }
               className={cn(
                 "h-8 w-24 rounded-md border bg-transparent px-2 text-sm",
-                "focus:border-border focus:outline-none focus:ring-0",
+                "focus:border-border focus:ring-0 focus:outline-none",
                 "transition-colors",
                 teamMembers.length >= currentPlanLimit - 1 &&
                   "cursor-not-allowed opacity-50"
@@ -245,4 +247,3 @@ export function StepTeamInvites({
     </div>
   );
 }
-

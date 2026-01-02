@@ -146,9 +146,7 @@ interface StepsNavigationProps {
 
 function StepsNavigation({ children, className }: StepsNavigationProps) {
   return (
-    <div
-      className={cn("flex items-center justify-between", className)}
-    >
+    <div className={cn("flex items-center justify-between", className)}>
       {children}
     </div>
   );
@@ -165,4 +163,3 @@ Steps.Navigation = StepsNavigation;
 
 export { Steps };
 export type { StepsProps };
-

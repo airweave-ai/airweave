@@ -51,7 +51,10 @@ export function EditDialog({
 
   // Fetch connection details
   const { data: connectionDetails, isLoading: isLoadingConnection } = useQuery({
-    queryKey: queryKeys.authProviders.connection(orgId, connection?.readable_id ?? ""),
+    queryKey: queryKeys.authProviders.connection(
+      orgId,
+      connection?.readable_id ?? ""
+    ),
     queryFn: async () => {
       if (!connection?.readable_id) return null;
       const token = await getAccessTokenSilently();
@@ -62,7 +65,10 @@ export function EditDialog({
 
   // Fetch auth provider details for auth fields
   const { data: providerDetails, isLoading: isLoadingProvider } = useQuery({
-    queryKey: queryKeys.authProviders.detail(orgId, authProvider?.short_name ?? ""),
+    queryKey: queryKeys.authProviders.detail(
+      orgId,
+      authProvider?.short_name ?? ""
+    ),
     queryFn: async () => {
       if (!authProvider?.short_name) return null;
       const token = await getAccessTokenSilently();
@@ -146,7 +152,10 @@ export function EditDialog({
         queryKey: queryKeys.authProviders.connections(orgId),
       });
       queryClient.invalidateQueries({
-        queryKey: queryKeys.authProviders.connection(orgId, connection?.readable_id ?? ""),
+        queryKey: queryKeys.authProviders.connection(
+          orgId,
+          connection?.readable_id ?? ""
+        ),
       });
       toast.success(`Successfully updated ${authProvider?.name} connection`);
       onOpenChange(false);

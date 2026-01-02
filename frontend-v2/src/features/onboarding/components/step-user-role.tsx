@@ -49,4 +49,3 @@ export function StepUserRole({ value, onChange }: StepUserRoleProps) {
     </div>
   );
 }
-

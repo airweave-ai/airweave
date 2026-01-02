@@ -43,4 +43,3 @@ export function StepOrgSize({ value, onChange }: StepOrgSizeProps) {
     </div>
   );
 }
-

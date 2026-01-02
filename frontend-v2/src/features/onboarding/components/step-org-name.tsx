@@ -40,4 +40,3 @@ export function StepOrgName({ value, onChange, onKeyPress }: StepOrgNameProps) {
     </div>
   );
 }
-

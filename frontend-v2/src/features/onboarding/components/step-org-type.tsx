@@ -56,4 +56,3 @@ export function StepOrgType({ value, onChange }: StepOrgTypeProps) {
     </div>
   );
 }
-

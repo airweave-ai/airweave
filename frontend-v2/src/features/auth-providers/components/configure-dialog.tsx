@@ -64,7 +64,10 @@ export function ConfigureDialog({
 
   // Fetch auth provider details for auth fields
   const { data: providerDetails, isLoading: isLoadingDetails } = useQuery({
-    queryKey: queryKeys.authProviders.detail(orgId, authProvider?.short_name ?? ""),
+    queryKey: queryKeys.authProviders.detail(
+      orgId,
+      authProvider?.short_name ?? ""
+    ),
     queryFn: async () => {
       if (!authProvider?.short_name) return null;
       const token = await getAccessTokenSilently();

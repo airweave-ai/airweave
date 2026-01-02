@@ -27,7 +27,7 @@ export function StepSubscription({
           You can always upgrade or downgrade later
         </p>
         {!authEnabled && (
-          <div className="bg-amber-500/10 border-amber-500/20 mt-2 rounded-lg border p-3">
+          <div className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/10 p-3">
             <p className="text-xs text-amber-600 dark:text-amber-400">
               <strong>Local Development Mode:</strong> Billing is disabled.
               You'll go straight to the dashboard after setup.
@@ -166,4 +166,3 @@ export function StepSubscription({
     </div>
   );
 }
-

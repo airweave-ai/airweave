@@ -100,6 +100,13 @@ export const uiComponents: ComponentInfo[] = [
     ]
   },
   {
+    "name": "delete-confirmation-dialog",
+    "path": "components/ui/delete-confirmation-dialog.tsx",
+    "exports": [
+      "DeleteConfirmationDialog"
+    ]
+  },
+  {
     "name": "dialog",
     "path": "components/ui/dialog.tsx",
     "exports": [
