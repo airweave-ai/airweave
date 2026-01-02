@@ -28,6 +28,8 @@ import { AuthGuard, AuthProvider } from "../lib/auth-provider";
 import { CACHE_MAX_AGE, createIDBPersister } from "../lib/query-persister";
 import { useUISettingsHydrated } from "../stores/ui-settings";
 
+import { useIsMobile } from "@/hooks/use-mobile";
+import { cn } from "@/lib/utils";
 import appCss from "../styles.css?url";
 
 const queryClient = new QueryClient({
@@ -71,6 +73,7 @@ export const Route = createRootRoute({
 
 function RootComponent() {
   const isHydrated = useUISettingsHydrated();
+  const isMobile = useIsMobile();
 
   // Apply theme based on user preference (system/light/dark)
   useThemeEffect();
@@ -88,8 +91,18 @@ function RootComponent() {
           <RightSidebarProvider>
             <AppSidebar />
             <SidebarInset>
-              <div className="bg-sidebar h-full px-1 py-4">
-                <div className="bg-background border-border/50 flex h-full flex-col rounded-lg border shadow-sm">
+              <div
+                className={cn(
+                  "bg-sidebar h-full px-1",
+                  isMobile ? "p-0" : "py-4"
+                )}
+              >
+                <div
+                  className={cn(
+                    "bg-background border-border/50 flex h-full flex-col border shadow-sm",
+                    isMobile ? "rounded-none" : "rounded-lg"
+                  )}
+                >
                   <header className="flex h-14 shrink-0 items-center border-b px-4">
                     <SidebarTrigger className="mr-1.5 -ml-1" />
                     <PageHeaderContent />

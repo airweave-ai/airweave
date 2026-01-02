@@ -26,7 +26,7 @@ import {
 } from "@/lib/api";
 import { useAuth0 } from "@/lib/auth-provider";
 
-export const Route = createFileRoute("/auth-providers")({
+export const Route = createFileRoute("/$orgSlug/auth-providers")({
   component: AuthProvidersPage,
 });
 

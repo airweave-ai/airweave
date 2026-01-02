@@ -7,7 +7,7 @@ import { usePageHeader } from "@/components/ui/page-header";
 import { useRightSidebarContent } from "@/components/ui/right-sidebar";
 import { DocsContent } from "@/hooks/use-docs-content";
 
-export const Route = createFileRoute("/collections")({
+export const Route = createFileRoute("/$orgSlug/collections")({
   component: CollectionsPage,
 });
 

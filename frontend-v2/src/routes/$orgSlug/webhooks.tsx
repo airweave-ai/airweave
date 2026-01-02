@@ -6,7 +6,9 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { usePageHeader } from "@/components/ui/page-header";
 import { useRightSidebarContent } from "@/components/ui/right-sidebar";
 
-export const Route = createFileRoute("/webhooks")({ component: WebhooksPage });
+export const Route = createFileRoute("/$orgSlug/webhooks")({
+  component: WebhooksPage,
+});
 
 function WebhooksDocs() {
   return (

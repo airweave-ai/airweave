@@ -10,39 +10,46 @@ import {
 
 export interface NavItem {
   title: string;
-  url: string;
+  /** Full route path with $orgSlug placeholder */
+  to:
+    | "/$orgSlug"
+    | "/$orgSlug/collections"
+    | "/$orgSlug/logs"
+    | "/$orgSlug/api-keys"
+    | "/$orgSlug/webhooks"
+    | "/$orgSlug/auth-providers";
   icon: LucideIcon;
 }
 
 export const navItems: NavItem[] = [
   {
     title: "Dashboard",
-    url: "/",
+    to: "/$orgSlug",
     icon: LayoutDashboard,
   },
   {
     title: "Collections",
-    url: "/collections",
+    to: "/$orgSlug/collections",
     icon: FolderOpen,
   },
   {
     title: "Logs",
-    url: "/logs",
+    to: "/$orgSlug/logs",
     icon: Cable,
   },
   {
     title: "API Keys",
-    url: "/api-keys",
+    to: "/$orgSlug/api-keys",
     icon: Key,
   },
   {
     title: "Webhooks",
-    url: "/webhooks",
+    to: "/$orgSlug/webhooks",
     icon: Webhook,
   },
   {
     title: "Auth Providers",
-    url: "/auth-providers",
+    to: "/$orgSlug/auth-providers",
     icon: ShieldCheck,
   },
 ];

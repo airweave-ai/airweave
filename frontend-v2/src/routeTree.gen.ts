@@ -9,44 +9,26 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as WebhooksRouteImport } from './routes/webhooks'
-import { Route as LogsRouteImport } from './routes/logs'
 import { Route as ComponentsRouteImport } from './routes/components'
-import { Route as CollectionsRouteImport } from './routes/collections'
-import { Route as AuthProvidersRouteImport } from './routes/auth-providers'
-import { Route as ApiKeysRouteImport } from './routes/api-keys'
+import { Route as OrgSlugRouteRouteImport } from './routes/$orgSlug/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ComponentsIndexRouteImport } from './routes/components.index'
+import { Route as OrgSlugIndexRouteImport } from './routes/$orgSlug/index'
 import { Route as ComponentsComponentNameRouteImport } from './routes/components.$componentName'
+import { Route as OrgSlugWebhooksRouteImport } from './routes/$orgSlug/webhooks'
+import { Route as OrgSlugLogsRouteImport } from './routes/$orgSlug/logs'
+import { Route as OrgSlugCollectionsRouteImport } from './routes/$orgSlug/collections'
+import { Route as OrgSlugAuthProvidersRouteImport } from './routes/$orgSlug/auth-providers'
+import { Route as OrgSlugApiKeysRouteImport } from './routes/$orgSlug/api-keys'
 
-const WebhooksRoute = WebhooksRouteImport.update({
-  id: '/webhooks',
-  path: '/webhooks',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LogsRoute = LogsRouteImport.update({
-  id: '/logs',
-  path: '/logs',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ComponentsRoute = ComponentsRouteImport.update({
   id: '/components',
   path: '/components',
   getParentRoute: () => rootRouteImport,
 } as any)
-const CollectionsRoute = CollectionsRouteImport.update({
-  id: '/collections',
-  path: '/collections',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AuthProvidersRoute = AuthProvidersRouteImport.update({
-  id: '/auth-providers',
-  path: '/auth-providers',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiKeysRoute = ApiKeysRouteImport.update({
-  id: '/api-keys',
-  path: '/api-keys',
+const OrgSlugRouteRoute = OrgSlugRouteRouteImport.update({
+  id: '/$orgSlug',
+  path: '/$orgSlug',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -59,106 +41,128 @@ const ComponentsIndexRoute = ComponentsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => ComponentsRoute,
 } as any)
+const OrgSlugIndexRoute = OrgSlugIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => OrgSlugRouteRoute,
+} as any)
 const ComponentsComponentNameRoute = ComponentsComponentNameRouteImport.update({
   id: '/$componentName',
   path: '/$componentName',
   getParentRoute: () => ComponentsRoute,
 } as any)
+const OrgSlugWebhooksRoute = OrgSlugWebhooksRouteImport.update({
+  id: '/webhooks',
+  path: '/webhooks',
+  getParentRoute: () => OrgSlugRouteRoute,
+} as any)
+const OrgSlugLogsRoute = OrgSlugLogsRouteImport.update({
+  id: '/logs',
+  path: '/logs',
+  getParentRoute: () => OrgSlugRouteRoute,
+} as any)
+const OrgSlugCollectionsRoute = OrgSlugCollectionsRouteImport.update({
+  id: '/collections',
+  path: '/collections',
+  getParentRoute: () => OrgSlugRouteRoute,
+} as any)
+const OrgSlugAuthProvidersRoute = OrgSlugAuthProvidersRouteImport.update({
+  id: '/auth-providers',
+  path: '/auth-providers',
+  getParentRoute: () => OrgSlugRouteRoute,
+} as any)
+const OrgSlugApiKeysRoute = OrgSlugApiKeysRouteImport.update({
+  id: '/api-keys',
+  path: '/api-keys',
+  getParentRoute: () => OrgSlugRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/api-keys': typeof ApiKeysRoute
-  '/auth-providers': typeof AuthProvidersRoute
-  '/collections': typeof CollectionsRoute
+  '/$orgSlug': typeof OrgSlugRouteRouteWithChildren
   '/components': typeof ComponentsRouteWithChildren
-  '/logs': typeof LogsRoute
-  '/webhooks': typeof WebhooksRoute
+  '/$orgSlug/api-keys': typeof OrgSlugApiKeysRoute
+  '/$orgSlug/auth-providers': typeof OrgSlugAuthProvidersRoute
+  '/$orgSlug/collections': typeof OrgSlugCollectionsRoute
+  '/$orgSlug/logs': typeof OrgSlugLogsRoute
+  '/$orgSlug/webhooks': typeof OrgSlugWebhooksRoute
   '/components/$componentName': typeof ComponentsComponentNameRoute
+  '/$orgSlug/': typeof OrgSlugIndexRoute
   '/components/': typeof ComponentsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/api-keys': typeof ApiKeysRoute
-  '/auth-providers': typeof AuthProvidersRoute
-  '/collections': typeof CollectionsRoute
-  '/logs': typeof LogsRoute
-  '/webhooks': typeof WebhooksRoute
+  '/$orgSlug/api-keys': typeof OrgSlugApiKeysRoute
+  '/$orgSlug/auth-providers': typeof OrgSlugAuthProvidersRoute
+  '/$orgSlug/collections': typeof OrgSlugCollectionsRoute
+  '/$orgSlug/logs': typeof OrgSlugLogsRoute
+  '/$orgSlug/webhooks': typeof OrgSlugWebhooksRoute
   '/components/$componentName': typeof ComponentsComponentNameRoute
+  '/$orgSlug': typeof OrgSlugIndexRoute
   '/components': typeof ComponentsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/api-keys': typeof ApiKeysRoute
-  '/auth-providers': typeof AuthProvidersRoute
-  '/collections': typeof CollectionsRoute
+  '/$orgSlug': typeof OrgSlugRouteRouteWithChildren
   '/components': typeof ComponentsRouteWithChildren
-  '/logs': typeof LogsRoute
-  '/webhooks': typeof WebhooksRoute
+  '/$orgSlug/api-keys': typeof OrgSlugApiKeysRoute
+  '/$orgSlug/auth-providers': typeof OrgSlugAuthProvidersRoute
+  '/$orgSlug/collections': typeof OrgSlugCollectionsRoute
+  '/$orgSlug/logs': typeof OrgSlugLogsRoute
+  '/$orgSlug/webhooks': typeof OrgSlugWebhooksRoute
   '/components/$componentName': typeof ComponentsComponentNameRoute
+  '/$orgSlug/': typeof OrgSlugIndexRoute
   '/components/': typeof ComponentsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/api-keys'
-    | '/auth-providers'
-    | '/collections'
+    | '/$orgSlug'
     | '/components'
-    | '/logs'
-    | '/webhooks'
+    | '/$orgSlug/api-keys'
+    | '/$orgSlug/auth-providers'
+    | '/$orgSlug/collections'
+    | '/$orgSlug/logs'
+    | '/$orgSlug/webhooks'
     | '/components/$componentName'
+    | '/$orgSlug/'
     | '/components/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/api-keys'
-    | '/auth-providers'
-    | '/collections'
-    | '/logs'
-    | '/webhooks'
+    | '/$orgSlug/api-keys'
+    | '/$orgSlug/auth-providers'
+    | '/$orgSlug/collections'
+    | '/$orgSlug/logs'
+    | '/$orgSlug/webhooks'
     | '/components/$componentName'
+    | '/$orgSlug'
     | '/components'
   id:
     | '__root__'
     | '/'
-    | '/api-keys'
-    | '/auth-providers'
-    | '/collections'
+    | '/$orgSlug'
     | '/components'
-    | '/logs'
-    | '/webhooks'
+    | '/$orgSlug/api-keys'
+    | '/$orgSlug/auth-providers'
+    | '/$orgSlug/collections'
+    | '/$orgSlug/logs'
+    | '/$orgSlug/webhooks'
     | '/components/$componentName'
+    | '/$orgSlug/'
     | '/components/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  ApiKeysRoute: typeof ApiKeysRoute
-  AuthProvidersRoute: typeof AuthProvidersRoute
-  CollectionsRoute: typeof CollectionsRoute
+  OrgSlugRouteRoute: typeof OrgSlugRouteRouteWithChildren
   ComponentsRoute: typeof ComponentsRouteWithChildren
-  LogsRoute: typeof LogsRoute
-  WebhooksRoute: typeof WebhooksRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/webhooks': {
-      id: '/webhooks'
-      path: '/webhooks'
-      fullPath: '/webhooks'
-      preLoaderRoute: typeof WebhooksRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/logs': {
-      id: '/logs'
-      path: '/logs'
-      fullPath: '/logs'
-      preLoaderRoute: typeof LogsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/components': {
       id: '/components'
       path: '/components'
@@ -166,25 +170,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ComponentsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/collections': {
-      id: '/collections'
-      path: '/collections'
-      fullPath: '/collections'
-      preLoaderRoute: typeof CollectionsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/auth-providers': {
-      id: '/auth-providers'
-      path: '/auth-providers'
-      fullPath: '/auth-providers'
-      preLoaderRoute: typeof AuthProvidersRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api-keys': {
-      id: '/api-keys'
-      path: '/api-keys'
-      fullPath: '/api-keys'
-      preLoaderRoute: typeof ApiKeysRouteImport
+    '/$orgSlug': {
+      id: '/$orgSlug'
+      path: '/$orgSlug'
+      fullPath: '/$orgSlug'
+      preLoaderRoute: typeof OrgSlugRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -201,6 +191,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ComponentsIndexRouteImport
       parentRoute: typeof ComponentsRoute
     }
+    '/$orgSlug/': {
+      id: '/$orgSlug/'
+      path: '/'
+      fullPath: '/$orgSlug/'
+      preLoaderRoute: typeof OrgSlugIndexRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
     '/components/$componentName': {
       id: '/components/$componentName'
       path: '/$componentName'
@@ -208,8 +205,65 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ComponentsComponentNameRouteImport
       parentRoute: typeof ComponentsRoute
     }
+    '/$orgSlug/webhooks': {
+      id: '/$orgSlug/webhooks'
+      path: '/webhooks'
+      fullPath: '/$orgSlug/webhooks'
+      preLoaderRoute: typeof OrgSlugWebhooksRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
+    '/$orgSlug/logs': {
+      id: '/$orgSlug/logs'
+      path: '/logs'
+      fullPath: '/$orgSlug/logs'
+      preLoaderRoute: typeof OrgSlugLogsRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
+    '/$orgSlug/collections': {
+      id: '/$orgSlug/collections'
+      path: '/collections'
+      fullPath: '/$orgSlug/collections'
+      preLoaderRoute: typeof OrgSlugCollectionsRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
+    '/$orgSlug/auth-providers': {
+      id: '/$orgSlug/auth-providers'
+      path: '/auth-providers'
+      fullPath: '/$orgSlug/auth-providers'
+      preLoaderRoute: typeof OrgSlugAuthProvidersRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
+    '/$orgSlug/api-keys': {
+      id: '/$orgSlug/api-keys'
+      path: '/api-keys'
+      fullPath: '/$orgSlug/api-keys'
+      preLoaderRoute: typeof OrgSlugApiKeysRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
   }
 }
+
+interface OrgSlugRouteRouteChildren {
+  OrgSlugApiKeysRoute: typeof OrgSlugApiKeysRoute
+  OrgSlugAuthProvidersRoute: typeof OrgSlugAuthProvidersRoute
+  OrgSlugCollectionsRoute: typeof OrgSlugCollectionsRoute
+  OrgSlugLogsRoute: typeof OrgSlugLogsRoute
+  OrgSlugWebhooksRoute: typeof OrgSlugWebhooksRoute
+  OrgSlugIndexRoute: typeof OrgSlugIndexRoute
+}
+
+const OrgSlugRouteRouteChildren: OrgSlugRouteRouteChildren = {
+  OrgSlugApiKeysRoute: OrgSlugApiKeysRoute,
+  OrgSlugAuthProvidersRoute: OrgSlugAuthProvidersRoute,
+  OrgSlugCollectionsRoute: OrgSlugCollectionsRoute,
+  OrgSlugLogsRoute: OrgSlugLogsRoute,
+  OrgSlugWebhooksRoute: OrgSlugWebhooksRoute,
+  OrgSlugIndexRoute: OrgSlugIndexRoute,
+}
+
+const OrgSlugRouteRouteWithChildren = OrgSlugRouteRoute._addFileChildren(
+  OrgSlugRouteRouteChildren,
+)
 
 interface ComponentsRouteChildren {
   ComponentsComponentNameRoute: typeof ComponentsComponentNameRoute
@@ -227,12 +281,8 @@ const ComponentsRouteWithChildren = ComponentsRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  ApiKeysRoute: ApiKeysRoute,
-  AuthProvidersRoute: AuthProvidersRoute,
-  CollectionsRoute: CollectionsRoute,
+  OrgSlugRouteRoute: OrgSlugRouteRouteWithChildren,
   ComponentsRoute: ComponentsRouteWithChildren,
-  LogsRoute: LogsRoute,
-  WebhooksRoute: WebhooksRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

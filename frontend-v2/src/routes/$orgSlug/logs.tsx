@@ -6,7 +6,9 @@ import { Input } from "@/components/ui/input";
 import { usePageHeader } from "@/components/ui/page-header";
 import { useRightSidebarContent } from "@/components/ui/right-sidebar";
 
-export const Route = createFileRoute("/logs")({ component: LogsPage });
+export const Route = createFileRoute("/$orgSlug/logs")({
+  component: LogsPage,
+});
 
 function LogsDocs() {
   return (

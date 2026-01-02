@@ -28,7 +28,9 @@ import {
   maskKey,
 } from "@/features/api-keys";
 
-export const Route = createFileRoute("/api-keys")({ component: ApiKeysPage });
+export const Route = createFileRoute("/$orgSlug/api-keys")({
+  component: ApiKeysPage,
+});
 
 const PAGE_SIZE = 20;
 
