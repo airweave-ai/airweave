@@ -30,8 +30,11 @@ function RootRedirect() {
     if (isLoading || !organizations) return;
 
     if (organizations.length === 0) {
-      // No organizations - could redirect to onboarding
-      // For now, just show loading state
+      // No organizations - redirect to onboarding
+      navigate({
+        to: "/onboarding",
+        replace: true,
+      });
       return;
     }
 

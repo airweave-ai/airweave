@@ -6,6 +6,7 @@ import {
   Outlet,
   Scripts,
   createRootRoute,
+  useParams,
 } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 
@@ -74,6 +75,8 @@ export const Route = createRootRoute({
 function RootComponent() {
   const isHydrated = useUISettingsHydrated();
   const isMobile = useIsMobile();
+  const params = useParams({ strict: false }) as { orgSlug?: string };
+  const hasOrgContext = Boolean(params.orgSlug);
 
   // Apply theme based on user preference (system/light/dark)
   useThemeEffect();
@@ -81,6 +84,16 @@ function RootComponent() {
   // Wait for UI settings to hydrate from localStorage to prevent flash of incorrect state
   if (!isHydrated) {
     return null;
+  }
+
+  // When there's no org context (e.g., onboarding), render without sidebar/header chrome
+  if (!hasOrgContext) {
+    return (
+      <AuthGuard>
+        <Outlet />
+        <Toaster />
+      </AuthGuard>
+    );
   }
 
   return (

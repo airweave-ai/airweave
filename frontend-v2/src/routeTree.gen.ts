@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as ComponentsRouteImport } from './routes/components'
 import { Route as OrgSlugRouteRouteImport } from './routes/$orgSlug/route'
 import { Route as IndexRouteImport } from './routes/index'
@@ -21,6 +22,11 @@ import { Route as OrgSlugCollectionsRouteImport } from './routes/$orgSlug/collec
 import { Route as OrgSlugAuthProvidersRouteImport } from './routes/$orgSlug/auth-providers'
 import { Route as OrgSlugApiKeysRouteImport } from './routes/$orgSlug/api-keys'
 
+const OnboardingRoute = OnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ComponentsRoute = ComponentsRouteImport.update({
   id: '/components',
   path: '/components',
@@ -81,6 +87,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$orgSlug': typeof OrgSlugRouteRouteWithChildren
   '/components': typeof ComponentsRouteWithChildren
+  '/onboarding': typeof OnboardingRoute
   '/$orgSlug/api-keys': typeof OrgSlugApiKeysRoute
   '/$orgSlug/auth-providers': typeof OrgSlugAuthProvidersRoute
   '/$orgSlug/collections': typeof OrgSlugCollectionsRoute
@@ -92,6 +99,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/onboarding': typeof OnboardingRoute
   '/$orgSlug/api-keys': typeof OrgSlugApiKeysRoute
   '/$orgSlug/auth-providers': typeof OrgSlugAuthProvidersRoute
   '/$orgSlug/collections': typeof OrgSlugCollectionsRoute
@@ -106,6 +114,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/$orgSlug': typeof OrgSlugRouteRouteWithChildren
   '/components': typeof ComponentsRouteWithChildren
+  '/onboarding': typeof OnboardingRoute
   '/$orgSlug/api-keys': typeof OrgSlugApiKeysRoute
   '/$orgSlug/auth-providers': typeof OrgSlugAuthProvidersRoute
   '/$orgSlug/collections': typeof OrgSlugCollectionsRoute
@@ -121,6 +130,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$orgSlug'
     | '/components'
+    | '/onboarding'
     | '/$orgSlug/api-keys'
     | '/$orgSlug/auth-providers'
     | '/$orgSlug/collections'
@@ -132,6 +142,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/onboarding'
     | '/$orgSlug/api-keys'
     | '/$orgSlug/auth-providers'
     | '/$orgSlug/collections'
@@ -145,6 +156,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$orgSlug'
     | '/components'
+    | '/onboarding'
     | '/$orgSlug/api-keys'
     | '/$orgSlug/auth-providers'
     | '/$orgSlug/collections'
@@ -159,10 +171,18 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   OrgSlugRouteRoute: typeof OrgSlugRouteRouteWithChildren
   ComponentsRoute: typeof ComponentsRouteWithChildren
+  OnboardingRoute: typeof OnboardingRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/onboarding': {
+      id: '/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof OnboardingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/components': {
       id: '/components'
       path: '/components'
@@ -283,6 +303,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   OrgSlugRouteRoute: OrgSlugRouteRouteWithChildren,
   ComponentsRoute: ComponentsRouteWithChildren,
+  OnboardingRoute: OnboardingRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

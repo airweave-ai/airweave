@@ -258,6 +258,14 @@ export const uiComponents: ComponentInfo[] = [
     ]
   },
   {
+    "name": "steps",
+    "path": "components/ui/steps.tsx",
+    "exports": [
+      "useStepsContext",
+      "Steps"
+    ]
+  },
+  {
     "name": "table",
     "path": "components/ui/table.tsx",
     "exports": [
