@@ -51,7 +51,7 @@ class DestinationBuilder:
         - ACTIVE: receives writes + serves queries
         - SHADOW: receives writes only (migration testing)
         - DEPRECATED: skipped (no writes)
-        
+
         Also respects execution_config for destination filtering.
         """
         destination_ids = await self._get_destination_ids(sync, execution_config)
@@ -74,14 +74,14 @@ class DestinationBuilder:
         )
 
         return destinations
-    
+
     async def _get_destination_ids(
-        self, 
-        sync: schemas.Sync, 
+        self,
+        sync: schemas.Sync,
         execution_config: Optional[SyncExecutionConfig],
     ) -> list[UUID]:
         """Get destination IDs based on roles and execution config.
-        
+
         Priority:
         1. execution_config.target_destinations (if set, use only these)
         2. execution_config.exclude_destinations (filter out from active/shadow)
@@ -93,23 +93,22 @@ class DestinationBuilder:
                 f"Using target_destinations from config: {execution_config.target_destinations}"
             )
             return execution_config.target_destinations
-        
+
         # Get base destination IDs (active + shadow by default)
         destination_ids = await self._get_active_ids(sync)
-        
+
         # If exclude_destinations is set, filter them out
         if execution_config and execution_config.exclude_destinations:
             original_count = len(destination_ids)
             destination_ids = [
-                dest_id for dest_id in destination_ids 
+                dest_id
+                for dest_id in destination_ids
                 if dest_id not in execution_config.exclude_destinations
             ]
             excluded_count = original_count - len(destination_ids)
             if excluded_count > 0:
-                self.logger.info(
-                    f"Excluded {excluded_count} destination(s) based on config"
-                )
-        
+                self.logger.info(f"Excluded {excluded_count} destination(s) based on config")
+
         return destination_ids
 
     async def build_for_ids(

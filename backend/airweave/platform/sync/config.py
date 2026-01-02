@@ -17,9 +17,7 @@ class SyncExecutionConfig(BaseModel):
     target_destinations: Optional[List[UUID]] = Field(
         None, description="If set, ONLY write to these destinations"
     )
-    exclude_destinations: Optional[List[UUID]] = Field(
-        None, description="Skip these destinations"
-    )
+    exclude_destinations: Optional[List[UUID]] = Field(None, description="Skip these destinations")
     destination_strategy: str = Field(
         "active_and_shadow",
         description="active_only|shadow_only|all|active_and_shadow",
@@ -32,9 +30,7 @@ class SyncExecutionConfig(BaseModel):
 
     # Behavior flags
     skip_hash_comparison: bool = Field(False, description="Force INSERT for all entities")
-    skip_hash_updates: bool = Field(
-        False, description="Don't update content_hash column"
-    )
+    skip_hash_updates: bool = Field(False, description="Don't update content_hash column")
     skip_cursor_updates: bool = Field(
         False, description="Don't save cursor progress (for ARF-only syncs)"
     )
@@ -74,4 +70,3 @@ class SyncExecutionConfig(BaseModel):
             enable_raw_data_handler=False,
             skip_hash_comparison=True,
         )
-

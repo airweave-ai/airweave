@@ -542,12 +542,13 @@ class SyncOrchestrator:
     async def _save_cursor_data(self) -> None:
         """Save cursor data to database if it exists."""
         # Skip cursor updates if configured (e.g., for ARF-only syncs)
-        if self.sync_context.execution_config and self.sync_context.execution_config.skip_cursor_updates:
-            self.sync_context.logger.info(
-                "⏭️ Skipping cursor update (disabled by execution_config)"
-            )
+        if (
+            self.sync_context.execution_config
+            and self.sync_context.execution_config.skip_cursor_updates
+        ):
+            self.sync_context.logger.info("⏭️ Skipping cursor update (disabled by execution_config)")
             return
-            
+
         if not hasattr(self.sync_context, "cursor") or not self.sync_context.cursor.cursor_data:
             if self.sync_context.force_full_sync:
                 self.sync_context.logger.info(

@@ -123,7 +123,9 @@ class ActionResolver:
                     raise SyncFailureError(
                         f"Entity type {entity.__class__.__name__} not in entity_map"
                     )
-                inserts.append(InsertAction(entity=entity, entity_definition_id=entity_definition_id))
+                inserts.append(
+                    InsertAction(entity=entity, entity_definition_id=entity_definition_id)
+                )
 
         return ActionBatch(
             inserts=inserts,

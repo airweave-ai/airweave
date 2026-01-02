@@ -199,9 +199,7 @@ class SyncService:
 
         # Create sync job
         async with UnitOfWork(db) as uow:
-            sync_job = await self._create_sync_job(
-                uow.session, sync_id, ctx, uow, execution_config
-            )
+            sync_job = await self._create_sync_job(uow.session, sync_id, ctx, uow, execution_config)
 
             await uow.commit()
             await uow.session.refresh(sync_job)
@@ -227,7 +225,9 @@ class SyncService:
         ctx.logger.info(f"SyncJobCreate schema: {sync_job_in.model_dump()}")
 
         result = await crud.sync_job.create(db, obj_in=sync_job_in, ctx=ctx, uow=uow)
-        ctx.logger.info(f"Created sync job with execution_config_json: {result.execution_config_json}")
+        ctx.logger.info(
+            f"Created sync job with execution_config_json: {result.execution_config_json}"
+        )
         return result
 
     async def list_sync_jobs(
