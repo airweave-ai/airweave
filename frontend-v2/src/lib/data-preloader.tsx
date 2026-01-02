@@ -78,19 +78,13 @@ export function DataPreloader({ children }: DataPreloaderProps) {
     if (hasStartedPreloading.current) return;
     hasStartedPreloading.current = true;
 
-    // If we already have cache, just do a background refresh (non-blocking)
+    // If we already have cache, render immediately
+    // Background revalidation is handled by QueryClient's refetchOnMount: "always"
     if (hasOrganizationsCache) {
-      getAccessTokenSilently().then((token) => {
-        queryClient.prefetchQuery({
-          queryKey: queryKeys.organizations.all,
-          queryFn: () => fetchOrganizations(token),
-          staleTime: 1000 * 60 * 5,
-        });
-      });
       return;
     }
 
-    // No cache - fetch data
+    // No cache - fetch data before rendering
     setIsFetching(true);
     const prefetchData = async () => {
       try {

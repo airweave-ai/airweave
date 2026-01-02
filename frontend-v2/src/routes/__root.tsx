@@ -38,8 +38,6 @@ const queryClient = new QueryClient({
     queries: {
       // Keep unused query data in memory for 1 hour (matches IndexedDB persistence)
       gcTime: CACHE_MAX_AGE,
-      // Consider data fresh for 5 minutes before refetching in background
-      staleTime: 1000 * 60 * 5,
     },
   },
 });
