@@ -12,10 +12,6 @@ on:
       - "frontend-v2/**"
       - ".github/workflows/frontend-v2.yml"
 
-defaults:
-  run:
-    working-directory: frontend-v2
-
 jobs:
   lint:
     name: Lint
@@ -31,13 +27,13 @@ jobs:
           cache-dependency-path: "./frontend-v2/package-lock.json"
 
       - name: Install dependencies
-        run: npm ci
+        run: cd frontend-v2 && npm ci
 
       - name: Run ESLint
-        run: npm run lint
+        run: cd frontend-v2 && npm run lint
 
       - name: Check formatting
-        run: npm run format:check
+        run: cd frontend-v2 && npm run format:check
 
   typecheck:
     name: Type Check
@@ -53,10 +49,10 @@ jobs:
           cache-dependency-path: "./frontend-v2/package-lock.json"
 
       - name: Install dependencies
-        run: npm ci
+        run: cd frontend-v2 && npm ci
 
       - name: Type check
-        run: npm run typecheck
+        run: cd frontend-v2 && npm run typecheck
 
   test:
     name: Test
@@ -72,10 +68,10 @@ jobs:
           cache-dependency-path: "./frontend-v2/package-lock.json"
 
       - name: Install dependencies
-        run: npm ci
+        run: cd frontend-v2 && npm ci
 
       - name: Run tests
-        run: npm run test
+        run: cd frontend-v2 && npm run test
 
   build:
     name: Build
@@ -92,7 +88,7 @@ jobs:
           cache-dependency-path: "./frontend-v2/package-lock.json"
 
       - name: Install dependencies
-        run: npm ci
+        run: cd frontend-v2 && npm ci
 
       - name: Build
-        run: npm run build
+        run: cd frontend-v2 && npm run build
