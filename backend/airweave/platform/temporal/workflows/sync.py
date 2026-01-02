@@ -58,6 +58,7 @@ class RunSourceConnectionWorkflow:
         ctx_dict: Dict[str, Any],
         access_token: Optional[str] = None,
         force_full_sync: bool = False,  # Force full sync with deletion
+        replay_target_destination_id: Optional[str] = None,  # Replay mode target
     ) -> None:
         """Run the source connection sync workflow.
 
@@ -69,6 +70,8 @@ class RunSourceConnectionWorkflow:
             ctx_dict: The API context as dict
             access_token: Optional access token
             force_full_sync: If True, forces a full sync with orphaned entity deletion
+            replay_target_destination_id: If set, runs in replay mode - reads from ARF
+                and writes to this specific destination instead of normal sync
         """
         from airweave.platform.temporal.activities import (
             run_sync_activity,
@@ -128,6 +131,7 @@ class RunSourceConnectionWorkflow:
                     ctx_dict,
                     access_token,
                     force_full_sync,
+                    replay_target_destination_id,
                 ],
                 start_to_close_timeout=timedelta(days=7),
                 heartbeat_timeout=heartbeat_timeout,

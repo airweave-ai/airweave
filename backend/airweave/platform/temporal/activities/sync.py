@@ -19,8 +19,14 @@ async def _run_sync_task(
     ctx,
     access_token,
     force_full_sync=False,
+    replay_target_destination_id=None,
 ):
-    """Run the actual sync service."""
+    """Run the actual sync service.
+
+    Args:
+        replay_target_destination_id: If set, runs in replay mode - reads from ARF
+            and writes to this specific destination instead of normal sync.
+    """
     from airweave.core.exceptions import NotFoundException
     from airweave.core.sync_service import sync_service
 
@@ -33,6 +39,7 @@ async def _run_sync_task(
             ctx=ctx,
             access_token=access_token,
             force_full_sync=force_full_sync,
+            replay_target_destination_id=replay_target_destination_id,
         )
     except NotFoundException as e:
         # Check if this is the specific "Source connection record not found" error
@@ -57,6 +64,7 @@ async def run_sync_activity(  # noqa: C901
     ctx_dict: Dict[str, Any],
     access_token: Optional[str] = None,
     force_full_sync: bool = False,
+    replay_target_destination_id: Optional[str] = None,
 ) -> None:
     """Activity to run a sync job.
 
@@ -70,6 +78,8 @@ async def run_sync_activity(  # noqa: C901
         ctx_dict: The API context as dict
         access_token: Optional access token
         force_full_sync: If True, forces a full sync with orphaned entity deletion
+        replay_target_destination_id: If set, runs in replay mode - reads from ARF
+            and writes to this specific destination instead of normal sync
     """
     # Import here to avoid Temporal sandboxing issues
     from airweave import crud, schemas
@@ -129,12 +139,18 @@ async def run_sync_activity(  # noqa: C901
                 "force_full_sync": force_full_sync,
                 "source_type": connection.short_name,
                 "org_name": organization.name,
+                "is_replay": replay_target_destination_id is not None,
             },
         )
         await tracking_context.__aenter__()
     except Exception as e:
         ctx.logger.warning(f"Failed to register activity in metrics: {e}")
         tracking_context = None
+
+    # Convert replay target to UUID if provided
+    replay_target_uuid = (
+        UUID(replay_target_destination_id) if replay_target_destination_id else None
+    )
 
     try:
         # Start the sync task
@@ -147,6 +163,7 @@ async def run_sync_activity(  # noqa: C901
                 ctx,
                 access_token,
                 force_full_sync,
+                replay_target_uuid,
             )
         )
 

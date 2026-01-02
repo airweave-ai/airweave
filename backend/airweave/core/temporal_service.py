@@ -1,6 +1,7 @@
 """Service for integrating Temporal workflows."""
 
 from typing import Optional
+from uuid import UUID
 
 from temporalio.client import WorkflowHandle
 
@@ -24,6 +25,7 @@ class TemporalService:
         ctx: ApiContext,
         access_token: Optional[str] = None,
         force_full_sync: bool = False,
+        replay_target_destination_id: Optional[UUID] = None,
     ) -> WorkflowHandle:
         """Start a source connection sync workflow.
 
@@ -35,6 +37,8 @@ class TemporalService:
             ctx: The API context
             access_token: Optional access token
             force_full_sync: If True, forces a full sync with orphaned entity cleanup
+            replay_target_destination_id: If set, runs in replay mode - reads from ARF
+                and writes to this specific destination instead of normal sync
 
         Returns:
             The workflow handle
@@ -42,13 +46,18 @@ class TemporalService:
         client = await temporal_client.get_client()
         task_queue = settings.TEMPORAL_TASK_QUEUE
 
-        # Generate a unique workflow ID
-        workflow_id = f"sync-{sync_job.id}"
+        # Generate a unique workflow ID (differentiate replay from regular sync)
+        is_replay = replay_target_destination_id is not None
+        workflow_id = f"replay-{sync_job.id}" if is_replay else f"sync-{sync_job.id}"
 
         ctx.logger.info(f"Starting Temporal workflow {workflow_id} for sync job {sync_job.id}")
         ctx.logger.info(f"Connection: {connection.name} | Collection: {collection.name}")
         if force_full_sync:
             ctx.logger.info("🔄 Force full sync enabled - will ignore cursor data")
+        if is_replay:
+            ctx.logger.info(
+                f"🔄 REPLAY MODE: Reading from ARF → destination {replay_target_destination_id}"
+            )
 
         # Convert Pydantic models to dicts for JSON serialization
         handle = await client.start_workflow(
@@ -61,6 +70,7 @@ class TemporalService:
                 ctx.to_serializable_dict(),  # Use serializable dict instead of model_dump
                 access_token,
                 force_full_sync,
+                str(replay_target_destination_id) if replay_target_destination_id else None,
             ],
             id=workflow_id,
             task_queue=task_queue,

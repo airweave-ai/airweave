@@ -100,6 +100,7 @@ class SyncService:
         ctx: ApiContext,
         access_token: Optional[str] = None,
         force_full_sync: bool = False,
+        replay_target_destination_id: Optional[UUID] = None,
     ) -> schemas.Sync:
         """Run a sync.
 
@@ -113,6 +114,8 @@ class SyncService:
             access_token (Optional[str]): Optional access token to use
                 instead of stored credentials.
             force_full_sync (bool): If True, forces a full sync with orphaned entity deletion.
+            replay_target_destination_id (Optional[UUID]): If set, runs in replay mode -
+                reads from ARF and writes to this specific destination instead of normal sync.
 
         Returns:
         -------
@@ -130,6 +133,7 @@ class SyncService:
                     ctx=ctx,
                     access_token=access_token,
                     force_full_sync=force_full_sync,
+                    replay_target_destination_id=replay_target_destination_id,
                 )
         except Exception as e:
             ctx.logger.error(f"Error during sync orchestrator creation: {e}")

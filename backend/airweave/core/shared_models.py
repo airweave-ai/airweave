@@ -102,6 +102,7 @@ class FeatureFlag(str, Enum):
     PRIORITY_SUPPORT = "priority_support"
     SOURCE_RATE_LIMITING = "source_rate_limiting"
     ZEPHYR_SCALE = "zephyr_scale"  # Enables Zephyr Scale test management sync for Jira
+    SYNC_MULTIPLEXER = "sync_multiplexer"  # Destination multiplexing for migrations
 
 
 class AuthMethod(str, Enum):

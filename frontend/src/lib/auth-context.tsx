@@ -50,7 +50,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Default to Auth0 values, but override if auth is disabled
   const isAuthenticated = authConfig.authEnabled ? auth0IsAuthenticated : true;
   const isLoading = authConfig.authEnabled ? (auth0IsLoading || !tokenInitialized || userProfileLoading) : false;
-  const user = authConfig.authEnabled ? (enrichedUser || auth0User) : { name: 'Developer', email: 'dev@example.com', is_admin: false };
+  // Use enrichedUser for both auth enabled and disabled - enrichedUser gets set with is_admin: true in dev mode
+  const user = enrichedUser || (authConfig.authEnabled ? auth0User : { name: 'Developer', email: 'dev@example.com', is_admin: true });
 
   // Get the token when authenticated
   useEffect(() => {

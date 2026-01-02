@@ -20,8 +20,13 @@ from airweave.crud.crud_organization_billing import organization_billing
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.integrations.auth0_management import auth0_management_client
 from airweave.integrations.stripe_client import stripe_client
+from airweave.models.collection import Collection
+from airweave.models.connection import Connection
 from airweave.models.organization import Organization
 from airweave.models.organization_billing import OrganizationBilling
+from airweave.models.source_connection import SourceConnection
+from airweave.models.sync import Sync
+from airweave.models.sync_connection import SyncConnection
 from airweave.models.user_organization import UserOrganization
 from airweave.schemas.organization_billing import BillingPlan, BillingStatus
 
@@ -58,6 +63,12 @@ def _require_admin(ctx: ApiContext) -> None:
     Raises:
         HTTPException: If user is not an admin or superuser
     """
+    from airweave.core.config import settings
+
+    # Allow local admin access when enabled (for development)
+    if settings.LOCAL_ADMIN_ACCESS and settings.ENVIRONMENT == "local":
+        return
+
     # Allow both explicit admins AND superusers (for system operations and tests)
     if not ctx.has_user_context or not (ctx.user.is_admin or ctx.user.is_superuser):
         raise HTTPException(status_code=403, detail="Admin access required")
@@ -814,3 +825,764 @@ async def disable_feature_flag(
     ctx.logger.info(f"Admin disabled feature flag {flag} for org {organization_id}")
 
     return {"message": f"Feature flag '{flag}' disabled", "organization_id": str(organization_id)}
+
+
+@router.get("/syncs", response_model=List[dict])
+async def list_all_syncs_for_migration(
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+    organization_id: Optional[UUID] = Query(None, description="Filter by organization"),
+    search: Optional[str] = Query(None, description="Search by collection name"),
+    limit: int = Query(500, le=1000),
+) -> List[dict]:
+    """List all syncs with collection and destination info for migration dashboard (admin only).
+
+    This endpoint provides a unified view of syncs across organizations,
+    useful for planning and executing vector DB migrations.
+
+    Args:
+        db: Database session
+        ctx: API context
+        organization_id: Optional organization filter
+        search: Optional search by collection name
+        limit: Maximum results
+
+    Returns:
+        List of sync info with destinations
+    """
+    _require_admin(ctx)
+
+    # Build query: Sync <- SourceConnection -> Collection -> Organization
+    # SourceConnection has: sync_id (FK to Sync), readable_collection_id (FK to Collection)
+    query = (
+        select(Sync, SourceConnection, Collection, Organization)
+        .join(SourceConnection, SourceConnection.sync_id == Sync.id)
+        .join(Collection, SourceConnection.readable_collection_id == Collection.readable_id)
+        .join(Organization, Collection.organization_id == Organization.id)
+    )
+
+    if organization_id:
+        query = query.where(Organization.id == organization_id)
+
+    if search:
+        query = query.where(Collection.name.ilike(f"%{search}%"))
+
+    query = query.order_by(Sync.created_at.desc()).limit(limit)
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    syncs_data = []
+    for sync, source_conn, collection, org in rows:
+        # Get destination slots for this sync (ONLY destinations, not sources)
+        from airweave.core.shared_models import IntegrationType
+
+        slots_result = await db.execute(
+            select(SyncConnection, Connection)
+            .join(Connection, SyncConnection.connection_id == Connection.id)
+            .where(
+                and_(
+                    SyncConnection.sync_id == sync.id,
+                    Connection.integration_type == IntegrationType.DESTINATION,
+                )
+            )
+        )
+        slots = []
+        for slot, conn in slots_result.all():
+            slots.append(
+                {
+                    "slot_id": str(slot.id),
+                    "connection_id": str(conn.id),
+                    "connection_name": conn.name,
+                    "role": slot.role,
+                }
+            )
+
+        # Sort: active first, then shadow, then deprecated
+        role_order = {"active": 0, "shadow": 1, "deprecated": 2}
+        slots.sort(key=lambda x: role_order.get(x["role"], 99))
+
+        syncs_data.append(
+            {
+                "sync_id": str(sync.id),
+                "sync_name": sync.name,
+                "collection_id": str(collection.id),
+                "collection_readable_id": str(collection.readable_id),
+                "collection_name": collection.name,
+                "organization_id": str(org.id),
+                "organization_name": org.name,
+                "source_connection_id": str(source_conn.id) if source_conn else None,
+                "source_short_name": source_conn.short_name if source_conn else None,
+                "destination_slots": slots,
+                "created_at": sync.created_at.isoformat() if sync.created_at else None,
+            }
+        )
+
+    return syncs_data
+
+
+@router.post("/syncs/{sync_id}/force-resync")
+async def force_resync(
+    sync_id: UUID,
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+) -> dict:
+    """Force a full resync on a sync (admin only).
+
+    This triggers a sync with force_full_sync=True, which clears cursors
+    and resyncs all data from scratch.
+    """
+    _require_admin(ctx)
+
+    from airweave.core.temporal_service import temporal_service
+
+    # Direct query for admin - bypasses organization access validation
+    result = await db.execute(select(Sync).where(Sync.id == sync_id))
+    sync_model = result.scalar_one_or_none()
+    if not sync_model:
+        raise HTTPException(status_code=404, detail="Sync not found")
+
+    # Get source connection (direct query)
+    result = await db.execute(select(SourceConnection).where(SourceConnection.sync_id == sync_id))
+    source_conn = result.scalar_one_or_none()
+    if not source_conn:
+        raise HTTPException(status_code=404, detail="Source connection not found")
+
+    # Get collection (direct query)
+    result = await db.execute(
+        select(Collection).where(Collection.readable_id == source_conn.readable_collection_id)
+    )
+    collection_model = result.scalar_one_or_none()
+    if not collection_model:
+        raise HTTPException(status_code=404, detail="Collection not found")
+
+    # Get source's underlying connection (direct query)
+    result = await db.execute(select(Connection).where(Connection.id == source_conn.connection_id))
+    connection_model = result.scalar_one_or_none()
+    if not connection_model:
+        raise HTTPException(status_code=404, detail="Connection not found")
+
+    # Create sync job (direct insert for admin)
+    from airweave.core.shared_models import SyncJobStatus
+    from airweave.models.sync_job import SyncJob as SyncJobModel
+
+    sync_job_model = SyncJobModel(
+        sync_id=sync_id,
+        status=SyncJobStatus.PENDING,
+        scheduled=False,
+        organization_id=sync_model.organization_id,
+    )
+    db.add(sync_job_model)
+    await db.commit()
+    await db.refresh(sync_job_model)
+
+    # Enrich sync with connection IDs for schema validation
+    sync_dict = {**sync_model.__dict__}
+    sync_dict.pop("_sa_instance_state", None)
+    sync_dict["source_connection_id"] = source_conn.connection_id
+    # Get destination connection IDs from sync_connection table
+    dest_result = await db.execute(
+        select(SyncConnection.connection_id).where(SyncConnection.sync_id == sync_id)
+    )
+    sync_dict["destination_connection_ids"] = [row[0] for row in dest_result.all()]
+
+    sync_schema = schemas.Sync.model_validate(sync_dict)
+    sync_job_schema = schemas.SyncJob.model_validate(sync_job_model, from_attributes=True)
+    collection_schema = schemas.Collection.model_validate(collection_model, from_attributes=True)
+    connection_schema = schemas.Connection.model_validate(connection_model, from_attributes=True)
+
+    # Trigger Temporal workflow with force_full_sync=True
+    await temporal_service.run_source_connection_workflow(
+        sync=sync_schema,
+        sync_job=sync_job_schema,
+        collection=collection_schema,
+        connection=connection_schema,
+        ctx=ctx,
+        force_full_sync=True,
+    )
+
+    ctx.logger.info(f"Admin triggered force resync for sync {sync_id}, job {sync_job_model.id}")
+    return {"status": "started", "sync_id": str(sync_id), "sync_job_id": str(sync_job_model.id)}
+
+
+# ============ COLLECTION-LEVEL DESTINATION MANAGEMENT ============
+
+
+@router.get("/collections/{collection_id}/destinations")
+async def list_collection_destinations(
+    collection_id: UUID,
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+) -> dict:
+    """List destination slots for a collection with consistency status (admin only).
+
+    Returns destinations across all syncs in the collection and whether they're consistent.
+    """
+    _require_admin(ctx)
+
+    from airweave.core.shared_models import IntegrationType
+    from airweave.models.sync_connection import DestinationRole
+
+    # Get collection
+    result = await db.execute(select(Collection).where(Collection.id == collection_id))
+    collection = result.scalar_one_or_none()
+    if not collection:
+        raise HTTPException(status_code=404, detail="Collection not found")
+
+    # Get all syncs for this collection via SourceConnection
+    syncs_result = await db.execute(
+        select(Sync, SourceConnection)
+        .join(SourceConnection, SourceConnection.sync_id == Sync.id)
+        .where(SourceConnection.readable_collection_id == collection.readable_id)
+    )
+    sync_rows = syncs_result.all()
+
+    if not sync_rows:
+        return {
+            "collection_id": str(collection_id),
+            "collection_name": collection.name,
+            "syncs_count": 0,
+            "destinations": [],
+            "is_consistent": True,
+            "active_connection_id": None,
+        }
+
+    # Get all destination connections for these syncs
+    sync_ids = [sync.id for sync, _ in sync_rows]
+    dest_result = await db.execute(
+        select(SyncConnection, Connection, Sync.id.label("sync_id"))
+        .join(Connection, SyncConnection.connection_id == Connection.id)
+        .join(Sync, SyncConnection.sync_id == Sync.id)
+        .where(
+            and_(
+                SyncConnection.sync_id.in_(sync_ids),
+                Connection.integration_type == IntegrationType.DESTINATION,
+            )
+        )
+    )
+    dest_rows = dest_result.all()
+
+    # Group by connection_id and analyze consistency
+    destinations_by_connection: dict = {}
+    active_per_sync: dict = {}
+
+    for sync_conn, conn, sync_id in dest_rows:
+        conn_id = str(conn.id)
+        if conn_id not in destinations_by_connection:
+            destinations_by_connection[conn_id] = {
+                "connection_id": conn_id,
+                "connection_name": conn.name,
+                "roles_by_sync": {},
+            }
+        destinations_by_connection[conn_id]["roles_by_sync"][str(sync_id)] = sync_conn.role
+
+        if sync_conn.role == DestinationRole.ACTIVE.value:
+            active_per_sync[str(sync_id)] = conn_id
+
+    # Check consistency: all syncs should have the same active destination
+    active_values = list(active_per_sync.values())
+    is_consistent = len(set(active_values)) <= 1 and len(active_values) == len(sync_ids)
+    active_connection_id = active_values[0] if is_consistent and active_values else None
+
+    # Build response with aggregated role info
+    destinations = []
+    for conn_id, data in destinations_by_connection.items():
+        roles = list(data["roles_by_sync"].values())
+        # Determine "effective" role (most common, or mixed)
+        if len(set(roles)) == 1:
+            effective_role = roles[0]
+        else:
+            effective_role = "mixed"
+
+        destinations.append(
+            {
+                "connection_id": data["connection_id"],
+                "connection_name": data["connection_name"],
+                "role": effective_role,
+                "syncs_with_role": data["roles_by_sync"],
+            }
+        )
+
+    # Sort: active first, then shadow, then deprecated, then mixed
+    role_order = {"active": 0, "shadow": 1, "deprecated": 2, "mixed": 3}
+    destinations.sort(key=lambda x: role_order.get(x["role"], 99))
+
+    return {
+        "collection_id": str(collection_id),
+        "collection_name": collection.name,
+        "syncs_count": len(sync_ids),
+        "destinations": destinations,
+        "is_consistent": is_consistent,
+        "active_connection_id": active_connection_id,
+    }
+
+
+@router.post("/collections/{collection_id}/destinations/fork")
+async def fork_collection_destination(
+    collection_id: UUID,
+    destination_connection_id: UUID,
+    replay_from_arf: bool = Query(
+        False, description="Replay existing data from ARF storage to the new destination"
+    ),
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+) -> dict:
+    """Fork: add a shadow destination to ALL syncs in a collection (admin only).
+
+    This ensures all syncs in the collection have the same shadow destination.
+    If replay_from_arf is True, also triggers replay jobs to populate the new destination.
+    """
+    _require_admin(ctx)
+
+    from airweave.core.shared_models import SyncJobStatus
+    from airweave.core.temporal_service import temporal_service
+    from airweave.db.unit_of_work import UnitOfWork
+    from airweave.models.sync_connection import DestinationRole
+    from airweave.models.sync_job import SyncJob as SyncJobModel
+
+    # Get collection
+    result = await db.execute(select(Collection).where(Collection.id == collection_id))
+    collection_model = result.scalar_one_or_none()
+    if not collection_model:
+        raise HTTPException(status_code=404, detail="Collection not found")
+
+    # Validate destination connection exists
+    dest_result = await db.execute(
+        select(Connection).where(Connection.id == destination_connection_id)
+    )
+    dest_conn = dest_result.scalar_one_or_none()
+    if not dest_conn:
+        raise HTTPException(status_code=404, detail="Destination connection not found")
+
+    # Get all syncs with their source connections for this collection
+    syncs_result = await db.execute(
+        select(Sync, SourceConnection)
+        .join(SourceConnection, SourceConnection.sync_id == Sync.id)
+        .where(SourceConnection.readable_collection_id == collection_model.readable_id)
+    )
+    sync_rows = syncs_result.all()
+
+    if not sync_rows:
+        raise HTTPException(status_code=400, detail="No syncs found for this collection")
+
+    # Add shadow destination to each sync
+    added_count = 0
+    replay_jobs = []
+
+    async with UnitOfWork(db) as uow:
+        for sync_model, source_conn in sync_rows:
+            # Check if this destination already exists for this sync
+            existing = await db.execute(
+                select(SyncConnection).where(
+                    and_(
+                        SyncConnection.sync_id == sync_model.id,
+                        SyncConnection.connection_id == destination_connection_id,
+                    )
+                )
+            )
+            if existing.scalar_one_or_none():
+                continue  # Already exists, skip
+
+            # Create shadow slot
+            slot = SyncConnection(
+                sync_id=sync_model.id,
+                connection_id=destination_connection_id,
+                role=DestinationRole.SHADOW.value,
+            )
+            db.add(slot)
+            added_count += 1
+
+        await uow.commit()
+
+    # If replay requested, trigger replay jobs for each sync
+    if replay_from_arf and added_count > 0:
+        for sync_model, source_conn in sync_rows:
+            try:
+                # Get underlying source connection
+                conn_result = await db.execute(
+                    select(Connection).where(Connection.id == source_conn.connection_id)
+                )
+                connection_model = conn_result.scalar_one_or_none()
+                if not connection_model:
+                    continue
+
+                # Create replay sync job
+                sync_job_model = SyncJobModel(
+                    sync_id=sync_model.id,
+                    status=SyncJobStatus.PENDING,
+                    scheduled=False,
+                    organization_id=sync_model.organization_id,
+                )
+                db.add(sync_job_model)
+                await db.flush()
+
+                # Enrich sync with connection IDs
+                sync_dict = {**sync_model.__dict__}
+                sync_dict.pop("_sa_instance_state", None)
+                sync_dict["source_connection_id"] = source_conn.connection_id
+                dest_ids_result = await db.execute(
+                    select(SyncConnection.connection_id).where(
+                        SyncConnection.sync_id == sync_model.id
+                    )
+                )
+                sync_dict["destination_connection_ids"] = [row[0] for row in dest_ids_result.all()]
+
+                sync_schema = schemas.Sync.model_validate(sync_dict)
+                sync_job_schema = schemas.SyncJob.model_validate(
+                    sync_job_model, from_attributes=True
+                )
+                collection_schema = schemas.Collection.model_validate(
+                    collection_model, from_attributes=True
+                )
+                connection_schema = schemas.Connection.model_validate(
+                    connection_model, from_attributes=True
+                )
+
+                # Trigger replay workflow
+                await temporal_service.run_source_connection_workflow(
+                    sync=sync_schema,
+                    sync_job=sync_job_schema,
+                    collection=collection_schema,
+                    connection=connection_schema,
+                    ctx=ctx,
+                    replay_target_destination_id=destination_connection_id,
+                )
+
+                replay_jobs.append(
+                    {
+                        "sync_id": str(sync_model.id),
+                        "sync_job_id": str(sync_job_model.id),
+                    }
+                )
+            except Exception as e:
+                ctx.logger.warning(f"Failed to start replay for sync {sync_model.id}: {e}")
+
+        await db.commit()
+
+    ctx.logger.info(
+        f"Admin forked destination {destination_connection_id} to {added_count} syncs in collection {collection_id}, replay_jobs={len(replay_jobs)}"
+    )
+    return {
+        "status": "forked",
+        "collection_id": str(collection_id),
+        "destination_connection_id": str(destination_connection_id),
+        "syncs_updated": added_count,
+        "replay_jobs": replay_jobs if replay_from_arf else None,
+    }
+
+
+@router.post("/collections/{collection_id}/destinations/{connection_id}/set-role")
+async def set_collection_destination_role(
+    collection_id: UUID,
+    connection_id: UUID,
+    role: str,
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+) -> dict:
+    """Set the role of a destination for ALL syncs in a collection (admin only).
+
+    When promoting to active, demotes current active to shadow across all syncs.
+    Cannot demote the last active destination - there must always be at least one.
+    """
+    _require_admin(ctx)
+
+    from airweave.core.shared_models import IntegrationType
+    from airweave.db.unit_of_work import UnitOfWork
+    from airweave.models.sync_connection import DestinationRole
+
+    # Validate role
+    try:
+        new_role = DestinationRole(role)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid role: {role}")
+
+    # Get collection
+    result = await db.execute(select(Collection).where(Collection.id == collection_id))
+    collection = result.scalar_one_or_none()
+    if not collection:
+        raise HTTPException(status_code=404, detail="Collection not found")
+
+    # Get all syncs for this collection
+    syncs_result = await db.execute(
+        select(Sync)
+        .join(SourceConnection, SourceConnection.sync_id == Sync.id)
+        .where(SourceConnection.readable_collection_id == collection.readable_id)
+    )
+    syncs = syncs_result.scalars().all()
+    sync_ids = [s.id for s in syncs]
+
+    if not sync_ids:
+        raise HTTPException(status_code=400, detail="No syncs found for this collection")
+
+    # GUARDRAIL: If demoting from active, check if this is the only active destination
+    if new_role != DestinationRole.ACTIVE:
+        # Check if target is currently active
+        target_check = await db.execute(
+            select(SyncConnection)
+            .join(Connection, SyncConnection.connection_id == Connection.id)
+            .where(
+                and_(
+                    SyncConnection.sync_id.in_(sync_ids),
+                    SyncConnection.connection_id == connection_id,
+                    SyncConnection.role == DestinationRole.ACTIVE.value,
+                )
+            )
+        )
+        is_target_active = target_check.scalar_one_or_none() is not None
+
+        if is_target_active:
+            # Count other active destinations (excluding the one we're demoting)
+            other_active = await db.execute(
+                select(SyncConnection)
+                .join(Connection, SyncConnection.connection_id == Connection.id)
+                .where(
+                    and_(
+                        SyncConnection.sync_id.in_(sync_ids),
+                        SyncConnection.role == DestinationRole.ACTIVE.value,
+                        SyncConnection.connection_id != connection_id,
+                        Connection.integration_type == IntegrationType.DESTINATION,
+                    )
+                )
+            )
+            if not other_active.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cannot demote the last active destination. Promote another destination first.",
+                )
+
+    async with UnitOfWork(db) as uow:
+        if new_role == DestinationRole.ACTIVE:
+            # Demote current active destinations to shadow (across all syncs)
+            await db.execute(
+                SyncConnection.__table__.update()
+                .where(
+                    and_(
+                        SyncConnection.sync_id.in_(sync_ids),
+                        SyncConnection.role == DestinationRole.ACTIVE.value,
+                    )
+                )
+                .values(role=DestinationRole.SHADOW.value)
+            )
+
+        # Set the new role for target destination across all syncs
+        result = await db.execute(
+            SyncConnection.__table__.update()
+            .where(
+                and_(
+                    SyncConnection.sync_id.in_(sync_ids),
+                    SyncConnection.connection_id == connection_id,
+                )
+            )
+            .values(role=new_role.value)
+        )
+
+        await uow.commit()
+
+    ctx.logger.info(
+        f"Admin set role={role} for destination {connection_id} across {len(sync_ids)} syncs in collection {collection_id}"
+    )
+    return {
+        "status": "updated",
+        "collection_id": str(collection_id),
+        "connection_id": str(connection_id),
+        "role": role,
+        "syncs_updated": len(sync_ids),
+    }
+
+
+@router.delete("/collections/{collection_id}/destinations/{connection_id}")
+async def remove_collection_destination(
+    collection_id: UUID,
+    connection_id: UUID,
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+) -> dict:
+    """Remove a destination from ALL syncs in a collection (admin only).
+
+    Cannot remove the active destination.
+    """
+    _require_admin(ctx)
+
+    from airweave.models.sync_connection import DestinationRole
+
+    # Get collection
+    result = await db.execute(select(Collection).where(Collection.id == collection_id))
+    collection = result.scalar_one_or_none()
+    if not collection:
+        raise HTTPException(status_code=404, detail="Collection not found")
+
+    # Get all syncs for this collection
+    syncs_result = await db.execute(
+        select(Sync)
+        .join(SourceConnection, SourceConnection.sync_id == Sync.id)
+        .where(SourceConnection.readable_collection_id == collection.readable_id)
+    )
+    syncs = syncs_result.scalars().all()
+    sync_ids = [s.id for s in syncs]
+
+    if not sync_ids:
+        raise HTTPException(status_code=400, detail="No syncs found for this collection")
+
+    # Check if any sync has this as active
+    active_check = await db.execute(
+        select(SyncConnection).where(
+            and_(
+                SyncConnection.sync_id.in_(sync_ids),
+                SyncConnection.connection_id == connection_id,
+                SyncConnection.role == DestinationRole.ACTIVE.value,
+            )
+        )
+    )
+    if active_check.scalar_one_or_none():
+        raise HTTPException(
+            status_code=400, detail="Cannot remove active destination - change role first"
+        )
+
+    # Delete the destination from all syncs
+    result = await db.execute(
+        SyncConnection.__table__.delete().where(
+            and_(
+                SyncConnection.sync_id.in_(sync_ids),
+                SyncConnection.connection_id == connection_id,
+            )
+        )
+    )
+    await db.commit()
+
+    ctx.logger.info(f"Admin removed destination {connection_id} from collection {collection_id}")
+    return {
+        "status": "removed",
+        "collection_id": str(collection_id),
+        "connection_id": str(connection_id),
+    }
+
+
+@router.get("/organizations/{organization_id}/destination-connections")
+async def list_destination_connections(
+    organization_id: UUID,
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+) -> List[dict]:
+    """List available destination connections for an organization (admin only)."""
+    _require_admin(ctx)
+
+    from airweave.core.shared_models import IntegrationType
+
+    result = await db.execute(
+        select(Connection).where(
+            and_(
+                Connection.organization_id == organization_id,
+                Connection.integration_type == IntegrationType.DESTINATION,
+            )
+        )
+    )
+    connections = result.scalars().all()
+
+    return [
+        {
+            "id": str(conn.id),
+            "name": conn.name,
+            "short_name": conn.short_name,
+        }
+        for conn in connections
+    ]
+
+
+@router.post("/collections/{collection_id}/force-resync")
+async def force_resync_collection(
+    collection_id: UUID,
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+) -> dict:
+    """Force full resync on ALL syncs in a collection (admin only).
+
+    This triggers force_full_sync=True for each sync in the collection.
+    """
+    _require_admin(ctx)
+
+    from airweave.core.shared_models import SyncJobStatus
+    from airweave.core.temporal_service import temporal_service
+    from airweave.models.sync_job import SyncJob as SyncJobModel
+
+    # Get collection
+    result = await db.execute(select(Collection).where(Collection.id == collection_id))
+    collection_model = result.scalar_one_or_none()
+    if not collection_model:
+        raise HTTPException(status_code=404, detail="Collection not found")
+
+    # Get all syncs for this collection
+    syncs_result = await db.execute(
+        select(Sync, SourceConnection)
+        .join(SourceConnection, SourceConnection.sync_id == Sync.id)
+        .where(SourceConnection.readable_collection_id == collection_model.readable_id)
+    )
+    sync_rows = syncs_result.all()
+
+    if not sync_rows:
+        raise HTTPException(status_code=400, detail="No syncs found for this collection")
+
+    jobs_started = []
+    for sync_model, source_conn in sync_rows:
+        # Get underlying connection
+        conn_result = await db.execute(
+            select(Connection).where(Connection.id == source_conn.connection_id)
+        )
+        connection_model = conn_result.scalar_one_or_none()
+        if not connection_model:
+            continue
+
+        # Create sync job
+        sync_job_model = SyncJobModel(
+            sync_id=sync_model.id,
+            status=SyncJobStatus.PENDING,
+            scheduled=False,
+            organization_id=sync_model.organization_id,
+        )
+        db.add(sync_job_model)
+        await db.flush()
+
+        # Enrich sync with connection IDs
+        sync_dict = {**sync_model.__dict__}
+        sync_dict.pop("_sa_instance_state", None)
+        sync_dict["source_connection_id"] = source_conn.connection_id
+        dest_result = await db.execute(
+            select(SyncConnection.connection_id).where(SyncConnection.sync_id == sync_model.id)
+        )
+        sync_dict["destination_connection_ids"] = [row[0] for row in dest_result.all()]
+
+        sync_schema = schemas.Sync.model_validate(sync_dict)
+        sync_job_schema = schemas.SyncJob.model_validate(sync_job_model, from_attributes=True)
+        collection_schema = schemas.Collection.model_validate(
+            collection_model, from_attributes=True
+        )
+        connection_schema = schemas.Connection.model_validate(
+            connection_model, from_attributes=True
+        )
+
+        # Trigger Temporal workflow
+        await temporal_service.run_source_connection_workflow(
+            sync=sync_schema,
+            sync_job=sync_job_schema,
+            collection=collection_schema,
+            connection=connection_schema,
+            ctx=ctx,
+            force_full_sync=True,
+        )
+
+        jobs_started.append(
+            {
+                "sync_id": str(sync_model.id),
+                "sync_job_id": str(sync_job_model.id),
+            }
+        )
+
+    await db.commit()
+
+    ctx.logger.info(
+        f"Admin triggered force resync for collection {collection_id}, {len(jobs_started)} jobs started"
+    )
+    return {
+        "status": "started",
+        "collection_id": str(collection_id),
+        "jobs_started": jobs_started,
+    }

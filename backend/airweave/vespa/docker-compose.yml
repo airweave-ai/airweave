@@ -1,0 +1,24 @@
+# Vespa single-node for standalone development/testing
+# For full dev stack, use docker/docker-compose.dev.yml instead
+version: '3.8'
+
+services:
+  vespa:
+    container_name: airweave-vespa
+    image: vespaengine/vespa:8
+    hostname: vespa
+    ports:
+      - "8081:8081"   # Query/Document API
+      - "19071:19071" # Config server (for deployment)
+    volumes:
+      - vespa_data:/opt/vespa/var
+      - ./app:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:19071/state/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: on-failure
+
+volumes:
+  vespa_data:

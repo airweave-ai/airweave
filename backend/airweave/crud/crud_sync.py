@@ -375,14 +375,27 @@ class CRUDSync(CRUDBaseOrganization[Sync, SyncCreate, SyncUpdate]):
         else:
             await db.flush()
 
-        # Write the sync_connection objects to db (source + destinations only)
-        connection_ids = [source_connection_id] + destination_connection_ids
-        for connection_id in connection_ids:
-            sync_connection = SyncConnection(
+        # Write the sync_connection objects to db (sources + destinations)
+        # Sources get role=NULL, destinations get role='active'/'shadow'/'deprecated'
+
+        # Add source connection (role=NULL - sources don't have roles)
+        source_sync_conn = SyncConnection(
+            sync_id=sync.id,
+            connection_id=source_connection_id,
+            role=None,  # Sources don't participate in multiplexing
+        )
+        db.add(source_sync_conn)
+
+        # Add destination connections with roles
+        from airweave.models.sync_connection import DestinationRole
+
+        for i, connection_id in enumerate(destination_connection_ids):
+            dest_sync_conn = SyncConnection(
                 sync_id=sync.id,
                 connection_id=connection_id,
+                role=DestinationRole.ACTIVE.value if i == 0 else DestinationRole.SHADOW.value,
             )
-            db.add(sync_connection)
+            db.add(dest_sync_conn)
 
         # Commit and refresh
         if not uow:

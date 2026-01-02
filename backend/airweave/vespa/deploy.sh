@@ -2,12 +2,12 @@
 set -euo pipefail
 
 # Deploy Vespa application package to config server
-# Usage: ./deploy.sh [config_server_url]
+# Usage: ./deploy.sh
 
-CONFIG_SERVER="${1:-http://localhost:19071}"
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CONFIG_SERVER="http://localhost:19071"
+APP_DIR="$(dirname "$0")/app"
 
-echo "Waiting for config server to be ready at ${CONFIG_SERVER}..."
+echo "Waiting for config server to be ready..."
 until curl -s "${CONFIG_SERVER}/state/v1/health" | grep -q '"up"'; do
     echo "  Config server not ready, waiting..."
     sleep 5
@@ -16,9 +16,10 @@ echo "Config server is ready!"
 
 echo ""
 echo "Creating application package zip..."
-cd "${SCRIPT_DIR}"
-rm -f app.zip
-zip -r app.zip hosts.xml services.xml schemas/ -x ".*" -x "deploy.sh" -x "app.zip"
+cd "${APP_DIR}"
+rm -f ../app.zip
+zip -r ../app.zip . -x ".*"
+cd ..
 
 echo ""
 echo "Deploying application package..."
@@ -37,11 +38,14 @@ echo "Checking cluster status..."
 curl -s "${CONFIG_SERVER}/application/v2/tenant/default/application/default/environment/prod/region/default/instance/default/serviceconverge" | jq .
 
 echo ""
-echo "=== Vespa is ready! ==="
+echo "=== Test Instructions ==="
 echo ""
-echo "Test document API:"
-echo "  curl http://localhost:8081/document/v1/airweave/base_entity/docid/test1"
+echo "1. Check config server logs (should show only configserver, no services):"
+echo "   docker logs vespa-config 2>&1 | grep -E 'Starting|sentinel'"
 echo ""
-echo "Deploy the application package after Vespa is running:"
-echo "  cd docker/vespa-config && ./deploy.sh"
+echo "2. Check content node logs (should show services starting):"
+echo "   docker logs vespa-content-0 2>&1 | tail -20"
+echo ""
+echo "3. Test document API:"
+echo "   curl http://localhost:8081/document/v1/airweave/base_entity/docid/test1"
 echo ""

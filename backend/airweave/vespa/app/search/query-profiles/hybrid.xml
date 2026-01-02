@@ -1,0 +1,45 @@
+<query-profile id="hybrid">
+    <!-- Schema and document type -->
+    <field name="schema">base_entity</field>
+
+    <!-- Query embeddings: int8 for ANN matching (hamming), float for ranking -->
+    <field name="ranking.features.query(embedding)">embed(nomicmb, @query)</field>
+    <field name="ranking.features.query(float_embedding)">embed(nomicmb, @query)</field>
+
+    <!--
+    Hybrid retrieval combining lexical and semantic search.
+
+    From Vespa docs (RAG Blueprint & Hybrid Text Search Tutorial):
+    - targetHits: 100 is recommended default for both operators
+    - weakAnd (via userInput) retrieves by lexical matching
+    - nearestNeighbor retrieves by semantic similarity
+    - OR combines them for maximum recall
+
+    Collection filtering:
+    - collection_id filters by Airweave collection
+    - This is CRITICAL for multi-tenant isolation
+    -->
+    <field name="yql">
+        select *
+        from %{schema}
+        where collection_id contains @collection_id and
+              (({targetHits:30}userInput(@query)) or
+               ({label:"chunks_label", targetHits:30}nearestNeighbor(chunk_small_embeddings, embedding)))
+    </field>
+
+    <!--
+    Use RRF rank profile - recommended when you don't have training data.
+    RRF normalizes by rank position, making scores comparable without learned weights.
+    Alternative: hybrid-linear for simpler setups with manual normalization.
+    -->
+    <field name="ranking.profile">hybrid-rrf</field>
+
+    <!-- Return only the top-3 most similar chunks per document -->
+    <field name="presentation.summary">top_3_chunks</field>
+
+    <!-- Default number of hits returned to client -->
+    <field name="hits">5</field>
+
+    <!-- Enable timing info for debugging -->
+    <field name="presentation.timing">true</field>
+</query-profile>

@@ -148,6 +148,11 @@ from .sync_job import (
     SyncJobInDBBase,
     SyncJobUpdate,
 )
+from .sync_multiplex import (
+    DestinationSlotInfo,
+    ForkDestinationRequest,
+    ForkDestinationResponse,
+)
 from .transformer import Transformer, TransformerCreate, TransformerUpdate
 from .usage import (
     SingleActionCheckResponse,

@@ -1,0 +1,351 @@
+# OVERVIEW:
+# - matching: hybrid (lexical + ANN) to maximize recall
+# - ANN index: x[96] binary packed embeddings with hamming distance for fast retrieval
+# - ranking (large embeddings): x[768] bfloat16 for high-precision cosine similarity
+#
+# PHASED RANKING (recommended by Vespa docs):
+# - first-phase: cheap, runs on ALL matched candidates
+#   - Re-use ANN match score (closeness) + BM25 over chunks/payload
+# - second-phase: expensive, runs on top rerank-count candidates (default: 100)
+#   - Per-chunk cosine similarity with large embeddings
+#   - Per-chunk BM25 aggregations (max, avg top-3)
+# - global-phase: RRF (Reciprocal Rank Fusion) - no training data needed
+#   - Combines text and semantic scores by rank position, not raw values
+#   - Runs on stateless container after merging results from all content nodes
+#
+# LAYERED RANKING:
+# - Select best docs based on best chunks
+# - Return only the top 3 most relevant chunks per document
+
+schema base_entity {
+
+    document base_entity {
+
+        # attribute: in-memory (unless paged), can be used for fast filtering
+        # summary: field will be returned in results
+        # This field is not keyword searchable b/c its not indexed
+        field entity_id type string {
+            indexing: summary | attribute
+        }
+
+        field name type string {
+            indexing: attribute | summary
+        }
+
+        # type breadcrumb is defined below
+        field breadcrumbs type array<breadcrumb> {
+            indexing: summary
+            struct-field entity_id { indexing: attribute }
+            struct-field name { indexing: attribute }
+            struct-field entity_type { indexing: attribute }
+        }
+
+        # Timestamps as epoch seconds for filtering and temporal relevance
+        field created_at type long {
+            indexing: attribute | summary
+            attribute: fast-search
+        }
+
+        field updated_at type long {
+            indexing: attribute | summary
+            attribute: fast-search
+        }
+
+        # System metadata fields (flattened for Vespa compatibility)
+        # Vespa only supports struct-field attributes for arrays/maps of structs
+        field collection_id type string {
+            indexing: attribute | summary
+            attribute: fast-search  # Critical for collection filtering
+        }
+
+        field sync_id type string {
+            indexing: attribute | summary
+            attribute: fast-search  # For delete-by-sync operations
+        }
+
+        field sync_job_id type string {
+            indexing: attribute | summary
+        }
+
+        field content_hash type string {
+            indexing: attribute | summary
+        }
+
+        field original_entity_id type string {
+            indexing: attribute | summary
+            attribute: fast-search  # For parent-based chunk deletion
+        }
+
+        field source_name type string {
+            indexing: attribute | summary
+        }
+
+        field entity_type type string {
+            indexing: attribute | summary
+            attribute: fast-search  # Part of document ID
+        }
+
+        field textual_representation type string {}
+
+        # Payload stores all other fields from the source entity (as JSON string)
+        # Indexed for keyword search (BM25)
+        field payload type string {
+            indexing: index | summary
+            index: enable-bm25
+        }
+    }
+
+    struct breadcrumb {
+        field entity_id   type string {}
+        field name        type string {}
+        field entity_type type string {}
+    }
+
+    # Chunked text, keyword indexed for BM25
+    field chunks type array<string> {
+        indexing: input textual_representation | chunk fixed-length 1024 | summary | index
+        index: enable-bm25
+    }
+
+    # Binary packed embeddings for fast ANN retrieval (small and fast)
+    # Uses hamming distance on packed int8 - 32x faster than float cosine
+    field chunk_small_embeddings type tensor<int8>(chunk{}, x[96]) {
+        indexing: input textual_representation | chunk fixed-length 1024 | embed | pack_bits | attribute | index
+        attribute {
+            distance-metric: hamming
+        }
+        index {
+            hnsw {
+                max-links-per-node: 16
+                neighbors-to-explore-at-insert: 100
+            }
+        }
+    }
+
+    # High-precision embeddings for ranking (not indexed for ANN - too expensive)
+    # Uses angular distance which maps to cosine similarity
+    field chunk_large_embeddings type tensor<bfloat16>(chunk{}, x[768]) {
+        indexing: input textual_representation | chunk fixed-length 1024 | embed | attribute
+        attribute {
+            distance-metric: angular
+        }
+    }
+
+    # Default fieldset used by userInput() / unspecified text search
+    fieldset default {
+        fields: payload, chunks
+    }
+
+    document-summary no-chunks {
+        summary entity_id {}
+        summary name {}
+        summary breadcrumbs {}
+        summary created_at {}
+        summary updated_at {}
+    }
+
+    document-summary top_3_chunks {
+        from-disk # get these from disk even if there were attributes?
+        summary chunks_top3 {
+            source: chunks
+            select-elements-by: top_3_chunk_sim_scores
+        }
+    }
+
+    # get top 3 most similar chunks to return in the summary
+    # this is calculated DURING ranking phase, but is not USED in the ranking
+    # =========================================================================
+    # BASE RANK PROFILE - shared functions for all ranking profiles
+    # =========================================================================
+    rank-profile default {
+        inputs {
+            query(embedding) tensor<int8>(x[96])         # Binary packed for ANN matching (hamming)
+            query(float_embedding) tensor<float>(x[768]) # Full precision for ranking
+        }
+
+        # Fixed length chunking should not cause any positional gap between elements
+        # so lexical search over chunks behaves like one big text field.
+        rank chunks {
+            element-gap: 0
+        }
+
+        # -----------------------------------------------------------------------
+        # Chunk-level text scoring (BM25)
+        # -----------------------------------------------------------------------
+        function chunk_text_scores() {
+            expression: elementwise(bm25(chunks), chunk, float)
+        }
+
+        # -----------------------------------------------------------------------
+        # Chunk-level semantic scoring (cosine similarity with large embeddings)
+        # -----------------------------------------------------------------------
+        function chunk_dot_prod() {
+            expression: reduce(query(float_embedding) * attribute(chunk_large_embeddings), sum, x)
+        }
+
+        # L2 norm helper
+        function vector_norms(t) {
+            expression: sqrt(sum(pow(t, 2), x))
+        }
+
+        # Cosine similarity per chunk
+        function chunk_sim_scores() {
+            expression: chunk_dot_prod() / (vector_norms(attribute(chunk_large_embeddings)) * vector_norms(query(float_embedding)))
+        }
+
+        # -----------------------------------------------------------------------
+        # Aggregations for chunk scores
+        # -----------------------------------------------------------------------
+        function top_3_chunk_text_scores() {
+            expression: top(3, chunk_text_scores())
+        }
+
+        function top_3_chunk_sim_scores() {
+            expression: top(3, chunk_sim_scores())
+        }
+
+        function max_chunk_text_score() {
+            expression: reduce(chunk_text_scores(), max, chunk)
+        }
+
+        function max_chunk_sim_score() {
+            expression: reduce(chunk_sim_scores(), max, chunk)
+        }
+
+        function avg_top_3_chunk_text_scores() {
+            expression: reduce(top_3_chunk_text_scores(), avg, chunk)
+        }
+
+        function avg_top_3_chunk_sim_scores() {
+            expression: reduce(top_3_chunk_sim_scores(), avg, chunk)
+        }
+
+        # Chunk selector needs this in summary-features
+        summary-features {
+            top_3_chunk_sim_scores
+        }
+    }
+
+    # =========================================================================
+    # HYBRID RANK PROFILE with RRF (Reciprocal Rank Fusion)
+    # Recommended when you don't have training data to learn optimal weights
+    # =========================================================================
+    rank-profile hybrid-rrf inherits default {
+
+        # -----------------------------------------------------------------------
+        # Document-level scores for RRF
+        # -----------------------------------------------------------------------
+
+        # Combined BM25 score across chunks and payload
+        function bm25_score() {
+            expression: bm25(chunks) + bm25(payload)
+        }
+
+        # Semantic score using closeness from ANN match (reuses HNSW graph traversal)
+        function semantic_score() {
+            expression: closeness(field, chunk_small_embeddings)
+        }
+
+        # -----------------------------------------------------------------------
+        # FIRST PHASE: Cheap, runs on all matched candidates
+        # Re-uses ANN match score + BM25 (both already computed during matching)
+        # No arbitrary coefficients - just addition since RRF handles normalization
+        # -----------------------------------------------------------------------
+        first-phase {
+            expression: bm25_score() + semantic_score()
+        }
+
+        # -----------------------------------------------------------------------
+        # SECOND PHASE: Expensive per-chunk features on top candidates
+        # Uses high-precision embeddings for more accurate similarity
+        # -----------------------------------------------------------------------
+        second-phase {
+            rerank-count: 15
+            expression {
+                firstPhase +
+                max_chunk_sim_score() +
+                avg_top_3_chunk_sim_scores()
+            }
+        }
+
+        # -----------------------------------------------------------------------
+        # GLOBAL PHASE: RRF fusion - normalizes by rank, not raw scores
+        # This is the key: reciprocal_rank converts each score to 1/(k+rank)
+        # where k=60 by default. This makes scores comparable without training.
+        # -----------------------------------------------------------------------
+        global-phase {
+            rerank-count: 15
+            expression {
+                reciprocal_rank(bm25_score) +
+                reciprocal_rank(max_chunk_sim_score)
+            }
+        }
+
+        # Match features for debugging and potential future model training
+        match-features {
+            bm25(chunks)
+            bm25(payload)
+            bm25_score
+            semantic_score
+            max_chunk_sim_score
+            max_chunk_text_score
+            avg_top_3_chunk_sim_scores
+            avg_top_3_chunk_text_scores
+        }
+
+        summary-features {
+            top_3_chunk_sim_scores
+        }
+    }
+
+    # =========================================================================
+    # SIMPLE LINEAR RANK PROFILE (alternative when RRF overhead not needed)
+    # Uses normalized BM25 to make scores comparable with closeness [0,1]
+    # =========================================================================
+    rank-profile hybrid-linear inherits default {
+
+        # Normalize BM25 to [0,1] range using atan (from Vespa docs)
+        function normalize(val) {
+            expression: 2 * atan(val / 8) / 3.14159
+        }
+
+        function normalized_bm25() {
+            expression: normalize(bm25(chunks) + bm25(payload))
+        }
+
+        function semantic_score() {
+            expression: closeness(field, chunk_small_embeddings)
+        }
+
+        # -----------------------------------------------------------------------
+        # FIRST PHASE: Equal weighting after normalization
+        # Both scores now in [0,1] range, so 0.5/0.5 is balanced
+        # -----------------------------------------------------------------------
+        first-phase {
+            expression: 0.5 * normalized_bm25() + 0.5 * semantic_score()
+        }
+
+        # -----------------------------------------------------------------------
+        # SECOND PHASE: Add expensive chunk-level features
+        # -----------------------------------------------------------------------
+        second-phase {
+            rerank-count: 15
+            expression {
+                firstPhase +
+                0.3 * max_chunk_sim_score() +
+                0.2 * normalize(max_chunk_text_score())
+            }
+        }
+
+        match-features {
+            normalized_bm25
+            semantic_score
+            max_chunk_sim_score
+            max_chunk_text_score
+        }
+
+        summary-features {
+            top_3_chunk_sim_scores
+        }
+    }
+}
