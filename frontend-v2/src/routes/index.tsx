@@ -3,8 +3,7 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { createFileRoute, Navigate } from "@tanstack/react-router";
 
 import { fetchOrganizations } from "@/lib/api/organizations";
 import { useAuth0 } from "@/lib/auth-provider";
@@ -17,7 +16,6 @@ export const Route = createFileRoute("/")({
 
 function RootRedirect() {
   const { getAccessTokenSilently } = useAuth0();
-  const navigate = useNavigate();
 
   const { data: organizations, isLoading } = useQuery({
     queryKey: queryKeys.organizations.all,
@@ -27,36 +25,43 @@ function RootRedirect() {
     },
   });
 
-  useEffect(() => {
-    if (isLoading || !organizations) return;
+  // Still loading - show loading state
+  if (isLoading || !organizations) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="border-primary h-8 w-8 animate-spin rounded-full border-4 border-t-transparent" />
+          <p className="text-muted-foreground text-sm">
+            Loading organizations...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
-    if (organizations.length === 0) {
-      // No organizations - redirect to onboarding
-      navigate({
-        to: "/onboarding",
-        replace: true,
-      });
-      return;
-    }
+  // No organizations - redirect to onboarding
+  if (organizations.length === 0) {
+    return <Navigate to="/onboarding" replace />;
+  }
 
-    const primaryOrg = getPrimaryOrg(organizations);
-    if (primaryOrg) {
-      navigate({
-        to: "/$orgSlug",
-        params: { orgSlug: generateOrgSlug(primaryOrg) },
-        replace: true,
-      });
-    }
-  }, [organizations, isLoading, navigate]);
+  // Redirect to primary organization
+  const primaryOrg = getPrimaryOrg(organizations);
+  if (primaryOrg) {
+    return (
+      <Navigate
+        to="/$orgSlug"
+        params={{ orgSlug: generateOrgSlug(primaryOrg) }}
+        replace
+      />
+    );
+  }
 
-  // Show loading while fetching organizations
+  // Fallback loading state (shouldn't reach here normally)
   return (
     <div className="flex h-full items-center justify-center">
       <div className="flex flex-col items-center gap-4">
         <div className="border-primary h-8 w-8 animate-spin rounded-full border-4 border-t-transparent" />
-        <p className="text-muted-foreground text-sm">
-          Loading organizations...
-        </p>
+        <p className="text-muted-foreground text-sm">Redirecting...</p>
       </div>
     </div>
   );

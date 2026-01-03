@@ -5,14 +5,8 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useParams } from "@tanstack/react-router";
-import {
-  createContext,
-  ReactNode,
-  useContext,
-  useEffect,
-  useMemo,
-} from "react";
+import { Navigate, useParams } from "@tanstack/react-router";
+import { createContext, ReactNode, useContext, useMemo } from "react";
 
 import { fetchOrganizations, type Organization } from "./api/organizations";
 import { useAuth0 } from "./auth-provider";
@@ -44,7 +38,6 @@ interface OrgProviderProps {
  */
 export function OrgProvider({ children }: OrgProviderProps) {
   const { getAccessTokenSilently } = useAuth0();
-  const navigate = useNavigate();
   const params = useParams({ strict: false }) as { orgSlug?: string };
   const orgSlug = params.orgSlug;
 
@@ -68,49 +61,54 @@ export function OrgProvider({ children }: OrgProviderProps) {
     return findOrgBySlug(organizations, orgSlug) ?? null;
   }, [orgSlug, organizations]);
 
-  // Handle redirects for invalid or non-canonical slugs
-  useEffect(() => {
-    if (isLoading || organizations.length === 0) return;
+  // Handle redirects during render (no useEffect needed)
+  const redirect = useMemo(() => {
+    if (isLoading || organizations.length === 0) return null;
 
     // If no orgSlug in URL, redirect to primary org
     if (!orgSlug) {
       const primaryOrg = getPrimaryOrg(organizations);
       if (primaryOrg) {
-        navigate({
-          to: "/$orgSlug",
+        return {
+          to: "/$orgSlug" as const,
           params: { orgSlug: generateOrgSlug(primaryOrg) },
-          replace: true,
-        });
+        };
       }
-      return;
+      return null;
     }
 
     // If org not found, redirect to primary org
     if (!organization) {
       const primaryOrg = getPrimaryOrg(organizations);
       if (primaryOrg) {
-        navigate({
-          to: "/$orgSlug",
+        return {
+          to: "/$orgSlug" as const,
           params: { orgSlug: generateOrgSlug(primaryOrg) },
-          replace: true,
-        });
+        };
       }
-      return;
+      return null;
     }
 
     // If slug is not canonical, redirect to canonical URL
     const canonicalSlug = generateOrgSlug(organization);
     if (orgSlug !== canonicalSlug) {
       // Preserve the rest of the path
-      const currentPath = window.location.pathname;
+      const currentPath =
+        typeof window !== "undefined" ? window.location.pathname : "";
       const restOfPath = currentPath.replace(`/${orgSlug}`, "");
-      navigate({
+      return {
         to: `/$orgSlug${restOfPath}` as "/$orgSlug",
         params: { orgSlug: canonicalSlug },
-        replace: true,
-      });
+      };
     }
-  }, [orgSlug, organization, organizations, isLoading, navigate]);
+
+    return null;
+  }, [orgSlug, organization, organizations, isLoading]);
+
+  // Perform redirect if needed (using Navigate component instead of useEffect)
+  if (redirect) {
+    return <Navigate to={redirect.to} params={redirect.params} replace />;
+  }
 
   const value = useMemo(
     () => ({

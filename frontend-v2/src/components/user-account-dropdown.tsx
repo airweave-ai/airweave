@@ -95,7 +95,7 @@ export function UserAccountDropdown({
     <>
       <Avatar className="size-5 rounded-lg">
         <AvatarImage src={userAvatar} alt={userName} />
-        <AvatarFallback className="rounded-lg bg-slate-300 text-[60%] font-medium dark:bg-slate-700">
+        <AvatarFallback className="rounded-lg bg-slate-700 text-[60%] font-medium">
           {getInitials(userName)}
         </AvatarFallback>
       </Avatar>
@@ -179,7 +179,7 @@ export function UserAccountDropdown({
             ))}
           </DropdownMenuSubContent>
         </DropdownMenuSub>
-        <DropdownMenuItem onClick={handleLogout}>
+        <DropdownMenuItem variant="destructive" onClick={handleLogout}>
           <LogOut />
           <span>Log out</span>
         </DropdownMenuItem>

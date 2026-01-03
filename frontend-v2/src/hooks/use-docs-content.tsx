@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import * as React from "react";
 
 import { MdxProvider } from "@/components/mdx";
@@ -8,6 +9,26 @@ const mdxModules = import.meta.glob<{
   default: React.ComponentType;
   frontmatter?: Record<string, unknown>;
 }>("../../../fern/docs/pages/**/*.mdx");
+
+interface MdxModule {
+  Component: React.ComponentType;
+  frontmatter?: Record<string, unknown>;
+}
+
+async function loadMdxModule(docPath: string): Promise<MdxModule> {
+  const fullPath = `../../../fern/docs/pages/${docPath}`;
+  const moduleLoader = mdxModules[fullPath];
+
+  if (!moduleLoader) {
+    throw new Error(`Documentation not found: ${docPath}`);
+  }
+
+  const module = await moduleLoader();
+  return {
+    Component: module.default,
+    frontmatter: module.frontmatter,
+  };
+}
 
 interface DocsContentResult {
   content: React.ReactNode | null;
@@ -20,65 +41,36 @@ interface DocsContentResult {
  * Hook to load MDX documentation content based on a path
  */
 export function useDocsContent(docPath: string | null): DocsContentResult {
-  const [result, setResult] = React.useState<DocsContentResult>({
-    content: null,
-    loading: !!docPath,
-    error: null,
+  const {
+    data,
+    isLoading: loading,
+    error,
+  } = useQuery({
+    queryKey: ["docs-content", docPath],
+    queryFn: () => loadMdxModule(docPath!),
+    enabled: !!docPath,
+    staleTime: Infinity, // MDX content doesn't change at runtime
+    gcTime: Infinity, // Keep cached indefinitely
   });
 
-  React.useEffect(() => {
-    if (!docPath) {
-      setResult({ content: null, loading: false, error: null });
-      return;
-    }
+  // Render the MDX component with provider
+  const content = React.useMemo(() => {
+    if (!data) return null;
+    const { Component } = data;
+    return (
+      <MdxProvider>
+        <Component />
+      </MdxProvider>
+    );
+  }, [data]);
 
-    const loadContent = async () => {
-      setResult((prev) => ({ ...prev, loading: true, error: null }));
-
-      try {
-        // Build the full path for the import
-        const fullPath = `../../../fern/docs/pages/${docPath}`;
-
-        // Find the matching module
-        const moduleLoader = mdxModules[fullPath];
-
-        if (!moduleLoader) {
-          setResult({
-            content: null,
-            loading: false,
-            error: `Documentation not found: ${docPath}`,
-          });
-          return;
-        }
-
-        // Load the module
-        const module = await moduleLoader();
-        const MdxComponent = module.default;
-        const frontmatter = module.frontmatter;
-
-        setResult({
-          content: (
-            <MdxProvider>
-              <MdxComponent />
-            </MdxProvider>
-          ),
-          loading: false,
-          error: null,
-          title: frontmatter?.title as string | undefined,
-        });
-      } catch (err) {
-        setResult({
-          content: null,
-          loading: false,
-          error: err instanceof Error ? err.message : "Failed to load docs",
-        });
-      }
-    };
-
-    loadContent();
-  }, [docPath]);
-
-  return result;
+  return {
+    content,
+    loading,
+    error:
+      error instanceof Error ? error.message : error ? String(error) : null,
+    title: data?.frontmatter?.title as string | undefined,
+  };
 }
 
 /**
@@ -96,7 +88,7 @@ export function DocsContent({
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <div className="text-muted-foreground animate-pulse text-sm">
+        <div className="animate-pulse text-sm text-slate-400">
           Loading documentation...
         </div>
       </div>
@@ -105,7 +97,7 @@ export function DocsContent({
 
   if (error) {
     return (
-      <div className="text-muted-foreground py-4 text-sm">
+      <div className="py-4 text-sm text-slate-400">
         {fallback || "Documentation not available."}
       </div>
     );
@@ -113,7 +105,7 @@ export function DocsContent({
 
   if (!content) {
     return (
-      <div className="text-muted-foreground py-4 text-sm">
+      <div className="py-4 text-sm text-slate-400">
         {fallback || "No documentation available for this page."}
       </div>
     );

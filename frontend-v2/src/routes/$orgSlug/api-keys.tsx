@@ -5,7 +5,7 @@ import {
 } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { Key, Loader2, Plus } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -41,7 +41,7 @@ function ApiKeysPage() {
   const { organization } = useOrg();
   const queryClient = useQueryClient();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [selectedKey, setSelectedKey] = useState<APIKey | null>(null);
+  const [selectedKeyId, setSelectedKeyId] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // Organization is guaranteed to be available (layout shows loading state)
@@ -158,16 +158,19 @@ function ApiKeysPage() {
   // Flatten all pages into a single array - memoized to prevent unnecessary re-renders
   const apiKeys = useMemo(() => data?.pages.flat() ?? [], [data?.pages]);
 
-  // Auto-select the first item when data loads or changes
-  useEffect(() => {
-    if (apiKeys.length > 0 && !selectedKey) {
-      setSelectedKey(apiKeys[0]);
+  // Derive selectedKey from selectedKeyId - automatically handles:
+  // - Initial selection (defaults to first item)
+  // - Deleted keys (falls back to first item if current selection is gone)
+  const selectedKey = useMemo(() => {
+    if (apiKeys.length === 0) return null;
+    // If we have a valid selection, keep it
+    if (selectedKeyId) {
+      const found = apiKeys.find((k) => k.id === selectedKeyId);
+      if (found) return found;
     }
-    // If selected key was deleted, select the first item
-    if (selectedKey && !apiKeys.find((k) => k.id === selectedKey.id)) {
-      setSelectedKey(apiKeys[0] ?? null);
-    }
-  }, [apiKeys, selectedKey]);
+    // Otherwise default to first item
+    return apiKeys[0];
+  }, [apiKeys, selectedKeyId]);
 
   // Build context commands based on selected key
   const contextCommands = useMemo(() => {
@@ -251,7 +254,7 @@ function ApiKeysPage() {
         data={apiKeys}
         onDelete={(ids) => deleteMutation.mutate(ids)}
         selectedKey={selectedKey}
-        onSelectKey={setSelectedKey}
+        onSelectKey={(key) => setSelectedKeyId(key?.id ?? null)}
         deleteDialogOpen={deleteDialogOpen}
         onDeleteDialogChange={setDeleteDialogOpen}
       />

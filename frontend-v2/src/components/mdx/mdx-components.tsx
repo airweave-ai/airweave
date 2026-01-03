@@ -17,11 +17,9 @@ function Card({
   children?: React.ReactNode;
 }) {
   const content = (
-    <div className="bg-card hover:bg-muted/50 h-full rounded-lg border p-4 transition-colors">
+    <div className="h-full rounded-lg border border-slate-700 bg-slate-800 p-4 transition-colors hover:bg-slate-700/50">
       <h4 className="mb-1 text-sm font-semibold">{title}</h4>
-      {children && (
-        <div className="text-muted-foreground text-xs">{children}</div>
-      )}
+      {children && <div className="text-xs text-slate-400">{children}</div>}
     </div>
   );
 
@@ -78,9 +76,9 @@ function Step({
   children: React.ReactNode;
 }) {
   return (
-    <div className="border-primary border-l-2 py-2 pl-4">
+    <div className="border-l-2 border-slate-500 py-2 pl-4">
       <h4 className="mb-2 text-sm font-semibold">{title}</h4>
-      <div className="text-muted-foreground text-sm">{children}</div>
+      <div className="text-sm text-slate-400">{children}</div>
     </div>
   );
 }
@@ -112,7 +110,7 @@ function CodeBlocks({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="my-3">
-      <div className="flex gap-1 border-b">
+      <div className="flex gap-1 border-b border-slate-700">
         {tabs.map((tab, index) => (
           <button
             key={index}
@@ -120,8 +118,8 @@ function CodeBlocks({ children }: { children: React.ReactNode }) {
             className={cn(
               "px-3 py-1 text-xs font-medium transition-colors",
               activeTab === index
-                ? "border-primary text-primary border-b-2"
-                : "text-muted-foreground hover:text-foreground"
+                ? "border-b-2 border-slate-500 text-slate-300"
+                : "text-slate-400 hover:text-slate-100"
             )}
           >
             {tab}
@@ -199,10 +197,10 @@ function Accordion({
   const [isOpen, setIsOpen] = React.useState(false);
 
   return (
-    <div className="my-3 rounded-lg border">
+    <div className="my-3 rounded-lg border border-slate-700">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="hover:bg-muted/50 flex w-full items-center justify-between p-3 text-left text-sm font-medium transition-colors"
+        className="flex w-full items-center justify-between p-3 text-left text-sm font-medium transition-colors hover:bg-slate-700/50"
       >
         <span>{title}</span>
         <ChevronDown
@@ -210,7 +208,7 @@ function Accordion({
         />
       </button>
       {isOpen && (
-        <div className="text-muted-foreground border-t p-3 pt-0 text-sm">
+        <div className="border-t border-slate-700 p-3 pt-0 text-sm text-slate-400">
           {children}
         </div>
       )}
@@ -235,7 +233,7 @@ function Tabs({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="my-4">
-      <div className="flex gap-1 overflow-x-auto border-b">
+      <div className="flex gap-1 overflow-x-auto border-b border-slate-700">
         {tabTitles.map((title, index) => (
           <button
             key={index}
@@ -243,8 +241,8 @@ function Tabs({ children }: { children: React.ReactNode }) {
             className={cn(
               "px-3 py-2 text-xs font-medium whitespace-nowrap transition-colors",
               activeTab === index
-                ? "border-primary text-primary border-b-2"
-                : "text-muted-foreground hover:text-foreground"
+                ? "border-b-2 border-slate-500 text-slate-300"
+                : "text-slate-400 hover:text-slate-100"
             )}
           >
             {title}
@@ -302,10 +300,7 @@ export const mdxComponents: MDXComponents = {
     </h4>
   ),
   p: ({ children, ...props }) => (
-    <p
-      className="text-muted-foreground mb-3 text-sm leading-relaxed"
-      {...props}
-    >
+    <p className="mb-3 text-sm leading-relaxed text-slate-400" {...props}>
       {children}
     </p>
   ),
@@ -320,7 +315,7 @@ export const mdxComponents: MDXComponents = {
     </ol>
   ),
   li: ({ children, ...props }) => (
-    <li className="text-muted-foreground" {...props}>
+    <li className="text-slate-400" {...props}>
       {children}
     </li>
   ),
@@ -334,7 +329,7 @@ export const mdxComponents: MDXComponents = {
         href={finalHref}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-primary hover:underline"
+        className="text-slate-300 hover:underline"
         {...props}
       >
         {children}
@@ -343,7 +338,7 @@ export const mdxComponents: MDXComponents = {
   },
   pre: ({ children, ...props }) => (
     <pre
-      className="bg-muted mb-3 overflow-auto rounded-lg p-3 text-xs"
+      className="mb-3 overflow-auto rounded-lg bg-slate-800 p-3 text-xs"
       {...props}
     >
       {children}
@@ -355,7 +350,7 @@ export const mdxComponents: MDXComponents = {
     if (isInline) {
       return (
         <code
-          className="bg-muted rounded px-1.5 py-0.5 font-mono text-xs"
+          className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-xs"
           {...props}
         >
           {children}
@@ -370,13 +365,13 @@ export const mdxComponents: MDXComponents = {
   },
   blockquote: ({ children, ...props }) => (
     <blockquote
-      className="border-primary text-muted-foreground mb-3 border-l-2 pl-4 text-sm italic"
+      className="mb-3 border-l-2 border-slate-500 pl-4 text-sm text-slate-400 italic"
       {...props}
     >
       {children}
     </blockquote>
   ),
-  hr: (props) => <hr className="border-border my-4" {...props} />,
+  hr: (props) => <hr className="my-4 border-slate-700" {...props} />,
   table: ({ children, ...props }) => (
     <div className="mb-3 overflow-auto">
       <table className="w-full text-sm" {...props}>
@@ -386,14 +381,14 @@ export const mdxComponents: MDXComponents = {
   ),
   th: ({ children, ...props }) => (
     <th
-      className="border-border bg-muted border px-3 py-2 text-left font-semibold"
+      className="border border-slate-700 bg-slate-800 px-3 py-2 text-left font-semibold"
       {...props}
     >
       {children}
     </th>
   ),
   td: ({ children, ...props }) => (
-    <td className="border-border border px-3 py-2" {...props}>
+    <td className="border border-slate-700 px-3 py-2" {...props}>
       {children}
     </td>
   ),
@@ -401,7 +396,7 @@ export const mdxComponents: MDXComponents = {
   video: (props) => <video className="my-3 max-w-full rounded-lg" {...props} />,
   // Strong/Bold
   strong: ({ children, ...props }) => (
-    <strong className="text-foreground font-semibold" {...props}>
+    <strong className="font-semibold text-slate-100" {...props}>
       {children}
     </strong>
   ),

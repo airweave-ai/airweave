@@ -1,5 +1,24 @@
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { useUISettings } from "../stores/ui-settings";
+
+const mediaQuery =
+  typeof window !== "undefined"
+    ? window.matchMedia("(prefers-color-scheme: dark)")
+    : null;
+
+function subscribeToSystemTheme(callback: () => void) {
+  mediaQuery?.addEventListener("change", callback);
+  return () => mediaQuery?.removeEventListener("change", callback);
+}
+
+function getSystemThemeSnapshot() {
+  return mediaQuery?.matches ?? false;
+}
+
+function getSystemThemeServerSnapshot() {
+  // Default to dark on server (matches the app's default theme)
+  return true;
+}
 
 /**
  * Hook that returns whether dark mode is currently active.
@@ -8,31 +27,17 @@ import { useUISettings } from "../stores/ui-settings";
  */
 export function useIsDark(): boolean {
   const theme = useUISettings((state) => state.theme);
-  const [isDark, setIsDark] = useState(() => {
-    if (theme === "system") {
-      return (
-        typeof window !== "undefined" &&
-        window.matchMedia("(prefers-color-scheme: dark)").matches
-      );
-    }
-    return theme === "dark";
-  });
 
-  useEffect(() => {
-    if (theme === "system") {
-      const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-      setIsDark(mediaQuery.matches);
+  // Subscribe to system theme changes using useSyncExternalStore
+  const systemPrefersDark = useSyncExternalStore(
+    subscribeToSystemTheme,
+    getSystemThemeSnapshot,
+    getSystemThemeServerSnapshot
+  );
 
-      const handleChange = (e: MediaQueryListEvent) => {
-        setIsDark(e.matches);
-      };
-
-      mediaQuery.addEventListener("change", handleChange);
-      return () => mediaQuery.removeEventListener("change", handleChange);
-    } else {
-      setIsDark(theme === "dark");
-    }
-  }, [theme]);
-
-  return isDark;
+  // Derive dark mode based on theme setting
+  if (theme === "system") {
+    return systemPrefersDark;
+  }
+  return theme === "dark";
 }

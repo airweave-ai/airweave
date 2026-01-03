@@ -1,7 +1,6 @@
 import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
-import { useEffect } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -77,24 +76,80 @@ export function EditDialog({
     enabled: open && !!authProvider?.short_name,
   });
 
-  // Form setup
+  const isLoading = isLoadingConnection || isLoadingProvider;
+
+  if (!authProvider || !connection) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Edit {authProvider.name} Connection</DialogTitle>
+          <DialogDescription>
+            Update your connection details. Leave fields empty to keep current
+            values.
+          </DialogDescription>
+        </DialogHeader>
+
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="text-muted-foreground h-8 w-8 animate-spin" />
+          </div>
+        ) : (
+          // Use key to reset form when connection changes
+          <EditDialogForm
+            key={connection.readable_id}
+            authProvider={authProvider}
+            connection={connection}
+            connectionDetails={connectionDetails}
+            providerDetails={providerDetails}
+            orgId={orgId}
+            isDark={isDark}
+            queryClient={queryClient}
+            getAccessTokenSilently={getAccessTokenSilently}
+            onOpenChange={onOpenChange}
+            onSuccess={onSuccess}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Separate form component that resets when key changes
+function EditDialogForm({
+  authProvider,
+  connection,
+  connectionDetails,
+  providerDetails,
+  orgId,
+  isDark,
+  queryClient,
+  getAccessTokenSilently,
+  onOpenChange,
+  onSuccess,
+}: {
+  authProvider: AuthProvider;
+  connection: AuthProviderConnection;
+  connectionDetails: Awaited<ReturnType<typeof fetchAuthProviderConnection>> | null;
+  providerDetails: Awaited<ReturnType<typeof fetchAuthProviderDetail>> | null;
+  orgId: string;
+  isDark: boolean;
+  queryClient: ReturnType<typeof useQueryClient>;
+  getAccessTokenSilently: () => Promise<string>;
+  onOpenChange: (open: boolean) => void;
+  onSuccess?: () => void;
+}) {
+  // Form setup with default values from fetched data
   const form = useForm({
     defaultValues: {
-      name: "",
+      name: connectionDetails?.name ?? "",
       authFields: {} as Record<string, string>,
     },
     onSubmit: async ({ value }) => {
       updateMutation.mutate(value);
     },
   });
-
-  // Update form when connection details load
-  useEffect(() => {
-    if (connectionDetails) {
-      form.setFieldValue("name", connectionDetails.name);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- form.setFieldValue is stable
-  }, [connectionDetails]);
 
   // Update mutation
   const updateMutation = useMutation({
@@ -173,145 +228,121 @@ export function EditDialog({
     form.setFieldValue("authFields", { ...currentFields, [fieldName]: value });
   };
 
-  const handleClose = (newOpen: boolean) => {
-    if (!newOpen) {
-      form.reset();
-    }
-    onOpenChange(newOpen);
+  const handleClose = () => {
+    form.reset();
+    onOpenChange(false);
   };
 
-  const isLoading = isLoadingConnection || isLoadingProvider;
-
-  if (!authProvider || !connection) return null;
-
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Edit {authProvider.name} Connection</DialogTitle>
-          <DialogDescription>
-            Update your connection details. Leave fields empty to keep current
-            values.
-          </DialogDescription>
-        </DialogHeader>
-
-        {isLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="text-muted-foreground h-8 w-8 animate-spin" />
-          </div>
-        ) : (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              form.handleSubmit();
-            }}
-            className="flex flex-1 flex-col overflow-hidden"
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        form.handleSubmit();
+      }}
+      className="flex flex-1 flex-col overflow-hidden"
+    >
+      <div className="flex-1 space-y-6 overflow-y-auto py-4">
+        {/* Auth Provider Icon */}
+        <div className="flex justify-center py-4">
+          <div
+            className={cn(
+              "flex h-20 w-20 items-center justify-center rounded-xl p-3",
+              "border shadow-sm",
+              "bg-card"
+            )}
           >
-            <div className="flex-1 space-y-6 overflow-y-auto py-4">
-              {/* Auth Provider Icon */}
-              <div className="flex justify-center py-4">
-                <div
-                  className={cn(
-                    "flex h-20 w-20 items-center justify-center rounded-xl p-3",
-                    "border shadow-sm",
-                    "bg-card"
-                  )}
-                >
-                  <img
-                    src={getAuthProviderIconUrl(
-                      authProvider.short_name,
-                      isDark ? "dark" : "light"
-                    )}
-                    alt={authProvider.name}
-                    className="h-full w-full object-contain"
-                  />
-                </div>
-              </div>
+            <img
+              src={getAuthProviderIconUrl(
+                authProvider.short_name,
+                isDark ? "dark" : "light"
+              )}
+              alt={authProvider.name}
+              className="h-full w-full object-contain"
+            />
+          </div>
+        </div>
 
-              {/* Name field */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Name</label>
-                <form.Field name="name">
-                  {(field) => (
-                    <Input
-                      value={field.state.value}
-                      onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder={connectionDetails?.name || "Connection name"}
-                    />
-                  )}
-                </form.Field>
-              </div>
+        {/* Name field */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Name</label>
+          <form.Field name="name">
+            {(field) => (
+              <Input
+                value={field.state.value}
+                onChange={(e) => field.handleChange(e.target.value)}
+                placeholder={connectionDetails?.name || "Connection name"}
+              />
+            )}
+          </form.Field>
+        </div>
 
-              {/* Auth fields */}
-              {providerDetails?.auth_fields?.fields &&
-                providerDetails.auth_fields.fields.length > 0 && (
-                  <div className="space-y-4 pt-2">
-                    <p className="text-muted-foreground text-sm">
-                      Update authentication credentials (leave empty to keep
-                      current values)
+        {/* Auth fields */}
+        {providerDetails?.auth_fields?.fields &&
+          providerDetails.auth_fields.fields.length > 0 && (
+            <div className="space-y-4 pt-2">
+              <p className="text-muted-foreground text-sm">
+                Update authentication credentials (leave empty to keep
+                current values)
+              </p>
+
+              {providerDetails.auth_fields.fields.map((field) => (
+                <div key={field.name} className="space-y-2">
+                  <label className="text-sm font-medium">
+                    {field.title || field.name}
+                  </label>
+                  {field.description && (
+                    <p className="text-muted-foreground text-xs">
+                      {field.description}
                     </p>
-
-                    {providerDetails.auth_fields.fields.map((field) => (
-                      <div key={field.name} className="space-y-2">
-                        <label className="text-sm font-medium">
-                          {field.title || field.name}
-                        </label>
-                        {field.description && (
-                          <p className="text-muted-foreground text-xs">
-                            {field.description}
-                          </p>
-                        )}
-                        <form.Field name="authFields">
-                          {() => (
-                            <Input
-                              type={field.secret ? "password" : "text"}
-                              value={
-                                form.getFieldValue("authFields")[field.name] ||
-                                ""
-                              }
-                              onChange={(e) =>
-                                handleAuthFieldChange(
-                                  field.name,
-                                  e.target.value
-                                )
-                              }
-                              placeholder={
-                                field.secret
-                                  ? "••••••••"
-                                  : `Enter new ${field.title || field.name}`
-                              }
-                            />
-                          )}
-                        </form.Field>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                  )}
+                  <form.Field name="authFields">
+                    {() => (
+                      <Input
+                        type={field.secret ? "password" : "text"}
+                        value={
+                          form.getFieldValue("authFields")[field.name] ||
+                          ""
+                        }
+                        onChange={(e) =>
+                          handleAuthFieldChange(
+                            field.name,
+                            e.target.value
+                          )
+                        }
+                        placeholder={
+                          field.secret
+                            ? "••••••••"
+                            : `Enter new ${field.title || field.name}`
+                        }
+                      />
+                    )}
+                  </form.Field>
+                </div>
+              ))}
             </div>
+          )}
+      </div>
 
-            <DialogFooter className="border-t pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => handleClose(false)}
-                disabled={updateMutation.isPending}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Updating...
-                  </>
-                ) : (
-                  "Update"
-                )}
-              </Button>
-            </DialogFooter>
-          </form>
-        )}
-      </DialogContent>
-    </Dialog>
+      <DialogFooter className="border-t pt-4">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={handleClose}
+          disabled={updateMutation.isPending}
+        >
+          Cancel
+        </Button>
+        <Button type="submit" disabled={updateMutation.isPending}>
+          {updateMutation.isPending ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Updating...
+            </>
+          ) : (
+            "Update"
+          )}
+        </Button>
+      </DialogFooter>
+    </form>
   );
 }

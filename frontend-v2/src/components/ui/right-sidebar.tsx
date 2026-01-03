@@ -14,12 +14,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { useUISettings } from "@/stores/ui-settings";
@@ -149,27 +144,21 @@ function RightSidebarTabs({
     >
       <div className="flex flex-col gap-2">
         {tabs.map((tab) => (
-          <Tooltip key={tab.id}>
-            <TooltipTrigger asChild>
-              <Button
-                variant={activeTab === tab.id ? "secondary" : "ghost"}
-                size="icon"
-                className={cn(
-                  "h-auto w-10 flex-col rounded-lg border px-4 py-2 font-mono text-xs uppercase transition-colors",
-                  activeTab === tab.id &&
-                    "bg-sidebar-accent text-sidebar-accent-foreground"
-                )}
-                onClick={() => toggleTab(tab.id)}
-                aria-pressed={activeTab === tab.id}
-              >
-                {tab.icon}
-                <span>{tab.label}</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="left" align="center">
-              {tab.label}
-            </TooltipContent>
-          </Tooltip>
+          <Button
+            key={tab.id}
+            // variant={activeTab === tab.id ? "secondary" : "ghost"}
+            size="icon"
+            className={cn(
+              "h-auto w-10 flex-col rounded-lg bg-transparent px-4 py-2 font-mono text-xs text-slate-50 uppercase transition-colors hover:bg-white/10",
+              activeTab === tab.id &&
+                "bg-sidebar-accent text-sidebar-accent-foreground"
+            )}
+            onClick={() => toggleTab(tab.id)}
+            aria-pressed={activeTab === tab.id}
+          >
+            {tab.icon}
+            <span>{tab.label}</span>
+          </Button>
         ))}
       </div>
     </div>
@@ -204,7 +193,7 @@ function RightSidebarPanel({
         data-slot="right-sidebar-panel"
         data-state={activeTab ? "open" : "closed"}
         className={cn(
-          "fixed inset-y-0 z-10 hidden h-svh w-(--right-sidebar-width) transition-[right] duration-200 ease-linear md:block",
+          "fixed inset-y-0 z-10 hidden h-svh w-(--right-sidebar-width) text-slate-100 transition-[right] duration-200 ease-linear md:block",
           activeTab
             ? "right-(--right-sidebar-tab-width)"
             : "right-[calc(var(--right-sidebar-width)*-1)]",
@@ -212,12 +201,12 @@ function RightSidebarPanel({
         )}
         {...props}
       >
-        <div className="flex h-full flex-col">
-          <div className="flex h-14 items-center border-b px-4">
+        <div className="flex h-full flex-col py-2.5">
+          {/* <div className="flex h-14 items-center border-b px-4">
             <h2 className="text-sm font-semibold capitalize">
               {activeTab || "Panel"}
             </h2>
-          </div>
+          </div> */}
           <div className="flex-1 overflow-auto p-4">
             {currentContent || (
               <div className="text-muted-foreground text-sm">
