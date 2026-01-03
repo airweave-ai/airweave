@@ -93,6 +93,7 @@ class ContextBuilder:
             sync=sync,
             source_connection_data=source_connection_data,
             force_full_sync=force_full_sync,
+            execution_config=execution_config,
         )
 
         # 6. Detect keyword index capability
@@ -129,6 +130,7 @@ class ContextBuilder:
         sync: schemas.Sync,
         source_connection_data: dict,
         force_full_sync: bool,
+        execution_config: Optional[SyncExecutionConfig] = None,
     ) -> SyncCursor:
         """Create cursor with optional data loading."""
         cursor_schema = None
@@ -142,6 +144,10 @@ class ContextBuilder:
             self.logger.info(
                 "🔄 FORCE FULL SYNC: Skipping cursor data to ensure all entities are fetched "
                 "for accurate orphaned entity cleanup. Will still track cursor for next sync."
+            )
+        elif execution_config and execution_config.skip_cursor_load:
+            self.logger.info(
+                "🔄 SKIP CURSOR LOAD: Fetching all entities (execution_config.skip_cursor_load=True)"
             )
         else:
             cursor_data = await sync_cursor_service.get_cursor_data(

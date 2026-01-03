@@ -321,7 +321,8 @@ class SyncMultiplexer:
                 status_code=404, detail=f"No source connection found for sync {sync_id}"
             )
 
-        # 3. Create ARF-only execution config
+        # 3. Create ARF-only execution config with cursor skip
+        # skip_cursor_load ensures we fetch ALL data (for ARF backfill) regardless of source type
         config = SyncExecutionConfig.arf_capture_only()
 
         self.logger.info(
@@ -334,7 +335,6 @@ class SyncMultiplexer:
         )
 
         # 4. Trigger via existing service with ARF-only config
-        # Note: Don't use force_full_sync for non-continuous sources (always full anyway)
         job = await source_connection_service.run(
             self.db,
             id=source_conn.id,

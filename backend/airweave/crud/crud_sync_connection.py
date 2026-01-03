@@ -176,7 +176,7 @@ class CRUDSyncConnection:
         db.add(db_obj)
 
         if uow:
-            await uow.flush()
+            pass
         else:
             await db.commit()
             await db.refresh(db_obj)
@@ -205,7 +205,7 @@ class CRUDSyncConnection:
         await db.execute(update(self.model).where(self.model.id == id).values(role=role.value))
 
         if uow:
-            await uow.flush()
+            pass
         else:
             await db.commit()
 
@@ -244,7 +244,7 @@ class CRUDSyncConnection:
         )
 
         if uow:
-            await uow.flush()
+            pass
         else:
             await db.commit()
 
@@ -274,7 +274,7 @@ class CRUDSyncConnection:
         await db.delete(db_obj)
 
         if uow:
-            await uow.flush()
+            pass
         else:
             await db.commit()
 

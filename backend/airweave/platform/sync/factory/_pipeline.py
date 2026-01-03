@@ -91,6 +91,8 @@ class PipelineBuilder:
         enable_postgres = config is None or config.enable_postgres_handler
 
         vector_db_destinations: list[BaseDestination] = []
+        # TODO(fschmetz/orhanrauf): Self-processing destinations for Vespa - destinations that handle
+        # their own chunking/embedding. Handler implementation coming soon.
         self_processing_destinations: list[BaseDestination] = []
 
         for dest in destinations:
