@@ -1,5 +1,6 @@
 """Module for sync context."""
 
+from typing import Optional
 from uuid import UUID
 
 from airweave import schemas
@@ -9,6 +10,7 @@ from airweave.core.logging import ContextualLogger
 from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.sources._base import BaseSource
+from airweave.platform.sync.config import SyncExecutionConfig
 from airweave.platform.sync.cursor import SyncCursor
 from airweave.platform.sync.pipeline.entity_tracker import EntityTracker
 from airweave.platform.sync.state_publisher import SyncStatePublisher
@@ -54,6 +56,8 @@ class SyncContext:
     force_full_sync: bool = False
     # Whether any destination supports keyword (sparse) indexing. Set once before run.
     has_keyword_index: bool = False
+    # Optional execution config for controlling sync behavior
+    execution_config: Optional[SyncExecutionConfig] = None
 
     # batching knobs (read by SyncOrchestrator at init)
     should_batch: bool = True
@@ -81,6 +85,7 @@ class SyncContext:
         batch_size: int = 64,
         max_batch_latency_ms: int = 200,
         has_keyword_index: bool = False,
+        execution_config: Optional[SyncExecutionConfig] = None,
     ):
         """Initialize the sync context."""
         self.source = source
@@ -97,6 +102,7 @@ class SyncContext:
         self.guard_rail = guard_rail
         self.logger = logger
         self.force_full_sync = force_full_sync
+        self.execution_config = execution_config
 
         # Concurrency / batching knobs
         self.should_batch = should_batch

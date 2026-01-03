@@ -6,7 +6,7 @@ tracking of sync progress, performance metrics, and error reporting.
 """
 
 from datetime import datetime
-from typing import Optional
+from typing import Any, Dict, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
@@ -31,6 +31,7 @@ class SyncJobBase(BaseModel):
     failed_at: Optional[datetime] = None
     error: Optional[str] = None
     access_token: Optional[str] = None
+    execution_config_json: Optional[Dict[str, Any]] = None
 
     class Config:
         """Pydantic config for SyncJobBase."""
