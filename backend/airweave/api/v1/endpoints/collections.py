@@ -209,10 +209,28 @@ async def delete(
                 ),
                 wait=True,
             )
-            ctx.logger.info(f"Deleted data for collection {db_obj.id} from shared collection")
+            ctx.logger.info(f"Deleted Qdrant data for collection {db_obj.id}")
     except Exception as e:
         ctx.logger.error(f"Error deleting Qdrant collection: {str(e)}")
         # Continue with deletion even if Qdrant deletion fails
+
+    # Delete collection data from Vespa
+    try:
+        from airweave.platform.destinations.vespa import VespaDestination
+
+        vespa = await VespaDestination.create(
+            credentials=None,
+            config=None,
+            collection_id=db_obj.id,
+            organization_id=db_obj.organization_id,
+            logger=ctx.logger,
+            sync_id=None,  # Not needed for collection-level deletion
+        )
+        await vespa.delete_by_collection_id(db_obj.id)
+        ctx.logger.info(f"Deleted Vespa data for collection {db_obj.id}")
+    except Exception as e:
+        ctx.logger.error(f"Error deleting Vespa collection data: {str(e)}")
+        # Continue with deletion even if Vespa deletion fails
 
     # Delete the collection - CASCADE will handle all child objects
     return await crud.collection.remove(db, id=db_obj.id, ctx=ctx)

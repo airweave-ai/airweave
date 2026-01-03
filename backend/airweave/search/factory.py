@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
+from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.destinations.collection_strategy import get_default_vector_size
 from airweave.platform.locator import resource_locator
 from airweave.platform.sources._base import BaseSource
@@ -82,7 +83,17 @@ class SearchFactory:
         has_federated_sources = bool(federated_sources)
         has_vector_sources = await self._has_vector_sources(db, collection, ctx)
 
+        # Get the destination for this collection (destination-agnostic search)
+        destination = await self._get_destination_for_collection(db, collection, ctx)
+        requires_embedding = getattr(destination, "_requires_client_embedding", True)
+        supports_temporal = getattr(destination, "_supports_temporal_relevance", True)
+
         self._log_source_modes(ctx, federated_sources, has_vector_sources)
+        ctx.logger.info(
+            f"[SearchFactory] Destination: {destination.__class__.__name__}, "
+            f"requires_client_embedding: {requires_embedding}, "
+            f"supports_temporal_relevance: {supports_temporal}"
+        )
 
         if not has_federated_sources and not has_vector_sources:
             raise ValueError("Collection has no sources")
@@ -95,9 +106,16 @@ class SearchFactory:
             raise ValueError(f"Collection {collection.readable_id} has no vector_size set.")
 
         # Select providers for operations
+        # Note: Skip embedding provider if destination embeds server-side (e.g., Vespa)
         api_keys = self._get_available_api_keys()
         providers = self._create_provider_for_each_operation(
-            api_keys, params, has_federated_sources, has_vector_sources, ctx, vector_size
+            api_keys,
+            params,
+            has_federated_sources,
+            has_vector_sources,
+            ctx,
+            vector_size,
+            requires_client_embedding=requires_embedding,
         )
 
         # Create event emitter and emit skip notices if needed
@@ -105,8 +123,9 @@ class SearchFactory:
         await self._emit_skip_notices_if_needed(emitter, has_vector_sources, params, search_request)
 
         # Get sources that support temporal relevance (for filtering when enabled)
+        # Only check if destination supports temporal relevance
         temporal_supporting_sources = None
-        if params["temporal_weight"] > 0 and has_vector_sources:
+        if params["temporal_weight"] > 0 and has_vector_sources and supports_temporal:
             try:
                 temporal_supporting_sources = await self._get_temporal_supporting_sources(
                     db, collection, ctx, emitter
@@ -114,8 +133,15 @@ class SearchFactory:
             except Exception as e:
                 # If we can't determine source support, raise the error
                 raise ValueError(f"Failed to check temporal relevance support: {e}") from e
+        elif params["temporal_weight"] > 0 and not supports_temporal:
+            # Destination doesn't support temporal relevance, skip the operation
+            ctx.logger.info(
+                f"[SearchFactory] Skipping temporal relevance: destination "
+                f"{destination.__class__.__name__} does not support it"
+            )
+            temporal_supporting_sources = []  # Empty list signals "skip operation"
 
-        # Build operations with vector_size
+        # Build operations with destination (destination-agnostic)
         operations = self._build_operations(
             params,
             providers,
@@ -124,6 +150,8 @@ class SearchFactory:
             search_request,
             temporal_supporting_sources,
             vector_size,
+            destination=destination,
+            requires_client_embedding=requires_embedding,
         )
 
         search_context = SearchContext(
@@ -264,6 +292,8 @@ class SearchFactory:
         search_request: SearchRequest,
         temporal_supporting_sources: Optional[List[str]] = None,
         vector_size: Optional[int] = None,
+        destination: Optional[BaseDestination] = None,
+        requires_client_embedding: bool = True,
     ) -> Dict[str, Any]:
         """Build operation instances for the search context.
 
@@ -280,14 +310,28 @@ class SearchFactory:
                 - Empty list: Skip operation (no sources support temporal)
                 - None: No filtering needed (temporal disabled or not checked)
             vector_size: Vector dimensions for this collection (used by EmbedQuery)
+            destination: The destination instance for search (Qdrant, Vespa, etc.)
+            requires_client_embedding: Whether destination needs client-side embeddings
         """
+        # Operations that need client-side embeddings (Qdrant-specific for now)
+        # TODO: Make these destination-agnostic when filter DSL is abstracted
+        needs_embedding_ops = has_vector_sources and requires_client_embedding
+
+        # Temporal relevance requires vector sources AND destination support
+        # Note: needs_embedding_ops is wrong here - we need vector sources, not client embedding
+        supports_temporal = (
+            getattr(destination, "_supports_temporal_relevance", True) if destination else False
+        )
+
         return {
             "query_expansion": (
                 QueryExpansion(providers=providers["expansion"]) if params["expand_query"] else None
             ),
+            # Operations that depend on client-side embeddings
+            # TODO: Make filter operations destination-agnostic
             "query_interpretation": (
                 QueryInterpretation(providers=providers["interpretation"])
-                if (params["interpret_filters"] and has_vector_sources)
+                if (params["interpret_filters"] and needs_embedding_ops)
                 else None
             ),
             "embed_query": (
@@ -296,16 +340,19 @@ class SearchFactory:
                     provider=providers["embed"],  # Single provider - embeddings must be consistent
                     vector_size=vector_size,
                 )
-                if has_vector_sources
+                if needs_embedding_ops
                 else None
             ),
             "temporal_relevance": (
                 TemporalRelevance(
-                    weight=params["temporal_weight"], supporting_sources=temporal_supporting_sources
+                    weight=params["temporal_weight"],
+                    destination=destination,
+                    supporting_sources=temporal_supporting_sources,
                 )
                 if (
                     params["temporal_weight"] > 0
                     and has_vector_sources
+                    and supports_temporal
                     # Skip only if explicitly empty list (no sources support it)
                     and temporal_supporting_sources != []
                 )
@@ -313,16 +360,18 @@ class SearchFactory:
             ),
             "user_filter": (
                 UserFilter(filter=search_request.filter)
-                if (search_request.filter and has_vector_sources)
+                if (search_request.filter and needs_embedding_ops)
                 else None
             ),
+            # Unified retrieval operation (destination-agnostic)
             "retrieval": (
                 Retrieval(
+                    destination=destination,
                     strategy=params["retrieval_strategy"],
                     offset=params["offset"],
                     limit=params["limit"],
                 )
-                if has_vector_sources
+                if (has_vector_sources and destination)
                 else None
             ),
             "federated_search": (
@@ -383,18 +432,24 @@ class SearchFactory:
         has_vector_sources: bool,
         ctx: ApiContext,
         vector_size: int,
+        requires_client_embedding: bool = True,
     ) -> Dict[str, BaseProvider]:
         """Select and validate all required providers."""
         providers = {}
 
-        # Create embedding provider if needed
-        if has_vector_sources:
+        # Create embedding provider if needed (skip if destination embeds server-side)
+        if has_vector_sources and requires_client_embedding:
             providers["embed"] = self._create_embedding_provider(api_keys, ctx, vector_size)
 
         # Create LLM providers for enabled operations
         providers.update(
             self._create_llm_providers(
-                api_keys, params, has_federated_sources, has_vector_sources, ctx
+                api_keys,
+                params,
+                has_federated_sources,
+                has_vector_sources,
+                ctx,
+                requires_client_embedding=requires_client_embedding,
             )
         )
 
@@ -426,6 +481,7 @@ class SearchFactory:
         has_federated_sources: bool,
         has_vector_sources: bool,
         ctx: ApiContext,
+        requires_client_embedding: bool = True,
     ) -> Dict[str, List[BaseProvider]]:
         """Create LLM provider lists for enabled operations.
 
@@ -457,8 +513,10 @@ class SearchFactory:
                 "Configure CEREBRAS_API_KEY, GROQ_API_KEY, or OPENAI_API_KEY",
             )
 
-        # Query interpretation
-        if params["interpret_filters"] and has_vector_sources:
+        # Query interpretation (only for destinations that need client-side embeddings)
+        # TODO: Make destination-agnostic when filter DSL is abstracted
+        needs_embedding_ops = has_vector_sources and requires_client_embedding
+        if params["interpret_filters"] and needs_embedding_ops:
             self._add_provider_list_or_error(
                 providers,
                 "interpretation",
@@ -534,6 +592,78 @@ class SearchFactory:
             raise ValueError(
                 f"Error getting vector sources for collection {collection.readable_id}"
             )
+
+    async def _get_destination_for_collection(
+        self, db: AsyncSession, collection, ctx: ApiContext
+    ) -> BaseDestination:
+        """Get the destination instance for a collection.
+
+        Queries the sync configuration to find the destination and instantiates it.
+        Falls back to native Qdrant if no destination is configured.
+
+        Args:
+            db: Database session
+            collection: Collection object
+            ctx: API context
+
+        Returns:
+            BaseDestination instance (Qdrant, Vespa, etc.)
+        """
+        from sqlalchemy import select
+
+        from airweave.core.constants.reserved_ids import NATIVE_QDRANT_UUID, NATIVE_VESPA_UUID
+        from airweave.models.sync_connection import SyncConnection
+        from airweave.platform.destinations.qdrant import QdrantDestination
+        from airweave.platform.destinations.vespa import VespaDestination
+
+        # Get source connections for this collection
+        source_connections = await crud.source_connection.get_for_collection(
+            db, readable_collection_id=collection.readable_id, ctx=ctx
+        )
+
+        if not source_connections:
+            raise ValueError(
+                f"Collection {collection.readable_id} has no source connections. "
+                "Cannot determine search destination."
+            )
+
+        # Check destination configuration from source connections
+        for source_connection in source_connections:
+            if not source_connection.sync_id:
+                continue
+
+            # Get the sync's destination connections via SyncConnection
+            result = await db.execute(
+                select(SyncConnection.connection_id).where(
+                    SyncConnection.sync_id == source_connection.sync_id
+                )
+            )
+            destination_connection_ids = [row[0] for row in result.fetchall()]
+
+            # Check for Vespa
+            if NATIVE_VESPA_UUID in destination_connection_ids:
+                ctx.logger.info(f"[SearchFactory] Collection {collection.readable_id} uses Vespa")
+                return await VespaDestination.create(
+                    collection_id=collection.id,
+                    organization_id=ctx.organization_id,
+                    logger=ctx.logger,
+                )
+
+            # Check for Qdrant
+            if NATIVE_QDRANT_UUID in destination_connection_ids:
+                ctx.logger.info(f"[SearchFactory] Collection {collection.readable_id} uses Qdrant")
+                return await QdrantDestination.create(
+                    collection_id=collection.id,
+                    organization_id=ctx.organization_id,
+                    vector_size=collection.vector_size,
+                    logger=ctx.logger,
+                )
+
+        # No recognized destination found - fail explicitly
+        raise ValueError(
+            f"Collection {collection.readable_id} has no recognized vector destination "
+            "(expected Qdrant or Vespa). Check source connection sync configuration."
+        )
 
     async def _get_temporal_supporting_sources(
         self, db: AsyncSession, collection, ctx: ApiContext, emitter: EventEmitter

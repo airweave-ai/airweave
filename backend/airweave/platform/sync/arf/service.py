@@ -1,6 +1,6 @@
-"""Raw data storage for entity sync.
+"""Entity ARF service for audit and replay.
 
-Stores raw entities from sync with entity-level granularity.
+Stores raw entities during sync with entity-level granularity.
 Supports both full syncs and incremental syncs with proper delete handling.
 
 Storage structure (entity_id as filename - no index needed):
@@ -18,15 +18,15 @@ Operations:
 - iter_entities: Stream all entities
 
 Usage:
-    from airweave.platform.sync import raw_data_service
+    from airweave.platform.sync.arf import arf_service
 
     # During sync - capture as entities are processed
-    await raw_data_service.upsert_entity(entity, sync_context)
-    await raw_data_service.delete_entity(entity_id, sync_context)
+    await arf_service.upsert_entity(entity, sync_context)
+    await arf_service.delete_entity(entity_id, sync_context)
 
     # Replay later
-    async for entity_dict in raw_data_service.iter_entities(sync_id):
-        entity = raw_data_service.reconstruct_entity(entity_dict)
+    async for entity_dict in arf_service.iter_entities(sync_id):
+        entity = arf_service.reconstruct_entity(entity_dict)
         # Process with different config...
 """
 
@@ -36,37 +36,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional
 
-from pydantic import BaseModel, Field
-
 from airweave.platform.storage.backend import StorageBackend
 from airweave.platform.storage.exceptions import StorageNotFoundError
+from airweave.platform.sync.arf.schema import SyncManifest
 
 if TYPE_CHECKING:
     from airweave.platform.entities._base import BaseEntity
     from airweave.platform.sync.context import SyncContext
 
 
-class SyncManifest(BaseModel):
-    """Manifest for a sync's raw data store."""
-
-    sync_id: str
-    source_short_name: str
-    collection_id: str
-    collection_readable_id: str
-    organization_id: str
-    created_at: str
-    updated_at: str
-    entity_count: int = 0
-    file_count: int = 0
-    # Track sync jobs that have written to this store
-    sync_jobs: List[str] = Field(default_factory=list)
-    # Optional config reference
-    vector_size: Optional[int] = None
-    embedding_model_name: Optional[str] = None
-
-
-class RawDataService:
-    """Service for storing and retrieving raw entity data.
+class ArfService:
+    """Service for capturing and retrieving raw entity data.
 
     Handles:
     - Entity-level storage (one file per entity_id)
@@ -77,7 +57,7 @@ class RawDataService:
     """
 
     def __init__(self, storage: Optional[StorageBackend] = None):
-        """Initialize raw data service.
+        """Initialize ARF service.
 
         Args:
             storage: Storage backend. Uses singleton if not provided.
@@ -98,7 +78,7 @@ class RawDataService:
     # =========================================================================
 
     def _sync_path(self, sync_id: str) -> str:
-        """Get base path for a sync's raw data."""
+        """Get base path for a sync's ARF data."""
         return f"raw/{sync_id}"
 
     def _manifest_path(self, sync_id: str) -> str:
@@ -282,7 +262,7 @@ class RawDataService:
         if deleted:
             # Update manifest
             await self._update_manifest(sync_context, delta_entities=-1, delta_files=-1)
-            sync_context.logger.debug(f"Deleted raw entity: {entity_id}")
+            sync_context.logger.debug(f"Deleted ARF entity: {entity_id}")
 
         return deleted
 
@@ -323,7 +303,7 @@ class RawDataService:
             return None
 
     async def iter_entities(self, sync_id: str) -> AsyncGenerator[Dict[str, Any], None]:
-        """Iterate over all entities in a sync's raw store.
+        """Iterate over all entities in a sync's ARF store.
 
         Args:
             sync_id: Sync ID
@@ -360,7 +340,7 @@ class RawDataService:
         return entities
 
     async def list_entity_ids(self, sync_id: str) -> List[str]:
-        """List all entity IDs in a sync's raw store.
+        """List all entity IDs in a sync's ARF store.
 
         Args:
             sync_id: Sync ID
@@ -414,7 +394,7 @@ class RawDataService:
         stale_ids = [eid for eid in current_ids if eid not in seen_ids]
 
         if stale_ids:
-            sync_context.logger.info(f"Cleaning up {len(stale_ids)} stale entities from raw store")
+            sync_context.logger.info(f"Cleaning up {len(stale_ids)} stale entities from ARF store")
             deleted = await self.delete_entities(stale_ids, sync_context)
             return deleted
 
@@ -532,7 +512,7 @@ class RawDataService:
     # =========================================================================
 
     async def list_syncs(self) -> List[str]:
-        """List all sync IDs with raw data stores."""
+        """List all sync IDs with ARF stores."""
         try:
             dirs = await self.storage.list_dirs("raw")
             return [d.split("/")[-1] for d in dirs]
@@ -540,11 +520,11 @@ class RawDataService:
             return []
 
     async def sync_exists(self, sync_id: str) -> bool:
-        """Check if a raw data store exists for a sync."""
+        """Check if a ARF store exists for a sync."""
         return await self.storage.exists(self._manifest_path(sync_id))
 
     async def delete_sync(self, sync_id: str) -> bool:
-        """Delete entire raw data store for a sync."""
+        """Delete entire ARF store for a sync."""
         return await self.storage.delete(self._sync_path(sync_id))
 
     async def get_entity_count(self, sync_id: str) -> int:
@@ -563,7 +543,7 @@ class RawDataService:
     ) -> AsyncGenerator["BaseEntity", None]:
         """Iterate over entities as reconstructed BaseEntity objects for replay.
 
-        This is the main method for re-processing raw data through a pipeline
+        This is the main method for re-processing ARF data through a pipeline
         with different configurations.
 
         Args:
@@ -610,4 +590,4 @@ class RawDataService:
 
 
 # Singleton instance
-raw_data_service = RawDataService()
+arf_service = ArfService()

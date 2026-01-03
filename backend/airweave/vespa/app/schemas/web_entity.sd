@@ -1,0 +1,15 @@
+# WEB ENTITY SCHEMA
+# Inherits from base_entity, adding web-specific fields for WebEntity types.
+# Used for crawled web pages.
+
+schema web_entity inherits base_entity {
+
+    document web_entity inherits base_entity {
+
+        # URL that was crawled
+        field crawl_url type string {
+            indexing: attribute | summary
+        }
+    }
+}
+

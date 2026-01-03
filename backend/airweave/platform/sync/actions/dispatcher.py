@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING, List
 
 from airweave.platform.sync.actions.types import ActionBatch
 from airweave.platform.sync.exceptions import SyncFailureError
-from airweave.platform.sync.handlers.base import ActionHandler
 from airweave.platform.sync.handlers.postgres import PostgresMetadataHandler
+from airweave.platform.sync.handlers.protocol import ActionHandler
 
 if TYPE_CHECKING:
     from airweave.platform.sync.context import SyncContext
@@ -95,10 +95,15 @@ class ActionDispatcher:
         orphan_entity_ids: List[str],
         sync_context: "SyncContext",
     ) -> None:
-        """Dispatch orphan cleanup to all destination handlers.
+        """Dispatch orphan cleanup to ALL handlers concurrently.
 
         Called at the end of sync for entities that exist in DB but were not
         encountered during this sync run.
+
+        Each handler independently cleans up its own storage:
+        - DestinationHandler → vector stores (Qdrant, Vespa)
+        - ArfHandler → ARF storage
+        - PostgresMetadataHandler → postgres DB
 
         Args:
             orphan_entity_ids: Entity IDs to clean up
@@ -110,27 +115,33 @@ class ActionDispatcher:
         if not orphan_entity_ids:
             return
 
-        sync_context.logger.debug(
-            f"[Dispatcher] Dispatching orphan cleanup for {len(orphan_entity_ids)} entities"
+        # Collect ALL handlers
+        all_handlers = list(self._destination_handlers)
+        if self._postgres_handler:
+            all_handlers.append(self._postgres_handler)
+
+        if not all_handlers:
+            return
+
+        sync_context.logger.info(
+            f"[Dispatcher] Dispatching orphan cleanup for {len(orphan_entity_ids)} entities "
+            f"to {len(all_handlers)} handlers"
         )
 
-        # Execute cleanup on all destination handlers concurrently
+        # Execute all handlers concurrently
         tasks = [
             asyncio.create_task(
                 self._dispatch_orphan_to_handler(handler, orphan_entity_ids, sync_context),
                 name=f"orphan-{handler.name}",
             )
-            for handler in self._destination_handlers
+            for handler in all_handlers
         ]
-
-        if not tasks:
-            return
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Check for failures
         failures = []
-        for handler, result in zip(self._destination_handlers, results, strict=False):
+        for handler, result in zip(all_handlers, results, strict=False):
             if isinstance(result, Exception):
                 failures.append((handler.name, result))
 

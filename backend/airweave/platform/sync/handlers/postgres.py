@@ -1,13 +1,14 @@
 """PostgreSQL metadata handler for entity persistence.
 
 Stores entity metadata (entity_id, hash, definition_id) to PostgreSQL.
-This handler is SPECIAL: it runs AFTER all other handlers succeed to ensure
-consistency between vector stores and metadata.
+This handler runs AFTER destination handlers to ensure consistency.
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Dict, List, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 from uuid import UUID
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
 from airweave.core.shared_models import ActionType
@@ -19,7 +20,7 @@ from airweave.platform.sync.actions.types import (
     UpdateAction,
 )
 from airweave.platform.sync.exceptions import SyncFailureError
-from airweave.platform.sync.handlers.base import ActionHandler
+from airweave.platform.sync.handlers.protocol import ActionHandler
 
 if TYPE_CHECKING:
     from airweave.platform.sync.context import SyncContext
@@ -34,8 +35,7 @@ class PostgresMetadataHandler(ActionHandler):
     - hash: Content hash for change detection
     - sync_id, sync_job_id: Sync tracking
 
-    IMPORTANT: This handler should run AFTER destination handlers succeed.
-    The dispatcher calls this handler separately, not concurrently with others.
+    Runs AFTER destination handlers succeed (dispatcher handles ordering).
     """
 
     @property
@@ -43,118 +43,139 @@ class PostgresMetadataHandler(ActionHandler):
         """Handler name."""
         return "postgres_metadata"
 
+    # -------------------------------------------------------------------------
+    # Protocol: Public Interface
+    # -------------------------------------------------------------------------
+
     async def handle_batch(
         self,
         batch: ActionBatch,
         sync_context: "SyncContext",
     ) -> None:
-        """Handle full batch in a single transaction.
-
-        Overrides default to process all operations in one transaction
-        for better performance and atomicity.
-
-        Args:
-            batch: ActionBatch with all resolved actions
-            sync_context: Sync context
-        """
+        """Handle full batch in a single transaction."""
         if not batch.has_mutations:
             return
 
-        # Execute with deadlock retry
-        await self._execute_with_retry(batch, sync_context)
+        await self._do_batch_with_retry(batch, sync_context)
 
-        # Increment guard rail usage
+        # Update guard rail
         total_synced = len(batch.inserts) + len(batch.updates)
         if total_synced > 0:
             await sync_context.guard_rail.increment(ActionType.ENTITIES, amount=total_synced)
-            sync_context.logger.debug(f"[Postgres] Incremented guard_rail by {total_synced}")
+            sync_context.logger.debug(f"[Postgres] guard_rail += {total_synced}")
 
-    async def _execute_with_retry(
+    async def handle_inserts(
+        self,
+        actions: List[InsertAction],
+        sync_context: "SyncContext",
+    ) -> None:
+        """Handle inserts - create entity records."""
+        if not actions:
+            return
+        async with get_db_context() as db:
+            await self._do_inserts(actions, sync_context, db)
+            await db.commit()
+        sync_context.logger.debug(f"[Postgres] Inserted {len(actions)} entities")
+
+    async def handle_updates(
+        self,
+        actions: List[UpdateAction],
+        sync_context: "SyncContext",
+    ) -> None:
+        """Handle updates - update entity hashes."""
+        if not actions:
+            return
+        async with get_db_context() as db:
+            existing_map = await self._fetch_existing_map(actions, sync_context, db)
+            await self._do_updates(actions, existing_map, sync_context, db)
+            await db.commit()
+        sync_context.logger.debug(f"[Postgres] Updated {len(actions)} entities")
+
+    async def handle_deletes(
+        self,
+        actions: List[DeleteAction],
+        sync_context: "SyncContext",
+    ) -> None:
+        """Handle deletes - remove entity records."""
+        if not actions:
+            return
+        async with get_db_context() as db:
+            existing_map = await self._fetch_existing_map(actions, sync_context, db)
+            await self._do_deletes(actions, existing_map, sync_context, db)
+            await db.commit()
+        sync_context.logger.debug(f"[Postgres] Deleted {len(actions)} entities")
+
+    async def handle_orphan_cleanup(
+        self,
+        orphan_entity_ids: List[str],
+        sync_context: "SyncContext",
+    ) -> None:
+        """Delete orphaned entity records from PostgreSQL."""
+        if not orphan_entity_ids:
+            return
+        await self._do_orphan_cleanup(orphan_entity_ids, sync_context)
+
+    # -------------------------------------------------------------------------
+    # Private: Batch Operations
+    # -------------------------------------------------------------------------
+
+    async def _do_batch_with_retry(
         self,
         batch: ActionBatch,
         sync_context: "SyncContext",
         max_retries: int = 3,
     ) -> None:
-        """Execute database operations with deadlock retry.
-
-        Args:
-            batch: ActionBatch to persist
-            sync_context: Sync context
-            max_retries: Maximum retry attempts for deadlocks
-        """
+        """Execute batch with deadlock retry."""
         from sqlalchemy.exc import DBAPIError
 
         for attempt in range(max_retries + 1):
             try:
-                await self._execute_operations(batch, sync_context)
+                await self._do_batch(batch, sync_context)
                 return
             except DBAPIError as e:
-                error_msg = str(e).lower()
-                is_deadlock = "deadlock detected" in error_msg
-
-                if is_deadlock and attempt < max_retries:
-                    wait_time = 0.1 * (2**attempt)
+                if "deadlock detected" in str(e).lower() and attempt < max_retries:
+                    wait = 0.1 * (2**attempt)
                     sync_context.logger.warning(
-                        f"[Postgres] Deadlock detected, retrying in {wait_time}s "
-                        f"(attempt {attempt + 1}/{max_retries})"
+                        f"[Postgres] Deadlock, retry in {wait}s ({attempt + 1}/{max_retries})"
                     )
-                    await asyncio.sleep(wait_time)
+                    await asyncio.sleep(wait)
                     continue
                 raise SyncFailureError(f"[Postgres] Database error: {e}") from e
 
-    async def _execute_operations(
+    async def _do_batch(
         self,
         batch: ActionBatch,
         sync_context: "SyncContext",
     ) -> None:
-        """Execute INSERT, UPDATE, DELETE in a single transaction.
-
-        Args:
-            batch: ActionBatch to persist
-            sync_context: Sync context
-        """
+        """Execute INSERT, UPDATE, DELETE in single transaction."""
         async with get_db_context() as db:
             if batch.inserts:
-                await self._execute_inserts(batch.inserts, sync_context, db)
-
+                await self._do_inserts(batch.inserts, sync_context, db)
             if batch.updates:
-                await self._execute_updates(batch.updates, batch.existing_map, sync_context, db)
-
+                await self._do_updates(batch.updates, batch.existing_map, sync_context, db)
             if batch.deletes:
-                await self._execute_deletes(batch.deletes, batch.existing_map, sync_context, db)
-
+                await self._do_deletes(batch.deletes, batch.existing_map, sync_context, db)
             await db.commit()
 
         sync_context.logger.debug(
-            f"[Postgres] Persisted {len(batch.inserts)} inserts, "
-            f"{len(batch.updates)} updates, {len(batch.deletes)} deletes"
+            f"[Postgres] Persisted {len(batch.inserts)}I/{len(batch.updates)}U/{len(batch.deletes)}D"
         )
 
-    async def _execute_inserts(
+    async def _do_inserts(
         self,
         actions: List[InsertAction],
         sync_context: "SyncContext",
-        db,
+        db: AsyncSession,
     ) -> None:
-        """Execute INSERT operations.
-
-        Args:
-            actions: Insert actions
-            sync_context: Sync context
-            db: Database session
-        """
-        # Deduplicate within batch (keep latest)
+        """Execute INSERT operations."""
         deduped = self._deduplicate_inserts(actions, sync_context)
-
         if not deduped:
             return
 
-        # Build create objects with deterministic ordering
         create_objs = []
         for action in deduped:
             if not action.entity.airweave_system_metadata.hash:
                 raise SyncFailureError(f"Entity {action.entity_id} missing hash")
-
             create_objs.append(
                 schemas.EntityCreate(
                     sync_job_id=sync_context.sync_job.id,
@@ -165,34 +186,23 @@ class PostgresMetadataHandler(ActionHandler):
                 )
             )
 
-        # Sort to avoid deadlock cycles
-        create_objs.sort(key=lambda obj: (obj.entity_definition_id.int, obj.entity_id))
+        # Sort to avoid deadlocks
+        create_objs.sort(key=lambda o: (o.entity_definition_id.int, o.entity_id))
 
-        # Log for debugging
-        sample_ids = [obj.entity_id for obj in create_objs[:10]]
         sync_context.logger.debug(
-            f"[Postgres] Upserting {len(create_objs)} inserts (sample: {sample_ids})"
+            f"[Postgres] Upserting {len(create_objs)} (sample: {[o.entity_id for o in create_objs[:5]]})"
         )
-
         await crud.entity.bulk_create(db, objs=create_objs, ctx=sync_context.ctx)
 
-    async def _execute_updates(
+    async def _do_updates(
         self,
         actions: List[UpdateAction],
-        existing_map: Dict[Tuple[str, UUID], any],
+        existing_map: Dict[Tuple[str, UUID], Any],
         sync_context: "SyncContext",
-        db,
+        db: AsyncSession,
     ) -> None:
-        """Execute UPDATE operations (hash updates).
-
-        Args:
-            actions: Update actions
-            existing_map: Map of existing DB records
-            sync_context: Sync context
-            db: Database session
-        """
+        """Execute UPDATE operations (hash updates)."""
         update_pairs = []
-
         for action in actions:
             if not action.entity.airweave_system_metadata.hash:
                 raise SyncFailureError(f"Entity {action.entity_id} missing hash")
@@ -201,127 +211,100 @@ class PostgresMetadataHandler(ActionHandler):
             if key not in existing_map:
                 raise SyncFailureError(f"UPDATE entity {action.entity_id} not in existing_map")
 
-            db_id = existing_map[key].id
-            new_hash = action.entity.airweave_system_metadata.hash
-            update_pairs.append((db_id, new_hash))
+            update_pairs.append((existing_map[key].id, action.entity.airweave_system_metadata.hash))
 
         if not update_pairs:
             return
 
-        # Sort to avoid deadlocks
-        update_pairs.sort(key=lambda pair: pair[0])
-
-        sample_ids = [str(pair[0])[:8] for pair in update_pairs[:10]]
-        sync_context.logger.debug(
-            f"[Postgres] Updating {len(update_pairs)} hashes (sample: {sample_ids})"
-        )
-
+        update_pairs.sort(key=lambda p: p[0])
+        sync_context.logger.debug(f"[Postgres] Updating {len(update_pairs)} hashes")
         await crud.entity.bulk_update_hash(db, rows=update_pairs)
 
-    async def _execute_deletes(
+    async def _do_deletes(
         self,
         actions: List[DeleteAction],
-        existing_map: Dict[Tuple[str, UUID], any],
+        existing_map: Dict[Tuple[str, UUID], Any],
         sync_context: "SyncContext",
-        db,
+        db: AsyncSession,
     ) -> None:
-        """Execute DELETE operations.
-
-        Args:
-            actions: Delete actions
-            existing_map: Map of existing DB records
-            sync_context: Sync context
-            db: Database session
-        """
+        """Execute DELETE operations."""
         db_ids = []
-
         for action in actions:
             key = (action.entity_id, action.entity_definition_id)
             if key in existing_map:
                 db_ids.append(existing_map[key].id)
             else:
-                sync_context.logger.debug(
-                    f"DELETE entity {action.entity_id} not in DB (never synced)"
-                )
+                sync_context.logger.debug(f"DELETE {action.entity_id} not in DB (never synced)")
 
         if not db_ids:
             return
 
-        sync_context.logger.debug(f"[Postgres] Deleting {len(db_ids)} entity records")
-
+        sync_context.logger.debug(f"[Postgres] Deleting {len(db_ids)} records")
         await crud.entity.bulk_remove(db, ids=db_ids, ctx=sync_context.ctx)
+
+    # -------------------------------------------------------------------------
+    # Private: Orphan Cleanup
+    # -------------------------------------------------------------------------
+
+    async def _do_orphan_cleanup(
+        self,
+        orphan_entity_ids: List[str],
+        sync_context: "SyncContext",
+    ) -> None:
+        """Delete orphaned entity records."""
+        sync_context.logger.info(f"[Postgres] Cleaning {len(orphan_entity_ids)} orphans")
+
+        async with get_db_context() as db:
+            entity_map = await crud.entity.bulk_get_by_entity_and_sync(
+                db=db,
+                entity_ids=orphan_entity_ids,
+                sync_id=sync_context.sync.id,
+            )
+
+            if not entity_map:
+                sync_context.logger.debug("[Postgres] No orphans found in DB")
+                return
+
+            db_ids = [e.id for e in entity_map.values()]
+            await crud.entity.bulk_remove(db=db, ids=db_ids, ctx=sync_context.ctx)
+            await db.commit()
+
+            sync_context.logger.info(f"[Postgres] Deleted {len(db_ids)} orphan records")
+
+    # -------------------------------------------------------------------------
+    # Private: Helpers
+    # -------------------------------------------------------------------------
+
+    async def _fetch_existing_map(
+        self,
+        actions: List[UpdateAction] | List[DeleteAction],
+        sync_context: "SyncContext",
+        db: AsyncSession,
+    ) -> Dict[Tuple[str, UUID], Any]:
+        """Fetch existing DB records for update/delete actions."""
+        entity_requests = [(a.entity_id, a.entity_definition_id) for a in actions]
+        return await crud.entity.bulk_get_by_entity_sync_and_definition(
+            db=db, sync_id=sync_context.sync.id, entity_requests=entity_requests
+        )
 
     def _deduplicate_inserts(
         self,
         actions: List[InsertAction],
         sync_context: "SyncContext",
     ) -> List[InsertAction]:
-        """Deduplicate inserts within batch (keep latest).
-
-        Args:
-            actions: Insert actions
-            sync_context: Sync context for logging
-
-        Returns:
-            Deduplicated list of insert actions
-        """
+        """Deduplicate inserts within batch (keep latest)."""
         seen: Dict[str, int] = {}
         deduped: List[InsertAction] = []
 
         for action in actions:
             if action.entity_id in seen:
-                sync_context.logger.debug(
-                    f"[Postgres] Duplicate in batch: {action.entity_id} - using latest"
-                )
+                sync_context.logger.debug(f"[Postgres] Dup: {action.entity_id} - using latest")
                 deduped[seen[action.entity_id]] = action
             else:
                 seen[action.entity_id] = len(deduped)
                 deduped.append(action)
 
         if len(deduped) < len(actions):
-            sync_context.logger.debug(
-                f"[Postgres] Deduplicated {len(actions)} → {len(deduped)} inserts"
-            )
+            sync_context.logger.debug(f"[Postgres] Deduped {len(actions)} → {len(deduped)}")
 
         return deduped
-
-    # -------------------------------------------------------------------------
-    # Individual handlers (called by default handle_batch)
-    # -------------------------------------------------------------------------
-
-    async def handle_inserts(
-        self,
-        actions: List[InsertAction],
-        sync_context: "SyncContext",
-    ) -> None:
-        """Handle insert actions."""
-        # Not used when handle_batch is overridden
-        pass
-
-    async def handle_updates(
-        self,
-        actions: List[UpdateAction],
-        sync_context: "SyncContext",
-    ) -> None:
-        """Handle update actions."""
-        # Not used when handle_batch is overridden
-        pass
-
-    async def handle_deletes(
-        self,
-        actions: List[DeleteAction],
-        sync_context: "SyncContext",
-    ) -> None:
-        """Handle delete actions."""
-        # Not used when handle_batch is overridden
-        pass
-
-    async def handle_orphan_cleanup(
-        self,
-        orphan_entity_ids: List[str],
-        sync_context: "SyncContext",
-    ) -> None:
-        """Delete orphaned entity records from PostgreSQL (no-op, handled by CleanupService)."""
-        # Orphan cleanup for Postgres is handled separately by CleanupService
-        # because it needs the full Entity models for bulk_remove
-        pass

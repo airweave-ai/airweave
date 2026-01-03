@@ -1,17 +1,5 @@
 """Entity pipeline - orchestrates entity processing through sync stages.
 
-The EntityPipeline is the central orchestrator for processing entities through
-the event-driven sync pipeline. It coordinates:
-- Entity tracking (via EntityTracker)
-- Action resolution (via ActionResolver)
-- Action dispatch (via ActionDispatcher to all handlers)
-- Progress updates
-
-Content processing (text building, chunking, embedding) is now handled by
-individual handlers based on destination requirements:
-- VectorDBHandler: Processes content for vector DB destinations
-- SelfProcessingHandler: Passes raw entities to self-processing destinations
-
 Lifecycle:
 1. Entities produced by source
 2. Batched and submitted to pipeline
@@ -95,9 +83,8 @@ class EntityPipeline:
             return
 
         # Phase 5: Dispatch to all handlers (handlers process content as needed)
-        # Content processing (text → chunks → embeddings) is now handled per-handler:
-        # - VectorDBHandler: Processes for vector DBs (Qdrant, Pinecone)
-        # - SelfProcessingHandler: Passes raw entities (Vespa)
+        # Content processing (text → chunks → embeddings) is handled by destination processors
+        # via DestinationHandler
         await self._dispatcher.dispatch(batch, sync_context)
 
         # Phase 6: Update tracker with successes → triggers pubsub
@@ -112,19 +99,30 @@ class EntityPipeline:
         Called at the end of sync to clean up entities that exist in the database
         but were not seen during this sync run (deleted at source).
 
+        Dispatches to ALL handlers via dispatcher:
+        - DestinationHandler (Qdrant/Vespa) - deletes from vector stores
+        - ArfHandler - deletes from ARF storage
+        - PostgresMetadataHandler - deletes from metadata DB
+
         Args:
             sync_context: Sync context
         """
-        # Get orphan entity IDs
-        orphan_ids = await self._identify_orphans(sync_context)
-        if not orphan_ids:
+        # Get orphan entity IDs grouped by definition
+        orphans_by_definition = await self._identify_orphans(sync_context)
+        if not orphans_by_definition:
             return
 
-        # Dispatch cleanup to destination handlers
-        await self._dispatcher.dispatch_orphan_cleanup(orphan_ids, sync_context)
+        # Flatten for dispatcher (it just needs all IDs)
+        all_orphan_ids = [
+            entity_id for entity_ids in orphans_by_definition.values() for entity_id in entity_ids
+        ]
 
-        # Cleanup postgres metadata (via cleanup service)
-        await cleanup_service.cleanup_orphaned_entities(sync_context)
+        # Dispatch cleanup to ALL handlers (destinations + postgres)
+        await self._dispatcher.dispatch_orphan_cleanup(all_orphan_ids, sync_context)
+
+        # Update tracker with orphan deletion counts per definition
+        for definition_id, entity_ids in orphans_by_definition.items():
+            await sync_context.entity_tracker.record_deletes(definition_id, len(entity_ids))
 
     async def cleanup_temp_files(self, sync_context: SyncContext) -> None:
         """Remove entire sync_job_id directory (final cleanup safety net).
@@ -291,14 +289,14 @@ class EntityPipeline:
     # Orphan Identification
     # -------------------------------------------------------------------------
 
-    async def _identify_orphans(self, sync_context: SyncContext) -> List[str]:
-        """Identify orphaned entity IDs (in DB but not encountered).
+    async def _identify_orphans(self, sync_context: SyncContext) -> Dict[UUID, List[str]]:
+        """Identify orphaned entity IDs (in DB but not encountered), grouped by definition.
 
         Args:
             sync_context: Sync context
 
         Returns:
-            List of orphaned entity IDs
+            Dict mapping entity_definition_id to list of orphaned entity IDs
         """
         from airweave import crud
         from airweave.db.session import get_db_context
@@ -310,19 +308,21 @@ class EntityPipeline:
         async with get_db_context() as db:
             stored_entities = await crud.entity.get_by_sync_id(db=db, sync_id=sync_context.sync.id)
 
-        # Find orphans
-        orphan_ids = []
+        # Find orphans grouped by definition
+        orphans_by_definition: Dict[UUID, List[str]] = defaultdict(list)
         for entity in stored_entities:
             if entity.entity_id not in encountered_ids:
-                orphan_ids.append(entity.entity_id)
+                orphans_by_definition[entity.entity_definition_id].append(entity.entity_id)
 
-        if orphan_ids:
+        total_orphans = sum(len(ids) for ids in orphans_by_definition.values())
+        if total_orphans:
             sync_context.logger.info(
-                f"🔍 Identified {len(orphan_ids)} orphaned entities "
+                f"🔍 Identified {total_orphans} orphaned entities "
+                f"across {len(orphans_by_definition)} definitions "
                 f"out of {len(stored_entities)} stored"
             )
 
-        return orphan_ids
+        return dict(orphans_by_definition)
 
     # -------------------------------------------------------------------------
     # Temp File Cleanup

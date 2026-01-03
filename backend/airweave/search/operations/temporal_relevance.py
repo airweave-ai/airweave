@@ -3,36 +3,25 @@
 Computes dynamic time-based decay configuration by analyzing the actual
 time range of the (optionally filtered) collection. This enables recency-aware
 ranking that respects the dataset's time distribution.
+
+Currently only implemented for Qdrant destinations. Other destinations that
+declare supports_temporal_relevance=False will be skipped by the factory.
 """
 
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, List, Optional
 
-from pydantic import BaseModel
 from qdrant_client.http import models as rest
 
 from airweave.api.context import ApiContext
+from airweave.platform.destinations._base import BaseDestination
+from airweave.schemas.search import AirweaveTemporalConfig
 from airweave.search.context import SearchContext
 
 from ._base import SearchOperation
 
 if TYPE_CHECKING:
     from airweave.platform.destinations.qdrant import QdrantDestination
-
-
-class DecayConfig(BaseModel):
-    """Configuration for time-based decay in Qdrant queries."""
-
-    decay_type: str  # "linear", "exponential", "gaussian"
-    datetime_field: str
-    target_datetime: datetime
-    scale_seconds: float
-    midpoint: float
-    weight: float
-
-    def get_scale_seconds(self) -> float:
-        """Get scale in seconds for decay calculation."""
-        return self.scale_seconds
 
 
 class TemporalRelevance(SearchOperation):
@@ -42,17 +31,24 @@ class TemporalRelevance(SearchOperation):
     DECAY_TYPE = "linear"
     MIDPOINT = 0.5
 
-    def __init__(self, weight: float, supporting_sources: Optional[List[str]] = None) -> None:
-        """Initialize with temporal relevance weight and list of supporting sources.
+    def __init__(
+        self,
+        weight: float,
+        destination: BaseDestination,
+        supporting_sources: Optional[List[str]] = None,
+    ) -> None:
+        """Initialize with temporal relevance weight and destination instance.
 
         Args:
             weight: Temporal relevance weight (0-1)
+            destination: The destination instance to query for timestamp ranges
             supporting_sources: Optional list of source short_names to filter to.
                 - Non-empty list: Only include documents from these sources
                 - None: No source filtering (all sources included)
                 - Empty list is never passed (factory skips operation entirely)
         """
         self.weight = weight
+        self.destination = destination
         self.supporting_sources = supporting_sources
 
     def depends_on(self) -> List[str]:
@@ -131,14 +127,25 @@ class TemporalRelevance(SearchOperation):
             f"[TemporalRelevance] Applied tenant filter: collection_id={context.collection_id}"
         )
 
-        # Connect to Qdrant (runtime import to avoid circular dependency)
+        # Import QdrantDestination for type checking
         from airweave.platform.destinations.qdrant import QdrantDestination
 
-        destination = await QdrantDestination.create(
-            collection_id=context.collection_id,
-            vector_size=context.vector_size,
-            logger=ctx.logger,
-        )
+        # Currently only Qdrant supports temporal relevance queries
+        # Other destinations should have supports_temporal_relevance=False and be skipped by factory
+        if not isinstance(self.destination, QdrantDestination):
+            ctx.logger.warning(
+                f"[TemporalRelevance] Destination {type(self.destination).__name__} does not "
+                "support temporal relevance timestamp queries. Skipping."
+            )
+            await context.emitter.emit(
+                "recency_skipped",
+                {"reason": "destination_not_supported", "destination": type(self.destination).__name__},
+                op_name=self.__class__.__name__,
+            )
+            return
+
+        # Use the injected destination (already connected)
+        destination = self.destination
 
         # First, check if the filtered search space has any documents
         document_count = await self._count_filtered_documents(destination, qdrant_filter)
@@ -211,19 +218,17 @@ class TemporalRelevance(SearchOperation):
             op_name=self.__class__.__name__,
         )
 
-        # Build decay config
-        decay_config = DecayConfig(
-            decay_type=self.DECAY_TYPE,
-            datetime_field=self.DATETIME_FIELD,
+        # Build destination-agnostic temporal config
+        temporal_config = AirweaveTemporalConfig(
+            weight=self.weight,
+            reference_field=self.DATETIME_FIELD,
             target_datetime=newest,  # Use newest item time, not current time
             scale_seconds=scale_seconds,
-            midpoint=self.MIDPOINT,
-            weight=self.weight,
         )
-        ctx.logger.debug(f"[TemporalRelevance] Decay config: {decay_config}")
+        ctx.logger.debug(f"[TemporalRelevance] Temporal config: {temporal_config}")
 
-        # Write to state - includes both decay config AND updated filter with timestamp requirement
-        state["decay_config"] = decay_config
+        # Write to state - includes both temporal config AND updated filter with timestamp requirement
+        state["temporal_config"] = temporal_config
 
         # CRITICAL: Update the filter in state to exclude documents without timestamps
         # This ensures Retrieval operation only searches documents compatible with decay formula

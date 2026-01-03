@@ -11,14 +11,18 @@ from airweave import crud, schemas
 from airweave.api.context import ApiContext
 from airweave.core import credentials
 from airweave.core.config import settings
-from airweave.core.constants.reserved_ids import NATIVE_QDRANT_UUID, RESERVED_TABLE_ENTITY_ID
+from airweave.core.constants.reserved_ids import (
+    NATIVE_QDRANT_UUID,
+    NATIVE_VESPA_UUID,
+    RESERVED_TABLE_ENTITY_ID,
+)
 from airweave.core.exceptions import NotFoundException
 from airweave.core.guard_rail_service import GuardRailService
 from airweave.core.logging import ContextualLogger, LoggerConfigurator, logger
 from airweave.core.sync_cursor_service import sync_cursor_service
 from airweave.db.init_db_native import init_db_with_entity_definitions
 from airweave.platform.auth_providers._base import BaseAuthProvider
-from airweave.platform.destinations._base import BaseDestination, ProcessingRequirement
+from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.locator import resource_locator
 from airweave.platform.sources._base import BaseSource
@@ -28,9 +32,9 @@ from airweave.platform.sync.context import SyncContext
 from airweave.platform.sync.cursor import SyncCursor
 from airweave.platform.sync.entity_pipeline import EntityPipeline
 from airweave.platform.sync.handlers import (
+    ArfHandler,
+    DestinationHandler,
     PostgresMetadataHandler,
-    RawDataHandler,
-    VectorDBHandler,
 )
 from airweave.platform.sync.orchestrator import SyncOrchestrator
 from airweave.platform.sync.pipeline.entity_tracker import EntityTracker
@@ -111,6 +115,10 @@ class SyncFactory:
         # 1. Action Resolver
         action_resolver = ActionResolver(entity_map=sync_context.entity_map)
 
+        # 2. Handlers - grouped by destination processing requirements
+        handlers = cls._create_destination_handlers(sync_context)
+        handlers.append(ArfHandler())  # ARF storage for audit/replay
+        handlers.append(PostgresMetadataHandler())  # Metadata (runs last)
         # 2. Handlers - conditionally created based on execution_config
         config = sync_context.execution_config
         enable_vector = config is None or config.enable_vector_handlers
@@ -650,11 +658,10 @@ class SyncFactory:
         cls,
         sync_context: SyncContext,
     ) -> list:
-        """Create destination handlers grouped by processing requirements.
+        """Create destination handlers using ProcessingRequirement.
 
-        This method groups destinations by their processing requirements and creates
-        appropriate handlers:
-        - VectorDBHandler: For destinations needing chunking/embedding (Qdrant, Pinecone)
+        Each destination declares its processing needs via processing_requirement class var.
+        DestinationHandler maps requirements to processors (singletons).
 
         Args:
             sync_context: Sync context with destinations and logger
@@ -662,35 +669,21 @@ class SyncFactory:
         Returns:
             List of destination handlers (may be empty if no destinations)
         """
-        from airweave.platform.sync.handlers.base import ActionHandler
+        from airweave.platform.sync.handlers.protocol import ActionHandler
 
         handlers: list[ActionHandler] = []
 
-        # Group destinations by processing requirement
-        vector_db_destinations: list[BaseDestination] = []
-        self_processing_destinations: list[BaseDestination] = []
+        if sync_context.destinations:
+            handler = DestinationHandler(destinations=sync_context.destinations)
+            handlers.append(handler)
 
-        for dest in sync_context.destinations:
-            requirement = dest.processing_requirement
-            if requirement == ProcessingRequirement.CHUNKS_AND_EMBEDDINGS:
-                vector_db_destinations.append(dest)
-            elif requirement == ProcessingRequirement.RAW_ENTITIES:
-                self_processing_destinations.append(dest)
-            else:
-                # Default to vector DB for unknown requirements (backward compat)
-                sync_context.logger.warning(
-                    f"Unknown processing requirement {requirement} for {dest.__class__.__name__}, "
-                    "defaulting to CHUNKS_AND_EMBEDDINGS"
-                )
-                vector_db_destinations.append(dest)
-
-        # Create handlers for each non-empty group
-        if vector_db_destinations:
-            vector_handler = VectorDBHandler(destinations=vector_db_destinations)
-            handlers.append(vector_handler)
+            # Log what processing requirements are in use
+            processor_info = [
+                f"{d.__class__.__name__}→{d.processing_requirement.value}"
+                for d in sync_context.destinations
+            ]
             sync_context.logger.info(
-                f"Created VectorDBHandler for {len(vector_db_destinations)} destination(s): "
-                f"{[d.__class__.__name__ for d in vector_db_destinations]}"
+                f"Created DestinationHandler with requirements: {processor_info}"
             )
 
         if not handlers:
@@ -772,6 +765,33 @@ class SyncFactory:
                     logger.info("Created native Qdrant destination")
                     continue
 
+                # Special case: Native Vespa (uses settings, no DB connection)
+                # Vespa handles chunking and embedding internally via schema
+                if destination_connection_id == NATIVE_VESPA_UUID:
+                    logger.info("Using native Vespa destination (settings-based)")
+                    destination_model = await crud.destination.get_by_short_name(db, "vespa")
+                    if not destination_model:
+                        logger.warning("Vespa destination model not found")
+                        continue
+
+                    destination_schema = schemas.Destination.model_validate(destination_model)
+                    destination_class = resource_locator.get_destination(destination_schema)
+
+                    # Native Vespa: no credentials (uses settings)
+                    # Note: vector_size not needed - Vespa handles embeddings internally
+                    destination = await destination_class.create(
+                        credentials=None,
+                        config=None,
+                        collection_id=collection.id,
+                        organization_id=collection.organization_id,
+                        vector_size=None,  # Vespa handles embeddings internally
+                        logger=logger,
+                    )
+
+                    destinations.append(destination)
+                    logger.info("Created native Vespa destination")
+                    continue
+
                 # Regular case: Load connection from database
                 destination_connection = await crud.connection.get(
                     db, destination_connection_id, ctx
@@ -848,8 +868,8 @@ class SyncFactory:
 
         return destinations
 
-    # NOTE: Transformers removed - chunking now happens in VectorDBHandler
-    # (for destinations requiring CHUNKS_AND_EMBEDDINGS processing)
+    # NOTE: Transformers removed - chunking now happens in processors
+    # (ChunkEmbedProcessor for vector DBs, TextOnlyProcessor for self-embedding destinations)
 
     @staticmethod
     def _filter_destination_ids(

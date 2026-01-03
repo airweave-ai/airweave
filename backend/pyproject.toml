@@ -72,6 +72,7 @@ pillow = "^11.0.0"
 chonkie = {extras = ["code", "semantic"], version = "^1.4.0"}
 prometheus-client = "^0.21.0"
 psutil = "^5.9.0"
+pyvespa = "^0.62.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"

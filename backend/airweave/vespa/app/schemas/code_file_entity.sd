@@ -1,0 +1,38 @@
+# CODE FILE ENTITY SCHEMA
+# Inherits from file_entity, adding code-specific fields for CodeFileEntity types.
+# Used for source code files from repositories (GitHub, GitLab, etc.)
+
+schema code_file_entity inherits file_entity {
+
+    document code_file_entity inherits file_entity {
+
+        # Name of the repository this file belongs to
+        field repo_name type string {
+            indexing: attribute | summary
+            attribute: fast-search
+        }
+
+        # Path of the file within the repository (e.g., "src/main.py")
+        field path_in_repo type string {
+            indexing: attribute | summary
+        }
+
+        # Owner of the repository (user or organization)
+        field repo_owner type string {
+            indexing: attribute | summary
+            attribute: fast-search
+        }
+
+        # Programming language of the code file
+        field language type string {
+            indexing: attribute | summary
+            attribute: fast-search
+        }
+
+        # Last commit ID that modified this file
+        field commit_id type string {
+            indexing: attribute | summary
+        }
+    }
+}
+

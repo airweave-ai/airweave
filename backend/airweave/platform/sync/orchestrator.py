@@ -449,10 +449,8 @@ class SyncOrchestrator:
                 self.sync_context.logger.info(
                     "🧹 Starting orphaned entity cleanup phase (first sync - no cursor data)"
                 )
+            # Dispatcher handles ALL handlers: Destination, ARF, and Postgres
             await self.entity_pipeline.cleanup_orphaned_entities(self.sync_context)
-
-            # Also cleanup stale raw data entities
-            await self._cleanup_stale_raw_data_if_needed()
         elif (
             has_cursor_data and not self.sync_context.force_full_sync and source_supports_continuous
         ):
@@ -460,19 +458,6 @@ class SyncOrchestrator:
                 "⏩ Skipping orphaned entity cleanup for INCREMENTAL sync "
                 "(cursor data exists, only changed entities are processed)"
             )
-
-    async def _cleanup_stale_raw_data_if_needed(self) -> None:
-        """Cleanup stale raw data entities after full sync."""
-        try:
-            from airweave.platform.sync import raw_data_service
-
-            # Only cleanup if we were tracking
-            deleted = await raw_data_service.cleanup_stale_entities(self.sync_context)
-            if deleted:
-                self.sync_context.logger.info(f"🧹 Cleaned up {deleted} stale raw data entities")
-
-        except Exception as e:
-            self.sync_context.logger.warning(f"Failed to cleanup stale raw data: {e}")
 
     async def _finalize_progress_and_trackers(
         self, status: SyncJobStatus, error: Optional[str] = None

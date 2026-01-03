@@ -130,7 +130,7 @@ services:
       - "19071:19071" # Config server (for deployment)
     volumes:
       - vespa_data:/opt/vespa/var
-      - ./vespa-config:/app
+      - ../backend/airweave/vespa/app:/app
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:19071/state/v1/health"]
       interval: 10s

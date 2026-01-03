@@ -1,0 +1,13 @@
+# EMAIL ENTITY SCHEMA
+# Inherits from file_entity with no additional fields.
+# Email messages are treated as FileEntity with HTML body saved to local file.
+# Content is not stored in entity fields, only in the downloaded file.
+
+schema email_entity inherits file_entity {
+
+    document email_entity inherits file_entity {
+        # No additional fields - email is essentially a file entity
+        # The email content is extracted into textual_representation during sync
+    }
+}
+

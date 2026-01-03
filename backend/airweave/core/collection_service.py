@@ -10,12 +10,13 @@ from airweave.api.context import ApiContext
 from airweave.core.exceptions import NotFoundException
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.platform.destinations.qdrant import QdrantDestination
+from airweave.platform.destinations.vespa import VespaDestination
 
 
 class CollectionService:
     """Service for managing collections.
 
-    Manages the lifecycle of collections across the SQL datamodel and Qdrant.
+    Manages the lifecycle of collections across the SQL datamodel and destinations.
     """
 
     async def create(
@@ -91,8 +92,22 @@ class CollectionService:
             logger=ctx.logger,
         )
 
-        # Setup the physical shared collection
+        # Setup the physical shared collection in Qdrant
         await qdrant_destination.setup_collection()
+
+        # Initialize Vespa destination (no-op, schema deployed via vespa-deploy)
+        try:
+            vespa_destination = await VespaDestination.create(
+                credentials=None,
+                config=None,
+                collection_id=collection.id,
+                organization_id=ctx.organization.id,
+                logger=ctx.logger,
+                sync_id=None,
+            )
+            await vespa_destination.setup_collection()
+        except Exception as e:
+            ctx.logger.warning(f"Vespa setup skipped (may not be configured): {e}")
 
         return schemas.Collection.model_validate(collection, from_attributes=True)
 

@@ -55,6 +55,11 @@ class S3Destination(BaseDestination):
     Event streaming is provided via S3 event notifications (s3:ObjectCreated:*, s3:ObjectRemoved:*).
     """
 
+    # S3 stores raw entities, no processing needed
+    from airweave.platform.destinations._base import ProcessingRequirement
+
+    processing_requirement = ProcessingRequirement.RAW
+
     def __init__(self):
         """Initialize S3 destination."""
         super().__init__()
@@ -199,10 +204,6 @@ class S3Destination(BaseDestination):
             return mime_to_ext.get(mime_type, ".bin")
 
         return ".bin"
-
-    async def insert(self, entity) -> None:
-        """Single entity insert - delegates to bulk_insert."""
-        await self.bulk_insert([entity])
 
     async def bulk_insert(self, entities: list) -> None:
         """Write entities as individual JSON files to S3.
@@ -350,29 +351,16 @@ class S3Destination(BaseDestination):
             },
         )
 
-    async def delete(self, db_entity_id: UUID) -> None:
-        """Delete entity file from S3.
+    async def bulk_delete_by_parent_ids(self, parent_ids: list[str], sync_id: UUID) -> None:
+        """Delete entities by parent IDs using S3 prefix listing.
 
-        Note: db_entity_id is our internal UUID, but we need the source entity_id
-        for the S3 key. This method has limitations - use bulk_delete when possible.
-        """
-        # We can't construct the S3 key from db_entity_id alone
-        # Log warning but don't fail - bulk_delete is the primary delete path
-        self.logger.warning(
-            f"Single entity delete called with db_entity_id {db_entity_id}. "
-            "Cannot delete from S3 without source entity_id. Use bulk_delete instead."
-        )
-
-    async def bulk_delete(self, entity_ids: list[str], sync_id: UUID) -> None:
-        """Delete entity files from S3.
-
-        Deletes both entity JSON and associated blobs (if they exist).
+        Lists all objects with each parent_id prefix and deletes them (entities + blobs).
 
         Args:
-            entity_ids: List of source entity IDs (used as S3 keys)
+            parent_ids: List of parent entity IDs
             sync_id: Sync ID (unused for S3)
         """
-        if not entity_ids:
+        if not parent_ids:
             return
 
         try:
@@ -387,83 +375,38 @@ class S3Destination(BaseDestination):
                 collection_path = self.collection_readable_id
                 base_path = f"{self.bucket_prefix}collections/{collection_path}"
 
-                for entity_id in entity_ids:
-                    # Delete entity JSON
-                    entity_key = f"{base_path}/entities/{entity_id}.json"
-                    await s3.delete_object(Bucket=self.bucket_name, Key=entity_key)
-
-                    # Try to delete associated blob (if it exists)
-                    # List all blobs with this entity_id prefix to handle any extension
-                    blob_prefix = f"{base_path}/blobs/{entity_id}"
-
-                    try:
-                        response = await s3.list_objects_v2(
-                            Bucket=self.bucket_name,
-                            Prefix=blob_prefix,
-                            MaxKeys=10,  # Should only be 1, but be safe
-                        )
-
-                        if "Contents" in response:
-                            for obj in response["Contents"]:
-                                await s3.delete_object(Bucket=self.bucket_name, Key=obj["Key"])
-                                self.logger.debug(f"Deleted blob: {obj['Key']}")
-                    except Exception as e:
-                        # Non-fatal: blob might not exist
-                        self.logger.debug(f"No blob found for entity {entity_id}: {e}")
-
-            self.logger.info(f"Deleted {len(entity_ids)} entities from S3")
-        except Exception as e:
-            self.logger.error(f"Failed to delete entities from S3: {e}", exc_info=True)
-            raise
-
-    async def bulk_delete_by_parent_id(self, parent_id: str, sync_id: UUID) -> None:
-        """Delete entities by parent using S3 prefix listing.
-
-        Lists all objects with parent_id prefix and deletes them (entities + blobs).
-        This is less efficient but necessary for hierarchical deletions.
-        """
-        try:
-            async with self.session.client(
-                "s3",
-                endpoint_url=self._endpoint_url,
-                aws_access_key_id=self._access_key_id,
-                aws_secret_access_key=self._secret_access_key,
-                region_name=self._region,
-                use_ssl=self._use_ssl,
-            ) as s3:
-                collection_path = self.collection_readable_id
-                base_path = f"{self.bucket_prefix}collections/{collection_path}"
-
                 total_deleted = 0
 
-                # Delete from both entities/ and blobs/ with parent_id prefix
-                for folder in ["entities", "blobs"]:
-                    prefix = f"{base_path}/{folder}/{parent_id}"
+                for parent_id in parent_ids:
+                    # Delete from both entities/ and blobs/ with parent_id prefix
+                    for folder in ["entities", "blobs"]:
+                        prefix = f"{base_path}/{folder}/{parent_id}"
 
-                    paginator = s3.get_paginator("list_objects_v2")
-                    folder_deleted = 0
+                        paginator = s3.get_paginator("list_objects_v2")
 
-                    async for page in paginator.paginate(Bucket=self.bucket_name, Prefix=prefix):
-                        if "Contents" not in page:
-                            continue
+                        async for page in paginator.paginate(
+                            Bucket=self.bucket_name, Prefix=prefix
+                        ):
+                            if "Contents" not in page:
+                                continue
 
-                        # Batch delete (up to 1000 objects per request)
-                        objects_to_delete = [{"Key": obj["Key"]} for obj in page["Contents"]]
+                            # Batch delete (up to 1000 objects per request)
+                            objects_to_delete = [{"Key": obj["Key"]} for obj in page["Contents"]]
 
-                        if objects_to_delete:
-                            await s3.delete_objects(
-                                Bucket=self.bucket_name, Delete={"Objects": objects_to_delete}
-                            )
-                            folder_deleted += len(objects_to_delete)
+                            if objects_to_delete:
+                                await s3.delete_objects(
+                                    Bucket=self.bucket_name, Delete={"Objects": objects_to_delete}
+                                )
+                                total_deleted += len(objects_to_delete)
 
-                    if folder_deleted > 0:
-                        self.logger.debug(f"Deleted {folder_deleted} objects from {folder}/")
-                    total_deleted += folder_deleted
-
-            msg = f"Deleted {total_deleted} objects with parent_id '{parent_id}' from S3"
-            self.logger.info(msg)
+            if total_deleted > 0:
+                self.logger.info(
+                    f"Deleted {total_deleted} objects for {len(parent_ids)} parents from S3"
+                )
         except Exception as e:
-            self.logger.error(f"Failed to delete entities by parent_id from S3: {e}", exc_info=True)
+            self.logger.error(
+                f"Failed to delete entities by parent_ids from S3: {e}", exc_info=True
+            )
             raise
 
     async def delete_by_sync_id(self, sync_id: UUID) -> None:
