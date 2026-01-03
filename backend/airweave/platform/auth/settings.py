@@ -211,6 +211,8 @@ parent_directory = current_file_path.parent
 environment = core_settings.ENVIRONMENT
 if environment == "local":
     env_prefix = "dev"
+elif environment == "prd":
+    env_prefix = "prd"
 else:
     env_prefix = environment
 yaml_file_path = parent_directory / f"yaml/{env_prefix}.integrations.yaml"
