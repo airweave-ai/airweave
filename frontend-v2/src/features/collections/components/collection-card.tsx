@@ -20,6 +20,7 @@ interface CollectionCardProps {
   status?: string;
   sourceConnections?: SourceConnection[];
   onClick?: () => void;
+  className?: string;
 }
 
 export function CollectionCard({
@@ -28,6 +29,7 @@ export function CollectionCard({
   status = "ACTIVE",
   sourceConnections = [],
   onClick,
+  className,
 }: CollectionCardProps) {
   const isDark = useIsDark();
   const statusDisplay = getCollectionStatusDisplay(status);
@@ -36,6 +38,7 @@ export function CollectionCard({
     <div
       className={cn(
         "group relative flex h-full min-w-[240px] cursor-pointer flex-col overflow-hidden rounded-xl border transition-colors",
+        className,
         isDark
           ? "border-slate-800 bg-slate-900 hover:border-slate-700"
           : "border-slate-200 bg-white hover:border-slate-300"

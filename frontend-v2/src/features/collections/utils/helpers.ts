@@ -2,7 +2,7 @@ import { formatDate as sharedFormatDate } from "@/lib/date";
 
 /**
  * Get app/source icon URL based on short name and theme
- * Icons are located in the frontend/src/components/icons/apps/ directory
+ * Icons are located in the public/icons/connectors/ directory
  */
 export function getAppIconUrl(shortName: string, theme?: string): string {
   // Special handling for icons that have light variants for dark mode
@@ -17,11 +17,11 @@ export function getAppIconUrl(shortName: string, theme?: string): string {
 
   // Check for dark mode variant
   if (theme === "dark" && darkModeVariants[shortName]) {
-    return `/src/components/icons/apps/${darkModeVariants[shortName]}`;
+    return `/icons/connectors/${darkModeVariants[shortName]}`;
   }
 
   // Default icon path
-  return `/src/components/icons/apps/${shortName}.svg`;
+  return `/icons/connectors/${shortName}.svg`;
 }
 
 /**

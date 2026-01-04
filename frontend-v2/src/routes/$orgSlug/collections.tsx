@@ -206,9 +206,10 @@ function CollectionsPage() {
     <div className="space-y-8 p-6">
       {/* Collections Grid */}
       <div>
-        <div className="grid auto-rows-fr grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+        <div className="flex flex-wrap gap-4">
           {collections.map((collection) => (
             <CollectionCard
+              className="w-64"
               key={collection.id}
               id={collection.id}
               name={collection.name}

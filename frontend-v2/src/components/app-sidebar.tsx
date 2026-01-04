@@ -49,7 +49,7 @@ export function AppSidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <Button
-              className="mb-1 flex h-auto w-full justify-start gap-2 py-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
+              className="mb-1 flex h-auto w-full justify-start gap-2 py-2 text-slate-100 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 hover:bg-slate-100/10 hover:text-slate-100 dark:text-slate-100 dark:hover:text-slate-100"
               size="sm"
               variant="ghost"
               asChild
