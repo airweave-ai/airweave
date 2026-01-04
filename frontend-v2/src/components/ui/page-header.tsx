@@ -75,7 +75,9 @@ function PageHeaderContent() {
   return (
     <div className="flex flex-1 items-center justify-between gap-4">
       <div className="flex min-w-0 items-center gap-2">
-        <h1 className="truncate text-sm font-semibold">{content.title}</h1>
+        <h1 className="truncate font-mono text-sm font-medium uppercase">
+          {content.title}
+        </h1>
         {content.description && (
           <Tooltip>
             <TooltipTrigger asChild>
