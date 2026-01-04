@@ -1,0 +1,230 @@
+import { Eye, Plus } from "lucide-react";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { useIsDark } from "@/hooks/use-is-dark";
+import { cn } from "@/lib/utils";
+
+import { getAppIconUrl, getCollectionStatusDisplay } from "../utils/helpers";
+
+interface SourceConnection {
+  id: string;
+  name: string;
+  short_name: string;
+}
+
+interface CollectionCardProps {
+  id: string;
+  name: string;
+  readableId: string;
+  status?: string;
+  sourceConnections?: SourceConnection[];
+  onClick?: () => void;
+}
+
+export function CollectionCard({
+  name,
+  readableId,
+  status = "ACTIVE",
+  sourceConnections = [],
+  onClick,
+}: CollectionCardProps) {
+  const isDark = useIsDark();
+  const statusDisplay = getCollectionStatusDisplay(status);
+
+  return (
+    <div
+      className={cn(
+        "group relative flex h-full min-w-[240px] cursor-pointer flex-col overflow-hidden rounded-xl border transition-colors",
+        isDark
+          ? "border-slate-800 bg-slate-900 hover:border-slate-700"
+          : "border-slate-200 bg-white hover:border-slate-300"
+      )}
+      onClick={onClick}
+    >
+      {/* Card Content */}
+      <div className="flex flex-1 flex-col p-4">
+        <div className="mb-2 flex items-start justify-between">
+          <h3
+            className={cn(
+              "text-xl font-semibold tracking-tight",
+              isDark ? "text-white" : "text-slate-900"
+            )}
+          >
+            {name}
+          </h3>
+        </div>
+        <p
+          className={cn(
+            "mb-3 truncate text-sm",
+            isDark ? "text-slate-400" : "text-slate-500"
+          )}
+        >
+          {readableId}.airweave.ai
+        </p>
+
+        {/* Status badge */}
+        <Badge
+          variant={
+            statusDisplay.variant === "success"
+              ? "default"
+              : statusDisplay.variant === "warning"
+                ? "secondary"
+                : statusDisplay.variant === "destructive"
+                  ? "destructive"
+                  : "outline"
+          }
+          className={cn(
+            "w-fit",
+            statusDisplay.variant === "success" &&
+              "border-transparent bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+            statusDisplay.variant === "warning" &&
+              "border-transparent bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+          )}
+        >
+          {statusDisplay.label}
+        </Badge>
+      </div>
+
+      {/* Card Footer */}
+      <div
+        className={cn(
+          "flex items-center justify-between border-t p-2",
+          isDark ? "border-slate-800" : "border-slate-100"
+        )}
+      >
+        {/* View & Edit Button */}
+        <Button
+          variant="ghost"
+          size="sm"
+          className={cn(
+            "rounded-lg text-sm",
+            isDark
+              ? "text-slate-300 hover:bg-slate-800 hover:text-white"
+              : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+          )}
+          onClick={(e) => {
+            e.stopPropagation();
+            onClick?.();
+          }}
+        >
+          <Eye className="mr-1.5 h-4 w-4" />
+          View & edit
+        </Button>
+
+        {/* Source connection icons */}
+        <SourceConnectionIcons
+          connections={sourceConnections}
+          isDark={isDark}
+        />
+      </div>
+    </div>
+  );
+}
+
+interface SourceConnectionIconsProps {
+  connections: SourceConnection[];
+  isDark: boolean;
+}
+
+function renderFallbackIcon(target: HTMLImageElement, fallbackContent: string) {
+  target.style.display = "none";
+  const parent = target.parentElement;
+  if (parent) {
+    parent.innerHTML = `<div class="flex h-full w-full items-center justify-center">${fallbackContent}</div>`;
+  }
+}
+
+function SourceConnectionIcons({
+  connections,
+  isDark,
+}: SourceConnectionIconsProps) {
+  if (connections.length === 0) {
+    return (
+      <div
+        className={cn(
+          "flex h-10 w-10 items-center justify-center rounded-lg border p-2",
+          isDark
+            ? "border-slate-700 bg-slate-800"
+            : "border-slate-200 bg-slate-100"
+        )}
+      >
+        <Plus className="h-full w-full text-slate-400" />
+      </div>
+    );
+  }
+
+  if (connections.length === 1) {
+    return (
+      <div className="flex items-center justify-center">
+        <div
+          className={cn(
+            "flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border p-1",
+            isDark
+              ? "border-slate-700 bg-slate-800"
+              : "border-slate-200 bg-white"
+          )}
+        >
+          <img
+            src={getAppIconUrl(
+              connections[0].short_name,
+              isDark ? "dark" : "light"
+            )}
+            alt={connections[0].name}
+            className="h-full w-full object-contain"
+            onError={(e) =>
+              renderFallbackIcon(
+                e.currentTarget,
+                `<span class="text-muted-foreground"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg></span>`
+              )
+            }
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center">
+      <div className="flex -space-x-2">
+        {connections.slice(0, 2).map((connection, index) => (
+          <div
+            key={connection.id}
+            className={cn(
+              "flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border p-1.5",
+              isDark
+                ? "border-slate-700 bg-slate-800"
+                : "border-slate-200 bg-white"
+            )}
+            style={{ zIndex: 2 - index }}
+          >
+            <img
+              src={getAppIconUrl(
+                connection.short_name,
+                isDark ? "dark" : "light"
+              )}
+              alt={connection.name}
+              className="h-full w-full object-contain"
+              onError={(e) =>
+                renderFallbackIcon(
+                  e.currentTarget,
+                  `<span class="font-semibold text-xs text-muted-foreground">${connection.short_name.substring(0, 2).toUpperCase()}</span>`
+                )
+              }
+            />
+          </div>
+        ))}
+      </div>
+      {connections.length > 2 && (
+        <div
+          className={cn(
+            "ml-1 text-xs font-medium",
+            isDark ? "text-slate-400" : "text-slate-500"
+          )}
+        >
+          +{connections.length - 2}
+        </div>
+      )}
+    </div>
+  );
+}

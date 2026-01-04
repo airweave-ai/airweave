@@ -31,3 +31,21 @@ export type {
 // Organizations
 export { fetchOrganization, fetchOrganizations } from "./organizations";
 export type { Organization } from "./organizations";
+
+// Collections
+export {
+  createCollection,
+  deleteCollection,
+  fetchCollection,
+  fetchCollectionCount,
+  fetchCollections,
+} from "./collections";
+export type { Collection, CreateCollectionRequest } from "./collections";
+
+// Sources
+export { fetchSource, fetchSources } from "./sources";
+export type {
+  AuthField as SourceAuthField,
+  ConfigField as SourceConfigField,
+  Source,
+} from "./sources";

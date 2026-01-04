@@ -16,11 +16,13 @@ import {
 } from "@/components/ui/sidebar";
 import { UserAccountDropdown } from "@/components/user-account-dropdown";
 import { navItems } from "@/config/navigation";
+import { useCreateCollectionStore } from "@/stores/create-collection-store";
 
 export function AppSidebar() {
   const location = useLocation();
   const params = useParams({ strict: false }) as { orgSlug?: string };
   const orgSlug = params.orgSlug;
+  const openCreateCollection = useCreateCollectionStore((s) => s.open);
 
   // Don't show sidebar when no organization context
   if (!orgSlug) {
@@ -122,12 +124,13 @@ export function AppSidebar() {
           </SidebarMenuItem>
         </SidebarMenu>
 
-        {/* Search Button */}
+        {/* New Collection Button */}
         <SidebarMenu>
           <SidebarMenuItem>
             <Button
               className="w-full justify-start gap-2 bg-slate-50 text-slate-900 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 hover:bg-slate-200"
               size="sm"
+              onClick={openCreateCollection}
             >
               <Plus className="size-4" />
               <span className="group-data-[collapsible=icon]:hidden">

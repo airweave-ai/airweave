@@ -27,4 +27,19 @@ export const queryKeys = {
     connection: (orgId: string, id: string) =>
       [orgId, "auth-provider-connections", id] as const,
   },
+
+  collections: {
+    all: (orgId: string) => [orgId, "collections"] as const,
+    list: (orgId: string) => [orgId, "collections", "list"] as const,
+    detail: (orgId: string, readableId: string) =>
+      [orgId, "collections", "detail", readableId] as const,
+    count: (orgId: string) => [orgId, "collections", "count"] as const,
+  },
+
+  sources: {
+    all: (orgId: string) => [orgId, "sources"] as const,
+    list: (orgId: string) => [orgId, "sources", "list"] as const,
+    detail: (orgId: string, shortName: string) =>
+      [orgId, "sources", "detail", shortName] as const,
+  },
 };
