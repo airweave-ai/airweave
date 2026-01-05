@@ -38,6 +38,10 @@ const config = defineConfig({
       "@mdx-js/react": path.resolve(__dirname, "node_modules/@mdx-js/react"),
     },
   },
+  build: {
+    // TanStack Start handles chunking automatically; suppress warning for vendor bundles
+    chunkSizeWarningLimit: 700,
+  },
 });
 
 export default config;

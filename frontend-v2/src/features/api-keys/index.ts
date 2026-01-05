@@ -1,5 +1,4 @@
 // Components
-export { ApiKeyItem } from "./components/api-key-item";
 export { ApiKeysTable } from "./components/api-keys-table";
 export { CreateApiKeyDialog } from "./components/create-dialog";
 export { DeleteApiKeyDialog } from "./components/delete-dialog";

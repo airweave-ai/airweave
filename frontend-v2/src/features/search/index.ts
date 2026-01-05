@@ -1,7 +1,3 @@
-/**
- * Search feature exports
- */
-
 // Components
 export { ApiIntegrationModal } from "./components/api-integration-modal";
 export { EntityResultCard } from "./components/entity-result-card";
