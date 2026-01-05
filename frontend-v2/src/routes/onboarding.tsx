@@ -5,8 +5,11 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Check, ChevronLeft, ChevronRight, Loader2, X } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { toast } from "sonner";
+
+import { useBeforeUnload } from "@/hooks/use-before-unload";
+import { useKeyboardShortcut } from "@/hooks/use-keyboard-shortcut";
 
 import { ApiForm } from "@/components/ui/api-form";
 import { Button } from "@/components/ui/button";
@@ -62,30 +65,15 @@ function OnboardingPage() {
 
   const hasOrganizations = organizations.length > 0;
 
-  // Handle ESC key to go back to dashboard on first step
-  useEffect(() => {
-    const handleEscapeKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && hasOrganizations) {
-        navigate({ to: "/" });
-      }
-    };
-
-    window.addEventListener("keydown", handleEscapeKey);
-    return () => window.removeEventListener("keydown", handleEscapeKey);
-  }, [navigate, hasOrganizations]);
+  // Handle ESC key to go back to home on first step
+  useKeyboardShortcut({
+    key: "Escape",
+    onKeyDown: () => navigate({ to: "/" }),
+    enabled: hasOrganizations,
+  });
 
   // Prevent browser refresh/navigation when user has no organizations
-  useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (!hasOrganizations) {
-        e.preventDefault();
-        e.returnValue = "";
-      }
-    };
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [hasOrganizations]);
+  useBeforeUnload(!hasOrganizations);
 
   const updateFormData = useCallback(
     <K extends keyof OnboardingData>(field: K, value: OnboardingData[K]) => {

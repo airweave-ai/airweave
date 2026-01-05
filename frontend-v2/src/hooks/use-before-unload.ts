@@ -33,4 +33,3 @@ export function useBeforeUnload(shouldWarn: boolean | (() => boolean)) {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [shouldWarn]);
 }
-

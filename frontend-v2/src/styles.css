@@ -14,11 +14,14 @@ body {
 
 code {
   font-family:
-    "Fira Code", source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
+    "Fira Code", source-code-pro, Menlo, Monaco, Consolas, "Courier New",
+    monospace;
 }
 
 @theme inline {
-  --font-mono: "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-mono:
+    "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -60,7 +63,7 @@ code {
 }
 
 :root {
-  --radius: 0.625rem;
+  --radius: 0.5rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.129 0.042 264.695);
   --card: oklch(1 0 0);

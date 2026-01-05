@@ -44,9 +44,8 @@ export function useAutoScroll<T extends HTMLElement = HTMLDivElement>(
     if (!enabled || !scrollRef.current) return;
 
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, behavior, ...deps]);
 
   return scrollRef;
 }
-

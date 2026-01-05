@@ -33,13 +33,6 @@ export function AppSidebar() {
   const isActive = (to: string) => {
     // Replace $orgSlug placeholder with actual slug
     const fullPath = to.replace("$orgSlug", orgSlug);
-    if (to === "/$orgSlug") {
-      // Dashboard - exact match
-      return (
-        location.pathname === `/${orgSlug}` ||
-        location.pathname === `/${orgSlug}/`
-      );
-    }
     return location.pathname.startsWith(fullPath);
   };
 
@@ -54,7 +47,7 @@ export function AppSidebar() {
               variant="ghost"
               asChild
             >
-              <Link to="/$orgSlug" params={{ orgSlug }}>
+              <Link to="/$orgSlug/collections" params={{ orgSlug }}>
                 <svg
                   className="shrink-0"
                   viewBox="0 0 143 143"

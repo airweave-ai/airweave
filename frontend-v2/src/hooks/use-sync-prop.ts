@@ -23,7 +23,9 @@ import { useEffect, useState } from "react";
  * }
  * ```
  */
-export function useSyncProp<T>(propValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
+export function useSyncProp<T>(
+  propValue: T
+): [T, React.Dispatch<React.SetStateAction<T>>] {
   const [localValue, setLocalValue] = useState<T>(propValue);
 
   useEffect(() => {
@@ -32,4 +34,3 @@ export function useSyncProp<T>(propValue: T): [T, React.Dispatch<React.SetStateA
 
   return [localValue, setLocalValue];
 }
-

@@ -38,13 +38,18 @@ function usePageHeaderContext() {
  */
 function usePageHeader(content: PageHeaderContent) {
   const { setContent } = usePageHeaderContext();
+  const contentRef = React.useRef(content);
+
+  React.useLayoutEffect(() => {
+    contentRef.current = content;
+  });
 
   React.useEffect(() => {
-    setContent(content);
+    setContent(contentRef.current);
     return () => {
       setContent({});
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [setContent]);
 }
 
 function PageHeaderProvider({ children }: { children: React.ReactNode }) {

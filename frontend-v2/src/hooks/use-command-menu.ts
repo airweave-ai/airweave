@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 
 import { type Command, useCommandStore } from "@/stores/command-store";
 
@@ -44,19 +44,39 @@ export function useCommandMenu({
     (state) => state.clearContextCommands
   );
 
+  // Create stable keys for dependency tracking
+  const pageCommandIds = useMemo(
+    () => pageCommands.map((c) => c.id).join(","),
+    [pageCommands]
+  );
+  const contextCommandIds = useMemo(
+    () => contextCommands.map((c) => c.id).join(","),
+    [contextCommands]
+  );
+
   // Register page commands when component mounts, clear on unmount
   useEffect(() => {
     setPageCommands(pageTitle ?? null, pageCommands);
     return () => clearPageCommands();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- Stringify used to detect content changes
-  }, [pageTitle, JSON.stringify(pageCommands.map((c) => c.id))]);
+  }, [
+    pageTitle,
+    pageCommandIds,
+    pageCommands,
+    setPageCommands,
+    clearPageCommands,
+  ]);
 
   // Register context commands reactively
   useEffect(() => {
     setContextCommands(contextTitle ?? null, contextCommands);
     return () => clearContextCommands();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- Stringify used to detect content changes
-  }, [contextTitle, JSON.stringify(contextCommands.map((c) => c.id))]);
+  }, [
+    contextTitle,
+    contextCommandIds,
+    contextCommands,
+    setContextCommands,
+    clearContextCommands,
+  ]);
 }
 
 /**

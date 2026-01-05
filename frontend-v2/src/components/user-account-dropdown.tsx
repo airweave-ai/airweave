@@ -93,9 +93,9 @@ export function UserAccountDropdown({
 
   const triggerContent = (
     <>
-      <Avatar className="size-5 rounded-lg">
+      <Avatar className="size-5 rounded-full">
         <AvatarImage src={userAvatar} alt={userName} />
-        <AvatarFallback className="rounded-lg bg-slate-700 text-[60%] font-medium">
+        <AvatarFallback className="rounded-full bg-slate-700 text-[60%] font-medium">
           {getInitials(userName)}
         </AvatarFallback>
       </Avatar>

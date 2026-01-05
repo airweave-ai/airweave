@@ -24,7 +24,7 @@ function EmptyState({
         className
       )}
     >
-      <div className="bg-muted mb-4 flex size-16 items-center justify-center rounded-full">
+      <div className="flex size-16 items-center justify-center">
         {React.isValidElement(icon)
           ? React.cloneElement(
               icon as React.ReactElement<{ className?: string }>,
@@ -38,8 +38,10 @@ function EmptyState({
             )
           : icon}
       </div>
-      <h2 className="mb-2 text-lg font-semibold">{title}</h2>
-      <p className="text-muted-foreground max-w-sm">{description}</p>
+      <h2 className="text-muted-foreground mb-2 font-mono font-medium uppercase opacity-70">
+        {title}
+      </h2>
+      <p className="text-muted-foreground max-w-sm text-sm">{description}</p>
       {children && <div className="mt-4">{children}</div>}
     </div>
   );

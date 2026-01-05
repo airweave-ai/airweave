@@ -1,9 +1,8 @@
 import {
-  Cable,
-  FolderOpen,
   Key,
-  LayoutDashboard,
+  LayoutGrid,
   ShieldCheck,
+  Terminal,
   Webhook,
   type LucideIcon,
 } from "lucide-react";
@@ -12,7 +11,6 @@ export interface NavItem {
   title: string;
   /** Full route path with $orgSlug placeholder */
   to:
-    | "/$orgSlug"
     | "/$orgSlug/collections"
     | "/$orgSlug/logs"
     | "/$orgSlug/api-keys"
@@ -23,19 +21,14 @@ export interface NavItem {
 
 export const navItems: NavItem[] = [
   {
-    title: "Dashboard",
-    to: "/$orgSlug",
-    icon: LayoutDashboard,
-  },
-  {
     title: "Collections",
     to: "/$orgSlug/collections",
-    icon: FolderOpen,
+    icon: LayoutGrid,
   },
   {
     title: "Logs",
     to: "/$orgSlug/logs",
-    icon: Cable,
+    icon: Terminal,
   },
   {
     title: "API Keys",

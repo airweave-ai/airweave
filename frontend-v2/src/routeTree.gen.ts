@@ -18,9 +18,10 @@ import { Route as OrgSlugIndexRouteImport } from './routes/$orgSlug/index'
 import { Route as ComponentsComponentNameRouteImport } from './routes/components.$componentName'
 import { Route as OrgSlugWebhooksRouteImport } from './routes/$orgSlug/webhooks'
 import { Route as OrgSlugLogsRouteImport } from './routes/$orgSlug/logs'
-import { Route as OrgSlugCollectionsRouteImport } from './routes/$orgSlug/collections'
 import { Route as OrgSlugAuthProvidersRouteImport } from './routes/$orgSlug/auth-providers'
 import { Route as OrgSlugApiKeysRouteImport } from './routes/$orgSlug/api-keys'
+import { Route as OrgSlugCollectionsIndexRouteImport } from './routes/$orgSlug/collections/index'
+import { Route as OrgSlugCollectionsCollectionIdRouteImport } from './routes/$orgSlug/collections/$collectionId'
 
 const OnboardingRoute = OnboardingRouteImport.update({
   id: '/onboarding',
@@ -67,11 +68,6 @@ const OrgSlugLogsRoute = OrgSlugLogsRouteImport.update({
   path: '/logs',
   getParentRoute: () => OrgSlugRouteRoute,
 } as any)
-const OrgSlugCollectionsRoute = OrgSlugCollectionsRouteImport.update({
-  id: '/collections',
-  path: '/collections',
-  getParentRoute: () => OrgSlugRouteRoute,
-} as any)
 const OrgSlugAuthProvidersRoute = OrgSlugAuthProvidersRouteImport.update({
   id: '/auth-providers',
   path: '/auth-providers',
@@ -82,6 +78,17 @@ const OrgSlugApiKeysRoute = OrgSlugApiKeysRouteImport.update({
   path: '/api-keys',
   getParentRoute: () => OrgSlugRouteRoute,
 } as any)
+const OrgSlugCollectionsIndexRoute = OrgSlugCollectionsIndexRouteImport.update({
+  id: '/collections/',
+  path: '/collections/',
+  getParentRoute: () => OrgSlugRouteRoute,
+} as any)
+const OrgSlugCollectionsCollectionIdRoute =
+  OrgSlugCollectionsCollectionIdRouteImport.update({
+    id: '/collections/$collectionId',
+    path: '/collections/$collectionId',
+    getParentRoute: () => OrgSlugRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -90,24 +97,26 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof OnboardingRoute
   '/$orgSlug/api-keys': typeof OrgSlugApiKeysRoute
   '/$orgSlug/auth-providers': typeof OrgSlugAuthProvidersRoute
-  '/$orgSlug/collections': typeof OrgSlugCollectionsRoute
   '/$orgSlug/logs': typeof OrgSlugLogsRoute
   '/$orgSlug/webhooks': typeof OrgSlugWebhooksRoute
   '/components/$componentName': typeof ComponentsComponentNameRoute
   '/$orgSlug/': typeof OrgSlugIndexRoute
   '/components/': typeof ComponentsIndexRoute
+  '/$orgSlug/collections/$collectionId': typeof OrgSlugCollectionsCollectionIdRoute
+  '/$orgSlug/collections': typeof OrgSlugCollectionsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/onboarding': typeof OnboardingRoute
   '/$orgSlug/api-keys': typeof OrgSlugApiKeysRoute
   '/$orgSlug/auth-providers': typeof OrgSlugAuthProvidersRoute
-  '/$orgSlug/collections': typeof OrgSlugCollectionsRoute
   '/$orgSlug/logs': typeof OrgSlugLogsRoute
   '/$orgSlug/webhooks': typeof OrgSlugWebhooksRoute
   '/components/$componentName': typeof ComponentsComponentNameRoute
   '/$orgSlug': typeof OrgSlugIndexRoute
   '/components': typeof ComponentsIndexRoute
+  '/$orgSlug/collections/$collectionId': typeof OrgSlugCollectionsCollectionIdRoute
+  '/$orgSlug/collections': typeof OrgSlugCollectionsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -117,12 +126,13 @@ export interface FileRoutesById {
   '/onboarding': typeof OnboardingRoute
   '/$orgSlug/api-keys': typeof OrgSlugApiKeysRoute
   '/$orgSlug/auth-providers': typeof OrgSlugAuthProvidersRoute
-  '/$orgSlug/collections': typeof OrgSlugCollectionsRoute
   '/$orgSlug/logs': typeof OrgSlugLogsRoute
   '/$orgSlug/webhooks': typeof OrgSlugWebhooksRoute
   '/components/$componentName': typeof ComponentsComponentNameRoute
   '/$orgSlug/': typeof OrgSlugIndexRoute
   '/components/': typeof ComponentsIndexRoute
+  '/$orgSlug/collections/$collectionId': typeof OrgSlugCollectionsCollectionIdRoute
+  '/$orgSlug/collections/': typeof OrgSlugCollectionsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -133,24 +143,26 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/$orgSlug/api-keys'
     | '/$orgSlug/auth-providers'
-    | '/$orgSlug/collections'
     | '/$orgSlug/logs'
     | '/$orgSlug/webhooks'
     | '/components/$componentName'
     | '/$orgSlug/'
     | '/components/'
+    | '/$orgSlug/collections/$collectionId'
+    | '/$orgSlug/collections'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/onboarding'
     | '/$orgSlug/api-keys'
     | '/$orgSlug/auth-providers'
-    | '/$orgSlug/collections'
     | '/$orgSlug/logs'
     | '/$orgSlug/webhooks'
     | '/components/$componentName'
     | '/$orgSlug'
     | '/components'
+    | '/$orgSlug/collections/$collectionId'
+    | '/$orgSlug/collections'
   id:
     | '__root__'
     | '/'
@@ -159,12 +171,13 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/$orgSlug/api-keys'
     | '/$orgSlug/auth-providers'
-    | '/$orgSlug/collections'
     | '/$orgSlug/logs'
     | '/$orgSlug/webhooks'
     | '/components/$componentName'
     | '/$orgSlug/'
     | '/components/'
+    | '/$orgSlug/collections/$collectionId'
+    | '/$orgSlug/collections/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -239,13 +252,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgSlugLogsRouteImport
       parentRoute: typeof OrgSlugRouteRoute
     }
-    '/$orgSlug/collections': {
-      id: '/$orgSlug/collections'
-      path: '/collections'
-      fullPath: '/$orgSlug/collections'
-      preLoaderRoute: typeof OrgSlugCollectionsRouteImport
-      parentRoute: typeof OrgSlugRouteRoute
-    }
     '/$orgSlug/auth-providers': {
       id: '/$orgSlug/auth-providers'
       path: '/auth-providers'
@@ -260,25 +266,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgSlugApiKeysRouteImport
       parentRoute: typeof OrgSlugRouteRoute
     }
+    '/$orgSlug/collections/': {
+      id: '/$orgSlug/collections/'
+      path: '/collections'
+      fullPath: '/$orgSlug/collections'
+      preLoaderRoute: typeof OrgSlugCollectionsIndexRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
+    '/$orgSlug/collections/$collectionId': {
+      id: '/$orgSlug/collections/$collectionId'
+      path: '/collections/$collectionId'
+      fullPath: '/$orgSlug/collections/$collectionId'
+      preLoaderRoute: typeof OrgSlugCollectionsCollectionIdRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
   }
 }
 
 interface OrgSlugRouteRouteChildren {
   OrgSlugApiKeysRoute: typeof OrgSlugApiKeysRoute
   OrgSlugAuthProvidersRoute: typeof OrgSlugAuthProvidersRoute
-  OrgSlugCollectionsRoute: typeof OrgSlugCollectionsRoute
   OrgSlugLogsRoute: typeof OrgSlugLogsRoute
   OrgSlugWebhooksRoute: typeof OrgSlugWebhooksRoute
   OrgSlugIndexRoute: typeof OrgSlugIndexRoute
+  OrgSlugCollectionsCollectionIdRoute: typeof OrgSlugCollectionsCollectionIdRoute
+  OrgSlugCollectionsIndexRoute: typeof OrgSlugCollectionsIndexRoute
 }
 
 const OrgSlugRouteRouteChildren: OrgSlugRouteRouteChildren = {
   OrgSlugApiKeysRoute: OrgSlugApiKeysRoute,
   OrgSlugAuthProvidersRoute: OrgSlugAuthProvidersRoute,
-  OrgSlugCollectionsRoute: OrgSlugCollectionsRoute,
   OrgSlugLogsRoute: OrgSlugLogsRoute,
   OrgSlugWebhooksRoute: OrgSlugWebhooksRoute,
   OrgSlugIndexRoute: OrgSlugIndexRoute,
+  OrgSlugCollectionsCollectionIdRoute: OrgSlugCollectionsCollectionIdRoute,
+  OrgSlugCollectionsIndexRoute: OrgSlugCollectionsIndexRoute,
 }
 
 const OrgSlugRouteRouteWithChildren = OrgSlugRouteRoute._addFileChildren(
