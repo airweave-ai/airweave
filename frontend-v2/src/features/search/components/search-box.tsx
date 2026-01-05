@@ -12,6 +12,8 @@ import { useAuth0 } from "@/lib/auth-provider";
 import { useOrg } from "@/lib/org-context";
 import { cn } from "@/lib/utils";
 
+import { useSearchStream } from "../hooks/use-search-stream";
+import { useTooltipManager } from "../hooks/use-tooltip-manager";
 import type {
   SearchEvent,
   SearchMethod,
@@ -24,8 +26,6 @@ import { SearchInput } from "./search-input";
 import { SearchMethodSelector } from "./search-method-selector";
 import { SearchSubmitButton } from "./search-submit-button";
 import { SearchTogglesPanel } from "./search-toggles-panel";
-import { useSearchStream } from "../hooks/use-search-stream";
-import { useTooltipManager } from "../hooks/use-tooltip-manager";
 
 interface UsageCheckResponse {
   allowed: boolean;
@@ -105,7 +105,7 @@ export function SearchBox({
 
   const hasQuery = query.trim().length > 0;
   const canRetrySearch = Boolean(transientIssue) && !isSearching;
-  const isSearchDisabled = !queriesAllowed || isCheckingUsage || disabled;
+  const isSearchDisabled = !queriesAllowed || isCheckingUsage || !!disabled;
 
   // Check if queries are allowed based on usage limits
   const checkQueriesAllowed = useCallback(async () => {
@@ -350,7 +350,9 @@ export function SearchBox({
                   ? {
                       isChecking: isCheckingUsage,
                       isAllowed: queriesAllowed && !disabled,
-                      reason: disabled ? disabledReason : queriesCheckDetails?.reason,
+                      reason: disabled
+                        ? disabledReason
+                        : queriesCheckDetails?.reason,
                     }
                   : undefined
               }
