@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { useIsDark } from "@/hooks/use-is-dark";
 import {
   fetchAuthProviderConnection,
   fetchAuthProviderDetail,
@@ -23,7 +24,6 @@ import {
 import { useAuth0 } from "@/lib/auth-provider";
 import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
-import { useIsDark } from "@/hooks/use-is-dark";
 
 import { getAuthProviderIconUrl } from "../utils/helpers";
 
@@ -131,8 +131,14 @@ function EditDialogForm({
 }: {
   authProvider: AuthProvider;
   connection: AuthProviderConnection;
-  connectionDetails: Awaited<ReturnType<typeof fetchAuthProviderConnection>> | null;
-  providerDetails: Awaited<ReturnType<typeof fetchAuthProviderDetail>> | null;
+  connectionDetails:
+    | Awaited<ReturnType<typeof fetchAuthProviderConnection>>
+    | null
+    | undefined;
+  providerDetails:
+    | Awaited<ReturnType<typeof fetchAuthProviderDetail>>
+    | null
+    | undefined;
   orgId: string;
   isDark: boolean;
   queryClient: ReturnType<typeof useQueryClient>;
@@ -281,8 +287,8 @@ function EditDialogForm({
           providerDetails.auth_fields.fields.length > 0 && (
             <div className="space-y-4 pt-2">
               <p className="text-muted-foreground text-sm">
-                Update authentication credentials (leave empty to keep
-                current values)
+                Update authentication credentials (leave empty to keep current
+                values)
               </p>
 
               {providerDetails.auth_fields.fields.map((field) => (
@@ -300,14 +306,10 @@ function EditDialogForm({
                       <Input
                         type={field.secret ? "password" : "text"}
                         value={
-                          form.getFieldValue("authFields")[field.name] ||
-                          ""
+                          form.getFieldValue("authFields")[field.name] || ""
                         }
                         onChange={(e) =>
-                          handleAuthFieldChange(
-                            field.name,
-                            e.target.value
-                          )
+                          handleAuthFieldChange(field.name, e.target.value)
                         }
                         placeholder={
                           field.secret
