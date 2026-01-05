@@ -1,4 +1,3 @@
-// Components
 export { AuthProviderCard } from "./components/auth-provider-card";
 export { ConfigureDialog } from "./components/configure-dialog";
 export { DetailDialog } from "./components/detail-dialog";
@@ -9,7 +8,6 @@ export {
   AuthProvidersHelp,
 } from "./components/sidebar-content";
 
-// Utils
 export {
   COMING_SOON_PROVIDERS,
   formatDate,

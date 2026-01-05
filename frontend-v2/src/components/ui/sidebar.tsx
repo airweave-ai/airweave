@@ -66,10 +66,8 @@ function SidebarProvider({
   const isMobile = useIsMobile();
   const [openMobile, setOpenMobile] = React.useState(false);
 
-  // Use Zustand store for persisted state (source of truth)
   const { leftSidebarOpen, setLeftSidebarOpen } = useUISettings();
 
-  // Use Zustand store directly, with controlled props taking precedence
   // defaultOpen is only used if explicitly provided (for backwards compatibility)
   const open =
     openProp ?? (defaultOpen !== undefined ? defaultOpen : leftSidebarOpen);
@@ -81,18 +79,15 @@ function SidebarProvider({
       if (setOpenProp) {
         setOpenProp(openState);
       }
-      // Always persist to Zustand store (which saves to localStorage)
       setLeftSidebarOpen(openState);
     },
     [setOpenProp, leftSidebarOpen, setLeftSidebarOpen]
   );
 
-  // Helper to toggle the sidebar.
   const toggleSidebar = React.useCallback(() => {
     return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open);
   }, [isMobile, setOpen, setOpenMobile]);
 
-  // Adds a keyboard shortcut to toggle the sidebar.
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (
@@ -232,7 +227,6 @@ function Sidebar({
           side === "left"
             ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
             : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
-          // Adjust the padding for floating and inset variants.
           variant === "floating" || variant === "inset"
             ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
             : "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
@@ -605,7 +599,6 @@ function SidebarMenuSkeleton({
 }: React.ComponentProps<"div"> & {
   showIcon?: boolean;
 }) {
-  // Random width between 50 to 90%.
   const width = React.useMemo(() => {
     return `${Math.floor(Math.random() * 40) + 50}%`;
   }, []);

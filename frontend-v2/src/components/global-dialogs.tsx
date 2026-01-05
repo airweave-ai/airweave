@@ -26,19 +26,14 @@ export function GlobalDialogs() {
 
   const orgSlug = getOrgSlug(organization);
 
-  // Handle collection creation success
   const handleCollectionCreated = (collection: Collection) => {
-    // Get the pre-selected source (if any) and clear it
     const sourceToAdd = preSelectedSource;
     clearPreSelectedSource();
 
-    // Build navigation state if we have a pre-selected source
     const state: CollectionNavigationState | undefined = sourceToAdd
       ? { addSource: sourceToAdd }
       : undefined;
 
-    // Navigate to the new collection
-    // State is passed as HistoryState which accepts any serializable object
     navigate({
       to: `/${orgSlug}/collections/${collection.readable_id}`,
       state: state as Parameters<typeof navigate>[0]["state"],

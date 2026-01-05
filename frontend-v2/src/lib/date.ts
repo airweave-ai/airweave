@@ -1,7 +1,3 @@
-/**
- * Shared date formatting utilities
- */
-
 export type DateFormatStyle = "short" | "long" | "datetime";
 
 /**
@@ -18,7 +14,6 @@ export function formatDate(
   try {
     const date = new Date(dateString);
 
-    // Check for invalid date
     if (isNaN(date.getTime())) {
       return dateString;
     }
@@ -61,7 +56,6 @@ export function getDaysFromNow(dateString: string): number {
   try {
     const date = new Date(dateString);
 
-    // Check for invalid date
     if (isNaN(date.getTime())) {
       return 0;
     }

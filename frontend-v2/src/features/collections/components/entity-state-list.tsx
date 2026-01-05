@@ -30,7 +30,6 @@ export function EntityStateList({
   onStartSync,
   className,
 }: EntityStateListProps) {
-  // Format entity type name for display
   const formatEntityType = (type: string): string => {
     return type
       .replace(/Entity$/, "")
@@ -38,7 +37,6 @@ export function EntityStateList({
       .trim();
   };
 
-  // Get status indicator
   const getStatusIndicator = (status: EntityState["sync_status"]) => {
     switch (status) {
       case "syncing":
@@ -56,7 +54,6 @@ export function EntityStateList({
     }
   };
 
-  // Empty state
   if (entityStates.length === 0) {
     return (
       <EmptyState
@@ -89,7 +86,6 @@ export function EntityStateList({
     );
   }
 
-  // Calculate total entities
   const totalEntities = entityStates.reduce(
     (sum, state) => sum + state.total_count,
     0

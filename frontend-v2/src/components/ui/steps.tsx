@@ -3,7 +3,6 @@ import { createContext, useContext } from "react";
 
 import { cn } from "@/lib/utils";
 
-// Types
 interface StepsContextValue {
   currentStep: number;
   totalSteps: number;
@@ -24,7 +23,6 @@ function useStepsContext() {
   return context;
 }
 
-// Root Steps component
 interface StepsProps {
   currentStep: number;
   onStepChange: (step: number) => void;
@@ -66,7 +64,6 @@ function Steps({
   );
 }
 
-// Progress indicator (dots style)
 interface StepsIndicatorProps {
   className?: string;
 }
@@ -99,7 +96,6 @@ function StepsIndicator({ className }: StepsIndicatorProps) {
   );
 }
 
-// Step counter text
 interface StepsCounterProps {
   className?: string;
 }
@@ -114,7 +110,6 @@ function StepsCounter({ className }: StepsCounterProps) {
   );
 }
 
-// Step content container with transition
 interface StepContentProps {
   step: number;
   children: React.ReactNode;
@@ -138,7 +133,6 @@ function StepContent({ step, children, className }: StepContentProps) {
   );
 }
 
-// Navigation buttons container
 interface StepsNavigationProps {
   children: React.ReactNode;
   className?: string;
@@ -152,10 +146,8 @@ function StepsNavigation({ children, className }: StepsNavigationProps) {
   );
 }
 
-// Export hook for consuming context
 export { useStepsContext };
 
-// Attach sub-components
 Steps.Indicator = StepsIndicator;
 Steps.Counter = StepsCounter;
 Steps.Content = StepContent;

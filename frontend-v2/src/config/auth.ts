@@ -1,5 +1,3 @@
-// Auth0 configuration
-
 /**
  * Get the redirect URL for Auth0.
  * Uses https://app.airweave.ai for localhost, otherwise uses current origin.

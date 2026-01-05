@@ -14,7 +14,6 @@ function parseInlineText(
 ): ReactNode[] {
   const elements: ReactNode[] = [];
 
-  // Combined regex for all inline patterns
   const combinedRegex =
     /(\[\[(\d+)\]\])|(`([^`]+)`)|(\*\*([^*]+)\*\*)|(\[([^\]]+)\]\(([^)]+)\))/g;
 
@@ -23,13 +22,11 @@ function parseInlineText(
   let elementKey = 0;
 
   while ((match = combinedRegex.exec(text)) !== null) {
-    // Add text before match
     if (match.index > lastIndex) {
       elements.push(text.substring(lastIndex, match.index));
     }
 
     if (match[1]) {
-      // Citation [[N]]
       const citationNum = parseInt(match[2], 10);
       elements.push(
         <button
@@ -42,7 +39,6 @@ function parseInlineText(
         </button>
       );
     } else if (match[3]) {
-      // Inline code
       elements.push(
         <code
           key={`code-${keyBase}-${elementKey++}`}
@@ -52,12 +48,10 @@ function parseInlineText(
         </code>
       );
     } else if (match[5]) {
-      // Bold
       elements.push(
         <strong key={`bold-${keyBase}-${elementKey++}`}>{match[6]}</strong>
       );
     } else if (match[7]) {
-      // Link
       elements.push(
         <a
           key={`link-${keyBase}-${elementKey++}`}
@@ -74,7 +68,6 @@ function parseInlineText(
     lastIndex = match.index + match[0].length;
   }
 
-  // Add remaining text
   if (lastIndex < text.length) {
     elements.push(text.substring(lastIndex));
   }
@@ -91,19 +84,15 @@ function parseInlineContent(
   keyBase: number
 ): ReactNode[] {
   const elements: ReactNode[] = [];
-
-  // Split by paragraphs and process
   const paragraphs = text.split(/\n\n+/);
 
   paragraphs.forEach((paragraph, pIdx) => {
     if (!paragraph.trim()) return;
 
-    // Check if it's a list item
     const lines = paragraph.split("\n");
     const listItems = lines.filter((line) => /^[-*\d.]\s/.test(line.trim()));
 
     if (listItems.length > 0 && listItems.length === lines.length) {
-      // It's a list
       const listElements = lines.map((line, lineIdx) => {
         const cleanLine = line.replace(/^[-*\d.]\s+/, "");
         return (
@@ -125,7 +114,6 @@ function parseInlineContent(
         </ul>
       );
     } else {
-      // Regular paragraph
       elements.push(
         <p key={`p-${keyBase}-${pIdx}`} className="my-2">
           {parseInlineText(
@@ -149,16 +137,12 @@ export function parseMarkdownContent(
   onCitationClick: (idx: number) => void
 ): ReactNode[] {
   const elements: ReactNode[] = [];
-
-  // Regex to find code blocks
   const codeBlockRegex = /```(\w*)\n?([\s\S]*?)```/g;
 
-  // Process code blocks first
   let match;
   let lastEnd = 0;
 
   while ((match = codeBlockRegex.exec(content)) !== null) {
-    // Add text before code block
     if (match.index > lastEnd) {
       const textBefore = content.substring(lastEnd, match.index);
       elements.push(
@@ -166,7 +150,6 @@ export function parseMarkdownContent(
       );
     }
 
-    // Add code block
     const language = match[1] || "text";
     const code = match[2];
     elements.push(
@@ -183,7 +166,6 @@ export function parseMarkdownContent(
     lastEnd = match.index + match[0].length;
   }
 
-  // Add remaining text
   if (lastEnd < content.length) {
     const remainingText = content.substring(lastEnd);
     elements.push(

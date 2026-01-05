@@ -44,22 +44,11 @@ function generateRandomSuffix(length = 6): string {
 function generateReadableId(name: string, suffix: string): string {
   if (!name.trim()) return "";
 
-  // Convert to lowercase and trim
   let readableId = name.toLowerCase().trim();
-
-  // Remove any character that's not a letter, number, or space
   readableId = readableId.replace(/[^a-z0-9\s]/g, "");
-
-  // Replace spaces with hyphens
   readableId = readableId.replace(/\s+/g, "-");
-
-  // Ensure no consecutive hyphens
   readableId = readableId.replace(/-+/g, "-");
-
-  // Trim hyphens from start and end
   readableId = readableId.replace(/^-+|-+$/g, "");
-
-  // Add suffix
   return readableId ? `${readableId}-${suffix}` : "";
 }
 
@@ -117,7 +106,6 @@ export function CreateCollectionDialog({
     },
     onError: (error: Error) => {
       const message = error.message || "Failed to create collection";
-      // Parse "Value error, ..." format
       const commaIndex = message.indexOf(", ");
       if (commaIndex > 0) {
         toast.error(message.substring(0, commaIndex), {
@@ -141,7 +129,6 @@ export function CreateCollectionDialog({
     onOpenChange(newOpen);
   };
 
-  // Auto-generate readable ID when name changes (if user hasn't manually edited)
   const displayReadableId = userEditedId
     ? currentReadableId
     : generateReadableId(currentName, randomSuffix);
@@ -159,7 +146,6 @@ export function CreateCollectionDialog({
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            // Ensure readable ID is set before submission
             if (!userEditedId && displayReadableId) {
               form.setFieldValue("readableId", displayReadableId);
             }

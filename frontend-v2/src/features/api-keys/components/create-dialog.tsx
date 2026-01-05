@@ -54,7 +54,6 @@ export function CreateApiKeyDialog({
       onOpenChange(false);
       createForm.reset();
 
-      // Copy the key to clipboard and show success toast
       navigator.clipboard.writeText(newKey.decrypted_key).then(
         () => {
           toast.success("API key created and copied to clipboard");
@@ -68,7 +67,6 @@ export function CreateApiKeyDialog({
     },
     onError: (error: Error) => {
       const message = error.message || "Failed to create API key";
-      // Parse "Value error, ..." format to extract title and description
       const commaIndex = message.indexOf(", ");
       if (commaIndex > 0) {
         toast.error(message.substring(0, commaIndex), {

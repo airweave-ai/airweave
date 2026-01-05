@@ -52,7 +52,6 @@ function CollectionsPage() {
   >(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
-  // Organization is guaranteed to be available (layout shows loading state)
   if (!organization) {
     throw new Error("Organization context is required but not available");
   }
@@ -76,7 +75,6 @@ function CollectionsPage() {
     help: <CollectionsHelp />,
   });
 
-  // Fetch collections with infinite query
   const {
     data: collectionsData,
     isLoading: isLoadingCollections,
@@ -102,7 +100,6 @@ function CollectionsPage() {
     },
   });
 
-  // Fetch sources
   const {
     data: sources,
     isLoading: isLoadingSources,
@@ -115,7 +112,6 @@ function CollectionsPage() {
     },
   });
 
-  // Delete mutation with optimistic updates
   const deleteMutation = useMutation({
     mutationFn: async (readableIds: string[]) => {
       const token = await getAccessTokenSilently();
@@ -128,16 +124,12 @@ function CollectionsPage() {
     onMutate: async (readableIds) => {
       const listKey = queryKeys.collections.list(orgId);
 
-      // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: listKey });
 
-      // Snapshot the previous value
       const previousData = queryClient.getQueryData(listKey);
 
-      // Create a Set for faster lookup
       const readableIdsSet = new Set(readableIds);
 
-      // Optimistically update to remove the collections from all pages
       queryClient.setQueryData(
         listKey,
         (old: { pages: Collection[][]; pageParams: number[] } | undefined) => {
@@ -156,7 +148,6 @@ function CollectionsPage() {
       return { previousData };
     },
     onError: (_err, _readableIds, context) => {
-      // If the mutation fails, use the context returned from onMutate to roll back
       if (context?.previousData) {
         queryClient.setQueryData(
           queryKeys.collections.list(orgId),
@@ -171,20 +162,17 @@ function CollectionsPage() {
       );
     },
     onSettled: () => {
-      // Always refetch after error or success to ensure sync with server
       queryClient.invalidateQueries({
         queryKey: queryKeys.collections.list(orgId),
       });
     },
   });
 
-  // Flatten collections pages
   const collections = useMemo(
     () => collectionsData?.pages.flat() ?? [],
     [collectionsData?.pages]
   );
 
-  // Derive selectedCollection from selectedCollectionId
   const selectedCollection = useMemo(() => {
     if (collections.length === 0) return null;
     if (selectedCollectionId) {
@@ -194,18 +182,15 @@ function CollectionsPage() {
     return collections[0];
   }, [collections, selectedCollectionId]);
 
-  // Sort sources alphabetically
   const sortedSources = useMemo(() => {
     if (!sources) return [];
     return [...sources].sort((a, b) => a.name.localeCompare(b.name));
   }, [sources]);
 
-  // Handle source click - open create collection dialog with pre-selected source
   const handleSourceClick = (source: { short_name: string; name: string }) => {
     openWithSource(source.short_name, source.name);
   };
 
-  // Handle collection click - navigate to collection detail
   const handleCollectionClick = (collection: Collection) => {
     navigate({ to: `/${orgSlug}/collections/${collection.readable_id}` });
   };
@@ -213,7 +198,6 @@ function CollectionsPage() {
   const isLoading = isLoadingCollections || isLoadingSources;
   const error = collectionsError || sourcesError;
 
-  // Loading state
   if (isLoading && collections.length === 0) {
     return (
       <div className="p-6">
@@ -222,7 +206,6 @@ function CollectionsPage() {
     );
   }
 
-  // Error state
   if (error) {
     return (
       <div className="p-6">
@@ -233,7 +216,6 @@ function CollectionsPage() {
     );
   }
 
-  // Empty state - no collections yet
   if (collections.length === 0 && !isLoadingCollections) {
     return (
       <div className="space-y-8 p-6">
@@ -256,10 +238,8 @@ function CollectionsPage() {
     );
   }
 
-  // Main content - collections table and sources
   return (
     <div className="space-y-8">
-      {/* Collections Table */}
       <CollectionsTable
         data={collections}
         onDelete={(readableIds) => deleteMutation.mutate(readableIds)}
@@ -272,7 +252,6 @@ function CollectionsPage() {
         onDeleteDialogChange={setDeleteDialogOpen}
       />
 
-      {/* Load more button */}
       {hasNextPage && (
         <div className="flex justify-center">
           <Button

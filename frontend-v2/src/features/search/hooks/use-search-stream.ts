@@ -8,7 +8,6 @@ import { API_BASE_URL, getAuthHeaders } from "@/lib/api";
 
 import type { SearchEvent, SearchResponse } from "../types";
 
-// Error that has already been handled and sent to onError - should not trigger fallback error handling
 class HandledStreamError extends Error {
   constructor(message?: string) {
     super(message);
@@ -48,7 +47,6 @@ export function useSearchStream() {
       onSuccess,
       onError,
     }: StreamSearchParams) => {
-      // Abort previous stream
       cancelSearch();
 
       const mySeq = ++searchSeqRef.current;

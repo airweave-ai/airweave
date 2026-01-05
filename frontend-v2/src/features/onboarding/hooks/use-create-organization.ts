@@ -47,7 +47,6 @@ export function useCreateOrganization(formData: OnboardingData) {
         org_metadata,
       });
 
-      // Handle billing based on environment
       if (!authConfig.authEnabled) {
         return { organization, redirectUrl: null };
       }

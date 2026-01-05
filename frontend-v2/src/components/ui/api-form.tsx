@@ -4,7 +4,6 @@ import { createContext, useContext, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
-// Types
 type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
 
 type TabValue = "form" | "code";
@@ -28,7 +27,6 @@ function useApiFormContext() {
   return context;
 }
 
-// Method color mapping
 const methodColors: Record<HttpMethod, string> = {
   GET: "text-blue-400",
   POST: "text-emerald-400",
@@ -37,7 +35,6 @@ const methodColors: Record<HttpMethod, string> = {
   PATCH: "text-yellow-400",
 };
 
-// Root component
 interface ApiFormProps {
   method: HttpMethod;
   endpoint: string;
@@ -81,7 +78,6 @@ function ApiForm({
   );
 }
 
-// Toggle sub-component
 interface ToggleProps {
   className?: string;
 }
@@ -99,7 +95,6 @@ function Toggle({ className }: ToggleProps) {
   );
 }
 
-// FormView sub-component
 interface FormViewProps {
   children: React.ReactNode;
   className?: string;
@@ -113,7 +108,6 @@ function FormView({ children, className }: FormViewProps) {
   );
 }
 
-// Helper to render JSON with editable inputs
 interface JsonValueProps {
   keyName: string;
   value: unknown;
@@ -281,7 +275,6 @@ function JsonValue({
   return null;
 }
 
-// CodeView sub-component
 interface CodeViewProps {
   editable?: boolean;
   className?: string;
@@ -362,7 +355,6 @@ function CodeView({ editable = false, className }: CodeViewProps) {
   );
 }
 
-// Footer sub-component
 interface FooterProps {
   children: React.ReactNode;
   className?: string;
@@ -381,7 +373,6 @@ function Footer({ children, className }: FooterProps) {
   );
 }
 
-// Attach sub-components
 ApiForm.Toggle = Toggle;
 ApiForm.FormView = FormView;
 ApiForm.CodeView = CodeView;

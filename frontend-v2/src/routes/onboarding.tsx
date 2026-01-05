@@ -1,7 +1,3 @@
-/**
- * Onboarding route - Multi-step organization creation wizard
- */
-
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Check, ChevronLeft, ChevronRight, Loader2, X } from "lucide-react";
@@ -50,7 +46,6 @@ function OnboardingPage() {
     DEFAULT_ONBOARDING_DATA
   );
 
-  // Check if user already has organizations
   const { data: organizations = [] } = useQuery({
     queryKey: queryKeys.organizations.all,
     queryFn: async () => {
@@ -61,21 +56,18 @@ function OnboardingPage() {
 
   const hasOrganizations = organizations.length > 0;
 
-  // Use extracted hooks
   const createOrgMutation = useCreateOrganization(formData);
   const { isStepValid, validateAndProceed } = useOnboardingValidation({
     formData,
     currentStep,
   });
 
-  // Handle ESC key to go back to home on first step
   useKeyboardShortcut({
     key: "Escape",
     onKeyDown: () => navigate({ to: "/" }),
     enabled: hasOrganizations,
   });
 
-  // Prevent browser refresh/navigation when user has no organizations
   useBeforeUnload(!hasOrganizations);
 
   const updateFormData = useCallback(
@@ -111,7 +103,6 @@ function OnboardingPage() {
     createOrgMutation.mutate();
   };
 
-  // Handle Enter key for progression
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && isStepValid) {
       e.preventDefault();
@@ -126,7 +117,7 @@ function OnboardingPage() {
     }
   };
 
-  // Auto-progress on selection for button-based steps (2-5)
+  // Auto-advances to next step on selection for button-based steps (2-5)
   const handleSelection = <K extends keyof OnboardingData>(
     field: K,
     value: OnboardingData[K]
@@ -144,7 +135,6 @@ function OnboardingPage() {
     }
   };
 
-  // Build API request body for the Code view
   const apiRequestBody = {
     name: formData.organizationName,
     description: `${formData.organizationType} company with ${formData.organizationSize} people`,
@@ -162,7 +152,6 @@ function OnboardingPage() {
   return (
     <div className="bg-background flex min-h-screen items-center justify-center p-4 py-12">
       <div className="relative w-full max-w-2xl">
-        {/* Header with logo branding */}
         <div className="mb-12 text-center">
           <img
             src={
@@ -182,7 +171,6 @@ function OnboardingPage() {
           onStepChange={setCurrentStep}
           totalSteps={TOTAL_STEPS}
         >
-          {/* Progress and close button */}
           <div className="mb-8 flex items-center justify-between">
             <Steps.Indicator />
 
@@ -201,7 +189,6 @@ function OnboardingPage() {
             </div>
           </div>
 
-          {/* Content with fade transition */}
           <div
             className={cn(
               "min-h-[400px] transition-opacity duration-150",
@@ -278,7 +265,6 @@ function OnboardingPage() {
             </Steps.Content>
           </div>
 
-          {/* Actions */}
           <OnboardingNavigation
             currentStep={currentStep}
             totalSteps={TOTAL_STEPS}

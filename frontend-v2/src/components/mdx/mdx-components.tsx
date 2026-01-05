@@ -43,7 +43,6 @@ function Card({
   return content;
 }
 
-// CardGroup component
 function CardGroup({
   cols = 2,
   children,
@@ -61,12 +60,10 @@ function CardGroup({
   return <div className={cn("my-4 grid gap-3", gridCols)}>{children}</div>;
 }
 
-// Steps container
 function Steps({ children }: { children: React.ReactNode }) {
   return <div className="my-4 space-y-4">{children}</div>;
 }
 
-// Step component
 function Step({
   title,
   children,
@@ -83,7 +80,6 @@ function Step({
   );
 }
 
-// CodeBlocks - tabbed code display
 function CodeBlocks({ children }: { children: React.ReactNode }) {
   const [activeTab, setActiveTab] = React.useState(0);
   const blocks = React.Children.toArray(children).filter(
@@ -94,7 +90,6 @@ function CodeBlocks({ children }: { children: React.ReactNode }) {
     return <div className="space-y-2">{children}</div>;
   }
 
-  // Extract titles from code blocks
   const tabs = blocks.map((block, index) => {
     if (React.isValidElement(block)) {
       const blockProps = block.props as { children?: React.ReactNode };
@@ -144,7 +139,6 @@ function CodeBlock({
   return <div className="my-3">{children}</div>;
 }
 
-// Warning callout
 function Warning({ children }: { children: React.ReactNode }) {
   return (
     <div className="my-4 rounded-lg border border-amber-500/50 bg-amber-500/10 p-4">
@@ -158,7 +152,6 @@ function Warning({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Note callout
 function Note({ children }: { children: React.ReactNode }) {
   return (
     <div className="my-4 rounded-lg border border-blue-500/50 bg-blue-500/10 p-4">
@@ -172,7 +165,6 @@ function Note({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Tip callout
 function Tip({ children }: { children: React.ReactNode }) {
   return (
     <div className="my-4 rounded-lg border border-green-500/50 bg-green-500/10 p-4">
@@ -186,7 +178,6 @@ function Tip({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Accordion component
 function Accordion({
   title,
   children,
@@ -216,14 +207,12 @@ function Accordion({
   );
 }
 
-// Tabs container
 function Tabs({ children }: { children: React.ReactNode }) {
   const [activeTab, setActiveTab] = React.useState(0);
   const tabs = React.Children.toArray(children).filter((child) =>
     React.isValidElement(child)
   );
 
-  // Extract titles from Tab components
   const tabTitles = tabs.map((tab, index) => {
     if (React.isValidElement(tab)) {
       return (tab.props as { title?: string }).title || `Tab ${index + 1}`;
@@ -254,14 +243,11 @@ function Tabs({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Tab component (just renders children)
 function Tab({ children }: { title?: string; children: React.ReactNode }) {
   return <div>{children}</div>;
 }
 
-// Custom components for MDX
 export const mdxComponents: MDXComponents = {
-  // Custom components
   Card,
   CardGroup,
   Steps,
@@ -275,10 +261,9 @@ export const mdxComponents: MDXComponents = {
   Accordion,
   Tabs,
   Tab,
-  // Icon component - render nothing (icons removed)
+  // Icons removed - renders nothing
   Icon: () => null,
 
-  // Override default elements for styling
   h1: ({ children, ...props }) => (
     <h1 className="mt-4 mb-3 text-xl font-bold first:mt-0" {...props}>
       {children}
@@ -392,15 +377,12 @@ export const mdxComponents: MDXComponents = {
       {children}
     </td>
   ),
-  // Video component
   video: (props) => <video className="my-3 max-w-full rounded-lg" {...props} />,
-  // Strong/Bold
   strong: ({ children, ...props }) => (
     <strong className="font-semibold text-slate-100" {...props}>
       {children}
     </strong>
   ),
-  // Emphasis/Italic
   em: ({ children, ...props }) => (
     <em className="italic" {...props}>
       {children}

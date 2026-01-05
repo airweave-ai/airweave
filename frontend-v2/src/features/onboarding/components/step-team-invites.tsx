@@ -24,12 +24,10 @@ export function StepTeamInvites({
   const [inviteRole, setInviteRole] = useState<"member" | "admin">("member");
   const [emailError, setEmailError] = useState("");
 
-  // Get the current plan's team member limit
   const currentPlanLimit =
     SUBSCRIPTION_PLANS.find((plan) => plan.value === subscriptionPlan)
       ?.teamMemberLimit || 2;
 
-  // Email validation
   const validateEmail = useCallback(
     (email: string) => {
       if (!email) {
@@ -43,7 +41,6 @@ export function StepTeamInvites({
         return false;
       }
 
-      // Check if email is the current user's email
       if (
         currentUserEmail &&
         email.toLowerCase() === currentUserEmail.toLowerCase()
@@ -54,7 +51,6 @@ export function StepTeamInvites({
         return false;
       }
 
-      // Check if email already exists in team members
       const existingMember = teamMembers.find(
         (member) => member.email.toLowerCase() === email.toLowerCase()
       );
@@ -63,7 +59,6 @@ export function StepTeamInvites({
         return false;
       }
 
-      // Check team member limit - the limit includes the owner
       if (teamMembers.length >= currentPlanLimit - 1) {
         setEmailError(
           `You've reached the maximum team size for the ${subscriptionPlan} plan`
@@ -86,7 +81,6 @@ export function StepTeamInvites({
       return;
     }
 
-    // Only validate format on change, full validation on blur/submit
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (emailRegex.test(email)) {
       validateEmail(email);

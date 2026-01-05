@@ -5,7 +5,6 @@ import { formatDate as sharedFormatDate } from "@/lib/date";
  * Icons are located in the public/icons/connectors/ directory
  */
 export function getAppIconUrl(shortName: string, theme?: string): string {
-  // Special handling for icons that have light variants for dark mode
   const darkModeVariants: Record<string, string> = {
     attio: "attio-light.svg",
     notion: "notion-light.svg",
@@ -15,12 +14,10 @@ export function getAppIconUrl(shortName: string, theme?: string): string {
     zendesk: "zendesk-light.svg",
   };
 
-  // Check for dark mode variant
   if (theme === "dark" && darkModeVariants[shortName]) {
     return `/icons/connectors/${darkModeVariants[shortName]}`;
   }
 
-  // Default icon path
   return `/icons/connectors/${shortName}.svg`;
 }
 
@@ -65,7 +62,6 @@ export function getSourceColorClass(shortName: string): string {
     "bg-yellow-500",
   ];
 
-  // Hash the short name to get a consistent color
   const index =
     shortName.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0) %
     colors.length;

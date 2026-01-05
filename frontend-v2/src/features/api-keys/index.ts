@@ -1,4 +1,3 @@
-// Components
 export { ApiKeysTable } from "./components/api-keys-table";
 export { CreateApiKeyDialog } from "./components/create-dialog";
 export { DeleteApiKeyDialog } from "./components/delete-dialog";
@@ -8,7 +7,6 @@ export {
   ApiKeysHelp,
 } from "./components/sidebar-content";
 
-// Utils
 export {
   EXPIRATION_PRESETS,
   formatDate,

@@ -23,7 +23,6 @@ interface JsonFilterEditorProps {
   className?: string;
 }
 
-// Example filter for users to start with
 const EXAMPLE_FILTER = `{
   "must": [
     {
@@ -44,7 +43,6 @@ export function JsonFilterEditor({
   const { getAccessTokenSilently } = useAuth0();
   const { organization } = useOrg();
 
-  // Initialize with example if no value provided
   const [localValue, setLocalValue] = useState(value || EXAMPLE_FILTER);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isValidating, setIsValidating] = useState(false);
@@ -55,7 +53,6 @@ export function JsonFilterEditor({
   const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const initializedRef = useRef(false);
 
-  // Initialize with example on first render if needed
   useEffect(() => {
     if (initializedRef.current) return;
     initializedRef.current = true;
@@ -65,7 +62,6 @@ export function JsonFilterEditor({
     }
   }, [value, localValue, onChange]);
 
-  // Fetch the filter schema from backend
   useEffect(() => {
     const fetchSchema = async () => {
       try {
@@ -101,14 +97,12 @@ export function JsonFilterEditor({
     };
   }, [getAccessTokenSilently, organization]);
 
-  // Validate the JSON filter
   const validateFilter = useCallback(
     (filterValue: string): { isValid: boolean; error: string | null } => {
       if (!filterValue.trim()) {
-        return { isValid: true, error: null }; // Empty is valid (no filter)
+        return { isValid: true, error: null };
       }
 
-      // First check if it's valid JSON
       let parsed;
       try {
         parsed = JSON.parse(filterValue);
@@ -116,13 +110,10 @@ export function JsonFilterEditor({
         return { isValid: false, error: "Invalid JSON syntax" };
       }
 
-      // If we don't have the schema yet, only check JSON syntax
       if (!filterSchema) {
         return { isValid: true, error: null };
       }
 
-      // Basic structural validation without full AJV
-      // Check for common Qdrant filter structure
       if (typeof parsed !== "object" || parsed === null) {
         return { isValid: false, error: "Filter must be an object" };
       }
@@ -147,7 +138,6 @@ export function JsonFilterEditor({
     [filterSchema]
   );
 
-  // Validate current value when schema becomes available or value changes
   useEffect(() => {
     if (localValue && filterSchema) {
       const validation = validateFilter(localValue);
@@ -155,12 +145,10 @@ export function JsonFilterEditor({
     }
   }, [filterSchema, validateFilter, localValue]);
 
-  // Handle input changes with debounced validation
   const handleChange = useCallback(
     (newValue: string) => {
       setLocalValue(newValue);
 
-      // If empty, immediately mark as valid
       if (!newValue.trim()) {
         setValidationError(null);
         setIsValidating(false);
@@ -170,18 +158,14 @@ export function JsonFilterEditor({
 
       setIsValidating(true);
 
-      // Clear previous timeout
       if (validationTimeoutRef.current) {
         clearTimeout(validationTimeoutRef.current);
       }
 
-      // Debounce validation
       validationTimeoutRef.current = setTimeout(() => {
         const validation = validateFilter(newValue);
         setValidationError(validation.error);
         setIsValidating(false);
-
-        // Always propagate the value, along with its validity status
         onChange(newValue, validation.isValid);
       }, 500);
     },
@@ -222,9 +206,7 @@ export function JsonFilterEditor({
           spellCheck={false}
         />
 
-        {/* Validation and copy indicators */}
         <div className="absolute top-2 right-2 flex items-center gap-2">
-          {/* Copy button */}
           <button
             type="button"
             onClick={handleCopy}
@@ -238,7 +220,6 @@ export function JsonFilterEditor({
             )}
           </button>
 
-          {/* Validation indicator */}
           {isValidating ? (
             <div className="text-xs text-slate-400">Validating...</div>
           ) : validationError ? (
@@ -249,7 +230,6 @@ export function JsonFilterEditor({
         </div>
       </div>
 
-      {/* Error message */}
       {validationError && (
         <div className="flex items-start gap-1 text-xs text-red-500">
           <AlertCircle className="mt-0.5 size-3 shrink-0" />

@@ -6,12 +6,10 @@
  */
 
 export const queryKeys = {
-  // User-level queries (not org-scoped)
   organizations: {
     all: ["organizations"] as const,
   },
 
-  // Org-scoped queries
   apiKeys: {
     all: (orgId: string) => [orgId, "api-keys"] as const,
     list: (orgId: string) => [orgId, "api-keys", "list"] as const,

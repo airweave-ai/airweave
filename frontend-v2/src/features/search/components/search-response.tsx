@@ -33,7 +33,6 @@ import { formatResponseTime, parseMarkdownContent } from "../utils/markdown";
 import { EntityResultCard } from "./entity-result-card";
 import { SearchTrace } from "./search-trace";
 
-// Types
 interface SearchResponseProps {
   searchResponse: SearchResponseType | null;
   isSearching: boolean;
@@ -44,7 +43,6 @@ interface SearchResponseProps {
 
 type TabType = "trace" | "answer" | "entities" | "raw";
 
-// LocalStorage keys
 const STORAGE_KEYS = {
   EXPANDED: "searchResponse-expanded",
   ACTIVE_TAB: "searchResponse-activeTab",
@@ -58,11 +56,9 @@ export function SearchResponse({
   events = [],
   className,
 }: SearchResponseProps) {
-  // Copy state
   const [copiedCompletion, setCopiedCompletion] = useState(false);
   const [copiedRawJson, setCopiedRawJson] = useState(false);
 
-  // Persisted UI state
   const defaultTab: TabType =
     responseType === "completion" ? "answer" : "entities";
   const [activeTab, setActiveTab] = useLocalStorageState<TabType>(
@@ -74,21 +70,17 @@ export function SearchResponse({
     true
   );
 
-  // Pagination state
   const INITIAL_RESULTS_LIMIT = 25;
   const LOAD_MORE_INCREMENT = 25;
   const [visibleResultsCount, setVisibleResultsCount] = useState(
     INITIAL_RESULTS_LIMIT
   );
 
-  // Raw JSON view state
   const RAW_JSON_LINE_LIMIT = 500;
   const [showFullRawJson, setShowFullRawJson] = useState(false);
 
-  // Entity refs for scrolling
   const entityRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
-  // Extract data from response - memoize results to avoid re-creating array reference
   const completion = searchResponse?.completion || "";
   const results = useMemo(
     () => (searchResponse?.results || []) as Record<string, unknown>[],
@@ -101,25 +93,21 @@ export function SearchResponse({
     ? "Something went wrong, please try again."
     : searchResponse?.error;
 
-  // Handle scrolling to entity
   const scrollToEntity = useCallback(
     (index: number) => {
       const ref = entityRefs.current.get(index);
       if (ref) {
         ref.scrollIntoView({ behavior: "smooth", block: "center" });
-        // Flash highlight
         ref.classList.add("ring-2", "ring-blue-500");
         setTimeout(() => {
           ref.classList.remove("ring-2", "ring-blue-500");
         }, 1500);
       }
-      // Switch to entities tab if not there
       setActiveTab("entities");
     },
     [setActiveTab]
   );
 
-  // Handle copy completion
   const handleCopyCompletion = useCallback(async () => {
     if (completion) {
       await navigator.clipboard.writeText(completion);
@@ -128,7 +116,6 @@ export function SearchResponse({
     }
   }, [completion]);
 
-  // Handle copy raw JSON
   const handleCopyRawJson = useCallback(async () => {
     if (searchResponse) {
       await navigator.clipboard.writeText(
@@ -139,7 +126,6 @@ export function SearchResponse({
     }
   }, [searchResponse]);
 
-  // Raw JSON content
   const rawJsonContent = useMemo(() => {
     if (!searchResponse) return "";
     const fullJson = JSON.stringify(searchResponse, null, 2);
@@ -155,7 +141,6 @@ export function SearchResponse({
     return JSON.stringify(searchResponse, null, 2).split("\n").length;
   }, [searchResponse]);
 
-  // Visible results for pagination
   const visibleResults = useMemo(
     () => results.slice(0, visibleResultsCount),
     [results, visibleResultsCount]
@@ -164,18 +149,15 @@ export function SearchResponse({
   const hasMoreResults = results.length > visibleResultsCount;
   const hasTrace = events.length > 0;
 
-  // Rendered markdown content
   const renderedCompletion = useMemo(() => {
     if (!completion) return null;
     return parseMarkdownContent(completion, scrollToEntity);
   }, [completion, scrollToEntity]);
 
-  // Don't render if no search response and not searching
   if (!searchResponse && !isSearching) {
     return null;
   }
 
-  // Loading state
   if (isSearching && !searchResponse) {
     return (
       <div className={cn("bg-card mt-4 rounded-lg border p-6", className)}>
@@ -187,7 +169,6 @@ export function SearchResponse({
     );
   }
 
-  // Error state
   if (hasError) {
     return (
       <div
@@ -201,7 +182,6 @@ export function SearchResponse({
     );
   }
 
-  // Empty state
   if (results.length === 0 && !completion) {
     return (
       <EmptyState
@@ -215,9 +195,7 @@ export function SearchResponse({
 
   return (
     <div className={cn("mt-4 space-y-4", className)}>
-      {/* Header with tabs and response time */}
       <div className="flex items-center justify-between">
-        {/* Tab Buttons */}
         <div className="flex gap-2">
           {hasTrace && (
             <Button
@@ -253,7 +231,6 @@ export function SearchResponse({
           </Button>
         </div>
 
-        {/* Response time and collapse */}
         <div className="flex items-center gap-3">
           {responseTime && (
             <span className="text-muted-foreground text-xs">
@@ -275,10 +252,8 @@ export function SearchResponse({
         </div>
       </div>
 
-      {/* Collapsible content */}
       {isExpanded && (
         <>
-          {/* Trace Tab */}
           {activeTab === "trace" && hasTrace && (
             <SearchTrace
               events={events}
@@ -287,7 +262,6 @@ export function SearchResponse({
             />
           )}
 
-          {/* Answer Tab */}
           {activeTab === "answer" && completion && (
             <div className="bg-card rounded-lg border p-4">
               <div className="mb-3 flex items-center justify-between">
@@ -311,7 +285,6 @@ export function SearchResponse({
             </div>
           )}
 
-          {/* Entities Tab */}
           {activeTab === "entities" && results.length > 0 && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -341,7 +314,6 @@ export function SearchResponse({
                 ))}
               </div>
 
-              {/* Load More Button */}
               {hasMoreResults && (
                 <div className="flex justify-center pt-2">
                   <Button
@@ -365,7 +337,6 @@ export function SearchResponse({
             </div>
           )}
 
-          {/* Raw JSON Tab */}
           {activeTab === "raw" && searchResponse && (
             <div className="bg-card rounded-lg border">
               <div className="flex items-center justify-between border-b px-4 py-2">
@@ -407,7 +378,6 @@ export function SearchResponse({
         </>
       )}
 
-      {/* Loading indicator when searching with existing results */}
       {isSearching && (
         <div className="flex items-center justify-center gap-2 py-2">
           <Loader2 className="size-4 animate-spin" />

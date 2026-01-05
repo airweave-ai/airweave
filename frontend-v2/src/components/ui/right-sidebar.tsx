@@ -77,13 +77,11 @@ function RightSidebarProvider({
   style,
   ...props
 }: React.ComponentProps<"div">) {
-  // Use Zustand store for persisted active tab state
   const { rightSidebarTab, setRightSidebarTab, toggleRightSidebarTab } =
     useUISettings();
 
   const [content, setContent] = React.useState<RightSidebarContent>({});
 
-  // Map Zustand state to local types
   const activeTab = rightSidebarTab as TabId | null;
   const setActiveTab = setRightSidebarTab as (tab: TabId | null) => void;
   const toggleTab = React.useCallback(
@@ -262,7 +260,6 @@ function MobileBottomNav({ className, ...props }: React.ComponentProps<"div">) {
     }
   };
 
-  // Determine which tab is active - "app" when no sidebar tab is selected
   const currentTab = activeTab || "app";
 
   return (

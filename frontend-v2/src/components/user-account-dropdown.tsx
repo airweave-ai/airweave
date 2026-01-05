@@ -51,17 +51,15 @@ export function UserAccountDropdown({
   const { user, logout, getAccessTokenSilently } = useAuth0();
   const orgSlug = params.orgSlug;
 
-  // Fetch organizations
   const { data: organizations = [] } = useQuery({
     queryKey: queryKeys.organizations.all,
     queryFn: async () => {
       const token = await getAccessTokenSilently();
       return fetchOrganizations(token);
     },
-    staleTime: 1000 * 60 * 5, // 5 minutes
+    staleTime: 1000 * 60 * 5,
   });
 
-  // Find current org from URL slug
   const currentOrg = orgSlug ? findOrgBySlug(organizations, orgSlug) : null;
 
   const handleLogout = () => {
@@ -74,8 +72,6 @@ export function UserAccountDropdown({
 
   const handleSwitchOrg = (org: Organization) => {
     const newOrgSlug = generateOrgSlug(org);
-    // Navigate to the same page but in the new org context
-    // Extract the current page path after the org slug
     const currentPath = location.pathname;
     const pathAfterOrg = orgSlug ? currentPath.replace(`/${orgSlug}`, "") : "";
     navigate({

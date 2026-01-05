@@ -51,7 +51,6 @@ export function DetailDialog({
 
   const isDark = useIsDark();
 
-  // Fetch connection details
   const { data: connectionDetails, isLoading } = useQuery({
     queryKey: queryKeys.authProviders.connection(
       orgId,
@@ -65,7 +64,6 @@ export function DetailDialog({
     enabled: open && !!connection?.readable_id,
   });
 
-  // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async () => {
       if (!connection?.readable_id) return;

@@ -20,19 +20,10 @@ export function generateRandomSuffix(): string {
 export function generateReadableIdBase(name: string): string {
   if (!name || name.trim() === "") return "";
 
-  // Convert to lowercase and replace spaces with hyphens
   let readableId = name.toLowerCase().trim();
-
-  // Replace any character that's not a letter, number, or space with nothing
   readableId = readableId.replace(/[^a-z0-9\s]/g, "");
-
-  // Replace spaces with hyphens
   readableId = readableId.replace(/\s+/g, "-");
-
-  // Ensure no consecutive hyphens
   readableId = readableId.replace(/-+/g, "-");
-
-  // Trim hyphens from start and end
   readableId = readableId.replace(/^-|-$/g, "");
 
   return readableId;
@@ -54,18 +45,15 @@ export function getAuthProviderIconUrl(
   shortName: string,
   theme?: string
 ): string {
-  // Special cases for providers with specific file formats
   const specialCases: Record<string, string> = {
     klavis: "klavis.png",
     pipedream: "pipedream.jpeg",
   };
 
-  // Check for special cases first
   if (specialCases[shortName]) {
     return `/src/components/icons/auth_providers/${specialCases[shortName]}`;
   }
 
-  // Use -light version for dark theme, -dark version for light theme
   if (theme === "dark") {
     return `/src/components/icons/auth_providers/${shortName}-light.svg`;
   } else {

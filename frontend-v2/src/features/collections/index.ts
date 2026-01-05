@@ -1,4 +1,3 @@
-// Components
 export { AddSourceDialog } from "./components/add-source";
 export { BulkDeleteCollectionsDialog } from "./components/bulk-delete-collections-dialog";
 export { CollectionCard } from "./components/collection-card";
@@ -23,7 +22,6 @@ export { SourceConnectionsList } from "./components/source-connections-list";
 export { StatusBadge } from "./components/status-badge";
 export { SyncErrorCard } from "./components/sync-error-card";
 
-// Utils
 export {
   formatDate,
   getAppIconUrl,

@@ -29,13 +29,11 @@ export function CommandMenu() {
     (state) => state.toggleRightSidebarTab
   );
 
-  // Get commands from store
   const pageTitle = useCommandStore((state) => state.pageTitle);
   const pageCommands = useCommandStore((state) => state.pageCommands);
   const contextTitle = useCommandStore((state) => state.contextTitle);
   const contextCommands = useCommandStore((state) => state.contextCommands);
 
-  // Register keyboard shortcut
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.key === "k" && (e.metaKey || e.ctrlKey)) {

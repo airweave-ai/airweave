@@ -28,14 +28,12 @@ function getSystemThemeServerSnapshot() {
 export function useIsDark(): boolean {
   const theme = useUISettings((state) => state.theme);
 
-  // Subscribe to system theme changes using useSyncExternalStore
   const systemPrefersDark = useSyncExternalStore(
     subscribeToSystemTheme,
     getSystemThemeSnapshot,
     getSystemThemeServerSnapshot
   );
 
-  // Derive dark mode based on theme setting
   if (theme === "system") {
     return systemPrefersDark;
   }

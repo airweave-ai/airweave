@@ -1,4 +1,3 @@
-// Components
 export { ApiIntegrationModal } from "./components/api-integration-modal";
 export { EntityResultCard } from "./components/entity-result-card";
 export { JsonFilterEditor } from "./components/json-filter-editor";
@@ -8,7 +7,6 @@ export { SearchBox } from "./components/search-box";
 export { SearchResponse } from "./components/search-response";
 export { SearchTrace } from "./components/search-trace";
 
-// Types
 export type {
   PartialStreamUpdate,
   SearchConfig,

@@ -33,12 +33,10 @@ const DevAuthContext = createContext<DevAuthContextType | null>(null);
 export function useAuth0() {
   const devContext = useContext(DevAuthContext);
 
-  // If we're in dev mode, use the dev context
   if (devContext) {
     return devContext;
   }
 
-  // Otherwise, use the real Auth0 hook
   // eslint-disable-next-line react-hooks/rules-of-hooks
   return useAuth0Hook();
 }
@@ -48,12 +46,10 @@ export function useAuth0() {
  * When VITE_ACCESS_TOKEN is set, skips Auth0 and uses dev mode.
  */
 export function AuthProvider({ children }: AuthProviderProps) {
-  // Don't render Auth0Provider on the server
   if (typeof window === "undefined") {
     return <>{children}</>;
   }
 
-  // Dev mode: Skip Auth0 when access token is provided
   if (!authConfig.authEnabled) {
     const devAuthValue: DevAuthContextType = {
       isAuthenticated: true,
@@ -77,7 +73,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     );
   }
 
-  // Production mode: Use Auth0
   return (
     <Auth0Provider
       domain={authConfig.domain}
@@ -101,12 +96,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
 export function AuthGuard({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading, loginWithRedirect } = useAuth0();
 
-  // In dev mode, always render children (with preloading)
   if (!authConfig.authEnabled) {
     return <DataPreloader>{children}</DataPreloader>;
   }
 
-  // Show loading state while Auth0 initializes
   if (isLoading) {
     return (
       <div className="bg-background flex h-screen w-screen items-center justify-center">
@@ -118,7 +111,6 @@ export function AuthGuard({ children }: { children: ReactNode }) {
     );
   }
 
-  // Redirect to login if not authenticated
   if (!isAuthenticated) {
     loginWithRedirect();
     return (
@@ -133,9 +125,7 @@ export function AuthGuard({ children }: { children: ReactNode }) {
     );
   }
 
-  // User is authenticated - preload data and render children
   return <DataPreloader>{children}</DataPreloader>;
 }
 
-// Re-export getRedirectUrl for convenience
 export { getRedirectUrl };

@@ -34,7 +34,7 @@ import appCss from "../styles.css?url";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // Keep unused query data in memory for 1 hour (matches IndexedDB persistence)
+      // Matches IndexedDB persistence duration
       gcTime: CACHE_MAX_AGE,
     },
   },
@@ -87,15 +87,13 @@ function RootComponent() {
   const params = useParams({ strict: false }) as { orgSlug?: string };
   const hasOrgContext = Boolean(params.orgSlug);
 
-  // Apply theme based on user preference (system/light/dark)
   useThemeEffect();
 
-  // Wait for UI settings to hydrate from localStorage to prevent flash of incorrect state
+  // Prevents flash of incorrect state before localStorage hydration
   if (!isHydrated) {
     return null;
   }
 
-  // When there's no org context (e.g., onboarding), render without sidebar/header chrome
   if (!hasOrgContext) {
     return (
       <AuthGuard>

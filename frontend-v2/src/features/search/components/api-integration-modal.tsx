@@ -14,7 +14,6 @@ import { cn } from "@/lib/utils";
 
 import type { SearchConfig } from "../types";
 
-// Icons for language tabs
 function PythonIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -75,18 +74,15 @@ export function ApiIntegrationModal({
   const [activeTab, setActiveTab] = useState<ApiTab>("rest");
   const [copied, setCopied] = useState(false);
 
-  // Generate code snippets based on current configuration
   const snippets = useMemo(() => {
     const apiUrl = `${API_BASE_URL}/collections/${collectionReadableId}/search`;
     const searchQuery = query || "Ask a question about your data";
 
-    // Escape helpers
     const escapeForJson = (str: string) =>
       str.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
     const escapeForPython = (str: string) =>
       str.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 
-    // Parse filter if provided
     let parsedFilter = null;
     if (filter) {
       try {
@@ -96,7 +92,6 @@ export function ApiIntegrationModal({
       }
     }
 
-    // Build request body
     const requestBody: Record<string, unknown> = {
       query: searchQuery,
       retrieval_strategy: searchConfig?.search_method || "hybrid",
@@ -110,7 +105,6 @@ export function ApiIntegrationModal({
       offset: 0,
     };
 
-    // cURL snippet
     const jsonBody = JSON.stringify(requestBody, null, 2)
       .split("\n")
       .map((line, index, array) => {
@@ -131,7 +125,6 @@ export function ApiIntegrationModal({
   -H 'Content-Type: application/json' \\
   -d '${jsonBody}'`;
 
-    // Python snippet
     const pythonFilterStr = parsedFilter
       ? JSON.stringify(parsedFilter, null, 4)
           .split("\n")
@@ -176,7 +169,6 @@ ${pythonRequestParams.join(",\n")}
 print(result.completion)  # AI-generated answer (if generate_answer=True)
 print(len(result.results))  # Number of results`;
 
-    // Node.js snippet
     const nodeFilterStr = parsedFilter
       ? JSON.stringify(parsedFilter, null, 4)
           .split("\n")
@@ -218,7 +210,6 @@ ${nodeRequestParams.join(",\n")}
 console.log(result.completion);  // AI-generated answer (if generateAnswer=true)
 console.log(result.results.length);  // Number of results`;
 
-    // MCP config snippet
     const mcpSnippet = `{
   "mcpServers": {
     "airweave-${collectionReadableId}": {

@@ -44,7 +44,6 @@ function ApiKeysPage() {
   const [selectedKeyId, setSelectedKeyId] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
-  // Organization is guaranteed to be available (layout shows loading state)
   if (!organization) {
     throw new Error("Organization context is required but not available");
   }
@@ -86,15 +85,12 @@ function ApiKeysPage() {
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {
-      // Handle case where lastPage might be undefined (stale cache)
       if (!lastPage || !Array.isArray(lastPage)) {
         return undefined;
       }
-      // If we got less than PAGE_SIZE items, there are no more pages
       if (lastPage.length < PAGE_SIZE) {
         return undefined;
       }
-      // Next page starts after all current items
       return allPages.flat().length;
     },
   });
@@ -107,16 +103,12 @@ function ApiKeysPage() {
     onMutate: async (keyIds) => {
       const listKey = queryKeys.apiKeys.list(orgId);
 
-      // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: listKey });
 
-      // Snapshot the previous value
       const previousData = queryClient.getQueryData(listKey);
 
-      // Create a Set for faster lookup
       const keyIdsSet = new Set(keyIds);
 
-      // Optimistically update to remove the keys from all pages
       queryClient.setQueryData(
         listKey,
         (old: { pages: APIKey[][]; pageParams: number[] } | undefined) => {
@@ -133,7 +125,6 @@ function ApiKeysPage() {
       return { previousData };
     },
     onError: (_err, _keyIds, context) => {
-      // If the mutation fails, use the context returned from onMutate to roll back
       if (context?.previousData) {
         queryClient.setQueryData(
           queryKeys.apiKeys.list(orgId),
@@ -148,31 +139,23 @@ function ApiKeysPage() {
       );
     },
     onSettled: () => {
-      // Always refetch after error or success to ensure sync with server
       queryClient.invalidateQueries({
         queryKey: queryKeys.apiKeys.list(orgId),
       });
     },
   });
 
-  // Flatten all pages into a single array - memoized to prevent unnecessary re-renders
   const apiKeys = useMemo(() => data?.pages.flat() ?? [], [data?.pages]);
 
-  // Derive selectedKey from selectedKeyId - automatically handles:
-  // - Initial selection (defaults to first item)
-  // - Deleted keys (falls back to first item if current selection is gone)
   const selectedKey = useMemo(() => {
     if (apiKeys.length === 0) return null;
-    // If we have a valid selection, keep it
     if (selectedKeyId) {
       const found = apiKeys.find((k) => k.id === selectedKeyId);
       if (found) return found;
     }
-    // Otherwise default to first item
     return apiKeys[0];
   }, [apiKeys, selectedKeyId]);
 
-  // Build context commands based on selected key
   const contextCommands = useMemo(() => {
     if (!selectedKey) return [];
     const actions = getApiKeyActions({
@@ -188,7 +171,6 @@ function ApiKeysPage() {
     return actions;
   }, [selectedKey]);
 
-  // Register commands with the command menu
   useCommandMenu({
     pageTitle: "API Keys",
     pageCommands: [
@@ -203,7 +185,6 @@ function ApiKeysPage() {
     contextCommands,
   });
 
-  // Loading state
   if (isLoading) {
     return (
       <div className="p-6">
@@ -212,7 +193,6 @@ function ApiKeysPage() {
     );
   }
 
-  // Error state
   if (error) {
     return (
       <div className="p-6">
@@ -223,7 +203,6 @@ function ApiKeysPage() {
     );
   }
 
-  // Empty state
   if (apiKeys.length === 0) {
     return (
       <div className="p-6">
@@ -247,7 +226,6 @@ function ApiKeysPage() {
     );
   }
 
-  // Keys table
   return (
     <div>
       <ApiKeysTable

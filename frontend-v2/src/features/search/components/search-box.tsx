@@ -73,32 +73,19 @@ export function SearchBox({
   const { executeSearch, cancelSearch } = useSearchStream();
   const tooltipManager = useTooltipManager();
 
-  // Core search state
   const [query, setQuery] = useState("");
   const [searchMethod, setSearchMethod] = useState<SearchMethod>("hybrid");
   const [isSearching, setIsSearching] = useState(false);
-
-  // Filter state
   const [filterJson, setFilterJson] = useState("");
   const [isFilterValid, setIsFilterValid] = useState(true);
-
-  // Recency bias state
   const [recencyBiasValue, setRecencyBiasValue] = useState(0.0);
-
-  // Toggle buttons state
   const [toggles, setToggles] = useState<SearchToggles>(DEFAULT_TOGGLES);
-
-  // Code modal state
   const [showCodeModal, setShowCodeModal] = useState(false);
   const [apiKey, setApiKey] = useState<string>("YOUR_API_KEY");
-
-  // Usage limits state
   const [queriesAllowed, setQueriesAllowed] = useState(true);
   const [queriesCheckDetails, setQueriesCheckDetails] =
     useState<UsageCheckResponse | null>(null);
   const [isCheckingUsage, setIsCheckingUsage] = useState(true);
-
-  // Transient error handling
   const [transientIssue, setTransientIssue] = useState<{
     message: string;
   } | null>(null);
@@ -107,7 +94,6 @@ export function SearchBox({
   const canRetrySearch = Boolean(transientIssue) && !isSearching;
   const isSearchDisabled = !queriesAllowed || isCheckingUsage || !!disabled;
 
-  // Check if queries are allowed based on usage limits
   const checkQueriesAllowed = useCallback(async () => {
     if (!organization) return;
 
@@ -136,12 +122,10 @@ export function SearchBox({
     }
   }, [organization, getAccessTokenSilently]);
 
-  // Initial usage check on mount
   useEffect(() => {
     checkQueriesAllowed();
   }, [checkQueriesAllowed]);
 
-  // Fetch API key on mount for code modal
   useEffect(() => {
     const fetchApiKey = async () => {
       if (!organization) return;
@@ -163,14 +147,12 @@ export function SearchBox({
     fetchApiKey();
   }, [organization, getAccessTokenSilently]);
 
-  // Handle escape key for modal
   useKeyboardShortcut({
     key: "Escape",
     onKeyDown: () => setShowCodeModal(false),
     enabled: showCodeModal,
   });
 
-  // Manage body overflow when modal is open
   useEffect(() => {
     if (showCodeModal) {
       document.body.style.overflow = "hidden";
@@ -182,7 +164,6 @@ export function SearchBox({
     };
   }, [showCodeModal]);
 
-  // Cancel current search
   const handleCancelSearch = useCallback(() => {
     cancelSearch();
     onStreamEvent?.({ type: "cancelled" } as SearchEvent);
@@ -190,7 +171,6 @@ export function SearchBox({
     checkQueriesAllowed();
   }, [cancelSearch, onStreamEvent, onCancel, checkQueriesAllowed]);
 
-  // Main search handler
   const handleSendQuery = useCallback(async () => {
     if (
       !hasQuery ||
@@ -211,7 +191,6 @@ export function SearchBox({
     try {
       const token = await getAccessTokenSilently();
 
-      // Parse filter if enabled and valid
       let parsedFilter = null;
       if (toggles.filter && filterJson && isFilterValid) {
         try {
@@ -267,7 +246,7 @@ export function SearchBox({
         },
       });
     } catch {
-      // Error handled in onError callback
+      // Error already handled in onError callback
     } finally {
       setIsSearching(false);
       onSearchEnd?.();
@@ -295,7 +274,6 @@ export function SearchBox({
     checkQueriesAllowed,
   ]);
 
-  // Handle toggle button clicks
   const handleToggle = useCallback(
     (name: keyof SearchToggles) => {
       if (name === "filter") {
@@ -321,13 +299,11 @@ export function SearchBox({
     [tooltipManager]
   );
 
-  // Handle recency bias slider changes
   const handleRecencyBiasChange = useCallback((value: number) => {
     setRecencyBiasValue(value);
     setToggles((prev) => ({ ...prev, recencyBias: value > 0 }));
   }, []);
 
-  // Handle filter editor changes
   const handleFilterChange = useCallback((value: string, isValid: boolean) => {
     setFilterJson(value);
     setIsFilterValid(isValid);
@@ -405,7 +381,6 @@ export function SearchBox({
         </div>
       </div>
 
-      {/* Code Block Modal */}
       {showCodeModal && collectionId && (
         <>
           <div

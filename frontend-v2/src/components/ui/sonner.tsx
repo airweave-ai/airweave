@@ -12,7 +12,6 @@ import { useUISettings } from "@/stores/ui-settings";
 const Toaster = ({ ...props }: ToasterProps) => {
   const theme = useUISettings((state) => state.theme);
 
-  // Resolve system theme to actual value
   const resolvedTheme =
     theme === "system"
       ? window.matchMedia("(prefers-color-scheme: dark)").matches

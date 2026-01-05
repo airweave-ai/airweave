@@ -112,7 +112,6 @@ export function SourceConnectionStateView({
   }
   const orgId = organization.id;
 
-  // Fetch detailed source connection data
   const { data: detailedConnection } = useQuery({
     queryKey: queryKeys.sourceConnections.detail(
       orgId,
@@ -150,7 +149,6 @@ export function SourceConnectionStateView({
   const isPending = jobStatus === "pending" || jobStatus === "created";
   const isSyncing = syncState !== "IDLE";
 
-  // Run sync mutation
   const runSyncMutation = useMutation({
     mutationFn: async () => {
       const token = await getAccessTokenSilently();
@@ -167,7 +165,6 @@ export function SourceConnectionStateView({
     },
   });
 
-  // Cancel sync mutation
   const cancelSyncMutation = useMutation({
     mutationFn: async () => {
       const token = await getAccessTokenSilently();
@@ -191,7 +188,6 @@ export function SourceConnectionStateView({
     },
   });
 
-  // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async () => {
       const token = await getAccessTokenSilently();
@@ -217,7 +213,6 @@ export function SourceConnectionStateView({
     },
   });
 
-  // Refresh auth URL handler
   const handleRefreshAuthUrl = useCallback(async () => {
     setIsRefreshingAuth(true);
     try {
@@ -278,7 +273,6 @@ export function SourceConnectionStateView({
       )
     : [];
 
-  // Show authorization UI if not authorized
   if (isNotAuthorized) {
     return (
       <>

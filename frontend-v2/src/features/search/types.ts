@@ -4,7 +4,6 @@
 
 export type ISODate = string;
 
-// Base event fields shared across events
 export interface BaseEvent {
   type: string;
   ts?: ISODate;
@@ -14,7 +13,6 @@ export interface BaseEvent {
   request_id?: string;
 }
 
-// Connection & lifecycle events
 export interface ConnectedEvent extends BaseEvent {
   type: "connected";
   request_id: string;
@@ -47,13 +45,11 @@ export interface HeartbeatEvent extends BaseEvent {
   type: "heartbeat";
 }
 
-// Results events
 export interface ResultsEvent extends BaseEvent {
   type: "results";
   results: unknown[];
 }
 
-// Operation lifecycle events
 export interface QueryExpansionStartedEvent extends BaseEvent {
   type: "query_expansion_started";
 }
@@ -92,7 +88,6 @@ export interface RerankingDoneEvent extends BaseEvent {
   duration_ms?: number;
 }
 
-// Completion events
 export interface CompletionStartedEvent extends BaseEvent {
   type: "completion_started";
 }
@@ -108,7 +103,6 @@ export interface CompletionDoneEvent extends BaseEvent {
   duration_ms?: number;
 }
 
-// Union of all known events
 export type SearchEvent =
   | ConnectedEvent
   | StartEvent
@@ -129,20 +123,16 @@ export type SearchEvent =
   | CancelledEvent
   | HeartbeatEvent;
 
-// Stream phase for UI state
 export type StreamPhase = "searching" | "answering" | "finalized" | "cancelled";
 
-// Aggregated UI update
 export interface PartialStreamUpdate {
   requestId?: string | null;
   results?: unknown[];
   status?: StreamPhase;
 }
 
-// Search method types
 export type SearchMethod = "hybrid" | "neural" | "keyword";
 
-// Search toggle state
 export interface SearchToggles {
   queryExpansion: boolean;
   filter: boolean;
@@ -152,7 +142,6 @@ export interface SearchToggles {
   answer: boolean;
 }
 
-// Search configuration for API code generation
 export interface SearchConfig {
   search_method: SearchMethod;
   expansion_strategy: "auto" | "no_expansion";
@@ -163,13 +152,11 @@ export interface SearchConfig {
   filter?: unknown;
 }
 
-// Usage check response
 export interface UsageCheckResponse {
   allowed: boolean;
   reason?: "usage_limit_exceeded" | "payment_required" | string;
 }
 
-// Search response
 export interface SearchResponse {
   results: unknown[];
   completion?: string | null;

@@ -11,7 +11,6 @@ export function useTooltipManager() {
   const [hoveredContent, setHoveredContent] = useState<string | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (timeoutRef.current) {

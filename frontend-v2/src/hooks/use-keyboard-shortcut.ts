@@ -62,19 +62,16 @@ export function useKeyboardShortcut({
     if (!enabled) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Check if the key matches (case-insensitive for letters)
       const keyMatches =
         event.key.toLowerCase() === key.toLowerCase() || event.key === key;
 
       if (!keyMatches) return;
 
-      // Check modifier keys - if modifier is required but not pressed, don't trigger
       if (meta && !event.metaKey && !event.ctrlKey) return;
       if (ctrl && !event.ctrlKey) return;
       if (shift && !event.shiftKey) return;
       if (alt && !event.altKey) return;
 
-      // If no modifiers required, make sure none are pressed (for simple key shortcuts)
       if (!meta && !ctrl && !shift && !alt) {
         if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
           return;

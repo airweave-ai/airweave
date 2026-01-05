@@ -49,12 +49,10 @@ export function getSelectionColumn<TData>(): ColumnDef<TData> {
             e.stopPropagation();
             const rowIndex = row.index;
 
-            // Handle shift-click for range selection
             if (e.shiftKey && meta?.lastClickedRowRef?.current !== null) {
               meta?.handleShiftSelect?.(rowIndex, !row.getIsSelected());
             }
 
-            // Update last clicked row index
             if (meta?.lastClickedRowRef) {
               meta.lastClickedRowRef.current = rowIndex;
             }

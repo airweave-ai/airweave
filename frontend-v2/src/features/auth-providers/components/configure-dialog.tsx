@@ -48,7 +48,6 @@ export function ConfigureDialog({
   const { getAccessTokenSilently } = useAuth0();
   const queryClient = useQueryClient();
 
-  // Generate a random suffix once per dialog open
   // eslint-disable-next-line react-hooks/exhaustive-deps -- Intentionally regenerate when dialog opens
   const randomSuffix = useMemo(() => generateRandomSuffix(), [open]);
 
@@ -58,7 +57,6 @@ export function ConfigureDialog({
     ? `My ${authProvider.name} Connection`
     : "My Connection";
 
-  // Fetch auth provider details for auth fields
   const { data: providerDetails, isLoading: isLoadingDetails } = useQuery({
     queryKey: queryKeys.authProviders.detail(
       orgId,
@@ -72,7 +70,6 @@ export function ConfigureDialog({
     enabled: open && !!authProvider?.short_name,
   });
 
-  // Form setup
   const form = useForm({
     defaultValues: {
       name: defaultName,
@@ -84,7 +81,6 @@ export function ConfigureDialog({
     },
   });
 
-  // Create mutation
   const createMutation = useMutation({
     mutationFn: async (values: {
       name: string;

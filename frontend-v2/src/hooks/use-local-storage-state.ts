@@ -17,7 +17,6 @@ export function useLocalStorageState<T>(
   key: string,
   defaultValue: T
 ): [T, (value: T | ((prev: T) => T)) => void] {
-  // Initialize state from localStorage or default
   const [state, setState] = useState<T>(() => {
     if (typeof window === "undefined") {
       return defaultValue;
@@ -29,7 +28,6 @@ export function useLocalStorageState<T>(
         return defaultValue;
       }
 
-      // Handle primitives stored as strings
       if (typeof defaultValue === "boolean") {
         return (stored === "true") as T;
       }
@@ -41,14 +39,12 @@ export function useLocalStorageState<T>(
         return stored as T;
       }
 
-      // Handle objects/arrays
       return JSON.parse(stored) as T;
     } catch {
       return defaultValue;
     }
   });
 
-  // Setter that also persists to localStorage
   const setStateWithStorage = useCallback(
     (value: T | ((prev: T) => T)) => {
       setState((prev) => {

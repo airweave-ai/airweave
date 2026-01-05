@@ -44,7 +44,6 @@ export function useCommandMenu({
     (state) => state.clearContextCommands
   );
 
-  // Create stable keys for dependency tracking
   const pageCommandIds = useMemo(
     () => pageCommands.map((c) => c.id).join(","),
     [pageCommands]
@@ -54,7 +53,6 @@ export function useCommandMenu({
     [contextCommands]
   );
 
-  // Register page commands when component mounts, clear on unmount
   useEffect(() => {
     setPageCommands(pageTitle ?? null, pageCommands);
     return () => clearPageCommands();
@@ -66,7 +64,6 @@ export function useCommandMenu({
     clearPageCommands,
   ]);
 
-  // Register context commands reactively
   useEffect(() => {
     setContextCommands(contextTitle ?? null, contextCommands);
     return () => clearContextCommands();

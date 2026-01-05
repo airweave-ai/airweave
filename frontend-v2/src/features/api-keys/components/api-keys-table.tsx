@@ -182,7 +182,6 @@ export function ApiKeysTable({
   const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
   const [keysToDelete, setKeysToDelete] = useState<APIKey[]>([]);
 
-  // Build columns with domain-specific renderers
   const columns: ColumnDef<APIKey>[] = useMemo(
     () => [
       getSelectionColumn<APIKey>(),

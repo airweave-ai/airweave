@@ -54,12 +54,10 @@ export function AddSourceDialog({ open, onOpenChange }: AddSourceDialogProps) {
     close,
   } = useAddSourceStore();
 
-  // Handle dialog close
   const handleOpenChange = useCallback(
     (newOpen: boolean) => {
       if (!newOpen) {
         close();
-        // Reset state after a short delay to allow animation
         setTimeout(() => {
           reset();
         }, 300);
@@ -69,7 +67,6 @@ export function AddSourceDialog({ open, onOpenChange }: AddSourceDialogProps) {
     [close, reset, onOpenChange]
   );
 
-  // Handle source selection
   const handleSelectSource = useCallback(
     (shortName: string, displayName: string) => {
       selectSource(shortName, displayName);
@@ -77,7 +74,6 @@ export function AddSourceDialog({ open, onOpenChange }: AddSourceDialogProps) {
     [selectSource]
   );
 
-  // Handle successful connection creation
   const handleConnectionSuccess = useCallback(
     (connectionId: string, oauthUrl?: string) => {
       if (oauthUrl) {
@@ -89,20 +85,14 @@ export function AddSourceDialog({ open, onOpenChange }: AddSourceDialogProps) {
     [completeWithOAuth, completeWithoutOAuth]
   );
 
-  // Handle close/cancel
   const handleCancel = useCallback(() => {
     handleOpenChange(false);
   }, [handleOpenChange]);
 
-  // Handle back navigation
   const handleBack = useCallback(() => {
     goBack();
   }, [goBack]);
 
-  // Note: We don't reset the step here on open because the store's open() method
-  // already sets the correct initial step based on whether a source is pre-selected
-
-  // Get dialog size based on step
   const getDialogSize = () => {
     switch (currentStep) {
       case "source-select":
@@ -117,7 +107,6 @@ export function AddSourceDialog({ open, onOpenChange }: AddSourceDialogProps) {
     }
   };
 
-  // Render current step content
   const renderContent = () => {
     if (!collectionId || !collectionName) {
       return null;

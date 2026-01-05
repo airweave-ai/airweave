@@ -42,7 +42,6 @@ export function DeleteCollectionDialog({
   const [confirmText, setConfirmText] = useState("");
   const isConfirmValid = confirmText === collectionReadableId;
 
-  // Reset confirm text when dialog closes
   useEffect(() => {
     if (!open) {
       setConfirmText("");

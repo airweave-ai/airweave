@@ -24,7 +24,6 @@ interface SearchTraceProps {
   className?: string;
 }
 
-// Event type to display name mapping
 const EVENT_TYPE_LABELS: Record<string, string> = {
   query_expansion_started: "Query Expansion",
   query_expansion_done: "Query Expansion",
@@ -42,7 +41,6 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   error: "Error",
 };
 
-// Group related events
 interface EventGroup {
   id: string;
   label: string;
@@ -59,7 +57,6 @@ function groupEvents(events: SearchEvent[]): EventGroup[] {
   for (const event of events) {
     const eventType: string = event.type;
 
-    // Determine group key and status
     let groupKey = eventType;
     let status: EventGroup["status"] = "completed";
 
@@ -78,7 +75,6 @@ function groupEvents(events: SearchEvent[]): EventGroup[] {
 
     const label = EVENT_TYPE_LABELS[eventType] || eventType;
 
-    // Get or create group
     let group = groupMap.get(groupKey);
     if (!group) {
       group = {
@@ -95,7 +91,6 @@ function groupEvents(events: SearchEvent[]): EventGroup[] {
     group.status = status;
     group.label = label;
 
-    // Extract useful data from events - use type assertion to access dynamic properties
     const eventData = event as unknown as Record<string, unknown>;
     if (eventData.expanded_queries) {
       group.output = { expanded_queries: eventData.expanded_queries };
@@ -114,7 +109,6 @@ function groupEvents(events: SearchEvent[]): EventGroup[] {
   return groups;
 }
 
-// Status indicator component
 function StatusIndicator({ status }: { status: EventGroup["status"] }) {
   switch (status) {
     case "pending":
@@ -134,7 +128,6 @@ function StatusIndicator({ status }: { status: EventGroup["status"] }) {
   }
 }
 
-// Event group row component
 function EventGroupRow({
   group,
   isExpanded,
@@ -157,7 +150,6 @@ function EventGroupRow({
         )}
         disabled={!hasOutput}
       >
-        {/* Expand icon */}
         <div className="w-4">
           {hasOutput &&
             (isExpanded ? (
@@ -167,10 +159,8 @@ function EventGroupRow({
             ))}
         </div>
 
-        {/* Status indicator */}
         <StatusIndicator status={group.status} />
 
-        {/* Label */}
         <span
           className={cn(
             "flex-1 text-sm",
@@ -180,13 +170,11 @@ function EventGroupRow({
           {group.label}
         </span>
 
-        {/* Duration */}
         {group.duration !== undefined && (
           <span className="text-xs text-slate-500">{group.duration}ms</span>
         )}
       </button>
 
-      {/* Expanded output */}
       {isExpanded && hasOutput && (
         <div className="border-t border-slate-800 bg-slate-950 px-4 py-3">
           <pre className="overflow-x-auto text-xs text-slate-400">
@@ -206,13 +194,9 @@ export function SearchTrace({
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
 
-  // Auto-scroll to bottom when new events arrive
   const scrollRef = useAutoScroll([events], { enabled: isSearching });
-
-  // Group events for display
   const eventGroups = useMemo(() => groupEvents(events), [events]);
 
-  // Toggle group expansion
   const toggleGroup = useCallback((groupId: string) => {
     setExpandedGroups((prev) => {
       const next = new Set(prev);
@@ -225,7 +209,6 @@ export function SearchTrace({
     });
   }, []);
 
-  // Copy all events as JSON
   const handleCopyTrace = useCallback(async () => {
     const traceData = {
       timestamp: new Date().toISOString(),
@@ -242,7 +225,6 @@ export function SearchTrace({
 
   return (
     <div className={cn("overflow-hidden", className)}>
-      {/* Header */}
       <div className="flex items-center justify-between border-b border-slate-800 bg-slate-900 px-4 py-2">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-slate-200">
@@ -267,7 +249,6 @@ export function SearchTrace({
         </Button>
       </div>
 
-      {/* Events list */}
       <div
         ref={scrollRef}
         className="max-h-[400px] overflow-y-auto bg-slate-900/50"
@@ -281,7 +262,6 @@ export function SearchTrace({
           />
         ))}
 
-        {/* Show loading placeholder if searching and no events yet */}
         {isSearching && events.length === 0 && (
           <div className="flex items-center gap-3 px-4 py-3">
             <Loader2 className="size-4 animate-spin text-blue-500" />

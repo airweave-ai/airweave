@@ -65,7 +65,6 @@ export function SourceSelectView({
   const { organization } = useOrg();
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Fetch available sources
   const { data: sources = [], isLoading } = useQuery({
     queryKey: ["sources", organization?.id],
     queryFn: async () => {
@@ -75,7 +74,6 @@ export function SourceSelectView({
     enabled: !!organization,
   });
 
-  // Filter sources based on search
   const filteredSources = useMemo(() => {
     if (!searchQuery) return sources;
 
@@ -88,7 +86,6 @@ export function SourceSelectView({
     );
   }, [sources, searchQuery]);
 
-  // Sort sources alphabetically
   const sortedSources = useMemo(() => {
     return [...filteredSources].sort((a, b) => a.name.localeCompare(b.name));
   }, [filteredSources]);
@@ -189,7 +186,6 @@ export function SourceSelectView({
                           alt={source.name}
                           className="h-full w-full object-contain"
                           onError={(e) => {
-                            // Hide image and show fallback
                             (e.target as HTMLImageElement).style.display =
                               "none";
                             const parent = (e.target as HTMLImageElement)

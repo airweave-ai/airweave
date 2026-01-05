@@ -29,7 +29,6 @@ export function AuthProviderCard({
     onClick?.();
   };
 
-  // Get color class based on shortName for fallback
   const getColorClass = (name: string) => {
     const colors = [
       "bg-blue-500",
@@ -66,7 +65,6 @@ export function AuthProviderCard({
               alt={`${shortName} icon`}
               className="h-8 w-8 rounded object-contain sm:h-9 sm:w-9"
               onError={(e) => {
-                // Fallback to initials if icon fails to load
                 e.currentTarget.style.display = "none";
                 const parent = e.currentTarget.parentElement;
                 if (parent) {

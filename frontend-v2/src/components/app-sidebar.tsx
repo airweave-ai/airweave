@@ -24,14 +24,11 @@ export function AppSidebar() {
   const orgSlug = params.orgSlug;
   const openCreateCollection = useCreateCollectionStore((s) => s.open);
 
-  // Don't show sidebar when no organization context
   if (!orgSlug) {
     return null;
   }
 
-  // Check if a nav item is active - must consider org prefix
   const isActive = (to: string) => {
-    // Replace $orgSlug placeholder with actual slug
     const fullPath = to.replace("$orgSlug", orgSlug);
     return location.pathname.startsWith(fullPath);
   };
@@ -117,7 +114,6 @@ export function AppSidebar() {
           </SidebarMenuItem>
         </SidebarMenu>
 
-        {/* New Collection Button */}
         <SidebarMenu>
           <SidebarMenuItem>
             <Button

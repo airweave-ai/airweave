@@ -2,14 +2,11 @@
  * API client - Re-exports all API operations
  */
 
-// Client utilities
 export { API_BASE_URL, getAuthHeaders, parseErrorResponse } from "./client";
 
-// API Keys
 export { createApiKey, deleteApiKey, fetchApiKeys } from "./api-keys";
 export type { APIKey } from "./api-keys";
 
-// Auth Providers
 export {
   createAuthProviderConnection,
   deleteAuthProviderConnection,
@@ -28,11 +25,9 @@ export type {
   UpdateAuthProviderConnectionRequest,
 } from "./auth-providers";
 
-// Organizations
 export { fetchOrganization, fetchOrganizations } from "./organizations";
 export type { Organization } from "./organizations";
 
-// Collections
 export {
   createCollection,
   deleteCollection,
@@ -42,7 +37,6 @@ export {
 } from "./collections";
 export type { Collection, CreateCollectionRequest } from "./collections";
 
-// Sources
 export { fetchSource, fetchSources } from "./sources";
 export type {
   Source,
@@ -50,7 +44,6 @@ export type {
   ConfigField as SourceConfigField,
 } from "./sources";
 
-// Source Connections
 export {
   cancelSourceConnectionSync,
   createSourceConnection,

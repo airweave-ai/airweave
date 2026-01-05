@@ -48,7 +48,6 @@ export function EditDialog({
   const queryClient = useQueryClient();
   const isDark = useIsDark();
 
-  // Fetch connection details
   const { data: connectionDetails, isLoading: isLoadingConnection } = useQuery({
     queryKey: queryKeys.authProviders.connection(
       orgId,
@@ -62,7 +61,6 @@ export function EditDialog({
     enabled: open && !!connection?.readable_id,
   });
 
-  // Fetch auth provider details for auth fields
   const { data: providerDetails, isLoading: isLoadingProvider } = useQuery({
     queryKey: queryKeys.authProviders.detail(
       orgId,
@@ -96,7 +94,6 @@ export function EditDialog({
             <Loader2 className="text-muted-foreground h-8 w-8 animate-spin" />
           </div>
         ) : (
-          // Use key to reset form when connection changes
           <EditDialogForm
             key={connection.readable_id}
             authProvider={authProvider}
@@ -116,7 +113,6 @@ export function EditDialog({
   );
 }
 
-// Separate form component that resets when key changes
 function EditDialogForm({
   authProvider,
   connection,
@@ -146,7 +142,6 @@ function EditDialogForm({
   onOpenChange: (open: boolean) => void;
   onSuccess?: () => void;
 }) {
-  // Form setup with default values from fetched data
   const form = useForm({
     defaultValues: {
       name: connectionDetails?.name ?? "",
@@ -157,7 +152,6 @@ function EditDialogForm({
     },
   });
 
-  // Update mutation
   const updateMutation = useMutation({
     mutationFn: async (values: {
       name: string;
@@ -167,18 +161,15 @@ function EditDialogForm({
 
       const token = await getAccessTokenSilently();
 
-      // Build update payload - only include fields that have values
       const updateData: {
         name?: string;
         auth_fields?: Record<string, string>;
       } = {};
 
-      // Include name only if it changed
       if (values.name && values.name !== connectionDetails?.name) {
         updateData.name = values.name;
       }
 
-      // Include auth_fields only if any field has a value
       const filledAuthFields = Object.entries(values.authFields)
         .filter(([, value]) => value && String(value).trim() !== "")
         .reduce(
@@ -190,7 +181,6 @@ function EditDialogForm({
         updateData.auth_fields = filledAuthFields;
       }
 
-      // If nothing to update, just return the current connection
       if (Object.keys(updateData).length === 0) {
         return null;
       }
@@ -228,7 +218,6 @@ function EditDialogForm({
     },
   });
 
-  // Handle auth field change
   const handleAuthFieldChange = (fieldName: string, value: string) => {
     const currentFields = form.getFieldValue("authFields");
     form.setFieldValue("authFields", { ...currentFields, [fieldName]: value });

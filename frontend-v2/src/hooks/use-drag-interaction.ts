@@ -65,7 +65,6 @@ export function useDragInteraction<T>({
       setCurrentValue(value);
 
       onDragStart?.(event);
-      // Trigger initial drag callback with computed value
       onDrag(event.nativeEvent, value);
     },
     [computeValue, onDrag, onDragStart]

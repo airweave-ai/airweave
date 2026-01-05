@@ -1,7 +1,3 @@
-/**
- * Root index route - redirects to primary organization
- */
-
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 
@@ -25,7 +21,6 @@ function RootRedirect() {
     },
   });
 
-  // Still loading - show loading state
   if (isLoading || !organizations) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -39,12 +34,10 @@ function RootRedirect() {
     );
   }
 
-  // No organizations - redirect to onboarding
   if (organizations.length === 0) {
     return <Navigate to="/onboarding" replace />;
   }
 
-  // Redirect to primary organization
   const primaryOrg = getPrimaryOrg(organizations);
   if (primaryOrg) {
     return (
@@ -56,7 +49,6 @@ function RootRedirect() {
     );
   }
 
-  // Fallback loading state (shouldn't reach here normally)
   return (
     <div className="flex h-full items-center justify-center">
       <div className="flex flex-col items-center gap-4">

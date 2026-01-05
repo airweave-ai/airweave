@@ -148,7 +148,6 @@ export function CollectionsTable({
     []
   );
 
-  // Build columns with domain-specific renderers
   const columns: ColumnDef<Collection>[] = useMemo(
     () => [
       getSelectionColumn<Collection>(),
@@ -245,7 +244,6 @@ export function CollectionsTable({
         }}
       />
 
-      {/* Bulk delete dialog */}
       <BulkDeleteCollectionsDialog
         open={bulkDeleteDialogOpen}
         onOpenChange={setBulkDeleteDialogOpen}
@@ -256,7 +254,6 @@ export function CollectionsTable({
         }}
       />
 
-      {/* Delete dialog controlled from parent (for command menu) */}
       {selectedCollection && (
         <BulkDeleteCollectionsDialog
           open={deleteDialogOpen}

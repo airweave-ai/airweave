@@ -1,7 +1,5 @@
 /**
- * Organization-scoped layout route
- *
- * This is a layout route that wraps all org-scoped pages.
+ * Organization-scoped layout route.
  * The OrgProvider validates the slug and provides org context.
  * The OrgDataPreloader prefetches commonly needed data in the background.
  */
@@ -25,14 +23,9 @@ function OrgLayout() {
   );
 }
 
-/**
- * Inner component that checks loading state.
- * Must be inside OrgProvider to use useOrg hook.
- */
 function OrgLayoutContent() {
   const { organization, isLoading } = useOrg();
 
-  // Show loading state while organization data is being fetched
   if (isLoading || !organization) {
     return (
       <div className="flex h-full items-center justify-center p-6">

@@ -1,10 +1,3 @@
-/**
- * Collection Detail View
- *
- * Displays a single collection with its source connections, search interface,
- * and sync controls.
- */
-
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createFileRoute,
@@ -59,20 +52,17 @@ function CollectionDetailPage() {
   const orgId = organization.id;
   const orgSlug = getOrgSlug(organization);
 
-  // Local state
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showAddSourceDialog, setShowAddSourceDialog] = useState(false);
   const [selectedConnectionId, setSelectedConnectionId] = useState<
     string | null
   >(null);
 
-  // Track if we've already processed the navigation state (to avoid re-opening on re-renders)
+  // Prevents re-opening the dialog on re-renders after processing navigation state
   const processedNavState = useRef(false);
 
-  // Add source store (local to this page)
   const openAddSource = useAddSourceStore((s) => s.open);
 
-  // Fetch collection data
   const {
     data: collection,
     isLoading: isLoadingCollection,
@@ -86,7 +76,6 @@ function CollectionDetailPage() {
     },
   });
 
-  // Fetch source connections
   const {
     data: sourceConnections = [],
     error: connectionsError,
@@ -100,7 +89,6 @@ function CollectionDetailPage() {
     enabled: !!collection,
   });
 
-  // Selected connection derived from state
   const selectedConnection = useMemo(() => {
     if (!sourceConnections.length) return null;
     if (selectedConnectionId) {
@@ -112,21 +100,19 @@ function CollectionDetailPage() {
     return sourceConnections[0];
   }, [sourceConnections, selectedConnectionId]);
 
-  // Auto-select first connection when connections load
   useEffect(() => {
     if (sourceConnections.length > 0 && !selectedConnectionId) {
       setSelectedConnectionId(sourceConnections[0].id);
     }
   }, [sourceConnections, selectedConnectionId]);
 
-  // Check for pre-selected source from navigation state ("Start from a Source" flow)
+  // Handle pre-selected source from navigation state ("Start from a Source" flow)
   useEffect(() => {
     if (processedNavState.current || !collection) return;
 
     const navState = location.state as CollectionNavigationState | undefined;
     if (navState?.addSource) {
       processedNavState.current = true;
-      // Open the Add Source dialog with the pre-selected source
       openAddSource(
         collection.readable_id,
         collection.name,
@@ -134,7 +120,6 @@ function CollectionDetailPage() {
       );
       setShowAddSourceDialog(true);
 
-      // Clear the navigation state to prevent re-opening on refresh
       navigate({
         to: location.pathname,
         replace: true,
@@ -142,7 +127,6 @@ function CollectionDetailPage() {
     }
   }, [collection, location.state, location.pathname, navigate, openAddSource]);
 
-  // Delete collection mutation
   const deleteMutation = useMutation({
     mutationFn: async () => {
       const token = await getAccessTokenSilently();
@@ -162,26 +146,22 @@ function CollectionDetailPage() {
     },
   });
 
-  // Page header
   usePageHeader({
     title: collection?.name || "Loading...",
     description: collection?.readable_id || "",
   });
 
-  // Sidebar content
   useRightSidebarContent({
     docs: <CollectionDetailDocs />,
     code: <CollectionDetailCode collectionId={collectionId} />,
     help: <CollectionDetailHelp />,
   });
 
-  // Handle reload
   const handleReload = useCallback(() => {
     refetchCollection();
     refetchConnections();
   }, [refetchCollection, refetchConnections]);
 
-  // Handle add source (no pre-selected source - user will pick from dialog)
   const handleAddSource = useCallback(() => {
     if (collection) {
       openAddSource(collection.readable_id, collection.name);
@@ -189,7 +169,6 @@ function CollectionDetailPage() {
     }
   }, [collection, openAddSource]);
 
-  // Loading state
   if (isLoadingCollection) {
     return (
       <div className="flex h-full items-center justify-center p-6">
@@ -198,7 +177,6 @@ function CollectionDetailPage() {
     );
   }
 
-  // Error state
   if (collectionError || connectionsError) {
     return (
       <div className="p-6">
@@ -232,7 +210,6 @@ function CollectionDetailPage() {
         onDelete={() => setShowDeleteDialog(true)}
       />
 
-      {/* Search Section */}
       <div className="mt-10 w-full">
         <Search
           collectionReadableId={collection.readable_id}
@@ -241,7 +218,6 @@ function CollectionDetailPage() {
         />
       </div>
 
-      {/* Source Connections Section */}
       <div className="mt-8 w-full">
         <SourceConnectionsList
           sourceConnections={sourceConnections}
@@ -251,7 +227,6 @@ function CollectionDetailPage() {
         />
       </div>
 
-      {/* Source Connection State View */}
       {selectedConnection && (
         <div className="mt-4 w-full">
           <SourceConnectionStateView
@@ -266,7 +241,6 @@ function CollectionDetailPage() {
         </div>
       )}
 
-      {/* Delete Collection Dialog */}
       <DeleteCollectionDialog
         open={showDeleteDialog}
         onOpenChange={setShowDeleteDialog}
@@ -275,13 +249,11 @@ function CollectionDetailPage() {
         isDeleting={deleteMutation.isPending}
       />
 
-      {/* Add Source Dialog */}
       <AddSourceDialog
         open={showAddSourceDialog}
         onOpenChange={(open) => {
           setShowAddSourceDialog(open);
           if (!open) {
-            // Refetch connections when dialog closes
             refetchConnections();
           }
         }}

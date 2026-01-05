@@ -3,8 +3,6 @@ import * as React from "react";
 
 import { MdxProvider } from "@/components/mdx";
 
-// Dynamically import all MDX files from fern docs
-// Vite's import.meta.glob with eager: false for lazy loading
 const mdxModules = import.meta.glob<{
   default: React.ComponentType;
   frontmatter?: Record<string, unknown>;
@@ -53,7 +51,6 @@ export function useDocsContent(docPath: string | null): DocsContentResult {
     gcTime: Infinity, // Keep cached indefinitely
   });
 
-  // Render the MDX component with provider
   const content = React.useMemo(() => {
     if (!data) return null;
     const { Component } = data;

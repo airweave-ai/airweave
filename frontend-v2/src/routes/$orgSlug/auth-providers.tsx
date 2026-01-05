@@ -38,13 +38,11 @@ function AuthProvidersPage() {
   const { getAccessTokenSilently } = useAuth0();
   const { organization } = useOrg();
 
-  // Organization is guaranteed to be available (layout shows loading state)
   if (!organization) {
     throw new Error("Organization context is required but not available");
   }
   const orgId = organization.id;
 
-  // Dialog state
   const [dialogMode, setDialogMode] = useState<DialogMode>(null);
   const [selectedProvider, setSelectedProvider] = useState<AuthProvider | null>(
     null
@@ -63,7 +61,6 @@ function AuthProvidersPage() {
     help: <AuthProvidersHelp />,
   });
 
-  // Fetch auth providers
   const {
     data: authProviders,
     isLoading: isLoadingProviders,
@@ -76,7 +73,6 @@ function AuthProvidersPage() {
     },
   });
 
-  // Fetch auth provider connections
   const {
     data: connections,
     isLoading: isLoadingConnections,
@@ -89,54 +85,44 @@ function AuthProvidersPage() {
     },
   });
 
-  // Combine real providers with coming soon providers
   const allProviders = useMemo(() => {
     if (!authProviders) return COMING_SOON_PROVIDERS;
     return [...authProviders, ...COMING_SOON_PROVIDERS];
   }, [authProviders]);
 
-  // Get connection for a provider
   const getConnectionForProvider = (shortName: string) => {
     return connections?.find((conn) => conn.short_name === shortName);
   };
 
-  // Handle provider card click
   const handleProviderClick = (
     provider: AuthProvider | (typeof COMING_SOON_PROVIDERS)[0]
   ) => {
-    // Don't handle clicks for coming soon providers
     if ("isComingSoon" in provider && provider.isComingSoon) return;
 
     const connection = getConnectionForProvider(provider.short_name);
 
     if (connection) {
-      // Provider is connected, show details
       setSelectedProvider(provider as AuthProvider);
       setSelectedConnection(connection);
       setDialogMode("detail");
     } else {
-      // Provider not connected, show configure dialog
       setSelectedProvider(provider as AuthProvider);
       setSelectedConnection(null);
       setDialogMode("configure");
     }
   };
 
-  // Handle dialog close
   const handleDialogClose = () => {
     setDialogMode(null);
     setSelectedProvider(null);
     setSelectedConnection(null);
   };
 
-  // Handle edit from detail dialog
   const handleEdit = () => {
     setDialogMode("edit");
   };
 
-  // Handle success from configure dialog
   const handleConfigureSuccess = (connectionId: string) => {
-    // Find the newly created connection
     const newConnection = connections?.find(
       (conn) => conn.readable_id === connectionId
     );
@@ -148,16 +134,13 @@ function AuthProvidersPage() {
     }
   };
 
-  // Handle success from edit dialog
   const handleEditSuccess = () => {
-    // Go back to detail view
     setDialogMode("detail");
   };
 
   const isLoading = isLoadingProviders || isLoadingConnections;
   const error = providersError || connectionsError;
 
-  // Loading state
   if (isLoading) {
     return (
       <div className="p-6">
@@ -166,7 +149,6 @@ function AuthProvidersPage() {
     );
   }
 
-  // Error state
   if (error) {
     return (
       <div className="p-6">
@@ -179,7 +161,6 @@ function AuthProvidersPage() {
     );
   }
 
-  // Empty state (no providers available at all)
   if (allProviders.length === 0) {
     return (
       <div className="p-6">
@@ -192,7 +173,6 @@ function AuthProvidersPage() {
     );
   }
 
-  // Main content - provider grid
   return (
     <div className="p-6">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -215,7 +195,6 @@ function AuthProvidersPage() {
         })}
       </div>
 
-      {/* Configure Dialog */}
       <ConfigureDialog
         open={dialogMode === "configure"}
         onOpenChange={(open) => {
@@ -226,7 +205,6 @@ function AuthProvidersPage() {
         orgId={orgId}
       />
 
-      {/* Detail Dialog */}
       <DetailDialog
         open={dialogMode === "detail"}
         onOpenChange={(open) => {
@@ -238,12 +216,10 @@ function AuthProvidersPage() {
         orgId={orgId}
       />
 
-      {/* Edit Dialog */}
       <EditDialog
         open={dialogMode === "edit"}
         onOpenChange={(open) => {
           if (!open) {
-            // Go back to detail view instead of closing completely
             setDialogMode("detail");
           }
         }}

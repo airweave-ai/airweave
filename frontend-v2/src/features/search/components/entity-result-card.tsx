@@ -21,7 +21,6 @@ interface EntityResultCardProps {
   index: number;
 }
 
-// Comparison function for React.memo
 const arePropsEqual = (
   prevProps: EntityResultCardProps,
   nextProps: EntityResultCardProps
@@ -92,11 +91,9 @@ const EntityResultCardComponent: React.FC<EntityResultCardProps> = ({
   result,
   index,
 }) => {
-  // Extract payload from result
   const payload = (result.payload as Record<string, unknown>) || result;
   const score = result.score as number | undefined;
 
-  // Extract key fields
   const systemMetadata = payload.airweave_system_metadata as
     | Record<string, unknown>
     | undefined;
@@ -117,7 +114,6 @@ const EntityResultCardComponent: React.FC<EntityResultCardProps> = ({
   const openUrl = webUrl || url;
   const hasDownloadUrl = Boolean(url && webUrl && url !== webUrl);
 
-  // Extract title and metadata from payload
   const title = (payload.name as string) || "Untitled";
   const rawEntityType = (systemMetadata?.entity_type as string) || "";
   const entityType = extractEntityType(rawEntityType, sourceName);
@@ -131,11 +127,9 @@ const EntityResultCardComponent: React.FC<EntityResultCardProps> = ({
           .join(" > ")
       : "";
 
-  // Extract the most relevant timestamp
   const relevantTimestamp =
     (payload.updated_at as string) || (payload.created_at as string);
 
-  // Format source name
   const formattedSourceName = sourceName
     .split("_")
     .map(
@@ -144,7 +138,6 @@ const EntityResultCardComponent: React.FC<EntityResultCardProps> = ({
     )
     .join(" ");
 
-  // Extract metadata (exclude system fields)
   const metadata = useMemo(() => {
     const filtered: Record<string, unknown> = {};
     const excludeKeys = [
@@ -346,7 +339,6 @@ const EntityResultCardComponent: React.FC<EntityResultCardProps> = ({
   );
 };
 
-// Export memoized version for better performance
 export const EntityResultCard = React.memo(
   EntityResultCardComponent,
   arePropsEqual
