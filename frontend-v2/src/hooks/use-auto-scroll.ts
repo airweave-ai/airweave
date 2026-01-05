@@ -3,8 +3,6 @@ import { useEffect, useRef, type RefObject } from "react";
 interface AutoScrollOptions {
   /** Whether auto-scrolling is enabled (default: true) */
   enabled?: boolean;
-  /** Scroll behavior - "smooth" or "auto" (default: "auto" for instant scroll) */
-  behavior?: ScrollBehavior;
 }
 
 /**
@@ -23,9 +21,6 @@ interface AutoScrollOptions {
  * // Only scroll when actively receiving
  * const scrollRef = useAutoScroll([events], { enabled: isSearching });
  *
- * // With smooth scrolling
- * const scrollRef = useAutoScroll([data], { behavior: "smooth" });
- *
  * return (
  *   <div ref={scrollRef} className="overflow-auto">
  *     {messages.map(...)}
@@ -37,7 +32,7 @@ export function useAutoScroll<T extends HTMLElement = HTMLDivElement>(
   deps: unknown[],
   options: AutoScrollOptions = {}
 ): RefObject<T | null> {
-  const { enabled = true, behavior = "auto" } = options;
+  const { enabled = true } = options;
   const scrollRef = useRef<T>(null);
 
   useEffect(() => {
@@ -45,7 +40,7 @@ export function useAutoScroll<T extends HTMLElement = HTMLDivElement>(
 
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, behavior, ...deps]);
+  }, [enabled, ...deps]);
 
   return scrollRef;
 }

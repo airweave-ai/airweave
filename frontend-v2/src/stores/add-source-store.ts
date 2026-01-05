@@ -285,7 +285,6 @@ export const useAddSourceStore = create<AddSourceState>()(
         connectionName: state.connectionName,
         createdConnectionId: state.createdConnectionId,
         oauthUrl: state.oauthUrl,
-        // isOpen intentionally not persisted to avoid stale modal state
       }),
     }
   )

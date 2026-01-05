@@ -3,7 +3,7 @@ import {
   useAuth0 as useAuth0Hook,
   User,
 } from "@auth0/auth0-react";
-import { createContext, ReactNode, useContext } from "react";
+import { createContext, ReactNode, useContext, useMemo } from "react";
 import { authConfig, devUser, getRedirectUrl } from "../config/auth";
 import { DataPreloader } from "./data-preloader";
 
@@ -12,9 +12,9 @@ interface AuthProviderProps {
 }
 
 /**
- * Custom auth context for dev mode (when using access token).
+ * Custom auth context that unifies dev mode and Auth0 authentication.
  */
-interface DevAuthContextType {
+interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   user: User | undefined;
@@ -23,22 +23,25 @@ interface DevAuthContextType {
   getAccessTokenSilently: () => Promise<string>;
 }
 
-const DevAuthContext = createContext<DevAuthContextType | null>(null);
+const AuthContext = createContext<AuthContextType | null>(null);
 
 /**
- * Custom hook that works for both Auth0 and dev mode.
- * In dev mode (with access token), returns fake user data.
- * In Auth0 mode, delegates to the real useAuth0 hook.
+ * Hook that provides unified authentication regardless of mode.
  */
-export function useAuth0() {
-  const devContext = useContext(DevAuthContext);
-
-  if (devContext) {
-    return devContext;
+export function useAuth0(): AuthContextType {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth0 must be used within an AuthProvider");
   }
+  return context;
+}
 
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  return useAuth0Hook();
+/**
+ * Internal component that bridges Auth0 context to our unified context.
+ */
+function Auth0Bridge({ children }: { children: ReactNode }) {
+  const auth0 = useAuth0Hook();
+  return <AuthContext.Provider value={auth0}>{children}</AuthContext.Provider>;
 }
 
 /**
@@ -46,30 +49,27 @@ export function useAuth0() {
  * When VITE_ACCESS_TOKEN is set, skips Auth0 and uses dev mode.
  */
 export function AuthProvider({ children }: AuthProviderProps) {
+  const devAuthValue = useMemo<AuthContextType>(
+    () => ({
+      isAuthenticated: true,
+      isLoading: false,
+      user: devUser as User,
+      logout: () => {},
+      loginWithRedirect: () => {},
+      getAccessTokenSilently: async () => authConfig.accessToken,
+    }),
+    []
+  );
+
   if (typeof window === "undefined") {
     return <>{children}</>;
   }
 
   if (!authConfig.authEnabled) {
-    const devAuthValue: DevAuthContextType = {
-      isAuthenticated: true,
-      isLoading: false,
-      user: devUser as User,
-      logout: () => {
-        // Dev mode - no-op
-      },
-      loginWithRedirect: () => {
-        // Dev mode - no-op
-      },
-      getAccessTokenSilently: async () => {
-        return authConfig.accessToken;
-      },
-    };
-
     return (
-      <DevAuthContext.Provider value={devAuthValue}>
+      <AuthContext.Provider value={devAuthValue}>
         {children}
-      </DevAuthContext.Provider>
+      </AuthContext.Provider>
     );
   }
 
@@ -84,7 +84,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }}
       cacheLocation="localstorage"
     >
-      {children}
+      <Auth0Bridge>{children}</Auth0Bridge>
     </Auth0Provider>
   );
 }
