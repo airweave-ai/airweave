@@ -1,41 +1,46 @@
+import { useEffect, useState, useCallback, useRef } from "react";
+import { cn } from "@/lib/utils";
+import { useTheme } from "@/lib/theme-provider";
+import { Button } from "@/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { apiClient } from "@/lib/api";
-import { DESIGN_SYSTEM } from "@/lib/design-system";
-import { useTheme } from "@/lib/theme-provider";
-import { cn } from "@/lib/utils";
+import {
+  ArrowUp,
+  CodeXml,
+  X,
+  Loader2,
+  Square,
+  ClockArrowUp,
+  ListStart,
+  ChartScatter,
+  RefreshCw,
+} from "lucide-react";
+import {
+  FiGitMerge,
+  FiType,
+  FiLayers,
+  FiFilter,
+  FiSliders,
+  FiClock,
+  FiList,
+  FiMessageSquare,
+  FiBox,
+} from "react-icons/fi";
 import { ApiIntegrationDoc } from "@/search/CodeBlock";
 import { JsonFilterEditor } from "@/search/JsonFilterEditor";
 import { RecencyBiasSlider } from "@/search/RecencyBiasSlider";
+import { apiClient } from "@/lib/api";
 import type {
-  PartialStreamUpdate,
   SearchEvent,
+  PartialStreamUpdate,
   StreamPhase,
 } from "@/search/types";
+import { DESIGN_SYSTEM } from "@/lib/design-system";
 import { SingleActionCheckResponse } from "@/types";
-import {
-  ArrowUp,
-  ChartScatter,
-  ClockArrowUp,
-  CodeXml,
-  ListStart,
-  RefreshCw,
-  Square,
-  X,
-} from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  FiFilter,
-  FiGitMerge,
-  FiLayers,
-  FiMessageSquare,
-  FiSliders,
-  FiType,
-} from "react-icons/fi";
 
 // Search method types
 type SearchMethod = "hybrid" | "neural" | "keyword";
@@ -72,6 +77,7 @@ interface SearchBoxProps {
   onSearchStart?: (responseType: "raw" | "completion") => void;
   onSearchEnd?: () => void;
   className?: string;
+  disabled?: boolean; // Disable search when no sources are connected
   // Streaming callbacks (Milestone 3)
   onStreamEvent?: (event: SearchEvent) => void;
   onStreamUpdate?: (partial: PartialStreamUpdate) => void;
@@ -82,14 +88,6 @@ class TransientStreamError extends Error {
   constructor(message?: string) {
     super(message);
     this.name = "TransientStreamError";
-  }
-}
-
-// Error that has already been handled and sent to onSearch - should not trigger fallback error handling
-class HandledStreamError extends Error {
-  constructor(message?: string) {
-    super(message);
-    this.name = "HandledStreamError";
   }
 }
 
@@ -114,6 +112,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
   onStreamUpdate: onStreamUpdateProp,
   onCancel,
   className,
+  disabled = false,
 }) => {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
@@ -293,7 +292,8 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
       !collectionId ||
       isSearching ||
       !queriesAllowed ||
-      isCheckingUsage
+      isCheckingUsage ||
+      disabled
     )
       return;
 
@@ -496,7 +496,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                 currentResponseType,
                 responseTime
               );
-              throw new HandledStreamError(errorMessage);
+              throw new Error(errorMessage);
             }
             case "done": {
               const endTime = performance.now();
@@ -527,9 +527,6 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
       const err = error as any;
       if (err instanceof TransientStreamError) {
         console.warn("Transient search stream issue:", err.message);
-      } else if (err instanceof HandledStreamError) {
-        // Already handled and sent to onSearch - don't overwrite with generic message
-        console.warn("Handled stream error:", err.message);
       } else if (
         err &&
         (err.name === "AbortError" || err.message === "AbortError")
@@ -588,6 +585,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
     onStreamUpdateProp,
     queriesAllowed,
     isCheckingUsage,
+    disabled,
     checkQueriesAllowed,
   ]);
 
@@ -748,7 +746,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
               </Tooltip>
             </TooltipProvider>
 
-            {!queriesAllowed || isCheckingUsage ? (
+            {!queriesAllowed || isCheckingUsage || disabled ? (
               <TooltipProvider delayDuration={0}>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -762,7 +760,8 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                               !hasQuery ||
                               isSearching ||
                               !queriesAllowed ||
-                              isCheckingUsage
+                              isCheckingUsage ||
+                              disabled
                             )
                               return;
                             e.preventDefault();
@@ -770,7 +769,9 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                           }
                         }}
                         placeholder="Ask a question about your data"
-                        disabled={!queriesAllowed || isCheckingUsage}
+                        disabled={
+                          !queriesAllowed || isCheckingUsage || disabled
+                        }
                         className={cn(
                           // pr-16 ensures text wraps before overlay button
                           // increase right padding to prevent text from flowing under the top-right Code button at all widths
@@ -779,7 +780,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                           isDark
                             ? "placeholder:text-gray-500"
                             : "placeholder:text-gray-500",
-                          (!queriesAllowed || isCheckingUsage) &&
+                          (!queriesAllowed || isCheckingUsage || disabled) &&
                             "opacity-60 cursor-not-allowed"
                         )}
                       />
@@ -789,6 +790,8 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                     <p className={DESIGN_SYSTEM.typography.sizes.body}>
                       {isCheckingUsage ? (
                         "Checking usage…"
+                      ) : disabled ? (
+                        "Connect a source to enable search."
                       ) : queriesCheckDetails?.reason ===
                         "usage_limit_exceeded" ? (
                         <>
@@ -831,7 +834,8 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                       !hasQuery ||
                       isSearching ||
                       !queriesAllowed ||
-                      isCheckingUsage
+                      isCheckingUsage ||
+                      disabled
                     )
                       return;
                     e.preventDefault();
@@ -1567,7 +1571,10 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                       disabled={
                         isSearching
                           ? false
-                          : !hasQuery || !queriesAllowed || isCheckingUsage
+                          : !hasQuery ||
+                            !queriesAllowed ||
+                            isCheckingUsage ||
+                            disabled
                       }
                       className={cn(
                         "h-8 w-8 rounded-md border shadow-sm flex items-center justify-center transition-all",
@@ -1579,7 +1586,10 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                           ? isDark
                             ? "bg-gray-800 border-border hover:bg-muted text-foreground border-gray-700"
                             : "bg-white border-border hover:bg-muted text-foreground"
-                          : hasQuery && queriesAllowed && !isCheckingUsage
+                          : hasQuery &&
+                            queriesAllowed &&
+                            !isCheckingUsage &&
+                            !disabled
                           ? isDark
                             ? "bg-gray-800 border-border hover:bg-muted text-foreground border-gray-700"
                             : "bg-white border-border hover:bg-muted text-foreground"
@@ -1593,6 +1603,8 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                           : canRetrySearch
                           ? transientIssue?.message ||
                             "Connection interrupted. Click to retry."
+                          : disabled
+                          ? "Connect a source to enable search."
                           : !hasQuery
                           ? "Type a question to enable"
                           : !queriesAllowed
