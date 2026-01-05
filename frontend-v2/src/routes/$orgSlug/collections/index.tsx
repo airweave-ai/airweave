@@ -1,7 +1,13 @@
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { LayoutGrid, Loader2, Plus } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -10,13 +16,18 @@ import { LoadingState } from "@/components/ui/loading-state";
 import { usePageHeader } from "@/components/ui/page-header";
 import { useRightSidebarContent } from "@/components/ui/right-sidebar";
 import {
-  CollectionCard,
   CollectionsCode,
   CollectionsDocs,
   CollectionsHelp,
+  CollectionsTable,
   SourcesGrid,
 } from "@/features/collections";
-import { fetchCollections, fetchSources, type Collection } from "@/lib/api";
+import {
+  deleteCollection,
+  fetchCollections,
+  fetchSources,
+  type Collection,
+} from "@/lib/api";
 import { useAuth0 } from "@/lib/auth-provider";
 import { useOrg } from "@/lib/org-context";
 import { queryKeys } from "@/lib/query-keys";
@@ -32,8 +43,14 @@ function CollectionsPage() {
   const navigate = useNavigate();
   const { getAccessTokenSilently } = useAuth0();
   const { organization, getOrgSlug } = useOrg();
+  const queryClient = useQueryClient();
   const openCreateCollection = useCreateCollectionStore((s) => s.open);
   const openWithSource = useCreateCollectionStore((s) => s.openWithSource);
+
+  const [selectedCollectionId, setSelectedCollectionId] = useState<
+    string | null
+  >(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // Organization is guaranteed to be available (layout shows loading state)
   if (!organization) {
@@ -98,11 +115,84 @@ function CollectionsPage() {
     },
   });
 
+  // Delete mutation with optimistic updates
+  const deleteMutation = useMutation({
+    mutationFn: async (readableIds: string[]) => {
+      const token = await getAccessTokenSilently();
+      await Promise.all(
+        readableIds.map((readableId) =>
+          deleteCollection(token, orgId, readableId)
+        )
+      );
+    },
+    onMutate: async (readableIds) => {
+      const listKey = queryKeys.collections.list(orgId);
+
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: listKey });
+
+      // Snapshot the previous value
+      const previousData = queryClient.getQueryData(listKey);
+
+      // Create a Set for faster lookup
+      const readableIdsSet = new Set(readableIds);
+
+      // Optimistically update to remove the collections from all pages
+      queryClient.setQueryData(
+        listKey,
+        (old: { pages: Collection[][]; pageParams: number[] } | undefined) => {
+          if (!old) return old;
+          return {
+            ...old,
+            pages: old.pages.map((page) =>
+              page.filter(
+                (collection) => !readableIdsSet.has(collection.readable_id)
+              )
+            ),
+          };
+        }
+      );
+
+      return { previousData };
+    },
+    onError: (_err, _readableIds, context) => {
+      // If the mutation fails, use the context returned from onMutate to roll back
+      if (context?.previousData) {
+        queryClient.setQueryData(
+          queryKeys.collections.list(orgId),
+          context.previousData
+        );
+      }
+    },
+    onSuccess: (_data, readableIds) => {
+      const count = readableIds.length;
+      toast.success(
+        count > 1 ? `${count} collections deleted` : "Collection deleted"
+      );
+    },
+    onSettled: () => {
+      // Always refetch after error or success to ensure sync with server
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.collections.list(orgId),
+      });
+    },
+  });
+
   // Flatten collections pages
   const collections = useMemo(
     () => collectionsData?.pages.flat() ?? [],
     [collectionsData?.pages]
   );
+
+  // Derive selectedCollection from selectedCollectionId
+  const selectedCollection = useMemo(() => {
+    if (collections.length === 0) return null;
+    if (selectedCollectionId) {
+      const found = collections.find((c) => c.id === selectedCollectionId);
+      if (found) return found;
+    }
+    return collections[0];
+  }, [collections, selectedCollectionId]);
 
   // Sort sources alphabetically
   const sortedSources = useMemo(() => {
@@ -166,47 +256,48 @@ function CollectionsPage() {
     );
   }
 
-  // Main content - collections grid and sources
+  // Main content - collections table and sources
   return (
-    <div className="space-y-8 p-6">
-      {/* Collections Grid */}
-      <div>
-        <div className="flex flex-wrap gap-4">
-          {collections.map((collection) => (
-            <CollectionCard
-              className="w-64"
-              key={collection.id}
-              id={collection.id}
-              name={collection.name}
-              readableId={collection.readable_id}
-              status={collection.status}
-              onClick={() => handleCollectionClick(collection)}
-            />
-          ))}
+    <div className="space-y-8">
+      {/* Collections Table */}
+      <CollectionsTable
+        data={collections}
+        onDelete={(readableIds) => deleteMutation.mutate(readableIds)}
+        onRowClick={handleCollectionClick}
+        selectedCollection={selectedCollection}
+        onSelectCollection={(collection) =>
+          setSelectedCollectionId(collection?.id ?? null)
+        }
+        deleteDialogOpen={deleteDialogOpen}
+        onDeleteDialogChange={setDeleteDialogOpen}
+      />
+
+      {/* Load more button */}
+      {hasNextPage && (
+        <div className="flex justify-center">
+          <Button
+            variant="outline"
+            onClick={() => fetchNextPage()}
+            disabled={isFetchingNextPage}
+          >
+            {isFetchingNextPage ? (
+              <>
+                <Loader2 className="mr-2 size-4 animate-spin" />
+                Loading...
+              </>
+            ) : (
+              "Load more"
+            )}
+          </Button>
         </div>
+      )}
 
-        {/* Load more button */}
-        {hasNextPage && (
-          <div className="flex justify-center pt-6">
-            <Button
-              variant="outline"
-              onClick={() => fetchNextPage()}
-              disabled={isFetchingNextPage}
-            >
-              {isFetchingNextPage ? (
-                <>
-                  <Loader2 className="mr-2 size-4 animate-spin" />
-                  Loading...
-                </>
-              ) : (
-                "Load more"
-              )}
-            </Button>
-          </div>
-        )}
+      <div className="px-6 pb-6">
+        <SourcesGrid
+          sources={sortedSources}
+          onSourceClick={handleSourceClick}
+        />
       </div>
-
-      <SourcesGrid sources={sortedSources} onSourceClick={handleSourceClick} />
     </div>
   );
 }

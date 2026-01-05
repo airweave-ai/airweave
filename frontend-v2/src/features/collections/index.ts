@@ -1,7 +1,9 @@
 // Components
 export { AddSourceDialog } from "./components/add-source";
+export { BulkDeleteCollectionsDialog } from "./components/bulk-delete-collections-dialog";
 export { CollectionCard } from "./components/collection-card";
 export { CollectionHeader } from "./components/collection-header";
+export { CollectionsTable } from "./components/collections-table";
 export { CreateCollectionDialog } from "./components/create-dialog";
 export { DeleteCollectionDialog } from "./components/delete-collection-dialog";
 export { EntityStateList } from "./components/entity-state-list";
