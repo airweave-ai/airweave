@@ -4,8 +4,6 @@
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useIsDark } from "@/hooks/use-is-dark";
-import { cn } from "@/lib/utils";
 
 interface AuthField {
   name: string;
@@ -31,16 +29,9 @@ export function DirectAuthFields({
   values,
   onChange,
 }: DirectAuthFieldsProps) {
-  const isDark = useIsDark();
-
   return (
     <div className="space-y-4">
-      <Label
-        className={cn(
-          "text-xs tracking-wider uppercase",
-          isDark ? "text-gray-400" : "text-gray-500"
-        )}
-      >
+      <Label className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">
         Credentials
       </Label>
       {fields.map((field) => (
@@ -50,12 +41,7 @@ export function DirectAuthFields({
             {field.required && <span className="ml-1 text-red-500">*</span>}
           </Label>
           {field.description && (
-            <p
-              className={cn(
-                "text-xs",
-                isDark ? "text-gray-500" : "text-gray-400"
-              )}
-            >
+            <p className="text-xs text-gray-400 dark:text-gray-500">
               {field.description}
             </p>
           )}
@@ -63,11 +49,7 @@ export function DirectAuthFields({
             type={isSensitiveField(field.name) ? "password" : "text"}
             value={values[field.name] || ""}
             onChange={(e) => onChange(field.name, e.target.value)}
-            className={cn(
-              isDark
-                ? "border-gray-700 bg-gray-800 placeholder:text-gray-500"
-                : "border-gray-200 bg-white placeholder:text-gray-400"
-            )}
+            className="border-gray-200 bg-white placeholder:text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:placeholder:text-gray-500"
           />
         </div>
       ))}

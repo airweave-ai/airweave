@@ -38,31 +38,19 @@ export function CollectionCard({
     <div
       className={cn(
         "group relative flex h-full min-w-[240px] cursor-pointer flex-col overflow-hidden rounded-xl border transition-colors",
-        className,
-        isDark
-          ? "border-slate-800 bg-slate-900 hover:border-slate-700"
-          : "border-slate-200 bg-white hover:border-slate-300"
+        "border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700",
+        className
       )}
       onClick={onClick}
     >
       {/* Card Content */}
       <div className="flex flex-1 flex-col p-4">
         <div className="mb-2 flex items-start justify-between">
-          <h3
-            className={cn(
-              "text-xl font-semibold tracking-tight",
-              isDark ? "text-white" : "text-slate-900"
-            )}
-          >
+          <h3 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">
             {name}
           </h3>
         </div>
-        <p
-          className={cn(
-            "mb-3 truncate text-sm",
-            isDark ? "text-slate-400" : "text-slate-500"
-          )}
-        >
+        <p className="mb-3 truncate text-sm text-slate-500 dark:text-slate-400">
           {readableId}.airweave.ai
         </p>
 
@@ -90,22 +78,12 @@ export function CollectionCard({
       </div>
 
       {/* Card Footer */}
-      <div
-        className={cn(
-          "flex items-center justify-between border-t p-2",
-          isDark ? "border-slate-800" : "border-slate-100"
-        )}
-      >
+      <div className="flex items-center justify-between border-t border-slate-100 p-2 dark:border-slate-800">
         {/* View & Edit Button */}
         <Button
           variant="ghost"
           size="sm"
-          className={cn(
-            "rounded-lg text-sm",
-            isDark
-              ? "text-slate-300 hover:bg-slate-800 hover:text-white"
-              : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
-          )}
+          className="rounded-lg text-sm text-slate-700 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
           onClick={(e) => {
             e.stopPropagation();
             onClick?.();
@@ -144,14 +122,7 @@ function SourceConnectionIcons({
 }: SourceConnectionIconsProps) {
   if (connections.length === 0) {
     return (
-      <div
-        className={cn(
-          "flex h-10 w-10 items-center justify-center rounded-lg border p-2",
-          isDark
-            ? "border-slate-700 bg-slate-800"
-            : "border-slate-200 bg-slate-100"
-        )}
-      >
+      <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 p-2 dark:border-slate-700 dark:bg-slate-800">
         <Plus className="h-full w-full text-slate-400" />
       </div>
     );
@@ -160,14 +131,7 @@ function SourceConnectionIcons({
   if (connections.length === 1) {
     return (
       <div className="flex items-center justify-center">
-        <div
-          className={cn(
-            "flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border p-1",
-            isDark
-              ? "border-slate-700 bg-slate-800"
-              : "border-slate-200 bg-white"
-          )}
-        >
+        <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white p-1 dark:border-slate-700 dark:bg-slate-800">
           <img
             src={getAppIconUrl(
               connections[0].short_name,
@@ -193,12 +157,7 @@ function SourceConnectionIcons({
         {connections.slice(0, 2).map((connection, index) => (
           <div
             key={connection.id}
-            className={cn(
-              "flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border p-1.5",
-              isDark
-                ? "border-slate-700 bg-slate-800"
-                : "border-slate-200 bg-white"
-            )}
+            className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white p-1.5 dark:border-slate-700 dark:bg-slate-800"
             style={{ zIndex: 2 - index }}
           >
             <img
@@ -219,12 +178,7 @@ function SourceConnectionIcons({
         ))}
       </div>
       {connections.length > 2 && (
-        <div
-          className={cn(
-            "ml-1 text-xs font-medium",
-            isDark ? "text-slate-400" : "text-slate-500"
-          )}
-        >
+        <div className="ml-1 text-xs font-medium text-slate-500 dark:text-slate-400">
           +{connections.length - 2}
         </div>
       )}

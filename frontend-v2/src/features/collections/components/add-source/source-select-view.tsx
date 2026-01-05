@@ -114,52 +114,29 @@ export function SourceSelectView({
       {/* Header with search */}
       <div className="border-b px-6 py-4">
         <div className="mb-4">
-          <h2
-            className={cn(
-              "text-xl font-semibold",
-              isDark ? "text-white" : "text-gray-900"
-            )}
-          >
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
             Select a source
           </h2>
-          <p
-            className={cn(
-              "text-sm",
-              isDark ? "text-gray-400" : "text-gray-500"
-            )}
-          >
+          <p className="text-sm text-gray-500 dark:text-gray-400">
             Choose a data source to connect to your collection
           </p>
         </div>
 
         {/* Search input */}
         <div className="relative">
-          <Search
-            className={cn(
-              "absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2",
-              isDark ? "text-gray-500" : "text-gray-400"
-            )}
-          />
+          <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
           <Input
             type="text"
             placeholder="Search sources..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className={cn(
-              "pr-8 pl-9",
-              isDark
-                ? "border-gray-700 bg-gray-800 placeholder:text-gray-500"
-                : "border-gray-200 bg-white placeholder:text-gray-400"
-            )}
+            className="border-gray-200 bg-white pr-8 pl-9 placeholder:text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:placeholder:text-gray-500"
             autoFocus
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery("")}
-              className={cn(
-                "absolute top-1/2 right-2 -translate-y-1/2 rounded p-1 transition-colors",
-                isDark ? "hover:bg-gray-700" : "hover:bg-gray-100"
-              )}
+              className="absolute top-1/2 right-2 -translate-y-1/2 rounded p-1 transition-colors hover:bg-gray-100 dark:hover:bg-gray-700"
             >
               <X className="h-3 w-3" />
             </button>
@@ -167,12 +144,7 @@ export function SourceSelectView({
         </div>
 
         {/* Results count */}
-        <div
-          className={cn(
-            "mt-2 text-xs",
-            isDark ? "text-gray-500" : "text-gray-400"
-          )}
-        >
+        <div className="mt-2 text-xs text-gray-400 dark:text-gray-500">
           {sortedSources.length}{" "}
           {sortedSources.length === 1 ? "source" : "sources"} available
         </div>
@@ -206,12 +178,7 @@ export function SourceSelectView({
                   <TooltipTrigger asChild>
                     <button
                       onClick={() => handleSelectSource(source)}
-                      className={cn(
-                        "group flex flex-col items-center gap-2 rounded-lg border p-4 transition-all",
-                        isDark
-                          ? "border-gray-800 bg-gray-900/50 hover:border-gray-700 hover:bg-gray-900"
-                          : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
-                      )}
+                      className="group flex flex-col items-center gap-2 rounded-lg border border-gray-200 bg-white p-4 transition-all hover:border-gray-300 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900/50 dark:hover:border-gray-700 dark:hover:bg-gray-900"
                     >
                       {/* Source icon */}
                       <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-md">
@@ -240,24 +207,14 @@ export function SourceSelectView({
                       </div>
 
                       {/* Source name */}
-                      <span
-                        className={cn(
-                          "line-clamp-1 text-center text-xs font-medium",
-                          isDark ? "text-white" : "text-gray-900"
-                        )}
-                      >
+                      <span className="line-clamp-1 text-center text-xs font-medium text-gray-900 dark:text-white">
                         {source.name}
                       </span>
                     </button>
                   </TooltipTrigger>
                   <TooltipContent
                     side="top"
-                    className={cn(
-                      "max-w-xs border p-4 shadow-lg",
-                      isDark
-                        ? "border-gray-700 bg-gray-900 text-gray-100"
-                        : "border-gray-200 bg-white text-gray-900"
-                    )}
+                    className="max-w-xs border border-gray-200 bg-white p-4 text-gray-900 shadow-lg dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
                   >
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
@@ -281,12 +238,7 @@ export function SourceSelectView({
                           {source.labels.map((label, idx) => (
                             <span
                               key={idx}
-                              className={cn(
-                                "rounded-full px-2 py-0.5 text-xs",
-                                isDark
-                                  ? "bg-gray-800 text-gray-300"
-                                  : "bg-gray-100 text-gray-600"
-                              )}
+                              className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300"
                             >
                               {label}
                             </span>
@@ -303,20 +255,10 @@ export function SourceSelectView({
       </div>
 
       {/* Footer with cancel button */}
-      <div
-        className={cn(
-          "border-t px-6 py-4",
-          isDark ? "border-gray-800" : "border-gray-200"
-        )}
-      >
+      <div className="border-t border-gray-200 px-6 py-4 dark:border-gray-800">
         <button
           onClick={onCancel}
-          className={cn(
-            "text-sm font-medium transition-colors",
-            isDark
-              ? "text-gray-400 hover:text-gray-200"
-              : "text-gray-600 hover:text-gray-900"
-          )}
+          className="text-sm font-medium text-gray-600 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
         >
           Cancel
         </button>

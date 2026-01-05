@@ -263,20 +263,10 @@ export function SourceConfigView({
             authenticationUrl={oauthUrl}
           />
         </div>
-        <div
-          className={cn(
-            "border-t px-6 py-4",
-            isDark ? "border-gray-800" : "border-gray-200"
-          )}
-        >
+        <div className="border-t border-gray-200 px-6 py-4 dark:border-gray-800">
           <button
             onClick={onCancel}
-            className={cn(
-              "text-sm font-medium transition-colors",
-              isDark
-                ? "text-gray-400 hover:text-gray-200"
-                : "text-gray-600 hover:text-gray-900"
-            )}
+            className="text-sm font-medium text-gray-600 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
           >
             Close
           </button>
@@ -300,12 +290,7 @@ export function SourceConfigView({
         <div className="flex items-center gap-3">
           <button
             onClick={onBack}
-            className={cn(
-              "rounded-lg p-1.5 transition-colors",
-              isDark
-                ? "text-gray-400 hover:bg-gray-800"
-                : "text-gray-500 hover:bg-gray-100"
-            )}
+            className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
           >
             <ArrowLeft className="h-4 w-4" />
           </button>
@@ -316,20 +301,10 @@ export function SourceConfigView({
               className="h-6 w-6 rounded"
             />
             <div>
-              <h2
-                className={cn(
-                  "text-lg font-semibold",
-                  isDark ? "text-white" : "text-gray-900"
-                )}
-              >
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
                 Configure {sourceName}
               </h2>
-              <p
-                className={cn(
-                  "text-sm",
-                  isDark ? "text-gray-400" : "text-gray-500"
-                )}
-              >
+              <p className="text-sm text-gray-500 dark:text-gray-400">
                 Set up your connection settings
               </p>
             </div>
@@ -342,23 +317,14 @@ export function SourceConfigView({
         <div className="space-y-6">
           {/* Connection name */}
           <div className="space-y-2">
-            <Label
-              className={cn(
-                "text-xs tracking-wider uppercase",
-                isDark ? "text-gray-400" : "text-gray-500"
-              )}
-            >
+            <Label className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">
               Connection Name
             </Label>
             <Input
               value={connectionName}
               onChange={(e) => onConnectionNameChange(e.target.value)}
               placeholder="Enter connection name"
-              className={cn(
-                isDark
-                  ? "border-gray-700 bg-gray-800 placeholder:text-gray-500"
-                  : "border-gray-200 bg-white placeholder:text-gray-400"
-              )}
+              className="border-gray-200 bg-white placeholder:text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:placeholder:text-gray-500"
             />
             {connectionName &&
               (connectionName.length < 4 || connectionName.length > 42) && (
@@ -415,20 +381,10 @@ export function SourceConfigView({
       </div>
 
       {/* Footer with actions */}
-      <div
-        className={cn(
-          "flex items-center justify-between border-t px-6 py-4",
-          isDark ? "border-gray-800" : "border-gray-200"
-        )}
-      >
+      <div className="flex items-center justify-between border-t border-gray-200 px-6 py-4 dark:border-gray-800">
         <button
           onClick={onCancel}
-          className={cn(
-            "text-sm font-medium transition-colors",
-            isDark
-              ? "text-gray-400 hover:text-gray-200"
-              : "text-gray-600 hover:text-gray-900"
-          )}
+          className="text-sm font-medium text-gray-600 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
         >
           Cancel
         </button>
@@ -468,16 +424,9 @@ function AuthMethodSelector({
   selectedAuthMode,
   onAuthModeChange,
 }: AuthMethodSelectorProps) {
-  const isDark = useIsDark();
-
   return (
     <div className="space-y-2">
-      <Label
-        className={cn(
-          "text-xs tracking-wider uppercase",
-          isDark ? "text-gray-400" : "text-gray-500"
-        )}
-      >
+      <Label className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">
         Authentication Method
       </Label>
       <div className="flex gap-2">
@@ -487,12 +436,8 @@ function AuthMethodSelector({
             className={cn(
               "flex-1 rounded-lg border px-4 py-2 text-sm font-medium transition-colors",
               selectedAuthMode === "direct_auth"
-                ? isDark
-                  ? "border-blue-500 bg-blue-500/20 text-blue-400"
-                  : "border-blue-500 bg-blue-50 text-blue-600"
-                : isDark
-                  ? "border-gray-700 bg-gray-800 text-gray-300 hover:border-gray-600"
-                  : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
+                ? "border-blue-500 bg-blue-50 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400"
+                : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-gray-600"
             )}
           >
             API Key / Credentials
@@ -504,12 +449,8 @@ function AuthMethodSelector({
             className={cn(
               "flex-1 rounded-lg border px-4 py-2 text-sm font-medium transition-colors",
               selectedAuthMode === "oauth2"
-                ? isDark
-                  ? "border-blue-500 bg-blue-500/20 text-blue-400"
-                  : "border-blue-500 bg-blue-50 text-blue-600"
-                : isDark
-                  ? "border-gray-700 bg-gray-800 text-gray-300 hover:border-gray-600"
-                  : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
+                ? "border-blue-500 bg-blue-50 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400"
+                : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-gray-600"
             )}
           >
             OAuth

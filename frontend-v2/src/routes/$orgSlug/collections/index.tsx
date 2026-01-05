@@ -15,7 +15,7 @@ import {
   CollectionsDocs,
   CollectionsHelp,
   CreateCollectionDialog,
-  SourceCard,
+  SourcesGrid,
 } from "@/features/collections";
 import { fetchCollections, fetchSources, type Collection } from "@/lib/api";
 import { useAuth0 } from "@/lib/auth-provider";
@@ -151,6 +151,18 @@ function CollectionsPage() {
     );
   }
 
+  // Render the dialog once (shared across all states)
+  const createDialog = (
+    <CreateCollectionDialog
+      open={isCreateDialogOpen}
+      onOpenChange={(open) => {
+        if (!open) closeCreateCollection();
+      }}
+      orgId={orgId}
+      onSuccess={handleCollectionCreated}
+    />
+  );
+
   // Empty state - no collections yet
   if (collections.length === 0 && !isLoadingCollections) {
     return (
@@ -166,37 +178,12 @@ function CollectionsPage() {
           </Button>
         </EmptyState>
 
-        {/* Still show sources grid even when no collections */}
-        {sortedSources.length > 0 && (
-          <div>
-            <h2 className="mb-2 text-xl font-semibold sm:text-2xl">
-              Or start with a source
-            </h2>
-            <p className="text-muted-foreground mb-4 text-xs sm:text-sm">
-              Choose a source to add to your new collection
-            </p>
-            <div className="xs:grid-cols-2 grid auto-rows-fr grid-cols-1 gap-3 sm:grid-cols-3 md:grid-cols-4">
-              {sortedSources.map((source) => (
-                <SourceCard
-                  key={source.id}
-                  id={source.id}
-                  name={source.name}
-                  shortName={source.short_name}
-                  onClick={() => handleSourceClick(source)}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
-        <CreateCollectionDialog
-          open={isCreateDialogOpen}
-          onOpenChange={(open) => {
-            if (!open) closeCreateCollection();
-          }}
-          orgId={orgId}
-          onSuccess={handleCollectionCreated}
+        <SourcesGrid
+          sources={sortedSources}
+          onSourceClick={handleSourceClick}
         />
+
+        {createDialog}
       </div>
     );
   }
@@ -241,37 +228,9 @@ function CollectionsPage() {
         )}
       </div>
 
-      {/* Sources Grid */}
-      {sortedSources.length > 0 && (
-        <div>
-          <h2 className="mb-2 text-xl font-semibold sm:text-2xl">
-            Add a new source
-          </h2>
-          <p className="text-muted-foreground mb-4 text-xs sm:text-sm">
-            Choose a source to add to a collection
-          </p>
-          <div className="xs:grid-cols-2 grid auto-rows-fr grid-cols-1 gap-3 sm:grid-cols-3 md:grid-cols-4">
-            {sortedSources.map((source) => (
-              <SourceCard
-                key={source.id}
-                id={source.id}
-                name={source.name}
-                shortName={source.short_name}
-                onClick={() => handleSourceClick(source)}
-              />
-            ))}
-          </div>
-        </div>
-      )}
+      <SourcesGrid sources={sortedSources} onSourceClick={handleSourceClick} />
 
-      <CreateCollectionDialog
-        open={isCreateDialogOpen}
-        onOpenChange={(open) => {
-          if (!open) closeCreateCollection();
-        }}
-        orgId={orgId}
-        onSuccess={handleCollectionCreated}
-      />
+      {createDialog}
     </div>
   );
 }
