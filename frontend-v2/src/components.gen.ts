@@ -166,6 +166,13 @@ export const uiComponents: ComponentInfo[] = [
     ]
   },
   {
+    "name": "label",
+    "path": "components/ui/label.tsx",
+    "exports": [
+      "Label"
+    ]
+  },
+  {
     "name": "loading-state",
     "path": "components/ui/loading-state.tsx",
     "exports": [

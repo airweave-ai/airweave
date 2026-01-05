@@ -151,7 +151,6 @@ function RightSidebarTabs({
         {tabs.map((tab) => (
           <Button
             key={tab.id}
-            // variant={activeTab === tab.id ? "secondary" : "ghost"}
             size="icon"
             className={cn(
               "h-auto w-10 flex-col rounded-lg bg-transparent px-4 py-2 font-mono text-xs text-slate-50 uppercase transition-colors hover:bg-white/10",
@@ -207,11 +206,6 @@ function RightSidebarPanel({
         {...props}
       >
         <div className="flex h-full flex-col py-2.5">
-          {/* <div className="flex h-14 items-center border-b px-4">
-            <h2 className="text-sm font-semibold capitalize">
-              {activeTab || "Panel"}
-            </h2>
-          </div> */}
           <div className="flex-1 overflow-auto p-4">
             {currentContent || (
               <div className="text-muted-foreground text-sm">

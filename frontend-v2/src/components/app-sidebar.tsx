@@ -127,7 +127,7 @@ export function AppSidebar() {
             >
               <Plus className="size-4" />
               <span className="group-data-[collapsible=icon]:hidden">
-                New collection
+                Create collection
               </span>
             </Button>
           </SidebarMenuItem>

@@ -1,4 +1,5 @@
 // Components
+export { AddSourceDialog } from "./components/add-source";
 export { CollectionCard } from "./components/collection-card";
 export { CollectionHeader } from "./components/collection-header";
 export { CreateCollectionDialog } from "./components/create-dialog";
@@ -14,8 +15,8 @@ export {
 } from "./components/sidebar-content";
 export { SourceAuthenticationView } from "./components/source-authentication-view";
 export { SourceCard } from "./components/source-card";
-export { SourceConnectionsList } from "./components/source-connections-list";
 export { SourceConnectionStateView } from "./components/source-connection-state-view";
+export { SourceConnectionsList } from "./components/source-connections-list";
 export { StatusBadge } from "./components/status-badge";
 export { SyncErrorCard } from "./components/sync-error-card";
 

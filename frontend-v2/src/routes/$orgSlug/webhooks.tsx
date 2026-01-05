@@ -81,7 +81,7 @@ function WebhooksPage() {
     actions: (
       <Button>
         <Plus className="mr-2 size-4" />
-        Add Webhook
+        Create Webhook
       </Button>
     ),
   });
@@ -101,7 +101,7 @@ function WebhooksPage() {
       >
         <Button variant="outline">
           <Plus className="mr-2 size-4" />
-          Add Webhook
+          Create Webhook
         </Button>
       </EmptyState>
     </div>

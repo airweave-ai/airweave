@@ -114,6 +114,67 @@ export interface UpdateSourceConnectionRequest {
 }
 
 /**
+ * Authentication options for creating a source connection
+ */
+export interface CreateSourceConnectionAuth {
+  /** For direct auth (API keys, passwords) */
+  credentials?: Record<string, string>;
+  /** OAuth redirect URI */
+  redirect_uri?: string;
+  /** Custom OAuth client ID (BYOC) */
+  client_id?: string;
+  /** Custom OAuth client secret (BYOC) */
+  client_secret?: string;
+  /** OAuth1 consumer key */
+  consumer_key?: string;
+  /** OAuth1 consumer secret */
+  consumer_secret?: string;
+  /** Auth provider readable ID for external provider auth */
+  provider_readable_id?: string;
+  /** Auth provider specific config */
+  provider_config?: Record<string, string>;
+}
+
+/**
+ * Request type for creating a source connection
+ */
+export interface CreateSourceConnectionRequest {
+  name: string;
+  description?: string;
+  short_name: string;
+  readable_collection_id: string;
+  authentication?: CreateSourceConnectionAuth;
+  config?: Record<string, unknown>;
+  sync_immediately?: boolean;
+  redirect_url?: string;
+}
+
+/**
+ * Create a new source connection
+ */
+export async function createSourceConnection(
+  token: string,
+  orgId: string,
+  data: CreateSourceConnectionRequest
+): Promise<SourceConnection> {
+  const response = await fetch(`${API_BASE_URL}/source-connections`, {
+    method: "POST",
+    headers: getAuthHeaders(token, orgId),
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const message = await parseErrorResponse(
+      response,
+      "Failed to create source connection"
+    );
+    throw new Error(message);
+  }
+
+  return response.json();
+}
+
+/**
  * Fetch source connections for a collection
  */
 export async function fetchSourceConnections(

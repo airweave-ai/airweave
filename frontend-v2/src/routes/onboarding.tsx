@@ -2,11 +2,10 @@
  * Onboarding route - Multi-step organization creation wizard
  */
 
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Check, ChevronLeft, ChevronRight, Loader2, X } from "lucide-react";
 import { useCallback, useState } from "react";
-import { toast } from "sonner";
 
 import { useBeforeUnload } from "@/hooks/use-before-unload";
 import { useKeyboardShortcut } from "@/hooks/use-keyboard-shortcut";
@@ -24,16 +23,13 @@ import {
   StepSubscription,
   StepTeamInvites,
   StepUserRole,
+  useCreateOrganization,
+  useOnboardingValidation,
   type OnboardingData,
 } from "@/features/onboarding";
 import { useIsDark } from "@/hooks/use-is-dark";
-import {
-  createCheckoutSession,
-  createOrganization,
-  fetchOrganizations,
-} from "@/lib/api/organizations";
+import { fetchOrganizations } from "@/lib/api/organizations";
 import { useAuth0 } from "@/lib/auth-provider";
-import { generateOrgSlug } from "@/lib/org-utils";
 import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 
@@ -65,6 +61,13 @@ function OnboardingPage() {
 
   const hasOrganizations = organizations.length > 0;
 
+  // Use extracted hooks
+  const createOrgMutation = useCreateOrganization(formData);
+  const { isStepValid, validateAndProceed } = useOnboardingValidation({
+    formData,
+    currentStep,
+  });
+
   // Handle ESC key to go back to home on first step
   useKeyboardShortcut({
     key: "Escape",
@@ -82,135 +85,10 @@ function OnboardingPage() {
     []
   );
 
-  // Create organization mutation
-  const createOrgMutation = useMutation({
-    mutationFn: async () => {
-      const token = await getAccessTokenSilently();
-
-      const org_metadata = {
-        onboarding: {
-          organizationSize: formData.organizationSize,
-          userRole: formData.userRole,
-          organizationType: formData.organizationType,
-          subscriptionPlan: formData.subscriptionPlan,
-          teamInvites: formData.teamMembers,
-          completedAt: new Date().toISOString(),
-        },
-      };
-
-      const organization = await createOrganization(token, {
-        name: formData.organizationName,
-        description: `${formData.organizationType} company with ${formData.organizationSize} people`,
-        org_metadata,
-      });
-
-      // Handle billing based on environment
-      if (!authConfig.authEnabled) {
-        // In local development, skip billing
-        return { organization, redirectUrl: null };
-      }
-
-      if (formData.subscriptionPlan === "developer") {
-        // Free plan: no checkout required
-        return { organization, redirectUrl: null };
-      }
-
-      try {
-        const isEligibleForYearly = ["pro", "team"].includes(
-          formData.subscriptionPlan
-        );
-        const yearly =
-          formData.billingPeriod === "yearly" && isEligibleForYearly;
-
-        const { checkout_url } = await createCheckoutSession(
-          token,
-          {
-            plan: formData.subscriptionPlan,
-            success_url: `${window.location.origin}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${window.location.origin}/billing/cancel`,
-          },
-          yearly
-        );
-
-        return { organization, redirectUrl: checkout_url };
-      } catch {
-        // If billing fails but org was created, still proceed
-        console.warn("Billing setup failed, but organization was created");
-        return { organization, redirectUrl: null };
-      }
-    },
-    onSuccess: ({ organization, redirectUrl }) => {
-      if (redirectUrl) {
-        window.location.href = redirectUrl;
-      } else {
-        toast.success("Organization created successfully!");
-        navigate({
-          to: "/$orgSlug",
-          params: { orgSlug: generateOrgSlug(organization) },
-        });
-      }
-    },
-    onError: (error: Error) => {
-      toast.error("Failed to complete setup. Please try again.", {
-        description: error.message,
-      });
-    },
-  });
-
-  // Validate organization name
-  const validateOrgName = (name: string): string | null => {
-    const trimmed = name.trim();
-
-    if (trimmed.length < 4) {
-      return "Organization name must be at least 4 characters long";
-    }
-
-    const safeCharRegex = /^[a-zA-Z0-9\s\-_]+$/;
-    if (!safeCharRegex.test(trimmed)) {
-      return "Organization name can only contain letters, numbers, spaces, hyphens, and underscores";
-    }
-
-    if (trimmed.includes("  ")) {
-      return "Organization name cannot contain consecutive spaces";
-    }
-
-    if (trimmed.startsWith(" ") || trimmed.endsWith(" ")) {
-      return "Organization name cannot start or end with spaces";
-    }
-
-    return null;
-  };
-
-  const isStepValid = () => {
-    switch (currentStep) {
-      case 1:
-        return formData.organizationName.trim().length > 0;
-      case 2:
-        return formData.organizationSize !== "";
-      case 3:
-        return formData.userRole !== "";
-      case 4:
-        return formData.organizationType !== "";
-      case 5:
-        return formData.subscriptionPlan !== "";
-      case 6:
-        return true; // Team invites are optional
-      default:
-        return false;
-    }
-  };
-
   const handleNext = () => {
-    // Special validation for organization name on step 1
-    if (currentStep === 1) {
-      const error = validateOrgName(formData.organizationName);
-      if (error) {
-        toast.error(error);
-        return;
-      }
-    }
+    if (!validateAndProceed()) return;
 
-    if (currentStep < TOTAL_STEPS && isStepValid()) {
+    if (currentStep < TOTAL_STEPS) {
       setIsTransitioning(true);
       setTimeout(() => {
         setCurrentStep((prev) => prev + 1);
@@ -235,16 +113,10 @@ function OnboardingPage() {
 
   // Handle Enter key for progression
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && isStepValid()) {
+    if (e.key === "Enter" && isStepValid) {
       e.preventDefault();
 
-      if (currentStep === 1) {
-        const error = validateOrgName(formData.organizationName);
-        if (error) {
-          toast.error(error);
-          return;
-        }
-      }
+      if (!validateAndProceed()) return;
 
       if (currentStep < TOTAL_STEPS) {
         handleNext();
@@ -261,7 +133,6 @@ function OnboardingPage() {
   ) => {
     updateFormData(field, value);
 
-    // Auto-progress for steps 2-5
     if (currentStep >= 2 && currentStep <= 5) {
       setTimeout(() => {
         setIsTransitioning(true);
@@ -411,7 +282,7 @@ function OnboardingPage() {
           <OnboardingNavigation
             currentStep={currentStep}
             totalSteps={TOTAL_STEPS}
-            isStepValid={isStepValid()}
+            isStepValid={isStepValid}
             isCreating={createOrgMutation.isPending}
             authEnabled={authConfig.authEnabled}
             onBack={handleBack}
@@ -424,7 +295,6 @@ function OnboardingPage() {
   );
 }
 
-// Navigation component
 interface OnboardingNavigationProps {
   currentStep: number;
   totalSteps: number;
@@ -448,7 +318,6 @@ function OnboardingNavigation({
 }: OnboardingNavigationProps) {
   return (
     <div className="relative mt-12 flex items-center justify-between">
-      {/* Back button - only show after first step */}
       {currentStep > 1 && (
         <Button variant="ghost" onClick={onBack}>
           <ChevronLeft className="mr-2 h-4 w-4" />
@@ -456,10 +325,8 @@ function OnboardingNavigation({
         </Button>
       )}
 
-      {/* User dropdown - only show on first step */}
       {currentStep === 1 && <UserAccountDropdown variant="standalone" />}
 
-      {/* Right side - Continue/Complete button */}
       {currentStep < totalSteps ? (
         <Button onClick={onNext} disabled={!isStepValid} className="ml-auto">
           Continue

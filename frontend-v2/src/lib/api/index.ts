@@ -53,6 +53,7 @@ export type {
 // Source Connections
 export {
   cancelSourceConnectionSync,
+  createSourceConnection,
   deleteSourceConnection,
   fetchSourceConnection,
   fetchSourceConnections,
@@ -62,6 +63,8 @@ export {
 } from "./source-connections";
 export type {
   AuthenticationInfo,
+  CreateSourceConnectionAuth,
+  CreateSourceConnectionRequest,
   EntitySummary,
   EntityTypeStats,
   LastSyncJob,

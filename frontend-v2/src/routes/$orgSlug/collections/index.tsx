@@ -50,7 +50,7 @@ function CollectionsPage() {
     actions: (
       <Button onClick={openCreateCollection}>
         <Plus className="mr-2 size-4" />
-        New Collection
+        Create Collection
       </Button>
     ),
   });
@@ -162,7 +162,7 @@ function CollectionsPage() {
         >
           <Button variant="outline" onClick={openCreateCollection}>
             <Plus className="mr-2 size-4" />
-            New Collection
+            Create Collection
           </Button>
         </EmptyState>
 

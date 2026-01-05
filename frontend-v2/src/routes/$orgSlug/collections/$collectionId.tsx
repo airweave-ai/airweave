@@ -15,6 +15,7 @@ import { LoadingState } from "@/components/ui/loading-state";
 import { usePageHeader } from "@/components/ui/page-header";
 import { useRightSidebarContent } from "@/components/ui/right-sidebar";
 import {
+  AddSourceDialog,
   CollectionDetailCode,
   CollectionDetailDocs,
   CollectionDetailHelp,
@@ -32,7 +33,7 @@ import {
 import { useAuth0 } from "@/lib/auth-provider";
 import { useOrg } from "@/lib/org-context";
 import { queryKeys } from "@/lib/query-keys";
-import { useCreateCollectionStore } from "@/stores/create-collection-store";
+import { useAddSourceStore } from "@/stores/add-source-store";
 
 export const Route = createFileRoute("/$orgSlug/collections/$collectionId")({
   component: CollectionDetailPage,
@@ -54,12 +55,14 @@ function CollectionDetailPage() {
 
   // Local state
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showAddSourceDialog, setShowAddSourceDialog] = useState(false);
   const [selectedConnectionId, setSelectedConnectionId] = useState<
     string | null
   >(null);
 
-  // Collection creation store for add source flow
-  const openCreateCollection = useCreateCollectionStore((s) => s.open);
+  // Add source store
+  const openAddSource = useAddSourceStore((s) => s.open);
+  const addSourceIsOpen = useAddSourceStore((s) => s.isOpen);
 
   // Fetch collection data
   const {
@@ -150,9 +153,10 @@ function CollectionDetailPage() {
   // Handle add source
   const handleAddSource = useCallback(() => {
     if (collection) {
-      openCreateCollection();
+      openAddSource(collection.readable_id, collection.name);
+      setShowAddSourceDialog(true);
     }
-  }, [collection, openCreateCollection]);
+  }, [collection, openAddSource]);
 
   // Loading state
   if (isLoadingCollection) {
@@ -238,6 +242,18 @@ function CollectionDetailPage() {
         onConfirm={() => deleteMutation.mutate()}
         collectionReadableId={collection.readable_id}
         isDeleting={deleteMutation.isPending}
+      />
+
+      {/* Add Source Dialog */}
+      <AddSourceDialog
+        open={showAddSourceDialog || addSourceIsOpen}
+        onOpenChange={(open) => {
+          setShowAddSourceDialog(open);
+          if (!open) {
+            // Refetch connections when dialog closes
+            refetchConnections();
+          }
+        }}
       />
     </div>
   );
