@@ -25,9 +25,16 @@ import { SearchResponse } from "./search-response";
 interface SearchProps {
   collectionReadableId: string;
   className?: string;
+  disabled?: boolean;
+  disabledReason?: string;
 }
 
-export function Search({ collectionReadableId, className }: SearchProps) {
+export function Search({
+  collectionReadableId,
+  className,
+  disabled,
+  disabledReason,
+}: SearchProps) {
   // Search response state
   const [searchResponse, setSearchResponse] =
     useState<SearchResponseType | null>(null);
@@ -104,6 +111,8 @@ export function Search({ collectionReadableId, className }: SearchProps) {
           onSearchEnd={handleSearchEnd}
           onStreamEvent={handleStreamEvent}
           onCancel={handleCancel}
+          disabled={disabled}
+          disabledReason={disabledReason}
         />
       </div>
 

@@ -199,7 +199,11 @@ function CollectionDetailPage() {
 
       {/* Search Section */}
       <div className="mt-10 w-full">
-        <Search collectionReadableId={collection.readable_id} />
+        <Search
+          collectionReadableId={collection.readable_id}
+          disabled={sourceConnections.length === 0}
+          disabledReason="no_sources"
+        />
       </div>
 
       {/* Source Connections Section */}

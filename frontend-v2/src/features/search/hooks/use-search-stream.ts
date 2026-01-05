@@ -8,6 +8,14 @@ import { API_BASE_URL, getAuthHeaders } from "@/lib/api";
 
 import type { SearchEvent, SearchResponse } from "../types";
 
+// Error that has already been handled and sent to onError - should not trigger fallback error handling
+class HandledStreamError extends Error {
+  constructor(message?: string) {
+    super(message);
+    this.name = "HandledStreamError";
+  }
+}
+
 interface StreamSearchParams {
   collectionId: string;
   query: string;
@@ -123,7 +131,7 @@ export function useSearchStream() {
                 const isTransient = errorEvent.transient === true;
 
                 onError(new Error(errorMessage), responseTime, isTransient);
-                throw new Error(errorMessage);
+                throw new HandledStreamError(errorMessage);
               }
               case "done": {
                 const endTime = performance.now();
@@ -143,7 +151,11 @@ export function useSearchStream() {
         }
       } catch (error) {
         const err = error as Error;
-        if (err.name !== "AbortError") {
+        if (err.name === "AbortError") {
+          // User cancelled - ignore
+        } else if (err instanceof HandledStreamError) {
+          // Already handled and sent to onError - don't overwrite with generic message
+        } else {
           const endTime = performance.now();
           const responseTime = Math.round(endTime - startTime);
           onError(err, responseTime, true);

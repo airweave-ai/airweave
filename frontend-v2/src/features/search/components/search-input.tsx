@@ -12,7 +12,7 @@ import {
 interface UsageLimitInfo {
   isChecking: boolean;
   isAllowed: boolean;
-  reason?: "usage_limit_exceeded" | "payment_required" | string;
+  reason?: "usage_limit_exceeded" | "payment_required" | "no_sources" | string;
 }
 
 interface SearchInputProps {
@@ -42,6 +42,25 @@ export function SearchInput({
   };
 
   if (isDisabled && usageLimit) {
+    // For "no_sources", show the message as placeholder text without tooltip
+    if (usageLimit.reason === "no_sources") {
+      return (
+        <textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+            }
+          }}
+          placeholder="Connect a source to start searching"
+          disabled
+          className="placeholder:text-muted-foreground h-20 w-full resize-none overflow-y-auto rounded-xl bg-transparent px-2 py-1.5 pr-28 text-sm leading-relaxed opacity-60 outline-none"
+        />
+      );
+    }
+
+    // For other reasons (usage limits, payment issues), show tooltip with details
     return (
       <TooltipProvider delayDuration={0}>
         <Tooltip>

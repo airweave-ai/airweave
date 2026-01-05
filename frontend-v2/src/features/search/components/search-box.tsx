@@ -44,6 +44,8 @@ interface SearchBoxProps {
   onStreamEvent?: (event: SearchEvent) => void;
   onCancel?: () => void;
   className?: string;
+  disabled?: boolean;
+  disabledReason?: string;
 }
 
 const DEFAULT_TOGGLES: SearchToggles = {
@@ -63,6 +65,8 @@ export function SearchBox({
   onStreamEvent,
   onCancel,
   className,
+  disabled,
+  disabledReason,
 }: SearchBoxProps) {
   const { getAccessTokenSilently } = useAuth0();
   const { organization } = useOrg();
@@ -101,7 +105,7 @@ export function SearchBox({
 
   const hasQuery = query.trim().length > 0;
   const canRetrySearch = Boolean(transientIssue) && !isSearching;
-  const isSearchDisabled = !queriesAllowed || isCheckingUsage;
+  const isSearchDisabled = !queriesAllowed || isCheckingUsage || disabled;
 
   // Check if queries are allowed based on usage limits
   const checkQueriesAllowed = useCallback(async () => {
@@ -345,8 +349,8 @@ export function SearchBox({
                 isSearchDisabled
                   ? {
                       isChecking: isCheckingUsage,
-                      isAllowed: queriesAllowed,
-                      reason: queriesCheckDetails?.reason,
+                      isAllowed: queriesAllowed && !disabled,
+                      reason: disabled ? disabledReason : queriesCheckDetails?.reason,
                     }
                   : undefined
               }
