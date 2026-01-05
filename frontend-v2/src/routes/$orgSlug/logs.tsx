@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Cable, Search } from "lucide-react";
+import { Search, Terminal } from "lucide-react";
 
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
@@ -89,7 +89,7 @@ function LogsPage() {
   return (
     <div className="p-6">
       <EmptyState
-        icon={<Cable />}
+        icon={<Terminal />}
         title="No logs yet"
         description="Logs will appear here once you start syncing data from your connected sources."
       />

@@ -45,7 +45,28 @@ export type { Collection, CreateCollectionRequest } from "./collections";
 // Sources
 export { fetchSource, fetchSources } from "./sources";
 export type {
+  Source,
   AuthField as SourceAuthField,
   ConfigField as SourceConfigField,
-  Source,
 } from "./sources";
+
+// Source Connections
+export {
+  cancelSourceConnectionSync,
+  deleteSourceConnection,
+  fetchSourceConnection,
+  fetchSourceConnections,
+  refreshAllSourceConnections,
+  runSourceConnectionSync,
+  updateSourceConnection,
+} from "./source-connections";
+export type {
+  AuthenticationInfo,
+  EntitySummary,
+  EntityTypeStats,
+  LastSyncJob,
+  Schedule,
+  SourceConnection,
+  SyncJob,
+  UpdateSourceConnectionRequest,
+} from "./source-connections";

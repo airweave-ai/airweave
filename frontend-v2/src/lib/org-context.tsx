@@ -105,11 +105,6 @@ export function OrgProvider({ children }: OrgProviderProps) {
     return null;
   }, [orgSlug, organization, organizations, isLoading]);
 
-  // Perform redirect if needed (using Navigate component instead of useEffect)
-  if (redirect) {
-    return <Navigate to={redirect.to} params={redirect.params} replace />;
-  }
-
   const value = useMemo(
     () => ({
       organization,
@@ -120,6 +115,11 @@ export function OrgProvider({ children }: OrgProviderProps) {
     }),
     [organization, organizations, isLoading, error]
   );
+
+  // Perform redirect if needed (using Navigate component instead of useEffect)
+  if (redirect) {
+    return <Navigate to={redirect.to} params={redirect.params} replace />;
+  }
 
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>;
 }

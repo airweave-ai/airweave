@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { FolderOpen, Loader2, Plus } from "lucide-react";
+import { LayoutGrid, Loader2, Plus } from "lucide-react";
 import { useMemo } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,7 @@ import { useOrg } from "@/lib/org-context";
 import { queryKeys } from "@/lib/query-keys";
 import { useCreateCollectionStore } from "@/stores/create-collection-store";
 
-export const Route = createFileRoute("/$orgSlug/collections")({
+export const Route = createFileRoute("/$orgSlug/collections/")({
   component: CollectionsPage,
 });
 
@@ -156,7 +156,7 @@ function CollectionsPage() {
     return (
       <div className="space-y-8 p-6">
         <EmptyState
-          icon={<FolderOpen />}
+          icon={<LayoutGrid />}
           title="Create your first collection"
           description="Collections help you organize and search your data from multiple sources."
         >

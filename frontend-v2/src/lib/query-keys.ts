@@ -42,4 +42,13 @@ export const queryKeys = {
     detail: (orgId: string, shortName: string) =>
       [orgId, "sources", "detail", shortName] as const,
   },
+
+  sourceConnections: {
+    all: (orgId: string, collectionId: string) =>
+      [orgId, "source-connections", collectionId] as const,
+    list: (orgId: string, collectionId: string) =>
+      [orgId, "source-connections", collectionId, "list"] as const,
+    detail: (orgId: string, id: string) =>
+      [orgId, "source-connections", "detail", id] as const,
+  },
 };
