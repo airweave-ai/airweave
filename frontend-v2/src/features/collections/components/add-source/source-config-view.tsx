@@ -317,7 +317,7 @@ export function SourceConfigView({
         <div className="space-y-6">
           {/* Connection name */}
           <div className="space-y-2">
-            <Label className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            <Label className="text-xs tracking-wider text-gray-500 uppercase dark:text-gray-400">
               Connection Name
             </Label>
             <Input
@@ -426,7 +426,7 @@ function AuthMethodSelector({
 }: AuthMethodSelectorProps) {
   return (
     <div className="space-y-2">
-      <Label className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">
+      <Label className="text-xs tracking-wider text-gray-500 uppercase dark:text-gray-400">
         Authentication Method
       </Label>
       <div className="flex gap-2">

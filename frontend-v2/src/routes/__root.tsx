@@ -1,4 +1,3 @@
-import { TanStackDevtools } from "@tanstack/react-devtools";
 import { QueryClient } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import {
@@ -8,7 +7,6 @@ import {
   createRootRoute,
   useParams,
 } from "@tanstack/react-router";
-import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 
 import { AppRightSidebar } from "../components/app-right-sidebar";
 import { AppSidebar } from "../components/app-sidebar";
@@ -162,17 +160,6 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         >
           <AuthProvider>{children}</AuthProvider>
         </PersistQueryClientProvider>
-        <TanStackDevtools
-          config={{
-            position: "bottom-right",
-          }}
-          plugins={[
-            {
-              name: "Tanstack Router",
-              render: <TanStackRouterDevtoolsPanel />,
-            },
-          ]}
-        />
         <Scripts />
       </body>
     </html>

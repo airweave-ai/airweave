@@ -17,7 +17,6 @@ import { useIsDark } from "@/hooks/use-is-dark";
 import { fetchSources, type Source } from "@/lib/api";
 import { useAuth0 } from "@/lib/auth-provider";
 import { useOrg } from "@/lib/org-context";
-import { cn } from "@/lib/utils";
 
 import { getAppIconUrl } from "../../utils/helpers";
 

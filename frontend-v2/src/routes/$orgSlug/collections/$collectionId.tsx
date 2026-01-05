@@ -6,8 +6,12 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  createFileRoute,
+  useLocation,
+  useNavigate,
+} from "@tanstack/react-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { ErrorState } from "@/components/ui/error-state";
@@ -34,6 +38,7 @@ import { useAuth0 } from "@/lib/auth-provider";
 import { useOrg } from "@/lib/org-context";
 import { queryKeys } from "@/lib/query-keys";
 import { useAddSourceStore } from "@/stores/add-source-store";
+import type { CollectionNavigationState } from "@/types/navigation";
 
 export const Route = createFileRoute("/$orgSlug/collections/$collectionId")({
   component: CollectionDetailPage,
@@ -41,6 +46,7 @@ export const Route = createFileRoute("/$orgSlug/collections/$collectionId")({
 
 function CollectionDetailPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { getAccessTokenSilently } = useAuth0();
   const { organization, getOrgSlug } = useOrg();
   const queryClient = useQueryClient();
@@ -60,9 +66,11 @@ function CollectionDetailPage() {
     string | null
   >(null);
 
-  // Add source store
+  // Track if we've already processed the navigation state (to avoid re-opening on re-renders)
+  const processedNavState = useRef(false);
+
+  // Add source store (local to this page)
   const openAddSource = useAddSourceStore((s) => s.open);
-  const addSourceIsOpen = useAddSourceStore((s) => s.isOpen);
 
   // Fetch collection data
   const {
@@ -111,6 +119,29 @@ function CollectionDetailPage() {
     }
   }, [sourceConnections, selectedConnectionId]);
 
+  // Check for pre-selected source from navigation state ("Start from a Source" flow)
+  useEffect(() => {
+    if (processedNavState.current || !collection) return;
+
+    const navState = location.state as CollectionNavigationState | undefined;
+    if (navState?.addSource) {
+      processedNavState.current = true;
+      // Open the Add Source dialog with the pre-selected source
+      openAddSource(
+        collection.readable_id,
+        collection.name,
+        navState.addSource
+      );
+      setShowAddSourceDialog(true);
+
+      // Clear the navigation state to prevent re-opening on refresh
+      navigate({
+        to: location.pathname,
+        replace: true,
+      });
+    }
+  }, [collection, location.state, location.pathname, navigate, openAddSource]);
+
   // Delete collection mutation
   const deleteMutation = useMutation({
     mutationFn: async () => {
@@ -150,7 +181,7 @@ function CollectionDetailPage() {
     refetchConnections();
   }, [refetchCollection, refetchConnections]);
 
-  // Handle add source
+  // Handle add source (no pre-selected source - user will pick from dialog)
   const handleAddSource = useCallback(() => {
     if (collection) {
       openAddSource(collection.readable_id, collection.name);
@@ -246,7 +277,7 @@ function CollectionDetailPage() {
 
       {/* Add Source Dialog */}
       <AddSourceDialog
-        open={showAddSourceDialog || addSourceIsOpen}
+        open={showAddSourceDialog}
         onOpenChange={(open) => {
           setShowAddSourceDialog(open);
           if (!open) {

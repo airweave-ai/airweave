@@ -63,7 +63,11 @@ interface AddSourceState {
   createdConnectionId: string | null;
 
   // Actions
-  open: (collectionId: string, collectionName: string) => void;
+  open: (
+    collectionId: string,
+    collectionName: string,
+    preSelectedSource?: { shortName: string; name: string }
+  ) => void;
   close: () => void;
   reset: () => void;
 
@@ -135,15 +139,35 @@ export const useAddSourceStore = create<AddSourceState>()(
       ...initialState,
 
       // Open the dialog for a specific collection
-      open: (collectionId: string, collectionName: string) => {
+      // Optionally pre-select a source to skip directly to config
+      open: (
+        collectionId: string,
+        collectionName: string,
+        preSelectedSource?: { shortName: string; name: string }
+      ) => {
         // Reset state first, then open
-        set({
-          ...initialState,
-          isOpen: true,
-          currentStep: "source-select",
-          collectionId,
-          collectionName,
-        });
+        if (preSelectedSource) {
+          // Skip to source-config step with pre-selected source
+          set({
+            ...initialState,
+            isOpen: true,
+            currentStep: "source-config",
+            collectionId,
+            collectionName,
+            selectedSourceShortName: preSelectedSource.shortName,
+            selectedSourceName: preSelectedSource.name,
+            connectionName: `${preSelectedSource.name} Connection`,
+          });
+        } else {
+          // Start at source-select step
+          set({
+            ...initialState,
+            isOpen: true,
+            currentStep: "source-select",
+            collectionId,
+            collectionName,
+          });
+        }
       },
 
       // Close the dialog

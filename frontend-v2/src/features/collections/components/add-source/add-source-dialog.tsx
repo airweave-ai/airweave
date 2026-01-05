@@ -2,7 +2,7 @@
  * AddSourceDialog - Multi-step dialog for adding a source to a collection
  */
 
-import { useCallback, useEffect } from "react";
+import { useCallback } from "react";
 
 import {
   Dialog,
@@ -99,12 +99,8 @@ export function AddSourceDialog({ open, onOpenChange }: AddSourceDialogProps) {
     goBack();
   }, [goBack]);
 
-  // Reset step when dialog opens
-  useEffect(() => {
-    if (open) {
-      setStep("source-select");
-    }
-  }, [open, setStep]);
+  // Note: We don't reset the step here on open because the store's open() method
+  // already sets the correct initial step based on whether a source is pre-selected
 
   // Get dialog size based on step
   const getDialogSize = () => {

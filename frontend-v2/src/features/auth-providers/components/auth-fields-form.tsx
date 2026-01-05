@@ -82,9 +82,7 @@ export function AuthFieldsForm({
         <div key={field.name} className="space-y-2">
           <label className="text-sm font-medium">
             {field.title || field.name}
-            {field.required && (
-              <span className="text-destructive ml-1">*</span>
-            )}
+            {field.required && <span className="text-destructive ml-1">*</span>}
           </label>
           {field.description && (
             <p className="text-muted-foreground text-xs">{field.description}</p>
@@ -94,9 +92,7 @@ export function AuthFieldsForm({
             value={values[field.name] || ""}
             onChange={(e) => onChange(field.name, e.target.value)}
             placeholder={
-              field.secret
-                ? "••••••••"
-                : `Enter ${field.title || field.name}`
+              field.secret ? "••••••••" : `Enter ${field.title || field.name}`
             }
           />
         </div>
@@ -104,4 +100,3 @@ export function AuthFieldsForm({
     </div>
   );
 }
-

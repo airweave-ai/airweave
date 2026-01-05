@@ -31,7 +31,7 @@ export function DirectAuthFields({
 }: DirectAuthFieldsProps) {
   return (
     <div className="space-y-4">
-      <Label className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">
+      <Label className="text-xs tracking-wider text-gray-500 uppercase dark:text-gray-400">
         Credentials
       </Label>
       {fields.map((field) => (

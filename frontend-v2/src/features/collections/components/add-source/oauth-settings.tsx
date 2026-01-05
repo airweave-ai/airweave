@@ -229,7 +229,7 @@ function RedirectUrlDisplay({ url }: RedirectUrlDisplayProps) {
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
-        <Label className="text-xs uppercase tracking-wider text-gray-400 dark:text-gray-500">
+        <Label className="text-xs tracking-wider text-gray-400 uppercase dark:text-gray-500">
           Redirect URL
         </Label>
         <Info className="h-3 w-3 text-gray-400 dark:text-gray-600" />

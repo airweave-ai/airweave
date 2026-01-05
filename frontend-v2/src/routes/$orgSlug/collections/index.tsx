@@ -14,7 +14,6 @@ import {
   CollectionsCode,
   CollectionsDocs,
   CollectionsHelp,
-  CreateCollectionDialog,
   SourcesGrid,
 } from "@/features/collections";
 import { fetchCollections, fetchSources, type Collection } from "@/lib/api";
@@ -34,8 +33,7 @@ function CollectionsPage() {
   const { getAccessTokenSilently } = useAuth0();
   const { organization, getOrgSlug } = useOrg();
   const openCreateCollection = useCreateCollectionStore((s) => s.open);
-  const isCreateDialogOpen = useCreateCollectionStore((s) => s.isOpen);
-  const closeCreateCollection = useCreateCollectionStore((s) => s.close);
+  const openWithSource = useCreateCollectionStore((s) => s.openWithSource);
 
   // Organization is guaranteed to be available (layout shows loading state)
   if (!organization) {
@@ -112,19 +110,13 @@ function CollectionsPage() {
     return [...sources].sort((a, b) => a.name.localeCompare(b.name));
   }, [sources]);
 
-  // Handle source click - open create collection dialog
-  const handleSourceClick = (_source: { short_name: string; name: string }) => {
-    openCreateCollection();
+  // Handle source click - open create collection dialog with pre-selected source
+  const handleSourceClick = (source: { short_name: string; name: string }) => {
+    openWithSource(source.short_name, source.name);
   };
 
   // Handle collection click - navigate to collection detail
   const handleCollectionClick = (collection: Collection) => {
-    navigate({ to: `/${orgSlug}/collections/${collection.readable_id}` });
-  };
-
-  // Handle collection creation success
-  const handleCollectionCreated = (collection: Collection) => {
-    // Navigate to the new collection
     navigate({ to: `/${orgSlug}/collections/${collection.readable_id}` });
   };
 
@@ -151,18 +143,6 @@ function CollectionsPage() {
     );
   }
 
-  // Render the dialog once (shared across all states)
-  const createDialog = (
-    <CreateCollectionDialog
-      open={isCreateDialogOpen}
-      onOpenChange={(open) => {
-        if (!open) closeCreateCollection();
-      }}
-      orgId={orgId}
-      onSuccess={handleCollectionCreated}
-    />
-  );
-
   // Empty state - no collections yet
   if (collections.length === 0 && !isLoadingCollections) {
     return (
@@ -182,8 +162,6 @@ function CollectionsPage() {
           sources={sortedSources}
           onSourceClick={handleSourceClick}
         />
-
-        {createDialog}
       </div>
     );
   }
@@ -229,8 +207,6 @@ function CollectionsPage() {
       </div>
 
       <SourcesGrid sources={sortedSources} onSourceClick={handleSourceClick} />
-
-      {createDialog}
     </div>
   );
 }
