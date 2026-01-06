@@ -521,7 +521,7 @@ async def cleanup_stuck_sync_jobs_activity() -> None:
                 # Skip ARF-only backfills (no postgres handler = no stats updates)
                 if job.execution_config_json:
                     is_arf_only = (
-                        job.execution_config_json.get("enable_postgres_handler", True) == False
+                        job.execution_config_json.get("enable_postgres_handler", True) is False
                     )
                     if is_arf_only:
                         logger.debug(
