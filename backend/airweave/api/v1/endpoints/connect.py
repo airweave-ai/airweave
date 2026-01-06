@@ -196,6 +196,16 @@ async def list_source_connections(
 
     Authentication: Bearer <session_token>
     """
+    # Verify session mode allows viewing connections (CONNECT mode is add-only)
+    if session.mode not in (
+        schemas.ConnectSessionMode.ALL,
+        schemas.ConnectSessionMode.MANAGE,
+        schemas.ConnectSessionMode.REAUTH,
+    ):
+        raise HTTPException(
+            status_code=403, detail="Session mode does not allow viewing source connections"
+        )
+
     # Build context for service call
     ctx = await _build_session_context(db, session)
 
