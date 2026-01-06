@@ -1,0 +1,14 @@
+import{j as e}from"./main-BEToz-TC.js";import{u as i}from"./use-docs-content-ogu5VP42.js";function a(r){const t={h2:"h2",h3:"h3",p:"p",...i(),...r.components},{Card:n,ParamField:s}=t;return n||o("Card"),s||o("ParamField"),e.jsxs(e.Fragment,{children:[`
+`,e.jsxs("div",{className:"connector-header",style:{display:"flex",alignItems:"center",gap:"12px",marginBottom:"24px"},children:[e.jsx("img",{src:"icon.svg",alt:"Postgresql logo",width:"48",height:"48",className:"connector-icon"}),e.jsx("h1",{style:{margin:0},children:"Postgresql"})]}),`
+`,e.jsx(t.h2,{children:"Configuration"}),`
+`,e.jsx(t.p,{children:"PostgreSQL source connector integrates with PostgreSQL databases to extract structured data."}),`
+`,e.jsx(t.p,{children:"Synchronizes data from database tables."}),`
+`,e.jsx(t.p,{children:`It uses dynamic schema introspection to create appropriate entity classes
+and provides comprehensive access to relational data with proper type mapping and relationships.`}),`
+`,e.jsx(n,{title:"View Source Code",icon:"brands github",href:"https://github.com/airweave-ai/airweave/tree/main/backend/airweave/platform/sources/postgresql.py",children:e.jsx(t.p,{children:"Explore the Postgresql connector implementation"})}),`
+`,e.jsx(t.h3,{children:"Authentication"}),`
+`,e.jsx(t.p,{children:"This connector uses a custom authentication configuration."}),`
+`,e.jsxs(n,{title:"Authentication Configuration",className:"auth-config-card",style:{backgroundColor:"rgba(0, 0, 0, 0.1)",padding:"16px",marginBottom:"24px"},children:[e.jsx(t.p,{children:"PostgreSQL authentication configuration."}),e.jsx(s,{path:"host",type:"str",required:!0,children:e.jsx(t.p,{children:"The host of the PostgreSQL database"})}),e.jsx(s,{path:"port",type:"int",required:!0,children:e.jsx(t.p,{children:"The port of the PostgreSQL database"})}),e.jsx(s,{path:"database",type:"str",required:!0,children:e.jsx(t.p,{children:"The name of the PostgreSQL database"})}),e.jsx(s,{path:"user",type:"str",required:!0,children:e.jsx(t.p,{children:"The username for the PostgreSQL database"})}),e.jsx(s,{path:"password",type:"str",required:!0,children:e.jsx(t.p,{children:"The password for the PostgreSQL database"})}),e.jsx(s,{path:"schema",type:"str",required:!1,default:"public",children:e.jsx(t.p,{children:"The schema of the PostgreSQL database"})}),e.jsx(s,{path:"tables",type:"str",required:!1,default:"*",children:e.jsx(t.p,{children:"Comma separated list of tables and views to sync. For example, 'users,orders'. For all tables (not views), use '*'."})})]}),`
+`,e.jsx(t.h3,{children:"Configuration Options"}),`
+`,e.jsx(t.p,{children:"This connector does not have any additional configuration options."}),`
+`]})}function h(r={}){const{wrapper:t}={...i(),...r.components};return t?e.jsx(t,{...r,children:e.jsx(a,{...r})}):a(r)}function o(r,t){throw new Error("Expected component `"+r+"` to be defined: you likely forgot to import, pass, or provide it.")}export{h as default};
