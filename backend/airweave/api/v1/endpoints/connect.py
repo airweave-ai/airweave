@@ -19,6 +19,12 @@ from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
+from airweave.analytics.contextual_service import (
+    AnalyticsContext,
+    ContextualAnalyticsService,
+    RequestHeaders,
+)
+from airweave.analytics.service import analytics
 from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.router import TrailingSlashRouter
@@ -59,17 +65,41 @@ async def _build_session_context(
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
+    request_id = str(uuid4())
+
+    session_logger = logger.with_context(
+        request_id=request_id,
+        session_id=str(session.session_id),
+        organization_id=str(session.organization_id),
+        end_user_id=session.end_user_id,
+        context_base="connect_session",
+    )
+
+    analytics_context = AnalyticsContext(
+        auth_method="connect_session",
+        organization_id=str(org.id),
+        organization_name=org.name,
+        request_id=request_id,
+        user_id=session.end_user_id,  # Use end_user_id for analytics tracking
+    )
+
+    analytics_service = ContextualAnalyticsService(
+        base_service=analytics,
+        context=analytics_context,
+        headers=RequestHeaders(request_id=request_id),
+    )
+
     return ApiContext(
-        request_id=str(uuid4()),
+        request_id=request_id,
         organization=org,
         user=None,
         auth_method=AuthMethod.API_KEY,  # Treat as API key level access
-        auth_metadata={"connect_session_id": str(session.session_id)},
-        logger=logger.with_context(
-            session_id=str(session.session_id),
-            organization_id=str(session.organization_id),
-            context_base="connect_session",
-        ),
+        auth_metadata={
+            "connect_session_id": str(session.session_id),
+            "end_user_id": session.end_user_id,
+        },
+        logger=session_logger,
+        analytics=analytics_service,
     )
 
 
@@ -108,12 +138,26 @@ async def create_session(
         "cid": session_in.readable_collection_id,
         "int": session_in.allowed_integrations,
         "mode": session_in.mode.value,
+        "uid": session_in.end_user_id,
     })
 
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
 
+    if ctx.analytics:
+        ctx.analytics.track_event(
+            "connect_session_created",
+            {
+                "session_id": str(session_id),
+                "collection_id": session_in.readable_collection_id,
+                "mode": session_in.mode.value,
+                "end_user_id": session_in.end_user_id,
+                "allowed_integrations": session_in.allowed_integrations,
+            },
+        )
+
     ctx.logger.info(
         f"Created connect session {session_id} for collection {session_in.readable_collection_id}"
+        + (f" (end_user: {session_in.end_user_id})" if session_in.end_user_id else "")
     )
 
     return ConnectSessionResponse(
@@ -218,6 +262,18 @@ async def delete_source_connection(
     ctx.logger.info(
         f"Deleting source connection {connection_id} via connect session {session.session_id}"
     )
+
+    if ctx.analytics:
+        ctx.analytics.track_event(
+            "connect_source_connection_deleted",
+            {
+                "connection_id": str(connection_id),
+                "session_id": str(session.session_id),
+                "collection_id": session.collection_id,
+                "end_user_id": session.end_user_id,
+                "short_name": connection.short_name,
+            },
+        )
 
     # Delete the connection using existing service
     return await source_connection_service.delete(db, id=connection_id, ctx=ctx)

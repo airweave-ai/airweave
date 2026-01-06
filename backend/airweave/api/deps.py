@@ -626,5 +626,6 @@ async def get_connect_session(
         collection_id=payload["cid"],
         allowed_integrations=payload.get("int"),
         mode=mode,
+        end_user_id=payload.get("uid"),
         expires_at=datetime.fromtimestamp(payload["ts"] + 600, tz=timezone.utc),
     )

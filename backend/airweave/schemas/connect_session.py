@@ -51,6 +51,14 @@ class ConnectSessionCreate(BaseModel):
         ConnectSessionMode.ALL,
         description="Session mode determining allowed operations",
     )
+    end_user_id: Optional[str] = Field(
+        None,
+        description=(
+            "Optional identifier for the end user in your system. This is included "
+            "in the session token and can be used for audit tracking and filtering."
+        ),
+        examples=["user_123", "cust_abc123"],
+    )
 
     class Config:
         """Pydantic configuration."""
@@ -109,6 +117,10 @@ class ConnectSessionContext(BaseModel):
     mode: ConnectSessionMode = Field(
         ...,
         description="Session mode determining allowed operations",
+    )
+    end_user_id: Optional[str] = Field(
+        None,
+        description="End user identifier from your system, if provided during session creation",
     )
     expires_at: datetime = Field(
         ...,
