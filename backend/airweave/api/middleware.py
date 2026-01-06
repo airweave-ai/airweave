@@ -236,6 +236,14 @@ class DynamicCORSMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.default_origins = default_origins
 
+    def _is_connect_endpoint(self, path: str) -> bool:
+        """Check if the path is a /connect endpoint that allows all origins.
+
+        Connect endpoints need CORS * because they are accessed from customer frontends
+        using session tokens for authentication.
+        """
+        return path.startswith("/connect")
+
     async def dispatch(self, request: Request, call_next):
         """Process the request and add dynamic CORS headers.
 
@@ -254,10 +262,13 @@ class DynamicCORSMiddleware(BaseHTTPMiddleware):
         if not origin:
             return await call_next(request)
 
+        # /connect endpoints allow all origins (CORS *) for frontend integration
+        is_connect_endpoint = self._is_connect_endpoint(path)
+
         # Handle OPTIONS preflight requests - only if allowed
         if request.method == "OPTIONS":
-            # Check if origin is allowed
-            is_allowed_origin = origin in self.default_origins
+            # Check if origin is allowed (connect endpoints allow any origin)
+            is_allowed_origin = is_connect_endpoint or origin in self.default_origins
 
             if is_allowed_origin:
                 # Create a response with appropriate CORS headers
@@ -281,7 +292,7 @@ class DynamicCORSMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
 
         # Add CORS headers to the response for allowed origins
-        is_allowed_origin = origin in self.default_origins
+        is_allowed_origin = is_connect_endpoint or origin in self.default_origins
 
         if is_allowed_origin:
             response.headers["Access-Control-Allow-Origin"] = origin
