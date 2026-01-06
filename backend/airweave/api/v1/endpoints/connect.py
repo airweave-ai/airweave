@@ -6,7 +6,7 @@ to manage source connections via a hosted UI (Plaid-style Connect modal).
 Flow:
 1. Customer server creates session via POST /connect/sessions (API key auth)
 2. Frontend SDK uses session_token to:
-   - GET /connect/sessions - verify session and get context
+   - GET /connect/sessions/{session_id} - verify session and get context
    - GET /connect/source-connections - list connections in collection
    - DELETE /connect/source-connections/{id} - remove a connection
 """
@@ -169,8 +169,9 @@ async def create_session(
     )
 
 
-@router.get("/sessions", response_model=ConnectSessionContext)
+@router.get("/sessions/{session_id}", response_model=ConnectSessionContext)
 async def get_session(
+    session_id: UUID,
     session: ConnectSessionContext = Depends(deps.get_connect_session),
 ) -> ConnectSessionContext:
     """Get the current session context from a session token.
@@ -180,6 +181,11 @@ async def get_session(
 
     Authentication: Bearer <session_token>
     """
+    # Verify URL session_id matches the token's session_id
+    if session_id != session.session_id:
+        raise HTTPException(
+            status_code=403, detail="Session ID does not match token"
+        )
     return session
 
 

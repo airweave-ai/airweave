@@ -6,7 +6,7 @@ for frontend integration flows (Plaid-style Connect modal).
 
 Endpoints tested:
 - POST /connect/sessions - Create session token (API key auth)
-- GET /connect/sessions - Validate token and get context (session token auth)
+- GET /connect/sessions/{session_id} - Validate token and get context (session token auth)
 - GET /connect/source-connections - List connections (mode-restricted)
 - DELETE /connect/source-connections/{id} - Delete connection (mode-restricted)
 """
@@ -207,7 +207,7 @@ class TestConnectSessions:
         assert response.status_code == 422
 
     # -------------------------------------------------------------------------
-    # Token Validation Tests (GET /connect/sessions)
+    # Token Validation Tests (GET /connect/sessions/{session_id})
     # -------------------------------------------------------------------------
 
     @pytest.mark.asyncio
@@ -226,10 +226,11 @@ class TestConnectSessions:
         create_response = await api_client.post("/connect/sessions", json=session_data)
         assert create_response.status_code == 200
         session = create_response.json()
+        session_id = session["session_id"]
 
         # Validate the token
         response = await api_client.get(
-            "/connect/sessions",
+            f"/connect/sessions/{session_id}",
             headers=session_auth_headers(session["session_token"]),
         )
 
@@ -237,7 +238,7 @@ class TestConnectSessions:
         context = response.json()
 
         assert "session_id" in context
-        assert context["session_id"] == session["session_id"]
+        assert context["session_id"] == session_id
         assert context["collection_id"] == collection["readable_id"]
         assert context["mode"] == "all"
         assert context["allowed_integrations"] == ["slack", "notion"]
@@ -250,7 +251,8 @@ class TestConnectSessions:
         self, api_client: httpx.AsyncClient
     ):
         """Test validating without Authorization header returns 422/401."""
-        response = await api_client.get("/connect/sessions")
+        dummy_session_id = str(uuid4())
+        response = await api_client.get(f"/connect/sessions/{dummy_session_id}")
 
         # FastAPI returns 422 for missing required header
         assert response.status_code in [401, 422]
@@ -260,8 +262,9 @@ class TestConnectSessions:
         self, api_client: httpx.AsyncClient
     ):
         """Test validating with invalid Authorization format returns 401."""
+        dummy_session_id = str(uuid4())
         response = await api_client.get(
-            "/connect/sessions",
+            f"/connect/sessions/{dummy_session_id}",
             headers={"Authorization": "InvalidFormat token123"},
         )
 
@@ -274,8 +277,9 @@ class TestConnectSessions:
         self, api_client: httpx.AsyncClient
     ):
         """Test validating a malformed token returns 401."""
+        dummy_session_id = str(uuid4())
         response = await api_client.get(
-            "/connect/sessions",
+            f"/connect/sessions/{dummy_session_id}",
             headers=session_auth_headers("not.a.valid.token.format"),
         )
 
@@ -293,12 +297,13 @@ class TestConnectSessions:
         create_response = await api_client.post("/connect/sessions", json=session_data)
         assert create_response.status_code == 200
         session = create_response.json()
+        session_id = session["session_id"]
 
         # Tamper with the token (change a character in the signature)
         tampered_token = session["session_token"][:-1] + "X"
 
         response = await api_client.get(
-            "/connect/sessions",
+            f"/connect/sessions/{session_id}",
             headers=session_auth_headers(tampered_token),
         )
 
@@ -311,12 +316,35 @@ class TestConnectSessions:
         self, api_client: httpx.AsyncClient
     ):
         """Test validating an empty token returns 401."""
+        dummy_session_id = str(uuid4())
         response = await api_client.get(
-            "/connect/sessions",
+            f"/connect/sessions/{dummy_session_id}",
             headers={"Authorization": ""},
         )
 
         assert response.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_validate_session_mismatched_session_id(
+        self, api_client: httpx.AsyncClient, collection: Dict
+    ):
+        """Test validating with mismatched session ID in URL returns 403."""
+        # Create a valid session
+        session_data = {"readable_collection_id": collection["readable_id"]}
+        create_response = await api_client.post("/connect/sessions", json=session_data)
+        assert create_response.status_code == 200
+        session = create_response.json()
+
+        # Use a different session ID in the URL
+        wrong_session_id = str(uuid4())
+        response = await api_client.get(
+            f"/connect/sessions/{wrong_session_id}",
+            headers=session_auth_headers(session["session_token"]),
+        )
+
+        assert response.status_code == 403
+        error = response.json()
+        assert "detail" in error
 
     # -------------------------------------------------------------------------
     # List Source Connections Tests (GET /connect/source-connections)

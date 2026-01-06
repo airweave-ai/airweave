@@ -242,7 +242,12 @@ class DynamicCORSMiddleware(BaseHTTPMiddleware):
         Connect endpoints need CORS * because they are accessed from customer frontends
         using session tokens for authentication.
         """
-        return path.startswith("/connect")
+        if not path.startswith("/connect"):
+            return False
+        # /connect/sessions (without ID) is the server-to-server session creation endpoint
+        if path.rstrip("/") == "/connect/sessions":
+            return False
+        return True
 
     async def dispatch(self, request: Request, call_next):
         """Process the request and add dynamic CORS headers.
