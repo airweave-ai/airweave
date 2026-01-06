@@ -313,7 +313,7 @@ class TestConnectSessions:
         """Test validating an empty token returns 401."""
         response = await api_client.get(
             "/connect/sessions",
-            headers=session_auth_headers(""),
+            headers={"Authorization": ""},
         )
 
         assert response.status_code == 401
