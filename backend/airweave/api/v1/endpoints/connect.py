@@ -253,6 +253,11 @@ async def delete_source_connection(
             status_code=403, detail="Session does not have access to this integration type"
         )
 
+    # Verify session mode allows deletion (only MANAGE and ALL are permitted)
+    if session.mode not in (schemas.ConnectSessionMode.MANAGE, schemas.ConnectSessionMode.ALL):
+        raise HTTPException(
+            status_code=403, detail="Session mode does not allow deleting source connections"
+        )
     ctx.logger.info(
         f"Deleting source connection {connection_id} via connect session {session.session_id}"
     )
