@@ -183,9 +183,7 @@ async def get_session(
     """
     # Verify URL session_id matches the token's session_id
     if session_id != session.session_id:
-        raise HTTPException(
-            status_code=403, detail="Session ID does not match token"
-        )
+        raise HTTPException(status_code=403, detail="Session ID does not match token")
     return session
 
 
