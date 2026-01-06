@@ -131,4 +131,3 @@ class ConnectSessionContext(BaseModel):
         """Pydantic configuration."""
 
         from_attributes = True
-

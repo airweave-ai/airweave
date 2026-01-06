@@ -132,14 +132,16 @@ async def create_session(
     session_id = uuid4()
 
     # Create HMAC-signed token using existing state module
-    token = make_state({
-        "sid": str(session_id),
-        "oid": str(ctx.organization.id),
-        "cid": session_in.readable_collection_id,
-        "int": session_in.allowed_integrations,
-        "mode": session_in.mode.value,
-        "uid": session_in.end_user_id,
-    })
+    token = make_state(
+        {
+            "sid": str(session_id),
+            "oid": str(ctx.organization.id),
+            "cid": session_in.readable_collection_id,
+            "int": session_in.allowed_integrations,
+            "mode": session_in.mode.value,
+            "uid": session_in.end_user_id,
+        }
+    )
 
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
 
@@ -206,10 +208,7 @@ async def list_source_connections(
 
     # Filter by allowed_integrations if specified
     if session.allowed_integrations:
-        connections = [
-            c for c in connections
-            if c.short_name in session.allowed_integrations
-        ]
+        connections = [c for c in connections if c.short_name in session.allowed_integrations]
 
     return connections
 
@@ -239,24 +238,19 @@ async def delete_source_connection(
         connection = await source_connection_service.get(db, id=connection_id, ctx=ctx)
     except HTTPException as e:
         if e.status_code == 404:
-            raise HTTPException(
-                status_code=404,
-                detail="Source connection not found"
-            ) from e
+            raise HTTPException(status_code=404, detail="Source connection not found") from e
         raise
 
     # Verify connection belongs to session's collection
     if connection.readable_collection_id != session.collection_id:
         raise HTTPException(
-            status_code=403,
-            detail="Source connection does not belong to this session's collection"
+            status_code=403, detail="Source connection does not belong to this session's collection"
         )
 
     # Check if allowed_integrations restricts access to this connection type
     if session.allowed_integrations and connection.short_name not in session.allowed_integrations:
         raise HTTPException(
-            status_code=403,
-            detail="Session does not have access to this integration type"
+            status_code=403, detail="Session does not have access to this integration type"
         )
 
     ctx.logger.info(
@@ -277,4 +271,3 @@ async def delete_source_connection(
 
     # Delete the connection using existing service
     return await source_connection_service.delete(db, id=connection_id, ctx=ctx)
-
