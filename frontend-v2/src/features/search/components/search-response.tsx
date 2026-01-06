@@ -18,7 +18,7 @@ import {
   Loader2,
   SearchX,
 } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -81,6 +81,25 @@ export function SearchResponse({
 
   const entityRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
+  // Track if we've auto-switched tabs after search completion to avoid overriding manual user selection
+  const hasAutoSwitchedRef = useRef(false);
+
+  // Tab switching effects - switch to trace when search starts
+  useEffect(() => {
+    if (isSearching) {
+      setActiveTab("trace");
+      hasAutoSwitchedRef.current = false; // Reset flag when new search starts
+    }
+  }, [isSearching, setActiveTab]);
+
+  // Reset visible results count when new search starts
+  useEffect(() => {
+    if (isSearching) {
+      setVisibleResultsCount(INITIAL_RESULTS_LIMIT);
+      setShowFullRawJson(false);
+    }
+  }, [isSearching]);
+
   const completion = searchResponse?.completion || "";
   const results = useMemo(
     () => (searchResponse?.results || []) as Record<string, unknown>[],
@@ -92,6 +111,36 @@ export function SearchResponse({
   const errorDisplayMessage = isTransientError
     ? "Something went wrong, please try again."
     : searchResponse?.error;
+
+  // Auto-switch to answer tab when completion arrives (and search is done)
+  useEffect(() => {
+    if (
+      responseType === "completion" &&
+      !isSearching &&
+      completion &&
+      completion.length > 0
+    ) {
+      if (activeTab === "trace" && !hasAutoSwitchedRef.current) {
+        setActiveTab("answer");
+        hasAutoSwitchedRef.current = true;
+      }
+    }
+  }, [responseType, isSearching, completion, activeTab, setActiveTab]);
+
+  // Auto-switch to entities tab when raw results arrive (and search is done)
+  useEffect(() => {
+    if (
+      responseType === "raw" &&
+      !isSearching &&
+      Array.isArray(results) &&
+      results.length > 0
+    ) {
+      if (!hasAutoSwitchedRef.current) {
+        setActiveTab("entities");
+        hasAutoSwitchedRef.current = true;
+      }
+    }
+  }, [responseType, isSearching, results, setActiveTab]);
 
   const scrollToEntity = useCallback(
     (index: number) => {
@@ -182,7 +231,7 @@ export function SearchResponse({
     );
   }
 
-  if (results.length === 0 && !completion) {
+  if (results.length === 0 && !completion && !isSearching) {
     return (
       <EmptyState
         icon={<SearchX />}

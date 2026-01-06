@@ -42,10 +42,14 @@ export const queryKeys = {
   },
 
   sourceConnections: {
-    all: (orgId: string, collectionId: string) =>
-      [orgId, "source-connections", collectionId] as const,
-    list: (orgId: string, collectionId: string) =>
-      [orgId, "source-connections", collectionId, "list"] as const,
+    all: (orgId: string, collectionId?: string) =>
+      collectionId
+        ? ([orgId, "source-connections", collectionId] as const)
+        : ([orgId, "source-connections"] as const),
+    list: (orgId: string, collectionId?: string) =>
+      collectionId
+        ? ([orgId, "source-connections", collectionId, "list"] as const)
+        : ([orgId, "source-connections", "list"] as const),
     detail: (orgId: string, id: string) =>
       [orgId, "source-connections", "detail", id] as const,
   },

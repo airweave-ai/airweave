@@ -38,14 +38,21 @@ function usePageHeaderContext() {
  */
 function usePageHeader(content: PageHeaderContent) {
   const { setContent } = usePageHeaderContext();
+
+  // Use a ref to store the latest content to avoid stale closures
   const contentRef = React.useRef(content);
+  contentRef.current = content;
+
+  // Only re-run effect when primitive values change to avoid infinite loops
+  // from object reference changes when content is passed as an inline object
+  const title = content.title;
+  const description = content.description;
 
   React.useLayoutEffect(() => {
-    contentRef.current = content;
-  });
+    setContent(contentRef.current);
+  }, [setContent, title, description]);
 
   React.useEffect(() => {
-    setContent(contentRef.current);
     return () => {
       setContent({});
     };

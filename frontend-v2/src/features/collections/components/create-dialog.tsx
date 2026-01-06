@@ -90,8 +90,8 @@ export function CreateCollectionDialog({
         readable_id: values.readableId || undefined,
       });
     },
-    onSuccess: (collection) => {
-      queryClient.invalidateQueries({
+    onSuccess: async (collection) => {
+      await queryClient.invalidateQueries({
         queryKey: queryKeys.collections.all(orgId),
       });
       toast.success(`Collection "${collection.name}" created!`, {

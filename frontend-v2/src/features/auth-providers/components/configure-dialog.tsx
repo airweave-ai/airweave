@@ -95,8 +95,8 @@ export function ConfigureDialog({
         auth_fields: values.authFields,
       });
     },
-    onSuccess: (connection) => {
-      queryClient.invalidateQueries({
+    onSuccess: async (connection) => {
+      await queryClient.invalidateQueries({
         queryKey: queryKeys.authProviders.connections(orgId),
       });
       toast.success(`Successfully connected to ${authProvider?.name}`, {

@@ -192,22 +192,24 @@ function EditDialogForm({
         updateData
       );
     },
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       if (result === null) {
         toast.info("No changes to update");
         onOpenChange(false);
         return;
       }
 
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.authProviders.connections(orgId),
-      });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.authProviders.connection(
-          orgId,
-          connection?.readable_id ?? ""
-        ),
-      });
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.authProviders.connections(orgId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.authProviders.connection(
+            orgId,
+            connection?.readable_id ?? ""
+          ),
+        }),
+      ]);
       toast.success(`Successfully updated ${authProvider?.name} connection`);
       onOpenChange(false);
       form.reset();

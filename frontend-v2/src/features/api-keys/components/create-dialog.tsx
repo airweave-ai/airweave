@@ -47,8 +47,8 @@ export function CreateApiKeyDialog({
       const token = await getAccessTokenSilently();
       return createApiKey(token, orgId, expirationDays);
     },
-    onSuccess: (newKey) => {
-      queryClient.invalidateQueries({
+    onSuccess: async (newKey) => {
+      await queryClient.invalidateQueries({
         queryKey: queryKeys.apiKeys.list(orgId),
       });
       onOpenChange(false);

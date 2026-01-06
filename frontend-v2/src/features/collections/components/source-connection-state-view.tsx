@@ -193,15 +193,15 @@ export function SourceConnectionStateView({
       const token = await getAccessTokenSilently();
       return deleteSourceConnection(token, orgId, sourceConnection.id);
     },
-    onSuccess: () => {
-      toast.success("Source connection deleted");
+    onSuccess: async () => {
       setShowDeleteDialog(false);
-      queryClient.invalidateQueries({
+      await queryClient.invalidateQueries({
         queryKey: queryKeys.sourceConnections.all(
           orgId,
           sourceConnection.readable_collection_id
         ),
       });
+      toast.success("Source connection deleted");
       onConnectionDeleted?.();
     },
     onError: (error) => {
@@ -223,13 +223,13 @@ export function SourceConnectionStateView({
         initialSourceConnection.id,
         true
       );
-      toast.success("Authentication URL refreshed");
-      queryClient.invalidateQueries({
+      await queryClient.invalidateQueries({
         queryKey: queryKeys.sourceConnections.detail(
           orgId,
           initialSourceConnection.id
         ),
       });
+      toast.success("Authentication URL refreshed");
       onConnectionUpdated?.();
     } catch (error) {
       toast.error(

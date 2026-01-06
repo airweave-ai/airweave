@@ -22,10 +22,22 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { useIsDark } from "@/hooks/use-is-dark";
 import type { Collection } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-import { formatDate, getCollectionStatusDisplay } from "../utils/helpers";
+import { useCollectionSourceConnections } from "../hooks/use-collection-source-connections";
+import {
+  formatDate,
+  getAppIconUrl,
+  getCollectionStatusDisplay,
+} from "../utils/helpers";
 import { BulkDeleteCollectionsDialog } from "./bulk-delete-collections-dialog";
 
 interface CollectionsTableProps {
@@ -36,6 +48,94 @@ interface CollectionsTableProps {
   onSelectCollection: (collection: Collection | null) => void;
   deleteDialogOpen: boolean;
   onDeleteDialogChange: (open: boolean) => void;
+}
+
+/**
+ * Avatar group component showing source connection icons with overflow indicator.
+ * Fetches source connections per-row with React Query caching.
+ */
+function SourceAvatarGroup({
+  collectionReadableId,
+  maxVisible = 2,
+}: {
+  collectionReadableId: string;
+  maxVisible?: number;
+}) {
+  const isDark = useIsDark();
+  const { connections, isLoading } =
+    useCollectionSourceConnections(collectionReadableId);
+
+  if (isLoading) {
+    return (
+      <div className="flex -space-x-2">
+        {[0, 1].map((i) => (
+          <div
+            key={i}
+            className="bg-muted size-7 animate-pulse rounded-md border"
+            style={{ zIndex: maxVisible - i }}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  if (connections.length === 0) {
+    return <span className="text-muted-foreground text-xs">No sources</span>;
+  }
+
+  const visibleConnections = connections.slice(0, maxVisible);
+  const overflowConnections = connections.slice(maxVisible);
+  const overflow = connections.length - maxVisible;
+
+  return (
+    <TooltipProvider>
+      <div className="flex items-center">
+        <div className="flex -space-x-2">
+          {visibleConnections.map((connection, index) => (
+            <Tooltip key={connection.id}>
+              <TooltipTrigger asChild>
+                <div
+                  className="bg-background flex size-7 items-center justify-center overflow-hidden rounded-md border p-1 transition-transform hover:z-10 hover:scale-110"
+                  style={{ zIndex: maxVisible - index }}
+                >
+                  <img
+                    src={getAppIconUrl(
+                      connection.short_name,
+                      isDark ? "dark" : "light"
+                    )}
+                    alt={connection.name}
+                    className="size-full object-contain"
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none";
+                      const parent = e.currentTarget.parentElement;
+                      if (parent) {
+                        parent.innerHTML = `<span class="text-muted-foreground text-[10px] font-semibold">${connection.short_name.substring(0, 2).toUpperCase()}</span>`;
+                      }
+                    }}
+                  />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">
+                {connection.name}
+              </TooltipContent>
+            </Tooltip>
+          ))}
+        </div>
+        {overflow > 0 && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="bg-muted text-muted-foreground ml-1 flex size-7 items-center justify-center rounded-md border text-xs font-medium">
+                +{overflow}
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs">
+              {overflowConnections.map((c) => c.name).join(", ")}
+            </TooltipContent>
+          </Tooltip>
+        )}
+      </div>
+    </TooltipProvider>
+  );
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -156,6 +256,13 @@ export function CollectionsTable({
         header: "Name",
         cell: ({ row }) => (
           <span className="font-medium">{row.original.name}</span>
+        ),
+      },
+      {
+        id: "sources",
+        header: "Sources",
+        cell: ({ row }) => (
+          <SourceAvatarGroup collectionReadableId={row.original.readable_id} />
         ),
       },
       {

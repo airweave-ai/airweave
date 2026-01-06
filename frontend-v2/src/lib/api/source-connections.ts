@@ -175,19 +175,20 @@ export async function createSourceConnection(
 }
 
 /**
- * Fetch source connections for a collection
+ * Fetch source connections, optionally filtered by collection
  */
 export async function fetchSourceConnections(
   token: string,
   orgId: string,
-  collectionId: string
+  collectionId?: string
 ): Promise<SourceConnection[]> {
-  const response = await fetch(
-    `${API_BASE_URL}/source-connections/?collection=${collectionId}`,
-    {
-      headers: getAuthHeaders(token, orgId),
-    }
-  );
+  const url = collectionId
+    ? `${API_BASE_URL}/source-connections/?collection=${collectionId}`
+    : `${API_BASE_URL}/source-connections/`;
+
+  const response = await fetch(url, {
+    headers: getAuthHeaders(token, orgId),
+  });
 
   if (!response.ok) {
     const message = await parseErrorResponse(

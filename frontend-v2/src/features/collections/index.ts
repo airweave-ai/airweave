@@ -1,3 +1,4 @@
+// Components
 export { AddSourceDialog } from "./components/add-source";
 export { BulkDeleteCollectionsDialog } from "./components/bulk-delete-collections-dialog";
 export { CollectionCard } from "./components/collection-card";
@@ -16,12 +17,16 @@ export {
 } from "./components/sidebar-content";
 export { SourceAuthenticationView } from "./components/source-authentication-view";
 export { SourceCard } from "./components/source-card";
-export { SourcesGrid } from "./components/sources-grid";
 export { SourceConnectionStateView } from "./components/source-connection-state-view";
 export { SourceConnectionsList } from "./components/source-connections-list";
+export { SourcesGrid } from "./components/sources-grid";
 export { StatusBadge } from "./components/status-badge";
 export { SyncErrorCard } from "./components/sync-error-card";
 
+// Hooks
+export { useCollectionSourceConnections } from "./hooks/use-collection-source-connections";
+
+// Utils
 export {
   formatDate,
   getAppIconUrl,

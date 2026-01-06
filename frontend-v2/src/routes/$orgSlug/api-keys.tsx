@@ -132,16 +132,14 @@ function ApiKeysPage() {
         );
       }
     },
-    onSuccess: (_data, keyIds) => {
+    onSuccess: async (_data, keyIds) => {
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.apiKeys.list(orgId),
+      });
       const count = keyIds.length;
       toast.success(
         count > 1 ? `${count} API keys deleted` : "API key deleted"
       );
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.apiKeys.list(orgId),
-      });
     },
   });
 

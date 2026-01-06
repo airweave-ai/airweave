@@ -70,8 +70,8 @@ export function DetailDialog({
       const token = await getAccessTokenSilently();
       return deleteAuthProviderConnection(token, orgId, connection.readable_id);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
         queryKey: queryKeys.authProviders.connections(orgId),
       });
       toast.success("Auth provider connection deleted successfully");

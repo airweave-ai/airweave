@@ -173,8 +173,8 @@ export function SourceConfigView({
         redirect_url: getDefaultRedirectUrl(),
       });
     },
-    onSuccess: (result) => {
-      queryClient.invalidateQueries({
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({
         queryKey: queryKeys.sourceConnections.list(
           organization!.id,
           collectionId

@@ -123,6 +123,13 @@ export const uiComponents: ComponentInfo[] = [
     ]
   },
   {
+    "name": "discord-icon",
+    "path": "components/ui/discord-icon.tsx",
+    "exports": [
+      "DiscordIcon"
+    ]
+  },
+  {
     "name": "dropdown-menu",
     "path": "components/ui/dropdown-menu.tsx",
     "exports": [

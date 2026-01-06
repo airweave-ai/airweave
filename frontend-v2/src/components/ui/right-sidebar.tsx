@@ -1,10 +1,13 @@
 import {
   BookOpen,
   Code2,
+  Github,
   HelpCircle,
   LayoutGrid,
   PanelRightIcon,
 } from "lucide-react";
+
+import { DiscordIcon } from "@/components/ui/discord-icon";
 import * as React from "react";
 
 import { Button } from "@/components/ui/button";
@@ -140,7 +143,7 @@ function RightSidebarTabs({
     <div
       data-slot="right-sidebar-tabs"
       className={cn(
-        "bg-sidebar fixed inset-y-0 right-0 z-10 hidden w-(--right-sidebar-tab-width) flex-col items-center py-4 md:flex",
+        "bg-sidebar fixed inset-y-0 right-0 z-10 hidden w-(--right-sidebar-tab-width) flex-col items-center justify-between py-4 md:flex",
         className
       )}
       {...props}
@@ -162,6 +165,26 @@ function RightSidebarTabs({
             <span>{tab.label}</span>
           </Button>
         ))}
+      </div>
+
+      {/* Social links at bottom */}
+      <div className="flex flex-col gap-2">
+        <a
+          href="https://github.com/airweave-ai/airweave"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-50 transition-colors hover:bg-white/10"
+        >
+          <Github className="size-5" />
+        </a>
+        <a
+          href="https://discord.com/invite/484HY9Ehxt"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-50 transition-colors hover:bg-white/10"
+        >
+          <DiscordIcon size={20} />
+        </a>
       </div>
     </div>
   );

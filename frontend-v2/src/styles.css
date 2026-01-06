@@ -121,7 +121,7 @@ code {
   --chart-3: oklch(0.38 0.07 230);
   --chart-4: oklch(0.7 0.15 50);
   --chart-5: oklch(0.55 0.18 45);
-  --sidebar: oklch(0.13 0.005 180);
+  --sidebar: oklch(0.18 0.005 180);
   --sidebar-foreground: oklch(0.988 0.002 90);
   --sidebar-primary: oklch(0.62 0.22 40);
   --sidebar-primary-foreground: oklch(0.988 0.002 90);

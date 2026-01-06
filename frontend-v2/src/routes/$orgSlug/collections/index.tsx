@@ -112,6 +112,11 @@ function CollectionsPage() {
     },
   });
 
+  const collections = useMemo(
+    () => collectionsData?.pages.flat() ?? [],
+    [collectionsData?.pages]
+  );
+
   const deleteMutation = useMutation({
     mutationFn: async (readableIds: string[]) => {
       const token = await getAccessTokenSilently();
@@ -155,23 +160,16 @@ function CollectionsPage() {
         );
       }
     },
-    onSuccess: (_data, readableIds) => {
+    onSuccess: async (_data, readableIds) => {
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.collections.list(orgId),
+      });
       const count = readableIds.length;
       toast.success(
         count > 1 ? `${count} collections deleted` : "Collection deleted"
       );
     },
-    onSettled: () => {
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.collections.list(orgId),
-      });
-    },
   });
-
-  const collections = useMemo(
-    () => collectionsData?.pages.flat() ?? [],
-    [collectionsData?.pages]
-  );
 
   const selectedCollection = useMemo(() => {
     if (collections.length === 0) return null;

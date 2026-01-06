@@ -132,11 +132,11 @@ function CollectionDetailPage() {
       const token = await getAccessTokenSilently();
       return deleteCollection(token, orgId, collectionId);
     },
-    onSuccess: () => {
-      toast.success("Collection deleted successfully");
-      queryClient.invalidateQueries({
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
         queryKey: queryKeys.collections.all(orgId),
       });
+      toast.success("Collection deleted successfully");
       navigate({ to: `/${orgSlug}/collections` });
     },
     onError: (error) => {
