@@ -1,7 +1,7 @@
 """Snapshot source for replaying raw data captures.
 
-This source reads entities from the raw data storage structure:
-    {path}/
+This source reads entities from the raw data storage (via StorageBackend):
+    raw/{sync_id}/
     ├── manifest.json           # Sync metadata
     ├── entities/
     │   └── {entity_id}.json    # One file per entity
@@ -11,12 +11,11 @@ This source reads entities from the raw data storage structure:
 Usage:
     Create a source connection with:
     - short_name: "snapshot"
-    - config: {"path": "/path/to/raw/sync-id"}
+    - config: {"sync_id": "7dd989e8-0634-447e-9406-5dba481569cd"}
     - credentials: {"placeholder": "snapshot"} (required for API)
 """
 
 import importlib
-import json
 import tempfile
 from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List, Optional, Union
@@ -26,6 +25,7 @@ from airweave.platform.configs.config import SnapshotConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.sources._base import BaseSource
+from airweave.platform.storage.backend import StorageBackend
 from airweave.schemas.source_connection import AuthenticationMethod
 
 
@@ -42,17 +42,17 @@ from airweave.schemas.source_connection import AuthenticationMethod
 class SnapshotSource(BaseSource):
     """Source that replays entities from raw data captures.
 
-    Reads entities from local filesystem.
+    Uses StorageBackend to read entities and files.
     Supports file restoration for FileEntity types.
     """
 
     def __init__(self):
         """Initialize snapshot source."""
         super().__init__()
-        self.path: str = ""
+        self.sync_id: str = ""
         self.restore_files: bool = True
         self._temp_dir: Optional[Path] = None
-        self._base_path: Optional[Path] = None
+        self._storage: Optional[StorageBackend] = None
 
     @classmethod
     async def create(
@@ -64,7 +64,7 @@ class SnapshotSource(BaseSource):
 
         Args:
             credentials: Optional SnapshotAuthConfig (placeholder for API compatibility)
-            config: SnapshotConfig with path to raw data directory
+            config: SnapshotConfig with sync_id
 
         Returns:
             Configured SnapshotSource instance
@@ -73,45 +73,53 @@ class SnapshotSource(BaseSource):
 
         # Extract config
         if config is None:
-            raise ValueError("config with 'path' is required for SnapshotSource")
+            raise ValueError("config with 'sync_id' is required for SnapshotSource")
 
         if isinstance(config, dict):
-            instance.path = config.get("path", "")
+            instance.sync_id = config.get("sync_id", "")
             instance.restore_files = config.get("restore_files", True)
         else:
-            instance.path = config.path
+            instance.sync_id = config.sync_id
             instance.restore_files = config.restore_files
 
-        if not instance.path:
-            raise ValueError("path is required in config")
-
-        # Set up base path
-        instance._base_path = Path(instance.path)
+        if not instance.sync_id:
+            raise ValueError("sync_id is required in config")
 
         return instance
 
+    @property
+    def storage(self) -> StorageBackend:
+        """Get storage backend (lazy to avoid circular import)."""
+        if self._storage is None:
+            from airweave.platform.storage import storage_backend
+
+            self._storage = storage_backend
+        return self._storage
+
+    def _storage_path(self, relative_path: str) -> str:
+        """Get full storage path for a file."""
+        return f"raw/{self.sync_id}/{relative_path}"
+
     async def _read_json(self, relative_path: str) -> Dict[str, Any]:
-        """Read a JSON file from the snapshot directory."""
-        file_path = self._base_path / relative_path
-        with open(file_path, "r", encoding="utf-8") as f:
-            return json.load(f)
+        """Read a JSON file from storage."""
+        storage_path = self._storage_path(relative_path)
+        return await self.storage.read_json(storage_path)
 
     async def _list_entity_files(self) -> List[str]:
         """List all entity JSON files."""
-        entities_dir = self._base_path / "entities"
-        if not entities_dir.exists():
+        entities_dir = self._storage_path("entities")
+        try:
+            files = await self.storage.list_files(entities_dir)
+            # Filter for .json files and return storage paths
+            return [f for f in files if f.endswith(".json")]
+        except Exception:
             return []
-        return [
-            f"entities/{f.name}"
-            for f in entities_dir.iterdir()
-            if f.is_file() and f.suffix == ".json"
-        ]
 
     async def _restore_file(self, stored_file_path: str) -> Optional[str]:
         """Restore a file attachment to temp directory.
 
         Args:
-            stored_file_path: Relative path to file in storage
+            stored_file_path: Storage path to file (e.g., "raw/{sync_id}/files/...")
 
         Returns:
             Local path to restored file, or None if restoration failed
@@ -120,22 +128,21 @@ class SnapshotSource(BaseSource):
             return None
 
         try:
-            source_path = self._base_path / stored_file_path
-            if not source_path.exists():
-                return None
+            # Read file content from storage
+            content = await self.storage.read_file(stored_file_path)
 
             # Create temp directory if needed
             if self._temp_dir is None:
                 self._temp_dir = Path(tempfile.mkdtemp(prefix="snapshot_files_"))
 
-            # Extract filename from path
-            filename = source_path.name
+            # Extract filename from storage path
+            filename = Path(stored_file_path).name
             local_path = self._temp_dir / filename
             local_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Copy file
-            with open(source_path, "rb") as src, open(local_path, "wb") as dst:
-                dst.write(src.read())
+            # Write to local temp file
+            with open(local_path, "wb") as f:
+                f.write(content)
 
             return str(local_path)
 
@@ -162,7 +169,7 @@ class SnapshotSource(BaseSource):
         entity_class_name = entity_dict.pop("__entity_class__", None)
         entity_module = entity_dict.pop("__entity_module__", None)
         entity_dict.pop("__captured_at__", None)
-        entity_dict.pop("__stored_file__", None)
+        stored_file = entity_dict.pop("__stored_file__", None)
 
         if not entity_class_name or not entity_module:
             raise ValueError("Entity dict missing __entity_class__ or __entity_module__")
@@ -174,9 +181,13 @@ class SnapshotSource(BaseSource):
         except (ImportError, AttributeError) as e:
             raise ValueError(f"Cannot reconstruct {entity_module}.{entity_class_name}: {e}")
 
-        # Update local_path if file was restored
-        if restored_file_path:
-            entity_dict["local_path"] = restored_file_path
+        # Handle file restoration for FileEntities
+        if stored_file:
+            # Remove stale local_path from original sync (points to non-existent temp dir)
+            entity_dict.pop("local_path", None)
+            # Set new local_path only if file was successfully restored
+            if restored_file_path:
+                entity_dict["local_path"] = restored_file_path
 
         return entity_class(**entity_dict)
 
@@ -200,9 +211,10 @@ class SnapshotSource(BaseSource):
         entity_files = await self._list_entity_files()
         self.logger.info(f"Found {len(entity_files)} entity files to replay")
 
-        for file_path in entity_files:
+        for storage_path in entity_files:
             try:
-                entity_dict = await self._read_json(file_path)
+                # Read entity JSON from storage
+                entity_dict = await self.storage.read_json(storage_path)
 
                 # Check if file needs to be restored
                 stored_file = entity_dict.get("__stored_file__")
@@ -215,18 +227,14 @@ class SnapshotSource(BaseSource):
                 yield entity
 
             except Exception as e:
-                self.logger.warning(f"Failed to reconstruct entity from {file_path}: {e}")
+                self.logger.warning(f"Failed to reconstruct entity from {storage_path}: {e}")
                 continue
 
     async def validate(self) -> bool:
-        """Validate that the snapshot path exists and is readable."""
-        self.logger.info(f"Validating snapshot source with path: {self.path}")
-        if not self.path:
-            self.logger.error("Snapshot validation failed: path is empty")
-            return False
-
-        if not self._base_path or not self._base_path.exists():
-            self.logger.error(f"Snapshot validation failed: path does not exist: {self.path}")
+        """Validate that the snapshot exists in storage and is readable."""
+        self.logger.info(f"Validating snapshot source with sync_id: {self.sync_id}")
+        if not self.sync_id:
+            self.logger.error("Snapshot validation failed: sync_id is empty")
             return False
 
         try:

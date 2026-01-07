@@ -719,17 +719,12 @@ class PipedreamConfig(AuthProviderConfig):
 class SnapshotConfig(BaseConfig):
     """Configuration for SnapshotSource.
 
-    Specifies the path to raw data captured during a previous sync.
-    Supports both local filesystem paths and Azure blob URLs.
+    Specifies the sync_id for replaying raw data captured during a previous sync.
     """
 
-    path: str = Field(
-        title="Raw Data Path",
-        description=(
-            "Path to the raw data directory containing manifest.json, entities/, and files/. "
-            "Can be a local filesystem path (e.g., '/path/to/raw/sync-id') or "
-            "Azure blob URL (e.g., 'https://account.blob.core.windows.net/container/raw/sync-id')"
-        ),
+    sync_id: str = Field(
+        title="Sync ID",
+        description="UUID of the sync to replay from raw data storage (e.g., '7dd989e8-0634-447e-9406-5dba481569cd')",
         min_length=1,
     )
 
@@ -739,10 +734,10 @@ class SnapshotConfig(BaseConfig):
         description="Whether to restore file attachments from the files/ directory",
     )
 
-    @field_validator("path")
+    @field_validator("sync_id")
     @classmethod
-    def validate_path(cls, v: str) -> str:
-        """Validate and normalize path."""
+    def validate_sync_id(cls, v: str) -> str:
+        """Validate sync_id."""
         if not v or not v.strip():
-            raise ValueError("Path is required")
-        return v.strip().rstrip("/")
+            raise ValueError("sync_id is required")
+        return v.strip()
