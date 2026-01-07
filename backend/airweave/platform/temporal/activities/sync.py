@@ -510,7 +510,9 @@ async def cleanup_stuck_sync_jobs_activity() -> None:
                 started_before=running_cutoff,
             )
 
-            logger.info(f"Found {len(running_jobs)} RUNNING jobs that started > 15 minutes ago (will check activity)")
+            logger.info(
+                f"Found {len(running_jobs)} RUNNING jobs that started > 15 minutes ago (will check activity)"
+            )
 
             # Check which RUNNING jobs have no recent activity (via Redis snapshot)
             # Skip ARF-only jobs (they don't update entity stats, so no activity expected)
@@ -518,7 +520,9 @@ async def cleanup_stuck_sync_jobs_activity() -> None:
             for job in running_jobs:
                 # Skip ARF-only backfills (no postgres handler = no stats updates)
                 if job.execution_config_json:
-                    is_arf_only = job.execution_config_json.get('enable_postgres_handler', True) == False
+                    is_arf_only = (
+                        job.execution_config_json.get("enable_postgres_handler", True) == False
+                    )
                     if is_arf_only:
                         logger.debug(
                             f"Skipping ARF-only job {job.id} from stuck detection "
