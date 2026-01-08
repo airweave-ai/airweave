@@ -8,6 +8,7 @@ import { createFileRoute, Outlet } from "@tanstack/react-router";
 
 import { GlobalDialogs } from "@/components/global-dialogs";
 import { LoadingState } from "@/components/ui/loading-state";
+import { UsageChecker } from "@/components/usage-checker";
 import { OrgProvider, useOrg } from "@/lib/org-context";
 import { OrgDataPreloader } from "@/lib/org-data-preloader";
 
@@ -37,6 +38,7 @@ function OrgLayoutContent() {
   return (
     <>
       <OrgDataPreloader />
+      <UsageChecker />
       <Outlet />
       <GlobalDialogs />
     </>

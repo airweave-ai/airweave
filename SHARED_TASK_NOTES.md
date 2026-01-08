@@ -4,31 +4,39 @@ Context for the next iteration of frontend migration work.
 
 ## What Was Done (Latest)
 
-- Added S3 Event Streaming configuration (feature-flagged) to Organization Settings
-- Created `frontend-v2/src/lib/api/s3.ts` with API functions
-- Created `S3ConfigModal` component with test connection + save flow
-- Created `S3StatusCard` component (only renders when `S3_DESTINATION` feature flag enabled)
-- Created `Alert` UI component
-- Added `s3.status` query key
+- Implemented usage action checking infrastructure for billing enforcement:
+  - Added `checkActions` and `checkSingleAction` API functions to `frontend-v2/src/lib/api/usage.ts`
+  - Created `frontend-v2/src/stores/usage-store.ts` with caching (3s), request deduplication, and org-switch handling
+  - Created `frontend-v2/src/components/usage-checker.tsx` that runs on org layout mount
+  - Integrated `UsageChecker` into `$orgSlug/route.tsx`
+- The store provides `useUsageChecks()` hook with convenience getters for common actions
 
 ## Next Suggested Task
 
-**BillingGuard component** - HIGH PRIORITY
+**Integrate usage checks into UI components** - HIGH PRIORITY (continuation of billing enforcement)
 
-Blocks UI actions when subscription is inactive. This is needed for billing enforcement across the app.
+The usage checking infrastructure is in place. Next step is to integrate it into key UI actions:
 
-Files to reference:
-- Old frontend: Search for billing enforcement patterns
-- Backend endpoint: `GET /usage/check-action?action={action}`
+1. **Create Collection button** (sidebar) - disable when `sourceConnectionsAllowed` or `entitiesAllowed` is false
+2. **Add Source button** (collection detail) - same checks
+3. **Invite Members** (members settings) - disable when `teamMembersAllowed` is false
+4. **Query execution** (query tool) - disable when `queriesAllowed` is false
 
-Implementation steps:
-1. Create `checkUsageAction` API function in `frontend-v2/src/lib/api/usage.ts`
-2. Create `BillingGuard` component that wraps children and shows upgrade prompt when action blocked
-3. Integrate into key UI actions (create collection, add source, invite members, etc.)
+Implementation approach:
+```tsx
+import { useUsageChecks } from "@/stores/usage-store";
+
+const { sourceConnectionsAllowed, sourceConnectionsStatus } = useUsageChecks();
+
+// Disable button and show tooltip when at limit
+<Tooltip content={sourceConnectionsStatus?.details?.message}>
+  <Button disabled={!sourceConnectionsAllowed}>Create Collection</Button>
+</Tooltip>
+```
 
 **Edit Member Roles** - MEDIUM PRIORITY (blocked)
 
-NOTE: This requires backend work first. The `PATCH /organizations/{id}/members/{memberId}` endpoint doesn't exist yet. Suggest deferring until backend adds the endpoint.
+NOTE: Requires backend work. The `PATCH /organizations/{id}/members/{memberId}` endpoint doesn't exist yet.
 
 ## Other Tasks (in order of priority)
 
@@ -48,5 +56,7 @@ NOTE: This requires backend work first. The `PATCH /organizations/{id}/members/{
 - Main migration spec: `MIGRATION_SPEC.md`
 - Old frontend source: `frontend/src/`
 - New frontend source: `frontend-v2/src/`
-- New S3 components: `frontend-v2/src/components/s3-*.tsx`
-- Organization settings: `frontend-v2/src/routes/$orgSlug/settings/index.tsx`
+- Usage store: `frontend-v2/src/stores/usage-store.ts`
+- Usage checker: `frontend-v2/src/components/usage-checker.tsx`
+- Old billing enforcement: `frontend/src/components/DashboardLayout.tsx` (lines 256-307)
+- Old MembersSettings: `frontend/src/components/settings/MembersSettings.tsx` (lines 58-60, 99-106)

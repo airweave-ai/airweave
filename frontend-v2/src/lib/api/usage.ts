@@ -1,12 +1,5 @@
-/**
- * Usage API client
- */
-
 import { API_BASE_URL, getAuthHeaders, parseErrorResponse } from "./client";
 
-/**
- * Usage data for a billing period
- */
 export interface UsageData {
   entities: number;
   queries: number;
@@ -18,9 +11,64 @@ export interface UsageData {
   max_team_members: number | null;
 }
 
-/**
- * Current billing period information
- */
+export interface ActionCheckResponse {
+  allowed: boolean;
+  action: string;
+  reason?: "payment_required" | "usage_limit_exceeded" | null;
+  details?: {
+    message: string;
+    current_usage?: number;
+    limit?: number;
+    payment_status?: string;
+    upgrade_url?: string;
+  } | null;
+}
+
+export interface CheckActionsResponse {
+  results: Record<string, ActionCheckResponse>;
+}
+
+export type UsageAction =
+  | "source_connections"
+  | "entities"
+  | "queries"
+  | "team_members";
+
+export async function checkActions(
+  token: string,
+  actions: Record<string, number>
+): Promise<CheckActionsResponse> {
+  const response = await fetch(`${API_BASE_URL}/usage/check-actions`, {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify({ actions }),
+  });
+
+  if (!response.ok) {
+    const message = await parseErrorResponse(
+      response,
+      "Failed to check usage actions"
+    );
+    throw new Error(message);
+  }
+
+  return response.json();
+}
+
+export async function checkSingleAction(
+  token: string,
+  action: string,
+  quantity: number = 1
+): Promise<ActionCheckResponse> {
+  const response = await checkActions(token, { [action]: quantity });
+  return (
+    response.results[action] ?? {
+      allowed: true,
+      action,
+    }
+  );
+}
+
 export interface CurrentPeriod {
   period_id: string;
   period_start: string;
@@ -32,16 +80,10 @@ export interface CurrentPeriod {
   is_current: boolean;
 }
 
-/**
- * Usage dashboard response
- */
 export interface UsageDashboardData {
   current_period: CurrentPeriod;
 }
 
-/**
- * Fetch usage dashboard data
- */
 export async function fetchUsageDashboard(
   token: string
 ): Promise<UsageDashboardData> {

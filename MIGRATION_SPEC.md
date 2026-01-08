@@ -469,8 +469,10 @@ The frontend-v2 uses a new Orange/Amber primary color. This is intentional and s
 
 - [ ] **Billing Enforcement**
   - [ ] Create BillingGuard component
-  - [ ] Add usage check API functions
-  - [ ] Implement strict blocking throughout app
+  - [x] Add usage check API functions
+  - [x] Create usage-store with caching
+  - [x] Create UsageChecker component
+  - [ ] Implement strict blocking throughout app (integrate into UI)
   - [x] Create `/billing/success` route
   - [x] Create `/billing/cancel` route
 
