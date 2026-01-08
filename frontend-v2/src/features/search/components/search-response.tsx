@@ -1,15 +1,3 @@
-/**
- * SearchResponse - Display search results and completion
- *
- * Features:
- * - Markdown rendering with code syntax highlighting
- * - Entity citation links [[N]] in answers
- * - Raw JSON view tab
- * - Response time display
- * - Trace view for search operations
- * - LocalStorage persistence for UI state
- */
-
 import {
   Check,
   ChevronDown,

@@ -544,6 +544,7 @@ The frontend-v2 uses a new Orange/Amber primary color. This is intentional and s
 - [ ] **Utilities**
   - [x] Port `dateTime.ts`
   - [x] Port `cronParser.ts`
+  - [x] Port `syncStatus.ts`
   - [ ] Port `error-utils.ts`
 
 ### Phase 7: Polish (LOW)
@@ -726,3 +727,5 @@ interface OrganizationMetrics {
 ---
 
 **2026-01-08**: Created `/billing/success` and `/billing/cancel` routes in frontend-v2. These are simple callback pages that handle post-billing flow redirects. The success page refreshes organizations, sends any pending team invitations from onboarding metadata, and redirects to dashboard. The cancel page shows a simple message and provides a button to return to dashboard. Also added `inviteOrganizationMember` API function to `lib/api/organizations.ts`. Next suggested task: Add `X-Airweave-Session-ID` header to API client (see MIGRATION_SPEC section 6.1).
+
+**2026-01-08**: Ported `syncStatus.ts` utility to `frontend-v2/src/lib/syncStatus.ts`. This HIGH PRIORITY utility provides functions to derive and display sync status consistently (`deriveSyncStatus`, `getSyncStatusColorClass`, `getSyncStatusDisplayText`). The `SyncProgressUpdate` type is defined locally for now - when `sync-state-store` is ported (Phase 2), it should be imported from there. Next suggested task: Port `error-utils.ts` utility (will need adaptation for TanStack Router instead of React Router).

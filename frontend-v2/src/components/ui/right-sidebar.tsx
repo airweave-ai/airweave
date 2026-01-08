@@ -1,3 +1,4 @@
+import * as React from "react";
 import {
   BookOpen,
   Code2,
@@ -7,10 +8,8 @@ import {
   PanelRightIcon,
 } from "lucide-react";
 
-import { DiscordIcon } from "@/components/ui/discord-icon";
-import * as React from "react";
-
 import { Button } from "@/components/ui/button";
+import { DiscordIcon } from "@/components/ui/discord-icon";
 import {
   Sheet,
   SheetContent,
