@@ -65,6 +65,11 @@ export const queryKeys = {
     status: (orgId: string) => [orgId, "s3", "status"] as const,
   },
 
+  billing: {
+    subscription: (orgId: string) =>
+      [orgId, "billing", "subscription"] as const,
+  },
+
   user: {
     current: ["user", "current"] as const,
   },

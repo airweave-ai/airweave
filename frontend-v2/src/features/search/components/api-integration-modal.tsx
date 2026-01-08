@@ -60,7 +60,11 @@ const REST_TABS: TabConfig[] = [
 const MCP_TABS: TabConfig[] = [
   { id: "claude", label: "Claude", icon: <ClaudeIcon className="size-5" /> },
   { id: "cursor", label: "Cursor", icon: <CursorIcon className="size-5" /> },
-  { id: "windsurf", label: "Windsurf", icon: <WindsurfIcon className="size-5" /> },
+  {
+    id: "windsurf",
+    label: "Windsurf",
+    icon: <WindsurfIcon className="size-5" />,
+  },
   { id: "server", label: "Server/Other", icon: <McpIcon className="size-4" /> },
 ];
 

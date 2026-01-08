@@ -4,24 +4,28 @@ Context for the next iteration of frontend migration work.
 
 ## What Was Done (Latest)
 
-- **Phase 6: SemanticMcp Page - COMPLETE**
-  - Created `/semantic-mcp` route at `frontend-v2/src/routes/semantic-mcp.tsx`
-  - Implemented source connection grid with SmallSourceButton component
-  - Added authentication dialog for both OAuth and direct (API key/credentials) auth flows
-  - Integrated real-time sync status display for connected sources
-  - Added Search component integration for querying synced data
-  - Session storage used for persisting state across OAuth redirects
-  - Theme toggle (light/dark/system) in header
+- **Billing Settings Page - COMPLETE**
+  - Created `/$orgSlug/settings/billing.tsx` with full subscription management
+  - Plan cards: Developer (free), Pro ($20/mo), Team ($299/mo), Enterprise (custom)
+  - Monthly/Yearly toggle with 20% yearly discount
+  - Status badges: Active, Trial, Past Due, Canceled, Trial Expired
+  - Upgrade/Downgrade/Switch buttons, Cancel/Reactivate subscription
+  - Created `lib/api/billing.ts` with API functions
+  - Added Billing tab to settings-layout navigation
   - Build verified passing
 
 ## Next Suggested Tasks (in priority order)
 
-1. **Billing Management Page (MEDIUM)**
-   - Create `/$orgSlug/settings/billing` for managing subscriptions
-   - Should allow users to upgrade/downgrade plans
-   - Connect to Stripe portal
+1. **Port `/billing/setup` Route (MEDIUM)**
+   - Initial billing setup page shown during onboarding
+   - Similar to old `frontend/src/pages/BillingSetup.tsx`
+   - Should check billing status and redirect to Stripe checkout if needed
 
-2. **Polish Phase 7 (LOW)**
+2. **Port `/billing/portal` Route (MEDIUM)**
+   - Simple redirect page to Stripe Customer Portal
+   - Reference: `frontend/src/pages/BillingPortal.tsx`
+
+3. **Polish Phase 7 (LOW)**
    - Port TagInput component
    - Port CollapsibleCard component
    - Enhance CodeBlock component
@@ -35,10 +39,44 @@ Context for the next iteration of frontend migration work.
 - Main migration spec: `MIGRATION_SPEC.md`
 - Old frontend source: `frontend/src/`
 - New frontend source: `frontend-v2/src/`
+- Billing API: `frontend-v2/src/lib/api/billing.ts`
+- Billing Settings Page: `frontend-v2/src/routes/$orgSlug/settings/billing.tsx`
+- Settings Layout: `frontend-v2/src/components/settings-layout.tsx`
 - Validation system: `frontend-v2/src/lib/validation/`
-- ValidatedInput: `frontend-v2/src/components/validated-input.tsx`
-- API Integration Modal: `frontend-v2/src/features/search/components/api-integration-modal.tsx`
-- SemanticMcp Page: `frontend-v2/src/routes/semantic-mcp.tsx`
+- Date utilities: `frontend-v2/src/lib/date.ts`
+
+## How to Use the Billing API
+
+```typescript
+import {
+  fetchSubscription,
+  createCheckoutSession,
+  createPortalSession,
+  updatePlan,
+  cancelSubscription,
+  reactivateSubscription,
+} from "@/lib/api";
+
+// Fetch current subscription
+const subscription = await fetchSubscription(token);
+
+// Create checkout session for new subscription
+const { checkout_url } = await createCheckoutSession(
+  token,
+  "pro", // plan
+  successUrl,
+  cancelUrl
+);
+
+// Open Stripe billing portal
+const { portal_url } = await createPortalSession(token, returnUrl);
+
+// Update plan (upgrade/downgrade)
+await updatePlan(token, "team", "yearly");
+
+// Cancel subscription at period end
+await cancelSubscription(token, false);
+```
 
 ## How to Use the Validation System
 

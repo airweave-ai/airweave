@@ -3,6 +3,7 @@ import {
   BarChart3,
   Check,
   Copy,
+  CreditCard,
   Key,
   Settings,
   Star,
@@ -23,6 +24,7 @@ interface SettingsLayoutProps {
 const settingsTabs = [
   { path: "settings", label: "General", icon: Settings },
   { path: "settings/members", label: "Members", icon: Users },
+  { path: "settings/billing", label: "Billing", icon: CreditCard },
   { path: "settings/usage", label: "Usage", icon: BarChart3 },
 ] as const;
 

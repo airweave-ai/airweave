@@ -118,3 +118,21 @@ export type {
   CreateEnterpriseOrgRequest,
   OrganizationMetrics,
 } from "./admin";
+
+export {
+  cancelPlanChange,
+  cancelSubscription,
+  createCheckoutSession,
+  createPortalSession,
+  createYearlyCheckoutSession,
+  fetchSubscription,
+  reactivateSubscription,
+  updatePlan,
+} from "./billing";
+export type {
+  BillingActionResponse,
+  CheckoutSessionResponse,
+  PortalSessionResponse,
+  SubscriptionInfo,
+  SubscriptionLimits,
+} from "./billing";

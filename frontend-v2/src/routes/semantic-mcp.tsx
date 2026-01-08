@@ -13,16 +13,12 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
 import {
-  Check,
-  Loader2,
-  Moon,
-  Plus,
-  Sun,
-  Monitor,
-  Play,
-} from "lucide-react";
+  createFileRoute,
+  useNavigate,
+  useSearch,
+} from "@tanstack/react-router";
+import { Check, Loader2, Moon, Plus, Sun, Monitor, Play } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -84,7 +80,11 @@ const SESSION_KEYS = {
 function SemanticMcpPage() {
   const isDark = useIsDark();
   const { theme, setTheme } = useUISettings();
-  const { getAccessTokenSilently, isAuthenticated, isLoading: authLoading } = useAuth0();
+  const {
+    getAccessTokenSilently,
+    isAuthenticated,
+    isLoading: authLoading,
+  } = useAuth0();
   const navigate = useNavigate();
   const searchParams = useSearch({ from: "/semantic-mcp" });
 
@@ -128,10 +128,7 @@ function SemanticMcpPage() {
   // Fetch source connections for current collection
   const { data: sourceConnections = [], refetch: refetchConnections } =
     useQuery({
-      queryKey: [
-        "semantic-mcp-connections",
-        currentCollection?.readable_id,
-      ],
+      queryKey: ["semantic-mcp-connections", currentCollection?.readable_id],
       queryFn: async () => {
         if (!currentCollection?.readable_id) return [];
         const token = await getAccessTokenSilently();
@@ -218,7 +215,11 @@ function SemanticMcpPage() {
         toast.error("OAuth authentication failed");
       }
       // Clear error from URL
-      navigate({ to: "/semantic-mcp", search: { error: undefined, restore_dialog: undefined }, replace: true });
+      navigate({
+        to: "/semantic-mcp",
+        search: { error: undefined, restore_dialog: undefined },
+        replace: true,
+      });
     } else if (searchParams.restore_dialog === "true") {
       hasProcessedOAuthRef.current = true;
       const savedState = sessionStorage.getItem(SESSION_KEYS.OAUTH_STATE);
@@ -230,14 +231,19 @@ function SemanticMcpPage() {
           if (state.configValues) setConfigValues(state.configValues);
           if (state.isAuthenticated) setIsAuthenticated_(state.isAuthenticated);
           if (state.credentialId) setCredentialId(state.credentialId);
-          if (state.currentCollection) setCurrentCollection(state.currentCollection);
+          if (state.currentCollection)
+            setCurrentCollection(state.currentCollection);
           setIsDialogOpen(true);
           sessionStorage.removeItem(SESSION_KEYS.OAUTH_STATE);
         } catch {
           toast.error("Failed to restore dialog state");
         }
       }
-      navigate({ to: "/semantic-mcp", search: { error: undefined, restore_dialog: undefined }, replace: true });
+      navigate({
+        to: "/semantic-mcp",
+        search: { error: undefined, restore_dialog: undefined },
+        replace: true,
+      });
     }
   }, [searchParams, navigate]);
 
@@ -301,9 +307,7 @@ function SemanticMcpPage() {
   const isFormValid = useMemo(() => {
     if (!sourceDetails?.auth_fields?.fields) return true;
     return sourceDetails.auth_fields.fields
-      .filter(
-        (f) => f.name !== "refresh_token" && f.name !== "access_token"
-      )
+      .filter((f) => f.name !== "refresh_token" && f.name !== "access_token")
       .every((f) => !f.required || authValues[f.name]?.trim());
   }, [sourceDetails, authValues]);
 
@@ -385,7 +389,8 @@ function SemanticMcpPage() {
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
           throw new Error(
-            errorData.detail || `Failed to authenticate with ${sourceDetails.name}`
+            errorData.detail ||
+              `Failed to authenticate with ${sourceDetails.name}`
           );
         }
 
@@ -496,8 +501,7 @@ function SemanticMcpPage() {
 
   // Get status color for connection
   const getStatusColor = (connection: SourceConnection) => {
-    const status =
-      connection.last_sync_job?.status || connection.status || "";
+    const status = connection.last_sync_job?.status || connection.status || "";
     switch (status.toLowerCase()) {
       case "completed":
         return "bg-green-500";
@@ -527,7 +531,7 @@ function SemanticMcpPage() {
   if (authLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <Loader2 className="text-muted-foreground h-8 w-8 animate-spin" />
       </div>
     );
   }
@@ -535,14 +539,10 @@ function SemanticMcpPage() {
   return (
     <div className="bg-background min-h-screen">
       {/* Theme Toggle - Top Right */}
-      <div className="absolute right-4 top-4 z-10">
+      <div className="absolute top-4 right-4 z-10">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 rounded-lg"
-            >
+            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg">
               {isDark ? (
                 <Moon className="h-[18px] w-[18px]" />
               ) : (
@@ -595,7 +595,7 @@ function SemanticMcpPage() {
           <div className="mx-auto grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8">
             {sourcesLoading ? (
               <div className="col-span-full flex h-40 items-center justify-center">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
               </div>
             ) : sources.length === 0 ? (
               <div className="text-muted-foreground col-span-full py-10 text-center">
@@ -652,7 +652,7 @@ function SemanticMcpPage() {
                     className={cn(
                       "flex h-[60px] min-w-[100px] items-center justify-between gap-2 rounded-lg border p-2 transition-all",
                       selectedConnectionId === connection.id
-                        ? "border-2 border-primary"
+                        ? "border-primary border-2"
                         : isDark
                           ? "border-gray-700 bg-gray-800/50 hover:bg-gray-700/70"
                           : "border-gray-200 bg-white hover:bg-gray-50"
@@ -738,7 +738,10 @@ function SemanticMcpPage() {
       </div>
 
       {/* Source Connect Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={(open) => !open && handleDialogClose()}>
+      <Dialog
+        open={isDialogOpen}
+        onOpenChange={(open) => !open && handleDialogClose()}
+      >
         <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-center gap-3 text-xl">
@@ -818,7 +821,7 @@ function SemanticMcpPage() {
               {sourceDetails.config_fields?.fields &&
                 sourceDetails.config_fields.fields.length > 0 && (
                   <div className="space-y-4">
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wider">
+                    <Label className="text-muted-foreground text-xs tracking-wider uppercase">
                       Configuration
                     </Label>
                     {sourceDetails.config_fields.fields.map((field) => (
@@ -923,9 +926,7 @@ function SmallSourceButton({
         <div
           className={cn(
             "flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full",
-            isDark
-              ? "bg-blue-600/60 text-blue-200"
-              : "bg-blue-500 text-white"
+            isDark ? "bg-blue-600/60 text-blue-200" : "bg-blue-500 text-white"
           )}
         >
           <Check className="h-3 w-3" />
@@ -993,7 +994,7 @@ function ConnectionDetails({
   if (isLoading || !connection) {
     return (
       <div className="flex items-center justify-center py-4">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
       </div>
     );
   }
@@ -1013,7 +1014,10 @@ function ConnectionDetails({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <img
-            src={getAppIconUrl(connection.short_name, isDark ? "dark" : "light")}
+            src={getAppIconUrl(
+              connection.short_name,
+              isDark ? "dark" : "light"
+            )}
             alt={connection.name}
             className="h-6 w-6"
           />
@@ -1070,14 +1074,15 @@ function ConnectionDetails({
           />
         )}
 
-        {syncJob?.entities_deleted !== undefined && syncJob.entities_deleted > 0 && (
-          <StatusBadge
-            label="Deleted"
-            value={syncJob.entities_deleted.toLocaleString()}
-            color="red"
-            isDark={isDark}
-          />
-        )}
+        {syncJob?.entities_deleted !== undefined &&
+          syncJob.entities_deleted > 0 && (
+            <StatusBadge
+              label="Deleted"
+              value={syncJob.entities_deleted.toLocaleString()}
+              color="red"
+              isDark={isDark}
+            />
+          )}
       </div>
 
       {/* Error display */}
@@ -1120,9 +1125,7 @@ function StatusBadge({ label, value, color, isDark, pulse }: StatusBadgeProps) {
     <div
       className={cn(
         "flex h-8 items-center gap-2 rounded-lg border px-3 text-sm",
-        isDark
-          ? "border-gray-700 bg-gray-800/50"
-          : "border-gray-200 bg-white"
+        isDark ? "border-gray-700 bg-gray-800/50" : "border-gray-200 bg-white"
       )}
     >
       <span

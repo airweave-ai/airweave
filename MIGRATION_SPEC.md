@@ -71,7 +71,7 @@ These decisions were made during migration planning and should guide all impleme
 | Source Connections | ✅ Complete | - | Full sync management |
 | Dashboard | ✅ Complete | - | **Decision: Keep redirect to collections** |
 | Organization Settings | ✅ Complete | - | Full settings with S3 config |
-| Billing Pages | ❌ Missing | **High** | Strict blocking enforcement |
+| Billing Pages | ⚠️ Partial | **Medium** | Settings billing page done, setup/portal routes pending |
 | Admin Dashboard | ✅ Complete | - | Superuser access with metrics |
 | Real-time Sync | ✅ Complete | - | Full SSE port with entity state |
 | Usage Dashboard | ✅ Complete | - | Part of settings |
@@ -106,9 +106,9 @@ These decisions were made during migration planning and should guide all impleme
 | `/collections/:readable_id` | `CollectionDetailView` | ✅ Complete | - |
 | `/api-keys` | N/A (inline) | ✅ Complete | - |
 | `/auth-providers` | `AuthProviders` | ✅ Complete | - |
-| `/organization/settings` | `OrganizationSettingsUnified` | ❌ Missing | **High** |
-| `/billing/setup` | `BillingSetup` | ❌ Missing | **High** |
-| `/billing/portal` | `BillingPortal` | ❌ Missing | **High** |
+| `/organization/settings` | `OrganizationSettingsUnified` | ✅ Complete | - |
+| `/billing/setup` | `BillingSetup` | ❌ Missing | **Medium** |
+| `/billing/portal` | `BillingPortal` | ❌ Missing | **Medium** |
 | `/admin` | `AdminDashboard` | ✅ Complete | - |
 | `*` (404) | `NotFound` | ✅ Complete | - |
 
@@ -130,10 +130,11 @@ These decisions were made during migration planning and should guide all impleme
 ### Routes to Implement
 
 ```
-/$orgSlug/settings/billing      → Billing management
+/billing/setup                  → Initial billing setup page (redirect from onboarding)
+/billing/portal                 → Stripe portal redirect
 ```
 
-**Note:** Most settings routes are implemented. Billing management page for subscription changes is not yet done. The `/semantic-mcp` route has been implemented.
+**Note:** Most settings routes are implemented including `/$orgSlug/settings/billing`. The `/billing/setup` and `/billing/portal` routes handle initial onboarding billing and Stripe portal redirects respectively.
 
 
 
@@ -757,3 +758,19 @@ Next suggested task: BillingGuard component or Admin Dashboard.
 - Added Claude, Cursor, Windsurf, and improved MCP icons
 - The frontend-v2 Search component is already more advanced than old QueryTool (streaming, toggles panel, usage limits)
 Phase 5 is now complete. Next suggested task: SemanticMcp Page (Phase 6) or Port TagInput component (Phase 7).
+
+**2026-01-08**: Created Billing Settings page at `/$orgSlug/settings/billing.tsx`. Features implemented:
+- Full subscription management UI with plan cards (Developer, Pro, Team, Enterprise)
+- Monthly/Yearly billing period toggle with 20% discount indicator
+- Current plan display with status badge (Active, Trial, Past Due, Canceled, Trial Expired)
+- Upgrade/Downgrade/Switch buttons for plan changes
+- Manage Billing button to open Stripe portal
+- Cancel subscription dialog with confirmation
+- Reactivate subscription for canceled plans
+- Pending plan change alerts with cancel option
+- Yearly prepay indicator
+- Created billing API functions in `lib/api/billing.ts` (fetchSubscription, createCheckoutSession, createYearlyCheckoutSession, createPortalSession, updatePlan, cancelSubscription, reactivateSubscription, cancelPlanChange)
+- Added billing query keys to `query-keys.ts`
+- Added Billing tab to settings-layout navigation
+- Build verified passing
+Next suggested tasks: Port `/billing/setup` route (initial billing setup page) or `/billing/portal` route (Stripe portal redirect), or Phase 7 polish (TagInput, CollapsibleCard components).
