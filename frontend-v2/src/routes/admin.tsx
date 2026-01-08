@@ -108,9 +108,9 @@ function AdminDashboardPage() {
   const [ownerEmail, setOwnerEmail] = useState("");
 
   // Join org form
-  const [selectedRole, setSelectedRole] = useState<"owner" | "admin" | "member">(
-    "owner"
-  );
+  const [selectedRole, setSelectedRole] = useState<
+    "owner" | "admin" | "member"
+  >("owner");
 
   // Check if user is admin
   const { data: currentUser, isLoading: userLoading } = useQuery({
@@ -170,7 +170,13 @@ function AdminDashboardPage() {
     );
 
     return () => clearTimeout(timer);
-  }, [searchTerm, sortField, sortOrder, currentUser?.is_admin, refetchOrganizations]);
+  }, [
+    searchTerm,
+    sortField,
+    sortOrder,
+    currentUser?.is_admin,
+    refetchOrganizations,
+  ]);
 
   // Mutations
   const joinMutation = useMutation({
@@ -185,10 +191,14 @@ function AdminDashboardPage() {
       return adminJoinOrganization(token, orgId, role);
     },
     onSuccess: () => {
-      toast.success(`Successfully joined ${selectedOrg?.name} as ${selectedRole}`);
+      toast.success(
+        `Successfully joined ${selectedOrg?.name} as ${selectedRole}`
+      );
       setActionType(null);
       setSelectedOrg(null);
-      queryClient.invalidateQueries({ queryKey: queryKeys.admin.organizations });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.admin.organizations,
+      });
     },
     onError: (error) => {
       toast.error(
@@ -206,7 +216,9 @@ function AdminDashboardPage() {
       toast.success(`Successfully upgraded ${selectedOrg?.name} to Enterprise`);
       setActionType(null);
       setSelectedOrg(null);
-      queryClient.invalidateQueries({ queryKey: queryKeys.admin.organizations });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.admin.organizations,
+      });
     },
     onError: (error) => {
       toast.error(
@@ -227,18 +239,20 @@ function AdminDashboardPage() {
       return adminCreateEnterpriseOrg(token, data);
     },
     onSuccess: () => {
-      toast.success(`Successfully created enterprise organization ${newOrgName}`);
+      toast.success(
+        `Successfully created enterprise organization ${newOrgName}`
+      );
       setActionType(null);
       setNewOrgName("");
       setNewOrgDescription("");
       setOwnerEmail("");
-      queryClient.invalidateQueries({ queryKey: queryKeys.admin.organizations });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.admin.organizations,
+      });
     },
     onError: (error) => {
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to create organization"
+        error instanceof Error ? error.message : "Failed to create organization"
       );
     },
   });
@@ -272,13 +286,13 @@ function AdminDashboardPage() {
           prev.filter((f) => f !== variables.flag)
         );
       }
-      queryClient.invalidateQueries({ queryKey: queryKeys.admin.organizations });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.admin.organizations,
+      });
     },
     onError: (error) => {
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to update feature flag"
+        error instanceof Error ? error.message : "Failed to update feature flag"
       );
     },
   });
@@ -427,7 +441,7 @@ function AdminDashboardPage() {
       {/* Stats Cards */}
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
         <Card className="border-l-4 border-l-amber-500/50">
-          <CardHeader className="pb-2 pt-3">
+          <CardHeader className="pt-3 pb-2">
             <CardTitle className="text-muted-foreground flex items-center gap-2 text-xs font-medium">
               <Building2 className="size-3.5" />
               Organizations
@@ -444,7 +458,7 @@ function AdminDashboardPage() {
         </Card>
 
         <Card>
-          <CardHeader className="pb-2 pt-3">
+          <CardHeader className="pt-3 pb-2">
             <CardTitle className="text-muted-foreground flex items-center gap-2 text-xs font-medium">
               <Users className="size-3.5" />
               Total Users
@@ -454,12 +468,14 @@ function AdminDashboardPage() {
             <div className="text-2xl font-bold">
               {formatNumber(stats.totalUsers)}
             </div>
-            <p className="text-muted-foreground mt-1 text-xs">Across all orgs</p>
+            <p className="text-muted-foreground mt-1 text-xs">
+              Across all orgs
+            </p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="pb-2 pt-3">
+          <CardHeader className="pt-3 pb-2">
             <CardTitle className="text-muted-foreground flex items-center gap-2 text-xs font-medium">
               <Database className="size-3.5" />
               Connections
@@ -476,7 +492,7 @@ function AdminDashboardPage() {
         </Card>
 
         <Card>
-          <CardHeader className="pb-2 pt-3">
+          <CardHeader className="pt-3 pb-2">
             <CardTitle className="text-muted-foreground flex items-center gap-2 text-xs font-medium">
               <Activity className="size-3.5" />
               Entities
@@ -491,7 +507,7 @@ function AdminDashboardPage() {
         </Card>
 
         <Card>
-          <CardHeader className="pb-2 pt-3">
+          <CardHeader className="pt-3 pb-2">
             <CardTitle className="text-muted-foreground text-xs font-medium">
               Admin User
             </CardTitle>
@@ -507,7 +523,7 @@ function AdminDashboardPage() {
         </Card>
 
         <Card>
-          <CardHeader className="pb-2 pt-3">
+          <CardHeader className="pt-3 pb-2">
             <CardTitle className="text-muted-foreground text-xs font-medium">
               Platform
             </CardTitle>
@@ -550,7 +566,7 @@ function AdminDashboardPage() {
                 </SelectContent>
               </Select>
               <div className="relative w-72">
-                <Search className="text-muted-foreground absolute left-2.5 top-2.5 size-4" />
+                <Search className="text-muted-foreground absolute top-2.5 left-2.5 size-4" />
                 <Input
                   placeholder="Search organizations..."
                   value={searchTerm}
@@ -583,7 +599,7 @@ function AdminDashboardPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="-ml-3 h-8 data-[state=open]:bg-accent"
+                        className="data-[state=open]:bg-accent -ml-3 h-8"
                         onClick={() => handleSort("name")}
                       >
                         Organization
@@ -711,10 +727,10 @@ function AdminDashboardPage() {
                             className="h-5 gap-1 px-2 py-0.5 text-xs"
                           >
                             {org.member_role === "owner" && (
-                              <Crown className="text-amber-400/90 size-3" />
+                              <Crown className="size-3 text-amber-400/90" />
                             )}
                             {org.member_role === "admin" && (
-                              <Shield className="text-amber-400/90 size-3" />
+                              <Shield className="size-3 text-amber-400/90" />
                             )}
                             {org.member_role}
                           </Badge>
@@ -831,13 +847,13 @@ function AdminDashboardPage() {
                 <SelectContent>
                   <SelectItem value="owner">
                     <div className="flex items-center gap-2">
-                      <Crown className="text-amber-400/90 size-4" />
+                      <Crown className="size-4 text-amber-400/90" />
                       Owner
                     </div>
                   </SelectItem>
                   <SelectItem value="admin">
                     <div className="flex items-center gap-2">
-                      <Shield className="text-amber-400/90 size-4" />
+                      <Shield className="size-4 text-amber-400/90" />
                       Admin
                     </div>
                   </SelectItem>
@@ -886,9 +902,7 @@ function AdminDashboardPage() {
           </DialogHeader>
 
           <div className="bg-muted/50 my-4 rounded-lg p-4">
-            <p className="text-muted-foreground text-sm">
-              This action will:
-            </p>
+            <p className="text-muted-foreground text-sm">This action will:</p>
             <ul className="text-muted-foreground mt-2 list-inside list-disc space-y-1 text-sm">
               <li>Set the billing plan to "enterprise"</li>
               <li>Remove subscription limits</li>
