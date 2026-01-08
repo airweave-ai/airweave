@@ -545,7 +545,7 @@ The frontend-v2 uses a new Orange/Amber primary color. This is intentional and s
   - [x] Port `dateTime.ts`
   - [x] Port `cronParser.ts`
   - [x] Port `syncStatus.ts`
-  - [ ] Port `error-utils.ts`
+  - [x] Port `error-utils.ts`
 
 ### Phase 7: Polish (LOW)
 
