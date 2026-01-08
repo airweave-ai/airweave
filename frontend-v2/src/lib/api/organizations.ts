@@ -151,3 +151,30 @@ export async function createCheckoutSession(
 
   return response.json();
 }
+
+/**
+ * Invite a member to an organization
+ */
+export async function inviteOrganizationMember(
+  token: string,
+  organizationId: string,
+  email: string,
+  role: string
+): Promise<void> {
+  const response = await fetch(
+    `${API_BASE_URL}/organizations/${organizationId}/invite`,
+    {
+      method: "POST",
+      headers: getAuthHeaders(token),
+      body: JSON.stringify({ email, role }),
+    }
+  );
+
+  if (!response.ok) {
+    const message = await parseErrorResponse(
+      response,
+      "Failed to invite member"
+    );
+    throw new Error(message);
+  }
+}

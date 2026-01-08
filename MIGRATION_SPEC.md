@@ -471,8 +471,8 @@ The frontend-v2 uses a new Orange/Amber primary color. This is intentional and s
   - [ ] Create BillingGuard component
   - [ ] Add usage check API functions
   - [ ] Implement strict blocking throughout app
-  - [ ] Create `/billing/success` route
-  - [ ] Create `/billing/cancel` route
+  - [x] Create `/billing/success` route
+  - [x] Create `/billing/cancel` route
 
 - [ ] **Organization Settings Page**
   - [ ] Create `/$orgSlug/settings/index.tsx`
@@ -539,7 +539,7 @@ The frontend-v2 uses a new Orange/Amber primary color. This is intentional and s
 - [ ] **PostHog Integration**
   - [ ] Add PostHog provider
   - [ ] Implement session ID tracking
-  - [ ] Add `X-Airweave-Session-ID` to API headers
+  - [x] Add `X-Airweave-Session-ID` to API headers
 
 - [ ] **Utilities**
   - [ ] Port `dateTime.ts`
@@ -717,8 +717,12 @@ interface OrganizationMetrics {
 ### Notes
 
 **Suggested starting points (simplest first):**
-1. `/billing/success` route - simple callback page
-2. `/billing/cancel` route - simple callback page
+1. ~~`/billing/success` route - simple callback page~~ (Done)
+2. ~~`/billing/cancel` route - simple callback page~~ (Done)
 3. Add `X-Airweave-Session-ID` header to API client
 4. Port `dateTime.ts` utility
 5. Port `cronParser.ts` utility
+
+---
+
+**2026-01-08**: Created `/billing/success` and `/billing/cancel` routes in frontend-v2. These are simple callback pages that handle post-billing flow redirects. The success page refreshes organizations, sends any pending team invitations from onboarding metadata, and redirects to dashboard. The cancel page shows a simple message and provides a button to return to dashboard. Also added `inviteOrganizationMember` API function to `lib/api/organizations.ts`. Next suggested task: Add `X-Airweave-Session-ID` header to API client (see MIGRATION_SPEC section 6.1).
