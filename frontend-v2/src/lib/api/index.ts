@@ -25,8 +25,14 @@ export type {
   UpdateAuthProviderConnectionRequest,
 } from "./auth-providers";
 
-export { fetchOrganization, fetchOrganizations } from "./organizations";
-export type { Organization } from "./organizations";
+export {
+  deleteOrganization,
+  fetchOrganization,
+  fetchOrganizations,
+  setPrimaryOrganization,
+  updateOrganization,
+} from "./organizations";
+export type { Organization, UpdateOrganizationRequest } from "./organizations";
 
 export {
   createCollection,

@@ -70,7 +70,7 @@ These decisions were made during migration planning and should guide all impleme
 | Onboarding | ✅ Complete | - | 6-step wizard |
 | Source Connections | ✅ Complete | - | Full sync management |
 | Dashboard | ✅ Complete | - | **Decision: Keep redirect to collections** |
-| Organization Settings | ❌ Missing | **High** | Dedicated page needed |
+| Organization Settings | ⚠️ Partial | **High** | Basic settings done, S3 config pending |
 | Billing Pages | ❌ Missing | **High** | Strict blocking enforcement |
 | Admin Dashboard | ❌ Missing | **High** | Include now per decision |
 | Real-time Sync | ❌ Missing | **High** | Full SSE port required |
@@ -80,7 +80,7 @@ These decisions were made during migration planning and should guide all impleme
 | QueryTool | ⚠️ Different | **Medium** | Port full version with API doc |
 | SemanticMcp Page | ❌ Missing | **Medium** | MCP auth alternative |
 | S3 Configuration | ❌ Missing | **Medium** | Feature-flagged |
-| PostHog Integration | ❌ Missing | **Medium** | Add session tracking |
+| PostHog Integration | ✅ Complete | - | Session tracking implemented |
 | Logs | ⚠️ Skeleton | **Low** | Keep skeleton per decision |
 | Webhooks | ⚠️ Skeleton | **Low** | Keep skeleton per decision |
 | DAG Visualization | ❌ Not needed | **Skip** | Simplify to basic status view |
@@ -474,10 +474,10 @@ The frontend-v2 uses a new Orange/Amber primary color. This is intentional and s
   - [x] Create `/billing/success` route
   - [x] Create `/billing/cancel` route
 
-- [ ] **Organization Settings Page**
-  - [ ] Create `/$orgSlug/settings/index.tsx`
-  - [ ] Organization name/description editing
-  - [ ] Organization deletion with confirmation
+- [x] **Organization Settings Page**
+  - [x] Create `/$orgSlug/settings/index.tsx`
+  - [x] Organization name/description editing
+  - [x] Organization deletion with confirmation
   - [ ] S3ConfigModal (feature-flagged)
   - [ ] S3StatusCard (feature-flagged)
 
@@ -731,3 +731,13 @@ interface OrganizationMetrics {
 **2026-01-08**: Ported `syncStatus.ts` utility to `frontend-v2/src/lib/syncStatus.ts`. This HIGH PRIORITY utility provides functions to derive and display sync status consistently (`deriveSyncStatus`, `getSyncStatusColorClass`, `getSyncStatusDisplayText`). The `SyncProgressUpdate` type is defined locally for now - when `sync-state-store` is ported (Phase 2), it should be imported from there. Next suggested task: Port `error-utils.ts` utility (will need adaptation for TanStack Router instead of React Router).
 
 **2026-01-08**: Added PostHog integration to frontend-v2. Created `frontend-v2/src/lib/posthog-provider.tsx` following the same pattern as the old frontend. The provider initializes PostHog outside React to avoid race conditions, captures manual pageviews, and exposes the `posthog` instance on `window` for the API client's `getPostHogSessionId()` helper. The app is wrapped with `<PostHogProvider>` in `__root.tsx`. The API client already had `getPostHogSessionId()` and `X-Airweave-Session-ID` header implemented - PostHog integration is now complete.
+
+**2026-01-08**: Created Organization Settings page at `/$orgSlug/settings/index.tsx`. Features implemented:
+- Organization name/description editing with save button
+- Primary organization toggle with tooltip explanation
+- Organization deletion with confirmation dialog (uses existing `DeleteConfirmationDialog` component)
+- Role-based access control (only owners can delete, owners/admins can edit)
+- Added Settings to navigation sidebar
+- Created `Switch` and `Textarea` UI components
+- Added `updateOrganization`, `deleteOrganization`, and `setPrimaryOrganization` API functions
+Next suggested task: Members Settings page (`/$orgSlug/settings/members.tsx`) or S3ConfigModal component.

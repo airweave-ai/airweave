@@ -178,3 +178,89 @@ export async function inviteOrganizationMember(
     throw new Error(message);
   }
 }
+
+/**
+ * Update organization request payload
+ */
+export interface UpdateOrganizationRequest {
+  name?: string;
+  description?: string;
+}
+
+/**
+ * Update an organization
+ */
+export async function updateOrganization(
+  token: string,
+  organizationId: string,
+  data: UpdateOrganizationRequest
+): Promise<Organization> {
+  const response = await fetch(
+    `${API_BASE_URL}/organizations/${organizationId}`,
+    {
+      method: "PUT",
+      headers: getAuthHeaders(token),
+      body: JSON.stringify(data),
+    }
+  );
+
+  if (!response.ok) {
+    const message = await parseErrorResponse(
+      response,
+      "Failed to update organization"
+    );
+    throw new Error(message);
+  }
+
+  return response.json();
+}
+
+/**
+ * Delete an organization
+ */
+export async function deleteOrganization(
+  token: string,
+  organizationId: string
+): Promise<void> {
+  const response = await fetch(
+    `${API_BASE_URL}/organizations/${organizationId}`,
+    {
+      method: "DELETE",
+      headers: getAuthHeaders(token),
+    }
+  );
+
+  if (!response.ok) {
+    const message = await parseErrorResponse(
+      response,
+      "Failed to delete organization"
+    );
+    throw new Error(message);
+  }
+}
+
+/**
+ * Set an organization as primary
+ */
+export async function setPrimaryOrganization(
+  token: string,
+  organizationId: string
+): Promise<Organization> {
+  const response = await fetch(
+    `${API_BASE_URL}/organizations/${organizationId}/set-primary`,
+    {
+      method: "POST",
+      headers: getAuthHeaders(token),
+    }
+  );
+
+  if (!response.ok) {
+    const message = await parseErrorResponse(
+      response,
+      "Failed to set primary organization"
+    );
+    throw new Error(message);
+  }
+
+  return response.json();
+}

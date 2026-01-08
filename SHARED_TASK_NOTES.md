@@ -4,30 +4,35 @@ Context for the next iteration of frontend migration work.
 
 ## What Was Done
 
-- Added PostHog integration to frontend-v2
-- Created `frontend-v2/src/lib/posthog-provider.tsx`
-- Wrapped app with `<PostHogProvider>` in `__root.tsx`
-- Phase 6 is now complete (utilities + PostHog)
+- Created Organization Settings page at `/$orgSlug/settings/index.tsx`
+- Implemented organization name/description editing
+- Added primary organization toggle
+- Added organization deletion with confirmation dialog
+- Added Settings to navigation sidebar
+- Created `Switch` and `Textarea` UI components
+- Added `updateOrganization`, `deleteOrganization`, `setPrimaryOrganization` API functions
 
 ## Next Suggested Task
 
-**Start Organization Settings page** (`/$orgSlug/settings`) - HIGH PRIORITY
+**Members Settings page** (`/$orgSlug/settings/members.tsx`) - HIGH PRIORITY
 
-This is in the Phase 1 checklist and blocks user workflows. Break down into:
+This is part of Phase 1 and provides full team management. Break down into:
 
-1. Create `/$orgSlug/settings/index.tsx` route file
-2. Add basic page structure with tabs for sub-sections
-3. Implement organization name/description editing
-4. Add organization deletion with confirmation dialog
+1. Create `/$orgSlug/settings/members.tsx` route file
+2. Fetch and display members list
+3. Add invite member dialog (email + role selection)
+4. Implement remove member functionality
+5. View and cancel pending invitations
 
-Reference: `frontend/src/pages/OrganizationSettingsUnified.tsx` for existing logic.
+Reference: `frontend/src/components/settings/MembersSettings.tsx` for existing logic.
 
 ## Other Tasks (in order of priority)
 
-1. Organization Settings page (HIGH PRIORITY - Phase 1)
-2. Members Settings (`/$orgSlug/settings/members.tsx`) - Full CRUD
-3. Usage Dashboard (`/$orgSlug/settings/usage.tsx`)
-4. Validation system - Phase 4:
+1. Members Settings (`/$orgSlug/settings/members.tsx`) - Full CRUD (HIGH)
+2. S3ConfigModal and S3StatusCard components (MEDIUM - feature-flagged)
+3. Usage Dashboard (`/$orgSlug/settings/usage.tsx`) (HIGH)
+4. BillingGuard component + billing enforcement (HIGH)
+5. Validation system - Phase 4:
    - Port `lib/validation/types.ts`
    - Port `lib/validation/rules.ts` (40+ rules)
    - Create ValidatedInput for TanStack Form
@@ -37,5 +42,5 @@ Reference: `frontend/src/pages/OrganizationSettingsUnified.tsx` for existing log
 - Main migration spec: `MIGRATION_SPEC.md`
 - Old frontend source: `frontend/src/`
 - New frontend source: `frontend-v2/src/`
-- Old org settings: `frontend/src/pages/OrganizationSettingsUnified.tsx`
-- Route structure example: `frontend-v2/src/routes/$orgSlug/collections/index.tsx`
+- Old members settings: `frontend/src/components/settings/MembersSettings.tsx`
+- New settings page: `frontend-v2/src/routes/$orgSlug/settings/index.tsx`

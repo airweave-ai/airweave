@@ -287,6 +287,13 @@ export const uiComponents: ComponentInfo[] = [
     ]
   },
   {
+    "name": "switch",
+    "path": "components/ui/switch.tsx",
+    "exports": [
+      "Switch"
+    ]
+  },
+  {
     "name": "table",
     "path": "components/ui/table.tsx",
     "exports": [
@@ -308,6 +315,13 @@ export const uiComponents: ComponentInfo[] = [
       "TabsList",
       "TabsTrigger",
       "TabsContent"
+    ]
+  },
+  {
+    "name": "textarea",
+    "path": "components/ui/textarea.tsx",
+    "exports": [
+      "Textarea"
     ]
   },
   {

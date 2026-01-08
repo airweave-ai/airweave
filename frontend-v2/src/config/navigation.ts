@@ -1,6 +1,7 @@
 import {
   Key,
   LayoutGrid,
+  Settings,
   ShieldCheck,
   Terminal,
   Webhook,
@@ -15,7 +16,8 @@ export interface NavItem {
     | "/$orgSlug/logs"
     | "/$orgSlug/api-keys"
     | "/$orgSlug/webhooks"
-    | "/$orgSlug/auth-providers";
+    | "/$orgSlug/auth-providers"
+    | "/$orgSlug/settings";
   icon: LucideIcon;
 }
 
@@ -44,5 +46,10 @@ export const navItems: NavItem[] = [
     title: "Auth Providers",
     to: "/$orgSlug/auth-providers",
     icon: ShieldCheck,
+  },
+  {
+    title: "Settings",
+    to: "/$orgSlug/settings",
+    icon: Settings,
   },
 ];

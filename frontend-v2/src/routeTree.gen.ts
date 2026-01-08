@@ -22,6 +22,7 @@ import { Route as OrgSlugWebhooksRouteImport } from './routes/$orgSlug/webhooks'
 import { Route as OrgSlugLogsRouteImport } from './routes/$orgSlug/logs'
 import { Route as OrgSlugAuthProvidersRouteImport } from './routes/$orgSlug/auth-providers'
 import { Route as OrgSlugApiKeysRouteImport } from './routes/$orgSlug/api-keys'
+import { Route as OrgSlugSettingsIndexRouteImport } from './routes/$orgSlug/settings/index'
 import { Route as OrgSlugCollectionsIndexRouteImport } from './routes/$orgSlug/collections/index'
 import { Route as OrgSlugCollectionsCollectionIdRouteImport } from './routes/$orgSlug/collections/$collectionId'
 
@@ -90,6 +91,11 @@ const OrgSlugApiKeysRoute = OrgSlugApiKeysRouteImport.update({
   path: '/api-keys',
   getParentRoute: () => OrgSlugRouteRoute,
 } as any)
+const OrgSlugSettingsIndexRoute = OrgSlugSettingsIndexRouteImport.update({
+  id: '/settings/',
+  path: '/settings/',
+  getParentRoute: () => OrgSlugRouteRoute,
+} as any)
 const OrgSlugCollectionsIndexRoute = OrgSlugCollectionsIndexRouteImport.update({
   id: '/collections/',
   path: '/collections/',
@@ -118,6 +124,7 @@ export interface FileRoutesByFullPath {
   '/components/': typeof ComponentsIndexRoute
   '/$orgSlug/collections/$collectionId': typeof OrgSlugCollectionsCollectionIdRoute
   '/$orgSlug/collections': typeof OrgSlugCollectionsIndexRoute
+  '/$orgSlug/settings': typeof OrgSlugSettingsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -133,6 +140,7 @@ export interface FileRoutesByTo {
   '/components': typeof ComponentsIndexRoute
   '/$orgSlug/collections/$collectionId': typeof OrgSlugCollectionsCollectionIdRoute
   '/$orgSlug/collections': typeof OrgSlugCollectionsIndexRoute
+  '/$orgSlug/settings': typeof OrgSlugSettingsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -151,6 +159,7 @@ export interface FileRoutesById {
   '/components/': typeof ComponentsIndexRoute
   '/$orgSlug/collections/$collectionId': typeof OrgSlugCollectionsCollectionIdRoute
   '/$orgSlug/collections/': typeof OrgSlugCollectionsIndexRoute
+  '/$orgSlug/settings/': typeof OrgSlugSettingsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -170,6 +179,7 @@ export interface FileRouteTypes {
     | '/components/'
     | '/$orgSlug/collections/$collectionId'
     | '/$orgSlug/collections'
+    | '/$orgSlug/settings'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -185,6 +195,7 @@ export interface FileRouteTypes {
     | '/components'
     | '/$orgSlug/collections/$collectionId'
     | '/$orgSlug/collections'
+    | '/$orgSlug/settings'
   id:
     | '__root__'
     | '/'
@@ -202,6 +213,7 @@ export interface FileRouteTypes {
     | '/components/'
     | '/$orgSlug/collections/$collectionId'
     | '/$orgSlug/collections/'
+    | '/$orgSlug/settings/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -306,6 +318,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgSlugApiKeysRouteImport
       parentRoute: typeof OrgSlugRouteRoute
     }
+    '/$orgSlug/settings/': {
+      id: '/$orgSlug/settings/'
+      path: '/settings'
+      fullPath: '/$orgSlug/settings'
+      preLoaderRoute: typeof OrgSlugSettingsIndexRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
     '/$orgSlug/collections/': {
       id: '/$orgSlug/collections/'
       path: '/collections'
@@ -331,6 +350,7 @@ interface OrgSlugRouteRouteChildren {
   OrgSlugIndexRoute: typeof OrgSlugIndexRoute
   OrgSlugCollectionsCollectionIdRoute: typeof OrgSlugCollectionsCollectionIdRoute
   OrgSlugCollectionsIndexRoute: typeof OrgSlugCollectionsIndexRoute
+  OrgSlugSettingsIndexRoute: typeof OrgSlugSettingsIndexRoute
 }
 
 const OrgSlugRouteRouteChildren: OrgSlugRouteRouteChildren = {
@@ -341,6 +361,7 @@ const OrgSlugRouteRouteChildren: OrgSlugRouteRouteChildren = {
   OrgSlugIndexRoute: OrgSlugIndexRoute,
   OrgSlugCollectionsCollectionIdRoute: OrgSlugCollectionsCollectionIdRoute,
   OrgSlugCollectionsIndexRoute: OrgSlugCollectionsIndexRoute,
+  OrgSlugSettingsIndexRoute: OrgSlugSettingsIndexRoute,
 }
 
 const OrgSlugRouteRouteWithChildren = OrgSlugRouteRoute._addFileChildren(
