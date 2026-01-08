@@ -77,7 +77,7 @@ These decisions were made during migration planning and should guide all impleme
 | Usage Dashboard | ✅ Complete | - | Part of settings |
 | Members Settings | ⚠️ Partial | **High** | Core CRUD done, role editing pending |
 | Validation System | ✅ Complete | - | Full validation integration |
-| QueryTool | ⚠️ Different | **Medium** | Port full version with API doc |
+| QueryTool | ✅ Complete | - | Enhanced with MCP client tabs (Claude, Cursor, Windsurf) |
 | SemanticMcp Page | ❌ Missing | **Medium** | MCP auth alternative |
 | S3 Configuration | ✅ Complete | - | Feature-flagged |
 | PostHog Integration | ✅ Complete | - | Session tracking implemented |
@@ -523,10 +523,10 @@ The frontend-v2 uses a new Orange/Amber primary color. This is intentional and s
 
 ### Phase 5: QueryTool Enhancement (MEDIUM)
 
-- [ ] Port full QueryTool component
-- [ ] Port LiveApiDoc component
-- [ ] Add usage limit checking
-- [ ] Add API key validation
+- [x] Port full QueryTool component (Search component with streaming is more advanced than old QueryTool)
+- [x] Port LiveApiDoc component (ApiIntegrationModal with REST API + MCP Server modes)
+- [x] Add usage limit checking (integrated via useUsageChecks)
+- [x] Add API key validation (fetches API key for code snippets)
 
 ### Phase 6: Additional Features (MEDIUM)
 
@@ -748,3 +748,13 @@ Next suggested task: Members Settings page (`/$orgSlug/settings/members.tsx`) or
 - Integrated into `/$orgSlug/settings/index.tsx` between Primary Organization and Danger Zone sections
 - Added `s3.status` query key to `query-keys.ts`
 Next suggested task: BillingGuard component or Admin Dashboard.
+
+**2026-01-08**: Enhanced ApiIntegrationModal with MCP client-specific tabs (Phase 5 complete). Changes to `frontend-v2/src/features/search/components/api-integration-modal.tsx`:
+- Added view mode selector (REST API vs MCP Server) with left sidebar buttons
+- REST API mode: cURL, Python SDK, Node.js SDK tabs (existing)
+- MCP Server mode: Claude, Cursor, Windsurf, Server/Other tabs (new)
+- Each MCP client shows appropriate config file path in footer (e.g., ~/.config/Claude/claude_desktop_config.json)
+- Server/Other tab shows npm install instructions
+- Added Claude, Cursor, Windsurf, and improved MCP icons
+- The frontend-v2 Search component is already more advanced than old QueryTool (streaming, toggles panel, usage limits)
+Phase 5 is now complete. Next suggested task: SemanticMcp Page (Phase 6) or Port TagInput component (Phase 7).

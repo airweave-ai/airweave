@@ -3,56 +3,28 @@
  *
  * Generates ready-to-use code examples in cURL, Python, Node.js, and MCP formats
  * based on current search configuration.
+ *
+ * Features:
+ * - REST API mode: cURL, Python SDK, Node.js SDK
+ * - MCP Server mode: Client-specific configurations for Claude, Cursor, Windsurf
  */
 
-import { Check, Copy, Terminal } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Check, Code, Copy, Terminal } from "lucide-react";
+import { type ReactNode, useCallback, useMemo, useState } from "react";
 
+import {
+  ClaudeIcon,
+  CursorIcon,
+  McpIcon,
+  NodeIcon,
+  PythonIcon,
+  WindsurfIcon,
+} from "@/components/icons/tech-icons";
 import { Button } from "@/components/ui/button";
 import { API_BASE_URL } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 import type { SearchConfig } from "../types";
-
-function PythonIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      className={className}
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path d="M11.914 0C5.82 0 6.2 2.656 6.2 2.656l.007 2.752h5.814v.826H3.9S0 5.789 0 11.969c0 6.18 3.403 5.96 3.403 5.96h2.03v-2.867s-.109-3.42 3.35-3.42h5.766s3.24.052 3.24-3.148V3.202S18.28 0 11.914 0zM8.708 1.85c.578 0 1.048.473 1.048 1.053s-.47 1.052-1.048 1.052c-.579 0-1.048-.473-1.048-1.052 0-.58.47-1.053 1.048-1.053z" />
-      <path d="M12.086 24c6.093 0 5.713-2.656 5.713-2.656l-.007-2.752h-5.814v-.826h8.121s3.9.445 3.9-5.735c0-6.18-3.402-5.96-3.402-5.96h-2.03v2.867s.109 3.42-3.35 3.42H9.45s-3.24-.052-3.24 3.148v5.292S5.72 24 12.086 24zm3.206-1.85c-.579 0-1.048-.473-1.048-1.053s.47-1.052 1.048-1.052c.578 0 1.048.473 1.048 1.052 0 .58-.47 1.053-1.048 1.053z" />
-    </svg>
-  );
-}
-
-function NodeIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      className={className}
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path d="M11.998 24c-.321 0-.641-.084-.922-.247l-2.936-1.737c-.438-.245-.224-.332-.08-.383.585-.203.703-.25 1.328-.604.066-.037.152-.023.22.017l2.256 1.339a.29.29 0 00.272 0l8.795-5.076a.277.277 0 00.134-.238V6.921a.282.282 0 00-.137-.242l-8.791-5.072a.278.278 0 00-.271 0L3.075 6.68a.281.281 0 00-.139.24v10.15c0 .099.053.19.137.239l2.409 1.392c1.307.654 2.108-.116 2.108-.89V7.787c0-.142.114-.253.256-.253h1.115c.139 0 .255.112.255.253v10.021c0 1.745-.95 2.745-2.604 2.745-.509 0-.909 0-2.026-.55l-2.304-1.326A1.85 1.85 0 011.36 17.07V6.921c0-.679.362-1.312.949-1.653l8.795-5.082a1.929 1.929 0 011.891 0l8.794 5.082a1.85 1.85 0 01.951 1.653v10.15a1.852 1.852 0 01-.951 1.652l-8.794 5.078c-.28.163-.599.247-.92.247" />
-    </svg>
-  );
-}
-
-function McpIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      className={className}
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-    </svg>
-  );
-}
 
 interface ApiIntegrationModalProps {
   collectionReadableId: string;
@@ -62,7 +34,42 @@ interface ApiIntegrationModalProps {
   apiKey?: string;
 }
 
-type ApiTab = "rest" | "python" | "node" | "mcp";
+type ViewMode = "restapi" | "mcpserver";
+type RestApiTab = "rest" | "python" | "node";
+type McpTab = "claude" | "cursor" | "windsurf" | "server";
+type ApiTab = RestApiTab | McpTab;
+
+interface TabConfig {
+  id: ApiTab;
+  label: string;
+  icon: ReactNode;
+}
+
+interface HeaderInfo {
+  badge: string;
+  badgeColor: string;
+  title: string;
+}
+
+const REST_TABS: TabConfig[] = [
+  { id: "rest", label: "cURL", icon: <Terminal className="size-4" /> },
+  { id: "python", label: "Python", icon: <PythonIcon className="size-4" /> },
+  { id: "node", label: "Node.js", icon: <NodeIcon className="size-4" /> },
+];
+
+const MCP_TABS: TabConfig[] = [
+  { id: "claude", label: "Claude", icon: <ClaudeIcon className="size-5" /> },
+  { id: "cursor", label: "Cursor", icon: <CursorIcon className="size-5" /> },
+  { id: "windsurf", label: "Windsurf", icon: <WindsurfIcon className="size-5" /> },
+  { id: "server", label: "Server/Other", icon: <McpIcon className="size-4" /> },
+];
+
+const MCP_CONFIG_PATHS: Record<McpTab, string> = {
+  claude: "~/.config/Claude/claude_desktop_config.json",
+  cursor: "~/.cursor/mcp.json",
+  windsurf: "~/.windsurf/mcp.json",
+  server: "",
+};
 
 export function ApiIntegrationModal({
   collectionReadableId,
@@ -71,8 +78,14 @@ export function ApiIntegrationModal({
   filter,
   apiKey = "YOUR_API_KEY",
 }: ApiIntegrationModalProps) {
+  const [viewMode, setViewMode] = useState<ViewMode>("restapi");
   const [activeTab, setActiveTab] = useState<ApiTab>("rest");
   const [copied, setCopied] = useState(false);
+
+  const handleViewModeChange = useCallback((mode: ViewMode) => {
+    setViewMode(mode);
+    setActiveTab(mode === "restapi" ? "rest" : "claude");
+  }, []);
 
   const snippets = useMemo(() => {
     const apiUrl = `${API_BASE_URL}/collections/${collectionReadableId}/search`;
@@ -210,7 +223,7 @@ ${nodeRequestParams.join(",\n")}
 console.log(result.completion);  // AI-generated answer (if generateAnswer=true)
 console.log(result.results.length);  // Number of results`;
 
-    const mcpSnippet = `{
+    const mcpConfigSnippet = `{
   "mcpServers": {
     "airweave-${collectionReadableId}": {
       "command": "npx",
@@ -224,160 +237,210 @@ console.log(result.results.length);  // Number of results`;
   }
 }`;
 
+    const mcpInstallSnippet = `# Install the MCP server globally
+npm install -g airweave-mcp-search@1.0.7
+
+# Or run directly with npx
+npx airweave-mcp-search`;
+
     return {
       curl: curlSnippet,
       python: pythonSnippet,
       node: nodeSnippet,
-      mcp: mcpSnippet,
+      mcpConfig: mcpConfigSnippet,
+      mcpInstall: mcpInstallSnippet,
     };
   }, [collectionReadableId, apiKey, searchConfig, query, filter]);
 
-  const handleCopy = async () => {
-    const codeMap = {
+  const codeByTab: Record<ApiTab, string> = useMemo(
+    () => ({
       rest: snippets.curl,
       python: snippets.python,
       node: snippets.node,
-      mcp: snippets.mcp,
-    };
-    await navigator.clipboard.writeText(codeMap[activeTab]);
+      claude: snippets.mcpConfig,
+      cursor: snippets.mcpConfig,
+      windsurf: snippets.mcpConfig,
+      server: snippets.mcpInstall,
+    }),
+    [snippets]
+  );
+
+  const headerByTab: Record<ApiTab, HeaderInfo> = useMemo(
+    () => ({
+      rest: {
+        badge: "POST",
+        badgeColor: "bg-amber-600",
+        title: `/collections/${collectionReadableId}/search`,
+      },
+      python: { badge: "SDK", badgeColor: "bg-blue-600", title: "AirweaveSDK" },
+      node: {
+        badge: "SDK",
+        badgeColor: "bg-blue-600",
+        title: "AirweaveSDKClient",
+      },
+      claude: {
+        badge: "CONFIG",
+        badgeColor: "bg-purple-600",
+        title: "Claude Desktop MCP Configuration",
+      },
+      cursor: {
+        badge: "CONFIG",
+        badgeColor: "bg-blue-600",
+        title: "Cursor MCP Configuration",
+      },
+      windsurf: {
+        badge: "CONFIG",
+        badgeColor: "bg-teal-600",
+        title: "Windsurf MCP Configuration",
+      },
+      server: {
+        badge: "INSTALL",
+        badgeColor: "bg-slate-600",
+        title: "Install MCP Server",
+      },
+    }),
+    [collectionReadableId]
+  );
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(codeByTab[activeTab]);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
 
+  const renderFooter = () => {
+    if (viewMode === "mcpserver") {
+      if (activeTab === "server") {
+        return (
+          <span className="text-slate-400">
+            → After installation, configure your MCP client with the environment
+            variables shown above
+          </span>
+        );
+      }
+      return (
+        <span className="text-slate-400">
+          → Add this to your MCP client configuration file (
+          {MCP_CONFIG_PATHS[activeTab as McpTab]})
+        </span>
+      );
+    }
+    return (
+      <span>
+        →{" "}
+        <a
+          href="https://docs.airweave.ai/api-reference/collections/search-advanced-collections-readable-id-search-post"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-400 hover:underline"
+        >
+          Explore the full API documentation
+        </a>
+      </span>
+    );
+  };
+
+  const headerInfo = headerByTab[activeTab];
+  const tabs = viewMode === "restapi" ? REST_TABS : MCP_TABS;
+
   return (
     <div className="mb-6 w-full">
-      <div className="overflow-hidden rounded-lg border border-slate-700 bg-slate-900">
-        {/* Tabs */}
-        <div className="flex w-fit space-x-1 overflow-x-auto border-b border-slate-700 p-2">
+      <div className="flex gap-4">
+        {/* Left section with view mode buttons */}
+        <div className="flex w-36 shrink-0 flex-col gap-2">
           <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setActiveTab("rest")}
+            variant="outline"
+            onClick={() => handleViewModeChange("restapi")}
             className={cn(
-              "flex items-center gap-2 rounded-md",
-              activeTab === "rest"
-                ? "bg-slate-800 text-slate-200"
-                : "text-slate-400 hover:bg-slate-800/80 hover:text-slate-200"
+              "flex w-full items-center justify-start gap-2 border-slate-700 bg-slate-900 p-3 text-sm",
+              viewMode === "restapi"
+                ? "border-primary bg-primary/10 text-primary"
+                : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
             )}
           >
-            <Terminal className="size-4" />
-            <span>cURL</span>
+            <Code className="size-4" />
+            <span>REST API</span>
           </Button>
           <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setActiveTab("python")}
+            variant="outline"
+            onClick={() => handleViewModeChange("mcpserver")}
             className={cn(
-              "flex items-center gap-2 rounded-md",
-              activeTab === "python"
-                ? "bg-slate-800 text-slate-200"
-                : "text-slate-400 hover:bg-slate-800/80 hover:text-slate-200"
-            )}
-          >
-            <PythonIcon className="size-4" />
-            <span>Python</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setActiveTab("node")}
-            className={cn(
-              "flex items-center gap-2 rounded-md",
-              activeTab === "node"
-                ? "bg-slate-800 text-slate-200"
-                : "text-slate-400 hover:bg-slate-800/80 hover:text-slate-200"
-            )}
-          >
-            <NodeIcon className="size-4" />
-            <span>Node.js</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setActiveTab("mcp")}
-            className={cn(
-              "flex items-center gap-2 rounded-md",
-              activeTab === "mcp"
-                ? "bg-slate-800 text-slate-200"
-                : "text-slate-400 hover:bg-slate-800/80 hover:text-slate-200"
+              "flex w-full items-center justify-start gap-2 border-slate-700 bg-slate-900 p-3 text-sm",
+              viewMode === "mcpserver"
+                ? "border-primary bg-primary/10 text-primary"
+                : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
             )}
           >
             <McpIcon className="size-4" />
-            <span>MCP</span>
+            <span>MCP Server</span>
           </Button>
         </div>
 
-        {/* Code content */}
-        <div className="relative h-[460px]">
-          {/* Header with badge and copy */}
-          <div className="flex items-center justify-between border-b border-slate-800 px-4 py-2">
-            <div className="flex items-center gap-2">
-              <span
+        {/* Right content area */}
+        <div className="flex-1 overflow-hidden rounded-lg border border-slate-700 bg-slate-900">
+          {/* Tabs */}
+          <div className="flex w-fit space-x-1 overflow-x-auto border-b border-slate-700 p-2">
+            {tabs.map((tab) => (
+              <Button
+                key={tab.id}
+                variant="ghost"
+                size="sm"
+                onClick={() => setActiveTab(tab.id)}
                 className={cn(
-                  "rounded px-1.5 py-0.5 text-xs text-white",
-                  activeTab === "rest" && "bg-amber-600",
-                  activeTab === "python" && "bg-blue-600",
-                  activeTab === "node" && "bg-blue-600",
-                  activeTab === "mcp" && "bg-purple-600"
+                  "flex items-center gap-2 rounded-md",
+                  activeTab === tab.id
+                    ? "bg-slate-800 text-slate-200"
+                    : "text-slate-400 hover:bg-slate-800/80 hover:text-slate-200"
                 )}
               >
-                {activeTab === "rest" && "POST"}
-                {activeTab === "python" && "SDK"}
-                {activeTab === "node" && "SDK"}
-                {activeTab === "mcp" && "CONFIG"}
-              </span>
-              <span className="text-xs font-medium text-slate-300">
-                {activeTab === "rest" &&
-                  `/collections/${collectionReadableId}/search`}
-                {activeTab === "python" && "AirweaveSDK"}
-                {activeTab === "node" && "AirweaveSDKClient"}
-                {activeTab === "mcp" && "MCP Configuration"}
-              </span>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="size-6 p-0 text-slate-400 hover:text-white"
-              onClick={handleCopy}
-            >
-              {copied ? (
-                <Check className="size-3" />
-              ) : (
-                <Copy className="size-3" />
-              )}
-            </Button>
+                {tab.icon}
+                <span>{tab.label}</span>
+              </Button>
+            ))}
           </div>
 
-          {/* Code display */}
-          <div className="h-[calc(100%-88px)] overflow-auto bg-black px-4 py-3">
-            <pre className="font-mono text-xs text-slate-300">
-              {activeTab === "rest" && snippets.curl}
-              {activeTab === "python" && snippets.python}
-              {activeTab === "node" && snippets.node}
-              {activeTab === "mcp" && snippets.mcp}
-            </pre>
-          </div>
-
-          {/* Footer */}
-          <div className="border-t border-slate-800 px-4 py-2 text-xs text-slate-400">
-            {activeTab === "mcp" ? (
-              <span>
-                → Add this to your MCP client configuration file (e.g.,
-                ~/.config/Claude/claude_desktop_config.json)
-              </span>
-            ) : (
-              <span>
-                →{" "}
-                <a
-                  href="https://docs.airweave.ai/api-reference/collections/search-advanced-collections-readable-id-search-post"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-400 hover:underline"
+          {/* Code content */}
+          <div className="relative h-[400px]">
+            {/* Header with badge and copy */}
+            <div className="flex items-center justify-between border-b border-slate-800 px-4 py-2">
+              <div className="flex items-center gap-2">
+                <span
+                  className={cn(
+                    "rounded px-1.5 py-0.5 text-xs text-white",
+                    headerInfo.badgeColor
+                  )}
                 >
-                  Explore the full API documentation
-                </a>
-              </span>
-            )}
+                  {headerInfo.badge}
+                </span>
+                <span className="text-xs font-medium text-slate-300">
+                  {headerInfo.title}
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="size-6 p-0 text-slate-400 hover:text-white"
+                onClick={handleCopy}
+              >
+                {copied ? (
+                  <Check className="size-3" />
+                ) : (
+                  <Copy className="size-3" />
+                )}
+              </Button>
+            </div>
+
+            {/* Code display */}
+            <div className="h-[calc(100%-76px)] overflow-auto bg-black px-4 py-3">
+              <pre className="font-mono text-xs text-slate-300">
+                {codeByTab[activeTab]}
+              </pre>
+            </div>
+
+            {/* Footer */}
+            <div className="border-t border-slate-800 px-4 py-2 text-xs">
+              {renderFooter()}
+            </div>
           </div>
         </div>
       </div>

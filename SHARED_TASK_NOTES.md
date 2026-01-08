@@ -4,30 +4,25 @@ Context for the next iteration of frontend migration work.
 
 ## What Was Done (Latest)
 
-- **Validation Integration in Source Connection Forms**
-  - Updated `auth-fields-form.tsx` - uses `ValidatedInput` with `getAuthFieldValidation()`
-  - Updated `direct-auth-fields.tsx` - credential fields now use validation
-  - Updated `config-fields.tsx` - config fields now use validation
-  - Updated `source-config-view.tsx` - connection name uses `sourceConnectionNameValidation`
-  - Updated `oauth-settings.tsx` - client ID/secret use `clientIdValidation`/`clientSecretValidation`
+- **Phase 5: QueryTool Enhancement - COMPLETE**
+  - Enhanced `ApiIntegrationModal` with view mode selector (REST API vs MCP Server)
+  - Added MCP client-specific tabs: Claude, Cursor, Windsurf, Server/Other
+  - Each MCP client shows appropriate config file path in footer
+  - Added Claude, Cursor, Windsurf, and improved MCP icons
   - Build verified passing
+  - Note: frontend-v2 Search component is more advanced than old QueryTool (streaming, toggles, usage limits)
 
 ## Next Suggested Tasks (in priority order)
 
-1. **QueryTool Enhancement - Phase 5 (MEDIUM)**
-   - Port full QueryTool component
-   - Port LiveApiDoc component
-   - Add usage limit checking
-   - Add API key validation
-
-2. **SemanticMcp Page - Phase 6 (MEDIUM)**
+1. **SemanticMcp Page - Phase 6 (MEDIUM)**
    - Create `/semantic-mcp` route
    - Implement MCP authentication flow
+   - Reference: `frontend/src/pages/SemanticMcp.tsx`
 
-3. **Billing Management Page (MEDIUM)**
+2. **Billing Management Page (MEDIUM)**
    - Create `/$orgSlug/settings/billing` for managing subscriptions
 
-4. **Polish Phase 7 (LOW)**
+3. **Polish Phase 7 (LOW)**
    - Port TagInput component
    - Port CollapsibleCard component
    - Enhance CodeBlock component
@@ -35,6 +30,16 @@ Context for the next iteration of frontend migration work.
 ## Blocked Tasks
 
 - **Edit Member Roles** - Requires backend `PATCH /organizations/{id}/members/{memberId}` endpoint
+
+## Key Files Reference
+
+- Main migration spec: `MIGRATION_SPEC.md`
+- Old frontend source: `frontend/src/`
+- New frontend source: `frontend-v2/src/`
+- Validation system: `frontend-v2/src/lib/validation/`
+- ValidatedInput: `frontend-v2/src/components/validated-input.tsx`
+- API Integration Modal: `frontend-v2/src/features/search/components/api-integration-modal.tsx`
+- Old SemanticMcp: `frontend/src/pages/SemanticMcp.tsx`
 
 ## How to Use the Validation System
 
@@ -77,20 +82,4 @@ function MyTanStackForm() {
     </form.Field>
   );
 }
-
-// Option 3: Dynamic validation based on field type
-import { getAuthFieldValidation } from "@/lib/validation";
-
-// Returns appropriate validation for the field type
-const validation = getAuthFieldValidation("api_key", "stripe"); // Returns stripeApiKeyValidation
-const validation = getAuthFieldValidation("host"); // Returns databaseHostValidation
 ```
-
-## Key Files to Reference
-
-- Main migration spec: `MIGRATION_SPEC.md`
-- Old frontend source: `frontend/src/`
-- New frontend source: `frontend-v2/src/`
-- Validation system: `frontend-v2/src/lib/validation/`
-- ValidatedInput: `frontend-v2/src/components/validated-input.tsx`
-- Old QueryTool: `frontend/src/components/query/QueryTool.tsx`
