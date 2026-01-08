@@ -83,3 +83,6 @@ export type {
   SyncJob,
   UpdateSourceConnectionRequest,
 } from "./source-connections";
+
+export { fetchUsageDashboard } from "./usage";
+export type { CurrentPeriod, UsageDashboardData, UsageData } from "./usage";

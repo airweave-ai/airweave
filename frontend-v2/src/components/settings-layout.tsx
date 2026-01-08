@@ -1,5 +1,13 @@
 import { Link, useLocation } from "@tanstack/react-router";
-import { Check, Copy, Key, Settings, Star, Users } from "lucide-react";
+import {
+  BarChart3,
+  Check,
+  Copy,
+  Key,
+  Settings,
+  Star,
+  Users,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -15,6 +23,7 @@ interface SettingsLayoutProps {
 const settingsTabs = [
   { path: "settings", label: "General", icon: Settings },
   { path: "settings/members", label: "Members", icon: Users },
+  { path: "settings/usage", label: "Usage", icon: BarChart3 },
 ] as const;
 
 function getRoleIcon(role: string) {

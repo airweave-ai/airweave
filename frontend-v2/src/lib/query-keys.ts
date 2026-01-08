@@ -56,4 +56,8 @@ export const queryKeys = {
     detail: (orgId: string, id: string) =>
       [orgId, "source-connections", "detail", id] as const,
   },
+
+  usage: {
+    dashboard: (orgId: string) => [orgId, "usage", "dashboard"] as const,
+  },
 };

@@ -74,7 +74,7 @@ These decisions were made during migration planning and should guide all impleme
 | Billing Pages | ❌ Missing | **High** | Strict blocking enforcement |
 | Admin Dashboard | ❌ Missing | **High** | Include now per decision |
 | Real-time Sync | ❌ Missing | **High** | Full SSE port required |
-| Usage Dashboard | ❌ Missing | **High** | Part of settings |
+| Usage Dashboard | ✅ Complete | - | Part of settings |
 | Members Settings | ⚠️ Partial | **High** | Core CRUD done, role editing pending |
 | Validation System | ❌ Missing | **High** | Full 40+ rules migration |
 | QueryTool | ⚠️ Different | **Medium** | Port full version with API doc |
@@ -489,10 +489,10 @@ The frontend-v2 uses a new Orange/Amber primary color. This is intentional and s
   - [x] Remove members
   - [x] View/cancel pending invitations
 
-- [ ] **Usage Dashboard**
-  - [ ] Create `/$orgSlug/settings/usage.tsx`
-  - [ ] Port UsageDashboard component
-  - [ ] Add usage API functions
+- [x] **Usage Dashboard**
+  - [x] Create `/$orgSlug/settings/usage.tsx`
+  - [x] Port UsageDashboard component
+  - [x] Add usage API functions
 
 ### Phase 2: Real-time Sync (HIGH PRIORITY)
 

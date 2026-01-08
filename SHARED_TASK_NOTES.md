@@ -2,46 +2,47 @@
 
 Context for the next iteration of frontend migration work.
 
-## What Was Done
+## What Was Done (Latest)
 
-- Created Members Settings page at `/$orgSlug/settings/members.tsx`
-- Added navigation tabs to switch between General settings and Members pages
-- Created Select UI component (`frontend-v2/src/components/ui/select.tsx`)
-- Added member API functions: `fetchOrganizationMembers`, `fetchOrganizationInvitations`, `inviteOrganizationMemberWithResponse`, `removeOrganizationMember`, `cancelOrganizationInvitation`
-- Added query keys for members and invitations
+- Created Usage Dashboard page at `/$orgSlug/settings/usage.tsx`
+- Added `fetchUsageDashboard` API function in `frontend-v2/src/lib/api/usage.ts`
+- Added `usage.dashboard` query key
+- Added Usage tab to SettingsLayout navigation
 
 ## Next Suggested Task
 
 **Edit Member Roles** - MEDIUM PRIORITY
 
-The members page currently allows viewing, inviting, and removing members, but doesn't support editing existing member roles. Consider adding:
+The members page allows viewing, inviting, and removing members, but doesn't support editing existing member roles. Consider adding:
 1. Role dropdown/select for each member row
-2. API function to update member role
+2. API function to update member role (`PATCH /organizations/{id}/members/{memberId}`)
 3. Confirmation dialog for role changes
 
-**Usage Dashboard** (`/$orgSlug/settings/usage.tsx`) - HIGH PRIORITY
+**S3ConfigModal + S3StatusCard** - MEDIUM PRIORITY (feature-flagged)
 
-This completes Phase 1 settings and provides usage tracking. Reference:
-- Old component: `frontend/src/components/settings/UsageDashboard.tsx`
-- Will need API functions for usage data
+These components are needed to complete Organization Settings. Reference:
+- Old component: `frontend/src/components/settings/S3ConfigModal.tsx`
+- API endpoints: `GET /s3/status`, `POST /s3/configure`, `DELETE /s3/configure`
 
 ## Other Tasks (in order of priority)
 
-1. S3ConfigModal and S3StatusCard components (MEDIUM - feature-flagged)
-2. BillingGuard component + billing enforcement (HIGH)
-3. Validation system - Phase 4:
+1. BillingGuard component + billing enforcement (HIGH)
+   - Blocks UI actions when subscription inactive
+   - Needs usage check API (`GET /usage/check-action`)
+2. Admin Dashboard - Phase 3 (HIGH)
+   - `/admin` route with superuser-only access
+3. Real-time Sync - Phase 2 (HIGH)
+   - Port `entityStateMediator.ts`
+   - Port `syncStorageService.ts`
+4. Validation system - Phase 4 (HIGH)
    - Port `lib/validation/types.ts`
    - Port `lib/validation/rules.ts` (40+ rules)
    - Create ValidatedInput for TanStack Form
-4. Real-time Sync - Phase 2:
-   - Port `entityStateMediator.ts`
-   - Port `syncStorageService.ts`
 
 ## Files to Reference
 
 - Main migration spec: `MIGRATION_SPEC.md`
 - Old frontend source: `frontend/src/`
 - New frontend source: `frontend-v2/src/`
-- Old usage dashboard: `frontend/src/components/settings/UsageDashboard.tsx`
-- New members page: `frontend-v2/src/routes/$orgSlug/settings/members.tsx`
-- New settings page: `frontend-v2/src/routes/$orgSlug/settings/index.tsx`
+- New usage page: `frontend-v2/src/routes/$orgSlug/settings/usage.tsx`
+- New settings layout: `frontend-v2/src/components/settings-layout.tsx`
