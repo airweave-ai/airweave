@@ -266,7 +266,6 @@ function SettingsPage() {
         )}
       </div>
 
-      {/* Delete Confirmation Dialog */}
       <DeleteConfirmationDialog
         open={deleteDialogOpen}
         onOpenChange={setDeleteDialogOpen}

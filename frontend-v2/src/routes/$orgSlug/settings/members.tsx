@@ -18,6 +18,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   cancelOrganizationInvitation,
   fetchOrganizationInvitations,
   fetchOrganizationMembers,
@@ -28,6 +34,7 @@ import { useAuth0 } from "@/lib/auth-provider";
 import { useOrg } from "@/lib/org-context";
 import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
+import { useUsageChecks } from "@/stores/usage-store";
 
 export const Route = createFileRoute("/$orgSlug/settings/members")({
   component: MembersSettingsPage,
@@ -37,6 +44,9 @@ function MembersSettingsPage() {
   const { getAccessTokenSilently } = useAuth0();
   const { organization } = useOrg();
   const queryClient = useQueryClient();
+  const { teamMembersAllowed, teamMembersStatus } = useUsageChecks();
+  const inviteDisabledMessage =
+    teamMembersStatus?.details?.message || "Team member limit reached";
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"admin" | "member">("member");
@@ -217,13 +227,11 @@ function MembersSettingsPage() {
   return (
     <SettingsLayout organization={organization}>
       <div className="space-y-8">
-        {/* Team Members Count */}
         <div className="text-muted-foreground text-xs">
           Team members:{" "}
           <span className="text-foreground font-medium">{members.length}</span>
         </div>
 
-        {/* Invite Members Section */}
         {canEdit && (
           <section className="space-y-4">
             <div>
@@ -266,26 +274,42 @@ function MembersSettingsPage() {
                   <SelectItem value="admin">Admin</SelectItem>
                 </SelectContent>
               </Select>
-              <Button
-                onClick={handleInvite}
-                disabled={inviteMutation.isPending || !isValidEmail}
-                size="sm"
-                className="h-9 px-4"
-              >
-                {inviteMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-1.5 size-3 animate-spin" />
-                    Sending...
-                  </>
-                ) : (
-                  "Send invite"
-                )}
-              </Button>
+              <TooltipProvider delayDuration={100}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <Button
+                        onClick={handleInvite}
+                        disabled={
+                          inviteMutation.isPending ||
+                          !isValidEmail ||
+                          !teamMembersAllowed
+                        }
+                        size="sm"
+                        className="h-9 px-4"
+                      >
+                        {inviteMutation.isPending ? (
+                          <>
+                            <Loader2 className="mr-1.5 size-3 animate-spin" />
+                            Sending...
+                          </>
+                        ) : (
+                          "Send invite"
+                        )}
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  {!teamMembersAllowed && (
+                    <TooltipContent>
+                      <p>{inviteDisabledMessage}</p>
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              </TooltipProvider>
             </div>
           </section>
         )}
 
-        {/* Pending Invitations */}
         {invitations.length > 0 && (
           <section className="space-y-4">
             <div>
@@ -338,7 +362,6 @@ function MembersSettingsPage() {
           </section>
         )}
 
-        {/* Current Members */}
         <section className="space-y-4">
           <div>
             <h3 className="text-sm font-medium">Members</h3>

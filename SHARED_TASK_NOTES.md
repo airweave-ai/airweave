@@ -4,35 +4,21 @@ Context for the next iteration of frontend migration work.
 
 ## What Was Done (Latest)
 
-- Implemented usage action checking infrastructure for billing enforcement:
-  - Added `checkActions` and `checkSingleAction` API functions to `frontend-v2/src/lib/api/usage.ts`
-  - Created `frontend-v2/src/stores/usage-store.ts` with caching (3s), request deduplication, and org-switch handling
-  - Created `frontend-v2/src/components/usage-checker.tsx` that runs on org layout mount
-  - Integrated `UsageChecker` into `$orgSlug/route.tsx`
-- The store provides `useUsageChecks()` hook with convenience getters for common actions
+- Integrated usage checks into key UI components for billing enforcement:
+  - **Sidebar Create Collection button** (`frontend-v2/src/components/app-sidebar.tsx`) - disabled when `sourceConnectionsAllowed` or `entitiesAllowed` is false, with tooltip showing limit message
+  - **Add Source button** (`frontend-v2/src/features/collections/components/source-connections-list.tsx`) - both the empty state and list views are disabled when `sourceConnectionsAllowed` is false
+  - **Invite Members button** (`frontend-v2/src/routes/$orgSlug/settings/members.tsx`) - disabled when `teamMembersAllowed` is false
+  - **Search box** (`frontend-v2/src/features/search/components/search-box.tsx`) - refactored to use centralized `useUsageChecks()` hook instead of local API calls, reducing redundant requests
 
 ## Next Suggested Task
 
-**Integrate usage checks into UI components** - HIGH PRIORITY (continuation of billing enforcement)
+**Mark Phase 1 "Implement strict blocking throughout app" as complete** in MIGRATION_SPEC.md
 
-The usage checking infrastructure is in place. Next step is to integrate it into key UI actions:
-
-1. **Create Collection button** (sidebar) - disable when `sourceConnectionsAllowed` or `entitiesAllowed` is false
-2. **Add Source button** (collection detail) - same checks
-3. **Invite Members** (members settings) - disable when `teamMembersAllowed` is false
-4. **Query execution** (query tool) - disable when `queriesAllowed` is false
-
-Implementation approach:
-```tsx
-import { useUsageChecks } from "@/stores/usage-store";
-
-const { sourceConnectionsAllowed, sourceConnectionsStatus } = useUsageChecks();
-
-// Disable button and show tooltip when at limit
-<Tooltip content={sourceConnectionsStatus?.details?.message}>
-  <Button disabled={!sourceConnectionsAllowed}>Create Collection</Button>
-</Tooltip>
-```
+The billing enforcement UI integration is now complete. All key actions are gated by usage checks:
+- Creating collections
+- Adding source connections
+- Inviting team members
+- Running queries
 
 **Edit Member Roles** - MEDIUM PRIORITY (blocked)
 
@@ -59,4 +45,3 @@ NOTE: Requires backend work. The `PATCH /organizations/{id}/members/{memberId}` 
 - Usage store: `frontend-v2/src/stores/usage-store.ts`
 - Usage checker: `frontend-v2/src/components/usage-checker.tsx`
 - Old billing enforcement: `frontend/src/components/DashboardLayout.tsx` (lines 256-307)
-- Old MembersSettings: `frontend/src/components/settings/MembersSettings.tsx` (lines 58-60, 99-106)

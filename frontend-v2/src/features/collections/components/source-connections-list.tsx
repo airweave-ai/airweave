@@ -1,7 +1,3 @@
-/**
- * SourceConnectionsList - List of source connections with add source button
- */
-
 import { Plug, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -14,6 +10,7 @@ import {
 } from "@/components/ui/tooltip";
 import type { SourceConnection } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useUsageChecks } from "@/stores/usage-store";
 
 import { getAppIconUrl } from "../utils/helpers";
 
@@ -97,6 +94,11 @@ export function SourceConnectionsList({
   onSelectConnection,
   onAddSource,
 }: SourceConnectionsListProps) {
+  const { sourceConnectionsAllowed, sourceConnectionsStatus } =
+    useUsageChecks();
+  const addSourceDisabledMessage =
+    sourceConnectionsStatus?.details?.message || "Usage limit reached";
+
   if (sourceConnections.length === 0) {
     return (
       <EmptyState
@@ -105,14 +107,28 @@ export function SourceConnectionsList({
         description="Connect your first data source to start syncing and searching your data"
         className="rounded-lg border-2 border-dashed py-12"
       >
-        <Button
-          variant="outline"
-          onClick={onAddSource}
-          className="border-blue-500 bg-blue-50 text-blue-600 hover:border-blue-600 hover:bg-blue-100 dark:border-blue-500 dark:bg-blue-500/20 dark:text-blue-400 dark:hover:border-blue-400 dark:hover:bg-blue-500/30"
-        >
-          <Plus className="mr-1.5 size-4" strokeWidth={2} />
-          Connect a source
-        </Button>
+        <TooltipProvider delayDuration={100}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span>
+                <Button
+                  variant="outline"
+                  onClick={onAddSource}
+                  disabled={!sourceConnectionsAllowed}
+                  className="border-blue-500 bg-blue-50 text-blue-600 hover:border-blue-600 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-500 dark:bg-blue-500/20 dark:text-blue-400 dark:hover:border-blue-400 dark:hover:bg-blue-500/30"
+                >
+                  <Plus className="mr-1.5 size-4" strokeWidth={2} />
+                  Connect a source
+                </Button>
+              </span>
+            </TooltipTrigger>
+            {!sourceConnectionsAllowed && (
+              <TooltipContent>
+                <p>{addSourceDisabledMessage}</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </TooltipProvider>
       </EmptyState>
     );
   }
@@ -144,36 +160,46 @@ export function SourceConnectionsList({
               {connection.name}
             </span>
           </div>
-          {/* Entity count badge */}
           {connection.auth?.authenticated &&
             !connection.federated_search &&
-            (connection.entities?.total_entities ?? 0) >= 0 && (
+            connection.entities?.total_entities != null && (
               <span className="text-muted-foreground ml-1 flex-shrink-0 text-xs tabular-nums">
-                {(connection.entities?.total_entities ?? 0).toLocaleString()}
+                {connection.entities.total_entities.toLocaleString()}
               </span>
             )}
         </div>
       ))}
 
-      {/* Add Source Button */}
       <TooltipProvider delayDuration={100}>
         <Tooltip>
           <TooltipTrigger asChild>
             <div
               className={cn(
-                "flex h-10 cursor-pointer items-center gap-2 overflow-hidden rounded-md border border-dashed px-3 py-2 transition-all",
-                "border-blue-500/30 bg-blue-500/5 hover:border-blue-400/40 hover:bg-blue-500/15"
+                "flex h-10 items-center gap-2 overflow-hidden rounded-md border border-dashed px-3 py-2 transition-all",
+                sourceConnectionsAllowed
+                  ? "cursor-pointer border-blue-500/30 bg-blue-500/5 hover:border-blue-400/40 hover:bg-blue-500/15"
+                  : "cursor-not-allowed border-gray-300/30 bg-gray-100/5 opacity-50"
               )}
-              onClick={onAddSource}
+              onClick={sourceConnectionsAllowed ? onAddSource : undefined}
             >
-              <Plus className="size-5 text-blue-500" strokeWidth={1.5} />
+              <Plus
+                className={cn(
+                  "size-5",
+                  sourceConnectionsAllowed ? "text-blue-500" : "text-gray-400"
+                )}
+                strokeWidth={1.5}
+              />
               <span className="text-foreground text-sm font-medium">
                 Add Source
               </span>
             </div>
           </TooltipTrigger>
           <TooltipContent>
-            <p>Add a new source to this collection</p>
+            <p>
+              {sourceConnectionsAllowed
+                ? "Add a new source to this collection"
+                : addSourceDisabledMessage}
+            </p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>

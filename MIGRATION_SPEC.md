@@ -467,12 +467,12 @@ The frontend-v2 uses a new Orange/Amber primary color. This is intentional and s
 
 **These features block user workflows and must be implemented first.**
 
-- [ ] **Billing Enforcement**
-  - [ ] Create BillingGuard component
+- [x] **Billing Enforcement**
+  - [ ] Create BillingGuard component (optional - direct usage checks used instead)
   - [x] Add usage check API functions
   - [x] Create usage-store with caching
   - [x] Create UsageChecker component
-  - [ ] Implement strict blocking throughout app (integrate into UI)
+  - [x] Implement strict blocking throughout app (integrate into UI)
   - [x] Create `/billing/success` route
   - [x] Create `/billing/cancel` route
 

@@ -14,15 +14,31 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { UserAccountDropdown } from "@/components/user-account-dropdown";
 import { navItems } from "@/config/navigation";
 import { useCreateCollectionStore } from "@/stores/create-collection-store";
+import { useUsageChecks } from "@/stores/usage-store";
 
 export function AppSidebar() {
   const location = useLocation();
   const params = useParams({ strict: false }) as { orgSlug?: string };
   const orgSlug = params.orgSlug;
   const openCreateCollection = useCreateCollectionStore((s) => s.open);
+  const { sourceConnectionsAllowed, sourceConnectionsStatus, entitiesAllowed } =
+    useUsageChecks();
+
+  // Creating a collection requires both source connections and entities to be allowed
+  const canCreateCollection = sourceConnectionsAllowed && entitiesAllowed;
+  const createCollectionDisabledMessage =
+    !sourceConnectionsAllowed && sourceConnectionsStatus?.details?.message
+      ? sourceConnectionsStatus.details.message
+      : "Usage limit reached";
 
   if (!orgSlug) {
     return null;
@@ -116,16 +132,30 @@ export function AppSidebar() {
 
         <SidebarMenu>
           <SidebarMenuItem>
-            <Button
-              className="w-full justify-start gap-2 bg-slate-50 text-slate-900 group-data-[collapsible=icon]:pl-2 hover:bg-slate-200"
-              size="sm"
-              onClick={openCreateCollection}
-            >
-              <Plus className="size-4" />
-              <span className="group-data-[collapsible=icon]:hidden">
-                Create Collection
-              </span>
-            </Button>
+            <TooltipProvider delayDuration={100}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="w-full">
+                    <Button
+                      className="w-full justify-start gap-2 bg-slate-50 text-slate-900 group-data-[collapsible=icon]:pl-2 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+                      size="sm"
+                      onClick={openCreateCollection}
+                      disabled={!canCreateCollection}
+                    >
+                      <Plus className="size-4" />
+                      <span className="group-data-[collapsible=icon]:hidden">
+                        Create Collection
+                      </span>
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                {!canCreateCollection && (
+                  <TooltipContent side="right">
+                    <p>{createCollectionDisabledMessage}</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>

@@ -1,7 +1,3 @@
-/**
- * SearchBox - Main search input with toggles and options
- */
-
 import { X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
@@ -11,6 +7,11 @@ import { API_BASE_URL, getAuthHeaders } from "@/lib/api";
 import { useAuth0 } from "@/lib/auth-provider";
 import { useOrg } from "@/lib/org-context";
 import { cn } from "@/lib/utils";
+import {
+  useUsageChecks,
+  useUsageStore,
+  COMMON_ACTIONS,
+} from "@/stores/usage-store";
 
 import { useSearchStream } from "../hooks/use-search-stream";
 import { useTooltipManager } from "../hooks/use-tooltip-manager";
@@ -26,11 +27,6 @@ import { SearchInput } from "./search-input";
 import { SearchMethodSelector } from "./search-method-selector";
 import { SearchSubmitButton } from "./search-submit-button";
 import { SearchTogglesPanel } from "./search-toggles-panel";
-
-interface UsageCheckResponse {
-  allowed: boolean;
-  reason?: "usage_limit_exceeded" | "payment_required" | string;
-}
 
 interface SearchBoxProps {
   collectionId: string;
@@ -73,6 +69,13 @@ export function SearchBox({
   const { executeSearch, cancelSearch } = useSearchStream();
   const tooltipManager = useTooltipManager();
 
+  const {
+    queriesAllowed,
+    queriesStatus,
+    isLoading: isCheckingUsage,
+  } = useUsageChecks();
+  const checkActions = useUsageStore((state) => state.checkActions);
+
   const [query, setQuery] = useState("");
   const [searchMethod, setSearchMethod] = useState<SearchMethod>("hybrid");
   const [isSearching, setIsSearching] = useState(false);
@@ -82,10 +85,6 @@ export function SearchBox({
   const [toggles, setToggles] = useState<SearchToggles>(DEFAULT_TOGGLES);
   const [showCodeModal, setShowCodeModal] = useState(false);
   const [apiKey, setApiKey] = useState<string>("YOUR_API_KEY");
-  const [queriesAllowed, setQueriesAllowed] = useState(true);
-  const [queriesCheckDetails, setQueriesCheckDetails] =
-    useState<UsageCheckResponse | null>(null);
-  const [isCheckingUsage, setIsCheckingUsage] = useState(true);
   const [transientIssue, setTransientIssue] = useState<{
     message: string;
   } | null>(null);
@@ -94,37 +93,15 @@ export function SearchBox({
   const canRetrySearch = Boolean(transientIssue) && !isSearching;
   const isSearchDisabled = !queriesAllowed || isCheckingUsage || !!disabled;
 
-  const checkQueriesAllowed = useCallback(async () => {
+  const refreshUsageChecks = useCallback(async () => {
     if (!organization) return;
-
     try {
-      setIsCheckingUsage(true);
       const token = await getAccessTokenSilently();
-      const response = await fetch(
-        `${API_BASE_URL}/usage/check-action?action=queries`,
-        {
-          headers: getAuthHeaders(token, organization.id),
-        }
-      );
-      if (response.ok) {
-        const data: UsageCheckResponse = await response.json();
-        setQueriesAllowed(data.allowed);
-        setQueriesCheckDetails(data);
-      } else {
-        setQueriesAllowed(true);
-        setQueriesCheckDetails(null);
-      }
+      await checkActions(token, COMMON_ACTIONS);
     } catch {
-      setQueriesAllowed(true);
-      setQueriesCheckDetails(null);
-    } finally {
-      setIsCheckingUsage(false);
+      // Non-critical - usage checks are best-effort
     }
-  }, [organization, getAccessTokenSilently]);
-
-  useEffect(() => {
-    checkQueriesAllowed();
-  }, [checkQueriesAllowed]);
+  }, [organization, getAccessTokenSilently, checkActions]);
 
   useEffect(() => {
     const fetchApiKey = async () => {
@@ -168,8 +145,8 @@ export function SearchBox({
     cancelSearch();
     onStreamEvent?.({ type: "cancelled" } as SearchEvent);
     onCancel?.();
-    checkQueriesAllowed();
-  }, [cancelSearch, onStreamEvent, onCancel, checkQueriesAllowed]);
+    refreshUsageChecks();
+  }, [cancelSearch, onStreamEvent, onCancel, refreshUsageChecks]);
 
   const handleSendQuery = useCallback(async () => {
     if (
@@ -250,7 +227,7 @@ export function SearchBox({
     } finally {
       setIsSearching(false);
       onSearchEnd?.();
-      checkQueriesAllowed();
+      refreshUsageChecks();
     }
   }, [
     hasQuery,
@@ -271,7 +248,7 @@ export function SearchBox({
     onSearchStart,
     onSearchEnd,
     onStreamEvent,
-    checkQueriesAllowed,
+    refreshUsageChecks,
   ]);
 
   const handleToggle = useCallback(
@@ -328,7 +305,8 @@ export function SearchBox({
                       isAllowed: queriesAllowed && !disabled,
                       reason: disabled
                         ? disabledReason
-                        : queriesCheckDetails?.reason,
+                        : (queriesStatus?.reason ??
+                          queriesStatus?.details?.message),
                     }
                   : undefined
               }
