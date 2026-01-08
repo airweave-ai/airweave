@@ -47,10 +47,7 @@ function BillingCancelPage() {
               subscription setup anytime from your organization settings.
             </p>
 
-            <Button
-              onClick={() => navigate({ to: "/" })}
-              className="w-full"
-            >
+            <Button onClick={() => navigate({ to: "/" })} className="w-full">
               <ChevronLeft className="mr-2 h-4 w-4" />
               Continue to Dashboard
             </Button>

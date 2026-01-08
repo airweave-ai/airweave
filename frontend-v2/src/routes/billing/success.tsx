@@ -20,7 +20,11 @@ function BillingSuccessPage() {
   const navigate = useNavigate();
   const isDark = useIsDark();
   const queryClient = useQueryClient();
-  const { isAuthenticated, isLoading: authLoading, getAccessTokenSilently } = useAuth0();
+  const {
+    isAuthenticated,
+    isLoading: authLoading,
+    getAccessTokenSilently,
+  } = useAuth0();
 
   const [isProcessing, setIsProcessing] = useState(true);
   const [invitesSent, setInvitesSent] = useState(false);
@@ -35,10 +39,16 @@ function BillingSuccessPage() {
     enabled: isAuthenticated && !authLoading,
   });
 
-  const currentOrganization = organizations.find((org) => org.is_primary) || organizations[0];
+  const currentOrganization =
+    organizations.find((org) => org.is_primary) || organizations[0];
 
   useEffect(() => {
-    if (hasProcessed || authLoading || !isAuthenticated || !currentOrganization) {
+    if (
+      hasProcessed ||
+      authLoading ||
+      !isAuthenticated ||
+      !currentOrganization
+    ) {
       return;
     }
 
@@ -46,11 +56,17 @@ function BillingSuccessPage() {
 
     const processSuccess = async () => {
       try {
-        await queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all });
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.organizations.all,
+        });
 
-        const orgMetadata = currentOrganization.org_metadata as {
-          onboarding?: { teamInvites?: Array<{ email: string; role: string }> };
-        } | undefined;
+        const orgMetadata = currentOrganization.org_metadata as
+          | {
+              onboarding?: {
+                teamInvites?: Array<{ email: string; role: string }>;
+              };
+            }
+          | undefined;
 
         if (orgMetadata?.onboarding?.teamInvites) {
           const invites = orgMetadata.onboarding.teamInvites;
@@ -123,7 +139,9 @@ function BillingSuccessPage() {
             <>
               <Loader2 className="text-primary/60 mx-auto h-12 w-12 animate-spin" />
               <div className="space-y-2">
-                <h1 className="text-2xl font-normal">Setting up your account</h1>
+                <h1 className="text-2xl font-normal">
+                  Setting up your account
+                </h1>
                 <p className="text-muted-foreground">
                   This will just take a moment
                 </p>
