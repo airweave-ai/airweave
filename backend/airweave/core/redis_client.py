@@ -5,6 +5,7 @@ import socket
 from typing import Optional
 
 import redis.asyncio as redis
+from redis.asyncio.sentinel import Sentinel
 
 from airweave.core.config import settings
 from airweave.core.logging import logger
@@ -57,24 +58,59 @@ class RedisClient:
                 return {}
 
     def _create_client(self, max_connections: int = 50) -> redis.Redis:
-        """Create a Redis client with specified connection pool size."""
-        # Create connection pool with proper configuration
-        pool = redis.ConnectionPool(
-            host=settings.REDIS_HOST,
-            port=settings.REDIS_PORT,
-            db=settings.REDIS_DB,
-            password=settings.REDIS_PASSWORD if settings.REDIS_PASSWORD else None,
-            decode_responses=True,
-            max_connections=max_connections,
-            retry_on_timeout=True,
-            socket_keepalive=True,
-            socket_keepalive_options=self._get_socket_keepalive_options(),
-            socket_connect_timeout=5,  # Add connection timeout
-            socket_timeout=5,  # Add socket timeout
-            retry_on_error=[ConnectionError, TimeoutError],  # Retry on these errors
-        )
-
-        return redis.Redis(connection_pool=pool)
+        """Create a Redis client - auto-detects Sentinel or direct connection mode.
+        
+        Args:
+            max_connections: Maximum connections in the pool
+            
+        Returns:
+            Configured Redis client with either Sentinel or direct connection
+        """
+        if settings.REDIS_SENTINEL_ENABLED:
+            # Sentinel mode - use base service name for high availability
+            logger.info(f"Connecting to Redis via Sentinel: {settings.REDIS_HOST}:26379")
+            sentinel = Sentinel(
+                [(settings.REDIS_HOST, 26379)],
+                socket_timeout=5,
+                socket_connect_timeout=5,
+                socket_keepalive=True,
+                socket_keepalive_options=self._get_socket_keepalive_options(),
+            )
+            
+            # Get master connection with automatic failover
+            master = sentinel.master_for(
+                'mymaster',  # Bitnami Redis chart default master set name
+                socket_timeout=5,
+                socket_connect_timeout=5,
+                socket_keepalive=True,
+                socket_keepalive_options=self._get_socket_keepalive_options(),
+                retry_on_timeout=True,
+                retry_on_error=[ConnectionError, TimeoutError],
+                db=settings.REDIS_DB,
+                password=settings.REDIS_PASSWORD if settings.REDIS_PASSWORD else None,
+                decode_responses=True,
+                max_connections=max_connections,
+            )
+            return master
+        else:
+            # Direct mode - append -master suffix for StatefulSet pod
+            redis_host = f"{settings.REDIS_HOST}-master"
+            logger.info(f"Connecting to Redis directly: {redis_host}:{settings.REDIS_PORT}")
+            pool = redis.ConnectionPool(
+                host=redis_host,
+                port=settings.REDIS_PORT,
+                db=settings.REDIS_DB,
+                password=settings.REDIS_PASSWORD if settings.REDIS_PASSWORD else None,
+                decode_responses=True,
+                max_connections=max_connections,
+                retry_on_timeout=True,
+                socket_keepalive=True,
+                socket_keepalive_options=self._get_socket_keepalive_options(),
+                socket_connect_timeout=5,
+                socket_timeout=5,
+                retry_on_error=[ConnectionError, TimeoutError],
+            )
+            return redis.Redis(connection_pool=pool)
 
     async def publish(self, channel: str, message: str) -> int:
         """Publish a message to a channel.
