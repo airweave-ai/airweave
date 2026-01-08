@@ -283,9 +283,9 @@ This page provides an alternative authentication method using MCP (Model Context
 | Skeleton | ✅ | ✅ | Done |
 | Form | ✅ (RHF) | ✅ (TanStack) | Use TanStack Form |
 | ValidatedInput | ✅ | ❌ | **Port** |
-| TagInput | ✅ | ❌ | **Port** |
+| TagInput | ✅ | ✅ | Done |
 | CodeBlock | ✅ | ⚠️ | **Enhance** |
-| CollapsibleCard | ✅ | ❌ | **Port** |
+| CollapsibleCard | ✅ | ✅ | Done |
 
 ### 5.2 Feature Components to Migrate
 
@@ -542,8 +542,8 @@ The frontend-v2 uses a new Orange/Amber primary color. This is intentional and s
 
 ### Phase 7: Polish (LOW)
 
-- [ ] Port TagInput component
-- [ ] Port CollapsibleCard component
+- [x] Port TagInput component
+- [x] Port CollapsibleCard component
 - [ ] Enhance CodeBlock component
 - [ ] Auth0 conflict error handling UI
 

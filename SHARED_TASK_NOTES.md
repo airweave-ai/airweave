@@ -4,38 +4,44 @@ Context for the next iteration of frontend migration work.
 
 ## What Was Done (Latest)
 
-- **Billing Routes - COMPLETE**
-  - Created `/billing/portal` route - simple redirect to Stripe Customer Portal
-  - Created `/billing/setup` route - initial billing setup page for onboarding
-    - Shows plan details (Pro/Team) with feature lists
-    - Polls for subscription activation (Stripe webhook)
-    - Past due status alert for failed payments
-    - Redirects to success page when active
-  - Added `queryKeys.billing.currentSubscription` for non-org-scoped billing queries
+- **Phase 7 Polish - TagInput & CollapsibleCard COMPLETE**
+  - Ported `TagInput` component to `frontend-v2/src/components/ui/tag-input.tsx`
+    - Add tags with Enter or comma, remove with X or Backspace
+    - Optional `transformInput` prop (e.g., uppercase for Jira keys)
+    - Duplicate prevention, accessible with aria-labels
+  - Ported `CollapsibleCard` component to `frontend-v2/src/components/ui/collapsible-card.tsx`
+    - Smooth height animations using ResizeObserver
+    - Copy button option with copyTooltip
+    - Controlled/uncontrolled modes, autoExpandOnSearch prop
+    - Status ribbon support
+  - Created base `Collapsible` primitives from @radix-ui/react-collapsible
   - Build verified passing
 
 ## Next Suggested Tasks (in priority order)
 
-1. **Polish Phase 7 (LOW)**
-   - Port TagInput component (for tagging features)
-   - Port CollapsibleCard component (collapsible sections)
-   - Enhance CodeBlock component (better syntax highlighting)
-   - Auth0 conflict error handling UI
+1. **Enhance CodeBlock component (LOW)**
+   - Add better syntax highlighting (maybe Shiki or Prism)
+   - Check old frontend CodeBlock for features to port
 
-2. **Edit Member Roles (BLOCKED)**
+2. **Auth0 conflict error handling UI (LOW)**
+   - Handle Auth0 account conflict errors gracefully in UI
+   - Check old frontend for error handling patterns
+
+3. **Port ValidatedInput component (LOW)**
+   - Validation system is already ported (rules.ts, types.ts)
+   - Create wrapper for TanStack Form integration
+
+4. **Edit Member Roles (BLOCKED)**
    - Requires backend `PATCH /organizations/{id}/members/{memberId}` endpoint
    - UI is prepared in members settings page, just needs backend API
 
 ## Key Files Reference
 
-- Main migration spec: `MIGRATION_SPEC.md`
-- Old frontend source: `frontend/src/`
-- New frontend source: `frontend-v2/src/`
-- Billing API: `frontend-v2/src/lib/api/billing.ts`
-- Billing Settings Page: `frontend-v2/src/routes/$orgSlug/settings/billing.tsx`
-- Billing Setup Page: `frontend-v2/src/routes/billing/setup.tsx`
-- Billing Portal Page: `frontend-v2/src/routes/billing/portal.tsx`
-- Query Keys: `frontend-v2/src/lib/query-keys.ts`
+- TagInput: `frontend-v2/src/components/ui/tag-input.tsx`
+- CollapsibleCard: `frontend-v2/src/components/ui/collapsible-card.tsx`
+- Collapsible primitives: `frontend-v2/src/components/ui/collapsible.tsx`
+- Old CodeBlock: `frontend/src/components/ui/code-block.tsx`
+- Validation rules: `frontend-v2/src/lib/validation/rules.ts`
 
 ## Migration Status Summary
 
@@ -55,7 +61,11 @@ All core routes and features are now complete:
 - ✅ QueryTool with MCP client tabs
 - ✅ SemanticMcp Page
 - ✅ PostHog Integration
+- ✅ TagInput component
+- ✅ CollapsibleCard component
 
-Remaining:
-- Phase 7 polish (TagInput, CollapsibleCard, CodeBlock enhancements)
+Remaining Phase 7 polish:
+- Enhance CodeBlock component
+- Auth0 conflict error handling UI
+- Port ValidatedInput component
 - Edit member roles (blocked on backend API)

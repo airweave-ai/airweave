@@ -94,6 +94,22 @@ export const uiComponents: ComponentInfo[] = [
     ]
   },
   {
+    "name": "collapsible-card",
+    "path": "components/ui/collapsible-card.tsx",
+    "exports": [
+      "CollapsibleCard"
+    ]
+  },
+  {
+    "name": "collapsible",
+    "path": "components/ui/collapsible.tsx",
+    "exports": [
+      "Collapsible",
+      "CollapsibleTrigger",
+      "CollapsibleContent"
+    ]
+  },
+  {
     "name": "command",
     "path": "components/ui/command.tsx",
     "exports": [
@@ -338,6 +354,13 @@ export const uiComponents: ComponentInfo[] = [
       "TabsList",
       "TabsTrigger",
       "TabsContent"
+    ]
+  },
+  {
+    "name": "tag-input",
+    "path": "components/ui/tag-input.tsx",
+    "exports": [
+      "TagInput"
     ]
   },
   {
