@@ -3,7 +3,7 @@
 Contains entity schemas for various data sources and destinations.
 """
 
-from ._base import BaseEntity, Breadcrumb, CodeFileEntity, FileEntity
+from ._base import AccessControl, BaseEntity, Breadcrumb, CodeFileEntity, FileEntity
 from .github import (
     GitHubCodeFileEntity,
     GithubContentEntity,
@@ -12,8 +12,15 @@ from .github import (
     GithubRepoEntity,
     GitHubRepositoryEntity,
 )
+from .sharepoint2019v2 import (
+    SharePoint2019V2File,
+    SharePoint2019V2Item,
+    SharePoint2019V2List,
+    SharePoint2019V2Site,
+)
 
 __all__ = [
+    "AccessControl",
     "BaseEntity",
     "Breadcrumb",
     "CodeFileEntity",
@@ -24,4 +31,8 @@ __all__ = [
     "GitHubRepositoryEntity",
     "GithubRepoEntity",
     "GithubContentEntity",
+    "SharePoint2019V2File",
+    "SharePoint2019V2Item",
+    "SharePoint2019V2List",
+    "SharePoint2019V2Site",
 ]

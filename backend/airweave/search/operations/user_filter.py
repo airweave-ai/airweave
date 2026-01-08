@@ -45,12 +45,13 @@ class UserFilter(SearchOperation):
         self.filter = filter
 
     def depends_on(self) -> List[str]:
-        """Depends on query interpretation.
+        """Depends on query interpretation and access control filter.
 
         Reads from state:
         - state["filter"] from QueryInterpretation (if ran)
+        - state["access_control_filter"] from AccessControlFilter (if ran)
         """
-        return ["QueryInterpretation"]
+        return ["QueryInterpretation", "AccessControlFilter"]
 
     async def execute(
         self,
@@ -58,26 +59,40 @@ class UserFilter(SearchOperation):
         state: dict[str, Any],
         ctx: ApiContext,
     ) -> None:
-        """Merge user filter with extracted filter."""
+        """Merge user filter with extracted filter and access control filter."""
         ctx.logger.debug("[UserFilter] Applying user filter")
 
         # Get existing filter from state (written by QueryInterpretation if it ran)
         existing_filter = state.get("filter")
         ctx.logger.debug(f"[UserFilter] Existing filter: {existing_filter}")
 
+        # Get access control filter from state (written by AccessControlFilter if it ran)
+        access_filter = state.get("access_control_filter")
+        if access_filter:
+            ctx.logger.info(
+                f"[UserFilter] Access control filter present with "
+                f"{len(state.get('access_principals', []))} principals"
+            )
+        else:
+            ctx.logger.debug("[UserFilter] No access control filter applied")
+
         # Normalize user filter to dict and map keys
         user_filter_dict = self._normalize_user_filter()
         ctx.logger.debug(f"[UserFilter] User filter dict: {user_filter_dict}")
 
-        # Merge filters using AND semantics
-        merged_filter = self._merge_filters(user_filter_dict, existing_filter)
+        # Merge all filters using AND semantics (access + user + extracted)
+        merged_filter = self._merge_all_filters(access_filter, user_filter_dict, existing_filter)
         ctx.logger.debug(f"[UserFilter] Merged filter: {merged_filter}")
 
-        # Emit filter merge event if both filters present
-        if existing_filter and user_filter_dict:
+        # Emit filter merge event if multiple filters present
+        filter_count = sum(
+            x is not None for x in [existing_filter, user_filter_dict, access_filter]
+        )
+        if filter_count > 1:
             await context.emitter.emit(
                 "filter_merge",
                 {
+                    "access": access_filter,
                     "existing": existing_filter,
                     "user": user_filter_dict,
                     "merged": merged_filter,
@@ -92,7 +107,7 @@ class UserFilter(SearchOperation):
         if merged_filter:
             await context.emitter.emit(
                 "filter_applied",
-                {"filter": merged_filter},
+                {"filter": merged_filter, "has_access_control": access_filter is not None},
                 op_name=self.__class__.__name__,
             )
 
@@ -208,3 +223,44 @@ class UserFilter(SearchOperation):
         """Safely get list from filter dict."""
         value = filter_dict.get(key)
         return value if isinstance(value, list) else []
+
+    def _merge_all_filters(
+        self,
+        access_filter: Optional[Dict[str, Any]],
+        user_filter: Optional[Dict[str, Any]],
+        extracted_filter: Optional[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+        """Merge access control, user, and extracted filters using AND semantics.
+
+        Logic: Results must satisfy ALL:
+        - Access control (at least one principal matches) if provided
+        - User filter (all conditions) if provided
+        - Extracted filter (all conditions) if provided
+
+        Args:
+            access_filter: Access control filter (from AccessControlFilter operation)
+            user_filter: User-provided filter
+            extracted_filter: Filter extracted from query interpretation
+
+        Returns:
+            Merged filter dict or None if no filters provided
+        """
+        # Collect non-None filters
+        filters_to_merge = []
+
+        if access_filter:
+            filters_to_merge.append(access_filter)
+        if user_filter:
+            filters_to_merge.append(user_filter)
+        if extracted_filter:
+            filters_to_merge.append(extracted_filter)
+
+        # Handle cases
+        if len(filters_to_merge) == 0:
+            return None
+        if len(filters_to_merge) == 1:
+            return filters_to_merge[0]
+
+        # Multiple filters - merge with AND semantics
+        # Wrap each filter in must[] to enforce AND logic between them
+        return {"must": filters_to_merge}

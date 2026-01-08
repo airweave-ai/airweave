@@ -20,6 +20,7 @@ Architecture:
 """
 
 # Handlers
+from .access_control_postgres import ACPostgresHandler
 from .arf import ArfHandler
 from .destination import DestinationHandler
 from .entity_postgres import EntityPostgresHandler
@@ -31,6 +32,7 @@ __all__ = [
     # Protocol and type aliases
     "EntityActionHandler",
     # Entity handlers
+    "ACPostgresHandler",
     "ArfHandler",
     "DestinationHandler",
     "EntityPostgresHandler",

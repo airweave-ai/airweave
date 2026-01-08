@@ -1,3 +1,4 @@
+from .access_control_filter import AccessControlFilter
 from .embed_query import EmbedQuery
 from .federated_search import FederatedSearch
 from .generate_answer import GenerateAnswer
@@ -9,6 +10,7 @@ from .temporal_relevance import TemporalRelevance
 from .user_filter import UserFilter
 
 __all__ = [
+    "AccessControlFilter",
     "EmbedQuery",
     "FederatedSearch",
     "GenerateAnswer",

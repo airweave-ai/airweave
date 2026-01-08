@@ -1,5 +1,6 @@
 """Models for the application."""
 
+from .access_control_membership import AccessControlMembership
 from .api_key import APIKey
 from .auth_provider import AuthProvider
 from .billing_period import BillingPeriod
@@ -32,6 +33,7 @@ from .user import User
 from .user_organization import UserOrganization
 
 __all__ = [
+    "AccessControlMembership",
     "APIKey",
     "AuthProvider",
     "BillingPeriod",

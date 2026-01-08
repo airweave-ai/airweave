@@ -107,6 +107,14 @@ class SourceBase(BaseModel):
             "relevance for search result weighting."
         ),
     )
+    supports_access_control: bool = Field(
+        False,
+        description=(
+            "Whether this source supports document-level access control. "
+            "Sources with this capability extract ACL information from the source "
+            "and apply it during search to filter results based on user permissions."
+        ),
+    )
     rate_limit_level: Optional[str] = Field(
         None,
         description=(

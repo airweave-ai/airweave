@@ -42,6 +42,9 @@ class Source(Base):
     supports_temporal_relevance: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False, server_default="true"
     )
+    supports_access_control: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="false"
+    )
     rate_limit_level: Mapped[Optional[str]] = mapped_column(
         String, nullable=True
     )  # "org", "connection", or None

@@ -23,6 +23,7 @@ from airweave.search.context import SearchContext
 from airweave.search.emitter import EventEmitter
 from airweave.search.helpers import search_helpers
 from airweave.search.operations import (
+    AccessControlFilter,
     EmbedQuery,
     FederatedSearch,
     GenerateAnswer,
@@ -329,7 +330,18 @@ class SearchFactory:
             getattr(destination, "_supports_temporal_relevance", True) if destination else False
         )
 
+        # Build access control filter operation if we have user context
+        # This resolves the user's access principals and builds the filter
+        access_control_op = None
+        if db is not None and ctx is not None and ctx.user is not None and has_vector_sources:
+            access_control_op = AccessControlFilter(
+                db=db,
+                user_email=ctx.user.email,
+                organization_id=ctx.organization.id,
+            )
+
         return {
+            "access_control_filter": access_control_op,
             "query_expansion": (
                 QueryExpansion(providers=providers["expansion"]) if params["expand_query"] else None
             ),

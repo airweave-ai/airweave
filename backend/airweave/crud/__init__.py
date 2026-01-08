@@ -1,5 +1,6 @@
 """CRUD operations for the application."""
 
+from .crud_access_control_membership import access_control_membership
 from .crud_api_key import api_key
 from .crud_auth_provider import auth_provider
 from .crud_billing_period import billing_period
@@ -28,6 +29,7 @@ from .crud_user import user
 
 __all__ = [
     # Existing CRUD instances
+    "access_control_membership",
     "api_key",
     "auth_provider",
     "billing_period",

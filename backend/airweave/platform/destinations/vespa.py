@@ -201,6 +201,7 @@ class VespaDestination(VectorDBDestination):
         fields = self._build_base_fields(entity)
         self._add_system_metadata_fields(fields, entity, entity_type)
         self._add_type_specific_fields(fields, entity)
+        self._add_access_control_fields(fields, entity)
         self._add_vespa_content_fields(fields, entity)  # Add chunks and embeddings
         self._add_payload_field(fields, entity)
 
@@ -292,6 +293,26 @@ class VespaDestination(VectorDBDestination):
                 fields["mime_type"] = entity.mime_type
             if entity.local_path:
                 fields["local_path"] = entity.local_path
+
+    def _add_access_control_fields(self, fields: dict[str, Any], entity: BaseEntity) -> None:
+        """Add access control fields if entity has access metadata.
+
+        IMPORTANT: Only include access fields if the entity has them explicitly set.
+        Sources without supports_access_control=True won't set this field, and we
+        don't want to add default restrictive values that would hide entities.
+
+        When access control fields are absent, entities are visible to everyone
+        (no access filter is applied during search).
+
+        Args:
+            fields: Fields dict to update
+            entity: The entity to extract access control from
+        """
+        if entity.access is not None:
+            fields["access_is_public"] = entity.access.is_public
+            # Always include viewers array (even if empty) when access is set
+            fields["access_viewers"] = entity.access.viewers if entity.access.viewers else []
+        # else: Don't add access fields - entity is from non-AC source
 
     def _add_vespa_content_fields(self, fields: dict[str, Any], entity: BaseEntity) -> None:
         """Add pre-computed chunks and embeddings from VespaContent.
