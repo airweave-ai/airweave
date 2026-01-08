@@ -76,7 +76,7 @@ These decisions were made during migration planning and should guide all impleme
 | Real-time Sync | ✅ Complete | - | Full SSE port with entity state |
 | Usage Dashboard | ✅ Complete | - | Part of settings |
 | Members Settings | ⚠️ Partial | **High** | Core CRUD done, role editing pending |
-| Validation System | ❌ Missing | **High** | Full 40+ rules migration |
+| Validation System | ⚠️ Partial | **High** | Rules ported, form integration pending |
 | QueryTool | ⚠️ Different | **Medium** | Port full version with API doc |
 | SemanticMcp Page | ❌ Missing | **Medium** | MCP auth alternative |
 | S3 Configuration | ✅ Complete | - | Feature-flagged |
@@ -516,9 +516,9 @@ The frontend-v2 uses a new Orange/Amber primary color. This is intentional and s
 
 ### Phase 4: Validation System (HIGH PRIORITY)
 
-- [ ] Port `lib/validation/types.ts`
-- [ ] Port `lib/validation/rules.ts` (40+ rules)
-- [ ] Create ValidatedInput for TanStack Form
+- [x] Port `lib/validation/types.ts`
+- [x] Port `lib/validation/rules.ts` (40+ rules)
+- [x] Create ValidatedInput for TanStack Form
 - [ ] Integrate validation in all forms
 
 ### Phase 5: QueryTool Enhancement (MEDIUM)
