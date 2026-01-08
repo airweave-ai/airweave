@@ -6,7 +6,7 @@ with vector database results using Reciprocal Rank Fusion (RRF).
 """
 
 import asyncio
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
 from pydantic import BaseModel, Field
 
@@ -24,12 +24,14 @@ class QueryKeywords(BaseModel):
     model_config = {"extra": "forbid"}
 
     # Enforce exactly 5 keywords using a fixed-size tuple (Cerebras prefixItems)
-    keywords: Tuple[str, str, str, str, str] = Field(
+    keywords: List[str] = Field(
         description=(
             "Return EXACTLY 5 highly relevant keywords or short phrases. Include a mix of "
             "single words and 2-3 word phrases that best represent the shared intent. "
             "These will be used directly in search API queries."
-        )
+        ),
+        min_length=5,
+        max_length=5,
     )
 
 
