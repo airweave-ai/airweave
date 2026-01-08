@@ -110,6 +110,8 @@ class ComposioBroker(BaseAuthBroker):
         SLUG_MAPPING = {
             "google_drive": "googledrive",
             "google_calendar": "googlecalendar",
+            "google_docs": "googledocs",
+            "google_sheets": "googledocs",  # Reuse Google Docs OAuth (same scopes work)
             "google_slides": "googleslides",
             "outlook_mail": "outlook",
             "outlook_calendar": "outlook",
