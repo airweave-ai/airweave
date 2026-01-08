@@ -4,35 +4,27 @@ Context for the next iteration of frontend migration work.
 
 ## What Was Done (Latest)
 
-- **Billing Settings Page - COMPLETE**
-  - Created `/$orgSlug/settings/billing.tsx` with full subscription management
-  - Plan cards: Developer (free), Pro ($20/mo), Team ($299/mo), Enterprise (custom)
-  - Monthly/Yearly toggle with 20% yearly discount
-  - Status badges: Active, Trial, Past Due, Canceled, Trial Expired
-  - Upgrade/Downgrade/Switch buttons, Cancel/Reactivate subscription
-  - Created `lib/api/billing.ts` with API functions
-  - Added Billing tab to settings-layout navigation
+- **Billing Routes - COMPLETE**
+  - Created `/billing/portal` route - simple redirect to Stripe Customer Portal
+  - Created `/billing/setup` route - initial billing setup page for onboarding
+    - Shows plan details (Pro/Team) with feature lists
+    - Polls for subscription activation (Stripe webhook)
+    - Past due status alert for failed payments
+    - Redirects to success page when active
+  - Added `queryKeys.billing.currentSubscription` for non-org-scoped billing queries
   - Build verified passing
 
 ## Next Suggested Tasks (in priority order)
 
-1. **Port `/billing/setup` Route (MEDIUM)**
-   - Initial billing setup page shown during onboarding
-   - Similar to old `frontend/src/pages/BillingSetup.tsx`
-   - Should check billing status and redirect to Stripe checkout if needed
+1. **Polish Phase 7 (LOW)**
+   - Port TagInput component (for tagging features)
+   - Port CollapsibleCard component (collapsible sections)
+   - Enhance CodeBlock component (better syntax highlighting)
+   - Auth0 conflict error handling UI
 
-2. **Port `/billing/portal` Route (MEDIUM)**
-   - Simple redirect page to Stripe Customer Portal
-   - Reference: `frontend/src/pages/BillingPortal.tsx`
-
-3. **Polish Phase 7 (LOW)**
-   - Port TagInput component
-   - Port CollapsibleCard component
-   - Enhance CodeBlock component
-
-## Blocked Tasks
-
-- **Edit Member Roles** - Requires backend `PATCH /organizations/{id}/members/{memberId}` endpoint
+2. **Edit Member Roles (BLOCKED)**
+   - Requires backend `PATCH /organizations/{id}/members/{memberId}` endpoint
+   - UI is prepared in members settings page, just needs backend API
 
 ## Key Files Reference
 
@@ -41,82 +33,29 @@ Context for the next iteration of frontend migration work.
 - New frontend source: `frontend-v2/src/`
 - Billing API: `frontend-v2/src/lib/api/billing.ts`
 - Billing Settings Page: `frontend-v2/src/routes/$orgSlug/settings/billing.tsx`
-- Settings Layout: `frontend-v2/src/components/settings-layout.tsx`
-- Validation system: `frontend-v2/src/lib/validation/`
-- Date utilities: `frontend-v2/src/lib/date.ts`
+- Billing Setup Page: `frontend-v2/src/routes/billing/setup.tsx`
+- Billing Portal Page: `frontend-v2/src/routes/billing/portal.tsx`
+- Query Keys: `frontend-v2/src/lib/query-keys.ts`
 
-## How to Use the Billing API
+## Migration Status Summary
 
-```typescript
-import {
-  fetchSubscription,
-  createCheckoutSession,
-  createPortalSession,
-  updatePlan,
-  cancelSubscription,
-  reactivateSubscription,
-} from "@/lib/api";
+All core routes and features are now complete:
+- ✅ Collections CRUD + Search
+- ✅ API Keys Management
+- ✅ Auth Providers
+- ✅ Onboarding
+- ✅ Source Connections
+- ✅ Organization Settings (with S3 config)
+- ✅ Billing (settings, setup, portal, success, cancel)
+- ✅ Admin Dashboard
+- ✅ Real-time Sync (SSE)
+- ✅ Usage Dashboard
+- ✅ Members Settings (partial - role editing blocked on backend)
+- ✅ Validation System
+- ✅ QueryTool with MCP client tabs
+- ✅ SemanticMcp Page
+- ✅ PostHog Integration
 
-// Fetch current subscription
-const subscription = await fetchSubscription(token);
-
-// Create checkout session for new subscription
-const { checkout_url } = await createCheckoutSession(
-  token,
-  "pro", // plan
-  successUrl,
-  cancelUrl
-);
-
-// Open Stripe billing portal
-const { portal_url } = await createPortalSession(token, returnUrl);
-
-// Update plan (upgrade/downgrade)
-await updatePlan(token, "team", "yearly");
-
-// Cancel subscription at period end
-await cancelSubscription(token, false);
-```
-
-## How to Use the Validation System
-
-```typescript
-// Option 1: ValidatedInput with built-in validation display
-import { ValidatedInput } from "@/components/validated-input";
-import { collectionNameValidation } from "@/lib/validation";
-
-function MyForm() {
-  const [name, setName] = useState("");
-
-  return (
-    <ValidatedInput
-      value={name}
-      onChange={setName}
-      validation={collectionNameValidation}
-      placeholder="Enter collection name"
-    />
-  );
-}
-
-// Option 2: With TanStack Form using createFormValidator
-import { createFormValidator, collectionNameValidation } from "@/lib/validation";
-import { ValidatedInput } from "@/components/validated-input";
-
-function MyTanStackForm() {
-  return (
-    <form.Field
-      name="name"
-      validators={{ onChange: createFormValidator(collectionNameValidation) }}
-    >
-      {(field) => (
-        <ValidatedInput
-          value={field.state.value}
-          onChange={field.handleChange}
-          onBlur={field.handleBlur}
-          validation={collectionNameValidation}
-        />
-      )}
-    </form.Field>
-  );
-}
-```
+Remaining:
+- Phase 7 polish (TagInput, CollapsibleCard, CodeBlock enhancements)
+- Edit member roles (blocked on backend API)

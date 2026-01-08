@@ -68,6 +68,8 @@ export const queryKeys = {
   billing: {
     subscription: (orgId: string) =>
       [orgId, "billing", "subscription"] as const,
+    /** Global subscription query (no org context, for /billing/setup flow) */
+    currentSubscription: ["billing", "subscription"] as const,
   },
 
   user: {

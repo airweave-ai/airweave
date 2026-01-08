@@ -71,7 +71,7 @@ These decisions were made during migration planning and should guide all impleme
 | Source Connections | ✅ Complete | - | Full sync management |
 | Dashboard | ✅ Complete | - | **Decision: Keep redirect to collections** |
 | Organization Settings | ✅ Complete | - | Full settings with S3 config |
-| Billing Pages | ⚠️ Partial | **Medium** | Settings billing page done, setup/portal routes pending |
+| Billing Pages | ✅ Complete | - | Settings billing, setup, and portal routes done |
 | Admin Dashboard | ✅ Complete | - | Superuser access with metrics |
 | Real-time Sync | ✅ Complete | - | Full SSE port with entity state |
 | Usage Dashboard | ✅ Complete | - | Part of settings |
@@ -107,8 +107,8 @@ These decisions were made during migration planning and should guide all impleme
 | `/api-keys` | N/A (inline) | ✅ Complete | - |
 | `/auth-providers` | `AuthProviders` | ✅ Complete | - |
 | `/organization/settings` | `OrganizationSettingsUnified` | ✅ Complete | - |
-| `/billing/setup` | `BillingSetup` | ❌ Missing | **Medium** |
-| `/billing/portal` | `BillingPortal` | ❌ Missing | **Medium** |
+| `/billing/setup` | `BillingSetup` | ✅ Complete | - |
+| `/billing/portal` | `BillingPortal` | ✅ Complete | - |
 | `/admin` | `AdminDashboard` | ✅ Complete | - |
 | `*` (404) | `NotFound` | ✅ Complete | - |
 
@@ -129,12 +129,7 @@ These decisions were made during migration planning and should guide all impleme
 
 ### Routes to Implement
 
-```
-/billing/setup                  → Initial billing setup page (redirect from onboarding)
-/billing/portal                 → Stripe portal redirect
-```
-
-**Note:** Most settings routes are implemented including `/$orgSlug/settings/billing`. The `/billing/setup` and `/billing/portal` routes handle initial onboarding billing and Stripe portal redirects respectively.
+All core routes are now implemented. The remaining work is component polish (Phase 7).
 
 
 

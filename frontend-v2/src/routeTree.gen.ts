@@ -19,6 +19,8 @@ import { Route as ComponentsIndexRouteImport } from './routes/components.index'
 import { Route as OrgSlugIndexRouteImport } from './routes/$orgSlug/index'
 import { Route as ComponentsComponentNameRouteImport } from './routes/components.$componentName'
 import { Route as BillingSuccessRouteImport } from './routes/billing/success'
+import { Route as BillingSetupRouteImport } from './routes/billing/setup'
+import { Route as BillingPortalRouteImport } from './routes/billing/portal'
 import { Route as BillingCancelRouteImport } from './routes/billing/cancel'
 import { Route as OrgSlugWebhooksRouteImport } from './routes/$orgSlug/webhooks'
 import { Route as OrgSlugLogsRouteImport } from './routes/$orgSlug/logs'
@@ -79,6 +81,16 @@ const ComponentsComponentNameRoute = ComponentsComponentNameRouteImport.update({
 const BillingSuccessRoute = BillingSuccessRouteImport.update({
   id: '/billing/success',
   path: '/billing/success',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BillingSetupRoute = BillingSetupRouteImport.update({
+  id: '/billing/setup',
+  path: '/billing/setup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BillingPortalRoute = BillingPortalRouteImport.update({
+  id: '/billing/portal',
+  path: '/billing/portal',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BillingCancelRoute = BillingCancelRouteImport.update({
@@ -150,6 +162,8 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/logs': typeof OrgSlugLogsRoute
   '/$orgSlug/webhooks': typeof OrgSlugWebhooksRoute
   '/billing/cancel': typeof BillingCancelRoute
+  '/billing/portal': typeof BillingPortalRoute
+  '/billing/setup': typeof BillingSetupRoute
   '/billing/success': typeof BillingSuccessRoute
   '/components/$componentName': typeof ComponentsComponentNameRoute
   '/$orgSlug/': typeof OrgSlugIndexRoute
@@ -171,6 +185,8 @@ export interface FileRoutesByTo {
   '/$orgSlug/logs': typeof OrgSlugLogsRoute
   '/$orgSlug/webhooks': typeof OrgSlugWebhooksRoute
   '/billing/cancel': typeof BillingCancelRoute
+  '/billing/portal': typeof BillingPortalRoute
+  '/billing/setup': typeof BillingSetupRoute
   '/billing/success': typeof BillingSuccessRoute
   '/components/$componentName': typeof ComponentsComponentNameRoute
   '/$orgSlug': typeof OrgSlugIndexRoute
@@ -195,6 +211,8 @@ export interface FileRoutesById {
   '/$orgSlug/logs': typeof OrgSlugLogsRoute
   '/$orgSlug/webhooks': typeof OrgSlugWebhooksRoute
   '/billing/cancel': typeof BillingCancelRoute
+  '/billing/portal': typeof BillingPortalRoute
+  '/billing/setup': typeof BillingSetupRoute
   '/billing/success': typeof BillingSuccessRoute
   '/components/$componentName': typeof ComponentsComponentNameRoute
   '/$orgSlug/': typeof OrgSlugIndexRoute
@@ -220,6 +238,8 @@ export interface FileRouteTypes {
     | '/$orgSlug/logs'
     | '/$orgSlug/webhooks'
     | '/billing/cancel'
+    | '/billing/portal'
+    | '/billing/setup'
     | '/billing/success'
     | '/components/$componentName'
     | '/$orgSlug/'
@@ -241,6 +261,8 @@ export interface FileRouteTypes {
     | '/$orgSlug/logs'
     | '/$orgSlug/webhooks'
     | '/billing/cancel'
+    | '/billing/portal'
+    | '/billing/setup'
     | '/billing/success'
     | '/components/$componentName'
     | '/$orgSlug'
@@ -264,6 +286,8 @@ export interface FileRouteTypes {
     | '/$orgSlug/logs'
     | '/$orgSlug/webhooks'
     | '/billing/cancel'
+    | '/billing/portal'
+    | '/billing/setup'
     | '/billing/success'
     | '/components/$componentName'
     | '/$orgSlug/'
@@ -284,6 +308,8 @@ export interface RootRouteChildren {
   OnboardingRoute: typeof OnboardingRoute
   SemanticMcpRoute: typeof SemanticMcpRoute
   BillingCancelRoute: typeof BillingCancelRoute
+  BillingPortalRoute: typeof BillingPortalRoute
+  BillingSetupRoute: typeof BillingSetupRoute
   BillingSuccessRoute: typeof BillingSuccessRoute
 }
 
@@ -357,6 +383,20 @@ declare module '@tanstack/react-router' {
       path: '/billing/success'
       fullPath: '/billing/success'
       preLoaderRoute: typeof BillingSuccessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/billing/setup': {
+      id: '/billing/setup'
+      path: '/billing/setup'
+      fullPath: '/billing/setup'
+      preLoaderRoute: typeof BillingSetupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/billing/portal': {
+      id: '/billing/portal'
+      path: '/billing/portal'
+      fullPath: '/billing/portal'
+      preLoaderRoute: typeof BillingPortalRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/billing/cancel': {
@@ -493,6 +533,8 @@ const rootRouteChildren: RootRouteChildren = {
   OnboardingRoute: OnboardingRoute,
   SemanticMcpRoute: SemanticMcpRoute,
   BillingCancelRoute: BillingCancelRoute,
+  BillingPortalRoute: BillingPortalRoute,
+  BillingSetupRoute: BillingSetupRoute,
   BillingSuccessRoute: BillingSuccessRoute,
 }
 export const routeTree = rootRouteImport
