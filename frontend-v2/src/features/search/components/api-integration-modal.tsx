@@ -9,7 +9,7 @@
  * - MCP Server mode: Client-specific configurations for Claude, Cursor, Windsurf
  */
 
-import { Check, Code, Copy, Terminal } from "lucide-react";
+import { Code, Terminal } from "lucide-react";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 
 import {
@@ -21,6 +21,7 @@ import {
   WindsurfIcon,
 } from "@/components/icons/tech-icons";
 import { Button } from "@/components/ui/button";
+import { CodeBlock } from "@/components/ui/code-block";
 import { API_BASE_URL } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -75,6 +76,16 @@ const MCP_CONFIG_PATHS: Record<McpTab, string> = {
   server: "",
 };
 
+const LANGUAGE_BY_TAB: Record<ApiTab, string> = {
+  rest: "bash",
+  python: "python",
+  node: "typescript",
+  claude: "json",
+  cursor: "json",
+  windsurf: "json",
+  server: "bash",
+};
+
 export function ApiIntegrationModal({
   collectionReadableId,
   query,
@@ -84,7 +95,6 @@ export function ApiIntegrationModal({
 }: ApiIntegrationModalProps) {
   const [viewMode, setViewMode] = useState<ViewMode>("restapi");
   const [activeTab, setActiveTab] = useState<ApiTab>("rest");
-  const [copied, setCopied] = useState(false);
 
   const handleViewModeChange = useCallback((mode: ViewMode) => {
     setViewMode(mode);
@@ -95,9 +105,7 @@ export function ApiIntegrationModal({
     const apiUrl = `${API_BASE_URL}/collections/${collectionReadableId}/search`;
     const searchQuery = query || "Ask a question about your data";
 
-    const escapeForJson = (str: string) =>
-      str.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-    const escapeForPython = (str: string) =>
+    const escapeString = (str: string) =>
       str.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 
     let parsedFilter = null;
@@ -150,7 +158,7 @@ export function ApiIntegrationModal({
       : null;
 
     const pythonRequestParams = [
-      `        query="${escapeForPython(searchQuery)}"`,
+      `        query="${escapeString(searchQuery)}"`,
       `        retrieval_strategy=RetrievalStrategy.${(searchConfig?.search_method || "hybrid").toUpperCase()}`,
       `        expand_query=${searchConfig?.expansion_strategy !== "no_expansion" ? "True" : "False"}`,
       ...(pythonFilterStr ? [`        filter=${pythonFilterStr}`] : []),
@@ -194,7 +202,7 @@ print(len(result.results))  # Number of results`;
       : null;
 
     const nodeRequestParams = [
-      `            query: "${escapeForJson(searchQuery)}"`,
+      `            query: "${escapeString(searchQuery)}"`,
       `            retrievalStrategy: "${searchConfig?.search_method || "hybrid"}"`,
       `            expandQuery: ${searchConfig?.expansion_strategy !== "no_expansion"}`,
       ...(nodeFilterStr ? [`            filter: ${nodeFilterStr}`] : []),
@@ -306,12 +314,6 @@ npx airweave-mcp-search`;
     [collectionReadableId]
   );
 
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(codeByTab[activeTab]);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
-
   const renderFooter = () => {
     if (viewMode === "mcpserver") {
       if (activeTab === "server") {
@@ -404,48 +406,18 @@ npx airweave-mcp-search`;
           </div>
 
           {/* Code content */}
-          <div className="relative h-[400px]">
-            {/* Header with badge and copy */}
-            <div className="flex items-center justify-between border-b border-slate-800 px-4 py-2">
-              <div className="flex items-center gap-2">
-                <span
-                  className={cn(
-                    "rounded px-1.5 py-0.5 text-xs text-white",
-                    headerInfo.badgeColor
-                  )}
-                >
-                  {headerInfo.badge}
-                </span>
-                <span className="text-xs font-medium text-slate-300">
-                  {headerInfo.title}
-                </span>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="size-6 p-0 text-slate-400 hover:text-white"
-                onClick={handleCopy}
-              >
-                {copied ? (
-                  <Check className="size-3" />
-                ) : (
-                  <Copy className="size-3" />
-                )}
-              </Button>
-            </div>
-
-            {/* Code display */}
-            <div className="h-[calc(100%-76px)] overflow-auto bg-black px-4 py-3">
-              <pre className="font-mono text-xs text-slate-300">
-                {codeByTab[activeTab]}
-              </pre>
-            </div>
-
-            {/* Footer */}
-            <div className="border-t border-slate-800 px-4 py-2 text-xs">
-              {renderFooter()}
-            </div>
-          </div>
+          <CodeBlock
+            code={codeByTab[activeTab]}
+            language={LANGUAGE_BY_TAB[activeTab]}
+            badgeText={headerInfo.badge}
+            badgeColor={headerInfo.badgeColor}
+            title={headerInfo.title}
+            footerContent={
+              <span className="text-xs">{renderFooter()}</span>
+            }
+            height={400}
+            className="rounded-none border-0"
+          />
         </div>
       </div>
     </div>

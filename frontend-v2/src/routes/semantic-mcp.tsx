@@ -100,7 +100,7 @@ function SemanticMcpPage() {
   const [authValues, setAuthValues] = useState<Record<string, string>>({});
   const [configValues, setConfigValues] = useState<Record<string, string>>({});
   const [isAuthenticating, setIsAuthenticating] = useState(false);
-  const [isAuthenticated_, setIsAuthenticated_] = useState(false);
+  const [isSourceAuthenticated, setIsSourceAuthenticated] = useState(false);
   const [credentialId, setCredentialId] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [selectedConnectionId, setSelectedConnectionId] = useState<
@@ -110,8 +110,8 @@ function SemanticMcpPage() {
   // Track OAuth processing
   const hasProcessedOAuthRef = useRef(false);
 
-  // Temporary org ID for API calls (will use default org context)
-  const [tempOrgId] = useState<string | null>(null);
+  // Empty org ID - API will use default org context for semantic-mcp
+  const orgId = "";
 
   // Fetch sources
   const { data: sources = [], isLoading: sourcesLoading } = useQuery({
@@ -120,7 +120,7 @@ function SemanticMcpPage() {
       const token = await getAccessTokenSilently();
       // For semantic-mcp, we use a special endpoint or default org
       // The API should handle this gracefully
-      return fetchSources(token, tempOrgId || "");
+      return fetchSources(token, orgId);
     },
     enabled: isAuthenticated && !authLoading,
   });
@@ -134,7 +134,7 @@ function SemanticMcpPage() {
         const token = await getAccessTokenSilently();
         return fetchSourceConnections(
           token,
-          tempOrgId || "",
+          orgId,
           currentCollection.readable_id
         );
       },
@@ -148,7 +148,7 @@ function SemanticMcpPage() {
     queryFn: async () => {
       if (!selectedSource?.short_name) return null;
       const token = await getAccessTokenSilently();
-      return fetchSource(token, tempOrgId || "", selectedSource.short_name);
+      return fetchSource(token, orgId, selectedSource.short_name);
     },
     enabled: isAuthenticated && !!selectedSource?.short_name && isDialogOpen,
   });
@@ -229,7 +229,7 @@ function SemanticMcpPage() {
           if (state.selectedSource) setSelectedSource(state.selectedSource);
           if (state.authValues) setAuthValues(state.authValues);
           if (state.configValues) setConfigValues(state.configValues);
-          if (state.isAuthenticated) setIsAuthenticated_(state.isAuthenticated);
+          if (state.isAuthenticated) setIsSourceAuthenticated(state.isAuthenticated);
           if (state.credentialId) setCredentialId(state.credentialId);
           if (state.currentCollection)
             setCurrentCollection(state.currentCollection);
@@ -256,7 +256,7 @@ function SemanticMcpPage() {
 
       try {
         const token = await getAccessTokenSilently();
-        const apiKey = await createApiKey(token, tempOrgId || "");
+        const apiKey = await createApiKey(token, orgId);
         sessionStorage.setItem(SESSION_KEYS.API_KEY, apiKey.decrypted_key);
       } catch (error) {
         console.error("Failed to create API key:", error);
@@ -264,7 +264,7 @@ function SemanticMcpPage() {
     };
 
     ensureApiKey();
-  }, [isAuthenticated, getAccessTokenSilently, tempOrgId]);
+  }, [isAuthenticated, getAccessTokenSilently, orgId]);
 
   // Sorted and filtered sources
   const sortedSources = useMemo(() => {
@@ -284,7 +284,7 @@ function SemanticMcpPage() {
       setSelectedSource(source);
       setAuthValues({});
       setConfigValues({});
-      setIsAuthenticated_(false);
+      setIsSourceAuthenticated(false);
       setCredentialId(null);
       setIsDialogOpen(true);
     },
@@ -298,7 +298,7 @@ function SemanticMcpPage() {
       setSelectedSource(null);
       setAuthValues({});
       setConfigValues({});
-      setIsAuthenticated_(false);
+      setIsSourceAuthenticated(false);
       setCredentialId(null);
     }, 200);
   }, []);
@@ -344,7 +344,7 @@ function SemanticMcpPage() {
         }
 
         const response = await fetch(url, {
-          headers: getAuthHeaders(token, tempOrgId || ""),
+          headers: getAuthHeaders(token, orgId),
         });
 
         if (!response.ok) {
@@ -381,7 +381,7 @@ function SemanticMcpPage() {
           `${API_BASE_URL}/connections/credentials/source/${sourceDetails.short_name}`,
           {
             method: "POST",
-            headers: getAuthHeaders(token, tempOrgId || ""),
+            headers: getAuthHeaders(token, orgId),
             body: JSON.stringify(credentialData),
           }
         );
@@ -396,7 +396,7 @@ function SemanticMcpPage() {
 
         const credential = await response.json();
         setCredentialId(credential.id);
-        setIsAuthenticated_(true);
+        setIsSourceAuthenticated(true);
         toast.success("Authentication successful");
       } catch (error) {
         toast.error("Authentication failed", {
@@ -413,7 +413,7 @@ function SemanticMcpPage() {
     configValues,
     currentCollection,
     getAccessTokenSilently,
-    tempOrgId,
+    orgId,
   ]);
 
   // Handle connect (create collection and source connection)
@@ -433,7 +433,7 @@ function SemanticMcpPage() {
 
       // Create collection if needed
       if (!collection) {
-        collection = await createCollection(token, tempOrgId || "", {
+        collection = await createCollection(token, orgId, {
           name: "My Collection",
         });
         setCurrentCollection(collection);
@@ -444,7 +444,7 @@ function SemanticMcpPage() {
         credentials: authValues,
       };
 
-      await createSourceConnection(token, tempOrgId || "", {
+      await createSourceConnection(token, orgId, {
         name: `${selectedSource.name} Connection`,
         description: `Connection to ${selectedSource.name}`,
         short_name: selectedSource.short_name,
@@ -477,7 +477,7 @@ function SemanticMcpPage() {
     authValues,
     configValues,
     getAccessTokenSilently,
-    tempOrgId,
+    orgId,
     refetchConnections,
     handleDialogClose,
   ]);
@@ -487,7 +487,7 @@ function SemanticMcpPage() {
     async (connectionId: string) => {
       try {
         const token = await getAccessTokenSilently();
-        await runSourceConnectionSync(token, tempOrgId || "", connectionId);
+        await runSourceConnectionSync(token, orgId, connectionId);
         toast.success("Sync started");
         await refetchConnections();
       } catch (error) {
@@ -496,7 +496,7 @@ function SemanticMcpPage() {
         });
       }
     },
-    [getAccessTokenSilently, tempOrgId, refetchConnections]
+    [getAccessTokenSilently, orgId, refetchConnections]
   );
 
   // Get status color for connection
@@ -862,21 +862,21 @@ function SemanticMcpPage() {
                   disabled={!isFormValid || isAuthenticating}
                   className={cn(
                     "flex items-center gap-2 px-6",
-                    isAuthenticated_ && "bg-green-600 hover:bg-green-700"
+                    isSourceAuthenticated && "bg-green-600 hover:bg-green-700"
                   )}
                 >
                   {isAuthenticating ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : isAuthenticated_ ? (
+                  ) : isSourceAuthenticated ? (
                     <Check className="h-4 w-4" />
                   ) : null}
-                  {isAuthenticated_ ? "Authenticated" : "Authenticate"}
+                  {isSourceAuthenticated ? "Authenticated" : "Authenticate"}
                 </Button>
 
                 <Button
                   onClick={handleConnect}
-                  disabled={!isAuthenticated_ || isConnecting}
-                  variant={isAuthenticated_ ? "default" : "secondary"}
+                  disabled={!isSourceAuthenticated || isConnecting}
+                  variant={isSourceAuthenticated ? "default" : "secondary"}
                   className="px-6"
                 >
                   {isConnecting ? (

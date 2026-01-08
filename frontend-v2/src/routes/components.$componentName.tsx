@@ -7,9 +7,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { CodeBlock } from "@/components/ui/code-block";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft, Check, Code, Copy, Package } from "lucide-react";
-import { useState } from "react";
+import { ArrowLeft, Code, Package } from "lucide-react";
 import { uiComponents } from "../components.gen";
 import { componentPreviews } from "../previews";
 
@@ -22,42 +22,6 @@ function toDisplayName(name: string) {
     .split(/[-_]/)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
-}
-
-function CodeBlock({
-  code,
-  language: _language = "tsx",
-}: {
-  code: string;
-  language?: string;
-}) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <div className="group relative">
-      <pre className="bg-muted overflow-x-auto rounded-lg border p-4">
-        <code className="font-mono text-sm">{code}</code>
-      </pre>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        onClick={handleCopy}
-        className="absolute top-2 right-2 opacity-0 transition-opacity group-hover:opacity-100"
-      >
-        {copied ? (
-          <Check className="text-primary h-4 w-4" />
-        ) : (
-          <Copy className="h-4 w-4" />
-        )}
-      </Button>
-    </div>
-  );
 }
 
 function VariantPreview({
@@ -81,7 +45,11 @@ function VariantPreview({
         <div className="flex flex-wrap items-center gap-4">{children}</div>
       </CardContent>
       <div className="border-t">
-        <CodeBlock code={code} />
+        <CodeBlock
+          code={code}
+          language="tsx"
+          className="rounded-none border-0 border-t"
+        />
       </div>
     </Card>
   );
@@ -165,6 +133,7 @@ function ComponentDetailPage() {
         <h2 className="text-foreground mb-3 text-lg font-semibold">Import</h2>
         <CodeBlock
           code={`import { ${component.exports.filter((e) => e !== "default").join(", ")} } from "@/components/ui/${component.name}";`}
+          language="typescript"
         />
       </div>
 

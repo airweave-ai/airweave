@@ -94,6 +94,13 @@ export const uiComponents: ComponentInfo[] = [
     ]
   },
   {
+    "name": "code-block",
+    "path": "components/ui/code-block.tsx",
+    "exports": [
+      "CodeBlock"
+    ]
+  },
+  {
     "name": "collapsible-card",
     "path": "components/ui/collapsible-card.tsx",
     "exports": [
