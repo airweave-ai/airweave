@@ -157,9 +157,9 @@ def categorize_sync(sync: dict) -> MigrationStatus:
 
 @app.command("list")
 def list_syncs(
-    status: MigrationStatus = typer.Option(
-        MigrationStatus.ALL, "--status", "-s",
-        help="Filter by migration status"
+    status: str = typer.Option(
+        "all", "--status", "-s",
+        help="Filter by migration status (completed, failed, running, pending, all)"
     ),
     org: Optional[str] = typer.Option(
         None, "--org", "-o",
@@ -200,8 +200,9 @@ def list_syncs(
             raise typer.Exit(0)
 
         # Filter by status
-        if status != MigrationStatus.ALL:
-            syncs = [s for s in syncs if categorize_sync(s) == status]
+        status_enum = MigrationStatus(status.lower())
+        if status_enum != MigrationStatus.ALL:
+            syncs = [s for s in syncs if categorize_sync(s) == status_enum]
 
         # Sort
         sort_keys = {
