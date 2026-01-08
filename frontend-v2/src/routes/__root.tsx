@@ -24,6 +24,7 @@ import {
 import { Toaster } from "../components/ui/sonner";
 import { useThemeEffect } from "../hooks/use-theme-effect";
 import { AuthGuard, AuthProvider } from "../lib/auth-provider";
+import { PostHogProvider } from "../lib/posthog-provider";
 import { CACHE_MAX_AGE, createIDBPersister } from "../lib/query-persister";
 import { useUISettingsHydrated } from "../stores/ui-settings";
 
@@ -149,15 +150,17 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        <PersistQueryClientProvider
-          client={queryClient}
-          persistOptions={{
-            persister,
-            maxAge: CACHE_MAX_AGE,
-          }}
-        >
-          <AuthProvider>{children}</AuthProvider>
-        </PersistQueryClientProvider>
+        <PostHogProvider>
+          <PersistQueryClientProvider
+            client={queryClient}
+            persistOptions={{
+              persister,
+              maxAge: CACHE_MAX_AGE,
+            }}
+          >
+            <AuthProvider>{children}</AuthProvider>
+          </PersistQueryClientProvider>
+        </PostHogProvider>
         <Scripts />
       </body>
     </html>

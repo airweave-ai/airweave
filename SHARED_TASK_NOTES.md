@@ -4,35 +4,38 @@ Context for the next iteration of frontend migration work.
 
 ## What Was Done
 
-- Ported `error-utils.ts` to `frontend-v2/src/lib/error-utils.ts`
-- Adapted for TanStack Router (removed React Router dependency)
-- Added helper functions: `hasStoredError()`, `createErrorFromResponse()`
-- All Phase 6 utilities are now complete (dateTime, cronParser, syncStatus, error-utils)
+- Added PostHog integration to frontend-v2
+- Created `frontend-v2/src/lib/posthog-provider.tsx`
+- Wrapped app with `<PostHogProvider>` in `__root.tsx`
+- Phase 6 is now complete (utilities + PostHog)
 
 ## Next Suggested Task
 
-**Add PostHog provider** (MIGRATION_SPEC section 6.1 and 9.3)
+**Start Organization Settings page** (`/$orgSlug/settings`) - HIGH PRIORITY
 
-This is a straightforward task:
-1. Add `posthog-js` dependency to package.json
-2. Create PostHog provider component
-3. Wrap app with provider in main.tsx or root layout
-4. Implement `getPostHogSessionId()` helper for API client
+This is in the Phase 1 checklist and blocks user workflows. Break down into:
 
-Reference: `frontend/src/` for existing PostHog implementation patterns.
+1. Create `/$orgSlug/settings/index.tsx` route file
+2. Add basic page structure with tabs for sub-sections
+3. Implement organization name/description editing
+4. Add organization deletion with confirmation dialog
 
-## Other Quick Tasks (in order of suggested priority)
+Reference: `frontend/src/pages/OrganizationSettingsUnified.tsx` for existing logic.
 
-1. Add PostHog provider (small, enables session tracking)
-2. Start Organization Settings page (`/$orgSlug/settings`) - HIGH PRIORITY in spec
-3. Port Phase 4 validation system - break down into:
-   - Port `lib/validation/types.ts` first
+## Other Tasks (in order of priority)
+
+1. Organization Settings page (HIGH PRIORITY - Phase 1)
+2. Members Settings (`/$orgSlug/settings/members.tsx`) - Full CRUD
+3. Usage Dashboard (`/$orgSlug/settings/usage.tsx`)
+4. Validation system - Phase 4:
+   - Port `lib/validation/types.ts`
    - Port `lib/validation/rules.ts` (40+ rules)
-   - Create ValidatedInput component for TanStack Form
+   - Create ValidatedInput for TanStack Form
 
 ## Files to Reference
 
 - Main migration spec: `MIGRATION_SPEC.md`
 - Old frontend source: `frontend/src/`
 - New frontend source: `frontend-v2/src/`
-- Ported utilities: `frontend-v2/src/lib/error-utils.ts`, `dateTime.ts`, `cronParser.ts`
+- Old org settings: `frontend/src/pages/OrganizationSettingsUnified.tsx`
+- Route structure example: `frontend-v2/src/routes/$orgSlug/collections/index.tsx`

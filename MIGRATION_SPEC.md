@@ -536,9 +536,9 @@ The frontend-v2 uses a new Orange/Amber primary color. This is intentional and s
   - [ ] Create `/semantic-mcp` route
   - [ ] Implement MCP authentication flow
 
-- [ ] **PostHog Integration**
-  - [ ] Add PostHog provider
-  - [ ] Implement session ID tracking
+- [x] **PostHog Integration**
+  - [x] Add PostHog provider
+  - [x] Implement session ID tracking
   - [x] Add `X-Airweave-Session-ID` to API headers
 
 - [ ] **Utilities**
@@ -729,3 +729,5 @@ interface OrganizationMetrics {
 **2026-01-08**: Created `/billing/success` and `/billing/cancel` routes in frontend-v2. These are simple callback pages that handle post-billing flow redirects. The success page refreshes organizations, sends any pending team invitations from onboarding metadata, and redirects to dashboard. The cancel page shows a simple message and provides a button to return to dashboard. Also added `inviteOrganizationMember` API function to `lib/api/organizations.ts`. Next suggested task: Add `X-Airweave-Session-ID` header to API client (see MIGRATION_SPEC section 6.1).
 
 **2026-01-08**: Ported `syncStatus.ts` utility to `frontend-v2/src/lib/syncStatus.ts`. This HIGH PRIORITY utility provides functions to derive and display sync status consistently (`deriveSyncStatus`, `getSyncStatusColorClass`, `getSyncStatusDisplayText`). The `SyncProgressUpdate` type is defined locally for now - when `sync-state-store` is ported (Phase 2), it should be imported from there. Next suggested task: Port `error-utils.ts` utility (will need adaptation for TanStack Router instead of React Router).
+
+**2026-01-08**: Added PostHog integration to frontend-v2. Created `frontend-v2/src/lib/posthog-provider.tsx` following the same pattern as the old frontend. The provider initializes PostHog outside React to avoid race conditions, captures manual pageviews, and exposes the `posthog` instance on `window` for the API client's `getPostHogSessionId()` helper. The app is wrapped with `<PostHogProvider>` in `__root.tsx`. The API client already had `getPostHogSessionId()` and `X-Airweave-Session-ID` header implemented - PostHog integration is now complete.

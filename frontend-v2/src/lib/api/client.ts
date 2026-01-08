@@ -8,9 +8,6 @@ export const API_BASE_URL =
 /**
  * Get PostHog session ID safely
  * Returns undefined if PostHog is not initialized or available
- *
- * Note: PostHog integration is pending. Once posthog-provider is ported,
- * this function will return the actual session ID for analytics correlation.
  */
 function getPostHogSessionId(): string | undefined {
   try {
