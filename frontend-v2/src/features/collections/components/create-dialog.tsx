@@ -14,10 +14,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { ValidatedInput } from "@/components/validated-input";
 import { createCollection, type Collection } from "@/lib/api";
 import { useAuth0 } from "@/lib/auth-provider";
 import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
+import {
+  collectionNameValidation,
+  createFormValidator,
+} from "@/lib/validation";
 
 interface CreateCollectionDialogProps {
   open: boolean;
@@ -177,14 +182,7 @@ export function CreateCollectionDialog({
               <form.Field
                 name="name"
                 validators={{
-                  onChange: ({ value }) => {
-                    if (!value.trim()) return "Name is required";
-                    if (value.length < 4)
-                      return "Name must be at least 4 characters";
-                    if (value.length > 64)
-                      return "Name must be less than 64 characters";
-                    return undefined;
-                  },
+                  onChange: createFormValidator(collectionNameValidation),
                 }}
               >
                 {(field) => (
@@ -195,24 +193,20 @@ export function CreateCollectionDialog({
                     >
                       Name
                     </label>
-                    <Input
+                    <ValidatedInput
                       id="name"
                       placeholder="e.g., Customer Support Tickets"
                       value={field.state.value}
-                      onChange={(e) => {
-                        field.handleChange(e.target.value);
-                        setCurrentName(e.target.value);
+                      onChange={(value) => {
+                        field.handleChange(value);
+                        setCurrentName(value);
                       }}
                       onBlur={field.handleBlur}
+                      validation={collectionNameValidation}
                       aria-invalid={
                         field.state.meta.errors.length > 0 ? "true" : undefined
                       }
                     />
-                    {field.state.meta.errors.length > 0 && (
-                      <p className="text-destructive text-sm">
-                        {field.state.meta.errors[0]}
-                      </p>
-                    )}
                     <p className="text-muted-foreground text-xs">
                       4-64 characters. This is the display name for your
                       collection.

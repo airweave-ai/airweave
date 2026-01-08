@@ -4,24 +4,18 @@ Context for the next iteration of frontend migration work.
 
 ## What Was Done (Latest)
 
-- **Validation System (Phase 4) - PARTIAL**
-  - Created `frontend-v2/src/lib/validation/types.ts` - Core validation types
-  - Created `frontend-v2/src/lib/validation/rules.ts` - All 25+ validation rules ported
-  - Created `frontend-v2/src/lib/validation/index.ts` - Barrel export
-  - Created `frontend-v2/src/components/validated-input.tsx` - ValidatedInput component + useFormValidator hook
-  - Features:
-    - Debounced validation hints with configurable timing
-    - Support for 'change', 'blur', 'submit' triggers
-    - Severity-based styling (info vs warning)
-    - `useFormValidator` hook for TanStack Form integration
-    - Compatible with TanStack Form's validators prop
+- **Validation Integration in Create Collection Dialog**
+  - Updated `frontend-v2/src/features/collections/components/create-dialog.tsx`
+  - Replaced inline validators with `createFormValidator(collectionNameValidation)`
+  - Added `ValidatedInput` component for the name field with debounced validation hints
+  - Build verified passing
 
 ## Next Suggested Tasks (in priority order)
 
-1. **Integrate Validation in Forms (HIGH)**
-   - Update `frontend-v2/src/features/collections/components/create-dialog.tsx` to use ValidatedInput
+1. **Continue Validation Integration (HIGH)**
    - Update auth provider forms to use validation rules
-   - Update source connection forms to use getAuthFieldValidation()
+   - Update source connection forms to use `getAuthFieldValidation()`
+   - Look for other forms that could benefit from validation
 
 2. **QueryTool Enhancement - Phase 5 (MEDIUM)**
    - Port full QueryTool component
@@ -58,23 +52,22 @@ function MyForm() {
   );
 }
 
-// Option 2: With TanStack Form using the hook
-import { useFormValidator } from "@/components/validated-input";
-import { collectionNameValidation } from "@/lib/validation";
+// Option 2: With TanStack Form using createFormValidator
+import { createFormValidator, collectionNameValidation } from "@/lib/validation";
+import { ValidatedInput } from "@/components/validated-input";
 
 function MyTanStackForm() {
-  const nameValidator = useFormValidator(collectionNameValidation);
-
   return (
     <form.Field
       name="name"
-      validators={{ onChange: nameValidator }}
+      validators={{ onChange: createFormValidator(collectionNameValidation) }}
     >
       {(field) => (
-        <Input
+        <ValidatedInput
           value={field.state.value}
-          onChange={(e) => field.handleChange(e.target.value)}
+          onChange={field.handleChange}
           onBlur={field.handleBlur}
+          validation={collectionNameValidation}
         />
       )}
     </form.Field>
@@ -96,4 +89,5 @@ const validation = getAuthFieldValidation("host"); // Returns databaseHostValida
 - New frontend source: `frontend-v2/src/`
 - Validation system: `frontend-v2/src/lib/validation/`
 - ValidatedInput: `frontend-v2/src/components/validated-input.tsx`
+- Create collection dialog (validation integrated): `frontend-v2/src/features/collections/components/create-dialog.tsx`
 - Old QueryTool: `frontend/src/components/query/QueryTool.tsx`
