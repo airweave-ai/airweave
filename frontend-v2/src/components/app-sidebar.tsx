@@ -34,7 +34,7 @@ export function AppSidebar() {
   };
 
   return (
-    <Sidebar collapsible="icon" side="left" className="py-2">
+    <Sidebar collapsible="icon" side="left" className="py-2.5">
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
@@ -46,7 +46,7 @@ export function AppSidebar() {
             >
               <Link to="/$orgSlug/collections" params={{ orgSlug }}>
                 <svg
-                  className="shrink-0"
+                  className="size-4.5 h-auto shrink-0"
                   viewBox="0 0 143 143"
                   fill="none"
                   xmlns="http://www.w3.org/2000/svg"
@@ -67,7 +67,7 @@ export function AppSidebar() {
                 <div className="flex grow items-center justify-stretch group-data-[collapsible=icon]:hidden">
                   <svg
                     viewBox="0 0 356 66"
-                    className="size-18 h-auto"
+                    className="size-19 h-auto"
                     fill="none"
                     xmlns="http://www.w3.org/2000/svg"
                   >
