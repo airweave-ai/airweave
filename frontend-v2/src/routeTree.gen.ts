@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as ComponentsRouteImport } from './routes/components'
+import { Route as AdminRouteImport } from './routes/admin'
 import { Route as OrgSlugRouteRouteImport } from './routes/$orgSlug/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ComponentsIndexRouteImport } from './routes/components.index'
@@ -36,6 +37,11 @@ const OnboardingRoute = OnboardingRouteImport.update({
 const ComponentsRoute = ComponentsRouteImport.update({
   id: '/components',
   path: '/components',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OrgSlugRouteRoute = OrgSlugRouteRouteImport.update({
@@ -123,6 +129,7 @@ const OrgSlugCollectionsCollectionIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$orgSlug': typeof OrgSlugRouteRouteWithChildren
+  '/admin': typeof AdminRoute
   '/components': typeof ComponentsRouteWithChildren
   '/onboarding': typeof OnboardingRoute
   '/$orgSlug/api-keys': typeof OrgSlugApiKeysRoute
@@ -142,6 +149,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
   '/onboarding': typeof OnboardingRoute
   '/$orgSlug/api-keys': typeof OrgSlugApiKeysRoute
   '/$orgSlug/auth-providers': typeof OrgSlugAuthProvidersRoute
@@ -162,6 +170,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/$orgSlug': typeof OrgSlugRouteRouteWithChildren
+  '/admin': typeof AdminRoute
   '/components': typeof ComponentsRouteWithChildren
   '/onboarding': typeof OnboardingRoute
   '/$orgSlug/api-keys': typeof OrgSlugApiKeysRoute
@@ -184,6 +193,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/$orgSlug'
+    | '/admin'
     | '/components'
     | '/onboarding'
     | '/$orgSlug/api-keys'
@@ -203,6 +213,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/admin'
     | '/onboarding'
     | '/$orgSlug/api-keys'
     | '/$orgSlug/auth-providers'
@@ -222,6 +233,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/$orgSlug'
+    | '/admin'
     | '/components'
     | '/onboarding'
     | '/$orgSlug/api-keys'
@@ -243,6 +255,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   OrgSlugRouteRoute: typeof OrgSlugRouteRouteWithChildren
+  AdminRoute: typeof AdminRoute
   ComponentsRoute: typeof ComponentsRouteWithChildren
   OnboardingRoute: typeof OnboardingRoute
   BillingCancelRoute: typeof BillingCancelRoute
@@ -263,6 +276,13 @@ declare module '@tanstack/react-router' {
       path: '/components'
       fullPath: '/components'
       preLoaderRoute: typeof ComponentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/$orgSlug': {
@@ -427,6 +447,7 @@ const ComponentsRouteWithChildren = ComponentsRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   OrgSlugRouteRoute: OrgSlugRouteRouteWithChildren,
+  AdminRoute: AdminRoute,
   ComponentsRoute: ComponentsRouteWithChildren,
   OnboardingRoute: OnboardingRoute,
   BillingCancelRoute: BillingCancelRoute,

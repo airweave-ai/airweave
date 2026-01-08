@@ -72,7 +72,7 @@ These decisions were made during migration planning and should guide all impleme
 | Dashboard | ✅ Complete | - | **Decision: Keep redirect to collections** |
 | Organization Settings | ✅ Complete | - | Full settings with S3 config |
 | Billing Pages | ❌ Missing | **High** | Strict blocking enforcement |
-| Admin Dashboard | ❌ Missing | **High** | Include now per decision |
+| Admin Dashboard | ✅ Complete | - | Superuser access with metrics |
 | Real-time Sync | ❌ Missing | **High** | Full SSE port required |
 | Usage Dashboard | ✅ Complete | - | Part of settings |
 | Members Settings | ⚠️ Partial | **High** | Core CRUD done, role editing pending |
@@ -109,7 +109,7 @@ These decisions were made during migration planning and should guide all impleme
 | `/organization/settings` | `OrganizationSettingsUnified` | ❌ Missing | **High** |
 | `/billing/setup` | `BillingSetup` | ❌ Missing | **High** |
 | `/billing/portal` | `BillingPortal` | ❌ Missing | **High** |
-| `/admin` | `AdminDashboard` | ❌ Missing | **High** |
+| `/admin` | `AdminDashboard` | ✅ Complete | - |
 | `*` (404) | `NotFound` | ✅ Complete | - |
 
 ### Frontend-v2 Routes (Implemented)
@@ -130,15 +130,11 @@ These decisions were made during migration planning and should guide all impleme
 ### Routes to Implement
 
 ```
-/$orgSlug/settings              → Organization settings (name, desc, S3, delete)
 /$orgSlug/settings/billing      → Billing management
-/$orgSlug/settings/members      → Team member management (full CRUD)
-/$orgSlug/settings/usage        → Usage dashboard
-/billing/success                → Billing success callback
-/billing/cancel                 → Billing cancel callback
 /semantic-mcp                   → Semantic MCP page (MCP auth)
-/admin                          → Admin dashboard (superuser only)
 ```
+
+**Note:** Most settings routes are implemented. Billing management page for subscription changes is not yet done.
 
 
 
@@ -511,12 +507,12 @@ The frontend-v2 uses a new Orange/Amber primary color. This is intentional and s
 
 ### Phase 3: Admin Dashboard (HIGH PRIORITY)
 
-- [ ] Create `/admin` route
-- [ ] Port AdminDashboard component
-- [ ] Organization listing with metrics
-- [ ] Feature flag management
-- [ ] Plan upgrades
-- [ ] Superuser access control
+- [x] Create `/admin` route
+- [x] Port AdminDashboard component
+- [x] Organization listing with metrics
+- [x] Feature flag management
+- [x] Plan upgrades
+- [x] Superuser access control
 
 ### Phase 4: Validation System (HIGH PRIORITY)
 

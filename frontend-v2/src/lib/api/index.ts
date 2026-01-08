@@ -99,3 +99,22 @@ export type {
   S3Status,
   S3TestResult,
 } from "./s3";
+
+export { fetchCurrentUser } from "./users";
+export type { User } from "./users";
+
+export {
+  adminCreateEnterpriseOrg,
+  adminDisableFeatureFlag,
+  adminEnableFeatureFlag,
+  adminJoinOrganization,
+  adminUpgradeToEnterprise,
+  fetchAdminOrganizations,
+  fetchAvailableFeatureFlags,
+} from "./admin";
+export type {
+  AdminOrganizationsParams,
+  AvailableFeatureFlag,
+  CreateEnterpriseOrgRequest,
+  OrganizationMetrics,
+} from "./admin";

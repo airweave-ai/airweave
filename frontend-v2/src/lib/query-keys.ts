@@ -64,4 +64,13 @@ export const queryKeys = {
   s3: {
     status: (orgId: string) => [orgId, "s3", "status"] as const,
   },
+
+  user: {
+    current: ["user", "current"] as const,
+  },
+
+  admin: {
+    organizations: ["admin", "organizations"] as const,
+    featureFlags: ["admin", "feature-flags"] as const,
+  },
 };
