@@ -135,80 +135,47 @@ function MembersSettingsPage() {
   });
 
   const validateEmail = useCallback(
-    (email: string) => {
-      if (!email) {
-        setEmailError("");
-        return;
-      }
+    (email: string, showFormatError = true): string => {
+      if (!email) return "";
 
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
-        setEmailError("Please enter a valid email address");
-        return;
+        return showFormatError ? "Please enter a valid email address" : "";
       }
 
       const existingMember = members.find(
         (member) => member.email.toLowerCase() === email.toLowerCase()
       );
       if (existingMember) {
-        setEmailError("This person is already a member of the organization");
-        return;
+        return "This person is already a member of the organization";
       }
 
       const existingInvitation = invitations.find(
         (invitation) => invitation.email.toLowerCase() === email.toLowerCase()
       );
       if (existingInvitation) {
-        setEmailError("An invitation has already been sent to this email");
-        return;
+        return "An invitation has already been sent to this email";
       }
 
-      setEmailError("");
+      return "";
     },
     [members, invitations]
   );
 
   useEffect(() => {
     if (inviteEmail) {
-      validateEmail(inviteEmail);
+      setEmailError(validateEmail(inviteEmail));
     }
   }, [members, invitations, inviteEmail, validateEmail]);
 
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const email = e.target.value;
     setInviteEmail(email);
-
-    if (!email) {
-      setEmailError("");
-      return;
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (emailRegex.test(email)) {
-      const existingMember = members.find(
-        (member) => member.email.toLowerCase() === email.toLowerCase()
-      );
-      if (existingMember) {
-        setEmailError("This person is already a member of the organization");
-        return;
-      }
-
-      const existingInvitation = invitations.find(
-        (invitation) => invitation.email.toLowerCase() === email.toLowerCase()
-      );
-      if (existingInvitation) {
-        setEmailError("An invitation has already been sent to this email");
-        return;
-      }
-
-      setEmailError("");
-    } else {
-      setEmailError("");
-    }
+    setEmailError(validateEmail(email, false));
   };
 
   const handleEmailBlur = () => {
-    validateEmail(inviteEmail);
+    setEmailError(validateEmail(inviteEmail));
   };
 
   const handleInvite = () => {

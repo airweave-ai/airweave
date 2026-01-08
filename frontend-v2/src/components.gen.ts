@@ -33,6 +33,15 @@ export const uiComponents: ComponentInfo[] = [
     ]
   },
   {
+    "name": "alert",
+    "path": "components/ui/alert.tsx",
+    "exports": [
+      "Alert",
+      "AlertTitle",
+      "AlertDescription"
+    ]
+  },
+  {
     "name": "api-form",
     "path": "components/ui/api-form.tsx",
     "exports": [

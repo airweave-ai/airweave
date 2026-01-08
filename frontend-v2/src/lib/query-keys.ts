@@ -60,4 +60,8 @@ export const queryKeys = {
   usage: {
     dashboard: (orgId: string) => [orgId, "usage", "dashboard"] as const,
   },
+
+  s3: {
+    status: (orgId: string) => [orgId, "s3", "status"] as const,
+  },
 };

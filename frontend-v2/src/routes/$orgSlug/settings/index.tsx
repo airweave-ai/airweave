@@ -4,6 +4,7 @@ import { Loader2, Save } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { S3StatusCard } from "@/components/s3-status-card";
 import { SettingsLayout } from "@/components/settings-layout";
 import { Button } from "@/components/ui/button";
 import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog";
@@ -227,6 +228,11 @@ function SettingsPage() {
               )}
             </Tooltip>
           </div>
+        </section>
+
+        {/* S3 Event Streaming (feature-flagged) */}
+        <section className="border-border max-w-lg border-t pt-6">
+          <S3StatusCard />
         </section>
 
         {/* Danger Zone */}

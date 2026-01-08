@@ -86,3 +86,16 @@ export type {
 
 export { fetchUsageDashboard } from "./usage";
 export type { CurrentPeriod, UsageDashboardData, UsageData } from "./usage";
+
+export {
+  configureS3,
+  deleteS3Config,
+  fetchS3Status,
+  testS3Connection,
+} from "./s3";
+export type {
+  S3ConfigRequest,
+  S3ConfigResponse,
+  S3Status,
+  S3TestResult,
+} from "./s3";

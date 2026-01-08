@@ -4,37 +4,41 @@ Context for the next iteration of frontend migration work.
 
 ## What Was Done (Latest)
 
-- Created Usage Dashboard page at `/$orgSlug/settings/usage.tsx`
-- Added `fetchUsageDashboard` API function in `frontend-v2/src/lib/api/usage.ts`
-- Added `usage.dashboard` query key
-- Added Usage tab to SettingsLayout navigation
+- Added S3 Event Streaming configuration (feature-flagged) to Organization Settings
+- Created `frontend-v2/src/lib/api/s3.ts` with API functions
+- Created `S3ConfigModal` component with test connection + save flow
+- Created `S3StatusCard` component (only renders when `S3_DESTINATION` feature flag enabled)
+- Created `Alert` UI component
+- Added `s3.status` query key
 
 ## Next Suggested Task
 
-**Edit Member Roles** - MEDIUM PRIORITY
+**BillingGuard component** - HIGH PRIORITY
 
-The members page allows viewing, inviting, and removing members, but doesn't support editing existing member roles. Consider adding:
-1. Role dropdown/select for each member row
-2. API function to update member role (`PATCH /organizations/{id}/members/{memberId}`)
-3. Confirmation dialog for role changes
+Blocks UI actions when subscription is inactive. This is needed for billing enforcement across the app.
 
-**S3ConfigModal + S3StatusCard** - MEDIUM PRIORITY (feature-flagged)
+Files to reference:
+- Old frontend: Search for billing enforcement patterns
+- Backend endpoint: `GET /usage/check-action?action={action}`
 
-These components are needed to complete Organization Settings. Reference:
-- Old component: `frontend/src/components/settings/S3ConfigModal.tsx`
-- API endpoints: `GET /s3/status`, `POST /s3/configure`, `DELETE /s3/configure`
+Implementation steps:
+1. Create `checkUsageAction` API function in `frontend-v2/src/lib/api/usage.ts`
+2. Create `BillingGuard` component that wraps children and shows upgrade prompt when action blocked
+3. Integrate into key UI actions (create collection, add source, invite members, etc.)
+
+**Edit Member Roles** - MEDIUM PRIORITY (blocked)
+
+NOTE: This requires backend work first. The `PATCH /organizations/{id}/members/{memberId}` endpoint doesn't exist yet. Suggest deferring until backend adds the endpoint.
 
 ## Other Tasks (in order of priority)
 
-1. BillingGuard component + billing enforcement (HIGH)
-   - Blocks UI actions when subscription inactive
-   - Needs usage check API (`GET /usage/check-action`)
-2. Admin Dashboard - Phase 3 (HIGH)
+1. Admin Dashboard - Phase 3 (HIGH)
    - `/admin` route with superuser-only access
-3. Real-time Sync - Phase 2 (HIGH)
+   - Port AdminDashboard component
+2. Real-time Sync - Phase 2 (HIGH)
    - Port `entityStateMediator.ts`
    - Port `syncStorageService.ts`
-4. Validation system - Phase 4 (HIGH)
+3. Validation system - Phase 4 (HIGH)
    - Port `lib/validation/types.ts`
    - Port `lib/validation/rules.ts` (40+ rules)
    - Create ValidatedInput for TanStack Form
@@ -44,5 +48,5 @@ These components are needed to complete Organization Settings. Reference:
 - Main migration spec: `MIGRATION_SPEC.md`
 - Old frontend source: `frontend/src/`
 - New frontend source: `frontend-v2/src/`
-- New usage page: `frontend-v2/src/routes/$orgSlug/settings/usage.tsx`
-- New settings layout: `frontend-v2/src/components/settings-layout.tsx`
+- New S3 components: `frontend-v2/src/components/s3-*.tsx`
+- Organization settings: `frontend-v2/src/routes/$orgSlug/settings/index.tsx`

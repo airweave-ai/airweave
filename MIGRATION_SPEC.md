@@ -70,7 +70,7 @@ These decisions were made during migration planning and should guide all impleme
 | Onboarding | ✅ Complete | - | 6-step wizard |
 | Source Connections | ✅ Complete | - | Full sync management |
 | Dashboard | ✅ Complete | - | **Decision: Keep redirect to collections** |
-| Organization Settings | ⚠️ Partial | **High** | Basic settings done, S3 config pending |
+| Organization Settings | ✅ Complete | - | Full settings with S3 config |
 | Billing Pages | ❌ Missing | **High** | Strict blocking enforcement |
 | Admin Dashboard | ❌ Missing | **High** | Include now per decision |
 | Real-time Sync | ❌ Missing | **High** | Full SSE port required |
@@ -79,7 +79,7 @@ These decisions were made during migration planning and should guide all impleme
 | Validation System | ❌ Missing | **High** | Full 40+ rules migration |
 | QueryTool | ⚠️ Different | **Medium** | Port full version with API doc |
 | SemanticMcp Page | ❌ Missing | **Medium** | MCP auth alternative |
-| S3 Configuration | ❌ Missing | **Medium** | Feature-flagged |
+| S3 Configuration | ✅ Complete | - | Feature-flagged |
 | PostHog Integration | ✅ Complete | - | Session tracking implemented |
 | Logs | ⚠️ Skeleton | **Low** | Keep skeleton per decision |
 | Webhooks | ⚠️ Skeleton | **Low** | Keep skeleton per decision |
@@ -478,8 +478,8 @@ The frontend-v2 uses a new Orange/Amber primary color. This is intentional and s
   - [x] Create `/$orgSlug/settings/index.tsx`
   - [x] Organization name/description editing
   - [x] Organization deletion with confirmation
-  - [ ] S3ConfigModal (feature-flagged)
-  - [ ] S3StatusCard (feature-flagged)
+  - [x] S3ConfigModal (feature-flagged)
+  - [x] S3StatusCard (feature-flagged)
 
 - [x] **Members Settings**
   - [x] Create `/$orgSlug/settings/members.tsx`
@@ -741,3 +741,12 @@ interface OrganizationMetrics {
 - Created `Switch` and `Textarea` UI components
 - Added `updateOrganization`, `deleteOrganization`, and `setPrimaryOrganization` API functions
 Next suggested task: Members Settings page (`/$orgSlug/settings/members.tsx`) or S3ConfigModal component.
+
+**2026-01-08**: Added S3 Event Streaming configuration (feature-flagged). Files created:
+- `frontend-v2/src/lib/api/s3.ts` - API functions for `GET /s3/s3/status`, `POST /s3/test`, `POST /s3/configure`, `DELETE /s3/configure`
+- `frontend-v2/src/components/ui/alert.tsx` - Alert component (ported from old frontend)
+- `frontend-v2/src/components/s3-config-modal.tsx` - Modal with test connection + save flow
+- `frontend-v2/src/components/s3-status-card.tsx` - Card showing S3 status, only renders when `S3_DESTINATION` feature flag enabled
+- Integrated into `/$orgSlug/settings/index.tsx` between Primary Organization and Danger Zone sections
+- Added `s3.status` query key to `query-keys.ts`
+Next suggested task: BillingGuard component or Admin Dashboard.
