@@ -20,7 +20,6 @@ from typing import Any, AsyncGenerator, Dict, List, Optional, Union
 from airweave.platform.access_control.schemas import MembershipTuple
 from airweave.platform.configs.auth import SharePoint2019V2AuthConfig
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.sources._base import BaseSource
 from airweave.platform.sources.sharepoint2019v2.acl import (
@@ -35,6 +34,7 @@ from airweave.platform.sources.sharepoint2019v2.builders import (
     build_site_entity,
 )
 from airweave.platform.sources.sharepoint2019v2.client import SharePointClient
+from airweave.platform.storage import FileSkippedException
 from airweave.platform.sync.exceptions import EntityProcessingError
 from airweave.schemas.source_connection import AuthenticationMethod
 

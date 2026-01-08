@@ -109,9 +109,9 @@ class ACPostgresHandler(ACActionHandler):
             count = await crud.access_control_membership.bulk_create(
                 db=db,
                 memberships=memberships,
-                organization_id=sync_context.scope.organization_id,
-                source_connection_id=sync_context.source.source_connection_id,
-                source_name=sync_context.source.source_connection.short_name,
+                organization_id=sync_context.organization_id,
+                source_connection_id=sync_context.source_connection_id,
+                source_name=sync_context.connection.short_name,
             )
 
         sync_context.logger.debug(f"[ACPostgresHandler] Upserted {count} memberships")

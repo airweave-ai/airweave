@@ -176,7 +176,7 @@ class SourceContextBuilder:
         sync: schemas.Sync,
         ctx: ApiContext,
     ) -> UUID:
-        """Get source connection ID for logging before full build.
+        """Get user-facing source connection ID for logging and scoping.
 
         Args:
             db: Database session
@@ -184,10 +184,10 @@ class SourceContextBuilder:
             ctx: API context
 
         Returns:
-            Source connection UUID.
+            User-facing SourceConnection UUID (not internal Connection ID).
         """
         source_connection_data = await cls._get_source_connection_data(db, sync, ctx)
-        return source_connection_data["connection_id"]
+        return source_connection_data["source_connection_id"]
 
     # -------------------------------------------------------------------------
     # Private: Source Connection Data

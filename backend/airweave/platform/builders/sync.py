@@ -71,6 +71,7 @@ class SyncContextBuilder:
             sync=sync,
             collection=collection,
             ctx=ctx,
+            source_connection_id=source_connection_id,
             job_id=sync_job.id,
         )
 

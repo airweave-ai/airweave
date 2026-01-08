@@ -16,12 +16,14 @@ class ScopeContext:
         sync_id: The sync configuration ID
         collection_id: The target collection ID
         organization_id: The owning organization ID
+        source_connection_id: The user-facing source connection ID
         job_id: Optional job ID (None for non-job operations like cleanup)
     """
 
     sync_id: UUID
     collection_id: UUID
     organization_id: UUID
+    source_connection_id: UUID
     job_id: Optional[UUID] = None
 
     def __repr__(self) -> str:

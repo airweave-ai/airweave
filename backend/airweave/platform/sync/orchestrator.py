@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from typing import Optional
+from typing import List, Optional
 
 from airweave import schemas
 from airweave.analytics import business_events
@@ -13,7 +13,9 @@ from airweave.core.shared_models import SyncJobStatus
 from airweave.core.sync_cursor_service import sync_cursor_service
 from airweave.core.sync_job_service import sync_job_service
 from airweave.db.session import get_db_context
+from airweave.platform.access_control.schemas import MembershipTuple
 from airweave.platform.contexts import SyncContext
+from airweave.platform.sync.access_control_pipeline import AccessControlPipeline
 from airweave.platform.sync.entity_pipeline import EntityPipeline
 from airweave.platform.sync.exceptions import EntityProcessingError, SyncFailureError
 from airweave.platform.sync.stream import AsyncSourceStream
@@ -85,6 +87,17 @@ class SyncOrchestrator:
             self.sync_context.logger.info("🚀 PHASE 2: Processing entities from source...")
             await self._process_entities()
             self.sync_context.logger.info(f"✅ PHASE 2 complete ({time.time() - phase_start:.2f}s)")
+
+            # Phase 2.5: Process access control memberships (if source supports it)
+            if self._source_supports_access_control():
+                phase_start = time.time()
+                self.sync_context.logger.info(
+                    "🚀 PHASE 2.5: Processing access control memberships..."
+                )
+                await self._process_access_control_memberships()
+                self.sync_context.logger.info(
+                    f"✅ PHASE 2.5 complete ({time.time() - phase_start:.2f}s)"
+                )
 
             # Phase 3: Cleanup orphaned entities
             phase_start = time.time()
@@ -450,6 +463,71 @@ class SyncOrchestrator:
                 "⏩ Skipping orphaned entity cleanup for INCREMENTAL sync "
                 "(cursor data exists, only changed entities are processed)"
             )
+
+    def _source_supports_access_control(self) -> bool:
+        """Check if the source supports access control membership syncing."""
+        return getattr(self.sync_context.source_instance, "_supports_access_control", False)
+
+    async def _process_access_control_memberships(self) -> None:
+        """Process access control memberships from the source.
+
+        Collects MembershipTuple objects from the source's
+        generate_access_control_memberships() method and processes them
+        through the AccessControlPipeline to persist to PostgreSQL.
+        """
+        source = self.sync_context.source_instance
+        source_name = getattr(source, "_name", "unknown")
+
+        self.sync_context.logger.info(
+            f"🔐 Starting access control membership extraction from {source_name}"
+        )
+
+        # Check if source has the method
+        if not hasattr(source, "generate_access_control_memberships"):
+            self.sync_context.logger.warning(
+                f"Source {source_name} has supports_access_control=True but no "
+                "generate_access_control_memberships() method. Skipping ACL sync."
+            )
+            return
+
+        # Collect memberships from source generator
+        memberships: List[MembershipTuple] = []
+        try:
+            async for membership in source.generate_access_control_memberships():
+                memberships.append(membership)
+
+                # Log progress every 100 memberships
+                if len(memberships) % 100 == 0:
+                    self.sync_context.logger.debug(
+                        f"🔐 Collected {len(memberships)} memberships so far..."
+                    )
+        except Exception as e:
+            self.sync_context.logger.error(
+                f"Error collecting access control memberships: {get_error_message(e)}",
+                exc_info=True,
+            )
+            # Don't fail the entire sync for ACL errors
+            return
+
+        self.sync_context.logger.info(f"🔐 Collected {len(memberships)} total memberships")
+
+        if not memberships:
+            self.sync_context.logger.info("🔐 No access control memberships to process")
+            return
+
+        # Process through AccessControlPipeline
+        try:
+            pipeline = AccessControlPipeline()
+            count = await pipeline.process(memberships, self.sync_context)
+            self.sync_context.logger.info(
+                f"🔐 Processed {count} access control memberships to PostgreSQL"
+            )
+        except Exception as e:
+            self.sync_context.logger.error(
+                f"Error processing access control memberships: {get_error_message(e)}",
+                exc_info=True,
+            )
+            # Don't fail the entire sync for ACL errors
 
     async def _finalize_progress_and_trackers(
         self, status: SyncJobStatus, error: Optional[str] = None

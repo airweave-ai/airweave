@@ -34,11 +34,18 @@ class CleanupContextBuilder:
         Returns:
             CleanupContext ready for deletion operations.
         """
+        # Get source connection ID for scope
+        source_connection = await crud.source_connection.get_by_sync_id(
+            db, sync_id=sync.id, ctx=ctx
+        )
+        source_connection_id = source_connection.id if source_connection else sync.id
+
         # Build scope
         scope = ScopeContextBuilder.build_minimal(
             sync_id=sync.id,
             collection_id=collection.id,
             organization_id=collection.organization_id,
+            source_connection_id=source_connection_id,
             job_id=None,  # No job for cleanup
         )
 

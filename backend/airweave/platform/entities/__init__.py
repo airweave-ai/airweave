@@ -13,10 +13,10 @@ from .github import (
     GitHubRepositoryEntity,
 )
 from .sharepoint2019v2 import (
-    SharePoint2019V2File,
-    SharePoint2019V2Item,
-    SharePoint2019V2List,
-    SharePoint2019V2Site,
+    SharePoint2019V2FileEntity,
+    SharePoint2019V2ItemEntity,
+    SharePoint2019V2ListEntity,
+    SharePoint2019V2SiteEntity,
 )
 
 __all__ = [
@@ -31,8 +31,8 @@ __all__ = [
     "GitHubRepositoryEntity",
     "GithubRepoEntity",
     "GithubContentEntity",
-    "SharePoint2019V2File",
-    "SharePoint2019V2Item",
-    "SharePoint2019V2List",
-    "SharePoint2019V2Site",
+    "SharePoint2019V2FileEntity",
+    "SharePoint2019V2ItemEntity",
+    "SharePoint2019V2ListEntity",
+    "SharePoint2019V2SiteEntity",
 ]

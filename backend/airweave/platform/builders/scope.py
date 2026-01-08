@@ -17,6 +17,7 @@ class ScopeContextBuilder:
         sync: schemas.Sync,
         collection: schemas.Collection,
         ctx: ApiContext,
+        source_connection_id: UUID,
         job_id: Optional[UUID] = None,
     ) -> ScopeContext:
         """Build scope context.
@@ -25,6 +26,7 @@ class ScopeContextBuilder:
             sync: Sync configuration
             collection: Target collection
             ctx: API context
+            source_connection_id: User-facing source connection ID
             job_id: Optional job ID (for sync jobs)
 
         Returns:
@@ -34,6 +36,7 @@ class ScopeContextBuilder:
             sync_id=sync.id,
             collection_id=collection.id,
             organization_id=ctx.organization.id,
+            source_connection_id=source_connection_id,
             job_id=job_id,
         )
 
@@ -43,6 +46,7 @@ class ScopeContextBuilder:
         sync_id: UUID,
         collection_id: UUID,
         organization_id: UUID,
+        source_connection_id: UUID,
         job_id: Optional[UUID] = None,
     ) -> ScopeContext:
         """Build scope context from raw IDs.
@@ -53,6 +57,7 @@ class ScopeContextBuilder:
             sync_id: Sync ID
             collection_id: Collection ID
             organization_id: Organization ID
+            source_connection_id: User-facing source connection ID
             job_id: Optional job ID
 
         Returns:
@@ -62,5 +67,6 @@ class ScopeContextBuilder:
             sync_id=sync_id,
             collection_id=collection_id,
             organization_id=organization_id,
+            source_connection_id=source_connection_id,
             job_id=job_id,
         )

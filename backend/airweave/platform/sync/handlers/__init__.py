@@ -26,10 +26,11 @@ from .destination import DestinationHandler
 from .entity_postgres import EntityPostgresHandler
 
 # Protocol and type aliases
-from .protocol import EntityActionHandler
+from .protocol import ACActionHandler, EntityActionHandler
 
 __all__ = [
     # Protocol and type aliases
+    "ACActionHandler",
     "EntityActionHandler",
     # Entity handlers
     "ACPostgresHandler",

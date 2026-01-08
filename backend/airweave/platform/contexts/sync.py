@@ -70,6 +70,11 @@ class SyncContext:
         return self.scope.organization_id
 
     @property
+    def source_connection_id(self):
+        """User-facing source connection ID."""
+        return self.scope.source_connection_id
+
+    @property
     def logger(self):
         """Logger for operations."""
         return self.infra.logger
