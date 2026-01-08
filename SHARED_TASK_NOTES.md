@@ -4,25 +4,24 @@ Context for the next iteration of frontend migration work.
 
 ## What Was Done (Latest)
 
-- **Phase 5: QueryTool Enhancement - COMPLETE**
-  - Enhanced `ApiIntegrationModal` with view mode selector (REST API vs MCP Server)
-  - Added MCP client-specific tabs: Claude, Cursor, Windsurf, Server/Other
-  - Each MCP client shows appropriate config file path in footer
-  - Added Claude, Cursor, Windsurf, and improved MCP icons
+- **Phase 6: SemanticMcp Page - COMPLETE**
+  - Created `/semantic-mcp` route at `frontend-v2/src/routes/semantic-mcp.tsx`
+  - Implemented source connection grid with SmallSourceButton component
+  - Added authentication dialog for both OAuth and direct (API key/credentials) auth flows
+  - Integrated real-time sync status display for connected sources
+  - Added Search component integration for querying synced data
+  - Session storage used for persisting state across OAuth redirects
+  - Theme toggle (light/dark/system) in header
   - Build verified passing
-  - Note: frontend-v2 Search component is more advanced than old QueryTool (streaming, toggles, usage limits)
 
 ## Next Suggested Tasks (in priority order)
 
-1. **SemanticMcp Page - Phase 6 (MEDIUM)**
-   - Create `/semantic-mcp` route
-   - Implement MCP authentication flow
-   - Reference: `frontend/src/pages/SemanticMcp.tsx`
-
-2. **Billing Management Page (MEDIUM)**
+1. **Billing Management Page (MEDIUM)**
    - Create `/$orgSlug/settings/billing` for managing subscriptions
+   - Should allow users to upgrade/downgrade plans
+   - Connect to Stripe portal
 
-3. **Polish Phase 7 (LOW)**
+2. **Polish Phase 7 (LOW)**
    - Port TagInput component
    - Port CollapsibleCard component
    - Enhance CodeBlock component
@@ -39,7 +38,7 @@ Context for the next iteration of frontend migration work.
 - Validation system: `frontend-v2/src/lib/validation/`
 - ValidatedInput: `frontend-v2/src/components/validated-input.tsx`
 - API Integration Modal: `frontend-v2/src/features/search/components/api-integration-modal.tsx`
-- Old SemanticMcp: `frontend/src/pages/SemanticMcp.tsx`
+- SemanticMcp Page: `frontend-v2/src/routes/semantic-mcp.tsx`
 
 ## How to Use the Validation System
 

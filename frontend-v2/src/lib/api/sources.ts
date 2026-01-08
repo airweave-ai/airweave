@@ -42,6 +42,7 @@ export interface Source {
   config_fields?: { fields: ConfigField[] };
   supported_auth_providers?: string[];
   requires_byoc?: boolean;
+  auth_config_class?: string | null;
 }
 
 /**

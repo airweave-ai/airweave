@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SemanticMcpRouteImport } from './routes/semantic-mcp'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as ComponentsRouteImport } from './routes/components'
 import { Route as AdminRouteImport } from './routes/admin'
@@ -29,6 +30,11 @@ import { Route as OrgSlugSettingsUsageRouteImport } from './routes/$orgSlug/sett
 import { Route as OrgSlugSettingsMembersRouteImport } from './routes/$orgSlug/settings/members'
 import { Route as OrgSlugCollectionsCollectionIdRouteImport } from './routes/$orgSlug/collections/$collectionId'
 
+const SemanticMcpRoute = SemanticMcpRouteImport.update({
+  id: '/semantic-mcp',
+  path: '/semantic-mcp',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OnboardingRoute = OnboardingRouteImport.update({
   id: '/onboarding',
   path: '/onboarding',
@@ -132,6 +138,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRoute
   '/components': typeof ComponentsRouteWithChildren
   '/onboarding': typeof OnboardingRoute
+  '/semantic-mcp': typeof SemanticMcpRoute
   '/$orgSlug/api-keys': typeof OrgSlugApiKeysRoute
   '/$orgSlug/auth-providers': typeof OrgSlugAuthProvidersRoute
   '/$orgSlug/logs': typeof OrgSlugLogsRoute
@@ -151,6 +158,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/onboarding': typeof OnboardingRoute
+  '/semantic-mcp': typeof SemanticMcpRoute
   '/$orgSlug/api-keys': typeof OrgSlugApiKeysRoute
   '/$orgSlug/auth-providers': typeof OrgSlugAuthProvidersRoute
   '/$orgSlug/logs': typeof OrgSlugLogsRoute
@@ -173,6 +181,7 @@ export interface FileRoutesById {
   '/admin': typeof AdminRoute
   '/components': typeof ComponentsRouteWithChildren
   '/onboarding': typeof OnboardingRoute
+  '/semantic-mcp': typeof SemanticMcpRoute
   '/$orgSlug/api-keys': typeof OrgSlugApiKeysRoute
   '/$orgSlug/auth-providers': typeof OrgSlugAuthProvidersRoute
   '/$orgSlug/logs': typeof OrgSlugLogsRoute
@@ -196,6 +205,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/components'
     | '/onboarding'
+    | '/semantic-mcp'
     | '/$orgSlug/api-keys'
     | '/$orgSlug/auth-providers'
     | '/$orgSlug/logs'
@@ -215,6 +225,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/onboarding'
+    | '/semantic-mcp'
     | '/$orgSlug/api-keys'
     | '/$orgSlug/auth-providers'
     | '/$orgSlug/logs'
@@ -236,6 +247,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/components'
     | '/onboarding'
+    | '/semantic-mcp'
     | '/$orgSlug/api-keys'
     | '/$orgSlug/auth-providers'
     | '/$orgSlug/logs'
@@ -258,12 +270,20 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRoute
   ComponentsRoute: typeof ComponentsRouteWithChildren
   OnboardingRoute: typeof OnboardingRoute
+  SemanticMcpRoute: typeof SemanticMcpRoute
   BillingCancelRoute: typeof BillingCancelRoute
   BillingSuccessRoute: typeof BillingSuccessRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/semantic-mcp': {
+      id: '/semantic-mcp'
+      path: '/semantic-mcp'
+      fullPath: '/semantic-mcp'
+      preLoaderRoute: typeof SemanticMcpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/onboarding': {
       id: '/onboarding'
       path: '/onboarding'
@@ -450,6 +470,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRoute,
   ComponentsRoute: ComponentsRouteWithChildren,
   OnboardingRoute: OnboardingRoute,
+  SemanticMcpRoute: SemanticMcpRoute,
   BillingCancelRoute: BillingCancelRoute,
   BillingSuccessRoute: BillingSuccessRoute,
 }

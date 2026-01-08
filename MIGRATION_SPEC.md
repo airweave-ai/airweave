@@ -78,7 +78,7 @@ These decisions were made during migration planning and should guide all impleme
 | Members Settings | ⚠️ Partial | **High** | Core CRUD done, role editing pending |
 | Validation System | ✅ Complete | - | Full validation integration |
 | QueryTool | ✅ Complete | - | Enhanced with MCP client tabs (Claude, Cursor, Windsurf) |
-| SemanticMcp Page | ❌ Missing | **Medium** | MCP auth alternative |
+| SemanticMcp Page | ✅ Complete | - | MCP auth alternative |
 | S3 Configuration | ✅ Complete | - | Feature-flagged |
 | PostHog Integration | ✅ Complete | - | Session tracking implemented |
 | Logs | ⚠️ Skeleton | **Low** | Keep skeleton per decision |
@@ -98,9 +98,9 @@ These decisions were made during migration planning and should guide all impleme
 | `/callback` | `Callback` | ✅ Complete | - |
 | `/auth/callback` | `AuthCallback` | ✅ Complete | - |
 | `/onboarding` | `Onboarding` | ✅ Complete | - |
-| `/billing/success` | `BillingSuccess` | ❌ Missing | **High** |
-| `/billing/cancel` | `BillingCancel` | ❌ Missing | **High** |
-| `/semantic-mcp` | `SemanticMcp` | ❌ Missing | **Medium** |
+| `/billing/success` | `BillingSuccess` | ✅ Complete | - |
+| `/billing/cancel` | `BillingCancel` | ✅ Complete | - |
+| `/semantic-mcp` | `SemanticMcp` | ✅ Complete | - |
 | `/` (dashboard) | `Dashboard` | ✅ Redirect OK | - |
 | `/collections` | `CollectionsView` | ✅ Complete | - |
 | `/collections/:readable_id` | `CollectionDetailView` | ✅ Complete | - |
@@ -131,10 +131,9 @@ These decisions were made during migration planning and should guide all impleme
 
 ```
 /$orgSlug/settings/billing      → Billing management
-/semantic-mcp                   → Semantic MCP page (MCP auth)
 ```
 
-**Note:** Most settings routes are implemented. Billing management page for subscription changes is not yet done.
+**Note:** Most settings routes are implemented. Billing management page for subscription changes is not yet done. The `/semantic-mcp` route has been implemented.
 
 
 
@@ -530,9 +529,9 @@ The frontend-v2 uses a new Orange/Amber primary color. This is intentional and s
 
 ### Phase 6: Additional Features (MEDIUM)
 
-- [ ] **SemanticMcp Page**
-  - [ ] Create `/semantic-mcp` route
-  - [ ] Implement MCP authentication flow
+- [x] **SemanticMcp Page**
+  - [x] Create `/semantic-mcp` route
+  - [x] Implement MCP authentication flow
 
 - [x] **PostHog Integration**
   - [x] Add PostHog provider
