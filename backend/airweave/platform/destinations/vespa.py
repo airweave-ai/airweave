@@ -572,7 +572,7 @@ class VespaDestination(VectorDBDestination):
         This is MUCH faster than query-then-delete because it performs server-side
         deletion in a single streaming operation rather than individual HTTP calls.
 
-        Uses: DELETE /document/v1/{namespace}/{doctype}/docid?selection={expr}&cluster={cluster}
+        Uses: DELETE /document/v1/{namespace}/?selection={expr}&cluster={cluster}
 
         Args:
             schema: The Vespa schema/document type to delete from
@@ -581,16 +581,20 @@ class VespaDestination(VectorDBDestination):
         Returns:
             Number of documents deleted (estimated from response)
         """
-        # Build the bulk delete URL
+        # Build the bulk delete URL using the namespace-level endpoint
+        # We include the document type in the selection to avoid Vespa's automatic
+        # wrapping which causes parsing errors with complex field expressions
         base_url = f"{settings.VESPA_URL}:{settings.VESPA_PORT}"
-        encoded_selection = quote(selection, safe="")
+        # Add document type and namespace filters to the selection
+        full_selection = f"{schema} and id.namespace=='airweave' and {selection}"
+        encoded_selection = quote(full_selection, safe="")
         url = (
-            f"{base_url}/document/v1/airweave/{schema}/docid"
+            f"{base_url}/document/v1/airweave/"
             f"?selection={encoded_selection}"
             f"&cluster={settings.VESPA_CLUSTER}"
         )
 
-        self.logger.debug(f"[Vespa] Bulk delete from {schema} with selection: {selection}")
+        self.logger.debug(f"[Vespa] Bulk delete from {schema} with selection: {full_selection}")
 
         deleted_count = 0
         try:
