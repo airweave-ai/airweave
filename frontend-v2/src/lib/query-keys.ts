@@ -8,6 +8,9 @@
 export const queryKeys = {
   organizations: {
     all: ["organizations"] as const,
+    members: (orgId: string) => [orgId, "organizations", "members"] as const,
+    invitations: (orgId: string) =>
+      [orgId, "organizations", "invitations"] as const,
   },
 
   apiKeys: {

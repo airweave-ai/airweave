@@ -75,7 +75,7 @@ These decisions were made during migration planning and should guide all impleme
 | Admin Dashboard | ❌ Missing | **High** | Include now per decision |
 | Real-time Sync | ❌ Missing | **High** | Full SSE port required |
 | Usage Dashboard | ❌ Missing | **High** | Part of settings |
-| Members Settings | ❌ Missing | **High** | Full CRUD |
+| Members Settings | ⚠️ Partial | **High** | Core CRUD done, role editing pending |
 | Validation System | ❌ Missing | **High** | Full 40+ rules migration |
 | QueryTool | ⚠️ Different | **Medium** | Port full version with API doc |
 | SemanticMcp Page | ❌ Missing | **Medium** | MCP auth alternative |
@@ -481,13 +481,13 @@ The frontend-v2 uses a new Orange/Amber primary color. This is intentional and s
   - [ ] S3ConfigModal (feature-flagged)
   - [ ] S3StatusCard (feature-flagged)
 
-- [ ] **Members Settings**
-  - [ ] Create `/$orgSlug/settings/members.tsx`
-  - [ ] View members list
-  - [ ] Invite members (email + role)
+- [x] **Members Settings**
+  - [x] Create `/$orgSlug/settings/members.tsx`
+  - [x] View members list
+  - [x] Invite members (email + role)
   - [ ] Edit member roles
-  - [ ] Remove members
-  - [ ] View/cancel pending invitations
+  - [x] Remove members
+  - [x] View/cancel pending invitations
 
 - [ ] **Usage Dashboard**
   - [ ] Create `/$orgSlug/settings/usage.tsx`

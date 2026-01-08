@@ -26,13 +26,24 @@ export type {
 } from "./auth-providers";
 
 export {
+  cancelOrganizationInvitation,
   deleteOrganization,
   fetchOrganization,
+  fetchOrganizationInvitations,
+  fetchOrganizationMembers,
   fetchOrganizations,
+  inviteOrganizationMemberWithResponse,
+  removeOrganizationMember,
   setPrimaryOrganization,
   updateOrganization,
 } from "./organizations";
-export type { Organization, UpdateOrganizationRequest } from "./organizations";
+export type {
+  InviteResponse,
+  Organization,
+  OrganizationMember,
+  PendingInvitation,
+  UpdateOrganizationRequest,
+} from "./organizations";
 
 export {
   createCollection,

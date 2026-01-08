@@ -214,6 +214,20 @@ export const uiComponents: ComponentInfo[] = [
     ]
   },
   {
+    "name": "select",
+    "path": "components/ui/select.tsx",
+    "exports": [
+      "Select",
+      "SelectGroup",
+      "SelectValue",
+      "SelectTrigger",
+      "SelectContent",
+      "SelectLabel",
+      "SelectItem",
+      "SelectSeparator"
+    ]
+  },
+  {
     "name": "separator",
     "path": "components/ui/separator.tsx",
     "exports": [

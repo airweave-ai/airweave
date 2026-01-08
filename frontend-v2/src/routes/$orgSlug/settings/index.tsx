@@ -1,18 +1,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import {
-  Check,
-  Copy,
-  Key,
-  Loader2,
-  Save,
-  Settings as SettingsIcon,
-  Star,
-  Users,
-} from "lucide-react";
+import { Loader2, Save } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { SettingsLayout } from "@/components/settings-layout";
 import { Button } from "@/components/ui/button";
 import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog";
 import { Input } from "@/components/ui/input";
@@ -47,7 +39,6 @@ function SettingsPage() {
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [isCopied, setIsCopied] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   usePageHeader({
@@ -55,7 +46,6 @@ function SettingsPage() {
     description: "Manage organization settings, preferences, and configuration",
   });
 
-  // Sync form state with organization data
   useEffect(() => {
     if (organization) {
       setName(organization.name);
@@ -63,7 +53,6 @@ function SettingsPage() {
     }
   }, [organization]);
 
-  // Update organization mutation
   const updateMutation = useMutation({
     mutationFn: async (data: { name: string; description: string }) => {
       const token = await getAccessTokenSilently();
@@ -80,7 +69,6 @@ function SettingsPage() {
     },
   });
 
-  // Set primary organization mutation
   const setPrimaryMutation = useMutation({
     mutationFn: async () => {
       const token = await getAccessTokenSilently();
@@ -99,7 +87,6 @@ function SettingsPage() {
     },
   });
 
-  // Delete organization mutation
   const deleteMutation = useMutation({
     mutationFn: async () => {
       const token = await getAccessTokenSilently();
@@ -109,7 +96,6 @@ function SettingsPage() {
       toast.success("Organization deleted successfully");
       queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all });
 
-      // Navigate to another organization or home
       const remainingOrgs = organizations.filter(
         (org) => org.id !== organization!.id
       );
@@ -147,26 +133,8 @@ function SettingsPage() {
     setPrimaryMutation.mutate();
   };
 
-  const handleCopyId = () => {
-    navigator.clipboard.writeText(organization.id);
-    setIsCopied(true);
-    setTimeout(() => setIsCopied(false), 1500);
-    toast.success("Organization ID copied to clipboard");
-  };
-
   const handleDelete = () => {
     deleteMutation.mutate();
-  };
-
-  const getRoleIcon = (role: string) => {
-    switch (role) {
-      case "owner":
-        return <Key className="size-3" />;
-      case "admin":
-        return <SettingsIcon className="size-3" />;
-      default:
-        return <Users className="size-3" />;
-    }
   };
 
   const canEdit = ["owner", "admin"].includes(organization.role);
@@ -177,42 +145,7 @@ function SettingsPage() {
     description !== (organization.description || "");
 
   return (
-    <div className="mx-auto max-w-4xl p-6">
-      {/* Header with org info */}
-      <div className="mb-8 flex flex-col">
-        <div className="mb-2 flex items-center gap-3">
-          <h1 className="text-xl font-medium">{organization.name}</h1>
-
-          {/* Role indicator */}
-          <div className="text-primary flex items-center gap-1">
-            {getRoleIcon(organization.role)}
-            <span className="text-xs capitalize">{organization.role}</span>
-          </div>
-
-          {/* Primary indicator */}
-          {organization.is_primary && (
-            <div className="flex items-center gap-1 text-amber-500">
-              <Star className="size-3" />
-              <span className="text-xs">Primary</span>
-            </div>
-          )}
-        </div>
-
-        {/* Organization ID */}
-        <button
-          type="button"
-          onClick={handleCopyId}
-          className="text-muted-foreground hover:text-foreground group flex items-center gap-1.5 text-left text-xs transition-colors"
-        >
-          <span className="font-mono">{organization.id}</span>
-          {isCopied ? (
-            <Check className="size-3.5" />
-          ) : (
-            <Copy className="size-3.5 opacity-0 transition-opacity group-hover:opacity-100" />
-          )}
-        </button>
-      </div>
-
+    <SettingsLayout organization={organization}>
       <div className="space-y-8">
         {/* Basic Information */}
         <section className="max-w-lg space-y-6">
@@ -352,6 +285,6 @@ function SettingsPage() {
         }
         deleteButtonText="Delete organization"
       />
-    </div>
+    </SettingsLayout>
   );
 }
