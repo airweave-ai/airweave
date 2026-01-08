@@ -5,8 +5,9 @@
 import { ExternalLink } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { ValidatedInput } from "@/components/validated-input";
 import { useIsDark } from "@/hooks/use-is-dark";
+import { getAuthFieldValidation } from "@/lib/validation";
 
 import { getAuthProviderIconUrl } from "../utils/helpers";
 
@@ -78,25 +79,36 @@ export function AuthFieldsForm({
         )}
       </div>
 
-      {fields.map((field) => (
-        <div key={field.name} className="space-y-2">
-          <label className="text-sm font-medium">
-            {field.title || field.name}
-            {field.required && <span className="text-destructive ml-1">*</span>}
-          </label>
-          {field.description && (
-            <p className="text-muted-foreground text-xs">{field.description}</p>
-          )}
-          <Input
-            type={field.secret ? "password" : "text"}
-            value={values[field.name] || ""}
-            onChange={(e) => onChange(field.name, e.target.value)}
-            placeholder={
-              field.secret ? "••••••••" : `Enter ${field.title || field.name}`
-            }
-          />
-        </div>
-      ))}
+      {fields.map((field) => {
+        const validation = getAuthFieldValidation(
+          field.name,
+          providerShortName
+        );
+        return (
+          <div key={field.name} className="space-y-2">
+            <label className="text-sm font-medium">
+              {field.title || field.name}
+              {field.required && (
+                <span className="text-destructive ml-1">*</span>
+              )}
+            </label>
+            {field.description && (
+              <p className="text-muted-foreground text-xs">
+                {field.description}
+              </p>
+            )}
+            <ValidatedInput
+              type={field.secret ? "password" : "text"}
+              value={values[field.name] || ""}
+              onChange={(value) => onChange(field.name, value)}
+              validation={validation ?? undefined}
+              placeholder={
+                field.secret ? "••••••••" : `Enter ${field.title || field.name}`
+              }
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }

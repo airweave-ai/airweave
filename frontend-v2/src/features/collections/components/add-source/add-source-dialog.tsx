@@ -36,7 +36,6 @@ export function AddSourceDialog({ open, onOpenChange }: AddSourceDialogProps) {
     useCustomOAuth,
     clientId,
     clientSecret,
-    customRedirectUrl,
     selectSource,
     setStep,
     goBack,
@@ -47,7 +46,6 @@ export function AddSourceDialog({ open, onOpenChange }: AddSourceDialogProps) {
     setUseCustomOAuth,
     setClientId,
     setClientSecret,
-    setCustomRedirectUrl,
     completeWithOAuth,
     completeWithoutOAuth,
     reset,
@@ -141,7 +139,6 @@ export function AddSourceDialog({ open, onOpenChange }: AddSourceDialogProps) {
             useCustomOAuth={useCustomOAuth}
             clientId={clientId}
             clientSecret={clientSecret}
-            customRedirectUrl={customRedirectUrl}
             onBack={handleBack}
             onConnectionNameChange={setConnectionName}
             onAuthModeChange={setAuthMode}
@@ -150,7 +147,6 @@ export function AddSourceDialog({ open, onOpenChange }: AddSourceDialogProps) {
             onUseCustomOAuthChange={setUseCustomOAuth}
             onClientIdChange={setClientId}
             onClientSecretChange={setClientSecret}
-            onCustomRedirectUrlChange={setCustomRedirectUrl}
             onSuccess={handleConnectionSuccess}
             onCancel={handleCancel}
           />

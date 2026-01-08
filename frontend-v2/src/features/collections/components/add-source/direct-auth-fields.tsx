@@ -2,8 +2,9 @@
  * DirectAuthFields - Form fields for API key/credential authentication
  */
 
-import { Input } from "@/components/ui/input";
+import { ValidatedInput } from "@/components/validated-input";
 import { Label } from "@/components/ui/label";
+import { getAuthFieldValidation } from "@/lib/validation";
 
 interface AuthField {
   name: string;
@@ -31,28 +32,33 @@ export function DirectAuthFields({
 }: DirectAuthFieldsProps) {
   return (
     <div className="space-y-4">
-      <Label className="text-xs tracking-wider text-gray-500 uppercase dark:text-gray-400">
+      <Label className="text-muted-foreground text-xs tracking-wider uppercase">
         Credentials
       </Label>
-      {fields.map((field) => (
-        <div key={field.name} className="space-y-1.5">
-          <Label className="text-sm font-medium">
-            {field.display_name || field.name}
-            {field.required && <span className="ml-1 text-red-500">*</span>}
-          </Label>
-          {field.description && (
-            <p className="text-xs text-gray-400 dark:text-gray-500">
-              {field.description}
-            </p>
-          )}
-          <Input
-            type={isSensitiveField(field.name) ? "password" : "text"}
-            value={values[field.name] || ""}
-            onChange={(e) => onChange(field.name, e.target.value)}
-            className="border-gray-200 bg-white placeholder:text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:placeholder:text-gray-500"
-          />
-        </div>
-      ))}
+      {fields.map((field) => {
+        const validation = getAuthFieldValidation(field.name);
+        return (
+          <div key={field.name} className="space-y-1.5">
+            <Label className="text-sm font-medium">
+              {field.display_name || field.name}
+              {field.required && (
+                <span className="text-destructive ml-1">*</span>
+              )}
+            </Label>
+            {field.description && (
+              <p className="text-muted-foreground text-xs">
+                {field.description}
+              </p>
+            )}
+            <ValidatedInput
+              type={isSensitiveField(field.name) ? "password" : "text"}
+              value={values[field.name] || ""}
+              onChange={(value) => onChange(field.name, value)}
+              validation={validation ?? undefined}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }

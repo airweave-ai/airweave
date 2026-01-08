@@ -4,9 +4,10 @@
 
 import { ExternalLink, HelpCircle, Info } from "lucide-react";
 
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ValidatedInput } from "@/components/validated-input";
 import { cn } from "@/lib/utils";
+import { clientIdValidation, clientSecretValidation } from "@/lib/validation";
 
 interface OAuthSettingsProps {
   sourceShortName: string;
@@ -91,15 +92,15 @@ function ByocOAuthFields({
       </div>
 
       <div className="flex items-center gap-2">
-        <HelpCircle className="h-4 w-4 text-gray-400 dark:text-gray-500" />
-        <span className="text-sm text-gray-600 dark:text-gray-400">
+        <HelpCircle className="text-muted-foreground h-4 w-4" />
+        <span className="text-muted-foreground text-sm">
           Need help setting up OAuth?
         </span>
         <a
           href={docsUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
+          className="text-primary inline-flex items-center gap-1 text-sm font-medium hover:underline"
         >
           View documentation
           <ExternalLink className="h-3 w-3" />
@@ -147,7 +148,7 @@ function OptionalCustomOAuth({
           <div
             className={cn(
               "h-6 w-10 rounded-full transition-colors",
-              useCustomOAuth ? "bg-blue-600" : "bg-gray-200 dark:bg-gray-800"
+              useCustomOAuth ? "bg-primary" : "bg-muted"
             )}
           >
             <div
@@ -158,7 +159,7 @@ function OptionalCustomOAuth({
             />
           </div>
         </div>
-        <span className="text-sm text-gray-600 dark:text-gray-400">
+        <span className="text-muted-foreground text-sm">
           Use custom OAuth credentials
         </span>
       </label>
@@ -196,25 +197,26 @@ function OAuthCredentialInputs({
     <div className="space-y-3">
       <div className="space-y-1.5">
         <Label className="text-sm font-medium">
-          Client ID {required && <span className="text-red-500">*</span>}
+          Client ID {required && <span className="text-destructive">*</span>}
         </Label>
-        <Input
+        <ValidatedInput
           value={clientId}
-          onChange={(e) => onClientIdChange(e.target.value)}
+          onChange={onClientIdChange}
+          validation={clientIdValidation}
           placeholder={required ? "Your OAuth Client ID" : "Client ID"}
-          className="border-gray-200 bg-white placeholder:text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:placeholder:text-gray-500"
         />
       </div>
       <div className="space-y-1.5">
         <Label className="text-sm font-medium">
-          Client Secret {required && <span className="text-red-500">*</span>}
+          Client Secret{" "}
+          {required && <span className="text-destructive">*</span>}
         </Label>
-        <Input
+        <ValidatedInput
           type="password"
           value={clientSecret}
-          onChange={(e) => onClientSecretChange(e.target.value)}
+          onChange={onClientSecretChange}
+          validation={clientSecretValidation}
           placeholder={required ? "Your OAuth Client Secret" : "Client Secret"}
-          className="border-gray-200 bg-white placeholder:text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:placeholder:text-gray-500"
         />
       </div>
     </div>
@@ -229,12 +231,12 @@ function RedirectUrlDisplay({ url }: RedirectUrlDisplayProps) {
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
-        <Label className="text-xs tracking-wider text-gray-400 uppercase dark:text-gray-500">
+        <Label className="text-muted-foreground text-xs tracking-wider uppercase">
           Redirect URL
         </Label>
-        <Info className="h-3 w-3 text-gray-400 dark:text-gray-600" />
+        <Info className="text-muted-foreground h-3 w-3" />
       </div>
-      <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-400 dark:border-gray-800 dark:bg-gray-900/50 dark:text-gray-500">
+      <div className="bg-muted text-muted-foreground rounded-lg border px-3 py-2 font-mono text-xs">
         {url}
       </div>
     </div>

@@ -4,29 +4,33 @@ Context for the next iteration of frontend migration work.
 
 ## What Was Done (Latest)
 
-- **Validation Integration in Create Collection Dialog**
-  - Updated `frontend-v2/src/features/collections/components/create-dialog.tsx`
-  - Replaced inline validators with `createFormValidator(collectionNameValidation)`
-  - Added `ValidatedInput` component for the name field with debounced validation hints
+- **Validation Integration in Source Connection Forms**
+  - Updated `auth-fields-form.tsx` - uses `ValidatedInput` with `getAuthFieldValidation()`
+  - Updated `direct-auth-fields.tsx` - credential fields now use validation
+  - Updated `config-fields.tsx` - config fields now use validation
+  - Updated `source-config-view.tsx` - connection name uses `sourceConnectionNameValidation`
+  - Updated `oauth-settings.tsx` - client ID/secret use `clientIdValidation`/`clientSecretValidation`
   - Build verified passing
 
 ## Next Suggested Tasks (in priority order)
 
-1. **Continue Validation Integration (HIGH)**
-   - Update auth provider forms to use validation rules
-   - Update source connection forms to use `getAuthFieldValidation()`
-   - Look for other forms that could benefit from validation
-
-2. **QueryTool Enhancement - Phase 5 (MEDIUM)**
+1. **QueryTool Enhancement - Phase 5 (MEDIUM)**
    - Port full QueryTool component
    - Port LiveApiDoc component
+   - Add usage limit checking
+   - Add API key validation
 
-3. **SemanticMcp Page - Phase 6 (MEDIUM)**
+2. **SemanticMcp Page - Phase 6 (MEDIUM)**
    - Create `/semantic-mcp` route
    - Implement MCP authentication flow
 
-4. **Billing Management Page (MEDIUM)**
+3. **Billing Management Page (MEDIUM)**
    - Create `/$orgSlug/settings/billing` for managing subscriptions
+
+4. **Polish Phase 7 (LOW)**
+   - Port TagInput component
+   - Port CollapsibleCard component
+   - Enhance CodeBlock component
 
 ## Blocked Tasks
 
@@ -89,5 +93,4 @@ const validation = getAuthFieldValidation("host"); // Returns databaseHostValida
 - New frontend source: `frontend-v2/src/`
 - Validation system: `frontend-v2/src/lib/validation/`
 - ValidatedInput: `frontend-v2/src/components/validated-input.tsx`
-- Create collection dialog (validation integrated): `frontend-v2/src/features/collections/components/create-dialog.tsx`
 - Old QueryTool: `frontend/src/components/query/QueryTool.tsx`
