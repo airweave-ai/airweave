@@ -1,63 +1,58 @@
 # Shared Task Notes
 
-Context for the next iteration of frontend migration work.
+Context for the next iteration.
 
-## What Was Done (Latest)
+## Project Status: COMPLETE
 
-- **Phase 7 COMPLETE - Auth0 Conflict Error Handling**
-  - Created `/callback` route at `frontend-v2/src/routes/callback.tsx`
-  - Route syncs user with backend after Auth0 authentication
-  - Handles 409 conflict (auth0_id_conflict) with friendly error UI
-  - Added `createOrUpdateUser` API function to `lib/api/users.ts`
-  - Updated `config/auth.ts` to redirect to `/callback` after Auth0 auth
-  - Build verified passing
+The frontend migration from `frontend` to `frontend-v2` is **complete**.
 
-## Migration Status
+### Verification (2026-01-08)
+- Build: Passes (4.13s, no errors)
+- Lint: Passes (0 warnings)
+- Tests: All 25 pass
 
-**Phase 7 (Polish) is now COMPLETE.** All core migration work is done:
-- All Phase 1-6 features complete
-- All Phase 7 polish items complete:
-  - TagInput component ✅
-  - CollapsibleCard component ✅
-  - CodeBlock component with syntax highlighting ✅
-  - Auth0 conflict error handling UI ✅
+### What's Done
+- All Phase 1-7 migration tasks complete
+- All routes ported
+- All features implemented
+- All UI components ported (including ValidatedInput, TagInput, CollapsibleCard, CodeBlock)
+- PostHog integration complete
+- Real-time sync infrastructure complete
+- Billing enforcement complete
+- S3 configuration complete (feature-flagged)
 
-## Remaining Items (Optional/Blocked)
-
-1. **ValidatedInput component (OPTIONAL)**
-   - Validation system is already ported (rules.ts, types.ts)
-   - Would create a wrapper component for TanStack Form
-   - Not blocking any functionality
-
-2. **Edit Member Roles (BLOCKED)**
-   - Requires backend `PATCH /organizations/{id}/members/{memberId}` endpoint
-   - UI placeholder exists in members settings page
-   - Cannot proceed until backend API is implemented
+### Remaining (Blocked)
+The only incomplete item requires backend work:
+- **Edit Member Roles**: Needs `PATCH /organizations/{id}/members/{memberId}` API endpoint
+  - Backend CRUD function `update_member_role` exists in `crud_organization.py`
+  - No API route exposes this function yet
+  - Frontend UI placeholder exists in members settings page
 
 ## Key Files Reference
 
-- Callback route: `frontend-v2/src/routes/callback.tsx`
-- Users API: `frontend-v2/src/lib/api/users.ts`
-- Auth config: `frontend-v2/src/config/auth.ts`
-- CodeBlock: `frontend-v2/src/components/ui/code-block.tsx`
-- TagInput: `frontend-v2/src/components/ui/tag-input.tsx`
-- CollapsibleCard: `frontend-v2/src/components/ui/collapsible-card.tsx`
-- Validation rules: `frontend-v2/src/lib/validation/rules.ts`
+### Migration Spec
+- `MIGRATION_SPEC.md` - Full migration specification with checklist
 
-## Project Completion Status
+### Frontend-v2 Structure
+- Routes: `frontend-v2/src/routes/`
+- Components: `frontend-v2/src/components/`
+- Features: `frontend-v2/src/features/`
+- API: `frontend-v2/src/lib/api/`
+- Validation: `frontend-v2/src/lib/validation/`
 
-The frontend migration from `frontend` to `frontend-v2` is essentially complete. All required routes, features, and components have been ported with the following status:
-- Core routes: All implemented
-- Billing: Complete
-- Settings (org, members, usage, billing): Complete
-- Admin dashboard: Complete
-- Real-time sync: Complete
-- PostHog integration: Complete
-- S3 configuration: Complete (feature-flagged)
-- All UI components: Complete
+## Next Steps
 
-The only remaining items are:
-1. ValidatedInput wrapper (optional enhancement)
-2. Edit member roles (blocked on backend)
+If backend support for member role editing is added:
+1. Create API function in `frontend-v2/src/lib/api/organizations.ts`:
+   ```typescript
+   export async function updateMemberRole(
+     token: string,
+     organizationId: string,
+     memberId: string,
+     role: 'admin' | 'member'
+   ): Promise<void>
+   ```
+2. Add mutation in `frontend-v2/src/routes/$orgSlug/settings/members.tsx`
+3. Add edit button/dropdown to member row UI
 
-The project may be considered complete pending verification of all functionality.
+Otherwise, the frontend migration project is complete.

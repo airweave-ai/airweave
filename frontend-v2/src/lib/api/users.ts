@@ -1,7 +1,3 @@
-/**
- * Users API client
- */
-
 import { API_BASE_URL, getAuthHeaders, parseErrorResponse } from "./client";
 
 export interface User {

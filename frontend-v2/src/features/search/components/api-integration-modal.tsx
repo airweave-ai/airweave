@@ -1,14 +1,3 @@
-/**
- * ApiIntegrationModal - Code snippets for API integration
- *
- * Generates ready-to-use code examples in cURL, Python, Node.js, and MCP formats
- * based on current search configuration.
- *
- * Features:
- * - REST API mode: cURL, Python SDK, Node.js SDK
- * - MCP Server mode: Client-specific configurations for Claude, Cursor, Windsurf
- */
-
 import { Code, Terminal } from "lucide-react";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 
@@ -412,9 +401,7 @@ npx airweave-mcp-search`;
             badgeText={headerInfo.badge}
             badgeColor={headerInfo.badgeColor}
             title={headerInfo.title}
-            footerContent={
-              <span className="text-xs">{renderFooter()}</span>
-            }
+            footerContent={<span className="text-xs">{renderFooter()}</span>}
             height={400}
             className="rounded-none border-0"
           />
