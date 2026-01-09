@@ -38,3 +38,9 @@ class MemberResponse(BaseModel):
     status: str = "active"
     is_primary: bool = False
     auth0_id: Optional[str] = None
+
+
+class MemberRoleUpdate(BaseModel):
+    """Schema for updating a member's role."""
+
+    role: str  # 'owner', 'admin', or 'member'

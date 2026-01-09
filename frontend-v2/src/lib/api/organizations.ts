@@ -153,33 +153,6 @@ export async function createCheckoutSession(
 }
 
 /**
- * Invite a member to an organization
- */
-export async function inviteOrganizationMember(
-  token: string,
-  organizationId: string,
-  email: string,
-  role: string
-): Promise<void> {
-  const response = await fetch(
-    `${API_BASE_URL}/organizations/${organizationId}/invite`,
-    {
-      method: "POST",
-      headers: getAuthHeaders(token),
-      body: JSON.stringify({ email, role }),
-    }
-  );
-
-  if (!response.ok) {
-    const message = await parseErrorResponse(
-      response,
-      "Failed to invite member"
-    );
-    throw new Error(message);
-  }
-}
-
-/**
  * Update organization request payload
  */
 export interface UpdateOrganizationRequest {
@@ -350,7 +323,7 @@ export interface InviteResponse {
 }
 
 /**
- * Invite a member to an organization (enhanced version with return type)
+ * Invite a member to an organization (returns full response)
  */
 export async function inviteOrganizationMemberWithResponse(
   token: string,
@@ -376,6 +349,18 @@ export async function inviteOrganizationMemberWithResponse(
   }
 
   return response.json();
+}
+
+/**
+ * Invite a member to an organization (convenience wrapper)
+ */
+export async function inviteOrganizationMember(
+  token: string,
+  organizationId: string,
+  email: string,
+  role: string
+): Promise<void> {
+  await inviteOrganizationMemberWithResponse(token, organizationId, email, role);
 }
 
 /**
@@ -426,4 +411,33 @@ export async function cancelOrganizationInvitation(
     );
     throw new Error(message);
   }
+}
+
+/**
+ * Update a member's role in an organization
+ */
+export async function updateMemberRole(
+  token: string,
+  organizationId: string,
+  memberId: string,
+  role: "owner" | "admin" | "member"
+): Promise<OrganizationMember> {
+  const response = await fetch(
+    `${API_BASE_URL}/organizations/${organizationId}/members/${memberId}`,
+    {
+      method: "PATCH",
+      headers: getAuthHeaders(token),
+      body: JSON.stringify({ role }),
+    }
+  );
+
+  if (!response.ok) {
+    const message = await parseErrorResponse(
+      response,
+      "Failed to update member role"
+    );
+    throw new Error(message);
+  }
+
+  return response.json();
 }

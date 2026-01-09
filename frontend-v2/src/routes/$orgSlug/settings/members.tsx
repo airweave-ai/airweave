@@ -29,6 +29,7 @@ import {
   fetchOrganizationMembers,
   inviteOrganizationMemberWithResponse,
   removeOrganizationMember,
+  updateMemberRole,
 } from "@/lib/api";
 import { useAuth0 } from "@/lib/auth-provider";
 import { useOrg } from "@/lib/org-context";
@@ -140,6 +141,30 @@ function MembersSettingsPage() {
     onError: (error) => {
       toast.error(
         error instanceof Error ? error.message : "Failed to remove member"
+      );
+    },
+  });
+
+  const updateRoleMutation = useMutation({
+    mutationFn: async ({
+      memberId,
+      role,
+    }: {
+      memberId: string;
+      role: "owner" | "admin" | "member";
+    }) => {
+      const token = await getAccessTokenSilently();
+      return updateMemberRole(token, organization!.id, memberId, role);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.organizations.members(organization!.id),
+      });
+      toast.success("Role updated successfully");
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update role"
       );
     },
   });
@@ -376,8 +401,13 @@ function MembersSettingsPage() {
                 key={member.id}
                 member={member}
                 canEdit={canEdit}
+                currentUserRole={organization.role}
                 onRemove={() => removeMemberMutation.mutate(member.id)}
+                onRoleChange={(role) =>
+                  updateRoleMutation.mutate({ memberId: member.id, role })
+                }
                 isRemoving={removeMemberMutation.isPending}
+                isUpdatingRole={updateRoleMutation.isPending}
               />
             ))}
           </div>
@@ -395,11 +425,22 @@ interface MemberRowProps {
     role: "owner" | "admin" | "member";
   };
   canEdit: boolean;
+  currentUserRole: "owner" | "admin" | "member";
   onRemove: () => void;
+  onRoleChange: (role: "owner" | "admin" | "member") => void;
   isRemoving: boolean;
+  isUpdatingRole: boolean;
 }
 
-function MemberRow({ member, canEdit, onRemove, isRemoving }: MemberRowProps) {
+function MemberRow({
+  member,
+  canEdit,
+  currentUserRole,
+  onRemove,
+  onRoleChange,
+  isRemoving,
+  isUpdatingRole,
+}: MemberRowProps) {
   const getRoleIcon = (role: string) => {
     switch (role) {
       case "owner":
@@ -432,6 +473,26 @@ function MemberRow({ member, canEdit, onRemove, isRemoving }: MemberRowProps) {
       .toUpperCase();
   };
 
+  // Determine if role can be edited
+  // Owners can edit all roles; admins can only edit member roles (not owners)
+  const canEditRole =
+    canEdit &&
+    (currentUserRole === "owner" ||
+      (currentUserRole === "admin" && member.role !== "owner"));
+
+  // Determine available role options based on current user's role
+  const roleOptions: { value: "owner" | "admin" | "member"; label: string }[] =
+    currentUserRole === "owner"
+      ? [
+          { value: "owner", label: "Owner" },
+          { value: "admin", label: "Admin" },
+          { value: "member", label: "Member" },
+        ]
+      : [
+          { value: "admin", label: "Admin" },
+          { value: "member", label: "Member" },
+        ];
+
   return (
     <div className="border-border flex items-center justify-between rounded-md border px-3 py-3">
       <div className="flex items-center gap-3">
@@ -450,15 +511,48 @@ function MemberRow({ member, canEdit, onRemove, isRemoving }: MemberRowProps) {
         </div>
       </div>
       <div className="flex items-center gap-2">
-        <Badge
-          variant={getRoleBadgeVariant(member.role)}
-          className="text-xs opacity-70"
-        >
-          <span className="flex items-center gap-1">
-            {getRoleIcon(member.role)}
-            {member.role}
-          </span>
-        </Badge>
+        {canEditRole ? (
+          <Select
+            value={member.role}
+            onValueChange={(value: "owner" | "admin" | "member") =>
+              onRoleChange(value)
+            }
+            disabled={isUpdatingRole}
+          >
+            <SelectTrigger className="h-7 w-28 text-xs">
+              <SelectValue>
+                <span className="flex items-center gap-1">
+                  {getRoleIcon(member.role)}
+                  {member.role}
+                </span>
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {roleOptions.map((option) => (
+                <SelectItem
+                  key={option.value}
+                  value={option.value}
+                  className="text-xs"
+                >
+                  <span className="flex items-center gap-1">
+                    {getRoleIcon(option.value)}
+                    {option.label}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <Badge
+            variant={getRoleBadgeVariant(member.role)}
+            className="text-xs opacity-70"
+          >
+            <span className="flex items-center gap-1">
+              {getRoleIcon(member.role)}
+              {member.role}
+            </span>
+          </Badge>
+        )}
         {canEdit && member.role !== "owner" && (
           <Button
             variant="ghost"

@@ -4,6 +4,7 @@ from typing import List
 from uuid import UUID
 
 from fastapi import Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
@@ -591,6 +592,115 @@ async def remove_member_from_organization(
             return {"message": "Member removed successfully"}
         else:
             raise HTTPException(status_code=404, detail="Member not found")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.patch("/{organization_id}/members/{user_id}", response_model=schemas.MemberResponse)
+async def update_member_role(
+    organization_id: UUID,
+    user_id: UUID,
+    role_update: schemas.MemberRoleUpdate,
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+) -> schemas.MemberResponse:
+    """Update a member's role in an organization.
+
+    Only organization owners and admins can update member roles.
+    Owners cannot demote themselves if they are the only owner.
+
+    Args:
+        organization_id: The ID of the organization
+        user_id: The ID of the member whose role to update
+        role_update: The new role data
+        db: Database session
+        ctx: The current authenticated user
+
+    Returns:
+        The updated member information
+
+    Raises:
+        HTTPException: If user doesn't have permission or role change is invalid
+    """
+    # Validate user has admin access using auth context
+    user_org = None
+    for org in ctx.user.user_organizations:
+        if org.organization.id == organization_id:
+            user_org = org
+            break
+
+    if not user_org or user_org.role not in ["owner", "admin"]:
+        raise HTTPException(
+            status_code=403, detail="Only organization owners and admins can update member roles"
+        )
+
+    # Validate role value
+    valid_roles = ["owner", "admin", "member"]
+    if role_update.role not in valid_roles:
+        raise HTTPException(
+            status_code=400, detail=f"Invalid role. Must be one of: {', '.join(valid_roles)}"
+        )
+
+    # Admins cannot promote to owner or demote owners
+    if user_org.role == "admin":
+        if role_update.role == "owner":
+            raise HTTPException(
+                status_code=403, detail="Only owners can promote members to owner role"
+            )
+        # Check if target user is an owner
+        target_membership = await crud.organization.get_user_membership(
+            db=db, organization_id=organization_id, user_id=user_id, ctx=ctx
+        )
+        if target_membership and target_membership.role == "owner":
+            raise HTTPException(
+                status_code=403, detail="Admins cannot change owner roles"
+            )
+
+    # If demoting an owner, check there are other owners
+    if user_id == ctx.user.id and role_update.role != "owner" and user_org.role == "owner":
+        other_owners = await crud.organization.get_organization_owners(
+            db=db,
+            organization_id=organization_id,
+            ctx=ctx,
+            exclude_user_id=ctx.user.id,
+        )
+        if not other_owners:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot demote yourself as the only owner. "
+                "Promote another member to owner first.",
+            )
+
+    try:
+        updated_membership = await crud.organization.update_member_role(
+            db=db,
+            organization_id=organization_id,
+            user_id=user_id,
+            new_role=role_update.role,
+            ctx=ctx,
+        )
+
+        if not updated_membership:
+            raise HTTPException(status_code=404, detail="Member not found")
+
+        # Get user details to return full response
+        from airweave.models.user import User as UserModel
+
+        user_stmt = select(UserModel).where(UserModel.id == user_id)
+        result = await db.execute(user_stmt)
+        target_user = result.scalar_one_or_none()
+
+        return schemas.MemberResponse(
+            id=str(user_id),
+            email=target_user.email if target_user else "",
+            name=target_user.full_name if target_user else "",
+            role=updated_membership.role,
+            status="active",
+            is_primary=updated_membership.is_primary,
+            auth0_id=target_user.auth0_id if target_user else None,
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 

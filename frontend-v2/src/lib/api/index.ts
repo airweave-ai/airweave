@@ -35,6 +35,7 @@ export {
   inviteOrganizationMemberWithResponse,
   removeOrganizationMember,
   setPrimaryOrganization,
+  updateMemberRole,
   updateOrganization,
 } from "./organizations";
 export type {
