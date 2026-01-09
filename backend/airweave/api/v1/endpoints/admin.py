@@ -2108,3 +2108,135 @@ async def admin_cancel_sync_job(
     ctx.logger.info(f"✅ Admin cancelled sync job {job_id}, new status: {sync_job.status}")
 
     return schemas.SyncJob.model_validate(sync_job, from_attributes=True)
+
+
+@router.post("/syncs/{sync_id}/cancel")
+async def admin_cancel_sync_by_id(
+    sync_id: UUID,
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+) -> dict:
+    """Admin-only: Cancel all pending/running jobs for a sync.
+
+    This is a convenience endpoint that finds active jobs for a sync and cancels them.
+    More practical than /sync-jobs/{job_id}/cancel when you know the sync ID.
+
+    Args:
+        sync_id: The sync ID whose jobs should be cancelled
+        db: Database session
+        ctx: API context
+
+    Returns:
+        Dict with cancelled job IDs and results
+
+    Raises:
+        HTTPException: If not admin or sync not found
+    """
+    from sqlalchemy import select as sa_select
+
+    from airweave.core.datetime_utils import utc_now_naive
+    from airweave.core.shared_models import SyncJobStatus
+    from airweave.core.sync_job_service import sync_job_service
+    from airweave.core.temporal_service import temporal_service
+    from airweave.models.sync import Sync
+    from airweave.models.sync_job import SyncJob
+
+    _require_admin_permission(ctx, FeatureFlagEnum.API_KEY_ADMIN_SYNC)
+
+    # Verify sync exists
+    result = await db.execute(sa_select(Sync).where(Sync.id == sync_id))
+    sync_obj = result.scalar_one_or_none()
+    if not sync_obj:
+        raise NotFoundException(f"Sync {sync_id} not found")
+
+    # Find all pending/running jobs
+    jobs_result = await db.execute(
+        sa_select(SyncJob).where(
+            SyncJob.sync_id == sync_id,
+            SyncJob.status.in_([SyncJobStatus.PENDING, SyncJobStatus.RUNNING]),
+        )
+    )
+    jobs = list(jobs_result.scalars().all())
+
+    if not jobs:
+        return {
+            "sync_id": str(sync_id),
+            "message": "No active jobs to cancel",
+            "cancelled_jobs": [],
+        }
+
+    ctx.logger.info(f"Admin cancelling {len(jobs)} active job(s) for sync {sync_id}")
+
+    cancelled_jobs = []
+    failed_jobs = []
+
+    for job in jobs:
+        job_id = job.id
+        job_status_str = job.status.value if hasattr(job.status, "value") else job.status
+
+        try:
+            # Set to CANCELLING
+            await sync_job_service.update_status(
+                sync_job_id=job_id,
+                status=SyncJobStatus.CANCELLING,
+                ctx=ctx,
+            )
+
+            # Request cancellation from Temporal
+            cancel_result = await temporal_service.cancel_sync_job_workflow(str(job_id), ctx)
+
+            if not cancel_result["success"]:
+                # Temporal error - revert status
+                fallback_status = (
+                    SyncJobStatus.RUNNING
+                    if job.status == SyncJobStatus.RUNNING
+                    else SyncJobStatus.PENDING
+                )
+                await sync_job_service.update_status(
+                    sync_job_id=job_id,
+                    status=fallback_status,
+                    ctx=ctx,
+                )
+                failed_jobs.append(
+                    {
+                        "job_id": str(job_id),
+                        "error": "Failed to request cancellation from Temporal",
+                    }
+                )
+                continue
+
+            # If workflow not found, mark as CANCELLED directly
+            if not cancel_result["workflow_found"]:
+                ctx.logger.info(f"Workflow not found for job {job_id} - marking as CANCELLED")
+                await sync_job_service.update_status(
+                    sync_job_id=job_id,
+                    status=SyncJobStatus.CANCELLED,
+                    ctx=ctx,
+                    completed_at=utc_now_naive(),
+                    error="Workflow not found in Temporal - may have already completed",
+                )
+
+            cancelled_jobs.append(
+                {
+                    "job_id": str(job_id),
+                    "previous_status": job_status_str,
+                    "workflow_found": cancel_result["workflow_found"],
+                }
+            )
+
+        except Exception as e:
+            ctx.logger.error(f"Failed to cancel job {job_id}: {e}")
+            failed_jobs.append({"job_id": str(job_id), "error": str(e)})
+
+    ctx.logger.info(
+        f"✅ Admin cancelled {len(cancelled_jobs)}/{len(jobs)} job(s) for sync {sync_id}"
+    )
+
+    return {
+        "sync_id": str(sync_id),
+        "total_jobs": len(jobs),
+        "cancelled": len(cancelled_jobs),
+        "failed": len(failed_jobs),
+        "cancelled_jobs": cancelled_jobs,
+        "failed_jobs": failed_jobs,
+    }
