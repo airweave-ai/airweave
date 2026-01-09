@@ -553,6 +553,106 @@ async def get_organization_members(
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
+@router.patch("/{organization_id}/members/{user_id}", response_model=schemas.MemberResponse)
+async def update_member_role(
+    organization_id: UUID,
+    user_id: UUID,
+    role_data: schemas.MemberRoleUpdate,
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+) -> schemas.MemberResponse:
+    """Update a member's role in an organization.
+
+    Only organization owners and admins can update member roles.
+    Cannot change the role of the organization owner.
+
+    Args:
+        organization_id: The ID of the organization
+        user_id: The ID of the member whose role to update
+        role_data: The new role data
+        db: Database session
+        ctx: The current authenticated user
+
+    Returns:
+        The updated member information
+
+    Raises:
+        HTTPException: If organization not found, user doesn't have permission,
+                      or trying to change owner's role
+    """
+    # Validate user has admin access using auth context
+    user_org = None
+    for org in ctx.user.user_organizations:
+        if org.organization.id == organization_id:
+            user_org = org
+            break
+
+    if not user_org or user_org.role not in ["owner", "admin"]:
+        raise HTTPException(
+            status_code=403, detail="Only organization owners and admins can update member roles"
+        )
+
+    # Validate the new role is allowed
+    if role_data.role not in ["admin", "member"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid role. Must be 'admin' or 'member'. Use ownership transfer for owner role.",
+        )
+
+    # Get the target member's current membership
+    target_membership = await crud.organization.get_user_membership(
+        db=db,
+        organization_id=organization_id,
+        user_id=user_id,
+        ctx=ctx,
+    )
+
+    if not target_membership:
+        raise HTTPException(status_code=404, detail="Member not found in organization")
+
+    # Cannot change the owner's role
+    if target_membership.role == "owner":
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot change the organization owner's role. Use ownership transfer instead.",
+        )
+
+    # Don't allow changing your own role
+    if user_id == ctx.user.id:
+        raise HTTPException(
+            status_code=400, detail="Cannot change your own role"
+        )
+
+    try:
+        updated_membership = await crud.organization.update_member_role(
+            db=db,
+            organization_id=organization_id,
+            user_id=user_id,
+            new_role=role_data.role,
+            ctx=ctx,
+        )
+
+        if not updated_membership:
+            raise HTTPException(status_code=404, detail="Member not found")
+
+        # Get the user info for the response
+        target_user = updated_membership.user
+
+        return schemas.MemberResponse(
+            id=str(target_user.id),
+            email=target_user.email,
+            name=target_user.full_name or "",
+            role=updated_membership.role,
+            status="active",
+            is_primary=updated_membership.is_primary,
+            auth0_id=target_user.auth0_id,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
 @router.delete("/{organization_id}/members/{user_id}", response_model=dict)
 async def remove_member_from_organization(
     organization_id: UUID,

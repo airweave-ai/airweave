@@ -29,6 +29,7 @@ import {
   fetchOrganizationMembers,
   inviteOrganizationMemberWithResponse,
   removeOrganizationMember,
+  updateMemberRole,
 } from "@/lib/api";
 import { useAuth0 } from "@/lib/auth-provider";
 import { useOrg } from "@/lib/org-context";
@@ -140,6 +141,30 @@ function MembersSettingsPage() {
     onError: (error) => {
       toast.error(
         error instanceof Error ? error.message : "Failed to remove member"
+      );
+    },
+  });
+
+  const updateRoleMutation = useMutation({
+    mutationFn: async ({
+      memberId,
+      role,
+    }: {
+      memberId: string;
+      role: "admin" | "member";
+    }) => {
+      const token = await getAccessTokenSilently();
+      return updateMemberRole(token, organization!.id, memberId, role);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.organizations.members(organization!.id),
+      });
+      toast.success("Member role updated");
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update member role"
       );
     },
   });
@@ -378,6 +403,10 @@ function MembersSettingsPage() {
                 canEdit={canEdit}
                 onRemove={() => removeMemberMutation.mutate(member.id)}
                 isRemoving={removeMemberMutation.isPending}
+                onRoleChange={(role) =>
+                  updateRoleMutation.mutate({ memberId: member.id, role })
+                }
+                isUpdatingRole={updateRoleMutation.isPending}
               />
             ))}
           </div>
@@ -397,9 +426,18 @@ interface MemberRowProps {
   canEdit: boolean;
   onRemove: () => void;
   isRemoving: boolean;
+  onRoleChange: (role: "admin" | "member") => void;
+  isUpdatingRole: boolean;
 }
 
-function MemberRow({ member, canEdit, onRemove, isRemoving }: MemberRowProps) {
+function MemberRow({
+  member,
+  canEdit,
+  onRemove,
+  isRemoving,
+  onRoleChange,
+  isUpdatingRole,
+}: MemberRowProps) {
   const getRoleIcon = (role: string) => {
     switch (role) {
       case "owner":
@@ -432,6 +470,8 @@ function MemberRow({ member, canEdit, onRemove, isRemoving }: MemberRowProps) {
       .toUpperCase();
   };
 
+  const canEditRole = canEdit && member.role !== "owner";
+
   return (
     <div className="border-border flex items-center justify-between rounded-md border px-3 py-3">
       <div className="flex items-center gap-3">
@@ -450,15 +490,46 @@ function MemberRow({ member, canEdit, onRemove, isRemoving }: MemberRowProps) {
         </div>
       </div>
       <div className="flex items-center gap-2">
-        <Badge
-          variant={getRoleBadgeVariant(member.role)}
-          className="text-xs opacity-70"
-        >
-          <span className="flex items-center gap-1">
-            {getRoleIcon(member.role)}
-            {member.role}
-          </span>
-        </Badge>
+        {canEditRole ? (
+          <Select
+            value={member.role}
+            onValueChange={(value: "admin" | "member") => onRoleChange(value)}
+            disabled={isUpdatingRole}
+          >
+            <SelectTrigger className="h-7 w-24 text-xs">
+              <SelectValue>
+                <span className="flex items-center gap-1">
+                  {getRoleIcon(member.role)}
+                  {member.role}
+                </span>
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="admin">
+                <span className="flex items-center gap-1">
+                  <Shield className="size-3" />
+                  admin
+                </span>
+              </SelectItem>
+              <SelectItem value="member">
+                <span className="flex items-center gap-1">
+                  <Users className="size-3" />
+                  member
+                </span>
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        ) : (
+          <Badge
+            variant={getRoleBadgeVariant(member.role)}
+            className="text-xs opacity-70"
+          >
+            <span className="flex items-center gap-1">
+              {getRoleIcon(member.role)}
+              {member.role}
+            </span>
+          </Badge>
+        )}
         {canEdit && member.role !== "owner" && (
           <Button
             variant="ghost"

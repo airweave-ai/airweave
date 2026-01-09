@@ -4,10 +4,10 @@ Context for the next iteration.
 
 ## Project Status: COMPLETE
 
-The frontend migration from `frontend` to `frontend-v2` is **complete**.
+The frontend migration from `frontend` to `frontend-v2` is **fully complete**.
 
 ### Verification (2026-01-08)
-- Build: Passes (4.13s, no errors)
+- Build: Passes (4.18s, no errors)
 - Lint: Passes (0 warnings)
 - Tests: All 25 pass
 
@@ -20,18 +20,24 @@ The frontend migration from `frontend` to `frontend-v2` is **complete**.
 - Real-time sync infrastructure complete
 - Billing enforcement complete
 - S3 configuration complete (feature-flagged)
+- **Edit Member Roles**: Backend endpoint + frontend UI complete
 
-### Remaining (Blocked)
-The only incomplete item requires backend work:
-- **Edit Member Roles**: Needs `PATCH /organizations/{id}/members/{memberId}` API endpoint
-  - Backend CRUD function `update_member_role` exists in `crud_organization.py`
-  - No API route exposes this function yet
-  - Frontend UI placeholder exists in members settings page
+### Final Implementation (2026-01-08)
+The last remaining migration item "Edit Member Roles" has been implemented:
+- Backend: `PATCH /organizations/{id}/members/{memberId}` endpoint added
+- Schema: `MemberRoleUpdate` in `backend/airweave/schemas/invitation.py`
+- Frontend API: `updateMemberRole` in `frontend-v2/src/lib/api/organizations.ts`
+- Frontend UI: Role dropdown in members settings page for non-owner members
 
 ## Key Files Reference
 
 ### Migration Spec
-- `MIGRATION_SPEC.md` - Full migration specification with checklist
+- `MIGRATION_SPEC.md` - Full migration specification with checklist (all items now checked)
+
+### Backend Changes
+- `backend/airweave/api/v1/endpoints/organizations.py` - Added PATCH member role endpoint
+- `backend/airweave/schemas/invitation.py` - Added MemberRoleUpdate schema
+- `backend/airweave/schemas/__init__.py` - Exported MemberRoleUpdate
 
 ### Frontend-v2 Structure
 - Routes: `frontend-v2/src/routes/`
@@ -42,17 +48,9 @@ The only incomplete item requires backend work:
 
 ## Next Steps
 
-If backend support for member role editing is added:
-1. Create API function in `frontend-v2/src/lib/api/organizations.ts`:
-   ```typescript
-   export async function updateMemberRole(
-     token: string,
-     organizationId: string,
-     memberId: string,
-     role: 'admin' | 'member'
-   ): Promise<void>
-   ```
-2. Add mutation in `frontend-v2/src/routes/$orgSlug/settings/members.tsx`
-3. Add edit button/dropdown to member row UI
+The frontend migration project is **complete**. All tasks have been implemented and verified.
 
-Otherwise, the frontend migration project is complete.
+If starting a new project or enhancement:
+1. Review `MIGRATION_SPEC.md` for architecture decisions made during migration
+2. The `frontend-v2` codebase follows TanStack Router + React Query patterns
+3. API functions are modular in `src/lib/api/` directory

@@ -63,6 +63,7 @@ from .invitation import (
     InvitationCreate,
     InvitationResponse,
     MemberResponse,
+    MemberRoleUpdate,
 )
 from .organization import (
     Organization,

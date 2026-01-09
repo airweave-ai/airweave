@@ -108,51 +108,6 @@ export async function createOrganization(
 }
 
 /**
- * Billing checkout session request
- */
-export interface CheckoutSessionRequest {
-  plan: string;
-  success_url: string;
-  cancel_url: string;
-}
-
-/**
- * Billing checkout session response
- */
-export interface CheckoutSessionResponse {
-  checkout_url: string;
-}
-
-/**
- * Create a billing checkout session
- */
-export async function createCheckoutSession(
-  token: string,
-  data: CheckoutSessionRequest,
-  yearly: boolean = false
-): Promise<CheckoutSessionResponse> {
-  const endpoint = yearly
-    ? `${API_BASE_URL}/billing/yearly/checkout-session`
-    : `${API_BASE_URL}/billing/checkout-session`;
-
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: getAuthHeaders(token),
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const message = await parseErrorResponse(
-      response,
-      "Failed to create checkout session"
-    );
-    throw new Error(message);
-  }
-
-  return response.json();
-}
-
-/**
  * Invite a member to an organization
  */
 export async function inviteOrganizationMember(
@@ -426,4 +381,33 @@ export async function cancelOrganizationInvitation(
     );
     throw new Error(message);
   }
+}
+
+/**
+ * Update a member's role in an organization
+ */
+export async function updateMemberRole(
+  token: string,
+  organizationId: string,
+  memberId: string,
+  role: "admin" | "member"
+): Promise<OrganizationMember> {
+  const response = await fetch(
+    `${API_BASE_URL}/organizations/${organizationId}/members/${memberId}`,
+    {
+      method: "PATCH",
+      headers: getAuthHeaders(token),
+      body: JSON.stringify({ role }),
+    }
+  );
+
+  if (!response.ok) {
+    const message = await parseErrorResponse(
+      response,
+      "Failed to update member role"
+    );
+    throw new Error(message);
+  }
+
+  return response.json();
 }

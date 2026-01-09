@@ -9,9 +9,9 @@ import { toast } from "sonner";
 import { authConfig } from "@/config/auth";
 import {
   createCheckoutSession,
-  createOrganization,
-  type Organization,
-} from "@/lib/api/organizations";
+  createYearlyCheckoutSession,
+} from "@/lib/api/billing";
+import { createOrganization, type Organization } from "@/lib/api/organizations";
 import { useAuth0 } from "@/lib/auth-provider";
 import { generateOrgSlug } from "@/lib/org-utils";
 
@@ -59,18 +59,25 @@ export function useCreateOrganization(formData: OnboardingData) {
         const isEligibleForYearly = ["pro", "team"].includes(
           formData.subscriptionPlan
         );
-        const yearly =
+        const useYearly =
           formData.billingPeriod === "yearly" && isEligibleForYearly;
 
-        const { checkout_url } = await createCheckoutSession(
-          token,
-          {
-            plan: formData.subscriptionPlan,
-            success_url: `${window.location.origin}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${window.location.origin}/billing/cancel`,
-          },
-          yearly
-        );
+        const successUrl = `${window.location.origin}/billing/success?session_id={CHECKOUT_SESSION_ID}`;
+        const cancelUrl = `${window.location.origin}/billing/cancel`;
+
+        const { checkout_url } = useYearly
+          ? await createYearlyCheckoutSession(
+              token,
+              formData.subscriptionPlan,
+              successUrl,
+              cancelUrl
+            )
+          : await createCheckoutSession(
+              token,
+              formData.subscriptionPlan,
+              successUrl,
+              cancelUrl
+            );
 
         return { organization, redirectUrl: checkout_url };
       } catch {

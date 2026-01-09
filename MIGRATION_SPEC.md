@@ -75,7 +75,7 @@ These decisions were made during migration planning and should guide all impleme
 | Admin Dashboard | ✅ Complete | - | Superuser access with metrics |
 | Real-time Sync | ✅ Complete | - | Full SSE port with entity state |
 | Usage Dashboard | ✅ Complete | - | Part of settings |
-| Members Settings | ⚠️ Partial | **High** | Core CRUD done, role editing pending |
+| Members Settings | ✅ Complete | - | Full CRUD with role editing |
 | Validation System | ✅ Complete | - | Full validation integration |
 | QueryTool | ✅ Complete | - | Enhanced with MCP client tabs (Claude, Cursor, Windsurf) |
 | SemanticMcp Page | ✅ Complete | - | MCP auth alternative |
@@ -478,7 +478,7 @@ The frontend-v2 uses a new Orange/Amber primary color. This is intentional and s
   - [x] Create `/$orgSlug/settings/members.tsx`
   - [x] View members list
   - [x] Invite members (email + role)
-  - [ ] Edit member roles
+  - [x] Edit member roles
   - [x] Remove members
   - [x] View/cancel pending invitations
 
@@ -798,3 +798,12 @@ Phase 7 is now COMPLETE. Remaining items:
 - ValidatedInput component already exists at `src/components/validated-input.tsx` (integrated in 8 files)
 - Only remaining item is "Edit member roles" which requires backend `PATCH /organizations/{id}/members/{memberId}` endpoint (CRUD function `update_member_role` exists in backend but no API route)
 - **FRONTEND MIGRATION IS COMPLETE**
+
+**2026-01-08**: Implemented Edit Member Roles feature (the final remaining migration item):
+- Added `PATCH /organizations/{id}/members/{memberId}` backend API endpoint in `backend/airweave/api/v1/endpoints/organizations.py`
+- Added `MemberRoleUpdate` schema in `backend/airweave/schemas/invitation.py`
+- Added `updateMemberRole` API function in `frontend-v2/src/lib/api/organizations.ts`
+- Updated members settings page with role dropdown for non-owner members
+- Includes permission checks: only owners/admins can edit, cannot edit owner's role, cannot edit own role
+- Build passes, lint passes, all 25 tests pass
+- **ALL MIGRATION TASKS ARE NOW COMPLETE**
