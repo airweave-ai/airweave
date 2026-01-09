@@ -1,6 +1,7 @@
 /**
  * Get the redirect URL for Auth0.
  * Uses https://app.airweave.ai for localhost, otherwise uses current origin.
+ * Always redirects to /callback to handle user sync and Auth0 conflicts.
  */
 export function getRedirectUrl(): string {
   if (typeof window === "undefined") return "";
@@ -9,7 +10,7 @@ export function getRedirectUrl(): string {
   if (origin.includes("localhost") || origin.includes("127.0.0.1")) {
     return "https://app.airweave.ai/callback";
   }
-  return origin;
+  return `${origin}/callback`;
 }
 
 /**

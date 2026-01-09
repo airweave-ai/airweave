@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SemanticMcpRouteImport } from './routes/semantic-mcp'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as ComponentsRouteImport } from './routes/components'
+import { Route as CallbackRouteImport } from './routes/callback'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as OrgSlugRouteRouteImport } from './routes/$orgSlug/route'
 import { Route as IndexRouteImport } from './routes/index'
@@ -46,6 +47,11 @@ const OnboardingRoute = OnboardingRouteImport.update({
 const ComponentsRoute = ComponentsRouteImport.update({
   id: '/components',
   path: '/components',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CallbackRoute = CallbackRouteImport.update({
+  id: '/callback',
+  path: '/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRoute = AdminRouteImport.update({
@@ -154,6 +160,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$orgSlug': typeof OrgSlugRouteRouteWithChildren
   '/admin': typeof AdminRoute
+  '/callback': typeof CallbackRoute
   '/components': typeof ComponentsRouteWithChildren
   '/onboarding': typeof OnboardingRoute
   '/semantic-mcp': typeof SemanticMcpRoute
@@ -178,6 +185,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/callback': typeof CallbackRoute
   '/onboarding': typeof OnboardingRoute
   '/semantic-mcp': typeof SemanticMcpRoute
   '/$orgSlug/api-keys': typeof OrgSlugApiKeysRoute
@@ -203,6 +211,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/$orgSlug': typeof OrgSlugRouteRouteWithChildren
   '/admin': typeof AdminRoute
+  '/callback': typeof CallbackRoute
   '/components': typeof ComponentsRouteWithChildren
   '/onboarding': typeof OnboardingRoute
   '/semantic-mcp': typeof SemanticMcpRoute
@@ -230,6 +239,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$orgSlug'
     | '/admin'
+    | '/callback'
     | '/components'
     | '/onboarding'
     | '/semantic-mcp'
@@ -254,6 +264,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/admin'
+    | '/callback'
     | '/onboarding'
     | '/semantic-mcp'
     | '/$orgSlug/api-keys'
@@ -278,6 +289,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$orgSlug'
     | '/admin'
+    | '/callback'
     | '/components'
     | '/onboarding'
     | '/semantic-mcp'
@@ -304,6 +316,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   OrgSlugRouteRoute: typeof OrgSlugRouteRouteWithChildren
   AdminRoute: typeof AdminRoute
+  CallbackRoute: typeof CallbackRoute
   ComponentsRoute: typeof ComponentsRouteWithChildren
   OnboardingRoute: typeof OnboardingRoute
   SemanticMcpRoute: typeof SemanticMcpRoute
@@ -334,6 +347,13 @@ declare module '@tanstack/react-router' {
       path: '/components'
       fullPath: '/components'
       preLoaderRoute: typeof ComponentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/callback': {
+      id: '/callback'
+      path: '/callback'
+      fullPath: '/callback'
+      preLoaderRoute: typeof CallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin': {
@@ -529,6 +549,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   OrgSlugRouteRoute: OrgSlugRouteRouteWithChildren,
   AdminRoute: AdminRoute,
+  CallbackRoute: CallbackRoute,
   ComponentsRoute: ComponentsRouteWithChildren,
   OnboardingRoute: OnboardingRoute,
   SemanticMcpRoute: SemanticMcpRoute,

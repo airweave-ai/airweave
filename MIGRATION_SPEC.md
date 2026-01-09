@@ -399,7 +399,7 @@ updateOrganizationFeatures(token, orgId, features)  // Admin only
 
 | Feature | Priority | Notes |
 ||-|-|
-| Auth0 conflict error UI | Medium | Detailed error handling |
+| Auth0 conflict error UI | ✅ Complete | `/callback` route with error UI |
 | Request queuing | Low | Until auth ready |
 
 
@@ -545,7 +545,7 @@ The frontend-v2 uses a new Orange/Amber primary color. This is intentional and s
 - [x] Port TagInput component
 - [x] Port CollapsibleCard component
 - [x] Enhance CodeBlock component
-- [ ] Auth0 conflict error handling UI
+- [x] Auth0 conflict error handling UI
 
 
 
@@ -769,3 +769,19 @@ Phase 5 is now complete. Next suggested task: SemanticMcp Page (Phase 6) or Port
 - Added Billing tab to settings-layout navigation
 - Build verified passing
 Next suggested tasks: Port `/billing/setup` route (initial billing setup page) or `/billing/portal` route (Stripe portal redirect), or Phase 7 polish (TagInput, CollapsibleCard components).
+
+**2026-01-08**: Phase 7 Auth0 conflict error handling UI complete. Changes made:
+- Created `/callback` route at `frontend-v2/src/routes/callback.tsx` that handles user sync with backend
+- Added `createOrUpdateUser` API function to `lib/api/users.ts` with proper conflict error handling
+- Updated `config/auth.ts` to redirect to `/callback` path after Auth0 authentication
+- The callback page calls `POST /users/create_or_update` to sync user data after Auth0 auth
+- On 409 conflict (auth0_id_conflict), displays friendly error UI with:
+  - "Account Conflict" message
+  - Explanation of what happened
+  - Next steps (try different login, contact support, use different email)
+  - Auto-logout after 10 seconds
+  - Debug info in development mode
+- Build verified passing
+Phase 7 is now COMPLETE. Remaining items:
+- ValidatedInput component (optional - validation system is already ported)
+- Edit member roles (blocked on backend API)
