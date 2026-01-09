@@ -8,19 +8,9 @@ interface TagInputProps {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
-  /** Transform input before adding (e.g., toUpperCase for Jira project keys) */
   transformInput?: (value: string) => string;
 }
 
-/**
- * TagInput - A component for entering multiple tags/items
- *
- * Features:
- * - Add tags by pressing Enter or comma
- * - Remove tags by clicking X or pressing Backspace on empty input
- * - Visual feedback for dark/light themes
- * - Keyboard accessible
- */
 function TagInput({
   value = [],
   onChange,
@@ -76,7 +66,7 @@ function TagInput({
     <div
       className={cn(
         "border-input flex min-h-[42px] w-full flex-wrap gap-2 rounded-md border bg-transparent p-2",
-        "focus-within:border-ring focus-within:ring-ring/50 focus-within:outline-none focus-within:ring-[3px]",
+        "focus-within:border-ring focus-within:ring-ring/50 focus-within:ring-[3px] focus-within:outline-none",
         "transition-[color,box-shadow]",
         disabled && "pointer-events-none cursor-not-allowed opacity-50",
         className

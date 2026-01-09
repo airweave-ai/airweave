@@ -1,17 +1,3 @@
-/**
- * SemanticMcp Page - Turn any app into a semantically searchable MCP server
- *
- * This page provides a standalone experience for connecting data sources
- * and querying them via MCP (Model Context Protocol), without requiring
- * a full organization setup.
- *
- * Features:
- * - Source connection grid with authentication flows
- * - Auto-created collection for connected sources
- * - Real-time sync status display
- * - Semantic search interface
- */
-
 import { useQuery } from "@tanstack/react-query";
 import {
   createFileRoute,
@@ -229,7 +215,8 @@ function SemanticMcpPage() {
           if (state.selectedSource) setSelectedSource(state.selectedSource);
           if (state.authValues) setAuthValues(state.authValues);
           if (state.configValues) setConfigValues(state.configValues);
-          if (state.isAuthenticated) setIsSourceAuthenticated(state.isAuthenticated);
+          if (state.isAuthenticated)
+            setIsSourceAuthenticated(state.isAuthenticated);
           if (state.credentialId) setCredentialId(state.credentialId);
           if (state.currentCollection)
             setCurrentCollection(state.currentCollection);

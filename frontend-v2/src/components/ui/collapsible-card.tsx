@@ -9,18 +9,11 @@ interface CollapsibleCardProps {
   isExpanded?: boolean;
   onToggle?: (expanded: boolean) => void;
   className?: string;
-  /** Copy functionality */
   onCopy?: () => Promise<void>;
-  copyTooltip?: string;
-  /** Auto-expand when search starts (but don't prevent manual collapse) */
   autoExpandOnSearch?: boolean;
-  /** Status ribbon */
   statusRibbon?: ReactNode;
 }
 
-/**
- * Custom hook for smooth height transitions
- */
 function useHeightTransition(isOpen: boolean) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState<number>(0);
@@ -33,8 +26,8 @@ function useHeightTransition(isOpen: boolean) {
       // Measure height after render
       measureTimeoutRef.current = setTimeout(() => {
         if (containerRef.current) {
-          const contentElement =
-            containerRef.current.firstElementChild as HTMLElement;
+          const contentElement = containerRef.current
+            .firstElementChild as HTMLElement;
           if (contentElement) {
             const newHeight = contentElement.scrollHeight;
             setHeight(newHeight);
@@ -67,8 +60,8 @@ function useHeightTransition(isOpen: boolean) {
         }
       });
 
-      const contentElement =
-        containerRef.current.firstElementChild as HTMLElement;
+      const contentElement = containerRef.current
+        .firstElementChild as HTMLElement;
       if (contentElement) {
         resizeObserver.observe(contentElement);
       }
@@ -87,7 +80,6 @@ function CollapsibleCard({
   onToggle,
   className,
   onCopy,
-  copyTooltip = "Copy",
   autoExpandOnSearch = false,
   statusRibbon,
 }: CollapsibleCardProps) {
@@ -111,7 +103,8 @@ function CollapsibleCard({
   }, [autoExpandOnSearch, isControlled, onToggle]);
 
   // Height transition hook
-  const { containerRef, height, shouldRender } = useHeightTransition(isExpanded);
+  const { containerRef, height, shouldRender } =
+    useHeightTransition(isExpanded);
 
   const handleToggle = () => {
     const newExpanded = !isExpanded;
@@ -164,7 +157,7 @@ function CollapsibleCard({
               size="sm"
               className="h-6 gap-1 px-1 text-xs"
               onClick={handleCopy}
-              title={copyTooltip}
+              title="Copy"
             >
               {copied ? (
                 <Check className="h-3.5 w-3.5" strokeWidth={1.5} />

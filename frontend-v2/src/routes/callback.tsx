@@ -1,12 +1,13 @@
-import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  useNavigate,
+  useSearch,
+} from "@tanstack/react-router";
 import { AlertTriangle, HelpCircle, Loader2, Mail } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import {
-  Auth0ConflictError,
-  createOrUpdateUser,
-} from "@/lib/api/users";
+import { Auth0ConflictError, createOrUpdateUser } from "@/lib/api/users";
 import { useAuth0 } from "@/lib/auth-provider";
 
 export const Route = createFileRoute("/callback")({

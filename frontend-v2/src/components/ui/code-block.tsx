@@ -14,29 +14,17 @@ import { Badge } from "./badge";
 import { Button } from "./button";
 
 interface CodeBlockProps {
-  /** The code to display */
   code: string;
-  /** The programming language for syntax highlighting */
   language: string;
-  /** Optional badge text shown in the header */
   badgeText?: string;
-  /** Badge color class (e.g., "bg-blue-600") */
   badgeColor?: string;
-  /** Optional title shown in the header */
   title?: string;
-  /** Optional content shown in the footer */
   footerContent?: React.ReactNode;
-  /** Disable copy functionality */
   disabled?: boolean;
-  /** Additional CSS classes */
   className?: string;
-  /** Inline styles */
   style?: React.CSSProperties;
-  /** Fixed height for the code block */
   height?: string | number;
-  /** Show line numbers */
   showLineNumbers?: boolean;
-  /** Wrap long lines instead of horizontal scroll */
   wrapLongLines?: boolean;
 }
 
