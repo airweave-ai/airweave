@@ -309,6 +309,88 @@ async def test_json_status_endpoint_psutil_fallback(mock_worker_metrics, mock_se
 
 
 @pytest.mark.asyncio
+async def test_json_status_endpoint_merges_worker_counts(mock_worker_metrics, mock_settings):
+    """Test /status endpoint correctly merges worker counts into sync details."""
+    sync_id_1 = str(uuid4())
+    sync_id_2 = str(uuid4())
+
+    # Setup detailed syncs
+    mock_worker_metrics.get_detailed_sync_metrics = AsyncMock(
+        return_value=[
+            {
+                "sync_id": sync_id_1,
+                "sync_job_id": str(uuid4()),
+                "org_name": "Org 1",
+                "source_type": "slack",
+            },
+            {
+                "sync_id": sync_id_2,
+                "sync_job_id": str(uuid4()),
+                "org_name": "Org 2",
+                "source_type": "notion",
+            },
+        ]
+    )
+
+    # Setup worker counts
+    mock_worker_metrics.get_per_sync_worker_counts = AsyncMock(
+        return_value=[
+            {"sync_id": sync_id_1, "active_and_pending_worker_count": 12},
+            {"sync_id": sync_id_2, "active_and_pending_worker_count": 8},
+        ]
+    )
+
+    # Update metrics summary to include matching activities
+    mock_worker_metrics.get_metrics_summary = AsyncMock(
+        return_value={
+            "worker_id": "test-worker-0",
+            "uptime_seconds": 100.0,
+            "active_activities_count": 2,
+            "active_sync_jobs": [sync_id_1, sync_id_2],
+            "active_activities": [
+                {
+                    "sync_id": sync_id_1,
+                    "sync_job_id": str(uuid4()),
+                    "duration_seconds": 60.5,
+                },
+                {
+                    "sync_id": sync_id_2,
+                    "sync_job_id": str(uuid4()),
+                    "duration_seconds": 120.3,
+                },
+            ],
+        }
+    )
+
+    # Mock psutil
+    mock_psutil = MagicMock()
+    mock_process = MagicMock()
+    mock_process.cpu_percent.return_value = 0.0
+    mock_process.memory_info.return_value = MagicMock(rss=0)
+    mock_psutil.Process.return_value = mock_process
+
+    with patch("airweave.platform.temporal.worker.worker_metrics", mock_worker_metrics):
+        with patch("airweave.platform.sync.async_helpers.get_active_thread_count", return_value=0):
+            with patch.dict("sys.modules", {"psutil": mock_psutil}):
+                worker = TemporalWorker()
+                worker.running = True
+
+                request = MagicMock()
+                response = await worker._handle_json_status(request)
+
+                # Verify worker counts were merged correctly
+                import json
+                data = json.loads(response.body.decode("utf-8"))
+                syncs_by_id = {s["sync_id"]: s for s in data["active_syncs"]}
+
+                assert syncs_by_id[sync_id_1]["workers_allocated"] == 12
+                assert syncs_by_id[sync_id_1]["duration_seconds"] == 60.5
+
+                assert syncs_by_id[sync_id_2]["workers_allocated"] == 8
+                assert syncs_by_id[sync_id_2]["duration_seconds"] == 120.3
+
+
+@pytest.mark.asyncio
 async def test_json_status_endpoint_handles_missing_sync_id(mock_worker_metrics, mock_settings):
     """Test /status endpoint handles syncs without matching worker counts."""
     orphan_sync_id = str(uuid4())
@@ -590,3 +672,4 @@ async def test_zero_active_syncs_scenario(mock_worker_metrics, mock_settings):
                         assert call_kwargs["active_sync_jobs_count"] == 0
                         assert call_kwargs["worker_pool_active_and_pending_count"] == 0
                         assert call_kwargs["connector_metrics"] == {}
+
