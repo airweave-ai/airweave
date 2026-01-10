@@ -32,6 +32,13 @@ class Entity(OrganizationBase):
     sync_id: Mapped[UUID] = mapped_column(
         ForeignKey("sync.id", ondelete="CASCADE", name="fk_entity_sync_id"), nullable=False
     )
+    # Collection ID for collection-level deduplication (optional feature)
+    collection_id: Mapped[Optional[UUID]] = mapped_column(
+        ForeignKey("collection.id", ondelete="CASCADE", name="fk_entity_collection_id"),
+        nullable=True,  # Nullable for backward compatibility
+        index=False,  # Composite index below is more useful
+        comment="Collection ID for collection-level deduplication (optional)",
+    )
     entity_id: Mapped[str] = mapped_column(String, nullable=False)
     entity_definition_id: Mapped[Optional[UUID]] = mapped_column(
         ForeignKey(
@@ -76,4 +83,12 @@ class Entity(OrganizationBase):
         Index("idx_entity_entity_id_sync_id", "entity_id", "sync_id"),
         # Composite index for entity counts aggregation
         Index("idx_entity_sync_id_entity_def_id", "sync_id", "entity_definition_id"),
+        # Composite index for collection-level deduplication lookups (partial index)
+        Index(
+            "idx_entity_collection_entity_def",
+            "collection_id",
+            "entity_id",
+            "entity_definition_id",
+            postgresql_where="collection_id IS NOT NULL",
+        ),
     )

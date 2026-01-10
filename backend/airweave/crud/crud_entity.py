@@ -186,6 +186,55 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
 
         return result_map
 
+    async def bulk_get_by_entity_collection_and_definition(
+        self,
+        db: AsyncSession,
+        *,
+        collection_id: UUID,
+        entity_requests: list[tuple[str, UUID]],
+    ) -> dict[tuple[str, UUID], Entity]:
+        """Get entities by (entity_id, collection_id, entity_definition_id).
+
+        Used for collection-level deduplication. Finds entities across ALL syncs
+        in the same collection, not just one sync.
+
+        Args:
+            db: Database session
+            collection_id: The collection ID to filter by
+            entity_requests: List of (entity_id, entity_definition_id) tuples
+
+        Returns:
+            Dict mapping (entity_id, entity_definition_id) -> Entity
+        """
+        if not entity_requests:
+            return {}
+
+        from sqlalchemy import and_, or_
+
+        CHUNK_SIZE = 1000
+        result_map: dict[tuple[str, UUID], Entity] = {}
+
+        for i in range(0, len(entity_requests), CHUNK_SIZE):
+            chunk = entity_requests[i : i + CHUNK_SIZE]
+
+            conditions = [
+                and_(Entity.entity_id == eid, Entity.entity_definition_id == def_id)
+                for eid, def_id in chunk
+            ]
+
+            stmt = select(Entity).where(
+                Entity.collection_id == collection_id,
+                or_(*conditions),
+            )
+
+            result = await db.execute(stmt)
+            rows = list(result.unique().scalars().all())
+
+            for row in rows:
+                result_map[(row.entity_id, row.entity_definition_id)] = row
+
+        return result_map
+
     def _get_org_id_from_context(self, ctx: ApiContext) -> UUID | None:
         """Attempt to extract organization ID from the API context."""
         # 1) Direct attributes
@@ -257,6 +306,7 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
                 "sync_job_id": stmt.excluded.sync_job_id,
                 "hash": stmt.excluded.hash,
                 "modified_at": stmt.excluded.modified_at,
+                "collection_id": stmt.excluded.collection_id,  # Update collection_id for dedup
                 # Keep the original organization_id to prevent cross-org updates
                 # organization_id is not updated on conflict
             },

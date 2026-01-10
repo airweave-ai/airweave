@@ -173,6 +173,12 @@ class EntityPostgresHandler(EntityActionHandler):
         if not deduped:
             return
 
+        # Check if collection-level dedup is enabled to populate collection_id
+        use_collection_dedup = (
+            sync_context.execution_config
+            and sync_context.execution_config.behavior.dedupe_by_collection
+        )
+
         create_objs = []
         for action in deduped:
             if not action.entity.airweave_system_metadata.hash:
@@ -184,6 +190,8 @@ class EntityPostgresHandler(EntityActionHandler):
                     entity_id=action.entity_id,
                     entity_definition_id=action.entity_definition_id,
                     hash=action.entity.airweave_system_metadata.hash,
+                    # Populate collection_id when collection-level dedup is enabled
+                    collection_id=sync_context.collection_id if use_collection_dedup else None,
                 )
             )
 
