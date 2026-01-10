@@ -120,6 +120,7 @@ export function SyncsTab() {
         enableVectorHandlers: true,
         enableRawDataHandler: true,
         enablePostgresHandler: true,
+        skipGuardrails: false,
     });
 
     const loadSyncs = async () => {
@@ -257,6 +258,7 @@ export function SyncsTab() {
             enable_vector_handlers: resyncConfig.enableVectorHandlers,
             enable_raw_data_handler: resyncConfig.enableRawDataHandler,
             enable_postgres_handler: resyncConfig.enablePostgresHandler,
+            skip_guardrails: resyncConfig.skipGuardrails,
         };
 
         for (const sync of selected) {
@@ -445,6 +447,7 @@ export function SyncsTab() {
             enableVectorHandlers: true,
             enableRawDataHandler: true,
             enablePostgresHandler: true,
+            skipGuardrails: false,
         });
         setResyncDialogOpen(true);
     };
@@ -1109,6 +1112,16 @@ export function SyncsTab() {
                                         Skip Vespa
                                     </Label>
                                 </div>
+                                <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                        id="skip-guardrails"
+                                        checked={resyncConfig.skipGuardrails}
+                                        onCheckedChange={(checked) => setResyncConfig({ ...resyncConfig, skipGuardrails: checked as boolean })}
+                                    />
+                                    <Label htmlFor="skip-guardrails" className="text-sm cursor-pointer">
+                                        Skip Guardrails (Entity Limits)
+                                    </Label>
+                                </div>
                             </div>
                         </div>
 
@@ -1250,6 +1263,16 @@ export function SyncsTab() {
                                     />
                                     <Label htmlFor="bulk-skip-vespa" className="text-sm cursor-pointer">
                                         Skip Vespa
+                                    </Label>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                        id="bulk-skip-guardrails"
+                                        checked={resyncConfig.skipGuardrails}
+                                        onCheckedChange={(checked) => setResyncConfig({ ...resyncConfig, skipGuardrails: checked as boolean })}
+                                    />
+                                    <Label htmlFor="bulk-skip-guardrails" className="text-sm cursor-pointer">
+                                        Skip Guardrails (Entity Limits)
                                     </Label>
                                 </div>
                             </div>

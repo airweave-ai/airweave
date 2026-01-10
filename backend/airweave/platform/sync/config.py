@@ -43,6 +43,12 @@ class SyncExecutionConfig(BaseModel):
         "Uses the sync's existing ARF data.",
     )
 
+    # Guardrail bypass (admin-only)
+    skip_guardrails: bool = Field(
+        False,
+        description="Skip guardrail checks (entity limits, payment status). Admin-only for backfills.",
+    )
+
     @model_validator(mode="after")
     def validate_config_logic(self):
         """Validate that config combinations make sense."""
