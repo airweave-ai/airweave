@@ -144,6 +144,90 @@ class CRUDAccessControlMembership(
 
         return len(memberships)
 
+    async def get_by_source_connection(
+        self,
+        db: AsyncSession,
+        source_connection_id: UUID,
+        organization_id: UUID,
+    ) -> List[AccessControlMembership]:
+        """Get all memberships for a specific source connection.
+
+        Used for orphan detection during ACL sync - compares memberships
+        in the database against memberships encountered during sync.
+
+        Args:
+            db: Database session
+            source_connection_id: Source connection ID to filter by
+            organization_id: Organization ID for multi-tenant isolation
+
+        Returns:
+            List of AccessControlMembership objects for this source connection
+        """
+        stmt = select(AccessControlMembership).where(
+            AccessControlMembership.organization_id == organization_id,
+            AccessControlMembership.source_connection_id == source_connection_id,
+        )
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def bulk_delete(
+        self,
+        db: AsyncSession,
+        ids: List[UUID],
+    ) -> int:
+        """Delete memberships by their database IDs.
+
+        Used for orphan cleanup - removes memberships that exist in the
+        database but were not encountered during the latest sync
+        (i.e., permissions that were revoked at the source).
+
+        Args:
+            db: Database session
+            ids: List of membership database IDs to delete
+
+        Returns:
+            Number of memberships deleted
+        """
+        from sqlalchemy import delete
+
+        if not ids:
+            return 0
+
+        stmt = delete(AccessControlMembership).where(AccessControlMembership.id.in_(ids))
+        result = await db.execute(stmt)
+        await db.commit()
+
+        return result.rowcount
+
+    async def delete_by_source_connection(
+        self,
+        db: AsyncSession,
+        source_connection_id: UUID,
+        organization_id: UUID,
+    ) -> int:
+        """Delete all memberships for a source connection.
+
+        Used when a source connection is deleted or for full ACL reset.
+
+        Args:
+            db: Database session
+            source_connection_id: Source connection ID
+            organization_id: Organization ID for multi-tenant isolation
+
+        Returns:
+            Number of memberships deleted
+        """
+        from sqlalchemy import delete
+
+        stmt = delete(AccessControlMembership).where(
+            AccessControlMembership.organization_id == organization_id,
+            AccessControlMembership.source_connection_id == source_connection_id,
+        )
+        result = await db.execute(stmt)
+        await db.commit()
+
+        return result.rowcount
+
 
 # Singleton instance
 access_control_membership = CRUDAccessControlMembership(AccessControlMembership)

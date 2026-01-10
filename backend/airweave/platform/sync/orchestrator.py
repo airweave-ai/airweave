@@ -474,7 +474,14 @@ class SyncOrchestrator:
         Collects MembershipTuple objects from the source's
         generate_access_control_memberships() method and processes them
         through the AccessControlPipeline to persist to PostgreSQL.
+
+        Key security feature: This method now tracks all encountered memberships
+        and passes them to the pipeline for orphan detection. Memberships that
+        exist in the database but were NOT encountered during this sync are
+        considered "orphans" (revoked permissions) and will be deleted.
         """
+        from airweave.platform.sync.pipeline.acl_membership_tracker import ACLMembershipTracker
+
         source = self.sync_context.source_instance
         source_name = getattr(source, "_name", "unknown")
 
@@ -490,16 +497,31 @@ class SyncOrchestrator:
             )
             return
 
-        # Collect memberships from source generator
+        # Create tracker for this sync (tracks encountered memberships for orphan detection)
+        tracker = ACLMembershipTracker(
+            source_connection_id=self.sync_context.source_connection_id,
+            organization_id=self.sync_context.organization_id,
+            logger=self.sync_context.logger,
+        )
+
+        # Collect memberships from source generator, tracking each one
         memberships: List[MembershipTuple] = []
         try:
             async for membership in source.generate_access_control_memberships():
-                memberships.append(membership)
+                # Track the membership - returns True if new (not a duplicate)
+                is_new = tracker.track_membership(
+                    member_id=membership.member_id,
+                    member_type=membership.member_type,
+                    group_id=membership.group_id,
+                )
 
-                # Log progress every 100 memberships
-                if len(memberships) % 100 == 0:
+                if is_new:
+                    memberships.append(membership)
+
+                # Log progress every 100 unique memberships
+                if len(memberships) % 100 == 0 and len(memberships) > 0:
                     self.sync_context.logger.debug(
-                        f"🔐 Collected {len(memberships)} memberships so far..."
+                        f"🔐 Collected {len(memberships)} unique memberships so far..."
                     )
         except Exception as e:
             self.sync_context.logger.error(
@@ -507,27 +529,34 @@ class SyncOrchestrator:
                 exc_info=True,
             )
             # Don't fail the entire sync for ACL errors
+            # Also don't do orphan cleanup if collection failed (could delete valid memberships)
             return
 
-        self.sync_context.logger.info(f"🔐 Collected {len(memberships)} total memberships")
+        stats = tracker.get_stats()
+        self.sync_context.logger.info(
+            f"🔐 Collected {stats.encountered} unique memberships "
+            f"({stats.duplicates_skipped} duplicates skipped)"
+        )
 
-        if not memberships:
-            self.sync_context.logger.info("🔐 No access control memberships to process")
-            return
-
-        # Process through AccessControlPipeline
+        # Process through AccessControlPipeline with encountered keys for orphan detection
+        # Note: Even if no new memberships, we still need to check for orphans!
         try:
             pipeline = AccessControlPipeline()
-            count = await pipeline.process(memberships, self.sync_context)
-            self.sync_context.logger.info(
-                f"🔐 Processed {count} access control memberships to PostgreSQL"
+            count = await pipeline.process(
+                memberships=memberships,
+                sync_context=self.sync_context,
+                encountered_keys=tracker.get_encountered_keys(),
             )
+            tracker.record_upserted(count)
         except Exception as e:
             self.sync_context.logger.error(
                 f"Error processing access control memberships: {get_error_message(e)}",
                 exc_info=True,
             )
             # Don't fail the entire sync for ACL errors
+
+        # Log final summary
+        tracker.log_summary()
 
     async def _finalize_progress_and_trackers(
         self, status: SyncJobStatus, error: Optional[str] = None

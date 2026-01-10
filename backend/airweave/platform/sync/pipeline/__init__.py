@@ -1,9 +1,10 @@
-"""Pipeline components for entity processing.
+"""Pipeline components for entity and ACL processing.
 
-This module contains the event-driven entity pipeline architecture:
+This module contains the event-driven pipeline architecture:
 
 Core Components:
 - EntityTracker: Central entity state tracking (dedup + counts + pubsub)
+- ACLMembershipTracker: ACL membership tracking (dedup + orphan detection)
 - ProcessingRequirement: What processing a destination expects from the pipeline
 
 Processing Helpers:
@@ -14,6 +15,10 @@ Processing Helpers:
 
 # Core components
 # Processing helpers
+from airweave.platform.sync.pipeline.acl_membership_tracker import (
+    ACLMembershipTracker,
+    ACLSyncStats,
+)
 from airweave.platform.sync.pipeline.cleanup_service import cleanup_service
 from airweave.platform.sync.pipeline.entity_tracker import EntityTracker
 from airweave.platform.sync.pipeline.enums import ProcessingRequirement
@@ -26,6 +31,8 @@ from airweave.platform.sync.pipeline.text_builder import (
 __all__ = [
     # Core components
     "EntityTracker",
+    "ACLMembershipTracker",
+    "ACLSyncStats",
     "ProcessingRequirement",
     # Processing helpers
     "cleanup_service",
