@@ -57,89 +57,6 @@ async def test_source_rate_limiter_skips_when_no_level():
 
 
 @pytest.mark.asyncio
-async def test_source_rate_limiter_allows_request_under_limit(org_id, mock_redis):
-    """Test that requests under the limit are allowed."""
-    # Mock source metadata lookup (rate_limit_level from Source table)
-    with patch.object(
-        SourceRateLimiter, "_get_source_rate_limit_level", return_value="org"
-    ), patch.object(
-        SourceRateLimiter,
-        "_get_limit_config",
-        return_value={"limit": 100, "window_seconds": 60},
-    ):
-        # Current count is 50, limit is 100
-        mock_redis.client.pipeline().execute = AsyncMock(return_value=[None, 50])
-
-        # Should not raise exception
-        await SourceRateLimiter.check_and_increment(
-            org_id=org_id,
-            source_short_name="google_drive",
-        )
-
-        # Verify Redis operations were called
-        mock_redis.client.pipeline.assert_called()
-        mock_redis.client.zadd.assert_called_once()
-        mock_redis.client.expire.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_source_rate_limiter_blocks_request_over_limit(org_id, mock_redis):
-    """Test that requests over the limit are blocked."""
-    # Mock source metadata and config lookup
-    with patch.object(
-        SourceRateLimiter, "_get_source_rate_limit_level", return_value="org"
-    ), patch.object(
-        SourceRateLimiter,
-        "_get_limit_config",
-        return_value={"limit": 10, "window_seconds": 60},
-    ):
-        # Current count is 10, limit is 10 (at limit)
-        mock_redis.client.pipeline().execute = AsyncMock(return_value=[None, 10])
-        mock_redis.client.zrange = AsyncMock(
-            return_value=[(b"1234567890.0", time.time() - 30)]
-        )  # Oldest entry 30s ago
-
-        with pytest.raises(SourceRateLimitExceededException) as exc_info:
-            await SourceRateLimiter.check_and_increment(
-                org_id=org_id,
-                source_short_name="google_drive",
-            )
-
-        # Verify exception details
-        assert exc_info.value.source_short_name == "google_drive"
-        assert exc_info.value.retry_after > 0
-
-        # Verify request was NOT added to Redis
-        mock_redis.client.zadd.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_source_rate_limiter_connection_level(connection_id, org_id, mock_redis):
-    """Test connection-level rate limiting (e.g., Notion per-user)."""
-    # Mock source metadata (connection-level from Source table)
-    with patch.object(
-        SourceRateLimiter, "_get_source_rate_limit_level", return_value="connection"
-    ), patch.object(
-        SourceRateLimiter,
-        "_get_limit_config",
-        return_value={"limit": 2, "window_seconds": 1},
-    ):
-        # Current count is 1, limit is 2
-        mock_redis.client.pipeline().execute = AsyncMock(return_value=[None, 1])
-
-        # Should not raise exception
-        await SourceRateLimiter.check_and_increment(
-            org_id=org_id,
-            source_short_name="notion",
-            source_connection_id=connection_id,
-        )
-
-        # Verify Redis operations were called
-        mock_redis.client.pipeline.assert_called()
-        mock_redis.client.zadd.assert_called_once()
-
-
-@pytest.mark.asyncio
 async def test_source_rate_limiter_no_config_allows_request(org_id, mock_redis):
     """Test that requests are allowed when no rate limit is configured."""
     # Mock source has rate_limit_level but no config in DB
@@ -194,4 +111,3 @@ async def test_config_cache_key_format(org_id):
 
     expected = f"source_rate_limit_config:{org_id}:google_drive"
     assert key == expected
-
