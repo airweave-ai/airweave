@@ -1,0 +1,6 @@
+# Generated files
+*.gen.ts
+dist
+.output
+node_modules
+
