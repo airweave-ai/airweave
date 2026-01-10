@@ -1,13 +1,13 @@
 """Jira entity schemas.
 
-Entity schemas for Jira Projects, Issues, and Zephyr Scale test management entities.
+Entity schemas for Jira Projects, Issues, Comments, and Zephyr Scale test management entities.
 
 Zephyr Scale is a test management plugin for Jira that creates separate entities
 (Test Cases, Test Cycles, Test Plans) accessible via the Zephyr Scale API.
 """
 
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import computed_field
 
@@ -72,6 +72,51 @@ class JiraIssueEntity(BaseEntity):
     project_key: str = AirweaveField(
         ..., description="Key of the project that owns this issue.", embeddable=True
     )
+    # User assignments
+    assignee_account_id: Optional[str] = AirweaveField(
+        None, description="Account ID of the assigned user.", embeddable=True
+    )
+    assignee_display_name: Optional[str] = AirweaveField(
+        None, description="Display name of the assigned user.", embeddable=True
+    )
+    reporter_account_id: Optional[str] = AirweaveField(
+        None, description="Account ID of the reporter.", embeddable=True
+    )
+    reporter_display_name: Optional[str] = AirweaveField(
+        None, description="Display name of the reporter.", embeddable=True
+    )
+    # Labels and categorization
+    labels: Optional[List[str]] = AirweaveField(
+        None, description="Labels associated with the issue.", embeddable=True
+    )
+    # Sprint context (Agile)
+    sprint_id: Optional[str] = AirweaveField(
+        None, description="ID of the current/latest sprint.", embeddable=True
+    )
+    sprint_name: Optional[str] = AirweaveField(
+        None, description="Name of the current/latest sprint.", embeddable=True
+    )
+    # Epic context
+    epic_key: Optional[str] = AirweaveField(
+        None, description="Key of the parent epic (if any).", embeddable=True
+    )
+    epic_name: Optional[str] = AirweaveField(
+        None, description="Name of the parent epic (if any).", embeddable=True
+    )
+    # Parent-child relationships
+    parent_issue_key: Optional[str] = AirweaveField(
+        None, description="Key of the parent issue (for subtasks).", embeddable=True
+    )
+    parent_issue_id: Optional[str] = AirweaveField(
+        None, description="ID of the parent issue.", embeddable=True
+    )
+    subtask_keys: Optional[List[str]] = AirweaveField(
+        None, description="Keys of child/subtask issues.", embeddable=True
+    )
+    # Comment count for reference
+    comment_count: Optional[int] = AirweaveField(
+        None, description="Total number of comments on the issue.", embeddable=True
+    )
     created_time: datetime = AirweaveField(
         ..., description="Timestamp when the issue was created.", is_created_at=True
     )
@@ -85,6 +130,47 @@ class JiraIssueEntity(BaseEntity):
     @computed_field(return_type=str)
     def web_url(self) -> str:
         """UI link for the Jira issue."""
+        return self.web_url_value or ""
+
+
+class JiraCommentEntity(BaseEntity):
+    """Schema for a Jira Comment.
+
+    Reference:
+        https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issue-comments/
+    """
+
+    comment_id: str = AirweaveField(
+        ..., description="Unique identifier for the comment.", is_entity_id=True
+    )
+    body: str = AirweaveField(
+        ..., description="Content of the comment.", embeddable=True, is_name=True
+    )
+    author_account_id: Optional[str] = AirweaveField(
+        None, description="Account ID of the comment author.", embeddable=True
+    )
+    author_display_name: Optional[str] = AirweaveField(
+        None, description="Display name of the comment author.", embeddable=True
+    )
+    issue_key: str = AirweaveField(
+        ..., description="Key of the issue this comment belongs to.", embeddable=True
+    )
+    issue_id: str = AirweaveField(
+        ..., description="ID of the issue this comment belongs to.", embeddable=True
+    )
+    created_time: datetime = AirweaveField(
+        ..., description="Timestamp when the comment was created.", is_created_at=True
+    )
+    updated_time: datetime = AirweaveField(
+        ..., description="Timestamp when the comment was last updated.", is_updated_at=True
+    )
+    web_url_value: Optional[str] = AirweaveField(
+        None, description="Link to the comment in Jira.", embeddable=False, unhashable=True
+    )
+
+    @computed_field(return_type=str)
+    def web_url(self) -> str:
+        """UI link for the Jira comment."""
         return self.web_url_value or ""
 
 
