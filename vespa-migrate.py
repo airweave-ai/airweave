@@ -124,15 +124,16 @@ def truncate(s: Optional[str], max_len: int = 20) -> str:
     """Truncate string with ellipsis."""
     if not s:
         return "—"
-    return s[:max_len-1] + "…" if len(s) > max_len else s
+    return s[: max_len - 1] + "…" if len(s) > max_len else s
 
 
 class MigrationStatus(str, Enum):
     """Migration status categories."""
+
     COMPLETED = "completed"  # Has successful Vespa job
-    FAILED = "failed"        # Last Vespa job failed
-    RUNNING = "running"      # Vespa job in progress
-    PENDING = "pending"      # No Vespa job yet
+    FAILED = "failed"  # Last Vespa job failed
+    RUNNING = "running"  # Vespa job in progress
+    PENDING = "pending"  # No Vespa job yet
     ALL = "all"
 
 
@@ -158,20 +159,14 @@ def categorize_sync(sync: dict) -> MigrationStatus:
 @app.command("list")
 def list_syncs(
     status: MigrationStatus = typer.Option(
-        MigrationStatus.ALL, "--status", "-s",
-        help="Filter by migration status"
+        MigrationStatus.ALL, "--status", "-s", help="Filter by migration status"
     ),
     org: Optional[str] = typer.Option(
-        None, "--org", "-o",
-        help="Filter by organization ID"
+        None, "--org", "-o", help="Filter by organization ID"
     ),
-    limit: int = typer.Option(
-        200, "--limit", "-l",
-        help="Maximum syncs to fetch"
-    ),
+    limit: int = typer.Option(200, "--limit", "-l", help="Maximum syncs to fetch"),
     sort: str = typer.Option(
-        "entities", "--sort",
-        help="Sort by: entities, name, status, time"
+        "entities", "--sort", help="Sort by: entities, name, status, time"
     ),
 ):
     """
@@ -266,7 +261,9 @@ def list_syncs(
         summary.append("\n📊 Summary: ", style="bold")
         summary.append(f"{len(syncs)} syncs", style="white")
         summary.append(" | ", style="dim")
-        summary.append(f"✅ {counts[MigrationStatus.COMPLETED]} completed", style="green")
+        summary.append(
+            f"✅ {counts[MigrationStatus.COMPLETED]} completed", style="green"
+        )
         summary.append(" | ", style="dim")
         summary.append(f"🔄 {counts[MigrationStatus.RUNNING]} running", style="yellow")
         summary.append(" | ", style="dim")
@@ -302,7 +299,9 @@ def sync_status(
             raise typer.Exit(1)
 
         syncs = resp.json()
-        sync = next((s for s in syncs if str(s.get("id", "")).startswith(sync_id)), None)
+        sync = next(
+            (s for s in syncs if str(s.get("id", "")).startswith(sync_id)), None
+        )
 
         if not sync:
             console.print(f"[red]Sync not found:[/] {sync_id}")
@@ -310,12 +309,14 @@ def sync_status(
 
         # Display detailed info
         console.print()
-        console.print(Panel(
-            f"[bold]{sync.get('source_short_name', 'Unknown')}[/]\n"
-            f"[dim]{sync.get('id')}[/]",
-            title="Sync Details",
-            border_style="cyan",
-        ))
+        console.print(
+            Panel(
+                f"[bold]{sync.get('source_short_name', 'Unknown')}[/]\n"
+                f"[dim]{sync.get('id')}[/]",
+                title="Sync Details",
+                border_style="cyan",
+            )
+        )
 
         info_table = Table(box=None, show_header=False, padding=(0, 2))
         info_table.add_column("Key", style="dim")
@@ -325,12 +326,21 @@ def sync_status(
         info_table.add_row("Organization", str(sync.get("organization_id") or "—"))
         info_table.add_row("Entities", f"{sync.get('total_entity_count', 0):,}")
         info_table.add_row("", "")
-        info_table.add_row("Last Job Status", str(format_status(sync.get("last_job_status"))))
+        info_table.add_row(
+            "Last Job Status", str(format_status(sync.get("last_job_status")))
+        )
         info_table.add_row("Last Job Time", format_time(sync.get("last_job_at")))
         info_table.add_row("", "")
-        info_table.add_row("Vespa Status", str(format_status(sync.get("last_vespa_job_status"))))
+        info_table.add_row(
+            "Vespa Status", str(format_status(sync.get("last_vespa_job_status")))
+        )
         info_table.add_row("Vespa Job Time", format_time(sync.get("last_vespa_job_at")))
-        info_table.add_row("Vespa Job ID", str(sync.get("last_vespa_job_id") or "—")[:8] + "…" if sync.get("last_vespa_job_id") else "—")
+        info_table.add_row(
+            "Vespa Job ID",
+            str(sync.get("last_vespa_job_id") or "—")[:8] + "…"
+            if sync.get("last_vespa_job_id")
+            else "—",
+        )
 
         console.print(info_table)
         console.print()
@@ -339,7 +349,9 @@ def sync_status(
 @app.command("run")
 def run_migration(
     sync_id: str = typer.Argument(..., help="Sync ID to migrate"),
-    dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would be done"),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", "-n", help="Show what would be done"
+    ),
 ):
     """
     🚀 Trigger ARF → Vespa replay for a sync.
@@ -356,7 +368,9 @@ def run_migration(
             raise typer.Exit(1)
 
         syncs = resp.json()
-        sync = next((s for s in syncs if str(s.get("id", "")).startswith(sync_id)), None)
+        sync = next(
+            (s for s in syncs if str(s.get("id", "")).startswith(sync_id)), None
+        )
 
         if not sync:
             console.print(f"[red]Sync not found:[/] {sync_id}")
@@ -391,25 +405,29 @@ def run_migration(
                     "replay_from_arf": True,
                     "enable_raw_data_handler": False,
                     "enable_postgres_handler": False,
-                }
+                },
             )
             resp.raise_for_status()
         except httpx.HTTPError as e:
             console.print(f"[red]Failed to trigger migration:[/] {e}")
-            if hasattr(e, 'response') and e.response is not None:
+            if hasattr(e, "response") and e.response is not None:
                 console.print(f"[dim]{e.response.text}[/]")
             raise typer.Exit(1)
 
         result = resp.json()
-        console.print(f"[green]✅ Migration triggered![/]")
+        console.print("[green]✅ Migration triggered![/]")
         console.print(f"[dim]Job ID: {result.get('id', 'unknown')}[/]")
 
 
 @app.command("run-pending")
 def run_pending(
     limit: int = typer.Option(10, "--limit", "-l", help="Max syncs to process"),
-    dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would be done"),
-    min_entities: int = typer.Option(0, "--min-entities", help="Min entity count to process"),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", "-n", help="Show what would be done"
+    ),
+    min_entities: int = typer.Option(
+        0, "--min-entities", help="Min entity count to process"
+    ),
 ):
     """
     🚀 Trigger ARF → Vespa replay for all pending syncs.
@@ -428,13 +446,16 @@ def run_pending(
 
         # Filter to pending syncs
         pending = [
-            s for s in syncs
+            s
+            for s in syncs
             if categorize_sync(s) == MigrationStatus.PENDING
             and s.get("total_entity_count", 0) >= min_entities
         ]
 
         # Sort by entity count (larger first)
-        pending = sorted(pending, key=lambda s: s.get("total_entity_count", 0), reverse=True)
+        pending = sorted(
+            pending, key=lambda s: s.get("total_entity_count", 0), reverse=True
+        )
         pending = pending[:limit]
 
         if not pending:
@@ -444,7 +465,9 @@ def run_pending(
         total_entities = sum(s.get("total_entity_count", 0) for s in pending)
 
         console.print()
-        console.print(f"[bold]Found {len(pending)} pending syncs[/] ({total_entities:,} entities)")
+        console.print(
+            f"[bold]Found {len(pending)} pending syncs[/] ({total_entities:,} entities)"
+        )
         console.print()
 
         for s in pending:
@@ -455,7 +478,9 @@ def run_pending(
         console.print()
 
         if dry_run:
-            console.print("[yellow]DRY RUN:[/] Would trigger migrations for above syncs")
+            console.print(
+                "[yellow]DRY RUN:[/] Would trigger migrations for above syncs"
+            )
             return
 
         if not typer.confirm(f"Trigger Vespa migration for {len(pending)} syncs?"):
@@ -478,7 +503,7 @@ def run_pending(
                         "replay_from_arf": True,
                         "enable_raw_data_handler": False,
                         "enable_postgres_handler": False,
-                    }
+                    },
                 )
                 resp.raise_for_status()
                 console.print(f"  [green]✅[/] {source}")
@@ -494,8 +519,12 @@ def run_pending(
 @app.command("sync-to-vespa")
 def sync_to_vespa(
     sync_id: str = typer.Argument(..., help="Sync ID to run"),
-    dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would be done"),
-    skip_qdrant: bool = typer.Option(True, "--skip-qdrant/--include-qdrant", help="Skip Qdrant write"),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", "-n", help="Show what would be done"
+    ),
+    skip_qdrant: bool = typer.Option(
+        True, "--skip-qdrant/--include-qdrant", help="Skip Qdrant write"
+    ),
 ):
     """
     🔄 Sync from source to Vespa (fetches fresh data from authenticated source).
@@ -512,7 +541,9 @@ def sync_to_vespa(
             raise typer.Exit(1)
 
         syncs = resp.json()
-        sync = next((s for s in syncs if str(s.get("id", "")).startswith(sync_id)), None)
+        sync = next(
+            (s for s in syncs if str(s.get("id", "")).startswith(sync_id)), None
+        )
 
         if not sync:
             console.print(f"[red]Sync not found:[/] {sync_id}")
@@ -526,7 +557,10 @@ def sync_to_vespa(
         console.print(f"[bold]Sync:[/] {source}")
         console.print(f"[dim]ID:[/] {full_id}")
         console.print(f"[dim]Current entities:[/] {entities:,}")
-        console.print(f"[dim]Mode:[/] Fresh sync from source → Vespa" + (" only" if skip_qdrant else " + Qdrant"))
+        console.print(
+            "[dim]Mode:[/] Fresh sync from source → Vespa"
+            + (" only" if skip_qdrant else " + Qdrant")
+        )
         console.print()
 
         if dry_run:
@@ -550,22 +584,30 @@ def sync_to_vespa(
             resp.raise_for_status()
         except httpx.HTTPError as e:
             console.print(f"[red]Failed to trigger sync:[/] {e}")
-            if hasattr(e, 'response') and e.response is not None:
+            if hasattr(e, "response") and e.response is not None:
                 console.print(f"[dim]{e.response.text}[/]")
             raise typer.Exit(1)
 
         result = resp.json()
-        console.print(f"[green]✅ Sync triggered![/]")
+        console.print("[green]✅ Sync triggered![/]")
         console.print(f"[dim]Job ID: {result.get('id', 'unknown')}[/]")
 
 
 @app.command("sync-batch")
 def sync_batch(
     limit: int = typer.Option(5, "--limit", "-l", help="Max syncs to process"),
-    dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would be done"),
-    min_entities: int = typer.Option(0, "--min-entities", help="Min entity count to process"),
-    source: Optional[str] = typer.Option(None, "--source", "-s", help="Filter by source type"),
-    skip_qdrant: bool = typer.Option(True, "--skip-qdrant/--include-qdrant", help="Skip Qdrant write"),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", "-n", help="Show what would be done"
+    ),
+    min_entities: int = typer.Option(
+        0, "--min-entities", help="Min entity count to process"
+    ),
+    source: Optional[str] = typer.Option(
+        None, "--source", "-s", help="Filter by source type"
+    ),
+    skip_qdrant: bool = typer.Option(
+        True, "--skip-qdrant/--include-qdrant", help="Skip Qdrant write"
+    ),
 ):
     """
     🔄 Batch sync from sources to Vespa (fetches fresh data).
@@ -584,7 +626,8 @@ def sync_batch(
 
         # Filter to pending syncs with source info
         pending = [
-            s for s in syncs
+            s
+            for s in syncs
             if categorize_sync(s) == MigrationStatus.PENDING
             and s.get("total_entity_count", 0) >= min_entities
             and s.get("source_short_name")  # Must have source info
@@ -595,7 +638,9 @@ def sync_batch(
             pending = [s for s in pending if s.get("source_short_name") == source]
 
         # Sort by entity count (larger first)
-        pending = sorted(pending, key=lambda s: s.get("total_entity_count", 0), reverse=True)
+        pending = sorted(
+            pending, key=lambda s: s.get("total_entity_count", 0), reverse=True
+        )
         pending = pending[:limit]
 
         if not pending:
@@ -605,8 +650,13 @@ def sync_batch(
         total_entities = sum(s.get("total_entity_count", 0) for s in pending)
 
         console.print()
-        console.print(f"[bold]Found {len(pending)} syncs to process[/] ({total_entities:,} entities)")
-        console.print(f"[dim]Mode:[/] Fresh sync from source → Vespa" + (" only" if skip_qdrant else " + Qdrant"))
+        console.print(
+            f"[bold]Found {len(pending)} syncs to process[/] ({total_entities:,} entities)"
+        )
+        console.print(
+            "[dim]Mode:[/] Fresh sync from source → Vespa"
+            + (" only" if skip_qdrant else " + Qdrant")
+        )
         console.print()
 
         for s in pending:
@@ -678,7 +728,7 @@ def compare_search(
                 results[dest] = None
 
         console.print()
-        console.print(f"[bold]Search:[/] \"{query}\"")
+        console.print(f'[bold]Search:[/] "{query}"')
         console.print(f"[dim]Collection:[/] {collection_id}")
         console.print()
 
@@ -686,7 +736,9 @@ def compare_search(
         for dest in ["qdrant", "vespa"]:
             data = results[dest]
             if not data:
-                console.print(f"[bold {('cyan' if dest == 'qdrant' else 'magenta')}]{dest.upper()}[/]: [red]Error[/]")
+                console.print(
+                    f"[bold {('cyan' if dest == 'qdrant' else 'magenta')}]{dest.upper()}[/]: [red]Error[/]"
+                )
                 continue
 
             items = data.get("results", [])
@@ -702,12 +754,18 @@ def compare_search(
                     # Handle nested payload structure (Vespa) vs flat structure (Qdrant)
                     payload = item.get("payload", {})
                     title = (
-                        item.get("title") or item.get("name") or
-                        payload.get("name") or payload.get("title") or
-                        item.get("entity_id") or payload.get("entity_id") or "Unknown"
+                        item.get("title")
+                        or item.get("name")
+                        or payload.get("name")
+                        or payload.get("title")
+                        or item.get("entity_id")
+                        or payload.get("entity_id")
+                        or "Unknown"
                     )
                     score = item.get("score", 0)
-                    console.print(f"  {i}. {truncate(title, 60)} [dim](score: {score:.3f})[/]")
+                    console.print(
+                        f"  {i}. {truncate(title, 60)} [dim](score: {score:.3f})[/]"
+                    )
 
             console.print()
 
@@ -715,8 +773,12 @@ def compare_search(
         def get_entity_id(r):
             return r.get("entity_id") or r.get("payload", {}).get("entity_id")
 
-        qdrant_ids = set(get_entity_id(r) for r in (results.get("qdrant") or {}).get("results", []))
-        vespa_ids = set(get_entity_id(r) for r in (results.get("vespa") or {}).get("results", []))
+        qdrant_ids = set(
+            get_entity_id(r) for r in (results.get("qdrant") or {}).get("results", [])
+        )
+        vespa_ids = set(
+            get_entity_id(r) for r in (results.get("vespa") or {}).get("results", [])
+        )
 
         if qdrant_ids and vespa_ids:
             overlap = len(qdrant_ids & vespa_ids)
@@ -732,6 +794,330 @@ def compare_search(
                 console.print(f"[cyan]Only in Qdrant:[/] {len(only_qdrant)}")
             if only_vespa:
                 console.print(f"[magenta]Only in Vespa:[/] {len(only_vespa)}")
+
+
+class SearchDestination(str, Enum):
+    """Search destination options."""
+
+    QDRANT = "qdrant"
+    VESPA = "vespa"
+
+
+@app.command("search-as-user")
+def search_as_user(
+    collection_id: str = typer.Argument(..., help="Collection readable ID"),
+    query: str = typer.Argument(..., help="Search query"),
+    user_principal: str = typer.Argument(
+        ..., help="User principal (username) to search as"
+    ),
+    destination: SearchDestination = typer.Option(
+        SearchDestination.VESPA,
+        "--destination",
+        "-d",
+        help="Search destination: 'qdrant' or 'vespa' (default)",
+    ),
+    limit: int = typer.Option(10, "--limit", "-l", help="Maximum results to return"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed output"),
+):
+    """
+    🔐 Search collection with access control for a specific user.
+
+    This command tests ACL filtering by searching as a specific user.
+    It resolves the user's group memberships and filters results based
+    on their permissions.
+
+    Use this to verify:
+    - ACL sync correctness
+    - User permission enforcement
+    - Access control filtering works properly
+
+    Example:
+        vespa-migrate.py search-as-user my-collection "project report" john --destination vespa
+        vespa-migrate.py search-as-user my-collection "budget" alice -d qdrant -l 20
+    """
+    with get_client() as client:
+        try:
+            resp = client.post(
+                f"/admin/collections/{collection_id}/search/as-user",
+                params={
+                    "user_principal": user_principal,
+                    "destination": destination.value,
+                },
+                json={"query": query, "limit": limit},
+            )
+            resp.raise_for_status()
+        except httpx.HTTPError as e:
+            console.print(f"[red]Search Error:[/] {e}")
+            if hasattr(e, "response") and e.response is not None:
+                try:
+                    error_detail = e.response.json()
+                    console.print(f"[dim]Detail: {error_detail}[/]")
+                except Exception:
+                    console.print(f"[dim]{e.response.text}[/]")
+            raise typer.Exit(1)
+
+        data = resp.json()
+
+        console.print()
+        console.print("[bold]🔐 Access-Controlled Search[/]")
+        console.print(f"[dim]Collection:[/] {collection_id}")
+        console.print(f'[dim]Query:[/] "{query}"')
+        console.print(f"[dim]User:[/] {user_principal}")
+        console.print(f"[dim]Destination:[/] {destination.value}")
+        console.print()
+
+        items = data.get("results", [])
+        total = data.get("total", len(items))
+
+        if not items:
+            console.print("[yellow]No results found[/]")
+            console.print()
+            console.print(
+                "[dim]This could mean:[/]\n"
+                "  1. No matching documents exist\n"
+                "  2. User has no access to matching documents\n"
+                "  3. Query didn't match any content"
+            )
+            raise typer.Exit(0)
+
+        console.print(f"[green]Found {total} results[/] (showing {len(items)})")
+        console.print()
+
+        # Build results table
+        table = Table(
+            title=f"Results for user '{user_principal}'",
+            box=box.ROUNDED,
+            show_lines=False,
+            header_style="bold cyan",
+        )
+
+        table.add_column("#", style="dim", width=3)
+        table.add_column("Name/Title", max_width=50)
+        table.add_column("Type", style="cyan", max_width=30)
+        table.add_column("Score", justify="right", style="green")
+
+        for i, item in enumerate(items[:limit], 1):
+            # Handle nested payload structure (Vespa) vs flat structure (Qdrant)
+            payload = item.get("payload", {})
+            title = (
+                item.get("title")
+                or item.get("name")
+                or payload.get("name")
+                or payload.get("title")
+                or item.get("entity_id")
+                or payload.get("entity_id")
+                or "Unknown"
+            )
+            entity_type = (
+                item.get("entity_type")
+                or payload.get("airweave_system_metadata_entity_type")
+                or payload.get("entity_type")
+                or "—"
+            )
+            score = item.get("score", 0)
+
+            table.add_row(
+                str(i),
+                truncate(title, 50),
+                truncate(entity_type, 30),
+                f"{score:.3f}",
+            )
+
+        console.print(table)
+
+        if verbose and items:
+            console.print()
+            console.print("[bold]📋 Detailed Results[/]")
+            console.print()
+
+            for i, item in enumerate(items[:limit], 1):
+                payload = item.get("payload", {})
+
+                # Extract entity info
+                entity_id = (
+                    item.get("entity_id") or payload.get("entity_id") or "Unknown"
+                )
+                title = (
+                    item.get("title")
+                    or item.get("name")
+                    or payload.get("name")
+                    or payload.get("title")
+                    or entity_id
+                )
+                entity_type = (
+                    item.get("entity_type")
+                    or payload.get("airweave_system_metadata_entity_type")
+                    or payload.get("entity_type")
+                    or "—"
+                )
+
+                # Access control info
+                is_public = (
+                    item.get("access_is_public")
+                    or payload.get("access_is_public")
+                    or False
+                )
+                viewers = (
+                    item.get("access_viewers") or payload.get("access_viewers") or []
+                )
+
+                console.print(f"[bold]{i}. {title}[/]")
+                console.print(f"   [dim]Entity ID:[/] {entity_id}")
+                console.print(f"   [dim]Type:[/] {entity_type}")
+                console.print(f"   [dim]Score:[/] {item.get('score', 0):.4f}")
+                console.print(f"   [dim]Public:[/] {'Yes' if is_public else 'No'}")
+                if viewers:
+                    console.print(
+                        f"   [dim]Viewers:[/] {', '.join(viewers[:5])}"
+                        + (f" (+{len(viewers) - 5} more)" if len(viewers) > 5 else "")
+                    )
+                console.print()
+
+        console.print()
+
+
+@app.command("test-acl")
+def test_acl(
+    collection_id: str = typer.Argument(..., help="Collection readable ID"),
+    query: str = typer.Argument(..., help="Search query"),
+    users: List[str] = typer.Argument(
+        ..., help="List of user principals to test (space-separated)"
+    ),
+    destination: SearchDestination = typer.Option(
+        SearchDestination.VESPA, "--destination", "-d", help="Search destination"
+    ),
+    limit: int = typer.Option(5, "--limit", "-l", help="Results per user"),
+):
+    """
+    🧪 Test ACL filtering by comparing search results for multiple users.
+
+    Runs the same query for multiple users and compares what each user can see.
+    Useful for verifying that access controls are working correctly.
+
+    Example:
+        vespa-migrate.py test-acl my-collection "budget" alice bob charlie
+        vespa-migrate.py test-acl my-collection "project" user1 user2 -d vespa -l 10
+    """
+    with get_client() as client:
+        all_results = {}
+        all_entity_ids = set()
+
+        console.print()
+        console.print(f"[bold]🧪 ACL Test: Comparing {len(users)} users[/]")
+        console.print(f"[dim]Collection:[/] {collection_id}")
+        console.print(f'[dim]Query:[/] "{query}"')
+        console.print(f"[dim]Destination:[/] {destination.value}")
+        console.print()
+
+        # Run search for each user
+        for user in users:
+            try:
+                resp = client.post(
+                    f"/admin/collections/{collection_id}/search/as-user",
+                    params={
+                        "user_principal": user,
+                        "destination": destination.value,
+                    },
+                    json={"query": query, "limit": limit},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                results = data.get("results", [])
+                all_results[user] = results
+
+                # Collect all entity IDs
+                for r in results:
+                    entity_id = r.get("entity_id") or r.get("payload", {}).get(
+                        "entity_id"
+                    )
+                    if entity_id:
+                        all_entity_ids.add(entity_id)
+
+                console.print(f"  [green]✓[/] {user}: {len(results)} results")
+            except httpx.HTTPError as e:
+                console.print(f"  [red]✗[/] {user}: Error - {e}")
+                all_results[user] = []
+
+        console.print()
+
+        # Build comparison table
+        if all_entity_ids:
+            table = Table(
+                title="Results Comparison",
+                box=box.ROUNDED,
+                header_style="bold cyan",
+            )
+
+            table.add_column("Entity", max_width=40)
+            for user in users:
+                table.add_column(user, justify="center", max_width=15)
+
+            # Build entity info mapping
+            entity_info = {}
+            for user, results in all_results.items():
+                for r in results:
+                    entity_id = r.get("entity_id") or r.get("payload", {}).get(
+                        "entity_id"
+                    )
+                    if entity_id and entity_id not in entity_info:
+                        payload = r.get("payload", {})
+                        name = (
+                            r.get("name")
+                            or r.get("title")
+                            or payload.get("name")
+                            or payload.get("title")
+                            or entity_id[:20]
+                        )
+                        entity_info[entity_id] = truncate(name, 40)
+
+            for entity_id in sorted(all_entity_ids):
+                name = entity_info.get(entity_id, entity_id[:20])
+                row = [name]
+
+                for user in users:
+                    user_ids = {
+                        r.get("entity_id") or r.get("payload", {}).get("entity_id")
+                        for r in all_results.get(user, [])
+                    }
+                    if entity_id in user_ids:
+                        row.append("[green]✓[/]")
+                    else:
+                        row.append("[red]✗[/]")
+
+                table.add_row(*row)
+
+            console.print(table)
+        else:
+            console.print("[yellow]No results found for any user[/]")
+
+        console.print()
+
+        # Summary statistics
+        console.print("[bold]📊 Summary[/]")
+        for user in users:
+            count = len(all_results.get(user, []))
+            console.print(f"  {user}: {count} results")
+
+        # Check for exclusive results
+        console.print()
+        for user in users:
+            user_ids = {
+                r.get("entity_id") or r.get("payload", {}).get("entity_id")
+                for r in all_results.get(user, [])
+            }
+            other_ids = set()
+            for other_user, results in all_results.items():
+                if other_user != user:
+                    other_ids.update(
+                        r.get("entity_id") or r.get("payload", {}).get("entity_id")
+                        for r in results
+                    )
+
+            exclusive = user_ids - other_ids
+            if exclusive:
+                console.print(f"  [cyan]Only {user} sees:[/] {len(exclusive)} entities")
+
+        console.print()
 
 
 @app.command("cancel")
