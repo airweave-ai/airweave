@@ -15,6 +15,8 @@ class EntityBase(BaseModel):
     entity_id: str
     entity_definition_id: Optional[UUID] = None
     hash: str
+    # Optional collection_id for collection-level deduplication
+    collection_id: Optional[UUID] = None
 
     class Config:
         """Pydantic config for EntityBase."""
@@ -36,6 +38,7 @@ class EntityUpdate(BaseModel):
     entity_id: Optional[str] = None
     entity_definition_id: Optional[UUID] = None
     hash: Optional[str] = None
+    collection_id: Optional[UUID] = None
 
 
 class EntityInDBBase(EntityBase):

@@ -83,11 +83,18 @@ class TestBehaviorConfig:
         config = BehaviorConfig()
         assert config.skip_hash_comparison is False
         assert config.replay_from_arf is False
+        assert config.dedupe_by_collection is False
 
     def test_with_custom_values(self):
         """Test behavior config with custom values."""
         config = BehaviorConfig(replay_from_arf=True)
         assert config.replay_from_arf is True
+
+    def test_dedupe_by_collection(self):
+        """Test dedupe_by_collection flag for collection-level deduplication."""
+        config = BehaviorConfig(dedupe_by_collection=True)
+        assert config.dedupe_by_collection is True
+        assert config.skip_hash_comparison is False  # Other defaults preserved
 
 
 class TestSyncConfig:
@@ -176,6 +183,38 @@ class TestSyncConfigValidation:
             destinations=DestinationConfig(exclude_destinations=[uuid4()])
         )
         assert config is not None
+
+    def test_dedupe_by_collection_without_postgres_warns(self):
+        """Test warning when dedupe_by_collection enabled but postgres handler disabled."""
+        import warnings
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            SyncConfig(
+                behavior=BehaviorConfig(dedupe_by_collection=True),
+                handlers=HandlerConfig(enable_postgres_handler=False),
+            )
+            # Check that a warning was issued
+            assert len(w) >= 1
+            assert any("dedupe_by_collection" in str(warning.message) for warning in w)
+
+    def test_dedupe_by_collection_with_postgres_no_warn(self):
+        """Test no warning when dedupe_by_collection enabled with postgres handler."""
+        import warnings
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            config = SyncConfig(
+                behavior=BehaviorConfig(dedupe_by_collection=True),
+                handlers=HandlerConfig(enable_postgres_handler=True),
+            )
+            # No warning about dedupe_by_collection
+            dedupe_warnings = [
+                warning for warning in w
+                if "dedupe_by_collection" in str(warning.message)
+            ]
+            assert len(dedupe_warnings) == 0
+            assert config.behavior.dedupe_by_collection is True
 
 
 class TestSyncConfigPresets:

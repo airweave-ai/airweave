@@ -62,7 +62,11 @@ class EntityActionResolver:
             SyncFailureError: If entity type not found in entity_map or missing hash
         """
         # Check if skip_hash_comparison is enabled
-        if sync_context.execution_config and sync_context.execution_config.skip_hash_comparison:
+        skip_hash = (
+            sync_context.execution_config
+            and sync_context.execution_config.behavior.skip_hash_comparison
+        )
+        if skip_hash:
             sync_context.logger.info(
                 "skip_hash_comparison enabled: Forcing all entities as INSERT actions"
             )
@@ -195,19 +199,38 @@ class EntityActionResolver:
         if not entity_requests:
             return {}
 
+        # Check if collection-level deduplication is enabled
+        use_collection_dedup = (
+            sync_context.execution_config
+            and sync_context.execution_config.behavior.dedupe_by_collection
+        )
+
         try:
             lookup_start = time.time()
             num_chunks = (len(entity_requests) + 999) // 1000
-            sync_context.logger.debug(
-                f"Bulk entity lookup for {len(entity_requests)} entities ({num_chunks} chunks)..."
-            )
 
-            async with get_db_context() as db:
-                existing_map = await crud.entity.bulk_get_by_entity_sync_and_definition(
-                    db,
-                    sync_id=sync_context.sync.id,
-                    entity_requests=entity_requests,
+            if use_collection_dedup:
+                sync_context.logger.debug(
+                    f"Collection-level dedup: lookup for {len(entity_requests)} entities "
+                    f"({num_chunks} chunks) in collection {sync_context.collection_id}..."
                 )
+                async with get_db_context() as db:
+                    existing_map = await crud.entity.bulk_get_by_entity_collection_and_definition(
+                        db,
+                        collection_id=sync_context.collection_id,
+                        entity_requests=entity_requests,
+                    )
+            else:
+                sync_context.logger.debug(
+                    f"Sync-level dedup: lookup for {len(entity_requests)} entities "
+                    f"({num_chunks} chunks)..."
+                )
+                async with get_db_context() as db:
+                    existing_map = await crud.entity.bulk_get_by_entity_sync_and_definition(
+                        db,
+                        sync_id=sync_context.sync.id,
+                        entity_requests=entity_requests,
+                    )
 
             lookup_duration = time.time() - lookup_start
             sync_context.logger.debug(
