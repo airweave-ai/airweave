@@ -1,8 +1,9 @@
 """Collection model."""
 
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Optional
 
 from sqlalchemy import Integer, String
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from airweave.models._base import OrganizationBase, UserMixin
@@ -21,7 +22,7 @@ class Collection(OrganizationBase, UserMixin):
     readable_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     vector_size: Mapped[int] = mapped_column(Integer, nullable=False)
     embedding_model_name: Mapped[str] = mapped_column(String, nullable=False)
-    # Status is now ephemeral - removed from database model
+    sync_config: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     # Relationships
     if TYPE_CHECKING:

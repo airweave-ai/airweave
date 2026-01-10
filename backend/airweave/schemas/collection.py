@@ -13,6 +13,7 @@ from uuid import UUID
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 from airweave.core.shared_models import CollectionStatus
+from airweave.platform.sync.config.base import SyncConfig
 
 
 def generate_readable_id(name: str) -> str:
@@ -180,6 +181,13 @@ class CollectionInDBBase(CollectionBase):
             "Name of the embedding model used for this collection "
             "(e.g., 'text-embedding-3-large', 'text-embedding-3-small'). "
             "This ensures queries use the same model as the indexed data."
+        ),
+    )
+    sync_config: Optional[SyncConfig] = Field(
+        None,
+        description=(
+            "Default sync configuration for all syncs in this collection. "
+            "Overridable at sync and job level."
         ),
     )
     created_at: datetime = Field(

@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import JSON, DateTime, String, event
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from airweave.core.logging import logger
@@ -33,6 +34,7 @@ class Sync(OrganizationBase, UserMixin):
     temporal_schedule_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     sync_type: Mapped[str] = mapped_column(String(50), default="full")
     sync_metadata: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    sync_config: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     jobs: Mapped[list["SyncJob"]] = relationship(
         "SyncJob",
