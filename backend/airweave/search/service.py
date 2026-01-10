@@ -6,9 +6,10 @@ and executed in a flexible pipeline.
 """
 
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Literal
 from uuid import UUID
 
+from sqlalchemy import select as sa_select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud
@@ -18,6 +19,9 @@ from airweave.schemas.search import SearchRequest, SearchResponse
 from airweave.search.factory import factory
 from airweave.search.helpers import search_helpers
 from airweave.search.orchestrator import orchestrator
+
+# Type alias for destination
+SearchDestination = Literal["qdrant", "vespa"]
 
 
 class SearchService:
@@ -99,6 +103,169 @@ class SearchService:
             search_response=response,
             ctx=ctx,
             duration_ms=duration_ms,
+        )
+
+        return response
+
+    async def search_admin(
+        self,
+        request_id: str,
+        readable_collection_id: str,
+        search_request: SearchRequest,
+        db: AsyncSession,
+        ctx: ApiContext,
+        destination: SearchDestination = "qdrant",
+    ) -> SearchResponse:
+        """Admin search with destination selection (no ACL filtering by logged-in user).
+
+        Allows searching any collection regardless of organization with selectable
+        destination (Qdrant or Vespa). This is primarily for migration testing
+        and admin support operations.
+
+        Args:
+            request_id: Unique request identifier
+            readable_collection_id: Collection readable ID to search
+            search_request: Search parameters
+            db: Database session
+            ctx: API context
+            destination: Search destination ('qdrant' or 'vespa')
+
+        Returns:
+            SearchResponse with results
+        """
+        start_time = time.monotonic()
+
+        # Get collection without organization filtering
+        from airweave.models.collection import Collection
+
+        result = await db.execute(
+            sa_select(Collection).where(Collection.readable_id == readable_collection_id)
+        )
+        collection = result.scalar_one_or_none()
+
+        if not collection:
+            raise NotFoundException(detail=f"Collection '{readable_collection_id}' not found")
+
+        ctx.logger.info(
+            f"Admin searching collection {readable_collection_id} "
+            f"(org: {collection.organization_id}) using destination: {destination}"
+        )
+
+        ctx.logger.debug("Building admin search context")
+        search_context = await factory.build(
+            request_id=request_id,
+            collection_id=collection.id,
+            readable_collection_id=readable_collection_id,
+            search_request=search_request,
+            stream=False,
+            ctx=ctx,
+            db=db,
+            destination_override=destination,
+            skip_organization_check=True,
+        )
+
+        ctx.logger.debug("Executing admin search")
+        response, state = await orchestrator.run(ctx, search_context)
+
+        duration_ms = (time.monotonic() - start_time) * 1000
+        ctx.logger.info(
+            f"Admin search completed ({destination}): "
+            f"{len(response.results)} results in {duration_ms:.2f}ms"
+        )
+
+        return response
+
+    async def search_as_user(
+        self,
+        request_id: str,
+        readable_collection_id: str,
+        search_request: SearchRequest,
+        db: AsyncSession,
+        ctx: ApiContext,
+        user_principal: str,
+        destination: SearchDestination = "vespa",
+    ) -> SearchResponse:
+        """Search as a specific user with ACL filtering.
+
+        Resolves the specified user's group memberships from the
+        access_control_membership table and filters results accordingly.
+        This is primarily for testing ACL sync correctness and verifying
+        user permissions.
+
+        Args:
+            request_id: Unique request identifier
+            readable_collection_id: Collection readable ID to search
+            search_request: Search parameters
+            db: Database session
+            ctx: API context
+            user_principal: Username to search as (e.g., "john" or "john@example.com")
+            destination: Search destination ('qdrant' or 'vespa')
+
+        Returns:
+            SearchResponse with results filtered by user's access permissions
+        """
+        start_time = time.monotonic()
+
+        # Get collection without organization filtering
+        from airweave.models.collection import Collection
+        from airweave.platform.access_control.broker import access_broker
+
+        result = await db.execute(
+            sa_select(Collection).where(Collection.readable_id == readable_collection_id)
+        )
+        collection = result.scalar_one_or_none()
+
+        if not collection:
+            raise NotFoundException(detail=f"Collection '{readable_collection_id}' not found")
+
+        ctx.logger.info(
+            f"Searching collection {readable_collection_id} as user '{user_principal}' "
+            f"(org: {collection.organization_id}) using destination: {destination}"
+        )
+
+        # Resolve access context for the specified user
+        access_context = await access_broker.resolve_access_context_for_collection(
+            db=db,
+            user_principal=user_principal,
+            readable_collection_id=readable_collection_id,
+            organization_id=collection.organization_id,
+        )
+
+        if access_context is None:
+            ctx.logger.info(
+                f"[SearchAsUser] Collection {readable_collection_id} has no "
+                "access-control-enabled sources. Returning unfiltered results."
+            )
+            # Search without ACL override if collection has no AC sources
+            user_principal_for_factory = None
+        else:
+            ctx.logger.info(
+                f"[SearchAsUser] Resolved {len(access_context.all_principals)} principals "
+                f"for user '{user_principal}': {access_context.all_principals}"
+            )
+            user_principal_for_factory = user_principal
+
+        ctx.logger.debug("Building search context with user ACL override")
+        search_context = await factory.build(
+            request_id=request_id,
+            collection_id=collection.id,
+            readable_collection_id=readable_collection_id,
+            search_request=search_request,
+            stream=False,
+            ctx=ctx,
+            db=db,
+            destination_override=destination,
+            user_principal_override=user_principal_for_factory,
+            skip_organization_check=True,
+        )
+
+        ctx.logger.debug("Executing search with user ACL")
+        response, state = await orchestrator.run(ctx, search_context)
+
+        duration_ms = (time.monotonic() - start_time) * 1000
+        ctx.logger.info(
+            f"Search as '{user_principal}' completed ({destination}): "
+            f"{len(response.results)} results in {duration_ms:.2f}ms"
         )
 
         return response

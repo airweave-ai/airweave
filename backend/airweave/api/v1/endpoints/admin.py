@@ -1215,203 +1215,73 @@ async def admin_search_collection(
     Raises:
         HTTPException: If not admin or collection not found
     """
-    import time
-
-    from sqlalchemy import select as sa_select
-
-    from airweave.models.collection import Collection
-    from airweave.search.orchestrator import orchestrator
+    from airweave.search.service import service
 
     _require_admin_permission(ctx, FeatureFlagEnum.API_KEY_ADMIN_SYNC)
 
-    # Get collection without organization filtering
-    result = await db.execute(sa_select(Collection).where(Collection.readable_id == readable_id))
-    collection = result.scalar_one_or_none()
-
-    if not collection:
-        raise NotFoundException(f"Collection '{readable_id}' not found")
-
-    ctx.logger.info(
-        f"Admin searching collection {readable_id} (org: {collection.organization_id}) "
-        f"using destination: {destination.value}"
-    )
-
-    start_time = time.monotonic()
-
-    # Create destination based on selection
-    dest_instance = await _create_admin_search_destination(
-        destination=destination,
-        collection_id=collection.id,
-        organization_id=collection.organization_id,
-        vector_size=collection.vector_size,
-        ctx=ctx,
-    )
-
-    # Build search context with custom destination factory
-    search_context = await _build_admin_search_context(
-        db=db,
-        collection=collection,
-        readable_id=readable_id,
+    return await service.search_admin(
+        request_id=ctx.request_id,
+        readable_collection_id=readable_id,
         search_request=search_request,
-        destination=dest_instance,
+        db=db,
         ctx=ctx,
+        destination=destination.value,
     )
 
-    # Execute search
-    ctx.logger.debug("Executing admin search")
-    response, state = await orchestrator.run(ctx, search_context)
 
-    duration_ms = (time.monotonic() - start_time) * 1000
-
-    ctx.logger.info(
-        f"Admin search completed for collection {readable_id} ({destination.value}): "
-        f"{len(response.results)} results in {duration_ms:.2f}ms"
-    )
-
-    return response
-
-
-async def _create_admin_search_destination(
-    destination: AdminSearchDestination,
-    collection_id: UUID,
-    organization_id: UUID,
-    vector_size: int,
-    ctx: ApiContext,
-):
-    """Create destination instance for admin search.
-
-    Args:
-        destination: Which destination to use
-        collection_id: Collection UUID
-        organization_id: Organization UUID
-        vector_size: Vector dimensions
-        ctx: API context
-
-    Returns:
-        Destination instance (Qdrant or Vespa)
-    """
-    if destination == AdminSearchDestination.VESPA:
-        from airweave.platform.destinations.vespa import VespaDestination
-
-        ctx.logger.info("Creating Vespa destination for admin search")
-        return await VespaDestination.create(
-            collection_id=collection_id,
-            organization_id=organization_id,
-            vector_size=vector_size,
-            logger=ctx.logger,
-        )
-    else:
-        from airweave.platform.destinations.qdrant import QdrantDestination
-
-        ctx.logger.info("Creating Qdrant destination for admin search")
-        return await QdrantDestination.create(
-            collection_id=collection_id,
-            organization_id=organization_id,
-            vector_size=vector_size,
-            logger=ctx.logger,
-        )
-
-
-async def _build_admin_search_context(
-    db: AsyncSession,
-    collection,
+@router.post("/collections/{readable_id}/search/as-user", response_model=schemas.SearchResponse)
+async def admin_search_collection_as_user(
     readable_id: str,
     search_request: schemas.SearchRequest,
-    destination,
-    ctx: ApiContext,
-):
-    """Build search context with custom destination for admin search.
+    user_principal: str = Query(
+        ...,
+        description="User principal (username) to search as. "
+        "This user's access permissions will be applied to filter results.",
+    ),
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+    destination: AdminSearchDestination = Query(
+        AdminSearchDestination.VESPA,
+        description="Search destination: 'qdrant' or 'vespa' (default)",
+    ),
+) -> schemas.SearchResponse:
+    """Admin-only: Search collection with access control for a specific user.
 
-    This mirrors the factory.build() but allows overriding the destination.
+    This endpoint allows testing access control filtering by searching as a
+    specific user. It resolves the user's group memberships from the
+    access_control_membership table and filters results accordingly.
+
+    Use this for:
+    - Testing ACL sync correctness
+    - Verifying user permissions
+    - Debugging access control issues
+
+    Args:
+        readable_id: The readable ID of the collection to search
+        search_request: The search request parameters
+        user_principal: Username to search as (e.g., "john" or "john@example.com")
+        db: Database session
+        ctx: API context
+        destination: Search destination ('qdrant' or 'vespa')
+
+    Returns:
+        SearchResponse with results filtered by user's access permissions
+
+    Raises:
+        HTTPException: If not admin or collection not found
     """
-    from airweave.search.factory import (
-        SearchContext,
-        factory,
-    )
+    from airweave.search.service import service
 
-    # Apply defaults and validate
-    params = factory._apply_defaults_and_validate(search_request)
+    _require_admin_permission(ctx, FeatureFlagEnum.API_KEY_ADMIN_SYNC)
 
-    # Get collection sources
-    federated_sources = await factory.get_federated_sources(db, collection, ctx)
-    has_federated_sources = bool(federated_sources)
-    has_vector_sources = await factory._has_vector_sources(db, collection, ctx)
-
-    # Determine destination capabilities
-    requires_embedding = getattr(destination, "_requires_client_embedding", True)
-    supports_temporal = getattr(destination, "_supports_temporal_relevance", True)
-
-    ctx.logger.info(
-        f"[AdminSearch] Destination: {destination.__class__.__name__}, "
-        f"requires_client_embedding: {requires_embedding}, "
-        f"supports_temporal_relevance: {supports_temporal}"
-    )
-
-    if not has_federated_sources and not has_vector_sources:
-        raise ValueError("Collection has no sources")
-
-    vector_size = collection.vector_size
-    if vector_size is None:
-        raise ValueError(f"Collection {collection.readable_id} has no vector_size set.")
-
-    # Select providers for operations
-    api_keys = factory._get_available_api_keys()
-    providers = factory._create_provider_for_each_operation(
-        api_keys,
-        params,
-        has_federated_sources,
-        has_vector_sources,
-        ctx,
-        vector_size,
-        requires_client_embedding=requires_embedding,
-    )
-
-    # Create event emitter
-    from airweave.search.emitter import EventEmitter
-
-    emitter = EventEmitter(request_id=ctx.request_id, stream=False)
-
-    # Get temporal supporting sources if needed
-    temporal_supporting_sources = None
-    if params["temporal_weight"] > 0 and has_vector_sources and supports_temporal:
-        try:
-            temporal_supporting_sources = await factory._get_temporal_supporting_sources(
-                db, collection, ctx, emitter
-            )
-        except Exception as e:
-            raise ValueError(f"Failed to check temporal relevance support: {e}") from e
-    elif params["temporal_weight"] > 0 and not supports_temporal:
-        ctx.logger.info(
-            "[AdminSearch] Skipping temporal relevance: destination does not support it"
-        )
-        temporal_supporting_sources = []
-
-    # Build operations with custom destination
-    operations = factory._build_operations(
-        params,
-        providers,
-        federated_sources,
-        has_vector_sources,
-        search_request,
-        temporal_supporting_sources,
-        vector_size,
-        destination=destination,
-        requires_client_embedding=requires_embedding,
+    return await service.search_as_user(
+        request_id=ctx.request_id,
+        readable_collection_id=readable_id,
+        search_request=search_request,
         db=db,
         ctx=ctx,
-    )
-
-    return SearchContext(
-        request_id=ctx.request_id,
-        collection_id=collection.id,
-        readable_collection_id=readable_id,
-        stream=False,
-        vector_size=vector_size,
-        offset=params["offset"],
-        limit=params["limit"],
-        emitter=emitter,
-        query=search_request.query,
-        **operations,
+        user_principal=user_principal,
+        destination=destination.value,
     )
 
 

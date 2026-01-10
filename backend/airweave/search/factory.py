@@ -1,9 +1,10 @@
 """Search factory."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
 from fastapi import HTTPException
+from sqlalchemy import select as sa_select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud
@@ -46,6 +47,9 @@ from airweave.search.providers.schemas import (
     RerankModelConfig,
 )
 
+# Type alias for destination override
+DestinationOverride = Literal["qdrant", "vespa"]
+
 # Rebuild SearchContext model now that all operation classes are imported
 SearchContext.model_rebuild()
 
@@ -67,8 +71,31 @@ class SearchFactory:
         stream: bool,
         ctx: ApiContext,
         db: AsyncSession,
+        # --- Optional parameters for admin/ACL search ---
+        destination_override: Optional[DestinationOverride] = None,
+        user_principal_override: Optional[str] = None,
+        skip_organization_check: bool = False,
     ) -> SearchContext:
-        """Build SearchContext from request with validated YAML defaults."""
+        """Build SearchContext from request with validated YAML defaults.
+
+        Args:
+            request_id: Unique request identifier
+            collection_id: Collection UUID
+            readable_collection_id: Human-readable collection ID
+            search_request: Search parameters
+            stream: Whether to enable SSE streaming
+            ctx: API context with auth info
+            db: Database session
+            destination_override: Override destination ("qdrant" or "vespa").
+                If None, uses collection's default destination (Qdrant).
+            user_principal_override: Username to use for ACL filtering.
+                If None, uses ctx.user for ACL (normal behavior).
+            skip_organization_check: If True, skip organization filtering when
+                fetching collection (for admin cross-org access).
+
+        Returns:
+            Configured SearchContext ready for orchestration
+        """
         # Enrich logger with collection context for all downstream logs
         ctx.logger = ctx.logger.with_context(collection=readable_collection_id)
 
@@ -78,14 +105,24 @@ class SearchFactory:
         # Apply defaults and validate parameters
         params = self._apply_defaults_and_validate(search_request)
 
-        # Get collection sources
-        collection = await crud.collection.get(db, id=collection_id, ctx=ctx)
+        # Get collection - with or without organization filtering
+        if skip_organization_check:
+            from airweave.models.collection import Collection
+
+            result = await db.execute(sa_select(Collection).where(Collection.id == collection_id))
+            collection = result.scalar_one_or_none()
+        else:
+            collection = await crud.collection.get(db, id=collection_id, ctx=ctx)
+
+        if not collection:
+            raise ValueError(f"Collection {collection_id} not found")
+
         federated_sources = await self.get_federated_sources(db, collection, ctx)
         has_federated_sources = bool(federated_sources)
         has_vector_sources = await self._has_vector_sources(db, collection, ctx)
 
-        # Get the destination for this collection (destination-agnostic search)
-        destination = await self._get_destination_for_collection(db, collection, ctx)
+        # Resolve destination (may be overridden for admin search)
+        destination = await self._resolve_destination(db, collection, ctx, destination_override)
         requires_embedding = getattr(destination, "_requires_client_embedding", True)
         supports_temporal = getattr(destination, "_supports_temporal_relevance", True)
 
@@ -155,6 +192,8 @@ class SearchFactory:
             requires_client_embedding=requires_embedding,
             db=db,
             ctx=ctx,
+            user_principal_override=user_principal_override,
+            organization_id=collection.organization_id,
         )
 
         search_context = SearchContext(
@@ -299,6 +338,8 @@ class SearchFactory:
         requires_client_embedding: bool = True,
         db: Optional[AsyncSession] = None,
         ctx: Optional[ApiContext] = None,
+        user_principal_override: Optional[str] = None,
+        organization_id: Optional[UUID] = None,
     ) -> Dict[str, Any]:
         """Build operation instances for the search context.
 
@@ -319,6 +360,10 @@ class SearchFactory:
             requires_client_embedding: Whether destination needs client-side embeddings
             db: Database session for access control queries
             ctx: API context with user and organization info
+            user_principal_override: If provided, use this user for ACL filtering
+                instead of ctx.user. Used for admin "search as user" functionality.
+            organization_id: Organization ID for access control queries. Required
+                when user_principal_override is provided.
         """
         # Operations that need client-side embeddings (Qdrant-specific for now)
         # TODO: Make these destination-agnostic when filter DSL is abstracted
@@ -333,12 +378,34 @@ class SearchFactory:
         # Build access control filter operation if we have user context
         # This resolves the user's access principals and builds the filter
         access_control_op = None
-        if db is not None and ctx is not None and ctx.user is not None and has_vector_sources:
+
+        # Determine the user email for ACL - prefer override, fall back to logged-in user
+        acl_user_email = user_principal_override
+        if acl_user_email is None and ctx is not None and ctx.user is not None:
+            acl_user_email = ctx.user.email
+
+        # Determine organization ID - prefer explicit, fall back to ctx
+        acl_org_id = organization_id
+        if acl_org_id is None and ctx is not None:
+            acl_org_id = ctx.organization.id
+
+        has_acl_context = (
+            db is not None
+            and acl_user_email is not None
+            and acl_org_id is not None
+            and has_vector_sources
+        )
+        if has_acl_context:
             access_control_op = AccessControlFilter(
                 db=db,
-                user_email=ctx.user.email,
-                organization_id=ctx.organization.id,
+                user_email=acl_user_email,
+                organization_id=acl_org_id,
             )
+            if user_principal_override:
+                ctx.logger.info(
+                    f"[SearchFactory] Created AccessControlFilter for override user: "
+                    f"'{user_principal_override}'"
+                )
 
         return {
             "access_control_filter": access_control_op,
@@ -610,13 +677,64 @@ class SearchFactory:
                 f"Error getting vector sources for collection {collection.readable_id}"
             )
 
+    async def _resolve_destination(
+        self,
+        db: AsyncSession,
+        collection,
+        ctx: ApiContext,
+        destination_override: Optional[DestinationOverride] = None,
+    ) -> BaseDestination:
+        """Resolve the destination for search.
+
+        If destination_override is provided, creates that specific destination.
+        Otherwise, uses collection's default destination (currently always Qdrant).
+
+        Args:
+            db: Database session
+            collection: Collection object
+            ctx: API context
+            destination_override: Override destination ("qdrant" or "vespa")
+
+        Returns:
+            Destination instance (Qdrant or Vespa)
+        """
+        if destination_override == "vespa":
+            from airweave.platform.destinations.vespa import VespaDestination
+
+            ctx.logger.info(
+                f"[SearchFactory] Using Vespa destination (override) for "
+                f"collection {collection.readable_id}"
+            )
+            return await VespaDestination.create(
+                collection_id=collection.id,
+                organization_id=collection.organization_id,
+                vector_size=collection.vector_size,
+                logger=ctx.logger,
+            )
+        elif destination_override == "qdrant":
+            from airweave.platform.destinations.qdrant import QdrantDestination
+
+            ctx.logger.info(
+                f"[SearchFactory] Using Qdrant destination (override) for "
+                f"collection {collection.readable_id}"
+            )
+            return await QdrantDestination.create(
+                collection_id=collection.id,
+                organization_id=collection.organization_id,
+                vector_size=collection.vector_size,
+                logger=ctx.logger,
+            )
+        else:
+            # No override - use default destination resolution
+            return await self._get_destination_for_collection(db, collection, ctx)
+
     async def _get_destination_for_collection(
         self, db: AsyncSession, collection, ctx: ApiContext
     ) -> BaseDestination:
-        """Get the destination instance for a collection.
+        """Get the default destination instance for a collection.
 
         ALWAYS returns Qdrant as the default search destination.
-        Vespa search will be added via a specialized endpoint later.
+        Vespa search is available via destination_override parameter.
 
         Args:
             db: Database session
@@ -624,15 +742,17 @@ class SearchFactory:
             ctx: API context
 
         Returns:
-            QdrantDestination instance (always Qdrant for now)
+            QdrantDestination instance (always Qdrant for default)
         """
         from airweave.platform.destinations.qdrant import QdrantDestination
 
-        # ALWAYS use Qdrant for search (Vespa endpoint coming later)
-        ctx.logger.info(f"[SearchFactory] Collection {collection.readable_id} uses Qdrant")
+        # ALWAYS use Qdrant for default search
+        ctx.logger.info(
+            f"[SearchFactory] Collection {collection.readable_id} uses Qdrant (default)"
+        )
         return await QdrantDestination.create(
             collection_id=collection.id,
-            organization_id=ctx.organization.id,
+            organization_id=collection.organization_id,
             vector_size=collection.vector_size,
             logger=ctx.logger,
         )
