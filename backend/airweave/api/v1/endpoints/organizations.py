@@ -301,7 +301,7 @@ async def delete_organization(
 
     # Delete the organization using Auth0 service (handles both local and Auth0 deletion)
     try:
-        success = await organization_service.delete_organization_with_auth0(
+        success = await organization_service.delete_organization_with_integrations(
             db=db,
             organization_id=organization_id,
             deleting_user=ctx.user,

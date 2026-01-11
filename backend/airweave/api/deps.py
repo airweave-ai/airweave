@@ -463,7 +463,7 @@ async def get_guard_rail_service(
         GuardRailService: An instance configured for the current organization.
     """
     contextual_logger = ctx.logger
-    return GuardRailService(
+    return GuardRailService( 
         organization_id=ctx.organization.id,
         logger=contextual_logger.with_context(component="guardrail"),
     )
@@ -478,7 +478,7 @@ async def get_user(
     Legacy dependency for endpoints that expect User.
     Will fail for API key authentication since API keys don't have user context.
 
-    Args:
+    Args: 
     ----
         db (AsyncSession): Database session.
         x_api_key (Optional[str]): API key provided in the request header.

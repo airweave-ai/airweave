@@ -53,4 +53,15 @@ export const queryKeys = {
     detail: (orgId: string, id: string) =>
       [orgId, "source-connections", "detail", id] as const,
   },
+
+  events: {
+    all: (orgId: string) => [orgId, "events"] as const,
+    messages: (orgId: string, eventTypes?: string[]) =>
+      eventTypes && eventTypes.length > 0
+        ? ([orgId, "events", "messages", eventTypes] as const)
+        : ([orgId, "events", "messages"] as const),
+    subscriptions: (orgId: string) => [orgId, "events", "subscriptions"] as const,
+    subscription: (orgId: string, subscriptionId: string) =>
+      [orgId, "events", "subscriptions", subscriptionId] as const,
+  },
 };

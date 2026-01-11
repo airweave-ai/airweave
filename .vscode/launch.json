@@ -118,7 +118,7 @@
             "type": "chrome",
             "request": "launch",
             "url": "http://localhost:8080", // Update this to match your actual Vite port
-            "webRoot": "${workspaceFolder}/frontend",
+            "webRoot": "${workspaceFolder}/frontend-v2",
             "runtimeExecutable": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
             "sourceMapPathOverrides": {
                 "webpack:///./src/*": "${webRoot}/src/*",

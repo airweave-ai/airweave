@@ -196,6 +196,10 @@ class Settings(BaseSettings):
     QDRANT_FULL_URL: Optional[str] = None
     ADDITIONAL_CORS_ORIGINS: Optional[str] = None  # Separated by commas or semicolons
 
+    # Svix (webhooks) configuration
+    SVIX_URL: str = "http://localhost:8071"
+    SVIX_JWT_SECRET: str = "default_signing_secret"
+
     @field_validator("AZURE_KEYVAULT_NAME", mode="before")
     def validate_azure_keyvault_name(cls, v: Optional[str], info: ValidationInfo) -> Optional[str]:
         """Create a keyvault name based on the environment.

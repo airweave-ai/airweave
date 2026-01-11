@@ -78,6 +78,9 @@ async def run_sync_activity(  # noqa: C901
     from airweave.db.session import get_db_context
     from airweave.platform.temporal.worker_metrics import worker_metrics
 
+    from airweave.webhooks.service import service as webhooks_service
+    from airweave.core.shared_models import SyncJobStatus
+
     # Convert dicts back to Pydantic models
     sync = schemas.Sync(**sync_dict)
     sync_job = schemas.SyncJob(**sync_job_dict)
@@ -147,8 +150,9 @@ async def run_sync_activity(  # noqa: C901
                 ctx,
                 access_token,
                 force_full_sync,
-            )
+            ) 
         )
+        await webhooks_service.publish_event_sync(organization, connection, SyncJobStatus.RUNNING)
 
         try:
             while True:
@@ -160,6 +164,7 @@ async def run_sync_activity(  # noqa: C901
                 ctx.logger.debug("HEARTBEAT: Sync in progress")
                 activity.heartbeat("Sync in progress")
 
+            await webhooks_service.publish_event_sync(organization, connection, SyncJobStatus.COMPLETED)
             ctx.logger.info(f"\n\nCompleted sync activity for job {sync_job.id}\n\n")
 
         except asyncio.CancelledError:
@@ -179,6 +184,7 @@ async def run_sync_activity(  # noqa: C901
                     failed_at=utc_now_naive(),
                 )
                 ctx.logger.debug(f"\n\n[ACTIVITY] Updated job {sync_job.id} to CANCELLED\n\n")
+                await webhooks_service.publish_event_sync(organization, connection, SyncJobStatus.CANCELLED)
             except Exception as status_err:
                 ctx.logger.error(f"Failed to update job {sync_job.id} to CANCELLED: {status_err}")
 
@@ -196,6 +202,7 @@ async def run_sync_activity(  # noqa: C901
             raise
         except Exception as e:
             ctx.logger.error(f"Failed sync activity for job {sync_job.id}: {e}")
+            await webhooks_service.publish_event_sync(organization, connection, SyncJobStatus.FAILED)
             raise
     finally:
         # Clean up metrics tracking (fail-safe)

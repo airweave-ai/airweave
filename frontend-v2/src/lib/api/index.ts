@@ -66,3 +66,22 @@ export type {
   SyncJob,
   UpdateSourceConnectionRequest,
 } from "./source-connections";
+
+export {
+  createSubscription,
+  deleteSubscription,
+  fetchEventMessages,
+  fetchSubscription,
+  fetchSubscriptions,
+  fetchSubscriptionSecret,
+  updateSubscription,
+} from "./events";
+export type {
+  CreateSubscriptionRequest,
+  EventMessage,
+  MessageAttempt,
+  Subscription,
+  SubscriptionSecret,
+  SubscriptionWithAttempts,
+  UpdateSubscriptionRequest,
+} from "./events";
