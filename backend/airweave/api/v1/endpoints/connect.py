@@ -268,9 +268,7 @@ async def get_source(
     # Build full source schema
     source_schema = await _build_source_schema(source, ctx)
     if not source_schema:
-        raise HTTPException(
-            status_code=500, detail=f"Invalid source configuration: {short_name}"
-        )
+        raise HTTPException(status_code=500, detail=f"Invalid source configuration: {short_name}")
 
     return source_schema
 
