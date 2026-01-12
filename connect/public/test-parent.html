@@ -428,6 +428,7 @@
       let sessionToken = "";
       let responseMode = "auto"; // 'auto', 'loading', 'error-invalid', 'error-expired', 'error-network', 'manual'
       let pendingRequestId = null;
+      let hasProvidedToken = false; // Track if we've already sent a token (for retry detection)
 
       // Initialize form fields from CONFIG on page load
       async function initializeConfig() {
@@ -689,7 +690,7 @@
         }
       });
 
-      function handleTokenRequest(requestId) {
+      async function handleTokenRequest(requestId) {
         const iframe = document.getElementById("connectFrame");
         if (!iframe || !iframe.contentWindow) return;
 
@@ -698,6 +699,14 @@
         switch (responseMode) {
           case "auto":
           case "success":
+            // If we've already provided a token and iframe is asking again, it likely expired
+            // Fetch a fresh token from the API
+            if (hasProvidedToken) {
+              log("Token retry detected - fetching fresh token from API...", "info");
+              await fetchSessionToken();
+              sessionToken = document.getElementById("token").value.trim();
+            }
+
             // Send token immediately if we have one
             if (sessionToken) {
               const response = {
@@ -707,6 +716,7 @@
                 theme: theme,
               };
               iframe.contentWindow.postMessage(response, "*");
+              hasProvidedToken = true;
               log(
                 `Sent token: ${sessionToken.substring(0, 30)}... (theme: ${theme.mode})`,
                 "sent",
@@ -902,6 +912,7 @@
         sessionToken = "";
         pendingRequestId = null;
         responseMode = "auto";
+        hasProvidedToken = false;
 
         log("Connect closed", "sent");
       }

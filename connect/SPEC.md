@@ -456,7 +456,7 @@ if (view === "configure" && selectedSource) {
 - [x] Add OAuth handling to `SourceConfigView.tsx`
 - [x] Handle popup open/close
 - [x] Listen for `OAUTH_COMPLETE` message
-- [ ] Test OAuth flow with popup
+- [x] Test OAuth flow with popup
 
 ### Phase 4: Polish
 - [ ] Add form validation (required fields)
@@ -465,6 +465,7 @@ if (view === "configure" && selectedSource) {
 - [ ] Add loading states during submission
 - [ ] Add error states and retry options
 - [ ] Add labels to theme for new UI text
+- [ ] Add unit tests, linting, and formatting, end to end tests, etc.
 
 ---
 
