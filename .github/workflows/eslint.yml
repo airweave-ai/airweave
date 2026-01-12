@@ -5,13 +5,15 @@ on:
     branches: ["main"]
     paths:
       - "frontend/**"
+      - "connect/**"
   pull_request:
     branches: ["main"]
     paths:
       - "frontend/**"
+      - "connect/**"
 
 jobs:
-  eslint:
+  eslint-frontend:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -25,6 +27,27 @@ jobs:
           node-version: "20"
           cache: "npm"
           cache-dependency-path: "./frontend/package-lock.json"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npx eslint . --max-warnings 0
+
+  eslint-connect:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./connect
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: "./connect/package-lock.json"
 
       - name: Install dependencies
         run: npm ci
