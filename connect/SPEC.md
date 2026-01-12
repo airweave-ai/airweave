@@ -451,11 +451,11 @@ if (view === "configure" && selectedSource) {
 - [ ] Test direct auth flow end-to-end
 
 ### Phase 3: OAuth Flow
-- [ ] Create `src/lib/oauth.ts` utilities
-- [ ] Create `src/routes/oauth-callback.tsx` route
-- [ ] Add OAuth handling to `SourceConfigView.tsx`
-- [ ] Handle popup open/close
-- [ ] Listen for `OAUTH_COMPLETE` message
+- [x] Create `src/lib/oauth.ts` utilities
+- [x] Create `src/routes/oauth-callback.tsx` route
+- [x] Add OAuth handling to `SourceConfigView.tsx`
+- [x] Handle popup open/close
+- [x] Listen for `OAUTH_COMPLETE` message
 - [ ] Test OAuth flow with popup
 
 ### Phase 4: Polish

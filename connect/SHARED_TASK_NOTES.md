@@ -1,49 +1,46 @@
 # Shared Task Notes
 
 ## Current Status
-Phase 2 (Direct Auth Flow) is nearly complete. All UI components for direct auth are implemented:
-- `SourceConfigView.tsx` - Main config form for creating connections
-- `DynamicFormField.tsx` - Renders form fields based on ConfigField type
-- `AuthMethodSelector.tsx` - Radio group for auth method selection
-- `lib/messaging.ts` - Utility for parent window communication
+Phase 3 (OAuth Flow) implementation is complete. Build passes (`npm run build`).
 
-Build passes (`npm run build`).
+Files created:
+- `src/lib/oauth.ts` - Popup window utilities (`openOAuthPopup`, `listenForOAuthComplete`, `isPopupOpen`)
+- `src/routes/oauth-callback.tsx` - OAuth callback route that receives result and posts to opener
 
-## Next Task
-**Test direct auth flow end-to-end**, then start Phase 3 (OAuth).
+`SourceConfigView.tsx` updated with:
+- OAuth state management (status: idle/creating/waiting/error)
+- `handleOAuthConnect` - Creates connection, opens popup with auth_url
+- `handleOAuthResult` - Receives postMessage, handles success/error
+- Popup close detection (polls to detect if user closes popup)
+- "Connect with {source}" button replaces placeholder
+- Waiting state UI with spinner
 
-### Testing Direct Auth
-1. Run `npm run dev` in `connect/` folder
-2. Open `test-parent.html` in browser (or test via the main app)
-3. Click: Sources list → Select a source with direct auth → Fill form → Create
-4. Verify connection appears in connections list
-5. Verify parent receives `CONNECTION_CREATED` message
+## Next Tasks
 
-### Phase 3 - OAuth Flow
-After testing, implement OAuth flow:
-1. Create `src/lib/oauth.ts` - popup window utilities (`openOAuthPopup`, `listenForOAuthComplete`)
-2. Create `src/routes/oauth-callback.tsx` - handles OAuth redirect, posts message to opener
-3. Update `SourceConfigView.tsx` to:
-   - Show "Connect with {Source}" button when OAuth selected
-   - Open popup on click
-   - Listen for `OAUTH_COMPLETE` postMessage
-   - Handle success/error
+### Phase 4 - Polish
+After testing, remaining items from SPEC.md:
+- Add BYOC fields for `requires_byoc` sources
+- Handle popup blockers (show manual link option)
+- Add labels to theme for new UI text
 
-See SPEC.md "OAuth Flow Sequence" diagram for the full flow.
+Note: Form validation and loading/error states are already implemented in current code.
 
-## Implementation Notes
+## Implementation Details
 
-### SourceConfigView
-- Fetches source details via `getSourceDetails(shortName)`
-- Direct auth works; OAuth shows placeholder (disabled submit)
-- Uses `createSourceConnection()` to POST credentials
-- Form validation checks required fields
-- Notifies parent via `notifyConnectionCreated()` on success
+### OAuth Flow Sequence
+1. User clicks "Connect with {source}" button
+2. `handleOAuthConnect`:
+   - Sets status to "creating"
+   - POSTs to `/connect/source-connections` with `redirect_uri`
+   - Backend returns `{ auth: { auth_url } }`
+   - Opens popup with `auth_url`
+   - Sets status to "waiting"
+3. User authorizes in popup
+4. OAuth provider redirects to backend callback
+5. Backend redirects popup to `/oauth-callback?status=success&source_connection_id=xxx`
+6. `oauth-callback.tsx` posts `{ type: "OAUTH_COMPLETE", ... }` to opener
+7. `handleOAuthResult` receives message, closes popup, calls `onSuccess`
 
-### OAuth Placeholder in SourceConfigView
-Lines ~280-288 show a placeholder. When implementing OAuth:
-1. Replace placeholder with "Connect with {Source}" button
-2. On click: call API to create pending connection, get auth_url
-3. Open popup with auth_url
-4. Listen for `OAUTH_COMPLETE` postMessage
-5. On success, call `onSuccess(connectionId)`
+### Popup Blocked Handling
+Current implementation shows error: "Popup was blocked. Please allow popups..."
+Future: Could add manual link option.

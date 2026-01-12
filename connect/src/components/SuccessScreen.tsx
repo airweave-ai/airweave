@@ -79,7 +79,6 @@ export function SuccessScreen({
     return (
       <SourceConfigView
         source={selectedSource}
-        session={session}
         onBack={() => {
           setSelectedSource(null);
           setView("sources");

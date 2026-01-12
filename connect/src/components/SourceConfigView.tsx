@@ -1,11 +1,16 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
-import { useState } from "react";
+import { ExternalLink, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiClient } from "../lib/api";
+import {
+  isPopupOpen,
+  listenForOAuthComplete,
+  openOAuthPopup,
+} from "../lib/oauth";
 import { useTheme } from "../lib/theme";
 import type {
   ConfigField,
-  ConnectSessionContext,
+  OAuthCallbackResult,
   Source,
   SourceConnectionCreateRequest,
 } from "../lib/types";
@@ -20,14 +25,12 @@ import { PoweredByAirweave } from "./PoweredByAirweave";
 
 interface SourceConfigViewProps {
   source: Source;
-  session: ConnectSessionContext;
   onBack: () => void;
   onSuccess: (connectionId: string) => void;
 }
 
 export function SourceConfigView({
   source,
-  session: _session,
   onBack,
   onSuccess,
 }: SourceConfigViewProps) {
@@ -49,6 +52,14 @@ export function SourceConfigView({
   const [authValues, setAuthValues] = useState<Record<string, unknown>>({});
   const [configValues, setConfigValues] = useState<Record<string, unknown>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // OAuth flow state
+  const [oauthStatus, setOauthStatus] = useState<
+    "idle" | "creating" | "waiting" | "error"
+  >("idle");
+  const [oauthError, setOauthError] = useState<string | null>(null);
+  const oauthPopupRef = useRef<Window | null>(null);
+  const pendingConnectionIdRef = useRef<string | null>(null);
 
   const createMutation = useMutation({
     mutationFn: (payload: SourceConnectionCreateRequest) =>
@@ -125,6 +136,108 @@ export function SourceConfigView({
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
+  };
+
+  // Handle OAuth callback result from popup
+  const handleOAuthResult = useCallback(
+    (result: OAuthCallbackResult) => {
+      // Close popup if still open
+      if (oauthPopupRef.current && !oauthPopupRef.current.closed) {
+        oauthPopupRef.current.close();
+      }
+      oauthPopupRef.current = null;
+
+      if (result.status === "success" && result.source_connection_id) {
+        setOauthStatus("idle");
+        onSuccess(result.source_connection_id);
+      } else {
+        setOauthStatus("error");
+        setOauthError(
+          result.error_message ?? "OAuth authentication failed. Please try again."
+        );
+      }
+    },
+    [onSuccess]
+  );
+
+  // Listen for OAuth completion messages
+  useEffect(() => {
+    if (oauthStatus !== "waiting") return;
+
+    const cleanup = listenForOAuthComplete(handleOAuthResult);
+
+    // Poll to check if popup was closed without completing
+    const pollInterval = setInterval(() => {
+      if (!isPopupOpen(oauthPopupRef.current) && oauthStatus === "waiting") {
+        setOauthStatus("error");
+        setOauthError("Authentication was cancelled. Please try again.");
+        oauthPopupRef.current = null;
+      }
+    }, 500);
+
+    return () => {
+      cleanup();
+      clearInterval(pollInterval);
+    };
+  }, [oauthStatus, handleOAuthResult]);
+
+  // Initiate OAuth flow
+  const handleOAuthConnect = async () => {
+    setOauthStatus("creating");
+    setOauthError(null);
+
+    try {
+      // Build redirect URI for OAuth callback
+      const currentOrigin = window.location.origin;
+      const redirectUri = `${currentOrigin}/oauth-callback`;
+
+      const payload: SourceConnectionCreateRequest = {
+        short_name: source.short_name,
+        sync_immediately: true,
+        authentication: {
+          redirect_uri: redirectUri,
+        },
+      };
+
+      if (connectionName.trim()) {
+        payload.name = connectionName.trim();
+      }
+
+      if (Object.keys(configValues).length > 0) {
+        payload.config = configValues;
+      }
+
+      const response = await apiClient.createSourceConnection(payload);
+      pendingConnectionIdRef.current = response.id;
+
+      // Check if we got an auth_url (OAuth flow)
+      if (response.auth?.auth_url) {
+        setOauthStatus("waiting");
+
+        // Open OAuth popup
+        const popup = openOAuthPopup({ url: response.auth.auth_url });
+
+        if (!popup) {
+          // Popup was blocked
+          setOauthStatus("error");
+          setOauthError(
+            "Popup was blocked. Please allow popups for this site and try again."
+          );
+          return;
+        }
+
+        oauthPopupRef.current = popup;
+      } else {
+        // Unexpected: no auth_url returned
+        setOauthStatus("error");
+        setOauthError("Failed to get authorization URL. Please try again.");
+      }
+    } catch (err) {
+      setOauthStatus("error");
+      setOauthError(
+        err instanceof Error ? err.message : "Failed to initiate OAuth flow"
+      );
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -281,19 +394,74 @@ export function SourceConfigView({
           )}
 
           {effectiveAuthMethod === "oauth_browser" && (
-            <div
-              className="mb-4 p-4 rounded-md text-sm text-center"
-              style={{
-                backgroundColor: "var(--connect-surface)",
-                color: "var(--connect-text-muted)",
-                border: "1px dashed var(--connect-border)",
-              }}
-            >
-              OAuth flow will be available soon.
+            <div className="mb-4">
+              <h2
+                className="text-sm font-medium mb-3"
+                style={{ color: "var(--connect-text)" }}
+              >
+                Authentication
+              </h2>
+
+              {oauthError && (
+                <div
+                  className="mb-3 p-3 rounded-md text-sm"
+                  style={{
+                    backgroundColor:
+                      "color-mix(in srgb, var(--connect-error) 10%, transparent)",
+                    color: "var(--connect-error)",
+                  }}
+                >
+                  {oauthError}
+                </div>
+              )}
+
+              {oauthStatus === "waiting" ? (
+                <div
+                  className="p-4 rounded-md text-sm text-center"
+                  style={{
+                    backgroundColor: "var(--connect-surface)",
+                    border: "1px solid var(--connect-border)",
+                  }}
+                >
+                  <Loader2
+                    className="w-5 h-5 animate-spin mx-auto mb-2"
+                    style={{ color: "var(--connect-primary)" }}
+                  />
+                  <p style={{ color: "var(--connect-text)" }}>
+                    Waiting for authorization...
+                  </p>
+                  <p
+                    className="text-xs mt-1"
+                    style={{ color: "var(--connect-text-muted)" }}
+                  >
+                    Complete the sign-in in the popup window
+                  </p>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  onClick={handleOAuthConnect}
+                  disabled={oauthStatus === "creating"}
+                  className="w-full justify-center"
+                  variant="secondary"
+                >
+                  {oauthStatus === "creating" ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Connecting...
+                    </>
+                  ) : (
+                    <>
+                      <ExternalLink className="w-4 h-4" />
+                      Connect with {source.name}
+                    </>
+                  )}
+                </Button>
+              )}
             </div>
           )}
 
-          {showConfigFields && (
+          {showConfigFields !== undefined && showConfigFields > 0 && (
             <div className="mb-4">
               <h2
                 className="text-sm font-medium mb-3"
@@ -301,17 +469,19 @@ export function SourceConfigView({
               >
                 Configuration
               </h2>
-              {sourceDetails.config_fields?.fields.map((field: ConfigField) => (
-                <DynamicFormField
-                  key={field.name}
-                  field={field}
-                  value={configValues[field.name]}
-                  onChange={(value) =>
-                    handleConfigValueChange(field.name, value)
-                  }
-                  error={errors[`config_${field.name}`]}
-                />
-              ))}
+              {sourceDetails?.config_fields?.fields?.map(
+                (field: ConfigField) => (
+                  <DynamicFormField
+                    key={field.name}
+                    field={field}
+                    value={configValues[field.name]}
+                    onChange={(value) =>
+                      handleConfigValueChange(field.name, value)
+                    }
+                    error={errors[`config_${field.name}`]}
+                  />
+                ),
+              )}
             </div>
           )}
 
@@ -319,31 +489,31 @@ export function SourceConfigView({
         </form>
       </main>
 
-      <div
-        className="flex-shrink-0 px-6 pt-4 border-t"
-        style={{
-          backgroundColor: "var(--connect-bg)",
-          borderColor: "var(--connect-border)",
-        }}
-      >
-        <Button
-          type="submit"
-          form="source-config-form"
-          disabled={
-            createMutation.isPending || effectiveAuthMethod === "oauth_browser"
-          }
-          className="w-full justify-center"
+      {effectiveAuthMethod === "direct" && (
+        <div
+          className="flex-shrink-0 px-6 pt-4 border-t"
+          style={{
+            backgroundColor: "var(--connect-bg)",
+            borderColor: "var(--connect-border)",
+          }}
         >
-          {createMutation.isPending ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Creating...
-            </>
-          ) : (
-            "Create connection"
-          )}
-        </Button>
-      </div>
+          <Button
+            type="submit"
+            form="source-config-form"
+            disabled={createMutation.isPending}
+            className="w-full justify-center"
+          >
+            {createMutation.isPending ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Creating...
+              </>
+            ) : (
+              "Create connection"
+            )}
+          </Button>
+        </div>
+      )}
 
       <footer className="flex-shrink-0">
         <PoweredByAirweave />
