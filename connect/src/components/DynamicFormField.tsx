@@ -1,6 +1,14 @@
 import { Eye, EyeOff, X } from "lucide-react";
+import { marked } from "marked";
 import { useState } from "react";
 import type { ConfigField } from "../lib/types";
+
+// Configure marked to render links with underline and open in new tab
+const renderer = new marked.Renderer();
+renderer.link = ({ href, text }) => {
+  return `<a href="${href}" target="_blank" rel="noopener noreferrer" style="text-decoration: underline;">${text}</a>`;
+};
+marked.use({ renderer });
 
 interface DynamicFormFieldProps {
   field: ConfigField;
@@ -44,9 +52,10 @@ function FieldWrapper({ field, error, children }: FieldWrapperProps) {
         <p
           className="text-xs mt-1 mb-2"
           style={{ color: "var(--connect-text-muted)" }}
-        >
-          {field.description}
-        </p>
+          dangerouslySetInnerHTML={{
+            __html: marked.parseInline(field.description) as string,
+          }}
+        />
       )}
       {children}
       {error && (
@@ -346,10 +355,7 @@ export function DynamicFormField({
     default:
       return (
         <FieldWrapper field={field} error={error}>
-          <p
-            className="text-xs"
-            style={{ color: "var(--connect-text-muted)" }}
-          >
+          <p className="text-xs" style={{ color: "var(--connect-text-muted)" }}>
             Unsupported field type: {field.type}
           </p>
         </FieldWrapper>
