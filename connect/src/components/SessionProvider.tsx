@@ -5,6 +5,7 @@ import { ThemeProvider, useTheme } from "../lib/theme";
 import type {
   ConnectSessionContext,
   ConnectTheme,
+  NavigateView,
   SessionError,
   SessionStatus,
 } from "../lib/types";
@@ -46,8 +47,12 @@ export function SessionProvider() {
 function SessionContent() {
   const [status, setStatus] = useState<SessionStatus>({ status: "idle" });
   const [session, setSession] = useState<ConnectSessionContext | null>(null);
+  const [navigateView, setNavigateView] = useState<NavigateView | null>(null);
   const { setTheme } = useTheme();
   const hasInitialized = useRef(false);
+  const validateSessionRef = useRef<
+    (token: string, isRetry?: boolean) => Promise<boolean>
+  >();
 
   // Handle theme changes from parent (both initial and dynamic updates)
   const handleThemeChange = useCallback(
@@ -57,8 +62,16 @@ function SessionContent() {
     [setTheme],
   );
 
+  // Handle navigation from parent
+  const handleNavigate = useCallback((view: NavigateView) => {
+    setNavigateView(view);
+  }, []);
+
   const { isConnected, requestToken, notifyStatusChange, requestClose } =
-    useParentMessaging({ onThemeChange: handleThemeChange });
+    useParentMessaging({
+      onThemeChange: handleThemeChange,
+      onNavigate: handleNavigate,
+    });
 
   // Update parent when status changes
   useEffect(() => {
@@ -119,7 +132,7 @@ function SessionContent() {
             if (response.theme) {
               handleThemeChange(response.theme);
             }
-            return validateSession(response.token, true);
+            return validateSessionRef.current!(response.token, true);
           }
         }
 
@@ -129,6 +142,11 @@ function SessionContent() {
     },
     [requestToken, handleThemeChange],
   );
+
+  // Keep ref up to date for recursive calls
+  useEffect(() => {
+    validateSessionRef.current = validateSession;
+  });
 
   // Request token from parent when connected (only once)
   useEffect(() => {
@@ -194,8 +212,13 @@ function SessionContent() {
   }
 
   if (status.status === "valid" && session) {
-    // For now, show success screen. Later this will render children (integration list)
-    return <SuccessScreen session={session} />;
+    return (
+      <SuccessScreen
+        session={session}
+        initialView={navigateView}
+        onViewChange={setNavigateView}
+      />
+    );
   }
 
   return <LoadingScreen />;

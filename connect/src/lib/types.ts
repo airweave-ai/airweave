@@ -63,6 +63,13 @@ export interface ConnectLabels {
   // Buttons
   buttonRetry?: string;
   buttonClose?: string;
+  buttonConnect?: string;
+  buttonBack?: string;
+
+  // Sources list (available apps)
+  sourcesListHeading?: string;
+  sourcesListLoading?: string;
+  sourcesListEmpty?: string;
 
   // Footer
   poweredBy?: string;
@@ -116,6 +123,9 @@ export type ChildToParentMessage =
   | { type: "CONNECTION_CREATED"; connectionId: string }
   | { type: "CLOSE"; reason: "success" | "cancel" | "error" };
 
+// Navigation views for NAVIGATE message
+export type NavigateView = "connections" | "sources";
+
 // postMessage types - messages sent from parent to child
 export type ParentToChildMessage =
   | {
@@ -125,7 +135,8 @@ export type ParentToChildMessage =
       theme?: ConnectTheme;
     }
   | { type: "TOKEN_ERROR"; requestId: string; error: string }
-  | { type: "SET_THEME"; theme: ConnectTheme };
+  | { type: "SET_THEME"; theme: ConnectTheme }
+  | { type: "NAVIGATE"; view: NavigateView };
 
 // Source connection types
 export type SourceConnectionStatus =
@@ -154,4 +165,11 @@ export interface SourceConnectionListItem {
   federated_search: boolean;
   auth_method: AuthenticationMethod;
   status: SourceConnectionStatus;
+}
+
+// Available source/integration from /connect/sources
+export interface Source {
+  name: string;
+  short_name: string;
+  auth_method: AuthenticationMethod;
 }

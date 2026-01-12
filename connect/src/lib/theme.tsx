@@ -89,6 +89,13 @@ const defaultLabels: Required<ConnectLabels> = {
   // Buttons
   buttonRetry: "Retry",
   buttonClose: "Close",
+  buttonConnect: "Connect",
+  buttonBack: "Back",
+
+  // Sources list (available apps)
+  sourcesListHeading: "Connect a Source",
+  sourcesListLoading: "Loading sources...",
+  sourcesListEmpty: "No sources available.",
 
   // Footer
   poweredBy: "Powered by",

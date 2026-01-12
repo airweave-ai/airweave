@@ -30,7 +30,7 @@ export function PoweredByAirweave() {
 
   return (
     <div
-      className="absolute bottom-4 left-0 right-0 text-center text-[11px] flex items-center justify-center gap-2"
+      className="py-4 text-center text-[11px] flex items-center justify-center gap-2"
       style={{ color: "var(--connect-text-muted)" }}
     >
       {labels.poweredBy}{" "}

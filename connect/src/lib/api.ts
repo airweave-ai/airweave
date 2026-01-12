@@ -1,5 +1,9 @@
 import { env } from "./env";
-import type { ConnectSessionContext, SourceConnectionListItem } from "./types";
+import type {
+  ConnectSessionContext,
+  Source,
+  SourceConnectionListItem,
+} from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -58,6 +62,10 @@ class ConnectApiClient {
     await this.fetch<void>(`/connect/source-connections/${connectionId}`, {
       method: "DELETE",
     });
+  }
+
+  async getSources(): Promise<Source[]> {
+    return this.fetch<Source[]>("/connect/sources");
   }
 }
 

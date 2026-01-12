@@ -2,6 +2,7 @@ import { useCallback, useRef, useState, useEffect } from "react";
 import type {
   ChildToParentMessage,
   ConnectTheme,
+  NavigateView,
   ParentToChildMessage,
   SessionStatus,
 } from "../lib/types";
@@ -13,6 +14,7 @@ interface TokenResponse {
 
 interface UseParentMessagingOptions {
   onThemeChange?: (theme: ConnectTheme) => void;
+  onNavigate?: (view: NavigateView) => void;
 }
 
 interface UseParentMessagingReturn {
@@ -42,9 +44,13 @@ export function useParentMessaging(
   const pendingRequests = useRef<Map<string, PendingRequest>>(new Map());
   const hasInitialized = useRef(false);
   const onThemeChangeRef = useRef(options?.onThemeChange);
+  const onNavigateRef = useRef(options?.onNavigate);
 
-  // Keep the callback ref up to date
-  onThemeChangeRef.current = options?.onThemeChange;
+  // Keep the callback refs up to date
+  useEffect(() => {
+    onThemeChangeRef.current = options?.onThemeChange;
+    onNavigateRef.current = options?.onNavigate;
+  });
 
   // Helper to send messages to parent
   const sendToParent = useCallback((message: ChildToParentMessage) => {
@@ -91,6 +97,12 @@ export function useParentMessaging(
         case "SET_THEME": {
           if (onThemeChangeRef.current) {
             onThemeChangeRef.current(data.theme);
+          }
+          break;
+        }
+        case "NAVIGATE": {
+          if (onNavigateRef.current) {
+            onNavigateRef.current(data.view);
           }
           break;
         }
