@@ -20,6 +20,19 @@ import { OAuthStatusUI } from "./OAuthStatusUI";
 import { PageLayout } from "./PageLayout";
 import { PoweredByAirweave } from "./PoweredByAirweave";
 
+/**
+ * Generates a random suffix for auto-generated connection names.
+ * Returns 6 random alphanumeric characters.
+ */
+function generateRandomSuffix(): string {
+  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+  let result = "";
+  for (let i = 0; i < 6; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
 interface SourceConfigViewProps {
   source: Source;
   onBack: () => void;
@@ -31,7 +44,7 @@ export function SourceConfigView({
   onBack,
   onSuccess,
 }: SourceConfigViewProps) {
-  const { labels } = useTheme();
+  const { labels, options } = useTheme();
 
   const {
     data: sourceDetails,
@@ -42,7 +55,12 @@ export function SourceConfigView({
     queryFn: () => apiClient.getSourceDetails(source.short_name),
   });
 
-  const [connectionName, setConnectionName] = useState("");
+  // Auto-generate connection name when showConnectionName is false
+  const [connectionName, setConnectionName] = useState(() =>
+    options.showConnectionName
+      ? ""
+      : `${source.short_name}_${generateRandomSuffix()}`
+  );
   const [authMethod, setAuthMethod] = useState<"direct" | "oauth_browser">(
     "direct",
   );
@@ -251,37 +269,39 @@ export function SourceConfigView({
             </div>
           )}
 
-          <div className="mb-4">
-            <label
-              htmlFor="connection-name"
-              className="block text-sm font-medium mb-1"
-              style={{ color: "var(--connect-text)" }}
-            >
-              {labels.configureNameLabel}
-            </label>
-            <p
-              className="text-xs mt-1 mb-2"
-              style={{ color: "var(--connect-text-muted)" }}
-            >
-              {labels.configureNameDescription}
-            </p>
-            <input
-              id="connection-name"
-              type="text"
-              value={connectionName}
-              onChange={(e) => setConnectionName(e.target.value)}
-              placeholder={labels.configureNamePlaceholder.replace(
-                "{source}",
-                source.name,
-              )}
-              className="w-full px-3 py-2 text-sm rounded-md border outline-none transition-colors"
-              style={{
-                backgroundColor: "var(--connect-surface)",
-                color: "var(--connect-text)",
-                borderColor: "var(--connect-border)",
-              }}
-            />
-          </div>
+          {options.showConnectionName && (
+            <div className="mb-4">
+              <label
+                htmlFor="connection-name"
+                className="block text-sm font-medium mb-1"
+                style={{ color: "var(--connect-text)" }}
+              >
+                {labels.configureNameLabel}
+              </label>
+              <p
+                className="text-xs mt-1 mb-2"
+                style={{ color: "var(--connect-text-muted)" }}
+              >
+                {labels.configureNameDescription}
+              </p>
+              <input
+                id="connection-name"
+                type="text"
+                value={connectionName}
+                onChange={(e) => setConnectionName(e.target.value)}
+                placeholder={labels.configureNamePlaceholder.replace(
+                  "{source}",
+                  source.name,
+                )}
+                className="w-full px-3 py-2 text-sm rounded-md border outline-none transition-colors"
+                style={{
+                  backgroundColor: "var(--connect-surface)",
+                  color: "var(--connect-text)",
+                  borderColor: "var(--connect-border)",
+                }}
+              />
+            </div>
+          )}
 
           {sourceDetails && (
             <AuthMethodSelector

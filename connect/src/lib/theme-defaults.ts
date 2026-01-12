@@ -1,4 +1,4 @@
-import type { ConnectLabels, ThemeColors } from "./types";
+import type { ConnectLabels, ConnectOptions, ThemeColors } from "./types";
 
 // Default theme colors
 export const defaultDarkColors: Required<ThemeColors> = {
@@ -132,4 +132,9 @@ export const defaultLabels: Required<ConnectLabels> = {
   byocClientIdPlaceholder: "Your OAuth app client ID",
   byocClientSecretLabel: "Client Secret",
   byocClientSecretPlaceholder: "Your OAuth app client secret",
+};
+
+// Default options
+export const defaultOptions: Required<ConnectOptions> = {
+  showConnectionName: false,
 };

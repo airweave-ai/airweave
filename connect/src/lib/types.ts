@@ -115,6 +115,10 @@ export interface ConnectLabels {
   byocClientSecretPlaceholder?: string;
 }
 
+export interface ConnectOptions {
+  showConnectionName?: boolean; // default: false
+}
+
 export interface ConnectTheme {
   mode: ThemeMode;
   colors?: {
@@ -122,6 +126,7 @@ export interface ConnectTheme {
     light?: ThemeColors;
   };
   labels?: ConnectLabels;
+  options?: ConnectOptions;
 }
 
 // Session context returned by API (matches backend ConnectSessionContext)

@@ -11,8 +11,9 @@ import {
   defaultDarkColors,
   defaultLabels,
   defaultLightColors,
+  defaultOptions,
 } from "./theme-defaults";
-import type { ConnectLabels, ConnectTheme, ThemeColors } from "./types";
+import type { ConnectLabels, ConnectOptions, ConnectTheme, ThemeColors } from "./types";
 
 interface ThemeContextValue {
   theme: ConnectTheme;
@@ -20,6 +21,7 @@ interface ThemeContextValue {
   resolvedMode: "dark" | "light";
   colors: Required<ThemeColors>;
   labels: Required<ConnectLabels>;
+  options: Required<ConnectOptions>;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -99,6 +101,15 @@ export function ThemeProvider({ children, initialTheme }: ThemeProviderProps) {
     };
   }, [theme]);
 
+  // Merge custom options with defaults
+  const options: Required<ConnectOptions> = useMemo(() => {
+    const customOptions = theme?.options ?? {};
+    return {
+      ...defaultOptions,
+      ...customOptions,
+    };
+  }, [theme]);
+
   // Apply CSS custom properties to document
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -129,8 +140,9 @@ export function ThemeProvider({ children, initialTheme }: ThemeProviderProps) {
       resolvedMode,
       colors,
       labels,
+      options,
     }),
-    [theme, setThemeStable, resolvedMode, colors, labels],
+    [theme, setThemeStable, resolvedMode, colors, labels, options],
   );
 
   return (
