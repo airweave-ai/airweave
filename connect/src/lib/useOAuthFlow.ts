@@ -108,6 +108,7 @@ export function useOAuthFlow({
         short_name: shortName,
         name: sourceName,
         readable_collection_id: collectionId,
+        redirect_url: redirectUri, // Where to redirect after OAuth completes
         authentication: {
           redirect_uri: redirectUri,
           ...(requiresByoc &&

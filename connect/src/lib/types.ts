@@ -242,7 +242,11 @@ export interface SourceDetails {
   short_name: string;
   description?: string;
   auth_methods: AuthenticationMethod[];
-  oauth_type?: "oauth1" | "access_only" | "with_refresh" | "with_rotating_refresh";
+  oauth_type?:
+    | "oauth1"
+    | "access_only"
+    | "with_refresh"
+    | "with_rotating_refresh";
   requires_byoc: boolean;
   auth_fields?: Fields;
   config_fields?: Fields;
@@ -266,6 +270,7 @@ export interface SourceConnectionCreateRequest {
   short_name: string;
   readable_collection_id: string;
   name?: string;
+  redirect_url?: string;
   authentication?: AuthenticationPayload;
   config?: Record<string, unknown>;
   sync_immediately?: boolean;
