@@ -130,6 +130,10 @@ class SharePoint2019V2Source(BaseSource):
                 "SharePoint 2019 V2 requires AD connectivity to resolve SIDs to sAMAccountNames."
             )
 
+        # Track AD groups from item-level ACLs (populated during entity sync)
+        # These are AD groups directly assigned to items, not via SP site groups
+        instance._item_level_ad_groups: set = set()
+
         return instance
 
     @property
@@ -149,6 +153,28 @@ class SharePoint2019V2Source(BaseSource):
                 self._ad_search_base,
             ]
         )
+
+    def _track_entity_ad_groups(self, entity: BaseEntity) -> None:
+        """Extract and track AD groups from an entity's access control.
+
+        Called during entity generation to collect AD groups that are directly
+        assigned to items (not via SharePoint site groups). These groups will
+        be expanded via LDAP during the access control membership sync.
+
+        Args:
+            entity: Entity with potential access control
+        """
+        if not hasattr(entity, "access") or entity.access is None:
+            return
+
+        viewers = entity.access.viewers or []
+        for viewer in viewers:
+            # AD groups have format "group:ad:{group_name}"
+            if viewer.startswith("group:ad:"):
+                # Extract the AD group ID (e.g., "ad:group_sales" from "group:ad:group_sales")
+                # The format used in memberships is "ad:{group_name}" without the "group:" prefix
+                ad_group_id = viewer[6:]  # Remove "group:" prefix → "ad:group_sales"
+                self._item_level_ad_groups.add(ad_group_id)
 
     def _create_client(self) -> SharePointClient:
         """Create SharePoint API client with current credentials."""
@@ -255,6 +281,7 @@ class SharePoint2019V2Source(BaseSource):
                         self.logger.debug(
                             f"Site entity: {json.dumps(site_entity, indent=2, default=str)}"
                         )
+                        self._track_entity_ad_groups(site_entity)
                         yield site_entity
 
                         # Build breadcrumb for child entities
@@ -277,6 +304,7 @@ class SharePoint2019V2Source(BaseSource):
                             self.logger.debug(
                                 f"List entity: {json.dumps(list_entity, indent=2, default=str)}"
                             )
+                            self._track_entity_ad_groups(list_entity)
                             yield list_entity
 
                             # Build breadcrumb for items
@@ -354,6 +382,7 @@ class SharePoint2019V2Source(BaseSource):
                 file_entity = await build_file_entity(item_meta, site_url, breadcrumbs, ldap_client)
                 self.logger.debug(f"File entity: {json.dumps(file_entity, indent=2, default=str)}")
                 file_entity = await self._download_and_save_file(file_entity, client, site_url)
+                self._track_entity_ad_groups(file_entity)
                 yield file_entity
             except FileSkippedException:
                 return
@@ -364,6 +393,7 @@ class SharePoint2019V2Source(BaseSource):
             try:
                 item_entity = await build_item_entity(item_meta, site_url, breadcrumbs, ldap_client)
                 self.logger.debug(f"Item entity: {json.dumps(item_entity, indent=2, default=str)}")
+                self._track_entity_ad_groups(item_entity)
                 yield item_entity
             except EntityProcessingError as e:
                 self.logger.warning(f"Skipping item: {e}")
@@ -499,6 +529,9 @@ class SharePoint2019V2Source(BaseSource):
         - AD Group → User (via LDAP expansion)
         - AD Group → AD Group (nested groups via LDAP)
 
+        Also expands AD groups that are directly assigned to items (not via SP groups).
+        These are collected during entity generation in _item_level_ad_groups.
+
         The formats used here MUST match the entity access control format in acl.py:
         - Entity viewer: "user:{id}" or "group:{type}:{id}"
         - Membership group_id: "{type}:{id}" (broker adds "group:" prefix)
@@ -513,11 +546,14 @@ class SharePoint2019V2Source(BaseSource):
         self.logger.info("Starting access control membership extraction")
         membership_count = 0
         ldap_client = self._create_ldap_client()
+        # Track AD groups already expanded (to avoid duplicate work)
+        expanded_ad_groups: set = set()
 
         try:
             async with self.http_client(verify=False) as client:
                 sp_client = self._create_client()
 
+                # Phase 1: Process SharePoint site groups
                 async for sp_group in sp_client.get_site_groups(client, self._site_url):
                     group_id = sp_group.get("Id")
                     group_title = sp_group.get("Title", "Unknown Group")
@@ -536,6 +572,16 @@ class SharePoint2019V2Source(BaseSource):
                         ):
                             yield membership
                             membership_count += 1
+                            # Track AD groups already expanded via SP group membership
+                            if membership.group_id.startswith("ad:"):
+                                expanded_ad_groups.add(membership.group_id)
+
+            # Phase 2: Expand item-level AD groups that weren't in SP groups
+            async for membership in self._expand_item_level_ad_groups(
+                ldap_client, expanded_ad_groups
+            ):
+                yield membership
+                membership_count += 1
 
             self.logger.info(f"Access control extraction complete: {membership_count} memberships")
 
@@ -545,3 +591,37 @@ class SharePoint2019V2Source(BaseSource):
         finally:
             if ldap_client:
                 ldap_client.close()
+
+    async def _expand_item_level_ad_groups(
+        self,
+        ldap_client,
+        expanded_ad_groups: set,
+    ) -> AsyncGenerator[MembershipTuple, None]:
+        """Expand AD groups directly assigned to items (not via SP site groups).
+
+        Args:
+            ldap_client: LDAP client for group expansion
+            expanded_ad_groups: Set of AD group IDs already expanded via SP groups
+        """
+        if not ldap_client or not self._item_level_ad_groups:
+            return
+
+        # Find AD groups only on items (not also in SP groups)
+        item_only_ad_groups = self._item_level_ad_groups - expanded_ad_groups
+
+        if not item_only_ad_groups:
+            return
+
+        self.logger.info(
+            f"Expanding {len(item_only_ad_groups)} item-level AD groups "
+            f"(not in SP site groups): {item_only_ad_groups}"
+        )
+
+        for ad_group_id in item_only_ad_groups:
+            # ad_group_id is in format "ad:group_name"
+            group_name = ad_group_id[3:]  # Remove "ad:" prefix
+            login_name = f"{self._ad_domain}\\{group_name}"
+
+            self.logger.debug(f"Expanding item-level AD group: {group_name}")
+            async for membership in ldap_client.expand_group_recursive(login_name):
+                yield membership
