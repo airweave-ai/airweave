@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Test Parent - Airweave Connect</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
+        background: #1e293b;
+        color: white;
+        margin: 0;
+        padding: 20px;
+      }
+      h1 {
+        margin-bottom: 20px;
+      }
+      .controls {
+        background: #334155;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+      }
+      label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 500;
+      }
+      input,
+      textarea {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #475569;
+        border-radius: 4px;
+        background: #1e293b;
+        color: white;
+        font-family: monospace;
+        margin-bottom: 15px;
+      }
+      textarea {
+        height: 80px;
+        resize: vertical;
+      }
+      button {
+        background: #06b6d4;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 600;
+        margin-right: 10px;
+        margin-bottom: 10px;
+      }
+      button:hover {
+        background: #0891b2;
+      }
+      button:disabled {
+        background: #475569;
+        cursor: not-allowed;
+      }
+      button.secondary {
+        background: #475569;
+      }
+      button.secondary:hover {
+        background: #64748b;
+      }
+      button.danger {
+        background: #dc2626;
+      }
+      button.danger:hover {
+        background: #b91c1c;
+      }
+      button.warning {
+        background: #d97706;
+      }
+      button.warning:hover {
+        background: #b45309;
+      }
+      .button-group {
+        margin-top: 10px;
+        padding-top: 15px;
+        border-top: 1px solid #475569;
+      }
+      .button-group-label {
+        font-size: 12px;
+        color: #94a3b8;
+        margin-bottom: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .layout {
+        display: flex;
+        gap: 20px;
+      }
+      .left-panel {
+        flex: 1;
+      }
+      .right-panel {
+        width: 500px;
+      }
+      .iframe-container {
+        width: 100%;
+        height: 600px;
+        border: 2px solid #475569;
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      iframe {
+        width: 100%;
+        height: 100%;
+        border: none;
+      }
+      .log {
+        background: #0f172a;
+        padding: 15px;
+        border-radius: 8px;
+        margin-top: 20px;
+        font-family: monospace;
+        font-size: 12px;
+        max-height: 200px;
+        overflow-y: auto;
+      }
+      .log-entry {
+        margin-bottom: 5px;
+        padding: 5px;
+        border-radius: 4px;
+      }
+      .log-entry.sent {
+        background: #1e3a5f;
+      }
+      .log-entry.received {
+        background: #1e3a1e;
+      }
+      .log-entry.error {
+        background: #5f1e1e;
+      }
+      .log-entry.info {
+        background: #3f3f1e;
+      }
+      .mode-indicator {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 600;
+        margin-left: 10px;
+      }
+      .mode-indicator.auto {
+        background: #059669;
+      }
+      .mode-indicator.manual {
+        background: #d97706;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Airweave Connect - Test Parent</h1>
+
+    <div class="layout">
+      <div class="left-panel">
+        <div class="controls">
+          <label for="token">Session Token (paste from backend):</label>
+          <textarea
+            id="token"
+            placeholder="Paste your session token here... (leave empty to test error states)"
+          ></textarea>
+
+          <div>
+            <button id="openConnect" onclick="openConnect()">
+              Open Connect
+            </button>
+            <button
+              id="closeConnect"
+              onclick="closeConnect()"
+              disabled
+              class="secondary"
+            >
+              Close
+            </button>
+            <span
+              id="modeIndicator"
+              class="mode-indicator auto"
+              style="display: none"
+              >AUTO</span
+            >
+          </div>
+
+          <div class="button-group">
+            <div class="button-group-label">Test Different States</div>
+
+            <button onclick="openWithState('loading')" class="secondary">
+              Show Loading (no response)
+            </button>
+            <button onclick="openWithState('error-invalid')" class="danger">
+              Show Invalid Token Error
+            </button>
+            <button onclick="openWithState('error-expired')" class="danger">
+              Show Expired Token Error
+            </button>
+            <button onclick="openWithState('error-network')" class="warning">
+              Show Network Error
+            </button>
+          </div>
+
+          <div class="button-group">
+            <div class="button-group-label">
+              Manual Token Control (when iframe is open)
+            </div>
+
+            <button
+              onclick="sendTokenManually()"
+              class="secondary"
+              id="sendTokenBtn"
+              disabled
+            >
+              Send Token Now
+            </button>
+            <button
+              onclick="sendErrorManually()"
+              class="danger"
+              id="sendErrorBtn"
+              disabled
+            >
+              Send Error Response
+            </button>
+          </div>
+        </div>
+
+        <div class="log" id="log">
+          <div class="log-entry info">
+            Ready. Open Connect to start testing.
+          </div>
+        </div>
+      </div>
+
+      <div class="right-panel">
+        <div class="iframe-container" id="iframeContainer">
+          <iframe id="connectFrame"></iframe>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let sessionToken = "";
+      let responseMode = "auto"; // 'auto', 'loading', 'error-invalid', 'error-expired', 'error-network', 'manual'
+      let pendingRequestId = null;
+
+      function log(message, type = "info") {
+        const logEl = document.getElementById("log");
+        const entry = document.createElement("div");
+        entry.className = `log-entry ${type}`;
+        entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        logEl.appendChild(entry);
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      function updateModeIndicator() {
+        const indicator = document.getElementById("modeIndicator");
+        if (responseMode === "auto") {
+          indicator.textContent = "AUTO";
+          indicator.className = "mode-indicator auto";
+        } else {
+          indicator.textContent = responseMode.toUpperCase();
+          indicator.className = "mode-indicator manual";
+        }
+      }
+
+      // Handle messages from Connect iframe
+      window.addEventListener("message", (event) => {
+        const { data } = event;
+
+        if (!data || typeof data !== "object" || !data.type) {
+          return;
+        }
+
+        log(`Received: ${data.type}`, "received");
+
+        switch (data.type) {
+          case "CONNECT_READY":
+            log("Connect iframe is ready!", "received");
+            break;
+
+          case "REQUEST_TOKEN":
+            log(`Token requested (requestId: ${data.requestId})`, "received");
+            pendingRequestId = data.requestId;
+
+            handleTokenRequest(data.requestId);
+            break;
+
+          case "STATUS_CHANGE":
+            log(`Status: ${JSON.stringify(data.status)}`, "received");
+            break;
+
+          case "CONNECTION_CREATED":
+            log(`Connection created: ${data.connectionId}`, "received");
+            break;
+
+          case "CLOSE":
+            log(`Close requested: ${data.reason}`, "received");
+            closeConnect();
+            break;
+        }
+      });
+
+      function handleTokenRequest(requestId) {
+        const iframe = document.getElementById("connectFrame");
+        if (!iframe || !iframe.contentWindow) return;
+
+        switch (responseMode) {
+          case "auto":
+            // Send token immediately if we have one
+            if (sessionToken) {
+              const response = {
+                type: "TOKEN_RESPONSE",
+                requestId: requestId,
+                token: sessionToken,
+              };
+              iframe.contentWindow.postMessage(response, "*");
+              log(`Sent token: ${sessionToken.substring(0, 30)}...`, "sent");
+            } else {
+              // No token provided, send error
+              const response = {
+                type: "TOKEN_ERROR",
+                requestId: requestId,
+                error: "No token provided",
+              };
+              iframe.contentWindow.postMessage(response, "*");
+              log("Sent error: No token provided", "sent");
+            }
+            break;
+
+          case "loading":
+            log("Not responding (testing loading state)...", "info");
+            // Don't respond - let it timeout
+            break;
+
+          case "error-invalid":
+            // Send a malformed token that will fail validation
+            const invalidResponse = {
+              type: "TOKEN_RESPONSE",
+              requestId: requestId,
+              token: "invalid-token-format",
+            };
+            iframe.contentWindow.postMessage(invalidResponse, "*");
+            log("Sent invalid token format", "sent");
+            break;
+
+          case "error-expired":
+            // Send a token that looks valid but will fail API validation
+            // This is a fake expired token (base64 encoded JSON with expired timestamp)
+            const expiredPayload = btoa(
+              JSON.stringify({
+                sid: "expired-session-id",
+                exp: Date.now() - 10000,
+              }),
+            );
+            const expiredResponse = {
+              type: "TOKEN_RESPONSE",
+              requestId: requestId,
+              token: `${expiredPayload}.fakesignature`,
+            };
+            iframe.contentWindow.postMessage(expiredResponse, "*");
+            log("Sent expired token", "sent");
+            break;
+
+          case "error-network":
+            // Send a valid-looking token but the API will fail
+            const networkPayload = btoa(
+              JSON.stringify({ sid: "network-error-test" }),
+            );
+            const networkResponse = {
+              type: "TOKEN_RESPONSE",
+              requestId: requestId,
+              token: `${networkPayload}.fakesignature`,
+            };
+            iframe.contentWindow.postMessage(networkResponse, "*");
+            log("Sent token (will cause network error)", "sent");
+            break;
+
+          case "manual":
+            log("Waiting for manual token send...", "info");
+            document.getElementById("sendTokenBtn").disabled = false;
+            document.getElementById("sendErrorBtn").disabled = false;
+            break;
+        }
+      }
+
+      function sendTokenManually() {
+        if (!pendingRequestId) {
+          log("No pending request!", "error");
+          return;
+        }
+
+        const token = document.getElementById("token").value.trim();
+        if (!token) {
+          log("Please enter a token first!", "error");
+          return;
+        }
+
+        const iframe = document.getElementById("connectFrame");
+        if (!iframe || !iframe.contentWindow) return;
+
+        const response = {
+          type: "TOKEN_RESPONSE",
+          requestId: pendingRequestId,
+          token: token,
+        };
+        iframe.contentWindow.postMessage(response, "*");
+        log(`Manually sent token: ${token.substring(0, 30)}...`, "sent");
+
+        pendingRequestId = null;
+        document.getElementById("sendTokenBtn").disabled = true;
+        document.getElementById("sendErrorBtn").disabled = true;
+      }
+
+      function sendErrorManually() {
+        if (!pendingRequestId) {
+          log("No pending request!", "error");
+          return;
+        }
+
+        const iframe = document.getElementById("connectFrame");
+        if (!iframe || !iframe.contentWindow) return;
+
+        const response = {
+          type: "TOKEN_ERROR",
+          requestId: pendingRequestId,
+          error: "Manual error response",
+        };
+        iframe.contentWindow.postMessage(response, "*");
+        log("Manually sent error response", "sent");
+
+        pendingRequestId = null;
+        document.getElementById("sendTokenBtn").disabled = true;
+        document.getElementById("sendErrorBtn").disabled = true;
+      }
+
+      function openConnect() {
+        sessionToken = document.getElementById("token").value.trim();
+        responseMode = "auto";
+        startConnect();
+      }
+
+      function openWithState(mode) {
+        sessionToken = document.getElementById("token").value.trim();
+        responseMode = mode;
+
+        if (mode === "manual") {
+          log(
+            'Manual mode: token will be sent when you click "Send Token Now"',
+            "info",
+          );
+        }
+
+        startConnect();
+      }
+
+      function startConnect() {
+        log(`Opening Connect (mode: ${responseMode})...`, "sent");
+
+        const iframe = document.getElementById("connectFrame");
+
+        // Reset iframe
+        iframe.src = "";
+        setTimeout(() => {
+          iframe.src = "http://localhost:3000";
+        }, 100);
+
+        document.getElementById("openConnect").disabled = true;
+        document.getElementById("closeConnect").disabled = false;
+        document.getElementById("modeIndicator").style.display = "inline-block";
+        updateModeIndicator();
+      }
+
+      function closeConnect() {
+        document.getElementById("connectFrame").src = "";
+        document.getElementById("openConnect").disabled = false;
+        document.getElementById("closeConnect").disabled = true;
+        document.getElementById("modeIndicator").style.display = "none";
+        document.getElementById("sendTokenBtn").disabled = true;
+        document.getElementById("sendErrorBtn").disabled = true;
+        sessionToken = "";
+        pendingRequestId = null;
+        responseMode = "auto";
+
+        log("Connect closed", "sent");
+      }
+    </script>
+  </body>
+</html>

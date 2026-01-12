@@ -8,8 +8,5 @@
   "addOnOptions": {},
   "version": 1,
   "framework": "react-cra",
-  "chosenAddOns": [
-    "start",
-    "nitro"
-  ]
+  "chosenAddOns": ["start", "nitro"]
 }

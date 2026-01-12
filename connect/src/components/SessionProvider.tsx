@@ -1,0 +1,143 @@
+import { useState, useEffect, useCallback } from 'react';
+import { useParentMessaging } from '../hooks/useParentMessaging';
+import { apiClient, ApiError } from '../lib/api';
+import { LoadingScreen } from './LoadingScreen';
+import { ErrorScreen } from './ErrorScreen';
+import { SuccessScreen } from './SuccessScreen';
+import type {
+  SessionStatus,
+  SessionError,
+  ConnectSessionContext,
+} from '../lib/types';
+
+function extractSessionIdFromToken(token: string): string | null {
+  // The token is HMAC-signed state that contains session_id
+  // Format: base64(json_payload).signature
+  try {
+    const [payload] = token.split('.');
+    const decoded = JSON.parse(atob(payload));
+    return decoded.sid || null;
+  } catch {
+    return null;
+  }
+}
+
+export function SessionProvider() {
+  const [status, setStatus] = useState<SessionStatus>({ status: 'idle' });
+  const [session, setSession] = useState<ConnectSessionContext | null>(null);
+
+  const { isConnected, requestToken, notifyStatusChange, requestClose } =
+    useParentMessaging();
+
+  // Update parent when status changes
+  useEffect(() => {
+    notifyStatusChange(status);
+  }, [status, notifyStatusChange]);
+
+  const validateSession = useCallback(async (token: string) => {
+    setStatus({ status: 'validating' });
+
+    // Set token for API client
+    apiClient.setToken(token);
+
+    // Extract session ID from token
+    const sessionId = extractSessionIdFromToken(token);
+    if (!sessionId) {
+      const error: SessionError = {
+        code: 'invalid_token',
+        message: 'Could not extract session ID from token',
+      };
+      setStatus({ status: 'error', error });
+      return;
+    }
+
+    try {
+      const sessionContext = await apiClient.validateSession(sessionId);
+      setSession(sessionContext);
+      setStatus({ status: 'valid', session: sessionContext });
+    } catch (err) {
+      let error: SessionError;
+
+      if (err instanceof ApiError) {
+        if (err.status === 401) {
+          // Check if it's an expiration error
+          const isExpired = err.message.toLowerCase().includes('expired');
+          error = {
+            code: isExpired ? 'expired_token' : 'invalid_token',
+            message: err.message,
+          };
+        } else if (err.status === 403) {
+          error = { code: 'session_mismatch', message: err.message };
+        } else {
+          error = { code: 'network_error', message: err.message };
+        }
+      } else {
+        error = { code: 'network_error', message: 'Unknown error occurred' };
+      }
+
+      setStatus({ status: 'error', error });
+    }
+  }, []);
+
+  // Request token from parent when Penpal connects
+  useEffect(() => {
+    if (!isConnected) return;
+
+    const init = async () => {
+      setStatus({ status: 'waiting_for_token' });
+
+      const token = await requestToken();
+      if (token) {
+        await validateSession(token);
+      } else {
+        setStatus({
+          status: 'error',
+          error: {
+            code: 'invalid_token',
+            message: 'No session token provided by parent',
+          },
+        });
+      }
+    };
+
+    init();
+  }, [isConnected, requestToken, validateSession]);
+
+  const handleRetry = useCallback(async () => {
+    setStatus({ status: 'waiting_for_token' });
+    const token = await requestToken();
+    if (token) {
+      await validateSession(token);
+    }
+  }, [requestToken, validateSession]);
+
+  const handleClose = useCallback(() => {
+    requestClose('cancel');
+  }, [requestClose]);
+
+  // Render based on status
+  if (status.status === 'idle' || status.status === 'waiting_for_token') {
+    return <LoadingScreen message="Connecting..." />;
+  }
+
+  if (status.status === 'validating') {
+    return <LoadingScreen message="Validating session..." />;
+  }
+
+  if (status.status === 'error') {
+    return (
+      <ErrorScreen
+        error={status.error}
+        onRetry={handleRetry}
+        onClose={handleClose}
+      />
+    );
+  }
+
+  if (status.status === 'valid' && session) {
+    // For now, show success screen. Later this will render children (integration list)
+    return <SuccessScreen session={session} />;
+  }
+
+  return <LoadingScreen />;
+}
