@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SessionProvider } from "../components/SessionProvider";
@@ -30,7 +31,7 @@ export const Route = createRootRoute({
   shellComponent: RootDocument,
 });
 
-function RootDocument() {
+function RootDocument({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <head>
@@ -39,6 +40,7 @@ function RootDocument() {
       <body style={{ backgroundColor: "var(--connect-bg, transparent)" }}>
         <QueryClientProvider client={queryClient}>
           <SessionProvider />
+          {children}
         </QueryClientProvider>
         <Scripts />
       </body>

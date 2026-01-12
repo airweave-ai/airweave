@@ -1,0 +1,176 @@
+---
+globs: **/connect/**
+alwaysApply: false
+---
+# Airweave Connect Widget Architecture
+
+## What is Connect?
+
+The Connect widget is an embeddable component that allows end users to manage their source connections within third-party applications. It runs inside an iframe and communicates with parent applications via `postMessage`.
+
+## Tech Stack & Core Technologies
+- **React 19** with TypeScript for type-safe component development
+- **Vite** for fast development builds and HMR
+- **TailwindCSS v4** for styling with CSS-first configuration
+- **Base UI** (`@base-ui/react`) for accessible, unstyled primitives
+- **Lucide** icons for consistent iconography
+- **TanStack Router** for file-based routing with type safety
+- **TanStack Query** for server state and data fetching
+- **No authentication** - relies on session tokens passed from parent
+
+## Project Structure
+```
+connect/src/
+├── components/         # UI components
+│   ├── ConnectionItem.tsx     # Single connection display
+│   ├── ConnectionsErrorView.tsx
+│   ├── EmptyState.tsx         # Empty state with CTA
+│   ├── ErrorScreen.tsx        # Full-screen error display
+│   ├── LoadingScreen.tsx      # Loading spinner
+│   ├── PoweredByAirweave.tsx  # Footer branding
+│   ├── SessionProvider.tsx    # Session context provider
+│   ├── SourceItem.tsx         # Single source in picker
+│   ├── SourcesList.tsx        # Source selection grid
+│   └── SuccessScreen.tsx      # Main connected state
+├── hooks/
+│   └── useParentMessaging.ts  # iframe ↔ parent communication
+├── lib/
+│   ├── api.ts                 # API client with session auth
+│   ├── connection-utils.ts    # Connection status helpers
+│   ├── env.ts                 # Environment configuration
+│   ├── icons.ts               # Icon registry and helpers
+│   ├── theme-defaults.ts      # Default theme configuration
+│   ├── theme.tsx              # Theme context and CSS variables
+│   └── types.ts               # TypeScript type definitions
+├── routes/
+│   ├── __root.tsx             # Root layout
+│   └── index.tsx              # Main entry route
+├── router.tsx                 # TanStack Router setup
+├── routeTree.gen.ts           # Auto-generated route tree
+└── styles.css                 # Global styles and Tailwind imports
+```
+
+## Key Architectural Patterns
+
+### 1. Session-Based Authentication
+Connect uses session tokens instead of user authentication:
+```typescript
+interface ConnectSessionContext {
+  sessionToken: string;
+  apiBaseUrl: string;
+}
+```
+Sessions are passed via URL parameters or parent messages.
+
+### 2. Parent Communication (`useParentMessaging`)
+The widget runs in an iframe and communicates with the parent via `postMessage`:
+```typescript
+// Notify parent of connection changes
+notifyConnectionCreated(connectionId: string);
+notifyConnectionDeleted(connectionId: string);
+
+// Receive messages from parent
+window.addEventListener("message", handler);
+```
+
+### 3. Theming System
+Fully customizable via CSS variables passed from parent:
+```typescript
+interface ConnectTheme {
+  colors: { primary, background, text, border, ... };
+  fonts: { family, sizeBase, ... };
+  spacing: { base, containerPadding, ... };
+  borderRadius: { base, button, card, ... };
+}
+```
+Theme values are injected as CSS custom properties (`--connect-*`).
+
+### 4. View Navigation
+Internal view state managed within components:
+```typescript
+type NavigateView = "connections" | "sources" | "configure";
+```
+
+## Component Patterns
+
+### Base UI Usage
+Use Base UI primitives for accessible, unstyled components:
+```typescript
+import { Button } from "@base-ui/react";
+
+// Style with Tailwind classes
+<Button className="px-4 py-2 bg-primary rounded-md">
+  Click me
+</Button>
+```
+
+### API Client Pattern
+```typescript
+import { createConnectClient } from "@/lib/api";
+
+const client = createConnectClient(session);
+const connections = await client.getSourceConnections();
+```
+
+### TanStack Query Usage
+```typescript
+import { useQuery } from "@tanstack/react-query";
+
+const { data, isLoading, error } = useQuery({
+  queryKey: ["source-connections"],
+  queryFn: () => client.getSourceConnections(),
+});
+```
+
+## Development Guidelines
+
+### 1. Component Organization
+- Keep components focused and single-purpose
+- Use TypeScript interfaces for all props
+- Prefer composition over complex props
+
+### 2. Styling Guidelines
+- Use Tailwind utility classes
+- Reference theme variables via `var(--connect-*)` when needed
+- Avoid hardcoded colors; use theme tokens
+
+### 3. State Management
+- TanStack Query for server state
+- React state for local UI state
+- Context for shared session/theme data
+
+### 4. API Integration
+```typescript
+// Always handle loading and error states
+if (isLoading) return <LoadingScreen />;
+if (error) return <ErrorScreen error={error} />;
+```
+
+## Packages & SDKs
+
+The connect widget can be embedded via packages:
+```
+connect/packages/
+├── react/           # React wrapper component
+└── vanilla/         # Vanilla JS embed script
+```
+
+## Testing
+
+Run tests with:
+```bash
+cd connect && npm run test
+```
+
+Use Vitest with Testing Library for component tests.
+
+## Key Differences from Main Frontend
+
+| Aspect | Connect Widget | Main Frontend |
+|--------|---------------|---------------|
+| React version | 19 | 18 |
+| UI Components | Base UI | ShadCN UI |
+| Router | TanStack Router | React Router |
+| Auth | Session tokens | Auth0 |
+| State | TanStack Query only | Zustand + Query |
+| Deployment | Embeddable iframe | Standalone app |

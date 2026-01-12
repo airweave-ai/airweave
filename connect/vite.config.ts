@@ -20,7 +20,13 @@ function copyAppIconsPlugin(): Plugin {
       server.middlewares.use(async (req, res, next) => {
         if (req.url?.startsWith('/icons/apps/')) {
           const iconName = req.url.replace('/icons/apps/', '')
-          const iconPath = path.join(FRONTEND_ICONS_PATH, iconName)
+          const iconPath = path.resolve(FRONTEND_ICONS_PATH, iconName)
+          // Prevent path traversal - ensure resolved path is within allowed directory
+          if (!iconPath.startsWith(FRONTEND_ICONS_PATH + path.sep)) {
+            res.statusCode = 403
+            res.end('Forbidden')
+            return
+          }
           try {
             const content = await fs.readFile(iconPath)
             res.setHeader('Content-Type', 'image/svg+xml')
@@ -56,12 +62,20 @@ function copyAppIconsPlugin(): Plugin {
 
 // Plugin to serve the examples directory as static files
 function serveExamplesPlugin(): Plugin {
+  const examplesDir = path.resolve(process.cwd(), 'examples')
   return {
     name: 'serve-examples',
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
         if (req.url?.startsWith('/examples/')) {
-          const filePath = path.join(process.cwd(), req.url)
+          const relativePath = req.url.replace('/examples/', '')
+          const filePath = path.resolve(examplesDir, relativePath)
+          // Prevent path traversal - ensure resolved path is within examples directory
+          if (!filePath.startsWith(examplesDir + path.sep)) {
+            res.statusCode = 403
+            res.end('Forbidden')
+            return
+          }
           try {
             const content = await fs.readFile(filePath)
             const ext = path.extname(filePath)

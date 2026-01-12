@@ -29,13 +29,12 @@
     "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
+    "airweave-connect": "*",
     "react": ">=19.0.0",
     "react-dom": ">=19.0.0"
   },
-  "dependencies": {
-    "airweave-connect": "file:../.."
-  },
   "devDependencies": {
+    "airweave-connect": "file:../..",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^4.5.2",

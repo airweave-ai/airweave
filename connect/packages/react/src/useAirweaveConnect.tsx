@@ -70,6 +70,17 @@ export function useAirweaveConnect(
   const rootRef = useRef<Root | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
+  // Derive expected origin from connectUrl for secure postMessage
+  const expectedOrigin = (() => {
+    try {
+      const url = new URL(connectUrl);
+      return url.origin;
+    } catch {
+      // Fallback for invalid URLs - will cause postMessage to fail safely
+      return connectUrl;
+    }
+  })();
+
   // Store callbacks in refs to avoid re-creating message handler
   const callbacksRef = useRef({
     onSuccess,
@@ -90,10 +101,13 @@ export function useAirweaveConnect(
   const themeRef = useRef(theme);
   themeRef.current = theme;
 
-  // Send message to iframe
-  const sendToIframe = useCallback((message: ParentToChildMessage) => {
-    iframeRef.current?.contentWindow?.postMessage(message, "*");
-  }, []);
+  // Send message to iframe with restricted origin
+  const sendToIframe = useCallback(
+    (message: ParentToChildMessage) => {
+      iframeRef.current?.contentWindow?.postMessage(message, expectedOrigin);
+    },
+    [expectedOrigin],
+  );
 
   const handleClose = useCallback(
     (reason: "success" | "cancel" | "error" = "cancel") => {
@@ -109,6 +123,11 @@ export function useAirweaveConnect(
     if (!isOpen) return;
 
     const handleMessage = (event: MessageEvent) => {
+      // Validate origin to prevent spoofed messages from malicious sites
+      if (event.origin !== expectedOrigin) {
+        return;
+      }
+
       const data = event.data as ChildToParentMessage;
       if (!data || typeof data !== "object" || !("type" in data)) {
         return;
@@ -159,7 +178,7 @@ export function useAirweaveConnect(
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [isOpen, handleClose, sendToIframe]);
+  }, [isOpen, handleClose, sendToIframe, expectedOrigin]);
 
   // Build the iframe URL with theme query parameter
   const iframeUrl = (() => {

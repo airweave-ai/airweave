@@ -7,7 +7,11 @@ interface EmptyStateProps {
   onConnect: () => void;
 }
 
-export function EmptyState({ labels, showConnect, onConnect }: EmptyStateProps) {
+export function EmptyState({
+  labels,
+  showConnect,
+  onConnect,
+}: EmptyStateProps) {
   return (
     <div className="flex flex-col items-center justify-center py-12 text-center">
       <div
