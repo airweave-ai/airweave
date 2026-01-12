@@ -46,7 +46,13 @@ class Retrieval(SearchOperation):
         Note: EmbedQuery may not run for destinations that embed server-side (e.g., Vespa).
         In that case, embeddings will be None in state and the destination handles it.
         """
-        return ["QueryInterpretation", "EmbedQuery", "UserFilter", "TemporalRelevance"]
+        return [
+            "QueryInterpretation",
+            "EmbedQuery",
+            "AccessControlFilter",  # Must run before retrieval to build ACL filter
+            "UserFilter",
+            "TemporalRelevance",
+        ]
 
     async def execute(
         self,

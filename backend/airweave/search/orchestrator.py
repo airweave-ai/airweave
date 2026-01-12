@@ -151,6 +151,7 @@ class SearchOrchestrator:
         operations = [
             op
             for op in [
+                context.access_control_filter,
                 context.query_expansion,
                 context.query_interpretation,
                 context.embed_query,

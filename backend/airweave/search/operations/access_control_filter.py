@@ -3,11 +3,11 @@
 Resolves user's access context and builds the access control filter
 that restricts search results to entities the user has permission to view.
 
-This operation runs before UserFilter and writes to state["access_control_filter"]
-which UserFilter then merges with user-provided filters.
+This operation writes directly to state["filter"], merging with any existing
+filter from QueryInterpretation. This makes it independent of UserFilter.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,16 +25,16 @@ class AccessControlFilter(SearchOperation):
     This operation:
     1. Checks if the collection has any sources with access control enabled
     2. If yes, resolves the user's access context (expands group memberships)
-    3. Builds an access control filter for the destination
+    3. Builds an access control filter and writes it directly to state["filter"]
 
-    The filter is written to state["access_control_filter"] for UserFilter to merge.
+    The filter is written to state["filter"], merging with any existing filter
+    (e.g., from QueryInterpretation). This operation is self-contained and does
+    not depend on UserFilter running.
 
     Mixed Collection Support:
-    - For collections with BOTH AC and non-AC sources, entities without access
-      fields should still be visible. The filter handles this via:
-      - is_public = true OR viewers contains principal OR access field is absent
-    - For Vespa: uses isNull() check on access_is_public field
-    - For Qdrant: relies on entities not having the access.is_public field
+    - Non-AC source entities have access_is_public = true by default
+    - This is set during indexing (see VespaDestination._add_access_control_fields)
+    - No need to check for field absence - all entities have access fields
     """
 
     def __init__(
@@ -64,7 +64,10 @@ class AccessControlFilter(SearchOperation):
         state: Dict[str, Any],
         ctx: ApiContext,
     ) -> None:
-        """Resolve access context and build filter."""
+        """Resolve access context and build filter.
+
+        Writes directly to state["filter"], merging with any existing filter.
+        """
         ctx.logger.info("[AccessControlFilter] Resolving access context...")
 
         # Resolve access context for this collection
@@ -82,7 +85,6 @@ class AccessControlFilter(SearchOperation):
                 "[AccessControlFilter] Collection has no access-control-enabled sources. "
                 "Skipping access filtering - all entities visible."
             )
-            state["access_control_filter"] = None
             state["access_principals"] = None
             await context.emitter.emit(
                 "access_control_skipped",
@@ -102,8 +104,12 @@ class AccessControlFilter(SearchOperation):
         # Build filter - destination will translate to appropriate format (YQL for Vespa, etc.)
         access_filter = self._build_access_control_filter(principals)
 
-        # Store in state for UserFilter to merge
-        state["access_control_filter"] = access_filter
+        # Merge with any existing filter in state (e.g., from QueryInterpretation)
+        existing_filter = state.get("filter")
+        merged_filter = self._merge_with_existing_filter(access_filter, existing_filter)
+
+        # Write directly to state["filter"] - no dependency on UserFilter
+        state["filter"] = merged_filter
         state["access_principals"] = list(principals)
 
         await context.emitter.emit(
@@ -123,18 +129,16 @@ class AccessControlFilter(SearchOperation):
         """Build access control filter in Airweave canonical format.
 
         Returns filter that matches if:
-        1. Entity has NO access control field (non-AC source → visible to all), OR
-        2. Entity is public (access.is_public = true), OR
-        3. access.viewers contains ANY of the user's principals
+        1. Entity is public (access.is_public = true), OR
+        2. access.viewers contains ANY of the user's principals
 
         Note: This filter format is destination-agnostic. VespaDestination and
         QdrantDestination both translate this to their native format.
 
         Mixed Collections Support:
-        - Entities from non-AC sources won't have access fields at all
-        - We use is_null check to include these entities (visible to everyone)
-        - Vespa: translates to isNull(access_is_public)
-        - Qdrant: field absence check (may need different handling)
+        - Non-AC source entities have access_is_public = true by default
+        - This is set during indexing (see VespaDestination._add_access_control_fields)
+        - No need to check for field absence - all entities have access fields
 
         Args:
             principals: List of principals (e.g., ["user:john@acme.com", "group:sp:42"])
@@ -143,25 +147,43 @@ class AccessControlFilter(SearchOperation):
             Filter dict in Airweave canonical format
         """
         if not principals:
-            # No principals = only public entities OR entities without access control visible
+            # No principals = only public entities visible
             return {
                 "should": [
-                    # Option 1: Entity has no access control (non-AC source)
-                    {"key": "access.is_public", "is_null": True},
-                    # Option 2: Entity is explicitly public
                     {"key": "access.is_public", "match": {"value": True}},
                 ]
             }
 
-        # Build OR condition: no access control OR public OR matching principals
+        # Build OR condition: public OR matching principals
         return {
             "should": [
-                # Option 1: Entity has no access control field (non-AC source)
-                # These entities should be visible to everyone
-                {"key": "access.is_public", "is_null": True},
-                # Option 2: Entity is explicitly public
+                # Option 1: Entity is explicitly public (including non-AC source entities)
                 {"key": "access.is_public", "match": {"value": True}},
-                # Option 3: User has matching principal in viewers array
+                # Option 2: User has matching principal in viewers array
                 {"key": "access.viewers", "match": {"any": principals}},
             ]
         }
+
+    def _merge_with_existing_filter(
+        self,
+        access_filter: Dict[str, Any],
+        existing_filter: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Merge access control filter with existing filter using AND semantics.
+
+        Results must satisfy BOTH:
+        - Access control filter (at least one principal matches)
+        - Existing filter (all conditions) if present
+
+        Args:
+            access_filter: The access control filter we just built
+            existing_filter: Any existing filter from state (e.g., from QueryInterpretation)
+
+        Returns:
+            Merged filter dict
+        """
+        if not existing_filter:
+            return access_filter
+
+        # Both present - wrap in must[] for AND semantics
+        return {"must": [access_filter, existing_filter]}
