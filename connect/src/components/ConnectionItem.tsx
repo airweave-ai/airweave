@@ -6,7 +6,7 @@ import { AppIcon } from "./AppIcon";
 
 interface ConnectionItemProps {
   connection: SourceConnectionListItem;
-  onReconnect: () => void;
+  onReconnect?: () => void;
   onDelete: () => void;
   labels: Required<ConnectLabels>;
 }
@@ -64,13 +64,15 @@ export function ConnectionItem({
           <Menu.Portal>
             <Menu.Positioner side="bottom" align="end" sideOffset={4}>
               <Menu.Popup className="dropdown-popup min-w-[140px] rounded-lg p-1 shadow-lg [background-color:var(--connect-surface)] [border:1px_solid_var(--connect-border)]">
-                <Menu.Item
-                  onClick={onReconnect}
-                  className="cursor-pointer flex items-center gap-2 px-3 py-2 rounded text-sm border-none bg-transparent w-full transition-colors duration-150 [color:var(--connect-text)] hover:bg-black/5 dark:hover:bg-white/10"
-                >
-                  <RefreshCw size={14} />
-                  <span>{labels.menuReconnect}</span>
-                </Menu.Item>
+                {onReconnect && (
+                  <Menu.Item
+                    onClick={onReconnect}
+                    className="cursor-pointer flex items-center gap-2 px-3 py-2 rounded text-sm border-none bg-transparent w-full transition-colors duration-150 [color:var(--connect-text)] hover:bg-black/5 dark:hover:bg-white/10"
+                  >
+                    <RefreshCw size={14} />
+                    <span>{labels.menuReconnect}</span>
+                  </Menu.Item>
+                )}
                 <Menu.Item
                   onClick={onDelete}
                   className="cursor-pointer flex items-center gap-2 px-3 py-2 rounded text-sm border-none bg-transparent w-full transition-colors duration-150 [color:var(--connect-error)] hover:bg-red-500/10"

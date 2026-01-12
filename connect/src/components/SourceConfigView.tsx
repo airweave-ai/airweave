@@ -212,7 +212,7 @@ export function SourceConfigView({
 
     const payload: SourceConnectionCreateRequest = {
       short_name: source.short_name,
-      name: source.name,
+      name: connectionName || source.name,
       readable_collection_id: collectionId,
       sync_immediately: true,
     };

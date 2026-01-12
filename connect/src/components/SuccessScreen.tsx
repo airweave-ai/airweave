@@ -1,11 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiClient } from "../lib/api";
 import { canConnect } from "../lib/connection-utils";
+import { listenForOAuthComplete, openOAuthPopup } from "../lib/oauth";
 import { useTheme } from "../lib/theme";
 import type {
   ConnectSessionContext,
   NavigateView,
+  OAuthCallbackResult,
   Source,
   SourceConnectionListItem,
 } from "../lib/types";
@@ -95,6 +97,54 @@ export function SuccessScreen({
     },
   });
 
+  // Reconnect flow for pending_auth connections
+  const reconnectPopupRef = useRef<Window | null>(null);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+
+  const handleOAuthResult = useCallback(
+    (result: OAuthCallbackResult) => {
+      if (reconnectPopupRef.current && !reconnectPopupRef.current.closed) {
+        reconnectPopupRef.current.close();
+      }
+      reconnectPopupRef.current = null;
+      setIsReconnecting(false);
+
+      if (result.status === "success" && result.source_connection_id) {
+        onConnectionCreated(result.source_connection_id);
+        queryClient.invalidateQueries({ queryKey: ["source-connections"] });
+      }
+    },
+    [onConnectionCreated, queryClient]
+  );
+
+  useEffect(() => {
+    if (!isReconnecting) return;
+
+    const cleanup = listenForOAuthComplete(handleOAuthResult);
+    return () => cleanup();
+  }, [isReconnecting, handleOAuthResult]);
+
+  const handleReconnect = async (connectionId: string) => {
+    try {
+      setIsReconnecting(true);
+      const connection = await apiClient.getSourceConnection(connectionId);
+
+      if (connection.auth?.auth_url) {
+        const popup = openOAuthPopup({ url: connection.auth.auth_url });
+        if (popup) {
+          reconnectPopupRef.current = popup;
+        } else {
+          // Popup blocked - open in same window as fallback
+          window.location.href = connection.auth.auth_url;
+        }
+      } else {
+        setIsReconnecting(false);
+      }
+    } catch {
+      setIsReconnecting(false);
+    }
+  };
+
   const handleSelectSource = (source: Source) => {
     setSelectedSource(source);
     setView("configure");
@@ -160,14 +210,11 @@ export function SuccessScreen({
             <ConnectionItem
               key={connection.id}
               connection={connection}
-              onReconnect={() => {
-                setSelectedSource({
-                  name: connection.name,
-                  short_name: connection.short_name,
-                  auth_method: connection.auth_method,
-                });
-                setView("configure");
-              }}
+              onReconnect={
+                connection.status === "pending_auth"
+                  ? () => handleReconnect(connection.id)
+                  : undefined
+              }
               onDelete={() => deleteMutation.mutate(connection.id)}
               labels={labels}
             />

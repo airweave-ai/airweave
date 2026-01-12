@@ -402,6 +402,54 @@ async def list_source_connections(
     return connections
 
 
+@router.get("/source-connections/{connection_id}", response_model=schemas.SourceConnection)
+async def get_source_connection(
+    connection_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    session: ConnectSessionContext = Depends(deps.get_connect_session),
+) -> schemas.SourceConnection:
+    """Get a source connection by ID.
+
+    Returns full connection details including auth_url for pending_auth connections.
+
+    Authentication: Bearer <session_token>
+    """
+    # Verify session mode allows viewing connections
+    if session.mode not in (
+        schemas.ConnectSessionMode.ALL,
+        schemas.ConnectSessionMode.MANAGE,
+        schemas.ConnectSessionMode.REAUTH,
+    ):
+        raise HTTPException(
+            status_code=403, detail="Session mode does not allow viewing source connections"
+        )
+
+    # Build context for service call
+    ctx = await _build_session_context(db, session)
+
+    # Get the connection
+    try:
+        connection = await source_connection_service.get(db, id=connection_id, ctx=ctx)
+    except HTTPException as e:
+        if e.status_code == 404:
+            raise HTTPException(status_code=404, detail="Source connection not found") from e
+        raise
+
+    # Verify connection belongs to session's collection
+    if connection.readable_collection_id != session.collection_id:
+        raise HTTPException(
+            status_code=403, detail="Source connection does not belong to this session's collection"
+        )
+
+    # Check if allowed_integrations restricts access
+    if session.allowed_integrations and connection.short_name not in session.allowed_integrations:
+        raise HTTPException(
+            status_code=403, detail="Session does not have access to this integration type"
+        )
+
+    return connection
+
+
 @router.delete("/source-connections/{connection_id}", response_model=schemas.SourceConnection)
 async def delete_source_connection(
     connection_id: UUID,

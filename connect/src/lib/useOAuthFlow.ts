@@ -39,9 +39,15 @@ export function useOAuthFlow({
   const [error, setError] = useState<string | null>(null);
   const [blockedAuthUrl, setBlockedAuthUrl] = useState<string | null>(null);
   const popupRef = useRef<Window | null>(null);
+  // Ref to synchronously track OAuth completion, preventing race condition
+  // where interval could override successful result before React re-renders
+  const oauthCompletedRef = useRef(false);
 
   const handleOAuthResult = useCallback(
     (result: OAuthCallbackResult) => {
+      // Mark OAuth as completed synchronously to prevent race condition with interval
+      oauthCompletedRef.current = true;
+
       if (popupRef.current && !popupRef.current.closed) {
         popupRef.current.close();
       }
@@ -68,7 +74,9 @@ export function useOAuthFlow({
     let pollInterval: ReturnType<typeof setInterval> | undefined;
     if (status === "waiting") {
       pollInterval = setInterval(() => {
-        if (!isPopupOpen(popupRef.current) && status === "waiting") {
+        // Check oauthCompletedRef to avoid race condition where OAuth completed
+        // but React hasn't re-rendered yet (stale status in closure)
+        if (!isPopupOpen(popupRef.current) && !oauthCompletedRef.current) {
           setStatus("error");
           setError("Authentication was cancelled. Please try again.");
           popupRef.current = null;
@@ -90,6 +98,7 @@ export function useOAuthFlow({
   const initiateOAuth = useCallback(async () => {
     setStatus("creating");
     setError(null);
+    oauthCompletedRef.current = false;
 
     try {
       const currentOrigin = window.location.origin;

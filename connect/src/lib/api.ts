@@ -86,6 +86,14 @@ class ConnectApiClient {
       },
     );
   }
+
+  async getSourceConnection(
+    connectionId: string,
+  ): Promise<SourceConnectionCreateResponse> {
+    return this.fetch<SourceConnectionCreateResponse>(
+      `/connect/source-connections/${connectionId}`,
+    );
+  }
 }
 
 export const apiClient = new ConnectApiClient();
