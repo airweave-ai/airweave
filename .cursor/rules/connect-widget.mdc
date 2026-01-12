@@ -63,14 +63,32 @@ interface ConnectSessionContext {
 Sessions are passed via URL parameters or parent messages.
 
 ### 2. Parent Communication (`useParentMessaging`)
-The widget runs in an iframe and communicates with the parent via `postMessage`:
+The widget runs in an iframe and communicates with the parent via `postMessage`.
+
+**SECURITY: Always use origin validation for postMessage:**
+```typescript
+// Derive expected origin from connectUrl
+const expectedOrigin = new URL(connectUrl).origin;
+
+// SENDING: Always specify target origin (NEVER use "*")
+iframe.contentWindow?.postMessage(message, expectedOrigin);
+
+// RECEIVING: Always validate event.origin before processing
+const handleMessage = (event: MessageEvent) => {
+  if (event.origin !== expectedOrigin) {
+    return; // Ignore messages from unexpected origins
+  }
+  // Process message...
+};
+```
+
+**Available message types:**
 ```typescript
 // Notify parent of connection changes
 notifyConnectionCreated(connectionId: string);
 notifyConnectionDeleted(connectionId: string);
-
-// Receive messages from parent
-window.addEventListener("message", handler);
+notifyStatusChange(status: SessionStatus);
+requestClose(reason: "success" | "cancel" | "error");
 ```
 
 ### 3. Theming System

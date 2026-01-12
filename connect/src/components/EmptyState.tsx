@@ -1,5 +1,6 @@
 import { Link2, Plus } from "lucide-react";
 import type { ConnectLabels } from "../lib/types";
+import { Button } from "./Button";
 
 interface EmptyStateProps {
   labels: Required<ConnectLabels>;
@@ -37,24 +38,10 @@ export function EmptyState({
         {labels.emptyStateDescription}
       </p>
       {showConnect && (
-        <button
-          onClick={onConnect}
-          className="px-4 py-2 font-medium rounded-md text-sm transition-colors flex items-center gap-2"
-          style={{
-            backgroundColor: "var(--connect-primary)",
-            color: "white",
-          }}
-          onMouseEnter={(e) =>
-            (e.currentTarget.style.backgroundColor =
-              "var(--connect-primary-hover)")
-          }
-          onMouseLeave={(e) =>
-            (e.currentTarget.style.backgroundColor = "var(--connect-primary)")
-          }
-        >
+        <Button onClick={onConnect} className="py-2">
           <Plus className="w-4 h-4" />
           {labels.buttonConnect}
-        </button>
+        </Button>
       )}
     </div>
   );

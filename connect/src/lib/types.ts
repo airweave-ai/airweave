@@ -124,7 +124,7 @@ export type ChildToParentMessage =
   | { type: "CLOSE"; reason: "success" | "cancel" | "error" };
 
 // Navigation views for NAVIGATE message
-export type NavigateView = "connections" | "sources";
+export type NavigateView = "connections" | "sources" | "configure";
 
 // postMessage types - messages sent from parent to child
 export type ParentToChildMessage =
@@ -172,4 +172,75 @@ export interface Source {
   name: string;
   short_name: string;
   auth_method: AuthenticationMethod;
+}
+
+// Config field definition for dynamic forms
+export interface ConfigField {
+  name: string;
+  title: string;
+  description?: string;
+  type: "string" | "number" | "boolean" | "array";
+  required: boolean;
+  items_type?: string;
+  is_secret?: boolean;
+}
+
+// Fields wrapper (matches backend response structure)
+export interface Fields {
+  fields: ConfigField[];
+}
+
+// Source details from GET /connect/sources/{short_name}
+export interface SourceDetails {
+  name: string;
+  short_name: string;
+  description?: string;
+  auth_methods: AuthenticationMethod[];
+  oauth_type?: "oauth1" | "access_only" | "with_refresh" | "with_rotating_refresh";
+  requires_byoc: boolean;
+  auth_fields?: Fields;
+  config_fields?: Fields;
+}
+
+// Authentication payloads for creating connections
+export interface DirectAuthPayload {
+  credentials: Record<string, unknown>;
+}
+
+export interface OAuthBrowserAuthPayload {
+  redirect_uri: string;
+  client_id?: string; // For BYOC
+  client_secret?: string; // For BYOC
+}
+
+export type AuthenticationPayload = DirectAuthPayload | OAuthBrowserAuthPayload;
+
+// Create connection request
+export interface SourceConnectionCreateRequest {
+  short_name: string;
+  name?: string;
+  authentication?: AuthenticationPayload;
+  config?: Record<string, unknown>;
+  sync_immediately?: boolean;
+}
+
+// Create connection response
+export interface SourceConnectionCreateResponse {
+  id: string;
+  name: string;
+  short_name: string;
+  status: SourceConnectionStatus;
+  auth: {
+    method: AuthenticationMethod;
+    authenticated: boolean;
+    auth_url?: string;
+  };
+}
+
+// OAuth callback result (from popup postMessage)
+export interface OAuthCallbackResult {
+  status: "success" | "error";
+  source_connection_id?: string;
+  error_type?: string;
+  error_message?: string;
 }

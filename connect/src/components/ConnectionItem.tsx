@@ -1,10 +1,8 @@
 import { Menu } from "@base-ui/react/menu";
 import { MoreHorizontal, RefreshCw, Trash2 } from "lucide-react";
-import { useState } from "react";
 import { getStatusColor, getStatusLabel } from "../lib/connection-utils";
-import { getAppIconUrl } from "../lib/icons";
-import { useTheme } from "../lib/theme";
 import type { ConnectLabels, SourceConnectionListItem } from "../lib/types";
+import { AppIcon } from "./AppIcon";
 
 interface ConnectionItemProps {
   connection: SourceConnectionListItem;
@@ -19,8 +17,6 @@ export function ConnectionItem({
   isDeleting,
   labels,
 }: ConnectionItemProps) {
-  const { resolvedMode } = useTheme();
-  const [imgError, setImgError] = useState(false);
   const statusColor = getStatusColor(connection.status);
   const entitiesText = labels.entitiesCount.replace(
     "{count}",
@@ -37,25 +33,7 @@ export function ConnectionItem({
       }}
     >
       <div className="flex items-center gap-3">
-        {imgError ? (
-          <div
-            className="size-8 rounded-lg flex items-center justify-center text-sm font-medium uppercase"
-            style={{
-              backgroundColor:
-                "color-mix(in srgb, var(--connect-primary) 20%, transparent)",
-              color: "var(--connect-primary)",
-            }}
-          >
-            {connection.short_name.slice(0, 2)}
-          </div>
-        ) : (
-          <img
-            src={getAppIconUrl(connection.short_name, resolvedMode)}
-            alt={connection.name}
-            className="size-8 object-contain"
-            onError={() => setImgError(true)}
-          />
-        )}
+        <AppIcon shortName={connection.short_name} name={connection.name} />
         <div>
           <p
             className="font-medium text-sm"
@@ -86,9 +64,7 @@ export function ConnectionItem({
             <Menu.Positioner side="bottom" align="end" sideOffset={4}>
               <Menu.Popup className="dropdown-popup min-w-[140px] rounded-lg p-1 shadow-lg [background-color:var(--connect-surface)] [border:1px_solid_var(--connect-border)]">
                 <Menu.Item
-                  onClick={() => {
-                    /* no-op for now */
-                  }}
+                  onClick={() => {}}
                   className="cursor-pointer flex items-center gap-2 px-3 py-2 rounded text-sm border-none bg-transparent w-full transition-colors duration-150 [color:var(--connect-text)] hover:bg-slate-500/10"
                 >
                   <RefreshCw size={14} />

@@ -430,16 +430,16 @@ if (view === "configure" && selectedSource) {
 ## Implementation Checklist
 
 ### Phase 1: Types & API
-- [ ] Add `SourceDetails` type to `types.ts`
-- [ ] Add `ConfigField` type to `types.ts`
-- [ ] Add `DirectAuthPayload` type to `types.ts`
-- [ ] Add `OAuthBrowserAuthPayload` type to `types.ts`
-- [ ] Add `SourceConnectionCreateRequest` type to `types.ts`
-- [ ] Add `SourceConnectionCreateResponse` type to `types.ts`
-- [ ] Add `OAuthCallbackResult` type to `types.ts`
-- [ ] Extend `NavigateView` to include `"configure"`
-- [ ] Add `getSourceDetails()` method to `api.ts`
-- [ ] Add `createSourceConnection()` method to `api.ts`
+- [x] Add `SourceDetails` type to `types.ts`
+- [x] Add `ConfigField` type to `types.ts`
+- [x] Add `DirectAuthPayload` type to `types.ts`
+- [x] Add `OAuthBrowserAuthPayload` type to `types.ts`
+- [x] Add `SourceConnectionCreateRequest` type to `types.ts`
+- [x] Add `SourceConnectionCreateResponse` type to `types.ts`
+- [x] Add `OAuthCallbackResult` type to `types.ts`
+- [x] Extend `NavigateView` to include `"configure"`
+- [x] Add `getSourceDetails()` method to `api.ts`
+- [x] Add `createSourceConnection()` method to `api.ts`
 
 ### Phase 2: Direct Auth Flow
 - [ ] Create `DynamicFormField.tsx` component

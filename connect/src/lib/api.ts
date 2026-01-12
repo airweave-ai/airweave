@@ -2,7 +2,10 @@ import { env } from "./env";
 import type {
   ConnectSessionContext,
   Source,
+  SourceConnectionCreateRequest,
+  SourceConnectionCreateResponse,
   SourceConnectionListItem,
+  SourceDetails,
 } from "./types";
 
 export class ApiError extends Error {
@@ -66,6 +69,22 @@ class ConnectApiClient {
 
   async getSources(): Promise<Source[]> {
     return this.fetch<Source[]>("/connect/sources");
+  }
+
+  async getSourceDetails(shortName: string): Promise<SourceDetails> {
+    return this.fetch<SourceDetails>(`/connect/sources/${shortName}`);
+  }
+
+  async createSourceConnection(
+    payload: SourceConnectionCreateRequest,
+  ): Promise<SourceConnectionCreateResponse> {
+    return this.fetch<SourceConnectionCreateResponse>(
+      "/connect/source-connections",
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    );
   }
 }
 
