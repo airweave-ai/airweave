@@ -441,6 +441,29 @@ class ArfService:
             )
             await self.storage.write_json(manifest_path, manifest.model_dump())
 
+    async def _update_manifest(
+        self,
+        sync_context: "SyncContext",
+        delta_entities: int = 0,
+        delta_files: int = 0,
+    ) -> None:
+        """Update manifest entity/file counts.
+
+        Args:
+            sync_context: Sync context
+            delta_entities: Change in entity count (can be negative)
+            delta_files: Change in file count (can be negative)
+        """
+        sync_id = str(sync_context.sync.id)
+        manifest = await self.get_manifest(sync_id)
+
+        if manifest:
+            manifest.entity_count = max(0, manifest.entity_count + delta_entities)
+            manifest.file_count = max(0, manifest.file_count + delta_files)
+            manifest.updated_at = datetime.now(timezone.utc).isoformat()
+            manifest_path = self._manifest_path(sync_id)
+            await self.storage.write_json(manifest_path, manifest.model_dump())
+
     # =========================================================================
     # Entity reconstruction
     # =========================================================================
