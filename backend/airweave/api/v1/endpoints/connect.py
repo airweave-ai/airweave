@@ -12,16 +12,16 @@ Flow:
    - POST /connect/source-connections - create a new connection
    - GET /connect/source-connections - list connections in collection
    - DELETE /connect/source-connections/{id} - remove a connection
-   - GET /connect/callback - OAuth callback handler
+
+Note: OAuth callbacks are handled by /source-connections/callback which validates
+the connect session token stored in init session overrides.
 """
 
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
-from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from uuid import UUID, uuid4
 
-from fastapi import Depends, Header, HTTPException, Path, Query
-from fastapi.responses import Response
+from fastapi import Depends, Header, HTTPException, Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
@@ -39,10 +39,8 @@ from airweave.core.config import settings
 from airweave.core.logging import logger
 from airweave.core.shared_models import AuthMethod
 from airweave.core.source_connection_service import source_connection_service
-from airweave.crud import connection_init_session
 from airweave.db.session import get_db
-from airweave.models.connection_init_session import ConnectionInitStatus
-from airweave.platform.auth.state import make_state, verify_state
+from airweave.platform.auth.state import make_state
 from airweave.platform.configs._base import Fields
 from airweave.platform.locator import resource_locator
 from airweave.schemas.connect_session import (
@@ -177,20 +175,6 @@ async def _build_source_schema(
 
     except Exception:
         return None
-
-
-def _redirect_with_error(redirect_url: str, error_type: str, error_message: str) -> Response:
-    """Build redirect response with error parameters."""
-    parsed = urlparse(redirect_url)
-    query_params = parse_qs(parsed.query, keep_blank_values=True)
-    query_params["status"] = ["error"]
-    query_params["error_type"] = [error_type]
-    query_params["error_message"] = [error_message]
-    new_query = urlencode(query_params, doseq=True)
-    final_url = urlunparse(
-        (parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment)
-    )
-    return Response(status_code=303, headers={"Location": final_url})
 
 
 # =============================================================================
@@ -602,106 +586,3 @@ async def create_source_connection(
         )
 
     return result
-
-
-# =============================================================================
-# OAuth Callback Endpoint
-# =============================================================================
-
-
-@router.get("/callback")
-async def connect_oauth_callback(
-    *,
-    db: AsyncSession = Depends(get_db),
-    # OAuth2 parameters
-    state: Optional[str] = Query(None, description="OAuth2 state parameter"),
-    code: Optional[str] = Query(None, description="OAuth2 authorization code"),
-    # OAuth1 parameters
-    oauth_token: Optional[str] = Query(None, description="OAuth1 token parameter"),
-    oauth_verifier: Optional[str] = Query(None, description="OAuth1 verifier"),
-) -> Response:
-    """Handle OAuth callback for source connections created via Connect API.
-
-    This endpoint handles the OAuth provider redirect after user authorization.
-    It validates that the original Connect session is still valid before completing
-    the connection.
-
-    Supports both OAuth1 and OAuth2 callbacks:
-    - OAuth2: Uses state + code parameters
-    - OAuth1: Uses oauth_token + oauth_verifier parameters
-
-    Redirects to the configured URL with status and source_connection_id.
-    """
-    # Find the init session
-    init_session = None
-
-    if oauth_token and oauth_verifier:
-        # OAuth1 callback
-        init_session = await connection_init_session.get_by_oauth_token_no_auth(
-            db, oauth_token=oauth_token
-        )
-    elif state and code:
-        # OAuth2 callback
-        init_session = await connection_init_session.get_by_state_no_auth(db, state=state)
-    else:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid OAuth callback: missing required parameters",
-        )
-
-    if not init_session:
-        raise HTTPException(status_code=404, detail="OAuth session not found or expired")
-
-    if init_session.status != ConnectionInitStatus.PENDING:
-        raise HTTPException(
-            status_code=400, detail=f"OAuth session already {init_session.status.value}"
-        )
-
-    # Check if this is a Connect API flow (has connect_session_token in overrides)
-    connect_token = init_session.overrides.get("connect_session_token")
-    redirect_url = init_session.overrides.get("redirect_url", settings.app_url)
-
-    if connect_token:
-        # Validate the Connect session is still valid
-        # Use extended TTL (30 min) for OAuth flows
-        max_age = init_session.overrides.get("connect_session_max_age", 30 * 60)
-        try:
-            verify_state(connect_token, max_age_seconds=max_age)
-        except ValueError as e:
-            # Session expired - redirect with error
-            logger.warning(f"Connect session expired during OAuth flow: {e}")
-            return _redirect_with_error(redirect_url, "session_expired", str(e))
-
-    # Complete the OAuth flow using existing service methods
-    try:
-        if oauth_token and oauth_verifier:
-            source_conn = await source_connection_service.complete_oauth1_callback(
-                db,
-                oauth_token=oauth_token,
-                oauth_verifier=oauth_verifier,
-            )
-        else:
-            source_conn = await source_connection_service.complete_oauth2_callback(
-                db,
-                state=state,
-                code=code,
-            )
-    except HTTPException as e:
-        logger.error(f"OAuth callback failed: {e.detail}")
-        return _redirect_with_error(redirect_url, "error", e.detail)
-
-    # Redirect with success
-    connection_id = source_conn.id
-    final_redirect_url = source_conn.auth.redirect_url or redirect_url
-
-    # Build final URL with success parameters
-    parsed = urlparse(final_redirect_url)
-    query_params = parse_qs(parsed.query, keep_blank_values=True)
-    query_params["status"] = ["success"]
-    query_params["source_connection_id"] = [str(connection_id)]
-    new_query = urlencode(query_params, doseq=True)
-    final_url = urlunparse(
-        (parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment)
-    )
-
-    return Response(status_code=303, headers={"Location": final_url})

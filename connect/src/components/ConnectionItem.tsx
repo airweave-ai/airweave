@@ -67,7 +67,7 @@ export function ConnectionItem({
                 {onReconnect && (
                   <Menu.Item
                     onClick={onReconnect}
-                    className="cursor-pointer flex items-center gap-2 px-3 py-2 rounded text-sm border-none bg-transparent w-full transition-colors duration-150 [color:var(--connect-text)] hover:bg-black/5 dark:hover:bg-white/10"
+                    className="cursor-pointer flex items-center gap-2 px-3 py-2 rounded text-sm border-none bg-transparent w-full transition-colors duration-150 [color:var(--connect-text)] hover:bg-slate-500/10"
                   >
                     <RefreshCw size={14} />
                     <span>{labels.menuReconnect}</span>

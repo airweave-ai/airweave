@@ -1210,8 +1210,6 @@ class SourceConnectionHelpers:
             overrides["connect_organization_id"] = connect_session_context.get("organization_id")
             overrides["connect_collection_id"] = connect_session_context.get("collection_id")
             overrides["connect_end_user_id"] = connect_session_context.get("end_user_id")
-            # Override callback URL to use Connect callback endpoint
-            overrides["oauth_redirect_uri"] = f"{core_settings.api_url}/connect/callback"
 
         # Merge additional overrides (e.g., PKCE code_verifier) if provided
         if additional_overrides:
