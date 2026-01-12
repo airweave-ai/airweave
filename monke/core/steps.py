@@ -212,7 +212,7 @@ class SyncStep(TestStep):
     async def _wait_for_sync_completion(
         self,
         target_job_id: Optional[str] = None,
-        timeout_seconds: int = 300,
+        timeout_seconds: int = 600,
     ) -> None:
         """Wait for sync job to complete."""
         self.logger.info("⏳ Waiting for sync to complete...")

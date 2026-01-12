@@ -33,6 +33,9 @@
       <node hostalias="content0" distribution-key="0"/>
     </nodes>
     <tuning>
+      <resource-limits>
+        <disk>0.90</disk>
+      </resource-limits>
       <distribution type="loose"/>
     </tuning>
   </content>

@@ -62,6 +62,8 @@ services:
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
       - TEXT2VEC_INFERENCE_URL=http://text2vec-transformers:8080
+      - VESPA_URL=http://vespa
+      - VESPA_PORT=8081
       # Environment configuration (can be overridden in .env)
       - ENVIRONMENT=${ENVIRONMENT:-local}
       - LOCAL_DEVELOPMENT=${LOCAL_DEVELOPMENT:-true}
@@ -195,6 +197,8 @@ services:
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
       - TEXT2VEC_INFERENCE_URL=http://text2vec-transformers:8080
+      - VESPA_URL=http://vespa
+      - VESPA_PORT=8081
       # Environment configuration (can be overridden in .env)
       - ENVIRONMENT=${ENVIRONMENT:-local}
       - LOCAL_DEVELOPMENT=${LOCAL_DEVELOPMENT:-true}
@@ -220,14 +224,14 @@ services:
     image: vespaengine/vespa:8
     hostname: vespa
     ports:
-      - "8081:8081"   # Query/Document API
+      - "8081:8081" # Query/Document API
       - "19071:19071" # Config server (for deployment)
     volumes:
       - vespa_data:/opt/vespa/var
       - ../vespa/app:/app
     healthcheck:
       # Check config server is up (basic health for startup)
-      test: ["CMD", "curl", "-f", "http://localhost:19071/state/v1/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:19071/state/v1/health" ]
       interval: 10s
       timeout: 5s
       retries: 30
@@ -241,7 +245,7 @@ services:
     volumes:
       - ../vespa/app:/app:ro
       - ../vespa/init-vespa.sh:/init-vespa.sh:ro
-    entrypoint: ["/bin/sh", "/init-vespa.sh"]
+    entrypoint: [ "/bin/sh", "/init-vespa.sh" ]
     environment:
       - VESPA_CONFIG_SERVER=http://vespa:19071
     depends_on:

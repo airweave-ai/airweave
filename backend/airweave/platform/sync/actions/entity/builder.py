@@ -5,7 +5,7 @@ from typing import List, Optional
 from airweave.core.logging import ContextualLogger
 from airweave.platform.contexts.destinations import DestinationsContext
 from airweave.platform.sync.actions.entity.dispatcher import EntityActionDispatcher
-from airweave.platform.sync.config import SyncExecutionConfig
+from airweave.platform.sync.config import SyncConfig
 from airweave.platform.sync.handlers.arf import ArfHandler
 from airweave.platform.sync.handlers.destination import DestinationHandler
 from airweave.platform.sync.handlers.entity_postgres import EntityPostgresHandler
@@ -19,7 +19,7 @@ class EntityDispatcherBuilder:
     def build(
         cls,
         destinations: DestinationsContext,
-        execution_config: Optional[SyncExecutionConfig] = None,
+        execution_config: Optional[SyncConfig] = None,
         logger: Optional[ContextualLogger] = None,
     ) -> EntityActionDispatcher:
         """Build dispatcher with handlers based on config.
@@ -56,13 +56,17 @@ class EntityDispatcherBuilder:
     def _build_handlers(
         cls,
         destinations: DestinationsContext,
-        execution_config: Optional[SyncExecutionConfig],
+        execution_config: Optional[SyncConfig],
         logger: Optional[ContextualLogger],
     ) -> List[EntityActionHandler]:
         """Build handler list based on config."""
-        enable_vector = execution_config.enable_vector_handlers if execution_config else True
-        enable_arf = execution_config.enable_raw_data_handler if execution_config else True
-        enable_postgres = execution_config.enable_postgres_handler if execution_config else True
+        enable_vector = (
+            execution_config.handlers.enable_vector_handlers if execution_config else True
+        )
+        enable_arf = execution_config.handlers.enable_raw_data_handler if execution_config else True
+        enable_postgres = (
+            execution_config.handlers.enable_postgres_handler if execution_config else True
+        )
 
         handlers: List[EntityActionHandler] = []
 

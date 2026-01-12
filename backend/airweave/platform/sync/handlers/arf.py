@@ -33,10 +33,27 @@ class ArfHandler(EntityActionHandler):
         └── files/{entity_id}_{name}.{ext}
     """
 
+    def __init__(self):
+        """Initialize handler with manifest tracking."""
+        self._manifest_initialized = False
+
     @property
     def name(self) -> str:
         """Handler name."""
         return "arf"
+
+    async def _ensure_manifest(self, sync_context: "SyncContext") -> None:
+        """Ensure manifest exists for this sync (called once per sync)."""
+        if self._manifest_initialized:
+            return
+
+        from airweave.platform.sync.arf import arf_service
+
+        try:
+            await arf_service.upsert_manifest(sync_context)
+            self._manifest_initialized = True
+        except Exception as e:
+            sync_context.logger.warning(f"[ARF] Failed to upsert manifest: {e}")
 
     # -------------------------------------------------------------------------
     # Protocol: Public Interface
@@ -64,6 +81,10 @@ class ArfHandler(EntityActionHandler):
         """Store inserted entities to ARF."""
         if not actions:
             return
+
+        # Ensure manifest exists (lazily created on first write)
+        await self._ensure_manifest(sync_context)
+
         entities = [action.entity for action in actions]
         await self._do_upsert(entities, "insert", sync_context)
 
@@ -75,6 +96,10 @@ class ArfHandler(EntityActionHandler):
         """Update entities in ARF."""
         if not actions:
             return
+
+        # Ensure manifest exists (lazily created on first write)
+        await self._ensure_manifest(sync_context)
+
         entities = [action.entity for action in actions]
         await self._do_upsert(entities, "update", sync_context)
 

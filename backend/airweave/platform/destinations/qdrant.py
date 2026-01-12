@@ -38,6 +38,7 @@ from qdrant_client.local.local_collection import DEFAULT_VECTOR_NAME
 
 from airweave.core.config import settings
 from airweave.core.logging import ContextualLogger
+from airweave.schemas.search import RetrievalStrategy
 from airweave.core.logging import logger as default_logger
 from airweave.platform.configs.auth import QdrantAuthConfig
 from airweave.platform.decorators import destination
@@ -898,7 +899,7 @@ class QdrantDestination(VectorDBDestination):
 
     async def _prepare_query_request(
         self,
-        query_vector: list[float],
+        dense_vector: list[float] | None,
         limit: int,
         sparse_vector: SparseEmbedding | dict | None,
         search_method: Literal["hybrid", "neural", "keyword"],
@@ -909,8 +910,10 @@ class QdrantDestination(VectorDBDestination):
         query_request_params: dict = {}
 
         if search_method == "neural":
+            if not dense_vector:
+                raise ValueError("Neural search requires dense vector")
             neural_params = {
-                "query": query_vector,
+                "query": dense_vector,
                 "using": DEFAULT_VECTOR_NAME,
                 "limit": limit,
             }
@@ -936,6 +939,8 @@ class QdrantDestination(VectorDBDestination):
         if search_method == "hybrid":
             if not sparse_vector:
                 raise ValueError("Hybrid search requires sparse vector")
+            if not dense_vector:
+                raise ValueError("Hybrid search requires dense vector")
             obj = (
                 sparse_vector.as_object() if hasattr(sparse_vector, "as_object") else sparse_vector
             )
@@ -952,7 +957,7 @@ class QdrantDestination(VectorDBDestination):
 
             prefetch_params = [
                 {
-                    "query": query_vector,
+                    "query": dense_vector,
                     "using": DEFAULT_VECTOR_NAME,
                     "limit": prefetch_limit,
                     **({"filter": filter} if filter else {}),
@@ -987,24 +992,54 @@ class QdrantDestination(VectorDBDestination):
 
         return rest.QueryRequest(**query_request_params)
 
+    def _get_query_count(
+        self,
+        dense_vectors: list[list[float]] | None,
+        sparse_vectors: list[SparseEmbedding] | list[dict] | None,
+        search_method: Literal["hybrid", "neural", "keyword"],
+    ) -> int:
+        """Get number of queries based on search method and available vectors.
+
+        Args:
+            dense_vectors: Dense embeddings (None for keyword-only)
+            sparse_vectors: Sparse embeddings (None for neural-only)
+            search_method: Search strategy
+
+        Returns:
+            Number of queries
+
+        Raises:
+            ValueError: If required vectors are missing for the search method
+        """
+        if search_method == "keyword":
+            if not sparse_vectors:
+                raise ValueError("Keyword search requires sparse vectors")
+            return len(sparse_vectors)
+        else:
+            if not dense_vectors:
+                raise ValueError(f"{search_method} search requires dense vectors")
+            return len(dense_vectors)
+
     def _validate_bulk_search_inputs(
         self,
-        query_vectors: list[list[float]],
+        num_queries: int,
         filter_conditions: list[dict] | None,
+        dense_vectors: list[list[float]] | None,
         sparse_vectors: list[SparseEmbedding] | list[dict] | None,
     ) -> None:
         """Validate lengths of per-query inputs for bulk search."""
-        if filter_conditions and len(filter_conditions) != len(query_vectors):
+        if filter_conditions and len(filter_conditions) != num_queries:
             raise ValueError(
                 f"Number of filter conditions ({len(filter_conditions)}) must match "
-                f"number of query vectors ({len(query_vectors)})"
+                f"number of queries ({num_queries})"
             )
-        if sparse_vectors and len(query_vectors) != len(sparse_vectors):
-            raise ValueError("Sparse vector count does not match query vectors")
+        if dense_vectors and sparse_vectors and len(dense_vectors) != len(sparse_vectors):
+            raise ValueError("Sparse vector count does not match dense vectors")
 
     async def _prepare_bulk_search_requests(
         self,
-        query_vectors: list[list[float]],
+        num_queries: int,
+        dense_vectors: list[list[float]] | None,
         limit: int,
         score_threshold: float | None,
         with_payload: bool,
@@ -1016,7 +1051,8 @@ class QdrantDestination(VectorDBDestination):
     ) -> list[rest.QueryRequest]:
         """Create per-query request objects with automatic tenant filtering."""
         requests: list[rest.QueryRequest] = []
-        for i, qv in enumerate(query_vectors):
+        for i in range(num_queries):
+            dense_vector = dense_vectors[i] if dense_vectors else None
             # CRITICAL: Build tenant filter BEFORE preparing query request
             # This ensures prefetch operations are also filtered by tenant
             tenant_filter = rest.Filter(
@@ -1041,11 +1077,11 @@ class QdrantDestination(VectorDBDestination):
             else:
                 combined_filter = tenant_filter
 
-            sv = sparse_vectors[i] if sparse_vectors else None
+            sparse_vector = sparse_vectors[i] if sparse_vectors else None
             req = await self._prepare_query_request(
-                query_vector=qv,
+                dense_vector=dense_vector,
                 limit=limit,
-                sparse_vector=sv,
+                sparse_vector=sparse_vector,
                 search_method=search_method,
                 decay_config=decay_config,
                 filter=combined_filter,  # Pass filter to prefetch operations!
@@ -1112,19 +1148,23 @@ class QdrantDestination(VectorDBDestination):
             List of SearchResult objects
 
         Raises:
-            ValueError: If embeddings are not provided
+            ValueError: If embeddings are not provided for strategies that require them
         """
-        if not dense_embeddings:
+        # Keyword-only searches don't need dense embeddings
+        if retrieval_strategy != RetrievalStrategy.KEYWORD.value and not dense_embeddings:
             raise ValueError(
-                "Qdrant requires pre-computed embeddings. "
+                "Qdrant requires pre-computed dense embeddings for neural/hybrid search. "
                 "Ensure EmbedQuery operation ran before Retrieval."
             )
 
+        # Keyword searches require sparse embeddings
+        if retrieval_strategy == RetrievalStrategy.KEYWORD.value and not sparse_embeddings:
+            raise ValueError(
+                "Keyword search requires sparse embeddings. "
+                "Ensure EmbedQuery operation generated sparse embeddings."
+            )
+
         primary_query = queries[0] if queries else ""
-        self.logger.debug(
-            f"[QdrantSearch] Executing search: query='{primary_query[:50]}...', "
-            f"limit={limit}, embeddings={len(dense_embeddings)}"
-        )
 
         # Translate temporal config to Qdrant-native DecayConfig
         decay_config = self.translate_temporal(temporal_config)
@@ -1132,10 +1172,19 @@ class QdrantDestination(VectorDBDestination):
         # Filter already in dict format (Airweave canonical = Qdrant-compatible)
         filter_dict = self.translate_filter(filter)
 
-        # Call bulk_search directly with proper parameter mapping
-        num_queries = len(dense_embeddings)
+        # Call bulk_search with appropriate vectors for the strategy
+        # For keyword-only, dense vectors aren't needed (only sparse embeddings)
+        dense_vectors_to_use = (
+            None if retrieval_strategy == RetrievalStrategy.KEYWORD.value else dense_embeddings
+        )
+
+        # Get query count for filter conditions
+        num_queries = self._get_query_count(
+            dense_vectors_to_use, sparse_embeddings, retrieval_strategy
+        )
+
         raw_results = await self.bulk_search(
-            query_vectors=dense_embeddings,
+            dense_vectors=dense_vectors_to_use,
             limit=limit,
             with_payload=True,
             filter_conditions=[filter_dict] * num_queries if filter_dict else None,
@@ -1241,7 +1290,7 @@ class QdrantDestination(VectorDBDestination):
 
     async def bulk_search(
         self,
-        query_vectors: list[list[float]],
+        dense_vectors: list[list[float]] | None,
         limit: int = 100,
         score_threshold: float | None = None,
         with_payload: bool = True,
@@ -1253,10 +1302,12 @@ class QdrantDestination(VectorDBDestination):
     ) -> list[dict]:
         """Search multiple queries at once with neural/keyword/hybrid and optional decay."""
         await self.ensure_client_readiness()
-        if not query_vectors:
-            return []
 
-        self._validate_bulk_search_inputs(query_vectors, filter_conditions, sparse_vectors)
+        # Calculate query count once and validate inputs
+        num_queries = self._get_query_count(dense_vectors, sparse_vectors, search_method)
+        self._validate_bulk_search_inputs(
+            num_queries, filter_conditions, dense_vectors, sparse_vectors
+        )
 
         if search_method != "neural":
             vector_config_names = await self.get_vector_config_names()
@@ -1270,7 +1321,7 @@ class QdrantDestination(VectorDBDestination):
         weight = getattr(decay_config, "weight", None) if decay_config else None
         self.logger.info(
             f"[Qdrant] Executing {search_method.upper()} search: "
-            f"queries={len(query_vectors)}, limit={limit}, "
+            f"queries={num_queries}, limit={limit}, "
             f"has_sparse={sparse_vectors is not None}, "
             f"decay_enabled={decay_config is not None}, "
             f"decay_weight={weight}"
@@ -1289,11 +1340,12 @@ class QdrantDestination(VectorDBDestination):
 
         try:
             requests = await self._prepare_bulk_search_requests(
-                query_vectors=query_vectors,
+                num_queries=num_queries,
+                dense_vectors=dense_vectors,
                 limit=limit,
                 score_threshold=score_threshold,
                 with_payload=with_payload,
-                filter_conditions=filter_conditions or [None] * len(query_vectors),
+                filter_conditions=filter_conditions or [None] * num_queries,
                 sparse_vectors=sparse_vectors,
                 search_method=search_method,
                 decay_config=decay_config,

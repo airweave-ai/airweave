@@ -1,9 +1,10 @@
-// Hide Fern page titles on connector pages
+// Hide Fern page titles on connector pages (but not overview)
 (function() {
   // Function to hide title elements
   function hideConnectorTitles() {
-    // Check if we're on a connector page by examining the URL
-    if (window.location.pathname.includes('/connectors/')) {
+    // Check if we're on a connector page by examining the URL (exclude overview)
+    const path = window.location.pathname;
+    if (path.includes('/connectors/') && !path.includes('/connectors/overview')) {
       // Try different selectors to find and hide the title
       const titleSelectors = [
         '.fern-page-heading',

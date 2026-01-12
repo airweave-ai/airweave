@@ -6,12 +6,13 @@ tracking of sync progress, performance metrics, and error reporting.
 """
 
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
 
 from airweave.models.sync_job import SyncJobStatus
+from airweave.platform.sync.config.base import SyncConfig
 
 
 class SyncJobBase(BaseModel):
@@ -31,7 +32,7 @@ class SyncJobBase(BaseModel):
     failed_at: Optional[datetime] = None
     error: Optional[str] = None
     access_token: Optional[str] = None
-    execution_config_json: Optional[Dict[str, Any]] = None
+    sync_config: Optional[SyncConfig] = None
 
     class Config:
         """Pydantic config for SyncJobBase."""

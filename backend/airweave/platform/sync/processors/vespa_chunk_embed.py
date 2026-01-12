@@ -181,13 +181,30 @@ class VespaChunkEmbedProcessor(ContentProcessor):
         """Chunk code with AST-aware CodeChunker."""
         from airweave.platform.chunkers.code import CodeChunker
 
+        # Filter unsupported languages
+        supported, unsupported = await self._filter_unsupported_languages(entities)
+        if unsupported:
+            await sync_context.entity_tracker.record_skipped(len(unsupported))
+
+        if not supported:
+            return [[] for _ in entities]
+
         chunker = CodeChunker()
-        texts = [e.textual_representation for e in entities]
+        texts = [e.textual_representation for e in supported]
 
         try:
-            return await chunker.chunk_batch(texts)
+            supported_chunk_lists = await chunker.chunk_batch(texts)
         except Exception as e:
             raise SyncFailureError(f"[VespaChunkEmbedProcessor] CodeChunker failed: {e}")
+
+        # Map back to original entity order
+        # Create lookup: entity -> chunk_list
+        supported_map = {
+            id(e): chunks for e, chunks in zip(supported, supported_chunk_lists, strict=True)
+        }
+
+        # Return chunk lists in original order (empty list for unsupported)
+        return [supported_map.get(id(e), []) for e in entities]
 
     async def _chunk_text_entities(
         self,
@@ -204,6 +221,33 @@ class VespaChunkEmbedProcessor(ContentProcessor):
             return await chunker.chunk_batch(texts)
         except Exception as e:
             raise SyncFailureError(f"[VespaChunkEmbedProcessor] SemanticChunker failed: {e}")
+
+    async def _filter_unsupported_languages(
+        self,
+        entities: List[BaseEntity],
+    ) -> tuple[List[BaseEntity], List[BaseEntity]]:
+        """Filter code entities by tree-sitter support."""
+        try:
+            from magika import Magika
+            from tree_sitter_language_pack import get_parser
+        except ImportError:
+            return entities, []
+
+        magika = Magika()
+        supported: List[BaseEntity] = []
+        unsupported: List[BaseEntity] = []
+
+        for entity in entities:
+            try:
+                text_bytes = entity.textual_representation.encode("utf-8")
+                result = magika.identify_bytes(text_bytes)
+                lang = result.output.label.lower()
+                get_parser(lang)
+                supported.append(entity)
+            except (LookupError, Exception):
+                unsupported.append(entity)
+
+        return supported, unsupported
 
     def _flatten_chunks(
         self,

@@ -132,21 +132,46 @@ class ArfReader:
         files = await self.list_entity_files()
         return len(files)
 
-    async def iter_entity_dicts(self) -> AsyncGenerator[Dict[str, Any], None]:
-        """Iterate over raw entity dicts from storage.
+    async def iter_entity_dicts(self, batch_size: int = 50) -> AsyncGenerator[Dict[str, Any], None]:
+        """Iterate over raw entity dicts from storage with batched concurrent reads.
+
+        Reads entities in concurrent batches to dramatically improve performance
+        when reading from cloud storage (Azure Blob, S3, etc).
+
+        Args:
+            batch_size: Number of files to read concurrently (default: 50)
 
         Yields:
             Entity dicts as stored (with metadata fields)
         """
-        entity_files = await self.list_entity_files()
+        import asyncio
 
-        for file_path in entity_files:
-            try:
-                entity_dict = await self.storage.read_json(file_path)
-                yield entity_dict
-            except Exception as e:
-                self.logger.warning(f"Failed to read entity from {file_path}: {e}")
-                continue
+        if batch_size <= 0:
+            raise ValueError(f"batch_size must be positive, got {batch_size}")
+
+        entity_files = await self.list_entity_files()
+        total_batches = (len(entity_files) + batch_size - 1) // batch_size
+        self.logger.info(
+            f"Reading {len(entity_files)} entity files in {total_batches} concurrent batches "
+            f"(batch_size={batch_size})"
+        )
+
+        # Read files in concurrent batches
+        for i in range(0, len(entity_files), batch_size):
+            batch = entity_files[i : i + batch_size]
+
+            # Read batch concurrently
+            results = await asyncio.gather(
+                *[self.storage.read_json(file_path) for file_path in batch],
+                return_exceptions=True,
+            )
+
+            # Yield successful results, log errors
+            for idx, result in enumerate(results):
+                if isinstance(result, Exception):
+                    self.logger.warning(f"Failed to read entity from {batch[idx]}: {result}")
+                else:
+                    yield result
 
     # =========================================================================
     # Entity reconstruction

@@ -15,7 +15,7 @@ from airweave.db.session import get_db_context
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models.sync import Sync
 from airweave.models.sync_job import SyncJob
-from airweave.platform.sync.config import SyncExecutionConfig
+from airweave.platform.sync.config import SyncConfig
 from airweave.platform.sync.factory import SyncFactory
 from airweave.platform.temporal.schedule_service import temporal_schedule_service
 
@@ -101,7 +101,7 @@ class SyncService:
         ctx: ApiContext,
         access_token: Optional[str] = None,
         force_full_sync: bool = False,
-        execution_config: Optional[SyncExecutionConfig] = None,
+        execution_config: Optional[SyncConfig] = None,
     ) -> schemas.Sync:
         """Run a sync.
 
@@ -115,7 +115,7 @@ class SyncService:
             access_token (Optional[str]): Optional access token to use
                 instead of stored credentials.
             force_full_sync (bool): If True, forces a full sync with orphaned entity deletion.
-            execution_config (Optional[SyncExecutionConfig]): Optional execution config
+            execution_config (Optional[SyncConfig]): Optional execution config
                 for controlling sync behavior (destination filtering, handler toggles, etc.)
 
         Returns:
@@ -219,7 +219,7 @@ class SyncService:
         sync_job_in = schemas.SyncJobCreate(
             sync_id=sync_id,
             status=SyncJobStatus.PENDING,
-            execution_config_json=execution_config,
+            sync_config=execution_config.model_dump() if execution_config else None,
         )
 
         return await crud.sync_job.create(db, obj_in=sync_job_in, ctx=ctx, uow=uow)

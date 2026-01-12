@@ -14,7 +14,7 @@ from airweave.platform.builders.source import SourceContextBuilder
 from airweave.platform.builders.tracking import TrackingContextBuilder
 from airweave.platform.contexts.batch import BatchContext
 from airweave.platform.contexts.sync import SyncContext
-from airweave.platform.sync.config import SyncExecutionConfig
+from airweave.platform.sync.config import SyncConfig
 
 
 class SyncContextBuilder:
@@ -31,7 +31,7 @@ class SyncContextBuilder:
         ctx: ApiContext,
         access_token: Optional[str] = None,
         force_full_sync: bool = False,
-        execution_config: Optional[SyncExecutionConfig] = None,
+        execution_config: Optional[SyncConfig] = None,
     ) -> SyncContext:
         """Build complete sync context using all builders.
 

@@ -19,7 +19,7 @@ The path can be:
 - A storage-relative path (for blob): "raw/{sync_id}"
 
 Note: This source is behind a feature flag (Internal label).
-For automatic ARF replay during syncs, use execution_config.replay_from_arf=True instead.
+For automatic ARF replay during syncs, use execution_config.behavior.replay_from_arf=True instead.
 """
 
 import importlib

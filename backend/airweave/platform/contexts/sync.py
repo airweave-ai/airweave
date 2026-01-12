@@ -12,7 +12,7 @@ from airweave.platform.contexts.tracking import TrackingContext
 
 if TYPE_CHECKING:
     from airweave import schemas
-    from airweave.platform.sync.config import SyncExecutionConfig
+    from airweave.platform.sync.config import SyncConfig
 
 
 @dataclass
@@ -48,7 +48,7 @@ class SyncContext:
     connection: "schemas.Connection"
 
     # Execution config
-    execution_config: Optional["SyncExecutionConfig"] = None
+    execution_config: Optional["SyncConfig"] = None
 
     # -------------------------------------------------------------------------
     # HandlerContext Protocol Implementation

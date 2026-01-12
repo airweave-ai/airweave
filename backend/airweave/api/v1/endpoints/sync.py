@@ -16,6 +16,7 @@ from airweave.api.router import TrailingSlashRouter
 from airweave.core.logging import logger
 from airweave.core.pubsub import core_pubsub
 from airweave.core.sync_service import sync_service
+from airweave.platform.sync.config import SyncConfig
 
 router = TrailingSlashRouter()
 
@@ -143,7 +144,9 @@ async def run_sync(
     sync_id: UUID,
     ctx: ApiContext = Depends(deps.get_context),
     background_tasks: BackgroundTasks,
-    execution_config: Optional[dict[str, Any]] = None,
+    execution_config: Optional[SyncConfig] = Body(
+        None, description="Optional sync configuration overrides for this run"
+    ),
 ) -> schemas.SyncJob:
     """Trigger a sync run.
 
@@ -153,7 +156,8 @@ async def run_sync(
         sync_id: The ID of the sync to run
         ctx: The current authentication context
         background_tasks: The background tasks
-        execution_config: Optional execution config for controlling sync behavior
+        execution_config: Optional sync config overrides for this specific run
+            (will be applied as job-level override with highest precedence)
 
     Returns:
     --------

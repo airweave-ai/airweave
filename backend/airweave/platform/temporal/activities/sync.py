@@ -25,18 +25,16 @@ async def _run_sync_task(
     from airweave.core.exceptions import NotFoundException
     from airweave.core.sync_service import sync_service
     from airweave.db.session import get_db_context
-    from airweave.platform.sync.config import SyncExecutionConfig
+    from airweave.platform.sync.config import SyncConfig
 
-    # Refetch sync_job from DB to get execution_config_json
+    # Refetch sync_job from DB to get sync_config
     execution_config = None
     try:
         async with get_db_context() as db:
             sync_job_model = await crud.sync_job.get(db, id=sync_job.id, ctx=ctx)
-            if sync_job_model and sync_job_model.execution_config_json:
-                execution_config = SyncExecutionConfig(**sync_job_model.execution_config_json)
-                ctx.logger.info(
-                    f"Loaded execution config from DB: {sync_job_model.execution_config_json}"
-                )
+            if sync_job_model and sync_job_model.sync_config:
+                execution_config = SyncConfig(**sync_job_model.sync_config)
+                ctx.logger.info(f"Loaded execution config from DB: {sync_job_model.sync_config}")
     except Exception as e:
         ctx.logger.warning(f"Failed to load execution config from DB: {e}")
 
@@ -519,8 +517,10 @@ async def cleanup_stuck_sync_jobs_activity() -> None:
             stuck_running_jobs = []
             for job in running_jobs:
                 # Skip ARF-only backfills (no postgres handler = no stats updates)
-                if job.execution_config_json:
-                    is_arf_only = not job.execution_config_json.get("enable_postgres_handler", True)
+                if job.sync_config:
+                    # Check if postgres handler is disabled (nested structure)
+                    handlers = job.sync_config.get("handlers", {})
+                    is_arf_only = not handlers.get("enable_postgres_handler", True)
                     if is_arf_only:
                         logger.debug(
                             f"Skipping ARF-only job {job.id} from stuck detection "

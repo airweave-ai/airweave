@@ -15,7 +15,7 @@ from airweave.core.config import settings
 from airweave.core.logging import logger
 from airweave.platform.builders import SyncContextBuilder
 from airweave.platform.sync.actions import EntityActionResolver, EntityDispatcherBuilder
-from airweave.platform.sync.config import SyncExecutionConfig
+from airweave.platform.sync.config import SyncConfig, SyncConfigBuilder
 from airweave.platform.sync.entity_pipeline import EntityPipeline
 from airweave.platform.sync.orchestrator import SyncOrchestrator
 from airweave.platform.sync.stream import AsyncSourceStream
@@ -41,7 +41,7 @@ class SyncFactory:
         access_token: Optional[str] = None,
         max_workers: int = None,
         force_full_sync: bool = False,
-        execution_config: Optional[SyncExecutionConfig] = None,
+        execution_config: Optional[SyncConfig] = None,
     ) -> SyncOrchestrator:
         """Create a dedicated orchestrator instance for a sync run.
 
@@ -59,6 +59,7 @@ class SyncFactory:
             max_workers: Maximum number of concurrent workers (default: from settings)
             force_full_sync: If True, forces a full sync with orphaned entity deletion
             execution_config: Optional execution config for controlling sync behavior
+                (overrides job-level config if provided)
 
         Returns:
             A dedicated SyncOrchestrator instance
@@ -72,6 +73,18 @@ class SyncFactory:
         init_start = time.time()
         logger.info("Creating sync context via context builders...")
 
+        # Step 0: Build layered sync configuration
+        # Resolution order: schema defaults → env vars → collection → sync → sync_job → execution_config
+        resolved_config = SyncConfigBuilder.build(
+            collection_overrides=collection.sync_config,
+            sync_overrides=sync.sync_config,
+            job_overrides=sync_job.sync_config or execution_config,
+        )
+        logger.debug(
+            f"Resolved layered sync config: handlers={resolved_config.handlers.model_dump()}, "
+            f"destinations={resolved_config.destinations.model_dump()}"
+        )
+
         # Step 1: Build sync context using SyncContextBuilder
         sync_context = await SyncContextBuilder.build(
             db=db,
@@ -82,7 +95,7 @@ class SyncFactory:
             ctx=ctx,
             access_token=access_token,
             force_full_sync=force_full_sync,
-            execution_config=execution_config,
+            execution_config=resolved_config,
         )
 
         logger.debug(f"Sync context created in {time.time() - init_start:.2f}s")
@@ -92,7 +105,7 @@ class SyncFactory:
 
         dispatcher = EntityDispatcherBuilder.build(
             destinations=sync_context.destinations,
-            execution_config=execution_config,
+            execution_config=resolved_config,
             logger=sync_context.logger,
         )
 

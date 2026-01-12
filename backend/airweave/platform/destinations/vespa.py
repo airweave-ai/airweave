@@ -201,7 +201,6 @@ class VespaDestination(VectorDBDestination):
         fields = self._build_base_fields(entity)
         self._add_system_metadata_fields(fields, entity, entity_type)
         self._add_type_specific_fields(fields, entity)
-        self._add_access_control_fields(fields, entity)
         self._add_vespa_content_fields(fields, entity)  # Add chunks and embeddings
         self._add_payload_field(fields, entity)
 
@@ -293,29 +292,6 @@ class VespaDestination(VectorDBDestination):
                 fields["mime_type"] = entity.mime_type
             if entity.local_path:
                 fields["local_path"] = entity.local_path
-
-    def _add_access_control_fields(self, fields: dict[str, Any], entity: BaseEntity) -> None:
-        """Add access control fields if entity has access metadata.
-
-        IMPORTANT: Always set access control fields, with appropriate defaults.
-        - AC-enabled sources: Use the actual ACL values from entity.access
-        - Non-AC sources: Set is_public=True so entities are visible to everyone
-
-        This ensures consistent filtering behavior and avoids needing to check
-        for missing fields during search (Vespa doesn't support isNull in YQL).
-
-        Args:
-            fields: Fields dict to update
-            entity: The entity to extract access control from
-        """
-        if entity.access is not None:
-            fields["access_is_public"] = entity.access.is_public
-            # Always include viewers array (even if empty) when access is set
-            fields["access_viewers"] = entity.access.viewers if entity.access.viewers else []
-        else:
-            # Non-AC source: entity is public by default (visible to everyone)
-            fields["access_is_public"] = True
-            fields["access_viewers"] = []
 
     def _add_vespa_content_fields(self, fields: dict[str, Any], entity: BaseEntity) -> None:
         """Add pre-computed chunks and embeddings from VespaContent.
@@ -561,9 +537,10 @@ class VespaDestination(VectorDBDestination):
         if not self.app:
             raise RuntimeError("Vespa client not initialized")
 
-        # Delete from all schemas - each needs schema-prefixed field names
+        # Delete from all schemas (each schema handles its own field qualification)
         for schema in self._get_all_vespa_schemas():
-            # Vespa document selection language requires schema.field_name syntax
+            # Build schema-qualified selection expression
+            # Note: Document selection language requires explicit schema.field references
             selection = (
                 f"{schema}.airweave_system_metadata_sync_id=='{sync_id}' and "
                 f"{schema}.airweave_system_metadata_collection_id=='{self.collection_id}'"
@@ -582,9 +559,10 @@ class VespaDestination(VectorDBDestination):
         if not self.app:
             raise RuntimeError("Vespa client not initialized")
 
-        # Delete from all schemas - each needs schema-prefixed field names
+        # Delete from all schemas (each schema handles its own field qualification)
         for schema in self._get_all_vespa_schemas():
-            # Vespa document selection language requires schema.field_name syntax
+            # Build schema-qualified selection expression
+            # Note: Document selection language requires explicit schema.field references
             selection = f"{schema}.airweave_system_metadata_collection_id=='{collection_id}'"
             await self._delete_by_selection(schema, selection)
 
@@ -598,7 +576,10 @@ class VespaDestination(VectorDBDestination):
 
         Args:
             schema: The Vespa schema/document type to delete from
-            selection: Document selection expression (e.g., "field=='value'")
+            selection: Document selection expression with schema-qualified field names
+                       (e.g., "base_entity.field=='value'")
+                       Note: Vespa's document selection language (different from YQL) requires
+                       explicit schema.field references unlike the YQL `from` clause.
 
         Returns:
             Number of documents deleted (estimated from response)
@@ -663,10 +644,12 @@ class VespaDestination(VectorDBDestination):
                 continue
             try:
                 result = json.loads(line)
+                # Get document count from bulk delete response
                 if "documentCount" in result:
                     count += result["documentCount"]
+                # Also handle individual document deletions (id field)
                 elif result.get("id"):
-                    count += 1  # Individual document deletion
+                    count += 1
             except json.JSONDecodeError:
                 pass  # Skip malformed lines
         return count
@@ -699,17 +682,17 @@ class VespaDestination(VectorDBDestination):
         for i in range(0, len(parent_ids), batch_size):
             batch = parent_ids[i : i + batch_size]
 
-            # Delete from all schemas - each needs schema-prefixed field names
+            # Build OR selection for this batch of parent IDs
+            parent_conditions = " or ".join(
+                f"airweave_system_metadata_original_entity_id=='{pid}'" for pid in batch
+            )
+            selection = (
+                f"({parent_conditions}) and "
+                f"airweave_system_metadata_collection_id=='{self.collection_id}'"
+            )
+
+            # Delete from all schemas
             for schema in self._get_all_vespa_schemas():
-                # Vespa document selection language requires schema.field_name syntax
-                parent_conditions = " or ".join(
-                    f"{schema}.airweave_system_metadata_original_entity_id=='{pid}'"
-                    for pid in batch
-                )
-                selection = (
-                    f"({parent_conditions}) and "
-                    f"{schema}.airweave_system_metadata_collection_id=='{self.collection_id}'"
-                )
                 await self._delete_by_selection(schema, selection)
 
     # Production search settings (100k+ entities, LLM input)

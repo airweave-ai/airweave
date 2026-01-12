@@ -252,8 +252,6 @@ class ArfService:
         deleted = await self.storage.delete(entity_path)
 
         if deleted:
-            # Update manifest
-            await self._update_manifest(sync_context, delta_entities=-1, delta_files=-1)
             sync_context.logger.debug(f"Deleted ARF entity: {entity_id}")
 
         return deleted
@@ -294,28 +292,50 @@ class ArfService:
         except StorageNotFoundError:
             return None
 
-    async def iter_entities(self, sync_id: str) -> AsyncGenerator[Dict[str, Any], None]:
-        """Iterate over all entities in a sync's ARF store.
+    async def iter_entities(
+        self, sync_id: str, batch_size: int = 50
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """Iterate over all entities in a sync's ARF store with batched concurrent reads.
+
+        Reads entities in concurrent batches to dramatically improve performance
+        when reading from cloud storage (Azure Blob, S3, etc).
+
+        For 2000 entities:
+        - Sequential: ~100-200s (50-100ms per file)
+        - Batched (50 concurrent): ~5-10s (40 batches × 100ms)
 
         Args:
             sync_id: Sync ID
+            batch_size: Number of files to read concurrently (default: 50)
 
         Yields:
             Entity dicts
         """
+        import asyncio
+
         entities_dir = f"{self._sync_path(sync_id)}/entities"
         try:
             files = await self.storage.list_files(entities_dir)
         except Exception:
             return
 
-        for file_path in files:
-            if file_path.endswith(".json"):
-                try:
-                    entity_dict = await self.storage.read_json(file_path)
-                    yield entity_dict
-                except Exception:
-                    continue
+        # Filter to .json files only
+        json_files = [f for f in files if f.endswith(".json")]
+
+        # Read files in concurrent batches
+        for i in range(0, len(json_files), batch_size):
+            batch = json_files[i : i + batch_size]
+
+            # Read batch concurrently
+            results = await asyncio.gather(
+                *[self.storage.read_json(file_path) for file_path in batch],
+                return_exceptions=True,
+            )
+
+            # Yield successful results, skip exceptions
+            for result in results:
+                if not isinstance(result, Exception):
+                    yield result
 
     async def get_all_entities(self, sync_id: str) -> List[Dict[str, Any]]:
         """Load all entities into memory.
@@ -539,9 +559,14 @@ class ArfService:
         return await self.storage.delete(self._sync_path(sync_id))
 
     async def get_entity_count(self, sync_id: str) -> int:
-        """Get count of entities in store (computed on-demand)."""
-        entity_ids = await self.list_entity_ids(sync_id)
-        return len(entity_ids)
+        """Get count of entities in store (fast - just counts files without reading)."""
+        entities_dir = f"{self._sync_path(sync_id)}/entities"
+        try:
+            files = await self.storage.list_files(entities_dir)
+            # Just count .json files, don't read them
+            return len([f for f in files if f.endswith(".json")])
+        except Exception:
+            return 0
 
     # =========================================================================
     # Replay / Resync support

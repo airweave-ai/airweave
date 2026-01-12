@@ -5,7 +5,7 @@ from typing import List, Optional
 from airweave.core.logging import ContextualLogger
 from airweave.platform.destinations._base import BaseDestination, ProcessingRequirement
 from airweave.platform.sync.actions import EntityActionDispatcher
-from airweave.platform.sync.config import SyncExecutionConfig
+from airweave.platform.sync.config import SyncConfig
 from airweave.platform.sync.handlers import (
     ArfHandler,
     DestinationHandler,
@@ -21,7 +21,7 @@ class DispatcherBuilder:
     def build(
         cls,
         destinations: List[BaseDestination],
-        execution_config: Optional[SyncExecutionConfig] = None,
+        execution_config: Optional[SyncConfig] = None,
         logger: Optional[ContextualLogger] = None,
     ) -> EntityActionDispatcher:
         """Build dispatcher with handlers based on config.
@@ -41,13 +41,17 @@ class DispatcherBuilder:
     def _build_handlers(
         cls,
         destinations: List[BaseDestination],
-        execution_config: Optional[SyncExecutionConfig],
+        execution_config: Optional[SyncConfig],
         logger: Optional[ContextualLogger],
     ) -> List[EntityActionHandler]:
         """Build handler list based on config."""
-        enable_vector = execution_config.enable_vector_handlers if execution_config else True
-        enable_raw = execution_config.enable_raw_data_handler if execution_config else True
-        enable_postgres = execution_config.enable_postgres_handler if execution_config else True
+        enable_vector = (
+            execution_config.handlers.enable_vector_handlers if execution_config else True
+        )
+        enable_raw = execution_config.handlers.enable_raw_data_handler if execution_config else True
+        enable_postgres = (
+            execution_config.handlers.enable_postgres_handler if execution_config else True
+        )
 
         handlers: List[EntityActionHandler] = []
 

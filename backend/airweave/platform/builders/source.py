@@ -23,7 +23,7 @@ from airweave.platform.contexts.infra import InfraContext
 from airweave.platform.contexts.source import SourceContext
 from airweave.platform.locator import resource_locator
 from airweave.platform.sources._base import BaseSource
-from airweave.platform.sync.config import SyncExecutionConfig
+from airweave.platform.sync.config import SyncConfig
 from airweave.platform.sync.cursor import SyncCursor
 from airweave.platform.sync.token_manager import TokenManager
 from airweave.platform.utils.source_factory_utils import (
@@ -44,7 +44,7 @@ class SourceContextBuilder:
         infra: InfraContext,
         access_token: Optional[str] = None,
         force_full_sync: bool = False,
-        execution_config: Optional[SyncExecutionConfig] = None,
+        execution_config: Optional[SyncConfig] = None,
     ) -> SourceContext:
         """Build complete source context.
 
@@ -64,7 +64,7 @@ class SourceContextBuilder:
         logger = infra.logger
 
         # Check for ARF replay mode - override source with ArfReplaySource
-        if execution_config and execution_config.replay_from_arf:
+        if execution_config and execution_config.behavior.replay_from_arf:
             return await cls._build_arf_replay_context(
                 db=db,
                 sync=sync,
@@ -107,7 +107,7 @@ class SourceContextBuilder:
         db: AsyncSession,
         sync: schemas.Sync,
         infra: InfraContext,
-        execution_config: SyncExecutionConfig,
+        execution_config: SyncConfig,
     ) -> SourceContext:
         """Build source context for ARF replay mode.
 
@@ -483,7 +483,7 @@ class SourceContextBuilder:
         ctx: ApiContext,
         logger: ContextualLogger,
         force_full_sync: bool,
-        execution_config: Optional[SyncExecutionConfig],
+        execution_config: Optional[SyncConfig],
     ) -> SyncCursor:
         """Create sync cursor with optional data loading."""
         # Get cursor schema from source class (direct reference, no string lookup!)
@@ -499,10 +499,10 @@ class SourceContextBuilder:
                 "for accurate orphaned entity cleanup. Will still track cursor for next sync."
             )
             cursor_data = None
-        elif execution_config and execution_config.skip_cursor_load:
+        elif execution_config and execution_config.cursor.skip_load:
             logger.info(
                 "🔄 SKIP CURSOR LOAD: Fetching all entities "
-                "(execution_config.skip_cursor_load=True)"
+                "(execution_config.cursor.skip_load=True)"
             )
             cursor_data = None
         else:

@@ -86,22 +86,44 @@ while [ $retries -lt $MAX_RETRIES ]; do
     sleep $RETRY_INTERVAL
 done
 
-# Verify document API is accessible
+# Verify document API is accessible and ready for documents
 echo ""
-echo "Verifying document API is accessible..."
+echo "Verifying document API is accessible and ready..."
 retries=0
-until curl -sf "http://vespa:8081/state/v1/health" | grep -q '"up"'; do
+MAX_DOC_API_RETRIES=60
+DOC_API_READY=false
+
+while [ $retries -lt $MAX_DOC_API_RETRIES ]; do
+    # Try to query the document API endpoint to ensure it's actually ready
+    # Using timeout and checking if curl succeeds at all (any HTTP response = API is up)
+    if timeout 5 curl -s -o /dev/null -w "%{http_code}" "http://vespa:8081/document/v1/" > /tmp/vespa_status 2>&1; then
+        doc_check=$(cat /tmp/vespa_status 2>/dev/null || echo "000")
+        # Any HTTP response code (400, 404, 200, etc.) means API is responding
+        # Only "000" means connection failed
+        if [ "$doc_check" != "000" ] && [ -n "$doc_check" ]; then
+            echo "✅ Document API is ready! (HTTP status: $doc_check)"
+            DOC_API_READY=true
+            rm -f /tmp/vespa_status
+            break
+        fi
+    fi
+    
     retries=$((retries + 1))
-    if [ $retries -ge 30 ]; then
-        echo "WARNING: Document API not responding, but deployment completed"
+    if [ $retries -ge $MAX_DOC_API_RETRIES ]; then
+        echo "❌ Document API not responding after ${MAX_DOC_API_RETRIES} attempts ($((MAX_DOC_API_RETRIES * 2))s)"
+        rm -f /tmp/vespa_status
         break
     fi
-    echo "  Document API not ready, waiting... (attempt ${retries}/30)"
+    
+    echo "  ⏳ Document API not ready, waiting... (attempt ${retries}/${MAX_DOC_API_RETRIES})"
     sleep 2
 done
 
-if curl -sf "http://vespa:8081/state/v1/health" | grep -q '"up"'; then
-    echo "Document API is ready!"
+if [ "$DOC_API_READY" = "true" ]; then
+    echo "✅ Document API verified and ready for requests!"
+else
+    echo "❌ Document API verification failed - Vespa not ready"
+    exit 1
 fi
 
 echo ""

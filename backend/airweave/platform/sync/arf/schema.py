@@ -12,6 +12,9 @@ class SyncManifest(BaseModel):
     """Manifest for a sync's ARF data store.
 
     Stored at: raw/{sync_id}/manifest.json
+
+    Note: Entity and file counts are computed on-demand via get_entity_count()
+    to avoid inconsistencies from incremental updates.
     """
 
     sync_id: str
@@ -21,8 +24,6 @@ class SyncManifest(BaseModel):
     organization_id: str
     created_at: str
     updated_at: str
-    entity_count: int = 0
-    file_count: int = 0
     # Track sync jobs that have written to this store
     sync_jobs: List[str] = Field(default_factory=list)
     # Optional config reference
