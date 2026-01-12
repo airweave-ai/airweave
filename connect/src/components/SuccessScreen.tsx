@@ -3,6 +3,7 @@ import { Plus } from "lucide-react";
 import { useState } from "react";
 import { apiClient } from "../lib/api";
 import { canConnect } from "../lib/connection-utils";
+import { notifyConnectionCreated } from "../lib/messaging";
 import { useTheme } from "../lib/theme";
 import type { ConnectSessionContext, NavigateView, Source } from "../lib/types";
 import { Button } from "./Button";
@@ -11,6 +12,7 @@ import { ConnectionsErrorView } from "./ConnectionsErrorView";
 import { EmptyState } from "./EmptyState";
 import { LoadingScreen } from "./LoadingScreen";
 import { PageLayout } from "./PageLayout";
+import { SourceConfigView } from "./SourceConfigView";
 import { SourcesList } from "./SourcesList";
 
 interface SuccessScreenProps {
@@ -27,6 +29,7 @@ export function SuccessScreen({
   const { labels } = useTheme();
   const queryClient = useQueryClient();
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [selectedSource, setSelectedSource] = useState<Source | null>(null);
 
   const defaultView: NavigateView =
     session.mode === "connect" ? "sources" : "connections";
@@ -66,9 +69,30 @@ export function SuccessScreen({
     },
   });
 
-  const handleSelectSource = (_source: Source) => {
-    // TODO: Navigate to source configuration view
+  const handleSelectSource = (source: Source) => {
+    setSelectedSource(source);
+    setView("configure");
   };
+
+  // Configure view - show source configuration form
+  if (view === "configure" && selectedSource) {
+    return (
+      <SourceConfigView
+        source={selectedSource}
+        session={session}
+        onBack={() => {
+          setSelectedSource(null);
+          setView("sources");
+        }}
+        onSuccess={(connectionId) => {
+          notifyConnectionCreated(connectionId);
+          setSelectedSource(null);
+          setView("connections");
+          queryClient.invalidateQueries({ queryKey: ["source-connections"] });
+        }}
+      />
+    );
+  }
 
   if (view === "sources") {
     return (

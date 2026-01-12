@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
 import { apiClient } from "../lib/api";
 import type { ConnectLabels, Source } from "../lib/types";
+import { BackButton } from "./BackButton";
 import { LoadingScreen } from "./LoadingScreen";
 import { PageLayout } from "./PageLayout";
 import { SourceItem } from "./SourceItem";
@@ -26,15 +26,7 @@ export function SourcesList({
     queryFn: () => apiClient.getSources(),
   });
 
-  const backButton = onBack ? (
-    <button
-      onClick={onBack}
-      className="p-1 rounded cursor-pointer border-none bg-transparent flex items-center justify-center transition-colors duration-150 hover:bg-black/10 dark:hover:bg-white/10"
-      style={{ color: "var(--connect-text-muted)" }}
-    >
-      <ArrowLeft size={20} />
-    </button>
-  ) : undefined;
+  const backButton = onBack ? <BackButton onClick={onBack} /> : undefined;
 
   return (
     <PageLayout title={labels.sourcesListHeading} headerLeft={backButton}>
