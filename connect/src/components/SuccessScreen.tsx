@@ -66,9 +66,9 @@ export function SuccessScreen({
     },
   });
 
-  // TODO: Implement source configuration flow (will use source to navigate to configure view)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const handleSelectSource = (source: Source) => {};
+  const handleSelectSource = (_source: Source) => {
+    // TODO: Navigate to source configuration view
+  };
 
   if (view === "sources") {
     return (

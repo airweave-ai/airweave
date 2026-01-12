@@ -443,7 +443,7 @@ if (view === "configure" && selectedSource) {
 
 ### Phase 2: Direct Auth Flow
 - [x] Create `DynamicFormField.tsx` component
-- [ ] Create `AuthMethodSelector.tsx` component
+- [x] Create `AuthMethodSelector.tsx` component
 - [ ] Create `SourceConfigView.tsx` component (direct auth only)
 - [ ] Modify `SuccessScreen.tsx` to handle configure view
 - [ ] Add `selectedSource` state to SuccessScreen
