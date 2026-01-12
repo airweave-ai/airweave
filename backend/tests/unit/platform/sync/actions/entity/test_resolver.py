@@ -320,12 +320,63 @@ class TestResolveNonDeleteAction:
 
         entity = create_mock_entity("test-1", "hash1")
         existing_map = {}  # Empty - entity doesn't exist
+        collection_map = {}  # No collection-level dedup
 
-        action = resolver._resolve_non_delete_action(entity, existing_map, ctx)
+        action = resolver._resolve_non_delete_action(entity, existing_map, collection_map, ctx)
 
         assert isinstance(action, EntityInsertAction)
         assert action.entity == entity
         assert action.entity_definition_id == def_id
+        assert action.skip_content_handlers is False
+
+    def test_returns_insert_with_skip_content_handlers_for_collection_dedup(self):
+        """Test INSERT with skip_content_handlers when entity exists in collection."""
+        def_id = uuid4()
+        db_id = uuid4()
+        entity_map = {MockEntity: def_id}
+        resolver = EntityActionResolver(entity_map)
+        ctx = MockSyncContext()
+
+        entity = create_mock_entity("test-1", "hash1")
+        existing_map = {}  # Not in THIS sync
+        collection_map = {
+            ("test-1", def_id): MockDbEntity(
+                id=db_id,
+                entity_id="test-1",
+                entity_definition_id=def_id,
+                hash="hash1",  # Same hash - skip content handlers
+            )
+        }
+
+        action = resolver._resolve_non_delete_action(entity, existing_map, collection_map, ctx)
+
+        assert isinstance(action, EntityInsertAction)
+        assert action.entity == entity
+        assert action.skip_content_handlers is True
+
+    def test_returns_insert_without_skip_when_collection_hash_differs(self):
+        """Test INSERT without skip when collection entity has different hash."""
+        def_id = uuid4()
+        db_id = uuid4()
+        entity_map = {MockEntity: def_id}
+        resolver = EntityActionResolver(entity_map)
+        ctx = MockSyncContext()
+
+        entity = create_mock_entity("test-1", "new_hash")
+        existing_map = {}  # Not in THIS sync
+        collection_map = {
+            ("test-1", def_id): MockDbEntity(
+                id=db_id,
+                entity_id="test-1",
+                entity_definition_id=def_id,
+                hash="old_hash",  # Different hash - don't skip
+            )
+        }
+
+        action = resolver._resolve_non_delete_action(entity, existing_map, collection_map, ctx)
+
+        assert isinstance(action, EntityInsertAction)
+        assert action.skip_content_handlers is False
 
     def test_returns_update_for_changed_hash(self):
         """Test UPDATE action when hash has changed."""
@@ -344,8 +395,9 @@ class TestResolveNonDeleteAction:
                 hash="old_hash",
             )
         }
+        collection_map = {}
 
-        action = resolver._resolve_non_delete_action(entity, existing_map, ctx)
+        action = resolver._resolve_non_delete_action(entity, existing_map, collection_map, ctx)
 
         assert isinstance(action, EntityUpdateAction)
         assert action.entity == entity
@@ -368,8 +420,9 @@ class TestResolveNonDeleteAction:
                 hash="same_hash",
             )
         }
+        collection_map = {}
 
-        action = resolver._resolve_non_delete_action(entity, existing_map, ctx)
+        action = resolver._resolve_non_delete_action(entity, existing_map, collection_map, ctx)
 
         assert isinstance(action, EntityKeepAction)
         assert action.entity == entity
@@ -386,7 +439,7 @@ class TestResolveNonDeleteAction:
         entity.airweave_system_metadata = None  # No metadata
 
         with pytest.raises(SyncFailureError, match="has no hash"):
-            resolver._resolve_non_delete_action(entity, {}, ctx)
+            resolver._resolve_non_delete_action(entity, {}, {}, ctx)
 
 
 class TestCreateDeleteAction:
@@ -510,11 +563,13 @@ class TestCreateActions:
                 hash="hash_deleted",
             ),
         }
+        collection_map = {}  # No collection-level dedup
 
         batch = resolver._create_actions(
             non_delete_entities=[new_entity, updated_entity, unchanged_entity],
             delete_entities=[deleted_entity],
             existing_map=existing_map,
+            collection_map=collection_map,
             sync_context=ctx,
         )
 
@@ -523,13 +578,45 @@ class TestCreateActions:
         assert len(batch.keeps) == 1
         assert len(batch.deletes) == 1
 
+    def test_creates_batch_with_collection_dedup_skip_content_handlers(self):
+        """Test INSERT actions get skip_content_handlers=True when entity exists in collection."""
+        def_id = uuid4()
+        db_id_collection = uuid4()
+        entity_map = {MockEntity: def_id}
+        resolver = EntityActionResolver(entity_map)
+        ctx = MockSyncContext()
 
-class TestFetchExistingEntities:
-    """Test _fetch_existing_entities method."""
+        # New entity for this sync, but exists in collection with same hash
+        entity = create_mock_entity("shared-1", "hash_shared")
+
+        existing_map = {}  # Not in this sync
+        collection_map = {
+            ("shared-1", def_id): MockDbEntity(
+                id=db_id_collection,
+                entity_id="shared-1",
+                entity_definition_id=def_id,
+                hash="hash_shared",  # Same hash
+            )
+        }
+
+        batch = resolver._create_actions(
+            non_delete_entities=[entity],
+            delete_entities=[],
+            existing_map=existing_map,
+            collection_map=collection_map,
+            sync_context=ctx,
+        )
+
+        assert len(batch.inserts) == 1
+        assert batch.inserts[0].skip_content_handlers is True
+
+
+class TestFetchExistingEntitiesForSync:
+    """Test _fetch_existing_entities_for_sync method."""
 
     @pytest.mark.asyncio
-    async def test_uses_sync_level_dedup_by_default(self):
-        """Test uses sync-level dedup when collection dedup not enabled."""
+    async def test_fetches_entities_for_sync(self):
+        """Test fetches entities scoped to the current sync."""
         def_id = uuid4()
         sync_id = uuid4()
         entity_map = {MockEntity: def_id}
@@ -547,7 +634,7 @@ class TestFetchExistingEntities:
                     return_value=mock_result
                 )
 
-                result = await resolver._fetch_existing_entities(
+                result = await resolver._fetch_existing_entities_for_sync(
                     [("test-1", def_id)], ctx
                 )
 
@@ -555,15 +642,28 @@ class TestFetchExistingEntities:
                 assert result == mock_result
 
     @pytest.mark.asyncio
-    async def test_uses_collection_level_dedup_when_enabled(self):
-        """Test uses collection-level dedup when config flag is enabled."""
+    async def test_returns_empty_for_empty_requests(self):
+        """Test returns empty dict for empty entity requests."""
+        resolver = EntityActionResolver({})
+        ctx = MockSyncContext()
+
+        result = await resolver._fetch_existing_entities_for_sync([], ctx)
+
+        assert result == {}
+
+
+class TestFetchExistingEntitiesForCollection:
+    """Test _fetch_existing_entities_for_collection method."""
+
+    @pytest.mark.asyncio
+    async def test_fetches_entities_for_collection(self):
+        """Test fetches entities across all syncs in collection."""
         def_id = uuid4()
         collection_id = uuid4()
         entity_map = {MockEntity: def_id}
         resolver = EntityActionResolver(entity_map)
 
-        config = SyncConfig(behavior=BehaviorConfig(dedupe_by_collection=True))
-        ctx = MockSyncContext(collection_id=collection_id, execution_config=config)
+        ctx = MockSyncContext(collection_id=collection_id, execution_config=None)
 
         mock_result = {}
 
@@ -576,7 +676,7 @@ class TestFetchExistingEntities:
                     return_value=mock_result
                 )
 
-                result = await resolver._fetch_existing_entities(
+                result = await resolver._fetch_existing_entities_for_collection(
                     [("test-1", def_id)], ctx
                 )
 
@@ -589,7 +689,7 @@ class TestFetchExistingEntities:
         resolver = EntityActionResolver({})
         ctx = MockSyncContext()
 
-        result = await resolver._fetch_existing_entities([], ctx)
+        result = await resolver._fetch_existing_entities_for_collection([], ctx)
 
         assert result == {}
 
@@ -640,7 +740,7 @@ class TestResolve:
 
         with patch.object(
             resolver,
-            "_fetch_existing_entities",
+            "_fetch_existing_entities_for_sync",
             new=AsyncMock(return_value=mock_existing_map),
         ):
             batch = await resolver.resolve([new_entity, existing_entity], ctx)
@@ -649,6 +749,47 @@ class TestResolve:
         assert len(batch.keeps) == 1  # existing_entity (same hash)
         assert len(batch.updates) == 0
         assert len(batch.deletes) == 0
+
+    @pytest.mark.asyncio
+    async def test_resolve_with_collection_dedup(self):
+        """Test resolve with collection-level dedup sets skip_content_handlers."""
+        def_id = uuid4()
+        db_id = uuid4()
+        entity_map = {MockEntity: def_id}
+        resolver = EntityActionResolver(entity_map)
+
+        config = SyncConfig(behavior=BehaviorConfig(dedupe_by_collection=True))
+        ctx = MockSyncContext(execution_config=config)
+
+        # Entity exists in collection (different sync) with same hash
+        entity = create_mock_entity("shared-1", "hash_shared")
+
+        # Not in this sync
+        mock_sync_map = {}
+        # But exists in collection
+        mock_collection_map = {
+            ("shared-1", def_id): MockDbEntity(
+                id=db_id,
+                entity_id="shared-1",
+                entity_definition_id=def_id,
+                hash="hash_shared",
+            )
+        }
+
+        with patch.object(
+            resolver,
+            "_fetch_existing_entities_for_sync",
+            new=AsyncMock(return_value=mock_sync_map),
+        ):
+            with patch.object(
+                resolver,
+                "_fetch_existing_entities_for_collection",
+                new=AsyncMock(return_value=mock_collection_map),
+            ):
+                batch = await resolver.resolve([entity], ctx)
+
+        assert len(batch.inserts) == 1
+        assert batch.inserts[0].skip_content_handlers is True
 
 
 class TestEntityActionBatch:

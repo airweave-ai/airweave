@@ -71,7 +71,15 @@ class ArfHandler(EntityActionHandler):
         if batch.updates:
             await self.handle_updates(batch.updates, sync_context)
         if batch.inserts:
-            await self.handle_inserts(batch.inserts, sync_context)
+            # Filter out inserts where skip_content_handlers=True (collection-level dedup)
+            inserts_to_process = [a for a in batch.inserts if not a.skip_content_handlers]
+            if inserts_to_process:
+                await self.handle_inserts(inserts_to_process, sync_context)
+            skipped = len(batch.inserts) - len(inserts_to_process)
+            if skipped > 0:
+                sync_context.logger.debug(
+                    f"[{self.name}] Skipped {skipped} inserts (collection dedup)"
+                )
 
     async def handle_inserts(
         self,
@@ -82,10 +90,15 @@ class ArfHandler(EntityActionHandler):
         if not actions:
             return
 
+        # Filter out inserts where skip_content_handlers=True (collection-level dedup)
+        actions_to_process = [a for a in actions if not a.skip_content_handlers]
+        if not actions_to_process:
+            return
+
         # Ensure manifest exists (lazily created on first write)
         await self._ensure_manifest(sync_context)
 
-        entities = [action.entity for action in actions]
+        entities = [action.entity for action in actions_to_process]
         await self._do_upsert(entities, "insert", sync_context)
 
     async def handle_updates(

@@ -78,14 +78,27 @@ class EntityActionResolver:
         all_entities = non_delete_entities + delete_entities
         entity_requests = self._build_entity_requests(all_entities, sync_context)
 
-        # Step 3: Fetch existing entities from database
-        existing_map = await self._fetch_existing_entities(entity_requests, sync_context)
+        # Step 3: Fetch existing entities from database (always sync-level for action decisions)
+        existing_map = await self._fetch_existing_entities_for_sync(entity_requests, sync_context)
 
-        # Step 4: Create actions for each entity
+        # Step 4: For collection-level dedup, also fetch collection-wide entities
+        # to determine if we can skip vector handlers on INSERTs
+        collection_map = {}
+        use_collection_dedup = (
+            sync_context.execution_config
+            and sync_context.execution_config.behavior.dedupe_by_collection
+        )
+        if use_collection_dedup:
+            collection_map = await self._fetch_existing_entities_for_collection(
+                entity_requests, sync_context
+            )
+
+        # Step 5: Create actions for each entity
         batch = self._create_actions(
             non_delete_entities,
             delete_entities,
             existing_map,
+            collection_map,
             sync_context,
         )
 
@@ -178,12 +191,14 @@ class EntityActionResolver:
 
         return entity_requests
 
-    async def _fetch_existing_entities(
+    async def _fetch_existing_entities_for_sync(
         self,
         entity_requests: List[Tuple[str, UUID]],
         sync_context: "SyncContext",
     ) -> Dict[Tuple[str, UUID], models.Entity]:
-        """Bulk fetch existing entity records from database.
+        """Fetch existing entity records for THIS sync only.
+
+        Used for determining INSERT vs UPDATE vs KEEP actions.
 
         Args:
             entity_requests: List of (entity_id, entity_definition_id) tuples
@@ -191,63 +206,89 @@ class EntityActionResolver:
 
         Returns:
             Dict mapping (entity_id, entity_definition_id) -> Entity model
-
-        Raises:
-            SyncFailureError: If database lookup fails
         """
         if not entity_requests:
             return {}
-
-        # Check if collection-level deduplication is enabled
-        use_collection_dedup = (
-            sync_context.execution_config
-            and sync_context.execution_config.behavior.dedupe_by_collection
-        )
 
         try:
             lookup_start = time.time()
             num_chunks = (len(entity_requests) + 999) // 1000
 
-            if use_collection_dedup:
-                sync_context.logger.debug(
-                    f"Collection-level dedup: lookup for {len(entity_requests)} entities "
-                    f"({num_chunks} chunks) in collection {sync_context.collection_id}..."
+            sync_context.logger.debug(
+                f"Sync-level lookup for {len(entity_requests)} entities ({num_chunks} chunks)..."
+            )
+            async with get_db_context() as db:
+                existing_map = await crud.entity.bulk_get_by_entity_sync_and_definition(
+                    db,
+                    sync_id=sync_context.sync.id,
+                    entity_requests=entity_requests,
                 )
-                async with get_db_context() as db:
-                    existing_map = await crud.entity.bulk_get_by_entity_collection_and_definition(
-                        db,
-                        collection_id=sync_context.collection_id,
-                        entity_requests=entity_requests,
-                    )
-            else:
-                sync_context.logger.debug(
-                    f"Sync-level dedup: lookup for {len(entity_requests)} entities "
-                    f"({num_chunks} chunks)..."
-                )
-                async with get_db_context() as db:
-                    existing_map = await crud.entity.bulk_get_by_entity_sync_and_definition(
-                        db,
-                        sync_id=sync_context.sync.id,
-                        entity_requests=entity_requests,
-                    )
 
             lookup_duration = time.time() - lookup_start
             sync_context.logger.debug(
-                f"Bulk lookup complete in {lookup_duration:.2f}s - "
+                f"Sync-level lookup complete in {lookup_duration:.2f}s - "
                 f"found {len(existing_map)}/{len(entity_requests)} existing"
             )
 
             return existing_map
 
         except Exception as e:
-            sync_context.logger.error(f"Failed to fetch existing entities: {e}")
-            raise SyncFailureError(f"Failed to fetch existing entities: {e}") from e
+            sync_context.logger.error(f"Failed to fetch existing entities for sync: {e}")
+            raise SyncFailureError(f"Failed to fetch existing entities for sync: {e}") from e
+
+    async def _fetch_existing_entities_for_collection(
+        self,
+        entity_requests: List[Tuple[str, UUID]],
+        sync_context: "SyncContext",
+    ) -> Dict[Tuple[str, UUID], models.Entity]:
+        """Fetch existing entity records across ALL syncs in the collection.
+
+        Used for collection-level dedup to determine if we can skip content handlers
+        (another sync already has this entity with the same hash).
+
+        Args:
+            entity_requests: List of (entity_id, entity_definition_id) tuples
+            sync_context: Sync context with logger
+
+        Returns:
+            Dict mapping (entity_id, entity_definition_id) -> Entity model
+        """
+        if not entity_requests:
+            return {}
+
+        try:
+            lookup_start = time.time()
+            num_chunks = (len(entity_requests) + 999) // 1000
+
+            sync_context.logger.debug(
+                f"Collection-level lookup for {len(entity_requests)} entities "
+                f"({num_chunks} chunks) in collection {sync_context.collection_id}..."
+            )
+            async with get_db_context() as db:
+                existing_map = await crud.entity.bulk_get_by_entity_collection_and_definition(
+                    db,
+                    collection_id=sync_context.collection_id,
+                    entity_requests=entity_requests,
+                )
+
+            lookup_duration = time.time() - lookup_start
+            sync_context.logger.debug(
+                f"Collection-level lookup complete in {lookup_duration:.2f}s - "
+                f"found {len(existing_map)}/{len(entity_requests)} existing"
+            )
+
+            return existing_map
+
+        except Exception as e:
+            sync_context.logger.error(f"Failed to fetch existing entities for collection: {e}")
+            raise SyncFailureError(f"Failed to fetch existing entities for collection: {e}") from e
 
     def _create_actions(
         self,
         non_delete_entities: List[BaseEntity],
         delete_entities: List[BaseEntity],
         existing_map: Dict[Tuple[str, UUID], models.Entity],
+        collection_map: Dict[Tuple[str, UUID], models.Entity],
         sync_context: "SyncContext",
     ) -> EntityActionBatch:
         """Create action objects for all entities.
@@ -255,7 +296,8 @@ class EntityActionResolver:
         Args:
             non_delete_entities: Entities that are not deletions
             delete_entities: DeletionEntity instances
-            existing_map: Map of existing DB records
+            existing_map: Map of existing DB records for THIS sync
+            collection_map: Map of existing DB records across collection (for skip_content_handlers)
             sync_context: Sync context for error handling
 
         Returns:
@@ -271,7 +313,9 @@ class EntityActionResolver:
 
         # Process non-delete entities
         for entity in non_delete_entities:
-            action = self._resolve_non_delete_action(entity, existing_map, sync_context)
+            action = self._resolve_non_delete_action(
+                entity, existing_map, collection_map, sync_context
+            )
             if isinstance(action, EntityInsertAction):
                 inserts.append(action)
             elif isinstance(action, EntityUpdateAction):
@@ -296,13 +340,15 @@ class EntityActionResolver:
         self,
         entity: BaseEntity,
         existing_map: Dict[Tuple[str, UUID], models.Entity],
+        collection_map: Dict[Tuple[str, UUID], models.Entity],
         sync_context: "SyncContext",
     ) -> EntityInsertAction | EntityUpdateAction | EntityKeepAction:
         """Resolve a non-delete entity to its action type.
 
         Args:
             entity: Entity to resolve
-            existing_map: Map of existing DB records
+            existing_map: Map of existing DB records for THIS sync
+            collection_map: Map of existing DB records across collection (for skip_content_handlers)
             sync_context: Sync context
 
         Returns:
@@ -326,16 +372,29 @@ class EntityActionResolver:
         if entity_definition_id is None:
             raise SyncFailureError(f"Entity type {entity.__class__.__name__} not in entity_map")
 
-        # Lookup existing DB record
+        # Lookup existing DB record for THIS sync
         db_key = (entity.entity_id, entity_definition_id)
         db_row = existing_map.get(db_key)
 
         # Determine action based on DB state and hash
         if db_row is None:
-            # New entity - INSERT
+            # New entity for this sync - INSERT
+            # Check if another sync in the collection already has this entity with same hash
+            skip_content_handlers = False
+            if collection_map:
+                collection_row = collection_map.get(db_key)
+                if collection_row and collection_row.hash == entity_hash:
+                    # Another sync has this entity with matching hash - skip content handlers
+                    skip_content_handlers = True
+                    sync_context.logger.debug(
+                        f"Collection dedup: {entity.entity_id} exists in another sync "
+                        f"with matching hash, skipping content handlers"
+                    )
+
             return EntityInsertAction(
                 entity=entity,
                 entity_definition_id=entity_definition_id,
+                skip_content_handlers=skip_content_handlers,
             )
         elif db_row.hash != entity_hash:
             # Hash changed - UPDATE

@@ -98,7 +98,15 @@ class DestinationHandler(EntityActionHandler):
             )
 
         # Process and insert (inserts + updates)
-        entities = batch.get_entities_to_process()
+        # Filter out inserts where skip_content_handlers=True (collection-level dedup)
+        inserts_to_process = [a for a in batch.inserts if not a.skip_content_handlers]
+        skipped_count = len(batch.inserts) - len(inserts_to_process)
+        if skipped_count > 0:
+            sync_context.logger.debug(
+                f"[{self.name}] Skipping {skipped_count} inserts (collection dedup)"
+            )
+
+        entities = [a.entity for a in inserts_to_process] + [a.entity for a in batch.updates]
         if entities:
             await self._do_process_and_insert(entities, sync_context)
 
@@ -114,7 +122,15 @@ class DestinationHandler(EntityActionHandler):
         """Handle inserts - process and insert to destinations."""
         if not actions:
             return
-        entities = [a.entity for a in actions]
+        # Filter out inserts where skip_content_handlers=True (collection-level dedup)
+        actions_to_process = [a for a in actions if not a.skip_content_handlers]
+        if not actions_to_process:
+            skipped = len(actions)
+            sync_context.logger.debug(
+                f"[{self.name}] Skipping all {skipped} inserts (collection dedup)"
+            )
+            return
+        entities = [a.entity for a in actions_to_process]
         sync_context.logger.debug(f"[{self.name}] Inserting {len(entities)} entities")
         await self._do_process_and_insert(entities, sync_context)
 
