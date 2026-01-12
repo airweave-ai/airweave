@@ -1,19 +1,10 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { apiClient } from "../lib/api";
-import {
-  isPopupOpen,
-  listenForOAuthComplete,
-  openOAuthPopup,
-} from "../lib/oauth";
 import { useTheme } from "../lib/theme";
-import type {
-  ConfigField,
-  OAuthCallbackResult,
-  Source,
-  SourceConnectionCreateRequest,
-} from "../lib/types";
+import type { ConfigField, Source, SourceConnectionCreateRequest } from "../lib/types";
+import { useOAuthFlow } from "../lib/useOAuthFlow";
 import { AppIcon } from "./AppIcon";
 import { AuthMethodSelector } from "./AuthMethodSelector";
 import { BackButton } from "./BackButton";
@@ -48,71 +39,57 @@ export function SourceConfigView({
   });
 
   const [connectionName, setConnectionName] = useState("");
-  const [authMethod, setAuthMethod] = useState<"direct" | "oauth_browser">(
-    "direct",
-  );
+  const [authMethod, setAuthMethod] = useState<"direct" | "oauth_browser">("direct");
   const [authValues, setAuthValues] = useState<Record<string, unknown>>({});
   const [configValues, setConfigValues] = useState<Record<string, unknown>>({});
-  const [byocValues, setByocValues] = useState<{
-    client_id: string;
-    client_secret: string;
-  }>({ client_id: "", client_secret: "" });
+  const [byocValues, setByocValues] = useState({ client_id: "", client_secret: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
-
-  // OAuth flow state
-  const [oauthStatus, setOauthStatus] = useState<
-    "idle" | "creating" | "waiting" | "popup_blocked" | "error"
-  >("idle");
-  const [oauthError, setOauthError] = useState<string | null>(null);
-  const [blockedAuthUrl, setBlockedAuthUrl] = useState<string | null>(null);
-  const oauthPopupRef = useRef<Window | null>(null);
-
-  const createMutation = useMutation({
-    mutationFn: (payload: SourceConnectionCreateRequest) =>
-      apiClient.createSourceConnection(payload),
-    onSuccess: (response) => {
-      onSuccess(response.id);
-    },
-    onError: (error) => {
-      setErrors({
-        _form:
-          error instanceof Error
-            ? error.message
-            : "Failed to create connection",
-      });
-    },
-  });
 
   const availableAuthMethods =
     sourceDetails?.auth_methods.filter(
-      (m): m is "direct" | "oauth_browser" =>
-        m === "direct" || m === "oauth_browser",
+      (m): m is "direct" | "oauth_browser" => m === "direct" || m === "oauth_browser"
     ) ?? [];
 
   const effectiveAuthMethod = availableAuthMethods.includes(authMethod)
     ? authMethod
     : (availableAuthMethods[0] ?? "direct");
 
+  const oauthFlow = useOAuthFlow({
+    shortName: source.short_name,
+    connectionName,
+    configValues,
+    byocValues,
+    requiresByoc: sourceDetails?.requires_byoc ?? false,
+    onSuccess,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (payload: SourceConnectionCreateRequest) =>
+      apiClient.createSourceConnection(payload),
+    onSuccess: (response) => onSuccess(response.id),
+    onError: (err) => {
+      setErrors({
+        _form: err instanceof Error ? err.message : labels.connectionFailed,
+      });
+    },
+  });
+
   const clearError = useCallback((key: string) => {
     setErrors((prev) => {
-      const newErrors = { ...prev };
-      delete newErrors[key];
-      return newErrors;
+      const next = { ...prev };
+      delete next[key];
+      return next;
     });
   }, []);
 
   const handleAuthValueChange = (fieldName: string, value: unknown) => {
     setAuthValues((prev) => ({ ...prev, [fieldName]: value }));
-    if (errors[fieldName]) {
-      clearError(fieldName);
-    }
+    if (errors[fieldName]) clearError(fieldName);
   };
 
   const handleConfigValueChange = (fieldName: string, value: unknown) => {
     setConfigValues((prev) => ({ ...prev, [fieldName]: value }));
-    if (errors[`config_${fieldName}`]) {
-      clearError(`config_${fieldName}`);
-    }
+    if (errors[`config_${fieldName}`]) clearError(`config_${fieldName}`);
   };
 
   const validateForm = (): boolean => {
@@ -123,19 +100,18 @@ export function SourceConfigView({
         if (field.required) {
           const value = authValues[field.name];
           if (value === undefined || value === "" || value === null) {
-            newErrors[field.name] = "This field is required";
+            newErrors[field.name] = labels.fieldRequired;
           }
         }
       }
     }
 
-    // Validate BYOC fields for OAuth when requires_byoc is true
     if (effectiveAuthMethod === "oauth_browser" && sourceDetails?.requires_byoc) {
       if (!byocValues.client_id.trim()) {
-        newErrors.byoc_client_id = "Client ID is required";
+        newErrors.byoc_client_id = labels.fieldRequired;
       }
       if (!byocValues.client_secret.trim()) {
-        newErrors.byoc_client_secret = "Client Secret is required";
+        newErrors.byoc_client_secret = labels.fieldRequired;
       }
     }
 
@@ -144,7 +120,7 @@ export function SourceConfigView({
         if (field.required) {
           const value = configValues[field.name];
           if (value === undefined || value === "" || value === null) {
-            newErrors[`config_${field.name}`] = "This field is required";
+            newErrors[`config_${field.name}`] = labels.fieldRequired;
           }
         }
       }
@@ -154,155 +130,26 @@ export function SourceConfigView({
     return Object.keys(newErrors).length === 0;
   };
 
-  // Handle OAuth callback result from popup
-  const handleOAuthResult = useCallback(
-    (result: OAuthCallbackResult) => {
-      // Close popup if still open
-      if (oauthPopupRef.current && !oauthPopupRef.current.closed) {
-        oauthPopupRef.current.close();
-      }
-      oauthPopupRef.current = null;
-
-      if (result.status === "success" && result.source_connection_id) {
-        setOauthStatus("idle");
-        onSuccess(result.source_connection_id);
-      } else {
-        setOauthStatus("error");
-        setOauthError(
-          result.error_message ?? "OAuth authentication failed. Please try again."
-        );
-      }
-    },
-    [onSuccess]
-  );
-
-  // Listen for OAuth completion messages
-  useEffect(() => {
-    // Listen for OAuth completion in both "waiting" and "popup_blocked" states
-    // (popup_blocked: user may open the link manually)
-    if (oauthStatus !== "waiting" && oauthStatus !== "popup_blocked") return;
-
-    const cleanup = listenForOAuthComplete(handleOAuthResult);
-
-    // Poll to check if popup was closed without completing (only when "waiting")
-    let pollInterval: ReturnType<typeof setInterval> | undefined;
-    if (oauthStatus === "waiting") {
-      pollInterval = setInterval(() => {
-        if (!isPopupOpen(oauthPopupRef.current) && oauthStatus === "waiting") {
-          setOauthStatus("error");
-          setOauthError("Authentication was cancelled. Please try again.");
-          oauthPopupRef.current = null;
-        }
-      }, 500);
-    }
-
-    return () => {
-      cleanup();
-      if (pollInterval) clearInterval(pollInterval);
-    };
-  }, [oauthStatus, handleOAuthResult]);
-
-  // Initiate OAuth flow
   const handleOAuthConnect = async () => {
-    // Validate BYOC fields if required
     if (sourceDetails?.requires_byoc) {
       const newErrors: Record<string, string> = {};
       if (!byocValues.client_id.trim()) {
-        newErrors.byoc_client_id = "Client ID is required";
+        newErrors.byoc_client_id = labels.fieldRequired;
       }
       if (!byocValues.client_secret.trim()) {
-        newErrors.byoc_client_secret = "Client Secret is required";
+        newErrors.byoc_client_secret = labels.fieldRequired;
       }
       if (Object.keys(newErrors).length > 0) {
         setErrors(newErrors);
         return;
       }
     }
-
-    setOauthStatus("creating");
-    setOauthError(null);
-
-    try {
-      // Build redirect URI for OAuth callback
-      const currentOrigin = window.location.origin;
-      const redirectUri = `${currentOrigin}/oauth-callback`;
-
-      const payload: SourceConnectionCreateRequest = {
-        short_name: source.short_name,
-        sync_immediately: true,
-        authentication: {
-          redirect_uri: redirectUri,
-          // Include BYOC credentials if required
-          ...(sourceDetails?.requires_byoc && {
-            client_id: byocValues.client_id.trim(),
-            client_secret: byocValues.client_secret.trim(),
-          }),
-        },
-      };
-
-      if (connectionName.trim()) {
-        payload.name = connectionName.trim();
-      }
-
-      if (Object.keys(configValues).length > 0) {
-        payload.config = configValues;
-      }
-
-      const response = await apiClient.createSourceConnection(payload);
-
-      // Check if we got an auth_url (OAuth flow)
-      if (response.auth?.auth_url) {
-        setOauthStatus("waiting");
-
-        // Open OAuth popup
-        const popup = openOAuthPopup({ url: response.auth.auth_url });
-
-        if (!popup) {
-          // Popup was blocked - store the URL for manual opening
-          setOauthStatus("popup_blocked");
-          setBlockedAuthUrl(response.auth.auth_url);
-          return;
-        }
-
-        oauthPopupRef.current = popup;
-      } else {
-        // Unexpected: no auth_url returned
-        setOauthStatus("error");
-        setOauthError("Failed to get authorization URL. Please try again.");
-      }
-    } catch (err) {
-      setOauthStatus("error");
-      setOauthError(
-        err instanceof Error ? err.message : "Failed to initiate OAuth flow"
-      );
-    }
-  };
-
-  // Retry opening popup with stored auth URL
-  const handleRetryPopup = () => {
-    if (!blockedAuthUrl) return;
-
-    const popup = openOAuthPopup({ url: blockedAuthUrl });
-    if (popup) {
-      oauthPopupRef.current = popup;
-      setOauthStatus("waiting");
-      setBlockedAuthUrl(null);
-    }
-    // If still blocked, stay in popup_blocked state
-  };
-
-  // Handle manual link click - user will open in new tab
-  const handleManualLinkClick = () => {
-    // Switch to waiting state so we listen for the OAuth callback
-    setOauthStatus("waiting");
+    await oauthFlow.initiateOAuth();
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!validateForm()) {
-      return;
-    }
+    if (!validateForm()) return;
 
     const payload: SourceConnectionCreateRequest = {
       short_name: source.short_name,
@@ -314,9 +161,7 @@ export function SourceConfigView({
     }
 
     if (effectiveAuthMethod === "direct") {
-      payload.authentication = {
-        credentials: authValues,
-      };
+      payload.authentication = { credentials: authValues };
     }
 
     if (Object.keys(configValues).length > 0) {
@@ -338,9 +183,7 @@ export function SourceConfigView({
         centerContent
       >
         <p style={{ color: "var(--connect-error)" }}>
-          {error instanceof Error
-            ? error.message
-            : "Failed to load source details"}
+          {error instanceof Error ? error.message : labels.loadSourceDetailsFailed}
         </p>
         <Button onClick={onBack} variant="secondary" className="mt-4">
           {labels.buttonBack}
@@ -350,8 +193,7 @@ export function SourceConfigView({
   }
 
   const showDirectAuthFields =
-    effectiveAuthMethod === "direct" &&
-    sourceDetails?.auth_fields?.fields?.length;
+    effectiveAuthMethod === "direct" && sourceDetails?.auth_fields?.fields?.length;
 
   const showConfigFields = sourceDetails?.config_fields?.fields?.length;
 
@@ -382,6 +224,7 @@ export function SourceConfigView({
           {errors._form && (
             <div
               className="mb-4 p-3 rounded-md text-sm"
+              role="alert"
               style={{
                 backgroundColor:
                   "color-mix(in srgb, var(--connect-error) 10%, transparent)",
@@ -398,20 +241,20 @@ export function SourceConfigView({
               className="block text-sm font-medium mb-1"
               style={{ color: "var(--connect-text)" }}
             >
-              Connection name
+              {labels.configureNameLabel}
             </label>
             <p
               className="text-xs mt-1 mb-2"
               style={{ color: "var(--connect-text-muted)" }}
             >
-              Optional. Give this connection a memorable name.
+              {labels.configureNameDescription}
             </p>
             <input
               id="connection-name"
               type="text"
               value={connectionName}
               onChange={(e) => setConnectionName(e.target.value)}
-              placeholder={`My ${source.name} connection`}
+              placeholder={labels.configureNamePlaceholder.replace("{source}", source.name)}
               className="w-full px-3 py-2 text-sm rounded-md border outline-none transition-colors"
               style={{
                 backgroundColor: "var(--connect-surface)",
@@ -436,7 +279,7 @@ export function SourceConfigView({
                 className="text-sm font-medium mb-3"
                 style={{ color: "var(--connect-text)" }}
               >
-                Authentication
+                {labels.configureAuthSection}
               </h2>
               {sourceDetails.auth_fields?.fields.map((field: ConfigField) => (
                 <DynamicFormField
@@ -456,7 +299,7 @@ export function SourceConfigView({
                 className="text-sm font-medium mb-3"
                 style={{ color: "var(--connect-text)" }}
               >
-                Authentication
+                {labels.configureAuthSection}
               </h2>
 
               {sourceDetails?.requires_byoc && (
@@ -469,13 +312,13 @@ export function SourceConfigView({
               )}
 
               <OAuthStatusUI
-                status={oauthStatus}
-                error={oauthError}
-                blockedAuthUrl={blockedAuthUrl}
+                status={oauthFlow.status}
+                error={oauthFlow.error}
+                blockedAuthUrl={oauthFlow.blockedAuthUrl}
                 sourceName={source.name}
                 onConnect={handleOAuthConnect}
-                onRetryPopup={handleRetryPopup}
-                onManualLinkClick={handleManualLinkClick}
+                onRetryPopup={oauthFlow.retryPopup}
+                onManualLinkClick={oauthFlow.handleManualLinkClick}
               />
             </div>
           )}
@@ -486,21 +329,17 @@ export function SourceConfigView({
                 className="text-sm font-medium mb-3"
                 style={{ color: "var(--connect-text)" }}
               >
-                Configuration
+                {labels.configureConfigSection}
               </h2>
-              {sourceDetails?.config_fields?.fields?.map(
-                (field: ConfigField) => (
-                  <DynamicFormField
-                    key={field.name}
-                    field={field}
-                    value={configValues[field.name]}
-                    onChange={(value) =>
-                      handleConfigValueChange(field.name, value)
-                    }
-                    error={errors[`config_${field.name}`]}
-                  />
-                ),
-              )}
+              {sourceDetails?.config_fields?.fields?.map((field: ConfigField) => (
+                <DynamicFormField
+                  key={field.name}
+                  field={field}
+                  value={configValues[field.name]}
+                  onChange={(value) => handleConfigValueChange(field.name, value)}
+                  error={errors[`config_${field.name}`]}
+                />
+              ))}
             </div>
           )}
 
@@ -525,10 +364,10 @@ export function SourceConfigView({
             {createMutation.isPending ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Creating...
+                {labels.buttonCreatingConnection}
               </>
             ) : (
-              "Create connection"
+              labels.buttonCreateConnection
             )}
           </Button>
         </div>

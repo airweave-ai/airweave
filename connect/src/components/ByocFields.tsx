@@ -1,3 +1,5 @@
+import { useTheme } from "../lib/theme";
+
 interface ByocFieldsProps {
   values: { client_id: string; client_secret: string };
   onChange: (values: { client_id: string; client_secret: string }) => void;
@@ -11,13 +13,15 @@ export function ByocFields({
   errors,
   onClearError,
 }: ByocFieldsProps) {
+  const { labels } = useTheme();
+
   return (
     <div className="mb-4">
       <p
         className="text-xs mb-3"
         style={{ color: "var(--connect-text-muted)" }}
       >
-        This integration requires you to provide your own OAuth app credentials.
+        {labels.byocDescription}
       </p>
 
       <div className="mb-3">
@@ -26,7 +30,7 @@ export function ByocFields({
           className="block text-sm font-medium mb-1"
           style={{ color: "var(--connect-text)" }}
         >
-          Client ID
+          {labels.byocClientIdLabel}
           <span style={{ color: "var(--connect-error)" }}> *</span>
         </label>
         <input
@@ -39,7 +43,7 @@ export function ByocFields({
               onClearError("byoc_client_id");
             }
           }}
-          placeholder="Your OAuth app client ID"
+          placeholder={labels.byocClientIdPlaceholder}
           className="w-full px-3 py-2 text-sm rounded-md border outline-none transition-colors"
           style={{
             backgroundColor: "var(--connect-surface)",
@@ -65,7 +69,7 @@ export function ByocFields({
           className="block text-sm font-medium mb-1"
           style={{ color: "var(--connect-text)" }}
         >
-          Client Secret
+          {labels.byocClientSecretLabel}
           <span style={{ color: "var(--connect-error)" }}> *</span>
         </label>
         <input
@@ -78,7 +82,7 @@ export function ByocFields({
               onClearError("byoc_client_secret");
             }
           }}
-          placeholder="Your OAuth app client secret"
+          placeholder={labels.byocClientSecretPlaceholder}
           className="w-full px-3 py-2 text-sm rounded-md border outline-none transition-colors"
           style={{
             backgroundColor: "var(--connect-surface)",

@@ -73,6 +73,46 @@ export interface ConnectLabels {
 
   // Footer
   poweredBy?: string;
+
+  // Source config view - connection name
+  configureNameLabel?: string;
+  configureNameDescription?: string;
+  configureNamePlaceholder?: string; // Use {source} placeholder
+
+  // Source config view - sections
+  configureAuthSection?: string;
+  configureConfigSection?: string;
+
+  // Source config view - buttons and status
+  buttonCreateConnection?: string;
+  buttonCreatingConnection?: string;
+  connectionFailed?: string;
+  loadSourceDetailsFailed?: string;
+  fieldRequired?: string;
+
+  // Auth method selector
+  authMethodLabel?: string;
+  authMethodDirect?: string;
+  authMethodDirectDescription?: string;
+  authMethodOAuth?: string; // Use {source} placeholder
+  authMethodOAuthDescription?: string;
+
+  // OAuth status UI
+  oauthWaiting?: string;
+  oauthWaitingDescription?: string;
+  oauthPopupBlocked?: string;
+  oauthPopupBlockedDescription?: string;
+  buttonTryAgain?: string;
+  buttonOpenLinkManually?: string;
+  buttonConnectOAuth?: string; // Use {source} placeholder
+  buttonConnecting?: string;
+
+  // BYOC fields
+  byocDescription?: string;
+  byocClientIdLabel?: string;
+  byocClientIdPlaceholder?: string;
+  byocClientSecretLabel?: string;
+  byocClientSecretPlaceholder?: string;
 }
 
 export interface ConnectTheme {
@@ -244,3 +284,11 @@ export interface OAuthCallbackResult {
   error_type?: string;
   error_message?: string;
 }
+
+// OAuth flow status for UI state management
+export type OAuthFlowStatus =
+  | "idle"
+  | "creating"
+  | "waiting"
+  | "popup_blocked"
+  | "error";

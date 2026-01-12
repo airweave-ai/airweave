@@ -1,4 +1,5 @@
 import { ExternalLink, Key } from "lucide-react";
+import { useTheme } from "../lib/theme";
 import type { AuthenticationMethod } from "../lib/types";
 
 interface AuthMethodSelectorProps {
@@ -21,6 +22,8 @@ export function AuthMethodSelector({
   onChange,
   sourceName,
 }: AuthMethodSelectorProps) {
+  const { labels } = useTheme();
+
   // Filter to only direct and oauth_browser (skip auth_provider per spec)
   const availableMethods = methods.filter(
     (m): m is "direct" | "oauth_browser" =>
@@ -36,15 +39,15 @@ export function AuthMethodSelector({
     if (method === "direct") {
       return {
         value: "direct",
-        label: "Enter credentials",
-        description: "Manually enter API key or token",
+        label: labels.authMethodDirect,
+        description: labels.authMethodDirectDescription,
         icon: <Key className="w-5 h-5" />,
       };
     }
     return {
       value: "oauth_browser",
-      label: `Connect with ${sourceName}`,
-      description: "Authorize via browser login",
+      label: labels.authMethodOAuth.replace("{source}", sourceName),
+      description: labels.authMethodOAuthDescription,
       icon: <ExternalLink className="w-5 h-5" />,
     };
   });
@@ -55,7 +58,7 @@ export function AuthMethodSelector({
         className="block text-sm font-medium mb-2"
         style={{ color: "var(--connect-text)" }}
       >
-        Authentication method
+        {labels.authMethodLabel}
       </label>
       <div className="flex flex-col gap-2">
         {options.map((option) => {

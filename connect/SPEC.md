@@ -464,7 +464,7 @@ if (view === "configure" && selectedSource) {
 - [x] Handle popup blockers (show manual link option)
 - [x] Add loading states during submission
 - [x] Add error states and retry options
-- [ ] Add labels to theme for new UI text
+- [x] Add labels to theme for new UI text
 - [ ] Add unit tests, linting, and formatting, end to end tests, etc.
 
 ---

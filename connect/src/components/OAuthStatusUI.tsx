@@ -1,10 +1,10 @@
 import { ExternalLink, Loader2 } from "lucide-react";
+import { useTheme } from "../lib/theme";
+import type { OAuthFlowStatus } from "../lib/types";
 import { Button } from "./Button";
 
-type OAuthStatus = "idle" | "creating" | "waiting" | "popup_blocked" | "error";
-
 interface OAuthStatusUIProps {
-  status: OAuthStatus;
+  status: OAuthFlowStatus;
   error: string | null;
   blockedAuthUrl: string | null;
   sourceName: string;
@@ -22,11 +22,13 @@ export function OAuthStatusUI({
   onRetryPopup,
   onManualLinkClick,
 }: OAuthStatusUIProps) {
+  const { labels } = useTheme();
   return (
     <>
       {error && (
         <div
           className="mb-3 p-3 rounded-md text-sm"
+          role="alert"
           style={{
             backgroundColor:
               "color-mix(in srgb, var(--connect-error) 10%, transparent)",
@@ -40,6 +42,8 @@ export function OAuthStatusUI({
       {status === "waiting" && (
         <div
           className="p-4 rounded-md text-sm text-center"
+          role="status"
+          aria-live="polite"
           style={{
             backgroundColor: "var(--connect-surface)",
             border: "1px solid var(--connect-border)",
@@ -47,16 +51,15 @@ export function OAuthStatusUI({
         >
           <Loader2
             className="w-5 h-5 animate-spin mx-auto mb-2"
+            aria-hidden="true"
             style={{ color: "var(--connect-primary)" }}
           />
-          <p style={{ color: "var(--connect-text)" }}>
-            Waiting for authorization...
-          </p>
+          <p style={{ color: "var(--connect-text)" }}>{labels.oauthWaiting}</p>
           <p
             className="text-xs mt-1"
             style={{ color: "var(--connect-text-muted)" }}
           >
-            Complete the sign-in in the popup window
+            {labels.oauthWaitingDescription}
           </p>
         </div>
       )}
@@ -75,14 +78,13 @@ export function OAuthStatusUI({
             className="font-medium mb-2"
             style={{ color: "var(--connect-text)" }}
           >
-            Popup was blocked
+            {labels.oauthPopupBlocked}
           </p>
           <p
             className="text-xs mb-3"
             style={{ color: "var(--connect-text-muted)" }}
           >
-            Your browser blocked the authentication popup. You can try again or
-            open the link manually.
+            {labels.oauthPopupBlockedDescription}
           </p>
           <div className="flex flex-col gap-2">
             <Button
@@ -92,7 +94,7 @@ export function OAuthStatusUI({
               variant="secondary"
             >
               <ExternalLink className="w-4 h-4" />
-              Try again
+              {labels.buttonTryAgain}
             </Button>
             <a
               href={blockedAuthUrl}
@@ -106,7 +108,7 @@ export function OAuthStatusUI({
                 backgroundColor: "var(--connect-surface)",
               }}
             >
-              Open link manually
+              {labels.buttonOpenLinkManually}
             </a>
           </div>
         </div>
@@ -123,12 +125,12 @@ export function OAuthStatusUI({
           {status === "creating" ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
-              Connecting...
+              {labels.buttonConnecting}
             </>
           ) : (
             <>
               <ExternalLink className="w-4 h-4" />
-              Connect with {sourceName}
+              {labels.buttonConnectOAuth.replace("{source}", sourceName)}
             </>
           )}
         </Button>

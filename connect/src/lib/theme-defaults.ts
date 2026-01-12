@@ -90,4 +90,46 @@ export const defaultLabels: Required<ConnectLabels> = {
 
   // Footer
   poweredBy: "Powered by",
+
+  // Source config view - connection name
+  configureNameLabel: "Connection name",
+  configureNameDescription: "Optional. Give this connection a memorable name.",
+  configureNamePlaceholder: "My {source} connection",
+
+  // Source config view - sections
+  configureAuthSection: "Authentication",
+  configureConfigSection: "Configuration",
+
+  // Source config view - buttons and status
+  buttonCreateConnection: "Create connection",
+  buttonCreatingConnection: "Creating...",
+  connectionFailed: "Failed to create connection",
+  loadSourceDetailsFailed: "Failed to load source details",
+  fieldRequired: "This field is required",
+
+  // Auth method selector
+  authMethodLabel: "Authentication method",
+  authMethodDirect: "Enter credentials",
+  authMethodDirectDescription: "Manually enter API key or token",
+  authMethodOAuth: "Connect with {source}",
+  authMethodOAuthDescription: "Authorize via browser login",
+
+  // OAuth status UI
+  oauthWaiting: "Waiting for authorization...",
+  oauthWaitingDescription: "Complete the sign-in in the popup window",
+  oauthPopupBlocked: "Popup was blocked",
+  oauthPopupBlockedDescription:
+    "Your browser blocked the authentication popup. You can try again or open the link manually.",
+  buttonTryAgain: "Try again",
+  buttonOpenLinkManually: "Open link manually",
+  buttonConnectOAuth: "Connect with {source}",
+  buttonConnecting: "Connecting...",
+
+  // BYOC fields
+  byocDescription:
+    "This integration requires you to provide your own OAuth app credentials.",
+  byocClientIdLabel: "Client ID",
+  byocClientIdPlaceholder: "Your OAuth app client ID",
+  byocClientSecretLabel: "Client Secret",
+  byocClientSecretPlaceholder: "Your OAuth app client secret",
 };
