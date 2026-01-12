@@ -962,3 +962,393 @@ class TestConnectSessionsCrossCollection:
             await api_client.delete(f"/collections/{collection1['readable_id']}")
             await api_client.delete(f"/collections/{collection2['readable_id']}")
 
+
+class TestConnectSources:
+    """Test suite for Connect API sources endpoints."""
+
+    @pytest.mark.asyncio
+    async def test_list_sources_returns_all_when_no_filter(
+        self, api_client: httpx.AsyncClient, collection: Dict
+    ):
+        """Test listing sources returns all sources when allowed_integrations not set."""
+        session_data = {
+            "readable_collection_id": collection["readable_id"],
+            "mode": "all",
+        }
+
+        session_response = await api_client.post("/connect/sessions", json=session_data)
+        assert session_response.status_code == 200
+        session = session_response.json()
+
+        response = await api_client.get(
+            "/connect/sources",
+            headers=session_auth_headers(session["session_token"]),
+        )
+
+        assert response.status_code == 200
+        sources = response.json()
+        assert isinstance(sources, list)
+        assert len(sources) > 0
+
+        # Verify source structure
+        source = sources[0]
+        assert "name" in source
+        assert "short_name" in source
+        assert "auth_methods" in source
+
+    @pytest.mark.asyncio
+    async def test_list_sources_filtered_by_allowed_integrations(
+        self, api_client: httpx.AsyncClient, collection: Dict
+    ):
+        """Test listing sources respects allowed_integrations filter."""
+        session_data = {
+            "readable_collection_id": collection["readable_id"],
+            "mode": "all",
+            "allowed_integrations": ["stripe", "slack"],
+        }
+
+        session_response = await api_client.post("/connect/sessions", json=session_data)
+        assert session_response.status_code == 200
+        session = session_response.json()
+
+        response = await api_client.get(
+            "/connect/sources",
+            headers=session_auth_headers(session["session_token"]),
+        )
+
+        assert response.status_code == 200
+        sources = response.json()
+
+        # Should only contain allowed sources
+        source_short_names = [s["short_name"] for s in sources]
+        for short_name in source_short_names:
+            assert short_name in ["stripe", "slack"]
+
+    @pytest.mark.asyncio
+    async def test_get_source_success(
+        self, api_client: httpx.AsyncClient, collection: Dict
+    ):
+        """Test getting a specific source returns full details."""
+        session_data = {
+            "readable_collection_id": collection["readable_id"],
+            "mode": "all",
+        }
+
+        session_response = await api_client.post("/connect/sessions", json=session_data)
+        assert session_response.status_code == 200
+        session = session_response.json()
+
+        response = await api_client.get(
+            "/connect/sources/stripe",
+            headers=session_auth_headers(session["session_token"]),
+        )
+
+        assert response.status_code == 200
+        source = response.json()
+        assert source["short_name"] == "stripe"
+        assert "auth_methods" in source
+        assert "auth_fields" in source
+        assert "config_fields" in source
+
+    @pytest.mark.asyncio
+    async def test_get_source_not_in_allowed_integrations(
+        self, api_client: httpx.AsyncClient, collection: Dict
+    ):
+        """Test getting a source not in allowed_integrations returns 403."""
+        session_data = {
+            "readable_collection_id": collection["readable_id"],
+            "mode": "all",
+            "allowed_integrations": ["slack", "notion"],  # Stripe not included
+        }
+
+        session_response = await api_client.post("/connect/sessions", json=session_data)
+        assert session_response.status_code == 200
+        session = session_response.json()
+
+        response = await api_client.get(
+            "/connect/sources/stripe",  # Not in allowed list
+            headers=session_auth_headers(session["session_token"]),
+        )
+
+        assert response.status_code == 403
+        error = response.json()
+        assert "not allowed" in error["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_list_sources_invalid_token(
+        self, api_client: httpx.AsyncClient
+    ):
+        """Test listing sources with invalid token returns 401."""
+        response = await api_client.get(
+            "/connect/sources",
+            headers=session_auth_headers("invalid.token.here"),
+        )
+
+        assert response.status_code == 401
+
+
+class TestConnectSourceConnectionCreation:
+    """Test suite for creating source connections via Connect API."""
+
+    @pytest.mark.asyncio
+    async def test_create_connection_all_mode_direct_auth(
+        self, api_client: httpx.AsyncClient, collection: Dict, config
+    ):
+        """Test creating a direct auth connection with ALL mode succeeds."""
+        session_data = {
+            "readable_collection_id": collection["readable_id"],
+            "mode": "all",
+        }
+
+        session_response = await api_client.post("/connect/sessions", json=session_data)
+        assert session_response.status_code == 200
+        session = session_response.json()
+
+        connection_data = {
+            "name": f"Test Stripe {int(time.time())}",
+            "short_name": "stripe",
+            "readable_collection_id": "ignored-should-use-session",  # Should be ignored
+            "authentication": {"credentials": {"api_key": config.TEST_STRIPE_API_KEY}},
+            "sync_immediately": False,
+        }
+
+        response = await api_client.post(
+            "/connect/source-connections",
+            json=connection_data,
+            headers=session_auth_headers(session["session_token"]),
+        )
+
+        assert response.status_code == 200, f"Failed to create connection: {response.text}"
+        connection = response.json()
+
+        # Verify connection was created in session's collection (not request body's)
+        assert connection["readable_collection_id"] == collection["readable_id"]
+        assert connection["short_name"] == "stripe"
+        assert connection["auth"]["authenticated"] is True
+
+        # Cleanup
+        await api_client.delete(f"/source-connections/{connection['id']}")
+
+    @pytest.mark.asyncio
+    async def test_create_connection_connect_mode_success(
+        self, api_client: httpx.AsyncClient, collection: Dict, config
+    ):
+        """Test creating connection with CONNECT mode succeeds."""
+        session_data = {
+            "readable_collection_id": collection["readable_id"],
+            "mode": "connect",
+        }
+
+        session_response = await api_client.post("/connect/sessions", json=session_data)
+        assert session_response.status_code == 200
+        session = session_response.json()
+
+        connection_data = {
+            "name": f"Test Stripe {int(time.time())}",
+            "short_name": "stripe",
+            "authentication": {"credentials": {"api_key": config.TEST_STRIPE_API_KEY}},
+            "sync_immediately": False,
+        }
+
+        response = await api_client.post(
+            "/connect/source-connections",
+            json=connection_data,
+            headers=session_auth_headers(session["session_token"]),
+        )
+
+        assert response.status_code == 200
+        connection = response.json()
+
+        # Cleanup
+        await api_client.delete(f"/source-connections/{connection['id']}")
+
+    @pytest.mark.asyncio
+    async def test_create_connection_manage_mode_forbidden(
+        self, api_client: httpx.AsyncClient, collection: Dict, config
+    ):
+        """Test creating connection with MANAGE mode returns 403."""
+        session_data = {
+            "readable_collection_id": collection["readable_id"],
+            "mode": "manage",
+        }
+
+        session_response = await api_client.post("/connect/sessions", json=session_data)
+        assert session_response.status_code == 200
+        session = session_response.json()
+
+        connection_data = {
+            "name": "Test Connection",
+            "short_name": "stripe",
+            "authentication": {"credentials": {"api_key": "sk_test_xxx"}},
+        }
+
+        response = await api_client.post(
+            "/connect/source-connections",
+            json=connection_data,
+            headers=session_auth_headers(session["session_token"]),
+        )
+
+        assert response.status_code == 403
+        assert "mode" in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_create_connection_reauth_mode_forbidden(
+        self, api_client: httpx.AsyncClient, collection: Dict
+    ):
+        """Test creating connection with REAUTH mode returns 403."""
+        session_data = {
+            "readable_collection_id": collection["readable_id"],
+            "mode": "reauth",
+        }
+
+        session_response = await api_client.post("/connect/sessions", json=session_data)
+        assert session_response.status_code == 200
+        session = session_response.json()
+
+        connection_data = {
+            "name": "Test Connection",
+            "short_name": "stripe",
+            "authentication": {"credentials": {"api_key": "sk_test_xxx"}},
+        }
+
+        response = await api_client.post(
+            "/connect/source-connections",
+            json=connection_data,
+            headers=session_auth_headers(session["session_token"]),
+        )
+
+        assert response.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_create_connection_not_in_allowed_integrations(
+        self, api_client: httpx.AsyncClient, collection: Dict, config
+    ):
+        """Test creating connection for source not in allowed_integrations returns 403."""
+        session_data = {
+            "readable_collection_id": collection["readable_id"],
+            "mode": "all",
+            "allowed_integrations": ["slack", "notion"],  # Stripe not included
+        }
+
+        session_response = await api_client.post("/connect/sessions", json=session_data)
+        assert session_response.status_code == 200
+        session = session_response.json()
+
+        connection_data = {
+            "name": "Test Stripe",
+            "short_name": "stripe",  # Not in allowed list
+            "authentication": {"credentials": {"api_key": config.TEST_STRIPE_API_KEY}},
+        }
+
+        response = await api_client.post(
+            "/connect/source-connections",
+            json=connection_data,
+            headers=session_auth_headers(session["session_token"]),
+        )
+
+        assert response.status_code == 403
+        assert "not allowed" in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_create_connection_in_allowed_integrations(
+        self, api_client: httpx.AsyncClient, collection: Dict, config
+    ):
+        """Test creating connection for source in allowed_integrations succeeds."""
+        session_data = {
+            "readable_collection_id": collection["readable_id"],
+            "mode": "all",
+            "allowed_integrations": ["stripe", "slack"],
+        }
+
+        session_response = await api_client.post("/connect/sessions", json=session_data)
+        assert session_response.status_code == 200
+        session = session_response.json()
+
+        connection_data = {
+            "name": f"Test Stripe {int(time.time())}",
+            "short_name": "stripe",  # In allowed list
+            "authentication": {"credentials": {"api_key": config.TEST_STRIPE_API_KEY}},
+            "sync_immediately": False,
+        }
+
+        response = await api_client.post(
+            "/connect/source-connections",
+            json=connection_data,
+            headers=session_auth_headers(session["session_token"]),
+        )
+
+        assert response.status_code == 200
+
+        # Cleanup
+        await api_client.delete(f"/source-connections/{response.json()['id']}")
+
+    @pytest.mark.asyncio
+    async def test_create_connection_invalid_token(
+        self, api_client: httpx.AsyncClient, collection: Dict
+    ):
+        """Test creating connection with invalid token returns 401."""
+        connection_data = {
+            "name": "Test Connection",
+            "short_name": "stripe",
+            "authentication": {"credentials": {"api_key": "sk_test_xxx"}},
+        }
+
+        response = await api_client.post(
+            "/connect/source-connections",
+            json=connection_data,
+            headers=session_auth_headers("invalid.token.here"),
+        )
+
+        assert response.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_collection_override_security(
+        self, api_client: httpx.AsyncClient, config
+    ):
+        """Test that collection_id from request body is ignored (uses session's)."""
+        # Create two collections
+        col1 = await api_client.post("/collections/", json={"name": f"Col1 {int(time.time())}"})
+        col2 = await api_client.post("/collections/", json={"name": f"Col2 {int(time.time())}"})
+        collection1 = col1.json()
+        collection2 = col2.json()
+
+        try:
+            # Create session for collection1
+            session_data = {
+                "readable_collection_id": collection1["readable_id"],
+                "mode": "all",
+            }
+
+            session_response = await api_client.post("/connect/sessions", json=session_data)
+            assert session_response.status_code == 200
+            session = session_response.json()
+
+            # Try to create connection specifying collection2 in body
+            connection_data = {
+                "name": f"Test Stripe {int(time.time())}",
+                "short_name": "stripe",
+                "readable_collection_id": collection2["readable_id"],  # Attempt injection
+                "authentication": {"credentials": {"api_key": config.TEST_STRIPE_API_KEY}},
+                "sync_immediately": False,
+            }
+
+            response = await api_client.post(
+                "/connect/source-connections",
+                json=connection_data,
+                headers=session_auth_headers(session["session_token"]),
+            )
+
+            assert response.status_code == 200
+            connection = response.json()
+
+            # CRITICAL: Connection should be in collection1, NOT collection2
+            assert connection["readable_collection_id"] == collection1["readable_id"]
+            assert connection["readable_collection_id"] != collection2["readable_id"]
+
+            # Cleanup
+            await api_client.delete(f"/source-connections/{connection['id']}")
+
+        finally:
+            await api_client.delete(f"/collections/{collection1['readable_id']}")
+            await api_client.delete(f"/collections/{collection2['readable_id']}")
+

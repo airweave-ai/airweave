@@ -1196,6 +1196,23 @@ class SourceConnectionHelpers:
             "template_configs": template_configs,
         }
 
+        # Store Connect session context if present (for callback validation)
+        # These attributes are set by the Connect API endpoints for OAuth flows
+        connect_session_token = getattr(obj_in, "_connect_session_token", None)
+        connect_session_context = getattr(obj_in, "_connect_session_context", None)
+
+        if connect_session_token:
+            overrides["connect_session_token"] = connect_session_token
+            overrides["connect_session_max_age"] = 30 * 60  # Extended TTL for OAuth flows
+
+        if connect_session_context:
+            overrides["connect_session_id"] = connect_session_context.get("session_id")
+            overrides["connect_organization_id"] = connect_session_context.get("organization_id")
+            overrides["connect_collection_id"] = connect_session_context.get("collection_id")
+            overrides["connect_end_user_id"] = connect_session_context.get("end_user_id")
+            # Override callback URL to use Connect callback endpoint
+            overrides["oauth_redirect_uri"] = f"{core_settings.api_url}/connect/callback"
+
         # Merge additional overrides (e.g., PKCE code_verifier) if provided
         if additional_overrides:
             overrides.update(additional_overrides)
