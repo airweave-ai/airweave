@@ -1,6 +1,9 @@
 import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SessionProvider } from "../components/SessionProvider";
 import appCss from "../styles.css?url";
+
+const queryClient = new QueryClient();
 
 export const Route = createRootRoute({
   head: () => ({
@@ -34,7 +37,9 @@ function RootDocument() {
         <HeadContent />
       </head>
       <body style={{ backgroundColor: "var(--connect-bg, transparent)" }}>
-        <SessionProvider />
+        <QueryClientProvider client={queryClient}>
+          <SessionProvider />
+        </QueryClientProvider>
         <Scripts />
       </body>
     </html>

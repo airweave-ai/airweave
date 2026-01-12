@@ -75,3 +75,32 @@ export type ParentToChildMessage =
     }
   | { type: "TOKEN_ERROR"; requestId: string; error: string }
   | { type: "SET_THEME"; theme: ConnectTheme };
+
+// Source connection types
+export type SourceConnectionStatus =
+  | "active"
+  | "inactive"
+  | "pending_auth"
+  | "syncing"
+  | "error";
+
+export type AuthenticationMethod =
+  | "direct"
+  | "oauth_browser"
+  | "oauth_token"
+  | "oauth_byoc"
+  | "auth_provider";
+
+export interface SourceConnectionListItem {
+  id: string;
+  name: string;
+  short_name: string;
+  readable_collection_id: string;
+  created_at: string;
+  modified_at: string;
+  is_authenticated: boolean;
+  entity_count: number;
+  federated_search: boolean;
+  auth_method: AuthenticationMethod;
+  status: SourceConnectionStatus;
+}

@@ -1,5 +1,5 @@
 import { env } from "./env";
-import type { ConnectSessionContext } from "./types";
+import type { ConnectSessionContext, SourceConnectionListItem } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -43,6 +43,10 @@ class ConnectApiClient {
 
   async validateSession(sessionId: string): Promise<ConnectSessionContext> {
     return this.fetch<ConnectSessionContext>(`/connect/sessions/${sessionId}`);
+  }
+
+  async getSourceConnections(): Promise<SourceConnectionListItem[]> {
+    return this.fetch<SourceConnectionListItem[]>("/connect/source-connections");
   }
 }
 

@@ -185,9 +185,9 @@
       .modal-content {
         position: relative;
         width: 90%;
-        max-width: 480px;
+        max-width: 360px;
         height: 80%;
-        max-height: 700px;
+        max-height: 540px;
         background: white;
         border-radius: 16px;
         overflow: hidden;
@@ -225,6 +225,136 @@
 
       .logo {
         box-shadow: 0 0 10px 0 rgba(0, 0, 0, 0.1);
+      }
+
+      /* Log toolbar styles */
+      .log-toolbar {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: white;
+        border-top: 1px solid #e5e7eb;
+        box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+        z-index: 1001;
+      }
+
+      .log-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 8px 16px;
+        border-bottom: 1px solid #e5e7eb;
+        background: #f9fafb;
+      }
+
+      .log-header h3 {
+        font-size: 13px;
+        font-weight: 600;
+        color: #374151;
+        margin: 0;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .log-toggle {
+        font-size: 14px;
+        color: #6b7280;
+        width: 20px;
+        text-align: center;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .log-buttons {
+        display: flex;
+        gap: 6px;
+        flex: 1;
+      }
+
+      .state-btn {
+        padding: 4px 10px;
+        border: none;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: opacity 0.2s;
+      }
+
+      .state-btn:hover {
+        opacity: 0.85;
+      }
+
+      .state-btn.success {
+        background: #dcfce7;
+        color: #166534;
+      }
+
+      .state-btn.loading {
+        background: #e5e7eb;
+        color: #374151;
+      }
+
+      .state-btn.error {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+
+      .state-btn.warning {
+        background: #fef3c7;
+        color: #92400e;
+      }
+
+      .state-btn.active {
+        outline: 2px solid #3b82f6;
+        outline-offset: 1px;
+      }
+
+      .log-content {
+        max-height: 80px;
+        overflow-y: auto;
+        padding: 6px 8px;
+        font-family: monospace;
+        font-size: 11px;
+      }
+
+      .log-content.collapsed {
+        display: none;
+      }
+
+      .log-entry {
+        padding: 4px 8px;
+        border-radius: 4px;
+        margin-bottom: 3px;
+      }
+
+      .log-entry:last-child {
+        margin-bottom: 0;
+      }
+
+      .log-entry.sent {
+        background: #e0f2fe;
+        color: #0369a1;
+      }
+
+      .log-entry.received {
+        background: #dcfce7;
+        color: #166534;
+      }
+
+      .log-entry.error {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+
+      .log-entry.info {
+        background: #fef9c3;
+        color: #854d0e;
+      }
+
+      body {
+        padding-bottom: 140px;
       }
     </style>
   </head>
@@ -277,6 +407,54 @@
       </div>
     </div>
 
+    <!-- Log Toolbar -->
+    <div class="log-toolbar">
+      <div class="log-header">
+        <h3 onclick="toggleLog()">Logs</h3>
+        <div class="log-buttons">
+          <button
+            class="state-btn success active"
+            onclick="setResponseMode('auto')"
+            id="btn-auto"
+          >
+            Auto
+          </button>
+          <button
+            class="state-btn loading"
+            onclick="setResponseMode('loading')"
+            id="btn-loading"
+          >
+            Loading
+          </button>
+          <button
+            class="state-btn error"
+            onclick="setResponseMode('error-invalid')"
+            id="btn-error-invalid"
+          >
+            Invalid Token
+          </button>
+          <button
+            class="state-btn error"
+            onclick="setResponseMode('error-expired')"
+            id="btn-error-expired"
+          >
+            Expired Token
+          </button>
+          <button
+            class="state-btn warning"
+            onclick="setResponseMode('error-network')"
+            id="btn-error-network"
+          >
+            Network Error
+          </button>
+        </div>
+        <span class="log-toggle" id="logToggle" onclick="toggleLog()">−</span>
+      </div>
+      <div class="log-content" id="logContent">
+        <div class="log-entry info">Ready. Click "Apps" to start.</div>
+      </div>
+    </div>
+
     <script>
       // Configuration
       const CONFIG = {
@@ -289,9 +467,128 @@
       };
 
       let sessionToken = null;
+      let responseMode = "auto";
+
+      // Response mode handling
+      function setResponseMode(mode) {
+        responseMode = mode;
+        // Update active button
+        document
+          .querySelectorAll(".state-btn")
+          .forEach((btn) => btn.classList.remove("active"));
+        document.getElementById(`btn-${mode}`).classList.add("active");
+        log(`Response mode set to: ${mode}`, "info");
+      }
+
+      // Log functions
+      function log(message, type = "info") {
+        const logContent = document.getElementById("logContent");
+        const entry = document.createElement("div");
+        entry.className = `log-entry ${type}`;
+        entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        logContent.appendChild(entry);
+        logContent.scrollTop = logContent.scrollHeight;
+      }
+
+      function toggleLog() {
+        const logContent = document.getElementById("logContent");
+        const logToggle = document.getElementById("logToggle");
+        logContent.classList.toggle("collapsed");
+        logToggle.textContent = logContent.classList.contains("collapsed")
+          ? "+"
+          : "−";
+      }
+
+      // Handle token request based on response mode
+      function handleTokenRequest(requestId) {
+        const iframe = document.getElementById("connectFrame");
+        if (!iframe || !iframe.contentWindow) return;
+
+        const theme = { mode: "light" };
+
+        switch (responseMode) {
+          case "auto":
+            if (sessionToken) {
+              iframe.contentWindow.postMessage(
+                {
+                  type: "TOKEN_RESPONSE",
+                  requestId,
+                  token: sessionToken,
+                  theme,
+                },
+                "*",
+              );
+              log(
+                `Sent: TOKEN_RESPONSE (token: ${sessionToken.substring(0, 20)}...)`,
+                "sent",
+              );
+            } else {
+              iframe.contentWindow.postMessage(
+                { type: "TOKEN_ERROR", requestId, error: "No token available" },
+                "*",
+              );
+              log("Sent: TOKEN_ERROR - No token available", "error");
+            }
+            break;
+
+          case "loading":
+            log("Not responding (testing loading state)...", "info");
+            // Don't respond - let it timeout
+            break;
+
+          case "error-invalid":
+            iframe.contentWindow.postMessage(
+              {
+                type: "TOKEN_RESPONSE",
+                requestId,
+                token: "invalid-token-format",
+                theme,
+              },
+              "*",
+            );
+            log("Sent: Invalid token format", "sent");
+            break;
+
+          case "error-expired":
+            const expiredPayload = btoa(
+              JSON.stringify({
+                sid: "expired-session-id",
+                exp: Date.now() - 10000,
+              }),
+            );
+            iframe.contentWindow.postMessage(
+              {
+                type: "TOKEN_RESPONSE",
+                requestId,
+                token: `${expiredPayload}.fakesignature`,
+                theme,
+              },
+              "*",
+            );
+            log("Sent: Expired token", "sent");
+            break;
+
+          case "error-network":
+            const networkPayload = btoa(
+              JSON.stringify({ sid: "network-error-test" }),
+            );
+            iframe.contentWindow.postMessage(
+              {
+                type: "TOKEN_RESPONSE",
+                requestId,
+                token: `${networkPayload}.fakesignature`,
+                theme,
+              },
+              "*",
+            );
+            log("Sent: Token that will cause network error", "sent");
+            break;
+        }
+      }
 
       // Fetch session token from API
       async function fetchSessionToken() {
+        log("Fetching session token...", "info");
         const response = await fetch(`${CONFIG.API_URL}/connect/sessions`, {
           method: "POST",
           headers: {
@@ -305,20 +602,27 @@
           }),
         });
         const data = await response.json();
+        log(
+          `Session token received (session_id: ${data.session_id})`,
+          "received",
+        );
         return data.session_token;
       }
 
       // Open modal and load iframe
       async function openModal() {
         try {
+          log("Opening Connect modal...", "info");
           sessionToken = await fetchSessionToken();
           const modal = document.getElementById("modalOverlay");
           const iframe = document.getElementById("connectFrame");
 
           modal.classList.add("open");
           iframe.src = CONFIG.CONNECT_URL;
+          log("Connect iframe loaded", "sent");
         } catch (error) {
           console.error("Failed to fetch session token:", error);
+          log(`Failed to fetch session token: ${error.message}`, "error");
           alert("Failed to connect. Please try again.");
         }
       }
@@ -331,36 +635,46 @@
         modal.classList.remove("open");
         iframe.src = "";
         sessionToken = null;
+        log("Connect modal closed", "info");
       }
 
       // Handle messages from Connect iframe
       window.addEventListener("message", (event) => {
         const { data } = event;
 
+        if (!data || typeof data !== "object" || !data.type) {
+          return;
+        }
+
         switch (data.type) {
           case "CONNECT_READY":
-            console.log("Connect iframe is ready");
+            log("Received: CONNECT_READY - iframe is ready", "received");
             break;
 
           case "REQUEST_TOKEN":
-            setTimeout(() => {
-              if (sessionToken) {
-                const iframe = document.getElementById("connectFrame");
-                iframe.contentWindow.postMessage(
-                  {
-                    type: "TOKEN_RESPONSE",
-                    requestId: data.requestId,
-                    token: sessionToken,
-                    theme: { mode: "light" },
-                  },
-                  "*",
-                );
-              }
-            }, 2000);
+            log(
+              `Received: REQUEST_TOKEN (requestId: ${data.requestId})`,
+              "received",
+            );
+            handleTokenRequest(data.requestId);
+            break;
+
+          case "STATUS_CHANGE":
+            log(
+              `Received: STATUS_CHANGE - ${JSON.stringify(data.status)}`,
+              "received",
+            );
+            break;
+
+          case "CONNECTION_CREATED":
+            log(
+              `Received: CONNECTION_CREATED (connectionId: ${data.connectionId})`,
+              "received",
+            );
             break;
 
           case "CLOSE":
-            console.log("Close requested:", data.reason);
+            log(`Received: CLOSE (reason: ${data.reason})`, "received");
             closeModal();
             break;
         }
