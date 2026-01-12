@@ -6,10 +6,18 @@ interface LoadingScreenProps {
 
 export function LoadingScreen({ message = 'Loading...' }: LoadingScreenProps) {
   return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+    <div
+      className="min-h-screen flex items-center justify-center"
+      style={{ backgroundColor: 'var(--connect-bg)' }}
+    >
       <div className="text-center">
-        <Loader2 className="w-12 h-12 text-cyan-400 animate-spin mx-auto mb-4" />
-        <p className="text-gray-300 text-lg">{message}</p>
+        <Loader2
+          className="w-12 h-12 animate-spin mx-auto mb-4"
+          style={{ color: 'var(--connect-primary)' }}
+        />
+        <p className="text-lg" style={{ color: 'var(--connect-text-muted)' }}>
+          {message}
+        </p>
       </div>
     </div>
   );

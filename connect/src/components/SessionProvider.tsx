@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParentMessaging } from '../hooks/useParentMessaging';
 import { apiClient, ApiError } from '../lib/api';
+import { ThemeProvider, useTheme } from '../lib/theme';
 import { LoadingScreen } from './LoadingScreen';
 import { ErrorScreen } from './ErrorScreen';
 import { SuccessScreen } from './SuccessScreen';
@@ -8,6 +9,7 @@ import type {
   SessionStatus,
   SessionError,
   ConnectSessionContext,
+  ConnectTheme,
 } from '../lib/types';
 
 function extractSessionIdFromToken(token: string): string | null {
@@ -23,11 +25,32 @@ function extractSessionIdFromToken(token: string): string | null {
 }
 
 export function SessionProvider() {
+  const [theme, setTheme] = useState<ConnectTheme | undefined>(undefined);
+
+  return (
+    <ThemeProvider initialTheme={theme}>
+      <SessionContent onThemeReceived={setTheme} />
+    </ThemeProvider>
+  );
+}
+
+interface SessionContentProps {
+  onThemeReceived: (theme: ConnectTheme) => void;
+}
+
+function SessionContent({ onThemeReceived }: SessionContentProps) {
   const [status, setStatus] = useState<SessionStatus>({ status: 'idle' });
   const [session, setSession] = useState<ConnectSessionContext | null>(null);
+  const { setTheme } = useTheme();
+
+  // Handle theme changes from parent (both initial and dynamic updates)
+  const handleThemeChange = useCallback((theme: ConnectTheme) => {
+    setTheme(theme);
+    onThemeReceived(theme);
+  }, [setTheme, onThemeReceived]);
 
   const { isConnected, requestToken, notifyStatusChange, requestClose } =
-    useParentMessaging();
+    useParentMessaging({ onThemeChange: handleThemeChange });
 
   // Update parent when status changes
   useEffect(() => {
@@ -79,16 +102,20 @@ export function SessionProvider() {
     }
   }, []);
 
-  // Request token from parent when Penpal connects
+  // Request token from parent when connected
   useEffect(() => {
     if (!isConnected) return;
 
     const init = async () => {
       setStatus({ status: 'waiting_for_token' });
 
-      const token = await requestToken();
-      if (token) {
-        await validateSession(token);
+      const response = await requestToken();
+      if (response) {
+        // Apply theme if provided
+        if (response.theme) {
+          handleThemeChange(response.theme);
+        }
+        await validateSession(response.token);
       } else {
         setStatus({
           status: 'error',
@@ -101,15 +128,18 @@ export function SessionProvider() {
     };
 
     init();
-  }, [isConnected, requestToken, validateSession]);
+  }, [isConnected, requestToken, validateSession, handleThemeChange]);
 
   const handleRetry = useCallback(async () => {
     setStatus({ status: 'waiting_for_token' });
-    const token = await requestToken();
-    if (token) {
-      await validateSession(token);
+    const response = await requestToken();
+    if (response) {
+      if (response.theme) {
+        handleThemeChange(response.theme);
+      }
+      await validateSession(response.token);
     }
-  }, [requestToken, validateSession]);
+  }, [requestToken, validateSession, handleThemeChange]);
 
   const handleClose = useCallback(() => {
     requestClose('cancel');

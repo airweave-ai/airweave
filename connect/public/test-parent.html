@@ -33,7 +33,8 @@
         font-weight: 500;
       }
       input,
-      textarea {
+      textarea,
+      select {
         width: 100%;
         padding: 10px;
         border: 1px solid #475569;
@@ -43,9 +44,58 @@
         font-family: monospace;
         margin-bottom: 15px;
       }
+      select {
+        cursor: pointer;
+      }
       textarea {
         height: 80px;
         resize: vertical;
+      }
+      .color-input-group {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+      .color-input-group label {
+        width: 100px;
+        margin-bottom: 0;
+        font-size: 12px;
+      }
+      .color-input-group input[type="color"] {
+        width: 50px;
+        height: 30px;
+        padding: 2px;
+        cursor: pointer;
+        margin-bottom: 0;
+      }
+      .color-input-group input[type="text"] {
+        flex: 1;
+        margin-bottom: 0;
+      }
+      .theme-section {
+        background: #1e293b;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 15px;
+      }
+      .theme-section h3 {
+        margin: 0 0 10px 0;
+        font-size: 14px;
+        color: #94a3b8;
+      }
+      .collapsible-header {
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .collapsible-content {
+        display: none;
+        margin-top: 10px;
+      }
+      .collapsible-content.open {
+        display: block;
       }
       button {
         background: #06b6d4;
@@ -172,6 +222,60 @@
             placeholder="Paste your session token here... (leave empty to test error states)"
           ></textarea>
 
+          <div class="theme-section">
+            <h3>Theme Settings</h3>
+            <label for="themeMode">Theme Mode:</label>
+            <select id="themeMode">
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+              <option value="system">System</option>
+            </select>
+
+            <div class="collapsible-header" onclick="toggleCustomColors()">
+              <span>Custom Colors (optional)</span>
+              <span id="customColorsArrow">+</span>
+            </div>
+            <div id="customColors" class="collapsible-content">
+              <div class="color-input-group">
+                <label>Background</label>
+                <input type="color" id="colorBg" value="#0f172a" />
+                <input type="text" id="colorBgText" placeholder="#0f172a" />
+              </div>
+              <div class="color-input-group">
+                <label>Surface</label>
+                <input type="color" id="colorSurface" value="#1e293b" />
+                <input
+                  type="text"
+                  id="colorSurfaceText"
+                  placeholder="#1e293b"
+                />
+              </div>
+              <div class="color-input-group">
+                <label>Primary</label>
+                <input type="color" id="colorPrimary" value="#06b6d4" />
+                <input
+                  type="text"
+                  id="colorPrimaryText"
+                  placeholder="#06b6d4"
+                />
+              </div>
+              <div class="color-input-group">
+                <label>Text</label>
+                <input type="color" id="colorText" value="#ffffff" />
+                <input type="text" id="colorTextVal" placeholder="#ffffff" />
+              </div>
+              <div class="color-input-group">
+                <label>Text Muted</label>
+                <input type="color" id="colorTextMuted" value="#9ca3af" />
+                <input
+                  type="text"
+                  id="colorTextMutedVal"
+                  placeholder="#9ca3af"
+                />
+              </div>
+            </div>
+          </div>
+
           <div>
             <button id="openConnect" onclick="openConnect()">
               Open Connect
@@ -252,6 +356,89 @@
       let responseMode = "auto"; // 'auto', 'loading', 'error-invalid', 'error-expired', 'error-network', 'manual'
       let pendingRequestId = null;
 
+      // Toggle custom colors section
+      function toggleCustomColors() {
+        const content = document.getElementById("customColors");
+        const arrow = document.getElementById("customColorsArrow");
+        content.classList.toggle("open");
+        arrow.textContent = content.classList.contains("open") ? "-" : "+";
+      }
+
+      // Sync color picker with text input
+      document.querySelectorAll(".color-input-group").forEach((group) => {
+        const colorInput = group.querySelector('input[type="color"]');
+        const textInput = group.querySelector('input[type="text"]');
+        if (colorInput && textInput) {
+          colorInput.addEventListener("input", () => {
+            textInput.value = colorInput.value;
+          });
+          textInput.addEventListener("input", () => {
+            if (/^#[0-9A-Fa-f]{6}$/.test(textInput.value)) {
+              colorInput.value = textInput.value;
+            }
+          });
+        }
+      });
+
+      // Build theme object from UI
+      function buildTheme() {
+        const mode = document.getElementById("themeMode").value;
+        const theme = { mode };
+
+        // Check if custom colors are set
+        const customColorsOpen = document
+          .getElementById("customColors")
+          .classList.contains("open");
+        if (customColorsOpen) {
+          const bgText = document.getElementById("colorBgText").value;
+          const surfaceText = document.getElementById("colorSurfaceText").value;
+          const primaryText = document.getElementById("colorPrimaryText").value;
+          const textVal = document.getElementById("colorTextVal").value;
+          const textMutedVal =
+            document.getElementById("colorTextMutedVal").value;
+
+          const colors = {};
+          if (bgText) colors.background = bgText;
+          if (surfaceText) colors.surface = surfaceText;
+          if (primaryText) colors.primary = primaryText;
+          if (textVal) colors.text = textVal;
+          if (textMutedVal) colors.textMuted = textMutedVal;
+
+          if (Object.keys(colors).length > 0) {
+            // Apply custom colors to the current mode
+            theme.colors = {
+              [mode === "system" ? "dark" : mode]: colors,
+            };
+          }
+        }
+
+        return theme;
+      }
+
+      // Send theme update to iframe in real-time
+      function sendThemeUpdate() {
+        const iframe = document.getElementById("connectFrame");
+        if (!iframe || !iframe.contentWindow || !iframe.src) return;
+
+        const theme = buildTheme();
+        iframe.contentWindow.postMessage({ type: "SET_THEME", theme }, "*");
+        log(`Sent theme update: ${theme.mode}`, "sent");
+      }
+
+      // Listen for theme changes and send updates in real-time
+      document
+        .getElementById("themeMode")
+        .addEventListener("change", sendThemeUpdate);
+
+      // Also send theme updates when custom colors change
+      document.querySelectorAll(".color-input-group input").forEach((input) => {
+        input.addEventListener("input", () => {
+          // Debounce color updates
+          clearTimeout(input._debounceTimer);
+          input._debounceTimer = setTimeout(sendThemeUpdate, 100);
+        });
+      });
+
       function log(message, type = "info") {
         const logEl = document.getElementById("log");
         const entry = document.createElement("div");
@@ -285,6 +472,8 @@
         switch (data.type) {
           case "CONNECT_READY":
             log("Connect iframe is ready!", "received");
+            // Send theme immediately so loading screen has correct colors
+            sendThemeUpdate();
             break;
 
           case "REQUEST_TOKEN":
@@ -313,6 +502,8 @@
         const iframe = document.getElementById("connectFrame");
         if (!iframe || !iframe.contentWindow) return;
 
+        const theme = buildTheme();
+
         switch (responseMode) {
           case "auto":
             // Send token immediately if we have one
@@ -321,9 +512,13 @@
                 type: "TOKEN_RESPONSE",
                 requestId: requestId,
                 token: sessionToken,
+                theme: theme,
               };
               iframe.contentWindow.postMessage(response, "*");
-              log(`Sent token: ${sessionToken.substring(0, 30)}...`, "sent");
+              log(
+                `Sent token: ${sessionToken.substring(0, 30)}... (theme: ${theme.mode})`,
+                "sent",
+              );
             } else {
               // No token provided, send error
               const response = {
@@ -347,6 +542,7 @@
               type: "TOKEN_RESPONSE",
               requestId: requestId,
               token: "invalid-token-format",
+              theme: theme,
             };
             iframe.contentWindow.postMessage(invalidResponse, "*");
             log("Sent invalid token format", "sent");
@@ -365,6 +561,7 @@
               type: "TOKEN_RESPONSE",
               requestId: requestId,
               token: `${expiredPayload}.fakesignature`,
+              theme: theme,
             };
             iframe.contentWindow.postMessage(expiredResponse, "*");
             log("Sent expired token", "sent");
@@ -379,6 +576,7 @@
               type: "TOKEN_RESPONSE",
               requestId: requestId,
               token: `${networkPayload}.fakesignature`,
+              theme: theme,
             };
             iframe.contentWindow.postMessage(networkResponse, "*");
             log("Sent token (will cause network error)", "sent");
@@ -407,13 +605,18 @@
         const iframe = document.getElementById("connectFrame");
         if (!iframe || !iframe.contentWindow) return;
 
+        const theme = buildTheme();
         const response = {
           type: "TOKEN_RESPONSE",
           requestId: pendingRequestId,
           token: token,
+          theme: theme,
         };
         iframe.contentWindow.postMessage(response, "*");
-        log(`Manually sent token: ${token.substring(0, 30)}...`, "sent");
+        log(
+          `Manually sent token: ${token.substring(0, 30)}... (theme: ${theme.mode})`,
+          "sent",
+        );
 
         pendingRequestId = null;
         document.getElementById("sendTokenBtn").disabled = true;

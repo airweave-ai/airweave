@@ -37,7 +37,7 @@ function RootDocument() {
       <head>
         <HeadContent />
       </head>
-      <body className="bg-slate-900">
+      <body style={{ backgroundColor: 'var(--connect-bg, #0f172a)' }}>
         <SessionProvider />
         <Scripts />
       </body>

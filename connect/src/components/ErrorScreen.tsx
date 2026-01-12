@@ -37,17 +37,33 @@ export function ErrorScreen({ error, onRetry, onClose }: ErrorScreenProps) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-center">
-      <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
-        <AlertCircle className="w-8 h-8 text-red-400" />
+    <div
+      className="min-h-screen flex flex-col items-center justify-center p-6 text-center"
+      style={{ backgroundColor: 'var(--connect-bg)' }}
+    >
+      <div
+        className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6"
+        style={{ backgroundColor: 'color-mix(in srgb, var(--connect-error) 20%, transparent)' }}
+      >
+        <AlertCircle className="w-8 h-8" style={{ color: 'var(--connect-error)' }} />
       </div>
-      <h1 className="text-2xl font-bold text-white mb-2">{errorInfo.title}</h1>
-      <p className="text-gray-400 mb-6">{errorInfo.description}</p>
+      <h1 className="text-2xl font-bold mb-2" style={{ color: 'var(--connect-text)' }}>
+        {errorInfo.title}
+      </h1>
+      <p className="mb-6" style={{ color: 'var(--connect-text-muted)' }}>
+        {errorInfo.description}
+      </p>
       <div className="flex gap-3 justify-center">
         {onRetry && (
           <button
             onClick={onRetry}
-            className="px-6 py-2 bg-cyan-500 hover:bg-cyan-600 text-white font-semibold rounded-lg transition-colors flex items-center gap-2"
+            className="px-6 py-2 font-semibold rounded-lg transition-colors flex items-center gap-2"
+            style={{
+              backgroundColor: 'var(--connect-primary)',
+              color: 'white',
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--connect-primary-hover)'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--connect-primary)'}
           >
             <RefreshCw className="w-4 h-4" />
             Try Again
@@ -56,7 +72,13 @@ export function ErrorScreen({ error, onRetry, onClose }: ErrorScreenProps) {
         {onClose && (
           <button
             onClick={onClose}
-            className="px-6 py-2 bg-slate-700 hover:bg-slate-600 text-white font-semibold rounded-lg transition-colors flex items-center gap-2"
+            className="px-6 py-2 font-semibold rounded-lg transition-colors flex items-center gap-2"
+            style={{
+              backgroundColor: 'var(--connect-secondary)',
+              color: 'var(--connect-text)',
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--connect-secondary-hover)'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--connect-secondary)'}
           >
             <X className="w-4 h-4" />
             Close

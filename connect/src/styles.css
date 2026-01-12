@@ -1,15 +1,30 @@
 @import "tailwindcss";
 
+/* Default theme CSS variables (dark mode) */
+:root {
+  --connect-bg: #0f172a;
+  --connect-surface: #1e293b;
+  --connect-text: #ffffff;
+  --connect-text-muted: #9ca3af;
+  --connect-primary: #06b6d4;
+  --connect-primary-hover: #0891b2;
+  --connect-secondary: #334155;
+  --connect-secondary-hover: #475569;
+  --connect-border: #334155;
+  --connect-success: #22c55e;
+  --connect-error: #ef4444;
+}
+
 body {
   @apply m-0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
-    "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-    sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu",
+    "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
-    monospace;
+  font-family:
+    source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
 }

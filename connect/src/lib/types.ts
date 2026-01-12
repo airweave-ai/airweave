@@ -1,5 +1,30 @@
 // Session mode enum matching backend ConnectSessionMode
-export type ConnectSessionMode = 'all' | 'connect' | 'manage' | 'reauth';
+export type ConnectSessionMode = "all" | "connect" | "manage" | "reauth";
+
+// Theme types for customization
+export type ThemeMode = "dark" | "light" | "system";
+
+export interface ThemeColors {
+  background?: string;
+  surface?: string;
+  text?: string;
+  textMuted?: string;
+  primary?: string;
+  primaryHover?: string;
+  secondary?: string;
+  secondaryHover?: string;
+  border?: string;
+  success?: string;
+  error?: string;
+}
+
+export interface ConnectTheme {
+  mode: ThemeMode;
+  colors?: {
+    dark?: ThemeColors;
+    light?: ThemeColors;
+  };
+}
 
 // Session context returned by API (matches backend ConnectSessionContext)
 export interface ConnectSessionContext {
@@ -14,10 +39,10 @@ export interface ConnectSessionContext {
 
 // Session error types
 export type SessionErrorCode =
-  | 'invalid_token'
-  | 'expired_token'
-  | 'network_error'
-  | 'session_mismatch';
+  | "invalid_token"
+  | "expired_token"
+  | "network_error"
+  | "session_mismatch";
 
 export interface SessionError {
   code: SessionErrorCode;
@@ -26,21 +51,27 @@ export interface SessionError {
 
 // Session status for state machine
 export type SessionStatus =
-  | { status: 'idle' }
-  | { status: 'waiting_for_token' }
-  | { status: 'validating' }
-  | { status: 'valid'; session: ConnectSessionContext }
-  | { status: 'error'; error: SessionError };
+  | { status: "idle" }
+  | { status: "waiting_for_token" }
+  | { status: "validating" }
+  | { status: "valid"; session: ConnectSessionContext }
+  | { status: "error"; error: SessionError };
 
 // postMessage types - messages sent from child (Connect iframe) to parent
 export type ChildToParentMessage =
-  | { type: 'CONNECT_READY' }
-  | { type: 'REQUEST_TOKEN'; requestId: string }
-  | { type: 'STATUS_CHANGE'; status: SessionStatus }
-  | { type: 'CONNECTION_CREATED'; connectionId: string }
-  | { type: 'CLOSE'; reason: 'success' | 'cancel' | 'error' };
+  | { type: "CONNECT_READY" }
+  | { type: "REQUEST_TOKEN"; requestId: string }
+  | { type: "STATUS_CHANGE"; status: SessionStatus }
+  | { type: "CONNECTION_CREATED"; connectionId: string }
+  | { type: "CLOSE"; reason: "success" | "cancel" | "error" };
 
 // postMessage types - messages sent from parent to child
 export type ParentToChildMessage =
-  | { type: 'TOKEN_RESPONSE'; requestId: string; token: string }
-  | { type: 'TOKEN_ERROR'; requestId: string; error: string };
+  | {
+      type: "TOKEN_RESPONSE";
+      requestId: string;
+      token: string;
+      theme?: ConnectTheme;
+    }
+  | { type: "TOKEN_ERROR"; requestId: string; error: string }
+  | { type: "SET_THEME"; theme: ConnectTheme };
