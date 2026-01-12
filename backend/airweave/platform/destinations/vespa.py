@@ -297,12 +297,12 @@ class VespaDestination(VectorDBDestination):
     def _add_access_control_fields(self, fields: dict[str, Any], entity: BaseEntity) -> None:
         """Add access control fields if entity has access metadata.
 
-        IMPORTANT: Only include access fields if the entity has them explicitly set.
-        Sources without supports_access_control=True won't set this field, and we
-        don't want to add default restrictive values that would hide entities.
+        IMPORTANT: Always set access control fields, with appropriate defaults.
+        - AC-enabled sources: Use the actual ACL values from entity.access
+        - Non-AC sources: Set is_public=True so entities are visible to everyone
 
-        When access control fields are absent, entities are visible to everyone
-        (no access filter is applied during search).
+        This ensures consistent filtering behavior and avoids needing to check
+        for missing fields during search (Vespa doesn't support isNull in YQL).
 
         Args:
             fields: Fields dict to update
@@ -312,7 +312,10 @@ class VespaDestination(VectorDBDestination):
             fields["access_is_public"] = entity.access.is_public
             # Always include viewers array (even if empty) when access is set
             fields["access_viewers"] = entity.access.viewers if entity.access.viewers else []
-        # else: Don't add access fields - entity is from non-AC source
+        else:
+            # Non-AC source: entity is public by default (visible to everyone)
+            fields["access_is_public"] = True
+            fields["access_viewers"] = []
 
     def _add_vespa_content_fields(self, fields: dict[str, Any], entity: BaseEntity) -> None:
         """Add pre-computed chunks and embeddings from VespaContent.
