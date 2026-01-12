@@ -48,6 +48,15 @@ class BehaviorConfig(BaseModel):
         False, description="Replay from ARF storage instead of calling source"
     )
     skip_guardrails: bool = Field(False, description="Skip usage guardrails (entity count checks)")
+    dedupe_by_collection: bool = Field(
+        False,
+        description=(
+            "Enable collection-level deduplication. When True, entities are deduplicated "
+            "across all syncs in the collection. Each sync maintains its own entity rows "
+            "for proper CASCADE on delete, but content handlers (vector DB, ARF) skip "
+            "writes if another sync already has the entity with the same hash."
+        ),
+    )
 
 
 class SyncConfig(BaseSettings):

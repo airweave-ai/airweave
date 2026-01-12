@@ -78,14 +78,29 @@ class ArfHandler(EntityActionHandler):
         actions: List[EntityInsertAction],
         sync_context: "SyncContext",
     ) -> None:
-        """Store inserted entities to ARF."""
+        """Store inserted entities to ARF.
+
+        Respects skip_content_handlers flag for collection-level deduplication.
+        """
         if not actions:
+            return
+
+        # Filter out inserts where skip_content_handlers=True (collection-level dedup)
+        actions_to_process = [a for a in actions if not a.skip_content_handlers]
+        skipped_count = len(actions) - len(actions_to_process)
+
+        if skipped_count > 0:
+            sync_context.logger.debug(
+                f"[ARF] Skipping {skipped_count} inserts (collection-level dedup)"
+            )
+
+        if not actions_to_process:
             return
 
         # Ensure manifest exists (lazily created on first write)
         await self._ensure_manifest(sync_context)
 
-        entities = [action.entity for action in actions]
+        entities = [action.entity for action in actions_to_process]
         await self._do_upsert(entities, "insert", sync_context)
 
     async def handle_updates(

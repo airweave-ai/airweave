@@ -111,10 +111,26 @@ class DestinationHandler(EntityActionHandler):
         actions: List[EntityInsertAction],
         sync_context: "SyncContext",
     ) -> None:
-        """Handle inserts - process and insert to destinations."""
+        """Handle inserts - process and insert to destinations.
+
+        Respects skip_content_handlers flag for collection-level deduplication.
+        """
         if not actions:
             return
-        entities = [a.entity for a in actions]
+
+        # Filter out inserts where skip_content_handlers=True (collection-level dedup)
+        actions_to_process = [a for a in actions if not a.skip_content_handlers]
+        skipped_count = len(actions) - len(actions_to_process)
+
+        if skipped_count > 0:
+            sync_context.logger.debug(
+                f"[{self.name}] Skipping {skipped_count} inserts (collection-level dedup)"
+            )
+
+        if not actions_to_process:
+            return
+
+        entities = [a.entity for a in actions_to_process]
         sync_context.logger.debug(f"[{self.name}] Inserting {len(entities)} entities")
         await self._do_process_and_insert(entities, sync_context)
 

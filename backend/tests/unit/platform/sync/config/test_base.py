@@ -83,11 +83,18 @@ class TestBehaviorConfig:
         config = BehaviorConfig()
         assert config.skip_hash_comparison is False
         assert config.replay_from_arf is False
+        assert config.skip_guardrails is False
+        assert config.dedupe_by_collection is False
 
     def test_with_custom_values(self):
         """Test behavior config with custom values."""
         config = BehaviorConfig(replay_from_arf=True)
         assert config.replay_from_arf is True
+
+    def test_dedupe_by_collection(self):
+        """Test dedupe_by_collection flag."""
+        config = BehaviorConfig(dedupe_by_collection=True)
+        assert config.dedupe_by_collection is True
 
 
 class TestSyncConfig:
