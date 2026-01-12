@@ -1,4 +1,5 @@
 import { AlertCircle, RefreshCw, X } from "lucide-react";
+import { PoweredByAirweave } from "./PoweredByAirweave";
 import type { SessionError, SessionErrorCode } from "../lib/types";
 
 interface ErrorScreenProps {
@@ -38,7 +39,7 @@ export function ErrorScreen({ error, onRetry, onClose }: ErrorScreenProps) {
 
   return (
     <div
-      className="min-h-screen flex flex-col items-center justify-center p-6 text-center"
+      className="min-h-screen flex flex-col items-center justify-center p-6 pb-12 text-center relative"
       style={{ backgroundColor: "var(--connect-bg)" }}
     >
       <div className="flex items-center justify-center mx-auto mb-4">
@@ -100,6 +101,7 @@ export function ErrorScreen({ error, onRetry, onClose }: ErrorScreenProps) {
           </button>
         )}
       </div>
+      <PoweredByAirweave />
     </div>
   );
 }

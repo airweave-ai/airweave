@@ -1,4 +1,5 @@
 import { LoadingScreen } from "@/components/LoadingScreen";
+import { PoweredByAirweave } from "@/components/PoweredByAirweave";
 import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, Link2 } from "lucide-react";
 import { useState } from "react";
@@ -141,7 +142,7 @@ function EmptyState() {
 function ConnectModeError() {
   return (
     <div
-      className="min-h-screen flex flex-col items-center justify-center p-6 text-center"
+      className="min-h-screen flex flex-col items-center justify-center p-6 pb-12 text-center relative"
       style={{ backgroundColor: "var(--connect-bg)" }}
     >
       <div
@@ -166,6 +167,7 @@ function ConnectModeError() {
       <p style={{ color: "var(--connect-text-muted)" }}>
         Viewing connections is not available in connect mode.
       </p>
+      <PoweredByAirweave />
     </div>
   );
 }
@@ -190,7 +192,7 @@ export function SuccessScreen({ session }: SuccessScreenProps) {
   if (error) {
     return (
       <div
-        className="min-h-screen flex flex-col items-center justify-center p-6 text-center"
+        className="min-h-screen flex flex-col items-center justify-center p-6 pb-12 text-center relative"
         style={{ backgroundColor: "var(--connect-bg)" }}
       >
         <div
@@ -215,13 +217,14 @@ export function SuccessScreen({ session }: SuccessScreenProps) {
         <p style={{ color: "var(--connect-text-muted)" }}>
           {error instanceof Error ? error.message : "An error occurred"}
         </p>
+        <PoweredByAirweave />
       </div>
     );
   }
 
   return (
     <div
-      className="min-h-screen flex flex-col p-6"
+      className="min-h-screen flex flex-col p-6 pb-12 relative"
       style={{ backgroundColor: "var(--connect-bg)" }}
     >
       <h1
@@ -240,6 +243,7 @@ export function SuccessScreen({ session }: SuccessScreenProps) {
       ) : (
         <EmptyState />
       )}
+      <PoweredByAirweave />
     </div>
   );
 }
