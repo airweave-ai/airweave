@@ -3,7 +3,11 @@ import { Loader2 } from "lucide-react";
 import { useCallback, useState } from "react";
 import { apiClient } from "../lib/api";
 import { useTheme } from "../lib/theme";
-import type { ConfigField, Source, SourceConnectionCreateRequest } from "../lib/types";
+import type {
+  ConfigField,
+  Source,
+  SourceConnectionCreateRequest,
+} from "../lib/types";
 import { useOAuthFlow } from "../lib/useOAuthFlow";
 import { AppIcon } from "./AppIcon";
 import { AuthMethodSelector } from "./AuthMethodSelector";
@@ -39,15 +43,21 @@ export function SourceConfigView({
   });
 
   const [connectionName, setConnectionName] = useState("");
-  const [authMethod, setAuthMethod] = useState<"direct" | "oauth_browser">("direct");
+  const [authMethod, setAuthMethod] = useState<"direct" | "oauth_browser">(
+    "direct",
+  );
   const [authValues, setAuthValues] = useState<Record<string, unknown>>({});
   const [configValues, setConfigValues] = useState<Record<string, unknown>>({});
-  const [byocValues, setByocValues] = useState({ client_id: "", client_secret: "" });
+  const [byocValues, setByocValues] = useState({
+    client_id: "",
+    client_secret: "",
+  });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const availableAuthMethods =
     sourceDetails?.auth_methods.filter(
-      (m): m is "direct" | "oauth_browser" => m === "direct" || m === "oauth_browser"
+      (m): m is "direct" | "oauth_browser" =>
+        m === "direct" || m === "oauth_browser",
     ) ?? [];
 
   const effectiveAuthMethod = availableAuthMethods.includes(authMethod)
@@ -106,7 +116,10 @@ export function SourceConfigView({
       }
     }
 
-    if (effectiveAuthMethod === "oauth_browser" && sourceDetails?.requires_byoc) {
+    if (
+      effectiveAuthMethod === "oauth_browser" &&
+      sourceDetails?.requires_byoc
+    ) {
       if (!byocValues.client_id.trim()) {
         newErrors.byoc_client_id = labels.fieldRequired;
       }
@@ -183,7 +196,9 @@ export function SourceConfigView({
         centerContent
       >
         <p style={{ color: "var(--connect-error)" }}>
-          {error instanceof Error ? error.message : labels.loadSourceDetailsFailed}
+          {error instanceof Error
+            ? error.message
+            : labels.loadSourceDetailsFailed}
         </p>
         <Button onClick={onBack} variant="secondary" className="mt-4">
           {labels.buttonBack}
@@ -193,7 +208,8 @@ export function SourceConfigView({
   }
 
   const showDirectAuthFields =
-    effectiveAuthMethod === "direct" && sourceDetails?.auth_fields?.fields?.length;
+    effectiveAuthMethod === "direct" &&
+    sourceDetails?.auth_fields?.fields?.length;
 
   const showConfigFields = sourceDetails?.config_fields?.fields?.length;
 
@@ -254,7 +270,10 @@ export function SourceConfigView({
               type="text"
               value={connectionName}
               onChange={(e) => setConnectionName(e.target.value)}
-              placeholder={labels.configureNamePlaceholder.replace("{source}", source.name)}
+              placeholder={labels.configureNamePlaceholder.replace(
+                "{source}",
+                source.name,
+              )}
               className="w-full px-3 py-2 text-sm rounded-md border outline-none transition-colors"
               style={{
                 backgroundColor: "var(--connect-surface)",
@@ -315,8 +334,6 @@ export function SourceConfigView({
                 status={oauthFlow.status}
                 error={oauthFlow.error}
                 blockedAuthUrl={oauthFlow.blockedAuthUrl}
-                sourceName={source.name}
-                onConnect={handleOAuthConnect}
                 onRetryPopup={oauthFlow.retryPopup}
                 onManualLinkClick={oauthFlow.handleManualLinkClick}
               />
@@ -331,15 +348,19 @@ export function SourceConfigView({
               >
                 {labels.configureConfigSection}
               </h2>
-              {sourceDetails?.config_fields?.fields?.map((field: ConfigField) => (
-                <DynamicFormField
-                  key={field.name}
-                  field={field}
-                  value={configValues[field.name]}
-                  onChange={(value) => handleConfigValueChange(field.name, value)}
-                  error={errors[`config_${field.name}`]}
-                />
-              ))}
+              {sourceDetails?.config_fields?.fields?.map(
+                (field: ConfigField) => (
+                  <DynamicFormField
+                    key={field.name}
+                    field={field}
+                    value={configValues[field.name]}
+                    onChange={(value) =>
+                      handleConfigValueChange(field.name, value)
+                    }
+                    error={errors[`config_${field.name}`]}
+                  />
+                ),
+              )}
             </div>
           )}
 
@@ -347,7 +368,11 @@ export function SourceConfigView({
         </form>
       </main>
 
-      {effectiveAuthMethod === "direct" && (
+      {/* Show footer unless OAuth is in waiting state */}
+      {!(
+        effectiveAuthMethod === "oauth_browser" &&
+        oauthFlow.status === "waiting"
+      ) && (
         <div
           className="flex-shrink-0 px-6 pt-4 border-t"
           style={{
@@ -355,21 +380,41 @@ export function SourceConfigView({
             borderColor: "var(--connect-border)",
           }}
         >
-          <Button
-            type="submit"
-            form="source-config-form"
-            disabled={createMutation.isPending}
-            className="w-full justify-center"
-          >
-            {createMutation.isPending ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                {labels.buttonCreatingConnection}
-              </>
-            ) : (
-              labels.buttonCreateConnection
-            )}
-          </Button>
+          {effectiveAuthMethod === "direct" ? (
+            <Button
+              type="submit"
+              form="source-config-form"
+              disabled={createMutation.isPending}
+              className="w-full justify-center"
+            >
+              {createMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  {labels.buttonCreatingConnection}
+                </>
+              ) : (
+                labels.buttonCreateConnection
+              )}
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              onClick={handleOAuthConnect}
+              disabled={oauthFlow.status === "creating"}
+              className="w-full justify-center"
+            >
+              {oauthFlow.status === "creating" ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  {labels.buttonConnecting}
+                </>
+              ) : (
+                <>
+                  {labels.buttonConnectOAuth.replace("{source}", source.name)}
+                </>
+              )}
+            </Button>
+          )}
         </div>
       )}
 

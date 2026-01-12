@@ -27,7 +27,7 @@ export function AuthMethodSelector({
   // Filter to only direct and oauth_browser (skip auth_provider per spec)
   const availableMethods = methods.filter(
     (m): m is "direct" | "oauth_browser" =>
-      m === "direct" || m === "oauth_browser"
+      m === "direct" || m === "oauth_browser",
   );
 
   // Don't render if only one method available

@@ -7,8 +7,6 @@ interface OAuthStatusUIProps {
   status: OAuthFlowStatus;
   error: string | null;
   blockedAuthUrl: string | null;
-  sourceName: string;
-  onConnect: () => void;
   onRetryPopup: () => void;
   onManualLinkClick: () => void;
 }
@@ -17,8 +15,6 @@ export function OAuthStatusUI({
   status,
   error,
   blockedAuthUrl,
-  sourceName,
-  onConnect,
   onRetryPopup,
   onManualLinkClick,
 }: OAuthStatusUIProps) {
@@ -112,28 +108,6 @@ export function OAuthStatusUI({
             </a>
           </div>
         </div>
-      )}
-
-      {status !== "waiting" && status !== "popup_blocked" && (
-        <Button
-          type="button"
-          onClick={onConnect}
-          disabled={status === "creating"}
-          className="w-full justify-center"
-          variant="secondary"
-        >
-          {status === "creating" ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              {labels.buttonConnecting}
-            </>
-          ) : (
-            <>
-              <ExternalLink className="w-4 h-4" />
-              {labels.buttonConnectOAuth.replace("{source}", sourceName)}
-            </>
-          )}
-        </Button>
       )}
     </>
   );
