@@ -27,11 +27,23 @@ export function openOAuthPopup(options: OAuthPopupOptions): Window | null {
 /**
  * Listens for OAuth completion message from popup window.
  * Returns a cleanup function to remove the listener.
+ *
+ * @param callback - Function to call with OAuth result
+ * @param expectedOrigin - Optional origin to validate against (defaults to current origin for same-origin popups)
  */
 export function listenForOAuthComplete(
-  callback: (result: OAuthCallbackResult) => void
+  callback: (result: OAuthCallbackResult) => void,
+  expectedOrigin?: string
 ): () => void {
+  // Default to current origin since OAuth popup is same-origin
+  const validOrigin = expectedOrigin ?? window.location.origin;
+
   const handler = (event: MessageEvent) => {
+    // Validate origin to prevent spoofed OAuth messages from other windows
+    if (event.origin !== validOrigin) {
+      return;
+    }
+
     // Only handle OAUTH_COMPLETE messages
     if (event.data?.type === "OAUTH_COMPLETE") {
       const result: OAuthCallbackResult = {

@@ -9,7 +9,8 @@ import type {
 
 interface UseOAuthFlowOptions {
   shortName: string;
-  connectionName: string;
+  sourceName: string;
+  collectionId: string;
   configValues: Record<string, unknown>;
   byocValues?: { client_id: string; client_secret: string };
   requiresByoc: boolean;
@@ -27,7 +28,8 @@ interface UseOAuthFlowResult {
 
 export function useOAuthFlow({
   shortName,
-  connectionName,
+  sourceName,
+  collectionId,
   configValues,
   byocValues,
   requiresByoc,
@@ -77,6 +79,11 @@ export function useOAuthFlow({
     return () => {
       cleanup();
       if (pollInterval) clearInterval(pollInterval);
+      // Close popup if still open when component unmounts or status changes
+      if (popupRef.current && !popupRef.current.closed) {
+        popupRef.current.close();
+        popupRef.current = null;
+      }
     };
   }, [status, handleOAuthResult]);
 
@@ -90,7 +97,8 @@ export function useOAuthFlow({
 
       const payload: SourceConnectionCreateRequest = {
         short_name: shortName,
-        sync_immediately: true,
+        name: sourceName,
+        readable_collection_id: collectionId,
         authentication: {
           redirect_uri: redirectUri,
           ...(requiresByoc &&
@@ -100,10 +108,6 @@ export function useOAuthFlow({
             }),
         },
       };
-
-      if (connectionName.trim()) {
-        payload.name = connectionName.trim();
-      }
 
       if (Object.keys(configValues).length > 0) {
         payload.config = configValues;
@@ -132,7 +136,7 @@ export function useOAuthFlow({
         err instanceof Error ? err.message : "Failed to initiate OAuth flow"
       );
     }
-  }, [shortName, connectionName, configValues, byocValues, requiresByoc]);
+  }, [shortName, sourceName, collectionId, configValues, byocValues, requiresByoc]);
 
   const retryPopup = useCallback(() => {
     if (!blockedAuthUrl) return;

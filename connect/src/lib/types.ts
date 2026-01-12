@@ -89,6 +89,7 @@ export interface ConnectLabels {
   connectionFailed?: string;
   loadSourceDetailsFailed?: string;
   fieldRequired?: string;
+  fieldOptional?: string;
 
   // Auth method selector
   authMethodLabel?: string;
@@ -263,6 +264,7 @@ export type AuthenticationPayload = DirectAuthPayload | OAuthBrowserAuthPayload;
 // Create connection request
 export interface SourceConnectionCreateRequest {
   short_name: string;
+  readable_collection_id: string;
   name?: string;
   authentication?: AuthenticationPayload;
   config?: Record<string, unknown>;

@@ -106,6 +106,7 @@ export const defaultLabels: Required<ConnectLabels> = {
   connectionFailed: "Failed to create connection",
   loadSourceDetailsFailed: "Failed to load source details",
   fieldRequired: "This field is required",
+  fieldOptional: "Optional",
 
   // Auth method selector
   authMethodLabel: "Authentication method",

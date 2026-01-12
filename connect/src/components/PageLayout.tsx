@@ -5,6 +5,7 @@ interface PageLayoutProps {
   title: string;
   headerRight?: ReactNode;
   headerLeft?: ReactNode;
+  footerContent?: ReactNode;
   children: ReactNode;
   centerContent?: boolean;
 }
@@ -13,6 +14,7 @@ export function PageLayout({
   title,
   headerRight,
   headerLeft,
+  footerContent,
   children,
   centerContent = false,
 }: PageLayoutProps) {
@@ -43,6 +45,18 @@ export function PageLayout({
       >
         {children}
       </main>
+
+      {footerContent && (
+        <div
+          className="flex-shrink-0 px-6 pt-4 border-t"
+          style={{
+            backgroundColor: "var(--connect-bg)",
+            borderColor: "var(--connect-border)",
+          }}
+        >
+          {footerContent}
+        </div>
+      )}
 
       <footer className="flex-shrink-0">
         <PoweredByAirweave />

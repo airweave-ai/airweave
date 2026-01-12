@@ -71,7 +71,12 @@ function OAuthCallback() {
     if (hasNotified.current || !window.opener) return;
     hasNotified.current = true;
 
-    window.opener.postMessage({ type: "OAUTH_COMPLETE", ...result }, "*");
+    // Use same origin since popup is opened from Connect widget (same-origin)
+    // This prevents other windows from intercepting the OAuth result
+    window.opener.postMessage(
+      { type: "OAUTH_COMPLETE", ...result },
+      window.location.origin
+    );
     setTimeout(() => window.close(), 1500);
   }, [result]);
 

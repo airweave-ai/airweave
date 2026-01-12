@@ -46,16 +46,21 @@ export function useParentMessaging(
   const onThemeChangeRef = useRef(options?.onThemeChange);
   const onNavigateRef = useRef(options?.onNavigate);
 
+  // Store the validated parent origin for secure postMessage communication
+  const parentOriginRef = useRef<string | null>(null);
+
   // Keep the callback refs up to date
   useEffect(() => {
     onThemeChangeRef.current = options?.onThemeChange;
     onNavigateRef.current = options?.onNavigate;
   });
 
-  // Helper to send messages to parent
+  // Helper to send messages to parent with validated origin
   const sendToParent = useCallback((message: ChildToParentMessage) => {
     if (typeof window !== "undefined" && window.parent !== window) {
-      window.parent.postMessage(message, "*");
+      // Use validated parent origin, fall back to "*" only for initial CONNECT_READY
+      const targetOrigin = parentOriginRef.current || "*";
+      window.parent.postMessage(message, targetOrigin);
     }
   }, []);
 
@@ -70,10 +75,24 @@ export function useParentMessaging(
     }
 
     const handleMessage = (event: MessageEvent<ParentToChildMessage>) => {
-      // TODO: In production, validate event.origin against allowed origins
       const { data } = event;
 
       if (!data || typeof data !== "object" || !("type" in data)) {
+        return;
+      }
+
+      // Capture parent origin from the first TOKEN_RESPONSE message
+      // This establishes the trusted origin for all future communication
+      if (
+        (data.type === "TOKEN_RESPONSE" || data.type === "TOKEN_ERROR") &&
+        !parentOriginRef.current
+      ) {
+        parentOriginRef.current = event.origin;
+      }
+
+      // Validate origin for all messages once we have a trusted origin
+      // This prevents other windows from spoofing messages
+      if (parentOriginRef.current && event.origin !== parentOriginRef.current) {
         return;
       }
 

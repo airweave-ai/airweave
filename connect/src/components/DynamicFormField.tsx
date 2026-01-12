@@ -1,12 +1,36 @@
 import { Eye, EyeOff, X } from "lucide-react";
 import { marked } from "marked";
 import { useState } from "react";
+import { useTheme } from "../lib/theme";
 import type { ConfigField } from "../lib/types";
 
+// Safe URL protocols for links in field descriptions
+const SAFE_PROTOCOLS = ["http:", "https:", "mailto:"];
+
+/**
+ * Validates that a URL uses a safe protocol to prevent XSS attacks.
+ * Returns true if the URL is safe, false otherwise.
+ */
+function isSafeUrl(href: string): boolean {
+  try {
+    const url = new URL(href, window.location.origin);
+    return SAFE_PROTOCOLS.includes(url.protocol);
+  } catch {
+    // Invalid URL
+    return false;
+  }
+}
+
 // Configure marked to render links with underline and open in new tab
+// with XSS protection by validating URL protocols
 const renderer = new marked.Renderer();
 renderer.link = ({ href, text }) => {
-  return `<a href="${href}" target="_blank" rel="noopener noreferrer" style="text-decoration: underline;">${text}</a>`;
+  // Validate URL protocol to prevent XSS (e.g., javascript: URLs)
+  if (!isSafeUrl(href)) {
+    // Return plain text for unsafe protocols
+    return text;
+  }
+  return `<a href="${href}" target="_blank" rel="noopener noreferrer" style="text-decoration: underline; font-weight: 500;">${text}</a>`;
 };
 marked.use({ renderer });
 
@@ -30,24 +54,30 @@ const inputBaseStyles = (error?: string) => ({
 });
 
 function FieldWrapper({ field, error, children }: FieldWrapperProps) {
+  const { labels } = useTheme();
   const labelId = `field-${field.name}`;
   const errorId = `error-${field.name}`;
 
   return (
     <div className="mb-4">
-      <label
-        id={labelId}
-        htmlFor={`input-${field.name}`}
-        className="block text-sm font-medium mb-1"
-        style={{ color: "var(--connect-text)" }}
-      >
-        {field.title}
-        {field.required && (
-          <span style={{ color: "var(--connect-error)" }} className="ml-1">
-            *
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <label
+          id={labelId}
+          htmlFor={`input-${field.name}`}
+          className="text-sm font-medium truncate grow"
+          style={{ color: "var(--connect-text)" }}
+        >
+          {field.title}
+        </label>
+        {!field.required && (
+          <span
+            className="text-xs shrink-0"
+            style={{ color: "var(--connect-text-muted)" }}
+          >
+            {labels.fieldOptional}
           </span>
         )}
-      </label>
+      </div>
       {field.description && (
         <p
           className="text-xs mt-1 mb-2"
@@ -153,25 +183,31 @@ interface BooleanFieldProps {
 }
 
 function BooleanField({ field, value, onChange, error }: BooleanFieldProps) {
+  const { labels } = useTheme();
   const isChecked = value ?? false;
   const labelId = `field-${field.name}`;
 
   return (
     <div className="mb-4">
       <div className="flex items-center justify-between">
-        <div className="flex-1">
-          <label
-            id={labelId}
-            className="block text-sm font-medium mb-1"
-            style={{ color: "var(--connect-text)" }}
-          >
-            {field.title}
-            {field.required && (
-              <span style={{ color: "var(--connect-error)" }} className="ml-1">
-                *
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <label
+              id={labelId}
+              className="text-sm font-medium truncate grow"
+              style={{ color: "var(--connect-text)" }}
+            >
+              {field.title}
+            </label>
+            {!field.required && (
+              <span
+                className="text-xs shrink-0"
+                style={{ color: "var(--connect-text-muted)" }}
+              >
+                {labels.fieldOptional}
               </span>
             )}
-          </label>
+          </div>
           {field.description && (
             <p
               className="text-xs mt-1 mb-2"
@@ -203,10 +239,7 @@ function BooleanField({ field, value, onChange, error }: BooleanFieldProps) {
         </button>
       </div>
       {error && (
-        <p
-          className="text-xs mt-1"
-          style={{ color: "var(--connect-error)" }}
-        >
+        <p className="text-xs mt-1" style={{ color: "var(--connect-error)" }}>
           {error}
         </p>
       )}

@@ -16,6 +16,7 @@ The Connect widget is an embeddable component that allows end users to manage th
 - **Lucide** icons for consistent iconography
 - **TanStack Router** for file-based routing with type safety
 - **TanStack Query** for server state and data fetching
+- **marked** for Markdown rendering in form field descriptions (with XSS-safe link renderer)
 - **No authentication** - relies on session tokens passed from parent
 
 ## Project Structure
@@ -24,6 +25,7 @@ connect/src/
 ├── components/         # UI components
 │   ├── ConnectionItem.tsx     # Single connection display
 │   ├── ConnectionsErrorView.tsx
+│   ├── DynamicFormField.tsx   # Dynamic form fields with markdown support
 │   ├── EmptyState.tsx         # Empty state with CTA
 │   ├── ErrorScreen.tsx        # Full-screen error display
 │   ├── LoadingScreen.tsx      # Loading spinner
@@ -39,12 +41,15 @@ connect/src/
 │   ├── connection-utils.ts    # Connection status helpers
 │   ├── env.ts                 # Environment configuration
 │   ├── icons.ts               # Icon registry and helpers
+│   ├── oauth.ts               # OAuth popup and message handling
 │   ├── theme-defaults.ts      # Default theme configuration
 │   ├── theme.tsx              # Theme context and CSS variables
-│   └── types.ts               # TypeScript type definitions
+│   ├── types.ts               # TypeScript type definitions
+│   └── useOAuthFlow.ts        # OAuth flow state management hook
 ├── routes/
 │   ├── __root.tsx             # Root layout
-│   └── index.tsx              # Main entry route
+│   ├── index.tsx              # Main entry route
+│   └── oauth-callback.tsx     # OAuth callback handler
 ├── router.tsx                 # TanStack Router setup
 ├── routeTree.gen.ts           # Auto-generated route tree
 └── styles.css                 # Global styles and Tailwind imports
@@ -65,20 +70,31 @@ Sessions are passed via URL parameters or parent messages.
 ### 2. Parent Communication (`useParentMessaging`)
 The widget runs in an iframe and communicates with the parent via `postMessage`.
 
-**SECURITY: Always use origin validation for postMessage:**
+**SECURITY: Origin validation is enforced for postMessage:**
+
+The Connect widget captures the parent origin from the first `TOKEN_RESPONSE` message and validates all subsequent messages against it:
+
 ```typescript
-// Derive expected origin from connectUrl
-const expectedOrigin = new URL(connectUrl).origin;
+// In useParentMessaging.ts - parent origin is captured and stored
+const parentOriginRef = useRef<string | null>(null);
 
-// SENDING: Always specify target origin (NEVER use "*")
-iframe.contentWindow?.postMessage(message, expectedOrigin);
-
-// RECEIVING: Always validate event.origin before processing
 const handleMessage = (event: MessageEvent) => {
-  if (event.origin !== expectedOrigin) {
+  // Capture origin from first TOKEN_RESPONSE
+  if (data.type === "TOKEN_RESPONSE" && !parentOriginRef.current) {
+    parentOriginRef.current = event.origin;
+  }
+  
+  // Validate all messages once origin is established
+  if (parentOriginRef.current && event.origin !== parentOriginRef.current) {
     return; // Ignore messages from unexpected origins
   }
   // Process message...
+};
+
+// SENDING: Uses captured origin (falls back to "*" only for initial CONNECT_READY)
+const sendToParent = (message) => {
+  const targetOrigin = parentOriginRef.current || "*";
+  window.parent.postMessage(message, targetOrigin);
 };
 ```
 
@@ -91,7 +107,20 @@ notifyStatusChange(status: SessionStatus);
 requestClose(reason: "success" | "cancel" | "error");
 ```
 
-### 3. Theming System
+### 3. OAuth Flow Security
+OAuth uses same-origin popups with validated messaging:
+```typescript
+// oauth-callback.tsx posts to same origin
+window.opener.postMessage({ type: "OAUTH_COMPLETE", ...result }, window.location.origin);
+
+// oauth.ts validates origin when receiving
+const handler = (event: MessageEvent) => {
+  if (event.origin !== window.location.origin) return;
+  // Process OAUTH_COMPLETE...
+};
+```
+
+### 4. Theming System
 Fully customizable via CSS variables passed from parent:
 ```typescript
 interface ConnectTheme {
@@ -103,7 +132,7 @@ interface ConnectTheme {
 ```
 Theme values are injected as CSS custom properties (`--connect-*`).
 
-### 4. View Navigation
+### 5. View Navigation
 Internal view state managed within components:
 ```typescript
 type NavigateView = "connections" | "sources" | "configure";
@@ -163,6 +192,10 @@ const { data, isLoading, error } = useQuery({
 if (isLoading) return <LoadingScreen />;
 if (error) return <ErrorScreen error={error} />;
 ```
+
+### 5. Coding Conventions
+- Prefix unused variables/arguments with `_` (enforced by ESLint)
+- Example: `const handler = (_event: Event) => { ... }`
 
 ## Packages & SDKs
 

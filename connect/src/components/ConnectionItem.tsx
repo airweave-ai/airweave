@@ -6,15 +6,15 @@ import { AppIcon } from "./AppIcon";
 
 interface ConnectionItemProps {
   connection: SourceConnectionListItem;
+  onReconnect: () => void;
   onDelete: () => void;
-  isDeleting: boolean;
   labels: Required<ConnectLabels>;
 }
 
 export function ConnectionItem({
   connection,
+  onReconnect,
   onDelete,
-  isDeleting,
   labels,
 }: ConnectionItemProps) {
   const statusColor = getStatusColor(connection.status);
@@ -25,16 +25,17 @@ export function ConnectionItem({
 
   return (
     <div
-      className="flex items-center justify-between p-4 rounded-lg"
+      className="flex items-center justify-between p-4 rounded-lg gap-3"
       style={{
         backgroundColor: "var(--connect-surface)",
         border: "1px solid var(--connect-border)",
-        opacity: isDeleting ? 0.5 : 1,
       }}
     >
-      <div className="flex items-center gap-3">
-        <AppIcon shortName={connection.short_name} name={connection.name} />
-        <div>
+      <div className="flex items-center gap-3 grow truncate">
+        <div className="shrink-0">
+          <AppIcon shortName={connection.short_name} name={connection.name} />
+        </div>
+        <div className="grow truncate">
           <p
             className="font-medium text-sm"
             style={{ color: "var(--connect-text)" }}
@@ -46,9 +47,9 @@ export function ConnectionItem({
           </p>
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 shrink-0">
         <span
-          className="text-xs px-2 py-1 rounded-full"
+          className="text-xs px-2 py-1 rounded-full shrink-0"
           style={{
             backgroundColor: `color-mix(in srgb, ${statusColor} 20%, transparent)`,
             color: statusColor,
@@ -64,8 +65,8 @@ export function ConnectionItem({
             <Menu.Positioner side="bottom" align="end" sideOffset={4}>
               <Menu.Popup className="dropdown-popup min-w-[140px] rounded-lg p-1 shadow-lg [background-color:var(--connect-surface)] [border:1px_solid_var(--connect-border)]">
                 <Menu.Item
-                  onClick={() => {}}
-                  className="cursor-pointer flex items-center gap-2 px-3 py-2 rounded text-sm border-none bg-transparent w-full transition-colors duration-150 [color:var(--connect-text)] hover:bg-slate-500/10"
+                  onClick={onReconnect}
+                  className="cursor-pointer flex items-center gap-2 px-3 py-2 rounded text-sm border-none bg-transparent w-full transition-colors duration-150 [color:var(--connect-text)] hover:bg-black/5 dark:hover:bg-white/10"
                 >
                   <RefreshCw size={14} />
                   <span>{labels.menuReconnect}</span>

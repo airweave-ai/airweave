@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiClient } from "../lib/api";
 import { useTheme } from "../lib/theme";
 import type {
@@ -35,12 +35,14 @@ function generateRandomSuffix(): string {
 
 interface SourceConfigViewProps {
   source: Source;
+  collectionId: string;
   onBack: () => void;
   onSuccess: (connectionId: string) => void;
 }
 
 export function SourceConfigView({
   source,
+  collectionId,
   onBack,
   onSuccess,
 }: SourceConfigViewProps) {
@@ -59,7 +61,7 @@ export function SourceConfigView({
   const [connectionName, setConnectionName] = useState(() =>
     options.showConnectionName
       ? ""
-      : `${source.short_name}_${generateRandomSuffix()}`
+      : `${source.short_name}_${generateRandomSuffix()}`,
   );
   const [authMethod, setAuthMethod] = useState<"direct" | "oauth_browser">(
     "direct",
@@ -84,12 +86,38 @@ export function SourceConfigView({
 
   const oauthFlow = useOAuthFlow({
     shortName: source.short_name,
-    connectionName,
+    sourceName: source.name,
+    collectionId,
     configValues,
     byocValues,
     requiresByoc: sourceDetails?.requires_byoc ?? false,
     onSuccess,
   });
+
+  // Track if we've already auto-triggered OAuth
+  const hasAutoTriggeredOAuth = useRef(false);
+
+  // Auto-trigger OAuth when there are no fields to fill out
+  const hasConfigFields =
+    (sourceDetails?.config_fields?.fields?.length ?? 0) > 0;
+  const shouldAutoTriggerOAuth =
+    sourceDetails &&
+    effectiveAuthMethod === "oauth_browser" &&
+    !sourceDetails.requires_byoc &&
+    !hasConfigFields &&
+    !options.showConnectionName &&
+    availableAuthMethods.length <= 1;
+
+  useEffect(() => {
+    if (
+      shouldAutoTriggerOAuth &&
+      !hasAutoTriggeredOAuth.current &&
+      oauthFlow.status === "idle"
+    ) {
+      hasAutoTriggeredOAuth.current = true;
+      oauthFlow.initiateOAuth();
+    }
+  }, [shouldAutoTriggerOAuth, oauthFlow]);
 
   const createMutation = useMutation({
     mutationFn: (payload: SourceConnectionCreateRequest) =>
@@ -184,12 +212,10 @@ export function SourceConfigView({
 
     const payload: SourceConnectionCreateRequest = {
       short_name: source.short_name,
+      name: source.name,
+      readable_collection_id: collectionId,
       sync_immediately: true,
     };
-
-    if (connectionName.trim()) {
-      payload.name = connectionName.trim();
-    }
 
     if (effectiveAuthMethod === "direct") {
       payload.authentication = { credentials: authValues };
@@ -315,7 +341,7 @@ export function SourceConfigView({
           {showDirectAuthFields && (
             <div className="mb-4">
               <h2
-                className="text-sm font-medium mb-3"
+                className="text-sm font-bold opacity-70 mb-3"
                 style={{ color: "var(--connect-text)" }}
               >
                 {labels.configureAuthSection}
@@ -332,38 +358,52 @@ export function SourceConfigView({
             </div>
           )}
 
-          {effectiveAuthMethod === "oauth_browser" && (
-            <div className="mb-4">
-              <h2
-                className="text-sm font-medium mb-3"
-                style={{ color: "var(--connect-text)" }}
-              >
-                {labels.configureAuthSection}
-              </h2>
+          {effectiveAuthMethod === "oauth_browser" &&
+            (() => {
+              // Determine if there's any content to show
+              const hasByocFields = sourceDetails?.requires_byoc;
+              const hasOAuthStatusContent =
+                oauthFlow.error ||
+                oauthFlow.status === "waiting" ||
+                oauthFlow.status === "popup_blocked";
+              const hasAuthContent = hasByocFields || hasOAuthStatusContent;
 
-              {sourceDetails?.requires_byoc && (
-                <ByocFields
-                  values={byocValues}
-                  onChange={setByocValues}
-                  errors={errors}
-                  onClearError={clearError}
-                />
-              )}
+              // Don't render anything if there's no content
+              if (!hasAuthContent) return null;
 
-              <OAuthStatusUI
-                status={oauthFlow.status}
-                error={oauthFlow.error}
-                blockedAuthUrl={oauthFlow.blockedAuthUrl}
-                onRetryPopup={oauthFlow.retryPopup}
-                onManualLinkClick={oauthFlow.handleManualLinkClick}
-              />
-            </div>
-          )}
+              return (
+                <div className="mb-4">
+                  <h2
+                    className="text-sm font-bold opacity-70 mb-3"
+                    style={{ color: "var(--connect-text)" }}
+                  >
+                    {labels.configureAuthSection}
+                  </h2>
+
+                  {sourceDetails?.requires_byoc && (
+                    <ByocFields
+                      values={byocValues}
+                      onChange={setByocValues}
+                      errors={errors}
+                      onClearError={clearError}
+                    />
+                  )}
+
+                  <OAuthStatusUI
+                    status={oauthFlow.status}
+                    error={oauthFlow.error}
+                    blockedAuthUrl={oauthFlow.blockedAuthUrl}
+                    onRetryPopup={oauthFlow.retryPopup}
+                    onManualLinkClick={oauthFlow.handleManualLinkClick}
+                  />
+                </div>
+              );
+            })()}
 
           {showConfigFields !== undefined && showConfigFields > 0 && (
             <div className="mb-4">
               <h2
-                className="text-sm font-medium mb-3"
+                className="text-sm font-bold opacity-70 mb-3"
                 style={{ color: "var(--connect-text)" }}
               >
                 {labels.configureConfigSection}

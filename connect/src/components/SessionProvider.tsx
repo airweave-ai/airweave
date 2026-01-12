@@ -67,11 +67,16 @@ function SessionContent() {
     setNavigateView(view);
   }, []);
 
-  const { isConnected, requestToken, notifyStatusChange, requestClose } =
-    useParentMessaging({
-      onThemeChange: handleThemeChange,
-      onNavigate: handleNavigate,
-    });
+  const {
+    isConnected,
+    requestToken,
+    notifyStatusChange,
+    notifyConnectionCreated,
+    requestClose,
+  } = useParentMessaging({
+    onThemeChange: handleThemeChange,
+    onNavigate: handleNavigate,
+  });
 
   // Update parent when status changes
   useEffect(() => {
@@ -217,6 +222,7 @@ function SessionContent() {
         session={session}
         initialView={navigateView}
         onViewChange={setNavigateView}
+        onConnectionCreated={notifyConnectionCreated}
       />
     );
   }

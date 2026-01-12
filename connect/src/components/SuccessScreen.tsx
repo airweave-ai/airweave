@@ -1,11 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
 import { useState } from "react";
 import { apiClient } from "../lib/api";
 import { canConnect } from "../lib/connection-utils";
-import { notifyConnectionCreated } from "../lib/messaging";
 import { useTheme } from "../lib/theme";
-import type { ConnectSessionContext, NavigateView, Source } from "../lib/types";
+import type {
+  ConnectSessionContext,
+  NavigateView,
+  Source,
+  SourceConnectionListItem,
+} from "../lib/types";
 import { Button } from "./Button";
 import { ConnectionItem } from "./ConnectionItem";
 import { ConnectionsErrorView } from "./ConnectionsErrorView";
@@ -19,16 +22,17 @@ interface SuccessScreenProps {
   session: ConnectSessionContext;
   initialView?: NavigateView | null;
   onViewChange?: (view: NavigateView) => void;
+  onConnectionCreated: (connectionId: string) => void;
 }
 
 export function SuccessScreen({
   session,
   initialView,
   onViewChange,
+  onConnectionCreated,
 }: SuccessScreenProps) {
   const { labels } = useTheme();
   const queryClient = useQueryClient();
-  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedSource, setSelectedSource] = useState<Source | null>(null);
 
   const defaultView: NavigateView =
@@ -58,14 +62,36 @@ export function SuccessScreen({
   const deleteMutation = useMutation({
     mutationFn: (connectionId: string) =>
       apiClient.deleteSourceConnection(connectionId),
-    onMutate: (connectionId) => {
-      setDeletingId(connectionId);
+    onMutate: async (connectionId) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ["source-connections"] });
+
+      // Snapshot the previous value
+      const previousConnections = queryClient.getQueryData<
+        SourceConnectionListItem[]
+      >(["source-connections"]);
+
+      // Optimistically remove the connection
+      queryClient.setQueryData<SourceConnectionListItem[]>(
+        ["source-connections"],
+        (old) => old?.filter((c) => c.id !== connectionId) ?? [],
+      );
+
+      // Return context with the snapshot
+      return { previousConnections };
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["source-connections"] });
+    onError: (_err, _connectionId, context) => {
+      // Rollback on error
+      if (context?.previousConnections) {
+        queryClient.setQueryData(
+          ["source-connections"],
+          context.previousConnections,
+        );
+      }
     },
     onSettled: () => {
-      setDeletingId(null);
+      // Always refetch to ensure sync
+      queryClient.invalidateQueries({ queryKey: ["source-connections"] });
     },
   });
 
@@ -79,12 +105,13 @@ export function SuccessScreen({
     return (
       <SourceConfigView
         source={selectedSource}
+        collectionId={session.collection_id}
         onBack={() => {
           setSelectedSource(null);
           setView("sources");
         }}
         onSuccess={(connectionId) => {
-          notifyConnectionCreated(connectionId);
+          onConnectionCreated(connectionId);
           setSelectedSource(null);
           setView("connections");
           queryClient.invalidateQueries({ queryKey: ["source-connections"] });
@@ -98,7 +125,14 @@ export function SuccessScreen({
       <SourcesList
         labels={labels}
         onBack={
-          session.mode === "connect" ? null : () => setView("connections")
+          session.mode === "connect"
+            ? null
+            : () => {
+                setView("connections");
+                queryClient.invalidateQueries({
+                  queryKey: ["source-connections"],
+                });
+              }
         }
         onSelectSource={handleSelectSource}
       />
@@ -113,22 +147,28 @@ export function SuccessScreen({
 
   const connectButton =
     allowConnect && connections && connections.length > 0 ? (
-      <Button onClick={() => setView("sources")} className="px-3 gap-1.5">
-        <Plus className="w-4 h-4" />
+      <Button onClick={() => setView("sources")} className="w-full justify-center">
         {labels.buttonConnect}
       </Button>
     ) : undefined;
 
   return (
-    <PageLayout title={labels.sourcesHeading} headerRight={connectButton}>
+    <PageLayout title={labels.sourcesHeading} footerContent={connectButton}>
       {connections && connections.length > 0 ? (
         <div className="flex flex-col gap-3 pb-4">
           {connections.map((connection) => (
             <ConnectionItem
               key={connection.id}
               connection={connection}
+              onReconnect={() => {
+                setSelectedSource({
+                  name: connection.name,
+                  short_name: connection.short_name,
+                  auth_method: connection.auth_method,
+                });
+                setView("configure");
+              }}
               onDelete={() => deleteMutation.mutate(connection.id)}
-              isDeleting={deletingId === connection.id}
               labels={labels}
             />
           ))}
