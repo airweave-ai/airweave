@@ -1,13 +1,13 @@
-import { env } from './env';
-import type { ConnectSessionContext } from './types';
+import { env } from "./env";
+import type { ConnectSessionContext } from "./types";
 
 export class ApiError extends Error {
   constructor(
     public status: number,
-    message: string
+    message: string,
   ) {
     super(message);
-    this.name = 'ApiError';
+    this.name = "ApiError";
   }
 }
 
@@ -27,7 +27,7 @@ class ConnectApiClient {
     const response = await fetch(`${this.baseUrl}${endpoint}`, {
       ...options,
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
         ...(this.token && { Authorization: `Bearer ${this.token}` }),
         ...options?.headers,
       },
@@ -35,7 +35,7 @@ class ConnectApiClient {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new ApiError(response.status, error.detail || 'Request failed');
+      throw new ApiError(response.status, error.detail || "Request failed");
     }
 
     return response.json();
@@ -43,7 +43,7 @@ class ConnectApiClient {
 
   async validateSession(sessionId: string): Promise<ConnectSessionContext> {
     return this.fetch<ConnectSessionContext>(
-      `/api/v1/connect/sessions/${sessionId}`
+      `/api/v1/connect/sessions/${sessionId}`,
     );
   }
 }

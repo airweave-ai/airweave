@@ -1,10 +1,10 @@
-import { useCallback, useRef, useState, useEffect } from 'react';
+import { useCallback, useRef, useState, useEffect } from "react";
 import type {
   ChildToParentMessage,
   ConnectTheme,
   ParentToChildMessage,
   SessionStatus,
-} from '../lib/types';
+} from "../lib/types";
 
 interface TokenResponse {
   token: string;
@@ -20,7 +20,7 @@ interface UseParentMessagingReturn {
   requestToken: () => Promise<TokenResponse | null>;
   notifyStatusChange: (status: SessionStatus) => void;
   notifyConnectionCreated: (connectionId: string) => void;
-  requestClose: (reason: 'success' | 'cancel' | 'error') => void;
+  requestClose: (reason: "success" | "cancel" | "error") => void;
 }
 
 interface PendingRequest {
@@ -30,11 +30,13 @@ interface PendingRequest {
 
 // Check if running in iframe (runs once at module load for SSR safety)
 function isInIframe(): boolean {
-  if (typeof window === 'undefined') return false;
+  if (typeof window === "undefined") return false;
   return window.parent !== window;
 }
 
-export function useParentMessaging(options?: UseParentMessagingOptions): UseParentMessagingReturn {
+export function useParentMessaging(
+  options?: UseParentMessagingOptions,
+): UseParentMessagingReturn {
   // Initialize to true if we're in an iframe, since connection is instant
   const [isConnected, setIsConnected] = useState(() => isInIframe());
   const pendingRequests = useRef<Map<string, PendingRequest>>(new Map());
@@ -46,18 +48,18 @@ export function useParentMessaging(options?: UseParentMessagingOptions): UsePare
 
   // Helper to send messages to parent
   const sendToParent = useCallback((message: ChildToParentMessage) => {
-    if (typeof window !== 'undefined' && window.parent !== window) {
-      window.parent.postMessage(message, '*');
+    if (typeof window !== "undefined" && window.parent !== window) {
+      window.parent.postMessage(message, "*");
     }
   }, []);
 
   useEffect(() => {
     // Only run in browser
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
 
     // Check if we're in an iframe
     if (window.parent === window) {
-      console.warn('Not running in an iframe, parent messaging skipped');
+      console.warn("Not running in an iframe, parent messaging skipped");
       return;
     }
 
@@ -65,12 +67,12 @@ export function useParentMessaging(options?: UseParentMessagingOptions): UsePare
       // TODO: In production, validate event.origin against allowed origins
       const { data } = event;
 
-      if (!data || typeof data !== 'object' || !('type' in data)) {
+      if (!data || typeof data !== "object" || !("type" in data)) {
         return;
       }
 
       switch (data.type) {
-        case 'TOKEN_RESPONSE': {
+        case "TOKEN_RESPONSE": {
           const pending = pendingRequests.current.get(data.requestId);
           if (pending) {
             pending.resolve({ token: data.token, theme: data.theme });
@@ -78,7 +80,7 @@ export function useParentMessaging(options?: UseParentMessagingOptions): UsePare
           }
           break;
         }
-        case 'TOKEN_ERROR': {
+        case "TOKEN_ERROR": {
           const pending = pendingRequests.current.get(data.requestId);
           if (pending) {
             pending.resolve(null);
@@ -86,7 +88,7 @@ export function useParentMessaging(options?: UseParentMessagingOptions): UsePare
           }
           break;
         }
-        case 'SET_THEME': {
+        case "SET_THEME": {
           if (onThemeChangeRef.current) {
             onThemeChangeRef.current(data.theme);
           }
@@ -95,22 +97,22 @@ export function useParentMessaging(options?: UseParentMessagingOptions): UsePare
       }
     };
 
-    window.addEventListener('message', handleMessage);
+    window.addEventListener("message", handleMessage);
 
     // Signal ready to parent (only once)
     if (!hasInitialized.current) {
       hasInitialized.current = true;
-      sendToParent({ type: 'CONNECT_READY' });
+      sendToParent({ type: "CONNECT_READY" });
     }
 
     return () => {
-      window.removeEventListener('message', handleMessage);
+      window.removeEventListener("message", handleMessage);
       setIsConnected(false);
     };
   }, [sendToParent]);
 
   const requestToken = useCallback(async (): Promise<TokenResponse | null> => {
-    if (typeof window === 'undefined' || window.parent === window) {
+    if (typeof window === "undefined" || window.parent === window) {
       return null;
     }
 
@@ -119,7 +121,7 @@ export function useParentMessaging(options?: UseParentMessagingOptions): UsePare
     return new Promise<TokenResponse | null>((resolve, reject) => {
       pendingRequests.current.set(requestId, { resolve, reject });
 
-      sendToParent({ type: 'REQUEST_TOKEN', requestId });
+      sendToParent({ type: "REQUEST_TOKEN", requestId });
 
       // Timeout after 10 seconds
       setTimeout(() => {
@@ -133,23 +135,23 @@ export function useParentMessaging(options?: UseParentMessagingOptions): UsePare
 
   const notifyStatusChange = useCallback(
     (status: SessionStatus) => {
-      sendToParent({ type: 'STATUS_CHANGE', status });
+      sendToParent({ type: "STATUS_CHANGE", status });
     },
-    [sendToParent]
+    [sendToParent],
   );
 
   const notifyConnectionCreated = useCallback(
     (connectionId: string) => {
-      sendToParent({ type: 'CONNECTION_CREATED', connectionId });
+      sendToParent({ type: "CONNECTION_CREATED", connectionId });
     },
-    [sendToParent]
+    [sendToParent],
   );
 
   const requestClose = useCallback(
-    (reason: 'success' | 'cancel' | 'error') => {
-      sendToParent({ type: 'CLOSE', reason });
+    (reason: "success" | "cancel" | "error") => {
+      sendToParent({ type: "CLOSE", reason });
     },
-    [sendToParent]
+    [sendToParent],
   );
 
   return {

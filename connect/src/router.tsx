@@ -1,8 +1,8 @@
-import { createRouter } from '@tanstack/react-router';
+import { createRouter } from "@tanstack/react-router";
 
 // Import the generated route tree
-import { routeTree } from './routeTree.gen';
-import type { ConnectSessionContext, SessionError } from './lib/types';
+import { routeTree } from "./routeTree.gen";
+import type { ConnectSessionContext, SessionError } from "./lib/types";
 
 export interface ConnectRouterContext {
   session: ConnectSessionContext | null;
@@ -24,7 +24,7 @@ export const getRouter = () => {
   return router;
 };
 
-declare module '@tanstack/react-router' {
+declare module "@tanstack/react-router" {
   interface Register {
     router: ReturnType<typeof getRouter>;
   }
