@@ -4,12 +4,10 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      # Only trigger on platform-related changes (reduced footprint)
       - "monke/**"
-      - ".github/workflows/**"
-      - "docker/**"
-      - "backend/**"
-      - "frontend/**"
-      - "start.sh"
+      - "backend/airweave/platform/**"
+      - ".github/workflows/monke.yml"
 
 concurrency:
   group: monke-${{ github.ref }}
@@ -68,6 +66,7 @@ jobs:
         id: set-matrix
         env:
           BASE_BRANCH: ${{ github.base_ref || 'main' }}
+          MONKE_MIN_CONNECTORS: 0  # Don't pad to minimum - only test what's needed
         run: |
           # Use monke.sh CLI to determine connectors (keeps logic DRY)
           # This returns space-separated list: core + changed, minimum 4 connectors

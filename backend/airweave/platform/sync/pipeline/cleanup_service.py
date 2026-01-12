@@ -91,7 +91,7 @@ class CleanupService:
             For these sources, file_downloader won't be set, which is expected.
         """
         try:
-            if not hasattr(sync_context.source, "file_downloader"):
+            if not hasattr(sync_context.source_instance, "file_downloader"):
                 sync_context.logger.debug(
                     "Source has no file downloader (API-only source), skipping temp cleanup"
                 )

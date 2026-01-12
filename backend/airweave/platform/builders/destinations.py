@@ -27,7 +27,7 @@ from airweave.platform.contexts.infra import InfraContext
 from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.locator import resource_locator
-from airweave.platform.sync.config import SyncExecutionConfig
+from airweave.platform.sync.config import SyncConfig
 
 
 class DestinationsContextBuilder:
@@ -40,7 +40,7 @@ class DestinationsContextBuilder:
         sync: schemas.Sync,
         collection: schemas.Collection,
         infra: InfraContext,
-        execution_config: Optional[SyncExecutionConfig] = None,
+        execution_config: Optional[SyncConfig] = None,
     ) -> DestinationsContext:
         """Build complete destinations context.
 
@@ -154,7 +154,7 @@ class DestinationsContextBuilder:
         collection: schemas.Collection,
         ctx,
         logger: ContextualLogger,
-        execution_config: Optional[SyncExecutionConfig] = None,
+        execution_config: Optional[SyncConfig] = None,
     ) -> List[BaseDestination]:
         """Create destination instances."""
         destinations = []
@@ -374,7 +374,7 @@ class DestinationsContextBuilder:
     @staticmethod
     def _filter_destination_ids(
         destination_ids: List[UUID],
-        execution_config: Optional[SyncExecutionConfig],
+        execution_config: Optional[SyncConfig],
         logger: ContextualLogger,
     ) -> List[UUID]:
         """Filter destination IDs based on execution config.
@@ -387,25 +387,25 @@ class DestinationsContextBuilder:
             return destination_ids
 
         # Priority 1: target_destinations (explicit whitelist overrides everything)
-        if execution_config.target_destinations:
+        if execution_config.destinations.target_destinations:
             logger.info(
-                f"Using target_destinations from config: {execution_config.target_destinations}"
+                f"Using target_destinations from config: {execution_config.destinations.target_destinations}"
             )
-            return execution_config.target_destinations
+            return execution_config.destinations.target_destinations
 
         # Priority 2: Build combined exclusion set from all exclusion flags
         exclusions: set[UUID] = set()
 
         # Add explicit UUID exclusions
-        if execution_config.exclude_destinations:
-            exclusions.update(execution_config.exclude_destinations)
+        if execution_config.destinations.exclude_destinations:
+            exclusions.update(execution_config.destinations.exclude_destinations)
 
         # Add native vector DB exclusions from boolean flags
-        if execution_config.skip_qdrant:
+        if execution_config.destinations.skip_qdrant:
             exclusions.add(NATIVE_QDRANT_UUID)
             logger.info("Excluding native Qdrant (skip_qdrant=True)")
 
-        if execution_config.skip_vespa:
+        if execution_config.destinations.skip_vespa:
             exclusions.add(NATIVE_VESPA_UUID)
             logger.info("Excluding native Vespa (skip_vespa=True)")
 

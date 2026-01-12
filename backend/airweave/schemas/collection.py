@@ -106,7 +106,18 @@ class CollectionCreate(CollectionBase):
     Collections serve as logical containers for organizing related data sources.
     Once created, you can add source connections to populate the collection with data
     from various sources like databases, APIs, and file systems.
+
+    You can optionally set a default sync configuration that will apply to all syncs
+    within this collection unless overridden at the sync or job level.
     """
+
+    sync_config: Optional[SyncConfig] = Field(
+        None,
+        description=(
+            "Default sync configuration for all syncs in this collection. "
+            "This provides collection-level defaults that can be overridden at sync or job level."
+        ),
+    )
 
     model_config = {
         "json_schema_extra": {
@@ -116,6 +127,15 @@ class CollectionCreate(CollectionBase):
                     "name": "Customer Support"
                     # readable_id will be auto-generated as "customer-support-abc123"
                 },
+                {
+                    "name": "ARF Test Collection",
+                    "sync_config": {
+                        "handlers": {
+                            "enable_vector_handlers": False,
+                            "enable_postgres_handler": False,
+                        }
+                    },
+                },
             ]
         }
     }
@@ -124,8 +144,8 @@ class CollectionCreate(CollectionBase):
 class CollectionUpdate(BaseModel):
     """Schema for updating an existing collection.
 
-    Only the collection's display name can be updated. The readable_id is immutable
-    to maintain stable API endpoints and references.
+    Allows updating the collection's display name and default sync configuration.
+    The readable_id is immutable to maintain stable API endpoints and references.
     """
 
     name: Optional[str] = Field(
@@ -134,12 +154,22 @@ class CollectionUpdate(BaseModel):
         min_length=4,
         max_length=64,
     )
+    sync_config: Optional[SyncConfig] = Field(
+        None,
+        description=(
+            "Default sync configuration for all syncs in this collection. "
+            "This provides collection-level defaults that can be overridden at sync or job level."
+        ),
+    )
 
     model_config = {
         "json_schema_extra": {
             "examples": [
                 {"name": "Updated Finance Data"},
-                {"name": "Marketing Analytics - Q1 2024"},
+                {
+                    "name": "Marketing Analytics - Q1 2024",
+                    "sync_config": {"handlers": {"enable_vector_handlers": True}},
+                },
                 {"name": "Customer Support Archive"},
             ]
         }

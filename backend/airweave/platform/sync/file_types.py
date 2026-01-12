@@ -14,8 +14,6 @@ SUPPORTED_FILE_EXTENSIONS = {
     ".jpg",
     ".jpeg",
     ".png",
-    # Spreadsheets (local extraction)
-    ".xlsx",
     # HTML
     ".html",
     ".htm",

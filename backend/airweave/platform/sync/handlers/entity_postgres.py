@@ -58,11 +58,12 @@ class EntityPostgresHandler(EntityActionHandler):
 
         await self._do_batch_with_retry(batch, sync_context)
 
-        # Update guard rail
-        total_synced = len(batch.inserts) + len(batch.updates)
-        if total_synced > 0:
-            await sync_context.guard_rail.increment(ActionType.ENTITIES, amount=total_synced)
-            sync_context.logger.debug(f"[EntityPostgres] guard_rail += {total_synced}")
+        # Update guard rail (unless explicitly skipped)
+        if not sync_context.execution_config.behavior.skip_guardrails:
+            total_synced = len(batch.inserts) + len(batch.updates)
+            if total_synced > 0:
+                await sync_context.guard_rail.increment(ActionType.ENTITIES, amount=total_synced)
+                sync_context.logger.debug(f"[EntityPostgres] guard_rail += {total_synced}")
 
     async def handle_inserts(
         self,

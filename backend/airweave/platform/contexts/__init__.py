@@ -13,7 +13,7 @@ Context Types:
 - SyncContext: Full sync context (composes all above)
 - CleanupContext: Minimal context for deletion operations
 
-For execution behavior (handlers, destinations, cursor), see SyncExecutionConfig.
+For execution behavior (handlers, destinations, cursor), see SyncConfig.
 """
 
 from airweave.platform.contexts.batch import BatchContext

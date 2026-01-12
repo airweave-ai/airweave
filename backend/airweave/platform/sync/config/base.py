@@ -47,11 +47,7 @@ class BehaviorConfig(BaseModel):
     replay_from_arf: bool = Field(
         False, description="Replay from ARF storage instead of calling source"
     )
-    dedupe_by_collection: bool = Field(
-        False,
-        description="Deduplicate entities at collection level instead of sync level. "
-        "When enabled, entities are deduped across ALL syncs in the same collection.",
-    )
+    skip_guardrails: bool = Field(False, description="Skip usage guardrails (entity count checks)")
 
 
 class SyncConfig(BaseSettings):
@@ -87,14 +83,6 @@ class SyncConfig(BaseSettings):
             warnings.warn(
                 "Writing to specific destinations with raw_data_handler enabled "
                 "may duplicate ARF data.",
-                stacklevel=2,
-            )
-
-        # Collection dedup requires postgres handler for metadata tracking
-        if self.behavior.dedupe_by_collection and not self.handlers.enable_postgres_handler:
-            warnings.warn(
-                "dedupe_by_collection=True with enable_postgres_handler=False: "
-                "Collection-level dedup won't persist, only in-memory dedup.",
                 stacklevel=2,
             )
 

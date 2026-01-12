@@ -59,6 +59,8 @@ navigation:
       path: docs/pages/direct-token-injection.mdx
   - section: Connectors
     contents:
+    - page: Overview
+      path: docs/pages/connectors/overview.mdx
     - page: Airtable
       path: docs/pages/connectors/airtable/main.mdx
     - page: Asana

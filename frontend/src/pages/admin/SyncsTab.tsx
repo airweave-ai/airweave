@@ -37,6 +37,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { SyncConfig, SyncPreset, SYNC_PRESETS, getPresetConfig } from '@/types/sync-config';
 
 interface SyncInfo {
     id: string;
@@ -83,6 +84,7 @@ interface SyncFilters {
     hasVespaJob: string;
     ghostSyncsOnly: boolean;
     includeDestinationCounts: boolean;
+    includeArfCounts: boolean;
     limit: number;
 }
 
@@ -101,6 +103,7 @@ export function SyncsTab() {
         hasVespaJob: 'all',
         ghostSyncsOnly: false,
         includeDestinationCounts: false,
+        includeArfCounts: false,
         limit: 100,
     });
     const [organizationMap, setOrganizationMap] = useState<OrganizationMap>({});
@@ -110,17 +113,8 @@ export function SyncsTab() {
     const [bulkResyncDialogOpen, setBulkResyncDialogOpen] = useState(false);
     const [selectedSyncs, setSelectedSyncs] = useState<Set<string>>(new Set());
     const [resyncingSync, setResyncingSync] = useState<{ id: string; name: string } | null>(null);
-    const [resyncConfig, setResyncConfig] = useState({
-        skipQdrant: false,
-        skipVespa: false,
-        skipCursorLoad: false,
-        skipCursorUpdates: false,
-        skipHashComparison: false,
-        replayFromArf: false,
-        enableVectorHandlers: true,
-        enableRawDataHandler: true,
-        enablePostgresHandler: true,
-    });
+    const [selectedPreset, setSelectedPreset] = useState<SyncPreset>('default');
+    const [resyncConfig, setResyncConfig] = useState<SyncConfig>(getPresetConfig('default'));
 
     const loadSyncs = async () => {
         setIsSyncsLoading(true);
@@ -160,6 +154,9 @@ export function SyncsTab() {
             }
             if (syncFilters.includeDestinationCounts) {
                 params.append('include_destination_counts', 'true');
+            }
+            if (syncFilters.includeArfCounts) {
+                params.append('include_arf_counts', 'true');
             }
 
             const response = await apiClient.get(`/admin/syncs?${params.toString()}`);
@@ -247,21 +244,10 @@ export function SyncsTab() {
         let successful = 0;
         let failed = 0;
 
-        const executionConfig: Record<string, boolean> = {
-            skip_qdrant: resyncConfig.skipQdrant,
-            skip_vespa: resyncConfig.skipVespa,
-            skip_cursor_load: resyncConfig.skipCursorLoad,
-            skip_cursor_updates: resyncConfig.skipCursorUpdates,
-            skip_hash_comparison: resyncConfig.skipHashComparison,
-            replay_from_arf: resyncConfig.replayFromArf,
-            enable_vector_handlers: resyncConfig.enableVectorHandlers,
-            enable_raw_data_handler: resyncConfig.enableRawDataHandler,
-            enable_postgres_handler: resyncConfig.enablePostgresHandler,
-        };
-
+        // Use nested SyncConfig structure
         for (const sync of selected) {
             try {
-                const response = await apiClient.post(`/admin/resync/${sync.id}`, executionConfig);
+                const response = await apiClient.post(`/admin/resync/${sync.id}`, resyncConfig);
 
                 if (response.ok) {
                     successful++;
@@ -434,40 +420,25 @@ export function SyncsTab() {
 
     const openResyncDialog = (syncId: string, syncName: string) => {
         setResyncingSync({ id: syncId, name: syncName });
-        // Reset config to defaults
-        setResyncConfig({
-            skipQdrant: false,
-            skipVespa: false,
-            skipCursorLoad: false,
-            skipCursorUpdates: false,
-            skipHashComparison: false,
-            replayFromArf: false,
-            enableVectorHandlers: true,
-            enableRawDataHandler: true,
-            enablePostgresHandler: true,
-        });
+        // Reset to default preset
+        setSelectedPreset('default');
+        setResyncConfig(getPresetConfig('default'));
         setResyncDialogOpen(true);
+    };
+
+    const handlePresetChange = (presetId: SyncPreset) => {
+        setSelectedPreset(presetId);
+        setResyncConfig(getPresetConfig(presetId));
     };
 
     const handleResync = async () => {
         if (!resyncingSync) return;
 
         try {
-            const executionConfig: Record<string, boolean> = {
-                skip_qdrant: resyncConfig.skipQdrant,
-                skip_vespa: resyncConfig.skipVespa,
-                skip_cursor_load: resyncConfig.skipCursorLoad,
-                skip_cursor_updates: resyncConfig.skipCursorUpdates,
-                skip_hash_comparison: resyncConfig.skipHashComparison,
-                replay_from_arf: resyncConfig.replayFromArf,
-                enable_vector_handlers: resyncConfig.enableVectorHandlers,
-                enable_raw_data_handler: resyncConfig.enableRawDataHandler,
-                enable_postgres_handler: resyncConfig.enablePostgresHandler,
-            };
-
+            // Send nested SyncConfig structure
             const response = await apiClient.post(
                 `/admin/resync/${resyncingSync.id}`,
-                executionConfig
+                resyncConfig
             );
 
             if (!response.ok) {
@@ -669,7 +640,20 @@ export function SyncsTab() {
                                 htmlFor="destination-counts-filter"
                                 className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
                             >
-                                Include Destination Counts (slower)
+                                Include Destination Counts (Qdrant/Vespa - slower)
+                            </Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                            <Checkbox
+                                id="arf-counts-filter"
+                                checked={syncFilters.includeArfCounts}
+                                onCheckedChange={(checked) => setSyncFilters({ ...syncFilters, includeArfCounts: checked as boolean })}
+                            />
+                            <Label
+                                htmlFor="arf-counts-filter"
+                                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                            >
+                                Include ARF Counts (slower)
                             </Label>
                         </div>
                     </div>
@@ -1076,15 +1060,37 @@ export function SyncsTab() {
 
             {/* Resync Dialog */}
             <Dialog open={resyncDialogOpen} onOpenChange={setResyncDialogOpen}>
-                <DialogContent className="max-w-2xl">
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>Resync: {resyncingSync?.name}</DialogTitle>
                         <DialogDescription>
-                            Configure execution options for this resync. Default settings will run a normal sync.
+                            Select a preset or manually configure execution options. Presets cover common use cases like ARF capture and replay.
                         </DialogDescription>
                     </DialogHeader>
 
                     <div className="space-y-6 py-4">
+                        {/* Preset Selector */}
+                        <div className="space-y-3">
+                            <Label htmlFor="preset-select" className="text-sm font-semibold">
+                                Configuration Preset
+                            </Label>
+                            <Select value={selectedPreset} onValueChange={handlePresetChange}>
+                                <SelectTrigger id="preset-select">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {SYNC_PRESETS.map((preset) => (
+                                        <SelectItem key={preset.id} value={preset.id}>
+                                            <div className="flex flex-col">
+                                                <span className="font-medium">{preset.label}</span>
+                                                <span className="text-xs text-muted-foreground">{preset.description}</span>
+                                            </div>
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
                         {/* Destination Toggles */}
                         <div className="space-y-3">
                             <h3 className="text-sm font-semibold">Destination Toggles</h3>
@@ -1092,8 +1098,14 @@ export function SyncsTab() {
                                 <div className="flex items-center space-x-2">
                                     <Checkbox
                                         id="skip-qdrant"
-                                        checked={resyncConfig.skipQdrant}
-                                        onCheckedChange={(checked) => setResyncConfig({ ...resyncConfig, skipQdrant: checked as boolean })}
+                                        checked={resyncConfig.destinations?.skip_qdrant || false}
+                                        onCheckedChange={(checked) => {
+                                            setSelectedPreset('custom');
+                                            setResyncConfig({
+                                                ...resyncConfig,
+                                                destinations: { ...resyncConfig.destinations, skip_qdrant: checked as boolean },
+                                            });
+                                        }}
                                     />
                                     <Label htmlFor="skip-qdrant" className="text-sm cursor-pointer">
                                         Skip Qdrant
@@ -1102,8 +1114,14 @@ export function SyncsTab() {
                                 <div className="flex items-center space-x-2">
                                     <Checkbox
                                         id="skip-vespa"
-                                        checked={resyncConfig.skipVespa}
-                                        onCheckedChange={(checked) => setResyncConfig({ ...resyncConfig, skipVespa: checked as boolean })}
+                                        checked={resyncConfig.destinations?.skip_vespa || false}
+                                        onCheckedChange={(checked) => {
+                                            setSelectedPreset('custom');
+                                            setResyncConfig({
+                                                ...resyncConfig,
+                                                destinations: { ...resyncConfig.destinations, skip_vespa: checked as boolean },
+                                            });
+                                        }}
                                     />
                                     <Label htmlFor="skip-vespa" className="text-sm cursor-pointer">
                                         Skip Vespa
@@ -1119,8 +1137,14 @@ export function SyncsTab() {
                                 <div className="flex items-center space-x-2">
                                     <Checkbox
                                         id="enable-vector"
-                                        checked={resyncConfig.enableVectorHandlers}
-                                        onCheckedChange={(checked) => setResyncConfig({ ...resyncConfig, enableVectorHandlers: checked as boolean })}
+                                        checked={resyncConfig.handlers?.enable_vector_handlers ?? true}
+                                        onCheckedChange={(checked) => {
+                                            setSelectedPreset('custom');
+                                            setResyncConfig({
+                                                ...resyncConfig,
+                                                handlers: { ...resyncConfig.handlers, enable_vector_handlers: checked as boolean },
+                                            });
+                                        }}
                                     />
                                     <Label htmlFor="enable-vector" className="text-sm cursor-pointer">
                                         Enable Vector Handlers (embeddings)
@@ -1129,8 +1153,14 @@ export function SyncsTab() {
                                 <div className="flex items-center space-x-2">
                                     <Checkbox
                                         id="enable-arf"
-                                        checked={resyncConfig.enableRawDataHandler}
-                                        onCheckedChange={(checked) => setResyncConfig({ ...resyncConfig, enableRawDataHandler: checked as boolean })}
+                                        checked={resyncConfig.handlers?.enable_raw_data_handler ?? true}
+                                        onCheckedChange={(checked) => {
+                                            setSelectedPreset('custom');
+                                            setResyncConfig({
+                                                ...resyncConfig,
+                                                handlers: { ...resyncConfig.handlers, enable_raw_data_handler: checked as boolean },
+                                            });
+                                        }}
                                     />
                                     <Label htmlFor="enable-arf" className="text-sm cursor-pointer">
                                         Enable ARF Handler (raw data capture)
@@ -1139,11 +1169,56 @@ export function SyncsTab() {
                                 <div className="flex items-center space-x-2">
                                     <Checkbox
                                         id="enable-postgres"
-                                        checked={resyncConfig.enablePostgresHandler}
-                                        onCheckedChange={(checked) => setResyncConfig({ ...resyncConfig, enablePostgresHandler: checked as boolean })}
+                                        checked={resyncConfig.handlers?.enable_postgres_handler ?? true}
+                                        onCheckedChange={(checked) => {
+                                            setSelectedPreset('custom');
+                                            setResyncConfig({
+                                                ...resyncConfig,
+                                                handlers: { ...resyncConfig.handlers, enable_postgres_handler: checked as boolean },
+                                            });
+                                        }}
                                     />
                                     <Label htmlFor="enable-postgres" className="text-sm cursor-pointer">
                                         Enable Postgres Handler (metadata)
+                                    </Label>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Cursor Behavior */}
+                        <div className="space-y-3">
+                            <h3 className="text-sm font-semibold">Cursor Behavior</h3>
+                            <div className="space-y-2">
+                                <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                        id="skip-cursor"
+                                        checked={resyncConfig.cursor?.skip_load || false}
+                                        onCheckedChange={(checked) => {
+                                            setSelectedPreset('custom');
+                                            setResyncConfig({
+                                                ...resyncConfig,
+                                                cursor: { ...resyncConfig.cursor, skip_load: checked as boolean },
+                                            });
+                                        }}
+                                    />
+                                    <Label htmlFor="skip-cursor" className="text-sm cursor-pointer">
+                                        Skip Cursor Load (force full sync - fetch all entities)
+                                    </Label>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                        id="skip-cursor-updates"
+                                        checked={resyncConfig.cursor?.skip_updates || false}
+                                        onCheckedChange={(checked) => {
+                                            setSelectedPreset('custom');
+                                            setResyncConfig({
+                                                ...resyncConfig,
+                                                cursor: { ...resyncConfig.cursor, skip_updates: checked as boolean },
+                                            });
+                                        }}
+                                    />
+                                    <Label htmlFor="skip-cursor-updates" className="text-sm cursor-pointer">
+                                        Skip Cursor Updates (don't save progress)
                                     </Label>
                                 </div>
                             </div>
@@ -1155,29 +1230,15 @@ export function SyncsTab() {
                             <div className="space-y-2">
                                 <div className="flex items-center space-x-2">
                                     <Checkbox
-                                        id="skip-cursor"
-                                        checked={resyncConfig.skipCursorLoad}
-                                        onCheckedChange={(checked) => setResyncConfig({ ...resyncConfig, skipCursorLoad: checked as boolean })}
-                                    />
-                                    <Label htmlFor="skip-cursor" className="text-sm cursor-pointer">
-                                        Skip Cursor Load (force full sync - fetch all entities)
-                                    </Label>
-                                </div>
-                                <div className="flex items-center space-x-2">
-                                    <Checkbox
-                                        id="skip-cursor-updates"
-                                        checked={resyncConfig.skipCursorUpdates}
-                                        onCheckedChange={(checked) => setResyncConfig({ ...resyncConfig, skipCursorUpdates: checked as boolean })}
-                                    />
-                                    <Label htmlFor="skip-cursor-updates" className="text-sm cursor-pointer">
-                                        Skip Cursor Updates (don't save progress)
-                                    </Label>
-                                </div>
-                                <div className="flex items-center space-x-2">
-                                    <Checkbox
                                         id="skip-hash"
-                                        checked={resyncConfig.skipHashComparison}
-                                        onCheckedChange={(checked) => setResyncConfig({ ...resyncConfig, skipHashComparison: checked as boolean })}
+                                        checked={resyncConfig.behavior?.skip_hash_comparison || false}
+                                        onCheckedChange={(checked) => {
+                                            setSelectedPreset('custom');
+                                            setResyncConfig({
+                                                ...resyncConfig,
+                                                behavior: { ...resyncConfig.behavior, skip_hash_comparison: checked as boolean },
+                                            });
+                                        }}
                                     />
                                     <Label htmlFor="skip-hash" className="text-sm cursor-pointer">
                                         Skip Hash Comparison (force INSERT all entities)
@@ -1186,11 +1247,33 @@ export function SyncsTab() {
                                 <div className="flex items-center space-x-2">
                                     <Checkbox
                                         id="replay-arf"
-                                        checked={resyncConfig.replayFromArf}
-                                        onCheckedChange={(checked) => setResyncConfig({ ...resyncConfig, replayFromArf: checked as boolean })}
+                                        checked={resyncConfig.behavior?.replay_from_arf || false}
+                                        onCheckedChange={(checked) => {
+                                            setSelectedPreset('custom');
+                                            setResyncConfig({
+                                                ...resyncConfig,
+                                                behavior: { ...resyncConfig.behavior, replay_from_arf: checked as boolean },
+                                            });
+                                        }}
                                     />
                                     <Label htmlFor="replay-arf" className="text-sm cursor-pointer">
                                         Replay from ARF (read from ARF storage instead of source)
+                                    </Label>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                        id="skip-guardrails"
+                                        checked={resyncConfig.behavior?.skip_guardrails || false}
+                                        onCheckedChange={(checked) => {
+                                            setSelectedPreset('custom');
+                                            setResyncConfig({
+                                                ...resyncConfig,
+                                                behavior: { ...resyncConfig.behavior, skip_guardrails: checked as boolean },
+                                            });
+                                        }}
+                                    />
+                                    <Label htmlFor="skip-guardrails" className="text-sm cursor-pointer">
+                                        Skip Guardrails (bypass entity count limits for admin resyncs)
                                     </Label>
                                 </div>
                             </div>
@@ -1199,8 +1282,8 @@ export function SyncsTab() {
                         {/* Info Box */}
                         <div className="bg-blue-950/30 border border-blue-500/30 rounded-md p-3">
                             <p className="text-xs text-blue-300">
-                                <strong>Tip:</strong> Use "Replay from ARF" to re-process existing data without calling the source API.
-                                Combine with handler toggles for specific operations like Vespa-only resyncs.
+                                <strong>Tip:</strong> Use "ARF Replay to Vector DBs" preset to re-process existing data without calling the source API.
+                                Perfect for Vespa backfills or reprocessing after schema changes.
                             </p>
                         </div>
                     </div>
@@ -1219,15 +1302,37 @@ export function SyncsTab() {
 
             {/* Bulk Resync Dialog */}
             <Dialog open={bulkResyncDialogOpen} onOpenChange={setBulkResyncDialogOpen}>
-                <DialogContent className="max-w-2xl">
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>Bulk Resync: {selectedSyncs.size} Sync(s)</DialogTitle>
                         <DialogDescription>
-                            Configure execution options for these resyncs. The same config will be applied to all selected syncs.
+                            Select a preset or configure options. The same config will be applied to all selected syncs.
                         </DialogDescription>
                     </DialogHeader>
 
                     <div className="space-y-6 py-4">
+                        {/* Preset Selector */}
+                        <div className="space-y-3">
+                            <Label htmlFor="bulk-preset-select" className="text-sm font-semibold">
+                                Configuration Preset
+                            </Label>
+                            <Select value={selectedPreset} onValueChange={handlePresetChange}>
+                                <SelectTrigger id="bulk-preset-select">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {SYNC_PRESETS.map((preset) => (
+                                        <SelectItem key={preset.id} value={preset.id}>
+                                            <div className="flex flex-col">
+                                                <span className="font-medium">{preset.label}</span>
+                                                <span className="text-xs text-muted-foreground">{preset.description}</span>
+                                            </div>
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
                         {/* Destination Toggles */}
                         <div className="space-y-3">
                             <h3 className="text-sm font-semibold">Destination Toggles</h3>
@@ -1235,8 +1340,14 @@ export function SyncsTab() {
                                 <div className="flex items-center space-x-2">
                                     <Checkbox
                                         id="bulk-skip-qdrant"
-                                        checked={resyncConfig.skipQdrant}
-                                        onCheckedChange={(checked) => setResyncConfig({ ...resyncConfig, skipQdrant: checked as boolean })}
+                                        checked={resyncConfig.destinations?.skip_qdrant || false}
+                                        onCheckedChange={(checked) => {
+                                            setSelectedPreset('custom');
+                                            setResyncConfig({
+                                                ...resyncConfig,
+                                                destinations: { ...resyncConfig.destinations, skip_qdrant: checked as boolean },
+                                            });
+                                        }}
                                     />
                                     <Label htmlFor="bulk-skip-qdrant" className="text-sm cursor-pointer">
                                         Skip Qdrant
@@ -1245,8 +1356,14 @@ export function SyncsTab() {
                                 <div className="flex items-center space-x-2">
                                     <Checkbox
                                         id="bulk-skip-vespa"
-                                        checked={resyncConfig.skipVespa}
-                                        onCheckedChange={(checked) => setResyncConfig({ ...resyncConfig, skipVespa: checked as boolean })}
+                                        checked={resyncConfig.destinations?.skip_vespa || false}
+                                        onCheckedChange={(checked) => {
+                                            setSelectedPreset('custom');
+                                            setResyncConfig({
+                                                ...resyncConfig,
+                                                destinations: { ...resyncConfig.destinations, skip_vespa: checked as boolean },
+                                            });
+                                        }}
                                     />
                                     <Label htmlFor="bulk-skip-vespa" className="text-sm cursor-pointer">
                                         Skip Vespa
@@ -1262,8 +1379,14 @@ export function SyncsTab() {
                                 <div className="flex items-center space-x-2">
                                     <Checkbox
                                         id="bulk-enable-vector"
-                                        checked={resyncConfig.enableVectorHandlers}
-                                        onCheckedChange={(checked) => setResyncConfig({ ...resyncConfig, enableVectorHandlers: checked as boolean })}
+                                        checked={resyncConfig.handlers?.enable_vector_handlers ?? true}
+                                        onCheckedChange={(checked) => {
+                                            setSelectedPreset('custom');
+                                            setResyncConfig({
+                                                ...resyncConfig,
+                                                handlers: { ...resyncConfig.handlers, enable_vector_handlers: checked as boolean },
+                                            });
+                                        }}
                                     />
                                     <Label htmlFor="bulk-enable-vector" className="text-sm cursor-pointer">
                                         Enable Vector Handlers (embeddings)
@@ -1272,8 +1395,14 @@ export function SyncsTab() {
                                 <div className="flex items-center space-x-2">
                                     <Checkbox
                                         id="bulk-enable-arf"
-                                        checked={resyncConfig.enableRawDataHandler}
-                                        onCheckedChange={(checked) => setResyncConfig({ ...resyncConfig, enableRawDataHandler: checked as boolean })}
+                                        checked={resyncConfig.handlers?.enable_raw_data_handler ?? true}
+                                        onCheckedChange={(checked) => {
+                                            setSelectedPreset('custom');
+                                            setResyncConfig({
+                                                ...resyncConfig,
+                                                handlers: { ...resyncConfig.handlers, enable_raw_data_handler: checked as boolean },
+                                            });
+                                        }}
                                     />
                                     <Label htmlFor="bulk-enable-arf" className="text-sm cursor-pointer">
                                         Enable ARF Handler (raw data capture)
@@ -1282,11 +1411,56 @@ export function SyncsTab() {
                                 <div className="flex items-center space-x-2">
                                     <Checkbox
                                         id="bulk-enable-postgres"
-                                        checked={resyncConfig.enablePostgresHandler}
-                                        onCheckedChange={(checked) => setResyncConfig({ ...resyncConfig, enablePostgresHandler: checked as boolean })}
+                                        checked={resyncConfig.handlers?.enable_postgres_handler ?? true}
+                                        onCheckedChange={(checked) => {
+                                            setSelectedPreset('custom');
+                                            setResyncConfig({
+                                                ...resyncConfig,
+                                                handlers: { ...resyncConfig.handlers, enable_postgres_handler: checked as boolean },
+                                            });
+                                        }}
                                     />
                                     <Label htmlFor="bulk-enable-postgres" className="text-sm cursor-pointer">
                                         Enable Postgres Handler (metadata)
+                                    </Label>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Cursor Behavior */}
+                        <div className="space-y-3">
+                            <h3 className="text-sm font-semibold">Cursor Behavior</h3>
+                            <div className="space-y-2">
+                                <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                        id="bulk-skip-cursor"
+                                        checked={resyncConfig.cursor?.skip_load || false}
+                                        onCheckedChange={(checked) => {
+                                            setSelectedPreset('custom');
+                                            setResyncConfig({
+                                                ...resyncConfig,
+                                                cursor: { ...resyncConfig.cursor, skip_load: checked as boolean },
+                                            });
+                                        }}
+                                    />
+                                    <Label htmlFor="bulk-skip-cursor" className="text-sm cursor-pointer">
+                                        Skip Cursor Load (force full sync - fetch all entities)
+                                    </Label>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                        id="bulk-skip-cursor-updates"
+                                        checked={resyncConfig.cursor?.skip_updates || false}
+                                        onCheckedChange={(checked) => {
+                                            setSelectedPreset('custom');
+                                            setResyncConfig({
+                                                ...resyncConfig,
+                                                cursor: { ...resyncConfig.cursor, skip_updates: checked as boolean },
+                                            });
+                                        }}
+                                    />
+                                    <Label htmlFor="bulk-skip-cursor-updates" className="text-sm cursor-pointer">
+                                        Skip Cursor Updates (don't save progress)
                                     </Label>
                                 </div>
                             </div>
@@ -1298,29 +1472,15 @@ export function SyncsTab() {
                             <div className="space-y-2">
                                 <div className="flex items-center space-x-2">
                                     <Checkbox
-                                        id="bulk-skip-cursor"
-                                        checked={resyncConfig.skipCursorLoad}
-                                        onCheckedChange={(checked) => setResyncConfig({ ...resyncConfig, skipCursorLoad: checked as boolean })}
-                                    />
-                                    <Label htmlFor="bulk-skip-cursor" className="text-sm cursor-pointer">
-                                        Skip Cursor Load (force full sync - fetch all entities)
-                                    </Label>
-                                </div>
-                                <div className="flex items-center space-x-2">
-                                    <Checkbox
-                                        id="bulk-skip-cursor-updates"
-                                        checked={resyncConfig.skipCursorUpdates}
-                                        onCheckedChange={(checked) => setResyncConfig({ ...resyncConfig, skipCursorUpdates: checked as boolean })}
-                                    />
-                                    <Label htmlFor="bulk-skip-cursor-updates" className="text-sm cursor-pointer">
-                                        Skip Cursor Updates (don't save progress)
-                                    </Label>
-                                </div>
-                                <div className="flex items-center space-x-2">
-                                    <Checkbox
                                         id="bulk-skip-hash"
-                                        checked={resyncConfig.skipHashComparison}
-                                        onCheckedChange={(checked) => setResyncConfig({ ...resyncConfig, skipHashComparison: checked as boolean })}
+                                        checked={resyncConfig.behavior?.skip_hash_comparison || false}
+                                        onCheckedChange={(checked) => {
+                                            setSelectedPreset('custom');
+                                            setResyncConfig({
+                                                ...resyncConfig,
+                                                behavior: { ...resyncConfig.behavior, skip_hash_comparison: checked as boolean },
+                                            });
+                                        }}
                                     />
                                     <Label htmlFor="bulk-skip-hash" className="text-sm cursor-pointer">
                                         Skip Hash Comparison (force INSERT all entities)
@@ -1329,11 +1489,33 @@ export function SyncsTab() {
                                 <div className="flex items-center space-x-2">
                                     <Checkbox
                                         id="bulk-replay-arf"
-                                        checked={resyncConfig.replayFromArf}
-                                        onCheckedChange={(checked) => setResyncConfig({ ...resyncConfig, replayFromArf: checked as boolean })}
+                                        checked={resyncConfig.behavior?.replay_from_arf || false}
+                                        onCheckedChange={(checked) => {
+                                            setSelectedPreset('custom');
+                                            setResyncConfig({
+                                                ...resyncConfig,
+                                                behavior: { ...resyncConfig.behavior, replay_from_arf: checked as boolean },
+                                            });
+                                        }}
                                     />
                                     <Label htmlFor="bulk-replay-arf" className="text-sm cursor-pointer">
                                         Replay from ARF (read from ARF storage instead of source)
+                                    </Label>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                        id="bulk-skip-guardrails"
+                                        checked={resyncConfig.behavior?.skip_guardrails || false}
+                                        onCheckedChange={(checked) => {
+                                            setSelectedPreset('custom');
+                                            setResyncConfig({
+                                                ...resyncConfig,
+                                                behavior: { ...resyncConfig.behavior, skip_guardrails: checked as boolean },
+                                            });
+                                        }}
+                                    />
+                                    <Label htmlFor="bulk-skip-guardrails" className="text-sm cursor-pointer">
+                                        Skip Guardrails (bypass entity count limits for admin resyncs)
                                     </Label>
                                 </div>
                             </div>
@@ -1343,7 +1525,7 @@ export function SyncsTab() {
                         <div className="bg-amber-950/30 border border-amber-500/30 rounded-md p-3">
                             <p className="text-xs text-amber-300">
                                 <strong>Warning:</strong> This configuration will be applied to all {selectedSyncs.size} selected sync(s).
-                                Common use case: ARF Replay (enable "Replay from ARF", disable "Enable ARF Handler" and "Enable Postgres Handler").
+                                Consider using "ARF Replay to Vector DBs" preset for common bulk backfill operations.
                             </p>
                         </div>
                     </div>

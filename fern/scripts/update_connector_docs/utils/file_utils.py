@@ -190,8 +190,18 @@ def update_docs_yml(valid_connectors):
             docs_section["contents"].append(connectors_section)
             print("Created new 'Connectors' section in docs.yml")
 
-        # Clear existing connector list and add all connectors
-        connectors_section["contents"] = []
+        # Preserve manually added pages (like Overview) at the top
+        preserved_pages = []
+        for item in connectors_section.get("contents", []):
+            if isinstance(item, dict) and "path" in item:
+                # Keep pages that aren't auto-generated connector pages (e.g., overview.mdx)
+                if not item["path"].endswith("/main.mdx"):
+                    preserved_pages.append(item)
+
+        # Clear existing connector list and rebuild with preserved pages first
+        connectors_section["contents"] = preserved_pages
+
+        # Add all auto-generated connectors
         for connector in sorted(valid_connectors):
             display_name = connector.replace("_", " ").title()
             connectors_section["contents"].append(

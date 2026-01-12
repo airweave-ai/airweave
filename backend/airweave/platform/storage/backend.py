@@ -11,6 +11,7 @@ Usage:
     data = await backend.read_json("snapshots/my_data/manifest.json")
 """
 
+import asyncio
 import json
 import os
 import shutil
@@ -174,14 +175,18 @@ class FilesystemBackend(StorageBackend):
 
     async def read_json(self, path: str) -> Dict[str, Any]:
         """Read JSON from filesystem."""
-        full_path = self._resolve(path)
 
-        if not full_path.exists():
-            raise StorageNotFoundError(f"Path not found: {path}")
-
-        try:
+        def _read_json_sync():
+            full_path = self._resolve(path)
+            if not full_path.exists():
+                raise StorageNotFoundError(f"Path not found: {path}")
             with open(full_path, "r", encoding="utf-8") as f:
                 return json.load(f)
+
+        try:
+            return await asyncio.to_thread(_read_json_sync)
+        except StorageNotFoundError:
+            raise
         except json.JSONDecodeError as e:
             raise StorageException(f"Invalid JSON at {path}: {e}")
         except Exception as e:
@@ -200,14 +205,18 @@ class FilesystemBackend(StorageBackend):
 
     async def read_file(self, path: str) -> bytes:
         """Read binary content from filesystem."""
-        full_path = self._resolve(path)
 
-        if not full_path.exists():
-            raise StorageNotFoundError(f"Path not found: {path}")
-
-        try:
+        def _read_file_sync():
+            full_path = self._resolve(path)
+            if not full_path.exists():
+                raise StorageNotFoundError(f"Path not found: {path}")
             with open(full_path, "rb") as f:
                 return f.read()
+
+        try:
+            return await asyncio.to_thread(_read_file_sync)
+        except StorageNotFoundError:
+            raise
         except Exception as e:
             raise StorageException(f"Failed to read file from {path}: {e}")
 
@@ -234,32 +243,40 @@ class FilesystemBackend(StorageBackend):
 
     async def list_files(self, prefix: str = "") -> List[str]:
         """List all files under prefix (recursive)."""
-        base = self._resolve(prefix) if prefix else self.base_path
-        if not base.exists():
-            return []
 
-        files = []
-        for item in base.rglob("*"):
-            if item.is_file():
-                rel_path = str(item.relative_to(self.base_path))
-                # Normalize to forward slashes for consistency
-                files.append(rel_path.replace(os.sep, "/"))
+        def _list_files_sync():
+            base = self._resolve(prefix) if prefix else self.base_path
+            if not base.exists():
+                return []
 
-        return sorted(files)
+            files = []
+            for item in base.rglob("*"):
+                if item.is_file():
+                    rel_path = str(item.relative_to(self.base_path))
+                    # Normalize to forward slashes for consistency
+                    files.append(rel_path.replace(os.sep, "/"))
+
+            return sorted(files)
+
+        return await asyncio.to_thread(_list_files_sync)
 
     async def list_dirs(self, prefix: str = "") -> List[str]:
         """List immediate subdirectories under prefix."""
-        base = self._resolve(prefix) if prefix else self.base_path
-        if not base.exists():
-            return []
 
-        dirs = []
-        for item in base.iterdir():
-            if item.is_dir():
-                rel_path = str(item.relative_to(self.base_path))
-                dirs.append(rel_path.replace(os.sep, "/"))
+        def _list_dirs_sync():
+            base = self._resolve(prefix) if prefix else self.base_path
+            if not base.exists():
+                return []
 
-        return sorted(dirs)
+            dirs = []
+            for item in base.iterdir():
+                if item.is_dir():
+                    rel_path = str(item.relative_to(self.base_path))
+                    dirs.append(rel_path.replace(os.sep, "/"))
+
+            return sorted(dirs)
+
+        return await asyncio.to_thread(_list_dirs_sync)
 
 
 class AzureBlobBackend(StorageBackend):

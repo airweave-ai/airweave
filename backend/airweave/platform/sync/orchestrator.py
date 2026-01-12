@@ -192,21 +192,23 @@ class SyncOrchestrator:
         try:
             # Use the pre-created stream (already started in _start_sync)
             async for entity in self.stream.get_entities():
-                try:
-                    await self.sync_context.guard_rail.is_allowed(ActionType.ENTITIES)
-                except (UsageLimitExceededException, PaymentRequiredException) as guard_error:
-                    self.sync_context.logger.error(
-                        f"Guard rail check failed: {type(guard_error).__name__}: {str(guard_error)}"
-                    )
-                    stream_error = guard_error
-                    # Flush any buffered work so we don't drop it
-                    if batch_buffer:
-                        pending_tasks = await self._submit_batch_and_trim(
-                            batch_buffer, pending_tasks
+                # Check guardrails unless explicitly skipped
+                if not self.sync_context.execution_config.behavior.skip_guardrails:
+                    try:
+                        await self.sync_context.guard_rail.is_allowed(ActionType.ENTITIES)
+                    except (UsageLimitExceededException, PaymentRequiredException) as guard_error:
+                        self.sync_context.logger.error(
+                            f"Guard rail check failed: {type(guard_error).__name__}: {str(guard_error)}"
                         )
-                        batch_buffer = []
-                        flush_deadline = None
-                    break
+                        stream_error = guard_error
+                        # Flush any buffered work so we don't drop it
+                        if batch_buffer:
+                            pending_tasks = await self._submit_batch_and_trim(
+                                batch_buffer, pending_tasks
+                            )
+                            batch_buffer = []
+                            flush_deadline = None
+                        break
 
                 # Accumulate into batch
                 batch_buffer.append(entity)
@@ -521,7 +523,7 @@ class SyncOrchestrator:
         # Check if cursor updates are disabled
         if (
             self.sync_context.execution_config
-            and self.sync_context.execution_config.skip_cursor_updates
+            and self.sync_context.execution_config.cursor.skip_updates
         ):
             self.sync_context.logger.info("⏭️ Skipping cursor update (disabled by execution_config)")
             return

@@ -140,14 +140,11 @@ list_connectors() {
     done
 }
 
-# Get core connectors that always run
+# Get core connectors that always run (reduced footprint)
 get_core_connectors() {
     local core_connectors=(
         "github"      # Most popular, good API coverage
         "asana"       # Task management, different data patterns
-        "linear"      # Modern API, good for testing
-        "google_docs"
-        "word"
     )
 
     # Filter to only include connectors that have configs
@@ -227,8 +224,8 @@ detect_changed_connectors() {
 
 # Get hybrid connector list: core + changed
 get_hybrid_connectors() {
-    # Core connectors that always run
-    local core_connectors=("github" "asana" "linear" "google_docs" "word")
+    # Core connectors that always run (reduced footprint)
+    local core_connectors=("github" "asana")
     local changed_connectors=()
 
     # Try to detect changed connectors

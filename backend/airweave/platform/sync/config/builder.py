@@ -5,7 +5,7 @@ Resolution order (lowest → highest priority):
 2. Environment (SYNC_CONFIG__* env vars, handled by Pydantic Settings)
 3. Collection (collection.sync_config_json)
 4. Sync (sync.sync_config_json)
-5. SyncJob (sync_job.execution_config_json)
+5. SyncJob (sync_job.sync_config)
 """
 
 from typing import Optional

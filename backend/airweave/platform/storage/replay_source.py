@@ -1,7 +1,7 @@
 """ARF Replay source for automatic replay from ARF storage.
 
 This is an INTERNAL source that is NOT decorated and NOT registered.
-It gets injected by SourceContextBuilder when execution_config.replay_from_arf=True.
+It gets injected by SourceContextBuilder when execution_config.behavior.replay_from_arf=True.
 
 Unlike SnapshotSource (which is user-facing for evals), this source:
 - Is automatically created by the builder
@@ -26,7 +26,7 @@ class ArfReplaySource(BaseSource):
     """Internal source for replaying entities from ARF storage.
 
     This source is NOT decorated - it's not a registered source.
-    It's created internally when execution_config.replay_from_arf=True.
+    It's created internally when execution_config.behavior.replay_from_arf=True.
 
     It masquerades as the original source (short_name passed from builder/DB),
     so entities appear to come from the original source.

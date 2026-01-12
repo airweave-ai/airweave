@@ -584,54 +584,85 @@ class VespaDestination(VectorDBDestination):
         Returns:
             Number of documents deleted (estimated from response)
         """
-        # Build the bulk delete URL with the already-qualified selection
-        base_url = f"{settings.VESPA_URL}:{settings.VESPA_PORT}"
-        encoded_selection = quote(selection, safe="")
-        url = (
-            f"{base_url}/document/v1/airweave/{schema}/docid"
-            f"?selection={encoded_selection}"
-            f"&cluster={settings.VESPA_CLUSTER}"
-        )
-
+        url = self._build_bulk_delete_url(schema, selection)
         self.logger.debug(f"[Vespa] Bulk delete from {schema} with selection: {selection}")
 
         deleted_count = 0
         try:
-            async with httpx.AsyncClient(timeout=settings.VESPA_TIMEOUT) as client:
-                # Use streaming to handle potentially large deletions
-                async with client.stream("DELETE", url) as response:
-                    if response.status_code == 200:
-                        # Vespa returns JSON Lines with deletion results
-                        async for line in response.aiter_lines():
-                            if line.strip():
-                                try:
-                                    result = json.loads(line)
-                                    # Count successful deletions from the response
-                                    if result.get("id"):
-                                        deleted_count += 1
-                                except json.JSONDecodeError:
-                                    pass  # Skip malformed lines
-                    elif response.status_code == 400:
-                        # Bad selection expression
-                        body = await response.aread()
-                        self.logger.error(f"[Vespa] Invalid selection expression: {body.decode()}")
-                    else:
-                        body = await response.aread()
-                        self.logger.error(
-                            f"[Vespa] Bulk delete failed ({response.status_code}): {body.decode()}"
-                        )
-
-            if deleted_count > 0:
-                self.logger.info(f"[Vespa] Deleted {deleted_count} documents from {schema}")
-            else:
-                self.logger.debug(f"[Vespa] No documents to delete from {schema}")
-
+            deleted_count = await self._execute_bulk_delete(url, schema)
         except httpx.TimeoutException:
             self.logger.error(f"[Vespa] Bulk delete timed out after {settings.VESPA_TIMEOUT}s")
         except Exception as e:
             self.logger.error(f"[Vespa] Bulk delete error: {e}")
 
         return deleted_count
+
+    def _build_bulk_delete_url(self, schema: str, selection: str) -> str:
+        """Build the URL for Vespa bulk delete operation."""
+        base_url = f"{settings.VESPA_URL}:{settings.VESPA_PORT}"
+        encoded_selection = quote(selection, safe="")
+        return (
+            f"{base_url}/document/v1/airweave/{schema}/docid"
+            f"?selection={encoded_selection}"
+            f"&cluster={settings.VESPA_CLUSTER}"
+        )
+
+    async def _execute_bulk_delete(self, url: str, schema: str) -> int:
+        """Execute bulk delete request and parse response.
+
+        Args:
+            url: The bulk delete URL
+            schema: Schema name for logging
+
+        Returns:
+            Number of documents deleted
+        """
+        deleted_count = 0
+        async with httpx.AsyncClient(timeout=settings.VESPA_TIMEOUT) as client:
+            async with client.stream("DELETE", url) as response:
+                if response.status_code == 200:
+                    deleted_count = await self._parse_bulk_delete_response(response)
+                else:
+                    await self._log_delete_error(response)
+
+        if deleted_count > 0:
+            self.logger.info(f"[Vespa] Deleted {deleted_count} documents from {schema}")
+        else:
+            self.logger.debug(f"[Vespa] No documents to delete from {schema}")
+
+        return deleted_count
+
+    async def _parse_bulk_delete_response(self, response: httpx.Response) -> int:
+        """Parse streaming response from Vespa bulk delete.
+
+        Vespa returns JSON lines with documentCount for bulk deletes.
+        Format: {"pathId":"/document/v1/...","documentCount":N}
+        """
+        count = 0
+        async for line in response.aiter_lines():
+            if not line.strip():
+                continue
+            try:
+                result = json.loads(line)
+                # Get document count from bulk delete response
+                if "documentCount" in result:
+                    count += result["documentCount"]
+                # Also handle individual document deletions (id field)
+                elif result.get("id"):
+                    count += 1
+            except json.JSONDecodeError:
+                pass  # Skip malformed lines
+        return count
+
+    async def _log_delete_error(self, response: httpx.Response) -> None:
+        """Log error from failed bulk delete response."""
+        body = await response.aread()
+        if response.status_code == 400:
+            self.logger.error(f"[Vespa] Invalid selection expression: {body.decode()}")
+        else:
+            self.logger.error(
+                f"[Vespa] Bulk delete failed ({response.status_code}): {body.decode()}"
+            )
 
     async def bulk_delete_by_parent_ids(self, parent_ids: list[str], sync_id: UUID) -> None:
         """Delete all documents for multiple parent IDs using selection-based bulk delete.
@@ -887,7 +918,10 @@ class VespaDestination(VectorDBDestination):
         if yql_filter:
             where_parts.append(f"({yql_filter})")
 
-        yql = f"select * from base_entity where {' AND '.join(where_parts)}"
+        # Query all entity schemas - Vespa doesn't automatically include child schemas
+        # when querying parent. Use "sources *" or explicit list of all schemas.
+        all_schemas = ", ".join(self._get_all_vespa_schemas())
+        yql = f"select * from sources {all_schemas} where {' AND '.join(where_parts)}"
         return yql
 
     async def _embed_queries(self, queries: List[str]) -> tuple[List[List[float]], List[List[int]]]:

@@ -62,11 +62,10 @@ class EntityActionResolver:
             SyncFailureError: If entity type not found in entity_map or missing hash
         """
         # Check if skip_hash_comparison is enabled
-        skip_hash = (
+        if (
             sync_context.execution_config
             and sync_context.execution_config.behavior.skip_hash_comparison
-        )
-        if skip_hash:
+        ):
             sync_context.logger.info(
                 "skip_hash_comparison enabled: Forcing all entities as INSERT actions"
             )
@@ -392,7 +391,7 @@ class EntityActionResolver:
     ) -> EntityActionBatch:
         """Force all entities as INSERT actions (skip hash comparison).
 
-        Used for ARF replay or when execution_config.skip_hash_comparison is True.
+        Used for ARF replay or when execution_config.behavior.skip_hash_comparison is True.
 
         Args:
             entities: Entities to process
