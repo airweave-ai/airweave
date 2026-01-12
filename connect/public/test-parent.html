@@ -222,10 +222,58 @@
     <div class="layout">
       <div class="left-panel">
         <div class="controls">
-          <label for="token">Session Token (paste from backend):</label>
+          <div class="theme-section">
+            <div class="collapsible-header" onclick="toggleSessionConfig()">
+              <h3 style="margin: 0">Fetch Session Token from API</h3>
+              <span id="sessionConfigArrow">+</span>
+            </div>
+            <div id="sessionConfig" class="collapsible-content">
+              <label for="apiUrl">API URL:</label>
+              <input
+                type="text"
+                id="apiUrl"
+                placeholder="http://localhost:8001"
+              />
+
+              <label for="apiKey">API Key (X-API-Key):</label>
+              <input
+                type="text"
+                id="apiKey"
+                placeholder="Enter your API key..."
+              />
+
+              <label for="collectionId">Collection ID:</label>
+              <input
+                type="text"
+                id="collectionId"
+                placeholder="e.g., test-16c0r8"
+              />
+
+              <label for="sessionMode">Session Mode:</label>
+              <select id="sessionMode">
+                <option value="all">all - Full access</option>
+                <option value="connect">connect - Add connections only</option>
+                <option value="manage">manage - View/delete only</option>
+                <option value="reauth">reauth - Re-authenticate only</option>
+              </select>
+
+              <label for="endUserId">End User ID (optional):</label>
+              <input type="text" id="endUserId" placeholder="e.g., user-123" />
+
+              <button onclick="fetchSessionToken()" id="fetchTokenBtn">
+                Fetch Session Token
+              </button>
+              <span
+                id="fetchStatus"
+                style="margin-left: 10px; font-size: 12px"
+              ></span>
+            </div>
+          </div>
+
+          <label for="token">Session Token:</label>
           <textarea
             id="token"
-            placeholder="Paste your session token here... (leave empty to test error states)"
+            placeholder="Paste your session token here, or use 'Fetch Session Token from API' above..."
           ></textarea>
 
           <div class="theme-section">
@@ -361,9 +409,140 @@
     </div>
 
     <script>
+      /**
+       * Test Harness Configuration
+       * Update these values to match your .env file:
+       *   VITE_API_URL, TEST_API_KEY, TEST_COLLECTION_ID, TEST_END_USER_ID, TEST_SESSION_MODE
+       */
+      const CONFIG = {
+        API_URL: "http://localhost:8001", // VITE_API_URL
+        API_KEY: "test", // TEST_API_KEY
+        COLLECTION_ID: "test-16c0r8", // TEST_COLLECTION_ID
+        END_USER_ID: "anand", // TEST_END_USER_ID
+        SESSION_MODE: "all", // TEST_SESSION_MODE
+      };
+
       let sessionToken = "";
       let responseMode = "auto"; // 'auto', 'loading', 'error-invalid', 'error-expired', 'error-network', 'manual'
       let pendingRequestId = null;
+
+      // Initialize form fields from CONFIG on page load
+      async function initializeConfig() {
+        document.getElementById("apiUrl").value = CONFIG.API_URL;
+        document.getElementById("apiKey").value = CONFIG.API_KEY;
+        document.getElementById("collectionId").value = CONFIG.COLLECTION_ID;
+        document.getElementById("endUserId").value = CONFIG.END_USER_ID;
+        document.getElementById("sessionMode").value = CONFIG.SESSION_MODE;
+
+        // Auto-fetch token and open Connect if required config is present
+        if (CONFIG.API_URL && CONFIG.API_KEY && CONFIG.COLLECTION_ID) {
+          log("Config detected, auto-fetching session token...", "info");
+          await fetchSessionToken();
+
+          // If token was fetched successfully, auto-open Connect
+          const token = document.getElementById("token").value.trim();
+          if (token) {
+            log("Token fetched, auto-opening Connect...", "info");
+            openConnect();
+          }
+        }
+      }
+      document.addEventListener("DOMContentLoaded", initializeConfig);
+
+      // Toggle session config section
+      function toggleSessionConfig() {
+        const content = document.getElementById("sessionConfig");
+        const arrow = document.getElementById("sessionConfigArrow");
+        content.classList.toggle("open");
+        arrow.textContent = content.classList.contains("open") ? "-" : "+";
+      }
+
+      // Fetch session token from backend API
+      async function fetchSessionToken() {
+        const apiUrl = document.getElementById("apiUrl").value.trim();
+        const apiKey = document.getElementById("apiKey").value.trim();
+        const collectionId = document
+          .getElementById("collectionId")
+          .value.trim();
+        const mode = document.getElementById("sessionMode").value;
+        const endUserId = document.getElementById("endUserId").value.trim();
+        const statusEl = document.getElementById("fetchStatus");
+        const fetchBtn = document.getElementById("fetchTokenBtn");
+
+        // Validation
+        if (!apiUrl) {
+          statusEl.textContent = "API URL is required";
+          statusEl.style.color = "#ef4444";
+          return;
+        }
+        if (!apiKey) {
+          statusEl.textContent = "API Key is required";
+          statusEl.style.color = "#ef4444";
+          return;
+        }
+        if (!collectionId) {
+          statusEl.textContent = "Collection ID is required";
+          statusEl.style.color = "#ef4444";
+          return;
+        }
+
+        // Build request body
+        const requestBody = {
+          readable_collection_id: collectionId,
+          mode: mode,
+        };
+        if (endUserId) {
+          requestBody.end_user_id = endUserId;
+        }
+
+        // Update UI
+        fetchBtn.disabled = true;
+        statusEl.textContent = "Fetching...";
+        statusEl.style.color = "#94a3b8";
+        log(
+          `Fetching session token from ${apiUrl}/connect/sessions...`,
+          "info",
+        );
+
+        try {
+          const response = await fetch(`${apiUrl}/connect/sessions`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-API-Key": apiKey,
+            },
+            body: JSON.stringify(requestBody),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(
+              errorData.detail ||
+                `HTTP ${response.status}: ${response.statusText}`,
+            );
+          }
+
+          const data = await response.json();
+
+          // Populate the token textarea
+          document.getElementById("token").value = data.session_token;
+
+          // Show success
+          const expiresAt = new Date(data.expires_at);
+          statusEl.textContent = `Token fetched! Expires at ${expiresAt.toLocaleTimeString()}`;
+          statusEl.style.color = "#22c55e";
+          log(
+            `Session token fetched successfully (session_id: ${data.session_id}, expires: ${expiresAt.toLocaleTimeString()})`,
+            "received",
+          );
+        } catch (error) {
+          statusEl.textContent = `Error: ${error.message}`;
+          statusEl.style.color = "#ef4444";
+          log(`Failed to fetch session token: ${error.message}`, "error");
+        } finally {
+          fetchBtn.disabled = false;
+        }
+      }
 
       // Toggle custom colors section
       function toggleCustomColors() {
@@ -691,7 +870,7 @@
         // Reset iframe
         iframe.src = "";
         setTimeout(() => {
-          iframe.src = "http://localhost:3000";
+          iframe.src = "http://localhost:5173";
         }, 100);
 
         document.getElementById("openConnect").disabled = true;

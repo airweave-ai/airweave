@@ -42,9 +42,7 @@ class ConnectApiClient {
   }
 
   async validateSession(sessionId: string): Promise<ConnectSessionContext> {
-    return this.fetch<ConnectSessionContext>(
-      `/api/v1/connect/sessions/${sessionId}`,
-    );
+    return this.fetch<ConnectSessionContext>(`/connect/sessions/${sessionId}`);
   }
 }
 
