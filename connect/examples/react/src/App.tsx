@@ -1,4 +1,4 @@
-import { useAirweaveConnect } from "@airweave/connect-react";
+import { useAirweaveConnect, type SessionError } from "@airweave/connect-react";
 
 // Configuration - in a real app, these would come from environment variables
 const CONFIG = {
@@ -32,13 +32,13 @@ function App() {
     theme: {
       mode: "light",
     },
-    onSuccess: (connectionId) => {
+    onSuccess: (connectionId: string) => {
       console.log("Connection created:", connectionId);
     },
-    onError: (error) => {
+    onError: (error: SessionError) => {
       console.error("Error:", error.message);
     },
-    onClose: (reason) => {
+    onClose: (reason: "success" | "cancel" | "error") => {
       console.log("Modal closed:", reason);
     },
   });

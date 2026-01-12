@@ -51,8 +51,8 @@ function SessionContent() {
   const { setTheme } = useTheme();
   const hasInitialized = useRef(false);
   const validateSessionRef = useRef<
-    (token: string, isRetry?: boolean) => Promise<boolean>
-  >();
+    ((token: string, isRetry?: boolean) => Promise<boolean>) | undefined
+  >(undefined);
 
   // Handle theme changes from parent (both initial and dynamic updates)
   const handleThemeChange = useCallback(

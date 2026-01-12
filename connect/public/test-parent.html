@@ -353,6 +353,9 @@
           <div class="button-group">
             <div class="button-group-label">Test Different States</div>
 
+            <button onclick="openCreateConnection()">
+              Create connection
+            </button>
             <button onclick="openWithState('success')" class="success">
               Show Success State
             </button>
@@ -838,6 +841,16 @@
         sessionToken = document.getElementById("token").value.trim();
         responseMode = "auto";
         startConnect();
+      }
+
+      function openCreateConnection() {
+        const iframe = document.getElementById("connectFrame");
+        if (!iframe || !iframe.contentWindow || !iframe.src) {
+          log("Please open Connect first!", "error");
+          return;
+        }
+        iframe.contentWindow.postMessage({ type: "NAVIGATE", view: "sources" }, "*");
+        log("Sent navigation to sources view", "sent");
       }
 
       function openWithState(mode) {
