@@ -38,6 +38,11 @@ class ConnectApiClient {
       throw new ApiError(response.status, error.detail || "Request failed");
     }
 
+    // Handle 204 No Content
+    if (response.status === 204) {
+      return undefined as T;
+    }
+
     return response.json();
   }
 
@@ -47,6 +52,12 @@ class ConnectApiClient {
 
   async getSourceConnections(): Promise<SourceConnectionListItem[]> {
     return this.fetch<SourceConnectionListItem[]>("/connect/source-connections");
+  }
+
+  async deleteSourceConnection(connectionId: string): Promise<void> {
+    await this.fetch<void>(`/connect/source-connections/${connectionId}`, {
+      method: "DELETE",
+    });
   }
 }
 

@@ -18,12 +18,17 @@ export interface ThemeColors {
   error?: string;
 }
 
+export interface ConnectLabels {
+  sourcesHeading?: string;
+}
+
 export interface ConnectTheme {
   mode: ThemeMode;
   colors?: {
     dark?: ThemeColors;
     light?: ThemeColors;
   };
+  labels?: ConnectLabels;
 }
 
 // Session context returned by API (matches backend ConnectSessionContext)

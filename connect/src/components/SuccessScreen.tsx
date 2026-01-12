@@ -1,7 +1,14 @@
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { PoweredByAirweave } from "@/components/PoweredByAirweave";
-import { useQuery } from "@tanstack/react-query";
-import { AlertCircle, Link2 } from "lucide-react";
+import { Menu } from "@base-ui/react/menu";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  AlertCircle,
+  Link2,
+  MoreHorizontal,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
 import { useState } from "react";
 import { apiClient } from "../lib/api";
 import { getAppIconUrl } from "../lib/icons";
@@ -51,8 +58,12 @@ function getStatusLabel(status: SourceConnectionStatus): string {
 
 function ConnectionItem({
   connection,
+  onDelete,
+  isDeleting,
 }: {
   connection: SourceConnectionListItem;
+  onDelete: () => void;
+  isDeleting: boolean;
 }) {
   const { resolvedMode } = useTheme();
   const [imgError, setImgError] = useState(false);
@@ -64,6 +75,7 @@ function ConnectionItem({
       style={{
         backgroundColor: "var(--connect-surface)",
         border: "1px solid var(--connect-border)",
+        opacity: isDeleting ? 0.5 : 1,
       }}
     >
       <div className="flex items-center gap-3">
@@ -108,6 +120,33 @@ function ConnectionItem({
         >
           {getStatusLabel(connection.status)}
         </span>
+        <Menu.Root>
+          <Menu.Trigger className="p-1 rounded cursor-pointer border-none bg-transparent flex items-center justify-center transition-colors duration-150 hover:bg-black/10 dark:hover:bg-white/10 [color:var(--connect-text-muted)] hover:[color:var(--connect-text)]">
+            <MoreHorizontal size={16} />
+          </Menu.Trigger>
+          <Menu.Portal>
+            <Menu.Positioner side="bottom" align="end" sideOffset={4}>
+              <Menu.Popup className="dropdown-popup min-w-[140px] rounded-lg p-1 shadow-lg [background-color:var(--connect-surface)] [border:1px_solid_var(--connect-border)]">
+                <Menu.Item
+                  onClick={() => {
+                    /* no-op for now */
+                  }}
+                  className="cursor-pointer flex items-center gap-2 px-3 py-2 rounded text-sm border-none bg-transparent w-full transition-colors duration-150 [color:var(--connect-text)] hover:bg-slate-500/10"
+                >
+                  <RefreshCw size={14} />
+                  <span>Reconnect</span>
+                </Menu.Item>
+                <Menu.Item
+                  onClick={onDelete}
+                  className="cursor-pointer flex items-center gap-2 px-3 py-2 rounded text-sm border-none bg-transparent w-full transition-colors duration-150 [color:var(--connect-error)] hover:bg-red-500/10"
+                >
+                  <Trash2 size={14} />
+                  <span>Delete</span>
+                </Menu.Item>
+              </Menu.Popup>
+            </Menu.Positioner>
+          </Menu.Portal>
+        </Menu.Root>
       </div>
     </div>
   );
@@ -173,6 +212,11 @@ function ConnectModeError() {
 }
 
 export function SuccessScreen({ session }: SuccessScreenProps) {
+  const { theme } = useTheme();
+  const queryClient = useQueryClient();
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const sourcesHeading = theme.labels?.sourcesHeading ?? "Sources";
+
   const {
     data: connections,
     isLoading,
@@ -181,6 +225,20 @@ export function SuccessScreen({ session }: SuccessScreenProps) {
     queryKey: ["source-connections"],
     queryFn: () => apiClient.getSourceConnections(),
     enabled: session.mode !== "connect",
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (connectionId: string) =>
+      apiClient.deleteSourceConnection(connectionId),
+    onMutate: (connectionId) => {
+      setDeletingId(connectionId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["source-connections"] });
+    },
+    onSettled: () => {
+      setDeletingId(null);
+    },
   });
 
   if (session.mode === "connect") {
@@ -237,7 +295,12 @@ export function SuccessScreen({ session }: SuccessScreenProps) {
       {connections && connections.length > 0 ? (
         <div className="flex flex-col gap-3">
           {connections.map((connection) => (
-            <ConnectionItem key={connection.id} connection={connection} />
+            <ConnectionItem
+              key={connection.id}
+              connection={connection}
+              onDelete={() => deleteMutation.mutate(connection.id)}
+              isDeleting={deletingId === connection.id}
+            />
           ))}
         </div>
       ) : (
