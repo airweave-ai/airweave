@@ -15,6 +15,7 @@ interface UseOAuthFlowOptions {
   byocValues?: { client_id: string; client_secret: string };
   requiresByoc: boolean;
   onSuccess: (connectionId: string) => void;
+  onCancel?: () => void;
 }
 
 interface UseOAuthFlowResult {
@@ -34,6 +35,7 @@ export function useOAuthFlow({
   byocValues,
   requiresByoc,
   onSuccess,
+  onCancel,
 }: UseOAuthFlowOptions): UseOAuthFlowResult {
   const [status, setStatus] = useState<OAuthFlowStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -42,6 +44,8 @@ export function useOAuthFlow({
   // Ref to synchronously track OAuth completion, preventing race condition
   // where interval could override successful result before React re-renders
   const oauthCompletedRef = useRef(false);
+  // Track the connection ID created in this OAuth flow for cleanup on cancel
+  const createdConnectionIdRef = useRef<string | null>(null);
 
   const handleOAuthResult = useCallback(
     (result: OAuthCallbackResult) => {
@@ -54,6 +58,8 @@ export function useOAuthFlow({
       popupRef.current = null;
 
       if (result.status === "success" && result.source_connection_id) {
+        // Clear the ref since OAuth succeeded - don't delete the connection
+        createdConnectionIdRef.current = null;
         setStatus("idle");
         onSuccess(result.source_connection_id);
       } else {
@@ -77,9 +83,18 @@ export function useOAuthFlow({
         // Check oauthCompletedRef to avoid race condition where OAuth completed
         // but React hasn't re-rendered yet (stale status in closure)
         if (!isPopupOpen(popupRef.current) && !oauthCompletedRef.current) {
-          setStatus("error");
-          setError("Authentication was cancelled. Please try again.");
-          popupRef.current = null;
+          // Clean up the connection we just created (if any)
+          if (createdConnectionIdRef.current) {
+            apiClient.deleteSourceConnection(createdConnectionIdRef.current).catch(() => {});
+            createdConnectionIdRef.current = null;
+            popupRef.current = null;
+            setStatus("idle");
+            onCancel?.();
+          } else {
+            setStatus("error");
+            setError("Authentication was cancelled. Please try again.");
+            popupRef.current = null;
+          }
         }
       }, 500);
     }
@@ -93,7 +108,7 @@ export function useOAuthFlow({
         popupRef.current = null;
       }
     };
-  }, [status, handleOAuthResult]);
+  }, [status, handleOAuthResult, onCancel]);
 
   const initiateOAuth = useCallback(async () => {
     setStatus("creating");
@@ -124,6 +139,8 @@ export function useOAuthFlow({
       }
 
       const response = await apiClient.createSourceConnection(payload);
+      // Track the created connection for cleanup if user cancels
+      createdConnectionIdRef.current = response.id;
 
       if (response.auth?.auth_url) {
         setStatus("waiting");

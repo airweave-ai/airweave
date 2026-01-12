@@ -92,6 +92,7 @@ export function SourceConfigView({
     byocValues,
     requiresByoc: sourceDetails?.requires_byoc ?? false,
     onSuccess,
+    onCancel: onBack,
   });
 
   // Track if we've already auto-triggered OAuth
