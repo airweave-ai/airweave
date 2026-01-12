@@ -18,6 +18,7 @@ import { AppIcon } from "./AppIcon";
 import { AuthMethodSelector } from "./AuthMethodSelector";
 import { BackButton } from "./BackButton";
 import { Button } from "./Button";
+import { ByocFields } from "./ByocFields";
 import { DynamicFormField } from "./DynamicFormField";
 import { LoadingScreen } from "./LoadingScreen";
 import { PageLayout } from "./PageLayout";
@@ -51,6 +52,10 @@ export function SourceConfigView({
   );
   const [authValues, setAuthValues] = useState<Record<string, unknown>>({});
   const [configValues, setConfigValues] = useState<Record<string, unknown>>({});
+  const [byocValues, setByocValues] = useState<{
+    client_id: string;
+    client_secret: string;
+  }>({ client_id: "", client_secret: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // OAuth flow state
@@ -59,7 +64,6 @@ export function SourceConfigView({
   >("idle");
   const [oauthError, setOauthError] = useState<string | null>(null);
   const oauthPopupRef = useRef<Window | null>(null);
-  const pendingConnectionIdRef = useRef<string | null>(null);
 
   const createMutation = useMutation({
     mutationFn: (payload: SourceConnectionCreateRequest) =>
@@ -87,25 +91,25 @@ export function SourceConfigView({
     ? authMethod
     : (availableAuthMethods[0] ?? "direct");
 
+  const clearError = useCallback((key: string) => {
+    setErrors((prev) => {
+      const newErrors = { ...prev };
+      delete newErrors[key];
+      return newErrors;
+    });
+  }, []);
+
   const handleAuthValueChange = (fieldName: string, value: unknown) => {
     setAuthValues((prev) => ({ ...prev, [fieldName]: value }));
     if (errors[fieldName]) {
-      setErrors((prev) => {
-        const newErrors = { ...prev };
-        delete newErrors[fieldName];
-        return newErrors;
-      });
+      clearError(fieldName);
     }
   };
 
   const handleConfigValueChange = (fieldName: string, value: unknown) => {
     setConfigValues((prev) => ({ ...prev, [fieldName]: value }));
     if (errors[`config_${fieldName}`]) {
-      setErrors((prev) => {
-        const newErrors = { ...prev };
-        delete newErrors[`config_${fieldName}`];
-        return newErrors;
-      });
+      clearError(`config_${fieldName}`);
     }
   };
 
@@ -120,6 +124,16 @@ export function SourceConfigView({
             newErrors[field.name] = "This field is required";
           }
         }
+      }
+    }
+
+    // Validate BYOC fields for OAuth when requires_byoc is true
+    if (effectiveAuthMethod === "oauth_browser" && sourceDetails?.requires_byoc) {
+      if (!byocValues.client_id.trim()) {
+        newErrors.byoc_client_id = "Client ID is required";
+      }
+      if (!byocValues.client_secret.trim()) {
+        newErrors.byoc_client_secret = "Client Secret is required";
       }
     }
 
@@ -183,6 +197,21 @@ export function SourceConfigView({
 
   // Initiate OAuth flow
   const handleOAuthConnect = async () => {
+    // Validate BYOC fields if required
+    if (sourceDetails?.requires_byoc) {
+      const newErrors: Record<string, string> = {};
+      if (!byocValues.client_id.trim()) {
+        newErrors.byoc_client_id = "Client ID is required";
+      }
+      if (!byocValues.client_secret.trim()) {
+        newErrors.byoc_client_secret = "Client Secret is required";
+      }
+      if (Object.keys(newErrors).length > 0) {
+        setErrors(newErrors);
+        return;
+      }
+    }
+
     setOauthStatus("creating");
     setOauthError(null);
 
@@ -196,6 +225,11 @@ export function SourceConfigView({
         sync_immediately: true,
         authentication: {
           redirect_uri: redirectUri,
+          // Include BYOC credentials if required
+          ...(sourceDetails?.requires_byoc && {
+            client_id: byocValues.client_id.trim(),
+            client_secret: byocValues.client_secret.trim(),
+          }),
         },
       };
 
@@ -208,7 +242,6 @@ export function SourceConfigView({
       }
 
       const response = await apiClient.createSourceConnection(payload);
-      pendingConnectionIdRef.current = response.id;
 
       // Check if we got an auth_url (OAuth flow)
       if (response.auth?.auth_url) {
@@ -413,6 +446,15 @@ export function SourceConfigView({
                 >
                   {oauthError}
                 </div>
+              )}
+
+              {sourceDetails?.requires_byoc && (
+                <ByocFields
+                  values={byocValues}
+                  onChange={setByocValues}
+                  errors={errors}
+                  onClearError={clearError}
+                />
               )}
 
               {oauthStatus === "waiting" ? (

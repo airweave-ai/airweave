@@ -459,11 +459,11 @@ if (view === "configure" && selectedSource) {
 - [x] Test OAuth flow with popup
 
 ### Phase 4: Polish
-- [ ] Add form validation (required fields)
-- [ ] Add BYOC fields for `requires_byoc` sources
+- [x] Add form validation (required fields)
+- [x] Add BYOC fields for `requires_byoc` sources
 - [ ] Handle popup blockers (show manual link option)
-- [ ] Add loading states during submission
-- [ ] Add error states and retry options
+- [x] Add loading states during submission
+- [x] Add error states and retry options
 - [ ] Add labels to theme for new UI text
 - [ ] Add unit tests, linting, and formatting, end to end tests, etc.
 

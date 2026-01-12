@@ -1,46 +1,34 @@
 # Shared Task Notes
 
 ## Current Status
-Phase 3 (OAuth Flow) implementation is complete. Build passes (`npm run build`).
+Phase 4 (Polish) in progress. BYOC fields implementation complete. Build passes (`npm run build`).
 
-Files created:
-- `src/lib/oauth.ts` - Popup window utilities (`openOAuthPopup`, `listenForOAuthComplete`, `isPopupOpen`)
-- `src/routes/oauth-callback.tsx` - OAuth callback route that receives result and posts to opener
+## What Was Done
+Added BYOC (Bring Your Own Credentials) support to `SourceConfigView.tsx`:
+- New `byocValues` state for `client_id` and `client_secret`
+- BYOC form fields shown when `sourceDetails.requires_byoc` is true and OAuth method is selected
+- Validation: requires both fields before OAuth flow starts
+- BYOC credentials included in OAuth payload via spread: `{ redirect_uri, client_id, client_secret }`
+- Error display for missing BYOC fields
+- Help text explaining why credentials are needed
 
-`SourceConfigView.tsx` updated with:
-- OAuth state management (status: idle/creating/waiting/error)
-- `handleOAuthConnect` - Creates connection, opens popup with auth_url
-- `handleOAuthResult` - Receives postMessage, handles success/error
-- Popup close detection (polls to detect if user closes popup)
-- "Connect with {source}" button replaces placeholder
-- Waiting state UI with spinner
+## Next Tasks (from SPEC.md Phase 4)
+Remaining unchecked items:
+1. **Handle popup blockers** - Show manual link option when popup is blocked (currently just shows error message)
+2. **Add labels to theme** - Add customizable labels to `ConnectLabels` interface for new UI text
+3. **Add unit tests, linting, formatting, e2e tests** - Testing infrastructure
 
-## Next Tasks
+Also unchecked from Phase 2:
+- Test direct auth flow end-to-end (manual testing required)
 
-### Phase 4 - Polish
-After testing, remaining items from SPEC.md:
-- Add BYOC fields for `requires_byoc` sources
-- Handle popup blockers (show manual link option)
-- Add labels to theme for new UI text
+## Implementation Notes
 
-Note: Form validation and loading/error states are already implemented in current code.
+### BYOC Flow
+When `sourceDetails.requires_byoc === true`:
+1. UI shows Client ID and Client Secret fields before OAuth button
+2. Both fields are required (validation happens on button click)
+3. Credentials are sent in the `authentication` payload along with `redirect_uri`
 
-## Implementation Details
-
-### OAuth Flow Sequence
-1. User clicks "Connect with {source}" button
-2. `handleOAuthConnect`:
-   - Sets status to "creating"
-   - POSTs to `/connect/source-connections` with `redirect_uri`
-   - Backend returns `{ auth: { auth_url } }`
-   - Opens popup with `auth_url`
-   - Sets status to "waiting"
-3. User authorizes in popup
-4. OAuth provider redirects to backend callback
-5. Backend redirects popup to `/oauth-callback?status=success&source_connection_id=xxx`
-6. `oauth-callback.tsx` posts `{ type: "OAUTH_COMPLETE", ... }` to opener
-7. `handleOAuthResult` receives message, closes popup, calls `onSuccess`
-
-### Popup Blocked Handling
-Current implementation shows error: "Popup was blocked. Please allow popups..."
-Future: Could add manual link option.
+### Popup Blocked Enhancement
+Current: Shows error "Popup was blocked. Please allow popups..."
+Suggested enhancement: Add a manual link option showing the `auth_url` so user can open it themselves.
