@@ -43,7 +43,7 @@ class SearchService:
             db, readable_id=readable_collection_id, ctx=ctx
         )
         if not collection:
-            raise NotFoundException(detail=f"Collection '{readable_collection_id}' not found")
+            raise NotFoundException(message=f"Collection '{readable_collection_id}' not found")
 
         ctx.logger.debug("Building search context")
         search_context = await factory.build(
@@ -144,7 +144,7 @@ class SearchService:
         collection = result.scalar_one_or_none()
 
         if not collection:
-            raise NotFoundException(detail=f"Collection '{readable_collection_id}' not found")
+            raise NotFoundException(message=f"Collection '{readable_collection_id}' not found")
 
         ctx.logger.info(
             f"Admin searching collection {readable_collection_id} "
@@ -216,7 +216,7 @@ class SearchService:
         collection = result.scalar_one_or_none()
 
         if not collection:
-            raise NotFoundException(detail=f"Collection '{readable_collection_id}' not found")
+            raise NotFoundException(message=f"Collection '{readable_collection_id}' not found")
 
         ctx.logger.info(
             f"Searching collection {readable_collection_id} as user '{user_principal}' "
