@@ -4,11 +4,7 @@ import { useState } from "react";
 import { apiClient } from "../lib/api";
 import { canConnect } from "../lib/connection-utils";
 import { useTheme } from "../lib/theme";
-import type {
-  ConnectSessionContext,
-  NavigateView,
-  Source,
-} from "../lib/types";
+import type { ConnectSessionContext, NavigateView, Source } from "../lib/types";
 import { Button } from "./Button";
 import { ConnectionItem } from "./ConnectionItem";
 import { ConnectionsErrorView } from "./ConnectionsErrorView";
@@ -70,7 +66,9 @@ export function SuccessScreen({
     },
   });
 
-  const handleSelectSource: (source: Source) => void = () => {};
+  // TODO: Implement source configuration flow (will use source to navigate to configure view)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const handleSelectSource = (source: Source) => {};
 
   if (view === "sources") {
     return (

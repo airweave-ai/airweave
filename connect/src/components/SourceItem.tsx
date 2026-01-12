@@ -10,18 +10,7 @@ export function SourceItem({ source, onClick }: SourceItemProps) {
   return (
     <button
       onClick={onClick}
-      className="flex items-center gap-3 p-2 rounded-lg w-full text-left transition-colors duration-150 cursor-pointer border-none"
-      style={{
-        backgroundColor: "var(--connect-surface)",
-        border: "1px solid var(--connect-border)",
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.backgroundColor =
-          "color-mix(in srgb, var(--connect-surface) 80%, var(--connect-primary) 20%)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.backgroundColor = "var(--connect-surface)";
-      }}
+      className="flex items-center gap-3 p-2 rounded-lg w-full text-left transition-colors duration-150 cursor-pointer border-none [background-color:var(--connect-surface)] [border:1px_solid_var(--connect-border)] hover:brightness-95"
     >
       <AppIcon shortName={source.short_name} name={source.name} />
       <p

@@ -442,7 +442,7 @@ if (view === "configure" && selectedSource) {
 - [x] Add `createSourceConnection()` method to `api.ts`
 
 ### Phase 2: Direct Auth Flow
-- [ ] Create `DynamicFormField.tsx` component
+- [x] Create `DynamicFormField.tsx` component
 - [ ] Create `AuthMethodSelector.tsx` component
 - [ ] Create `SourceConfigView.tsx` component (direct auth only)
 - [ ] Modify `SuccessScreen.tsx` to handle configure view

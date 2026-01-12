@@ -7,46 +7,29 @@ interface ButtonProps {
   onClick?: () => void;
   variant?: ButtonVariant;
   className?: string;
+  type?: "button" | "submit" | "reset";
+  disabled?: boolean;
 }
-
-const variantStyles: Record<
-  ButtonVariant,
-  { bg: string; hover: string; color: string }
-> = {
-  primary: {
-    bg: "var(--connect-primary)",
-    hover: "var(--connect-primary-hover)",
-    color: "white",
-  },
-  secondary: {
-    bg: "var(--connect-secondary)",
-    hover: "var(--connect-secondary-hover)",
-    color: "var(--connect-text)",
-  },
-};
 
 export function Button({
   children,
   onClick,
   variant = "primary",
   className = "",
+  type = "button",
+  disabled = false,
 }: ButtonProps) {
-  const styles = variantStyles[variant];
+  const variantClasses =
+    variant === "primary"
+      ? "[background-color:var(--connect-primary)] [color:white] hover:[background-color:var(--connect-primary-hover)]"
+      : "[background-color:var(--connect-secondary)] [color:var(--connect-text)] hover:[background-color:var(--connect-secondary-hover)]";
 
   return (
     <button
+      type={type}
       onClick={onClick}
-      className={`px-4 py-1.5 font-medium rounded-md text-sm transition-colors flex items-center gap-2 ${className}`}
-      style={{
-        backgroundColor: styles.bg,
-        color: styles.color,
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.backgroundColor = styles.hover;
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.backgroundColor = styles.bg;
-      }}
+      disabled={disabled}
+      className={`px-4 py-1.5 font-medium rounded-md text-sm transition-colors flex items-center gap-2 cursor-pointer border-none disabled:opacity-50 disabled:cursor-not-allowed ${variantClasses} ${className}`}
     >
       {children}
     </button>
