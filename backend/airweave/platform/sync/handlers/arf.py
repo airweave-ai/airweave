@@ -64,7 +64,10 @@ class ArfHandler(EntityActionHandler):
         batch: EntityActionBatch,
         sync_context: "SyncContext",
     ) -> None:
-        """Handle a full action batch."""
+        """Handle a full action batch.
+
+        Note: skip_content_handlers filtering is done by EntityActionDispatcher.
+        """
         # Order: deletes first, then updates, then inserts
         if batch.deletes:
             await self.handle_deletes(batch.deletes, sync_context)
@@ -80,27 +83,15 @@ class ArfHandler(EntityActionHandler):
     ) -> None:
         """Store inserted entities to ARF.
 
-        Respects skip_content_handlers flag for collection-level deduplication.
+        Note: skip_content_handlers filtering is done by EntityActionDispatcher.
         """
         if not actions:
-            return
-
-        # Filter out inserts where skip_content_handlers=True (collection-level dedup)
-        actions_to_process = [a for a in actions if not a.skip_content_handlers]
-        skipped_count = len(actions) - len(actions_to_process)
-
-        if skipped_count > 0:
-            sync_context.logger.debug(
-                f"[ARF] Skipping {skipped_count} inserts (collection-level dedup)"
-            )
-
-        if not actions_to_process:
             return
 
         # Ensure manifest exists (lazily created on first write)
         await self._ensure_manifest(sync_context)
 
-        entities = [action.entity for action in actions_to_process]
+        entities = [action.entity for action in actions]
         await self._do_upsert(entities, "insert", sync_context)
 
     async def handle_updates(
