@@ -1,18 +1,26 @@
-"""OpenAI dense embedder using text-embedding-3-large."""
+"""OpenAI dense embedder using text-embedding-3-large.
+
+Supports Matryoshka embeddings via explicit dimension parameter for flexible
+vector sizes (e.g., 768 for ranking, 96 for ANN search).
+"""
 
 import asyncio
 import time
-from typing import List
+from typing import TYPE_CHECKING, List, Optional, Union
 
 import tiktoken
 from openai import AsyncOpenAI
 
 from airweave.core.config import settings
+from airweave.core.logging import ContextualLogger
+from airweave.core.logging import logger as default_logger
 from airweave.platform.rate_limiters.openai import OpenAIRateLimiter
-from airweave.platform.sync.context import SyncContext
 from airweave.platform.sync.exceptions import SyncFailureError
 
 from ._base import BaseEmbedder
+
+if TYPE_CHECKING:
+    from airweave.platform.contexts import SyncContext
 
 
 class DenseEmbedder(BaseEmbedder):
@@ -75,22 +83,42 @@ class DenseEmbedder(BaseEmbedder):
         self._rate_limiter = OpenAIRateLimiter()  # This singleton is still OK (shared rate limit)
         self._tokenizer = tiktoken.get_encoding("cl100k_base")
 
-    async def embed_many(self, texts: List[str], sync_context: SyncContext) -> List[List[float]]:
-        """Embed batch of texts using OpenAI text-embedding-3-large.
+    async def embed_many(
+        self,
+        texts: List[str],
+        context: Union["SyncContext", ContextualLogger, None] = None,
+        dimensions: Optional[int] = None,
+    ) -> List[List[float]]:
+        """Embed batch of texts using OpenAI text-embedding-3 models.
 
-        Returns exactly len(texts) vectors (3072-dim each).
-        Raises SyncFailureError on ANY error (no silent failures).
+        Supports Matryoshka embeddings via explicit dimension parameter.
+        OpenAI's text-embedding-3-* models support native dimension reduction.
 
         Args:
             texts: List of text strings to embed (must not be empty)
-            sync_context: Sync context with logger
+            context: Either a SyncContext (has .logger), a ContextualLogger, or None.
+                    Used for debug logging only.
+            dimensions: Optional dimension override for Matryoshka truncation.
+                       If None, uses self.VECTOR_DIMENSIONS (model default).
+                       Examples: 768 for ranking, 96 for ANN search.
 
         Returns:
-            List of 3072-dimensional embedding vectors
+            List of embedding vectors with specified dimensions
 
         Raises:
             SyncFailureError: On any error (empty texts, API failures, etc.)
         """
+        # Extract logger from context (SyncContext has .logger, ContextualLogger is a logger)
+        if context is None:
+            logger = default_logger
+        elif hasattr(context, "logger"):
+            logger = context.logger  # SyncContext
+        else:
+            logger = context  # ContextualLogger directly
+
+        # Use explicit dimensions if provided, else model default
+        output_dims = dimensions or self.VECTOR_DIMENSIONS
+
         if not texts:
             return []
 
@@ -109,7 +137,9 @@ class DenseEmbedder(BaseEmbedder):
             len(self._tokenizer.encode(text, allowed_special="all")) for text in texts
         )
 
-        sync_context.logger.debug(f"Embedding {len(texts)} texts with {total_tokens} total tokens")
+        logger.debug(
+            f"Embedding {len(texts)} texts with {total_tokens} tokens -> {output_dims}-dim vectors"
+        )
 
         # Split into smaller batches and process concurrently
         # Max 100 texts per sub-batch to stay under 300K token limit
@@ -123,7 +153,7 @@ class DenseEmbedder(BaseEmbedder):
                 for i in range(0, len(texts), MAX_TEXTS_PER_SUBBATCH)
             ]
 
-            sync_context.logger.debug(
+            logger.debug(
                 f"[EMBED] Starting {len(sub_batches)} sub-batches "
                 f"(max {self.MAX_CONCURRENT_REQUESTS} concurrent)"
             )
@@ -147,15 +177,15 @@ class DenseEmbedder(BaseEmbedder):
 
                     wait_time = time.monotonic() - wait_start
                     start_time = time.monotonic()
-                    sync_context.logger.debug(
+                    logger.debug(
                         f"[EMBED] Batch {batch_idx + 1}/{len(sub_batches)} STARTED "
                         f"(texts={len(sub_batch)}, active={current_active}, wait={wait_time:.2f}s)"
                     )
 
                     try:
-                        result = await self._embed_sub_batch(sub_batch, sync_context)
+                        result = await self._embed_sub_batch(sub_batch, logger, output_dims)
                         elapsed = time.monotonic() - start_time
-                        sync_context.logger.debug(
+                        logger.debug(
                             f"[EMBED] Batch {batch_idx + 1}/{len(sub_batches)} DONE "
                             f"in {elapsed:.2f}s (texts={len(sub_batch)})"
                         )
@@ -170,7 +200,7 @@ class DenseEmbedder(BaseEmbedder):
             )
 
             total_time = time.monotonic() - batch_start_time
-            sync_context.logger.debug(
+            logger.debug(
                 f"[EMBED] All {len(sub_batches)} sub-batches completed in {total_time:.2f}s "
                 f"(avg {total_time / len(sub_batches):.2f}s/batch)"
             )
@@ -180,16 +210,14 @@ class DenseEmbedder(BaseEmbedder):
 
         # Check if we need to split due to token limit
         if total_tokens > self.MAX_TOKENS_PER_REQUEST:
-            sync_context.logger.debug(
-                f"Batch exceeds {self.MAX_TOKENS_PER_REQUEST} tokens, splitting in half"
-            )
+            logger.debug(f"Batch exceeds {self.MAX_TOKENS_PER_REQUEST} tokens, splitting in half")
             mid = len(texts) // 2
-            first_half = await self.embed_many(texts[:mid], sync_context)
-            second_half = await self.embed_many(texts[mid:], sync_context)
+            first_half = await self.embed_many(texts[:mid], context, dimensions)
+            second_half = await self.embed_many(texts[mid:], context, dimensions)
             return first_half + second_half
 
         # Process single request with rate limiting
-        embeddings = await self._embed_batch(texts, sync_context)
+        embeddings = await self._embed_batch(texts, logger, output_dims)
 
         # Validate result count matches input count
         if len(embeddings) != len(texts):
@@ -200,7 +228,7 @@ class DenseEmbedder(BaseEmbedder):
         return embeddings
 
     async def _embed_sub_batch(
-        self, texts: List[str], sync_context: SyncContext
+        self, texts: List[str], logger: ContextualLogger, output_dims: int
     ) -> List[List[float]]:
         """Embed a sub-batch, handling token limit splitting if needed.
 
@@ -212,7 +240,8 @@ class DenseEmbedder(BaseEmbedder):
 
         Args:
             texts: List of texts to embed (already within count limit)
-            sync_context: Sync context with logger
+            logger: Logger for debug output
+            output_dims: Output dimension for embeddings
 
         Returns:
             List of embedding vectors (zero vectors for skipped texts)
@@ -227,33 +256,36 @@ class DenseEmbedder(BaseEmbedder):
 
         # Handle single text that exceeds the limit - skip it gracefully
         if len(texts) == 1 and total_tokens > self.MAX_TOKENS_PER_REQUEST:
-            sync_context.logger.warning(
+            logger.warning(
                 f"[EMBED] Skipping text with {total_tokens} tokens "
                 f"(exceeds {self.MAX_TOKENS_PER_REQUEST} limit). "
                 f"Text preview: {texts[0][:200]}..."
             )
             # Return zero vector so the pipeline continues
-            return [[0.0] * self.VECTOR_DIMENSIONS]
+            return [[0.0] * output_dims]
 
         # Check if we need to split due to token limit
         if total_tokens > self.MAX_TOKENS_PER_REQUEST:
-            sync_context.logger.debug(
+            logger.debug(
                 f"Sub-batch exceeds {self.MAX_TOKENS_PER_REQUEST} tokens, splitting in half"
             )
             mid = len(texts) // 2
-            first_half = await self._embed_sub_batch(texts[:mid], sync_context)
-            second_half = await self._embed_sub_batch(texts[mid:], sync_context)
+            first_half = await self._embed_sub_batch(texts[:mid], logger, output_dims)
+            second_half = await self._embed_sub_batch(texts[mid:], logger, output_dims)
             return first_half + second_half
 
         # Process single request
-        return await self._embed_batch(texts, sync_context)
+        return await self._embed_batch(texts, logger, output_dims)
 
-    async def _embed_batch(self, batch: List[str], sync_context: SyncContext) -> List[List[float]]:
+    async def _embed_batch(
+        self, batch: List[str], logger: ContextualLogger, output_dims: int
+    ) -> List[List[float]]:
         """Embed single batch with rate limiting and error handling.
 
         Args:
             batch: List of texts to embed (must fit in one OpenAI request)
-            sync_context: Sync context with logger
+            logger: Logger for debug output
+            output_dims: Output dimension for embeddings (Matryoshka support)
 
         Returns:
             List of embedding vectors
@@ -267,19 +299,20 @@ class DenseEmbedder(BaseEmbedder):
             await self._rate_limiter.acquire()
             rate_limit_wait = time.monotonic() - rate_limit_start
 
-            # Call OpenAI API
+            # Call OpenAI API with explicit dimensions (Matryoshka support)
             api_start = time.monotonic()
             response = await self._client.embeddings.create(
                 input=batch,
                 model=self.MODEL_NAME,
+                dimensions=output_dims,  # Matryoshka: request specific dimension
                 encoding_format="float",
             )
             api_time = time.monotonic() - api_start
 
             # Log timing breakdown
             if rate_limit_wait > 0.1 or api_time > 5.0:
-                sync_context.logger.debug(
-                    f"[EMBED] API call: {len(batch)} texts, "
+                logger.debug(
+                    f"[EMBED] API call: {len(batch)} texts -> {output_dims}-dim, "
                     f"rate_limit_wait={rate_limit_wait:.2f}s, api_time={api_time:.2f}s"
                 )
 
@@ -292,11 +325,10 @@ class DenseEmbedder(BaseEmbedder):
                     f"OpenAI returned {len(embeddings)} embeddings for {len(batch)} texts"
                 )
 
-            # Validate dimensions
-            if embeddings and len(embeddings[0]) != self.VECTOR_DIMENSIONS:
+            # Validate dimensions match requested
+            if embeddings and len(embeddings[0]) != output_dims:
                 raise SyncFailureError(
-                    f"OpenAI returned {len(embeddings[0])}-dim vectors, "
-                    f"expected {self.VECTOR_DIMENSIONS}"
+                    f"OpenAI returned {len(embeddings[0])}-dim vectors, expected {output_dims}"
                 )
 
             return embeddings
@@ -310,16 +342,16 @@ class DenseEmbedder(BaseEmbedder):
             # Token limit error - skip batch gracefully with zero vectors
             # This shouldn't happen if _embed_sub_batch worked, but handle it as fallback
             if "maximum context length" in error_msg or "max_tokens" in error_msg:
-                sync_context.logger.error(
+                logger.error(
                     f"[EMBED] Token limit exceeded for batch of {len(batch)} texts, "
                     f"returning zero vectors. Error: {e}"
                 )
-                return [[0.0] * self.VECTOR_DIMENSIONS for _ in batch]
+                return [[0.0] * output_dims for _ in batch]
 
             # Other transient errors - log and skip batch
             # Don't kill the entire sync for a single batch failure
-            sync_context.logger.error(
+            logger.error(
                 f"[EMBED] OpenAI API error for batch of {len(batch)} texts, "
                 f"returning zero vectors. Error: {e}"
             )
-            return [[0.0] * self.VECTOR_DIMENSIONS for _ in batch]
+            return [[0.0] * output_dims for _ in batch]

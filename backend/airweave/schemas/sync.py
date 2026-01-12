@@ -9,6 +9,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from airweave import schemas
 from airweave.core.shared_models import SyncStatus
+from airweave.platform.sync.config.base import SyncConfig
 
 
 class SyncBase(BaseModel):
@@ -23,6 +24,7 @@ class SyncBase(BaseModel):
     temporal_schedule_id: Optional[str] = None
     sync_type: str = "full"
     sync_metadata: Optional[dict] = None
+    sync_config: Optional[SyncConfig] = None
     status: Optional[SyncStatus] = SyncStatus.ACTIVE
 
     @field_validator("cron_schedule")
@@ -81,6 +83,7 @@ class SyncUpdate(BaseModel):
     cron_schedule: Optional[str] = None
     next_scheduled_run: Optional[datetime] = None
     sync_metadata: Optional[dict] = None
+    sync_config: Optional[SyncConfig] = None
     status: Optional[SyncStatus] = None
     temporal_schedule_id: Optional[str] = None
     sync_type: Optional[str] = None
@@ -155,6 +158,7 @@ class SyncWithoutConnections(BaseModel):
     next_scheduled_run: Optional[datetime] = None
     status: SyncStatus
     sync_metadata: Optional[dict] = None
+    sync_config: Optional[SyncConfig] = None
     temporal_schedule_id: Optional[str] = None
     sync_type: str = "full"
     id: UUID

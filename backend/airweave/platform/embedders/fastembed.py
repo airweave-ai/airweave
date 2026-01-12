@@ -5,8 +5,8 @@ from typing import List
 
 from fastembed import SparseEmbedding, SparseTextEmbedding
 
+from airweave.platform.contexts import SyncContext
 from airweave.platform.sync.async_helpers import run_in_thread_pool
-from airweave.platform.sync.context import SyncContext
 from airweave.platform.sync.exceptions import SyncFailureError
 
 from ._base import BaseEmbedder

@@ -11,8 +11,11 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from typing import TYPE_CHECKING, Literal, Optional
+from datetime import datetime
+from typing import Any, List, Literal, Optional
 from uuid import UUID
+
+from pydantic import BaseModel
 
 # Prefer SparseTextEmbedding (newer fastembed), fallback to SparseEmbedding (older)
 try:
@@ -35,6 +38,7 @@ from qdrant_client.local.local_collection import DEFAULT_VECTOR_NAME
 
 from airweave.core.config import settings
 from airweave.core.logging import ContextualLogger
+from airweave.schemas.search import RetrievalStrategy
 from airweave.core.logging import logger as default_logger
 from airweave.platform.configs.auth import QdrantAuthConfig
 from airweave.platform.decorators import destination
@@ -44,14 +48,39 @@ from airweave.platform.destinations.collection_strategy import (
     get_physical_collection_name,
 )
 from airweave.platform.entities._base import BaseEntity
+from airweave.schemas.search import AirweaveTemporalConfig, SearchResult
 
-if TYPE_CHECKING:
-    from airweave.search.operations.temporal_relevance import DecayConfig
+
+class DecayConfig(BaseModel):
+    """Qdrant-specific configuration for time-based decay in queries.
+
+    This is the native format that Qdrant's query API expects for temporal
+    relevance scoring. Created by translating AirweaveTemporalConfig.
+    """
+
+    decay_type: str  # "linear", "exponential", "gaussian"
+    datetime_field: str
+    target_datetime: datetime
+    scale_seconds: float
+    midpoint: float
+    weight: float
+
+    def get_scale_seconds(self) -> float:
+        """Get scale in seconds for decay calculation."""
+        return self.scale_seconds
+
 
 KEYWORD_VECTOR_NAME = "bm25"
 
 
-@destination("Qdrant", "qdrant", auth_config_class=QdrantAuthConfig, supports_vector=True)
+@destination(
+    "Qdrant",
+    "qdrant",
+    auth_config_class=QdrantAuthConfig,
+    supports_vector=True,
+    requires_client_embedding=True,
+    supports_temporal_relevance=True,
+)
 class QdrantDestination(VectorDBDestination):
     """Qdrant destination with multi-tenant support and legacy compatibility."""
 
@@ -391,70 +420,6 @@ class QdrantDestination(VectorDBDestination):
     # ----------------------------------------------------------------------------------
     # Insert / Upsert
     # ----------------------------------------------------------------------------------
-    async def insert(self, entity: BaseEntity) -> None:
-        """Upsert a single entity into Qdrant."""
-        await self.ensure_client_readiness()
-        await self.ensure_collection_ready()
-
-        # Sanity checks
-        if not entity.airweave_system_metadata or not entity.airweave_system_metadata.vectors:
-            raise ValueError(f"Entity {entity.entity_id} has no vector in system metadata")
-        if not entity.airweave_system_metadata.sync_id:
-            raise ValueError(f"Entity {entity.entity_id} has no sync_id in system metadata")
-
-        # Get entity data as dict, excluding vectors to avoid numpy serialization issues
-        data_object = entity.model_dump(
-            mode="json", exclude_none=True, exclude={"airweave_system_metadata": {"vectors"}}
-        )
-
-        # CRITICAL: Remove explicit None values from timestamps (Pydantic may include them)
-        # This prevents Qdrant decay formula errors on documents without valid timestamps
-        if data_object.get("updated_at") is None:
-            data_object.pop("updated_at", None)
-        if data_object.get("created_at") is None:
-            data_object.pop("created_at", None)
-
-        # CRITICAL: Normalize timestamps for temporal relevance
-        # If updated_at is missing/null but created_at has a value, use created_at as fallback
-        # This ensures temporal decay can work on documents that only have created_at
-        if (
-            "updated_at" not in data_object or data_object.get("updated_at") is None
-        ) and data_object.get("created_at") is not None:
-            data_object["updated_at"] = data_object["created_at"]
-            self.logger.debug(
-                f"[Qdrant] Normalized timestamp: copied created_at → updated_at "
-                f"for entity {entity.entity_id}"
-            )
-
-        # Add tenant metadata for filtering
-        data_object["airweave_collection_id"] = str(self.collection_id)
-
-        # Deterministic per-chunk ID
-        point_id = self._make_point_uuid(entity.airweave_system_metadata.sync_id, entity.entity_id)
-
-        # Optional sparse (accepts fastembed object or dict)
-        sv = entity.airweave_system_metadata.vectors[1]
-        sparse_part = {}
-        if sv is not None:
-            obj = sv.as_object() if hasattr(sv, "as_object") else sv
-            if isinstance(obj, dict):
-                sparse_part = {KEYWORD_VECTOR_NAME: obj}
-
-        async with self._write_sem:
-            await self.client.upsert(
-                collection_name=self.collection_name,
-                points=[
-                    rest.PointStruct(
-                        id=point_id,
-                        vector={DEFAULT_VECTOR_NAME: entity.airweave_system_metadata.vectors[0]}
-                        | sparse_part,
-                        payload=data_object,
-                    )
-                ],
-                wait=True,
-            )
-
-    # --------- NEW: helpers to keep bulk_insert simple (fixes C901) -------------------
     def _build_point_struct(self, entity: BaseEntity) -> rest.PointStruct:
         """Convert a BaseEntity to a Qdrant PointStruct with tenant metadata."""
         # Validate required fields first
@@ -809,52 +774,6 @@ class QdrantDestination(VectorDBDestination):
     # ----------------------------------------------------------------------------------
     # Deletes (by parent/sync/etc.)
     # ----------------------------------------------------------------------------------
-    async def delete(self, db_entity_id: UUID) -> None:
-        """Delete all points belonging to a DB entity id (parent)."""
-        await self.ensure_client_readiness()
-
-        # Track semaphore + timing for delete operations
-        active_writes = self.DEFAULT_WRITE_CONCURRENCY - self._write_sem._value
-        self.logger.info(
-            f"[Qdrant] 🗑️  Delete by db_entity_id: "
-            f"{active_writes}/{self.DEFAULT_WRITE_CONCURRENCY} active"
-        )
-
-        start_time = asyncio.get_event_loop().time()
-        async with self._write_sem:
-            await self.client.delete(
-                collection_name=self.collection_name,
-                points_selector=rest.FilterSelector(
-                    filter=rest.Filter(
-                        must=[
-                            # CRITICAL: Tenant filter for multi-tenant performance
-                            rest.FieldCondition(
-                                key="airweave_collection_id",
-                                match=rest.MatchValue(value=str(self.collection_id)),
-                            ),
-                            rest.FieldCondition(
-                                key="airweave_system_metadata.db_entity_id",
-                                match=rest.MatchValue(value=str(db_entity_id)),
-                            ),
-                        ]
-                    )
-                ),
-                wait=True,
-            )
-        duration = asyncio.get_event_loop().time() - start_time
-
-        # Log slow deletes to identify if on_disk_payload is causing issues
-        if duration > 5.0:
-            self.logger.warning(
-                f"[Qdrant] 🗑️  ⚠️ Slow delete: {duration:.2f}s by db_entity_id "
-                f"(collection={self.collection_name}, on_disk_payload=True)"
-            )
-        else:
-            self.logger.info(
-                f"[Qdrant] 🗑️  ✅ Deleted by db_entity_id in {duration:.2f}s "
-                f"(collection={self.collection_name})"
-            )
-
     async def delete_by_sync_id(self, sync_id: UUID) -> None:
         """Delete all points that have the provided sync job id."""
         await self.ensure_client_readiness()
@@ -878,88 +797,6 @@ class QdrantDestination(VectorDBDestination):
                 ),
                 wait=True,
             )
-
-    async def bulk_delete(self, entity_ids: list[str], sync_id: UUID) -> None:
-        """Delete specific entity ids that belong to a particular sync job."""
-        if not entity_ids:
-            return
-        await self.ensure_client_readiness()
-
-        active_writes = self.DEFAULT_WRITE_CONCURRENCY - self._write_sem._value
-        self.logger.info(
-            f"[Qdrant] 🗑️  Bulk delete {len(entity_ids)} entities: "
-            f"{active_writes}/{self.DEFAULT_WRITE_CONCURRENCY} active"
-        )
-
-        start_time = asyncio.get_event_loop().time()
-        async with self._write_sem:
-            await self.client.delete(
-                collection_name=self.collection_name,
-                points_selector=rest.FilterSelector(
-                    filter=rest.Filter(
-                        must=[
-                            # CRITICAL: Tenant filter for multi-tenant performance
-                            rest.FieldCondition(
-                                key="airweave_collection_id",
-                                match=rest.MatchValue(value=str(self.collection_id)),
-                            ),
-                            rest.FieldCondition(
-                                key="airweave_system_metadata.sync_id",
-                                match=rest.MatchValue(value=str(sync_id)),
-                            ),
-                            rest.FieldCondition(
-                                key="entity_id",
-                                match=rest.MatchAny(any=entity_ids),
-                            ),
-                        ]
-                    )
-                ),
-                wait=True,
-            )
-        duration = asyncio.get_event_loop().time() - start_time
-        self.logger.info(
-            f"[Qdrant] 🗑️  ✅ Bulk deleted {len(entity_ids)} entities in {duration:.2f}s"
-        )
-
-    async def bulk_delete_by_parent_id(self, parent_id: str, sync_id: UUID | str) -> None:
-        """Delete all points for a given parent (db entity) id and sync id."""
-        if not parent_id:
-            return
-        await self.ensure_client_readiness()
-
-        active_writes = self.DEFAULT_WRITE_CONCURRENCY - self._write_sem._value
-        self.logger.info(
-            f"[Qdrant] 🗑️  Delete by parent_id: "
-            f"{active_writes}/{self.DEFAULT_WRITE_CONCURRENCY} active"
-        )
-
-        start_time = asyncio.get_event_loop().time()
-        async with self._write_sem:
-            await self.client.delete(
-                collection_name=self.collection_name,
-                points_selector=rest.FilterSelector(
-                    filter=rest.Filter(
-                        must=[
-                            # CRITICAL: Tenant filter for multi-tenant performance
-                            rest.FieldCondition(
-                                key="airweave_collection_id",
-                                match=rest.MatchValue(value=str(self.collection_id)),
-                            ),
-                            rest.FieldCondition(
-                                key="airweave_system_metadata.original_entity_id",
-                                match=rest.MatchValue(value=str(parent_id)),
-                            ),
-                            rest.FieldCondition(
-                                key="airweave_system_metadata.sync_id",
-                                match=rest.MatchValue(value=str(sync_id)),
-                            ),
-                        ]
-                    )
-                ),
-                wait=True,
-            )
-        duration = asyncio.get_event_loop().time() - start_time
-        self.logger.info(f"[Qdrant] 🗑️  ✅ Deleted by parent_id in {duration:.2f}s")
 
     async def bulk_delete_by_parent_ids(self, parent_ids: list[str], sync_id: UUID) -> None:
         """Delete all points whose parent id is in the provided list and match sync id."""
@@ -1062,7 +899,7 @@ class QdrantDestination(VectorDBDestination):
 
     async def _prepare_query_request(
         self,
-        query_vector: list[float],
+        dense_vector: list[float] | None,
         limit: int,
         sparse_vector: SparseEmbedding | dict | None,
         search_method: Literal["hybrid", "neural", "keyword"],
@@ -1073,8 +910,10 @@ class QdrantDestination(VectorDBDestination):
         query_request_params: dict = {}
 
         if search_method == "neural":
+            if not dense_vector:
+                raise ValueError("Neural search requires dense vector")
             neural_params = {
-                "query": query_vector,
+                "query": dense_vector,
                 "using": DEFAULT_VECTOR_NAME,
                 "limit": limit,
             }
@@ -1100,6 +939,8 @@ class QdrantDestination(VectorDBDestination):
         if search_method == "hybrid":
             if not sparse_vector:
                 raise ValueError("Hybrid search requires sparse vector")
+            if not dense_vector:
+                raise ValueError("Hybrid search requires dense vector")
             obj = (
                 sparse_vector.as_object() if hasattr(sparse_vector, "as_object") else sparse_vector
             )
@@ -1116,7 +957,7 @@ class QdrantDestination(VectorDBDestination):
 
             prefetch_params = [
                 {
-                    "query": query_vector,
+                    "query": dense_vector,
                     "using": DEFAULT_VECTOR_NAME,
                     "limit": prefetch_limit,
                     **({"filter": filter} if filter else {}),
@@ -1151,24 +992,54 @@ class QdrantDestination(VectorDBDestination):
 
         return rest.QueryRequest(**query_request_params)
 
+    def _get_query_count(
+        self,
+        dense_vectors: list[list[float]] | None,
+        sparse_vectors: list[SparseEmbedding] | list[dict] | None,
+        search_method: Literal["hybrid", "neural", "keyword"],
+    ) -> int:
+        """Get number of queries based on search method and available vectors.
+
+        Args:
+            dense_vectors: Dense embeddings (None for keyword-only)
+            sparse_vectors: Sparse embeddings (None for neural-only)
+            search_method: Search strategy
+
+        Returns:
+            Number of queries
+
+        Raises:
+            ValueError: If required vectors are missing for the search method
+        """
+        if search_method == "keyword":
+            if not sparse_vectors:
+                raise ValueError("Keyword search requires sparse vectors")
+            return len(sparse_vectors)
+        else:
+            if not dense_vectors:
+                raise ValueError(f"{search_method} search requires dense vectors")
+            return len(dense_vectors)
+
     def _validate_bulk_search_inputs(
         self,
-        query_vectors: list[list[float]],
+        num_queries: int,
         filter_conditions: list[dict] | None,
+        dense_vectors: list[list[float]] | None,
         sparse_vectors: list[SparseEmbedding] | list[dict] | None,
     ) -> None:
         """Validate lengths of per-query inputs for bulk search."""
-        if filter_conditions and len(filter_conditions) != len(query_vectors):
+        if filter_conditions and len(filter_conditions) != num_queries:
             raise ValueError(
                 f"Number of filter conditions ({len(filter_conditions)}) must match "
-                f"number of query vectors ({len(query_vectors)})"
+                f"number of queries ({num_queries})"
             )
-        if sparse_vectors and len(query_vectors) != len(sparse_vectors):
-            raise ValueError("Sparse vector count does not match query vectors")
+        if dense_vectors and sparse_vectors and len(dense_vectors) != len(sparse_vectors):
+            raise ValueError("Sparse vector count does not match dense vectors")
 
     async def _prepare_bulk_search_requests(
         self,
-        query_vectors: list[list[float]],
+        num_queries: int,
+        dense_vectors: list[list[float]] | None,
         limit: int,
         score_threshold: float | None,
         with_payload: bool,
@@ -1180,7 +1051,8 @@ class QdrantDestination(VectorDBDestination):
     ) -> list[rest.QueryRequest]:
         """Create per-query request objects with automatic tenant filtering."""
         requests: list[rest.QueryRequest] = []
-        for i, qv in enumerate(query_vectors):
+        for i in range(num_queries):
+            dense_vector = dense_vectors[i] if dense_vectors else None
             # CRITICAL: Build tenant filter BEFORE preparing query request
             # This ensures prefetch operations are also filtered by tenant
             tenant_filter = rest.Filter(
@@ -1205,11 +1077,11 @@ class QdrantDestination(VectorDBDestination):
             else:
                 combined_filter = tenant_filter
 
-            sv = sparse_vectors[i] if sparse_vectors else None
+            sparse_vector = sparse_vectors[i] if sparse_vectors else None
             req = await self._prepare_query_request(
-                query_vector=qv,
+                dense_vector=dense_vector,
                 limit=limit,
-                sparse_vector=sv,
+                sparse_vector=sparse_vector,
                 search_method=search_method,
                 decay_config=decay_config,
                 filter=combined_filter,  # Pass filter to prefetch operations!
@@ -1242,36 +1114,183 @@ class QdrantDestination(VectorDBDestination):
         return all_results
 
     # ----------------------------------------------------------------------------------
-    # Public search API (legacy-compatible signatures)
+    # Public search API (destination-agnostic interface)
     # ----------------------------------------------------------------------------------
     async def search(
         self,
-        query_vector: list[float],
-        limit: int = 100,
-        score_threshold: float | None = None,
-        with_payload: bool = True,
-        filter: dict | None = None,
-        decay_config: Optional[DecayConfig] = None,
-        sparse_vector: SparseEmbedding | dict | None = None,
-        search_method: Literal["hybrid", "neural", "keyword"] = "hybrid",
-        offset: int = 0,
-    ) -> list[dict]:
-        """Search a single query vector; thin wrapper over `bulk_search`."""
-        return await self.bulk_search(
-            query_vectors=[query_vector],
+        queries: List[str],
+        airweave_collection_id: UUID,
+        limit: int,
+        offset: int,
+        filter: Optional[dict] = None,
+        dense_embeddings: Optional[List[List[float]]] = None,
+        sparse_embeddings: Optional[List[Any]] = None,
+        retrieval_strategy: str = "hybrid",
+        temporal_config: Optional[AirweaveTemporalConfig] = None,
+    ) -> List[SearchResult]:
+        """Execute search against Qdrant using pre-computed embeddings.
+
+        Qdrant requires client-side embeddings (unlike Vespa which embeds server-side).
+        The embeddings must be provided via the dense_embeddings parameter.
+
+        Args:
+            queries: List of search query texts (for logging only - Qdrant uses embeddings)
+            airweave_collection_id: Airweave collection UUID for multi-tenant filtering
+            limit: Maximum number of results to return
+            offset: Number of results to skip (pagination)
+            filter: Optional filter dict (Airweave canonical format, passed through)
+            dense_embeddings: Pre-computed dense embeddings (required for Qdrant)
+            sparse_embeddings: Pre-computed sparse embeddings for hybrid search
+            retrieval_strategy: Search strategy - "hybrid", "neural", or "keyword"
+            temporal_config: Optional temporal config (translated to DecayConfig internally)
+
+        Returns:
+            List of SearchResult objects
+
+        Raises:
+            ValueError: If embeddings are not provided for strategies that require them
+        """
+        # Keyword-only searches don't need dense embeddings
+        if retrieval_strategy != RetrievalStrategy.KEYWORD.value and not dense_embeddings:
+            raise ValueError(
+                "Qdrant requires pre-computed dense embeddings for neural/hybrid search. "
+                "Ensure EmbedQuery operation ran before Retrieval."
+            )
+
+        # Keyword searches require sparse embeddings
+        if retrieval_strategy == RetrievalStrategy.KEYWORD.value and not sparse_embeddings:
+            raise ValueError(
+                "Keyword search requires sparse embeddings. "
+                "Ensure EmbedQuery operation generated sparse embeddings."
+            )
+
+        primary_query = queries[0] if queries else ""
+
+        # Translate temporal config to Qdrant-native DecayConfig
+        decay_config = self.translate_temporal(temporal_config)
+
+        # Filter already in dict format (Airweave canonical = Qdrant-compatible)
+        filter_dict = self.translate_filter(filter)
+
+        # Call bulk_search with appropriate vectors for the strategy
+        # For keyword-only, dense vectors aren't needed (only sparse embeddings)
+        dense_vectors_to_use = (
+            None if retrieval_strategy == RetrievalStrategy.KEYWORD.value else dense_embeddings
+        )
+
+        # Get query count for filter conditions
+        num_queries = self._get_query_count(
+            dense_vectors_to_use, sparse_embeddings, retrieval_strategy
+        )
+
+        raw_results = await self.bulk_search(
+            dense_vectors=dense_vectors_to_use,
             limit=limit,
-            score_threshold=score_threshold,
-            with_payload=with_payload,
-            filter_conditions=[filter] if filter else None,
-            sparse_vectors=[sparse_vector] if sparse_vector else None,
-            search_method=search_method,
+            with_payload=True,
+            filter_conditions=[filter_dict] * num_queries if filter_dict else None,
+            sparse_vectors=sparse_embeddings,
+            search_method=retrieval_strategy,
             decay_config=decay_config,
             offset=offset,
         )
 
+        # Convert to SearchResult format
+        results = []
+        for r in raw_results:
+            result = SearchResult(
+                id=str(r.get("id", "")),
+                score=r.get("score", 0.0),
+                payload=r.get("payload", {}),
+            )
+            results.append(result)
+
+        self.logger.debug(f"[QdrantSearch] Retrieved {len(results)} results")
+        return results
+
+    def translate_filter(self, filter: Optional[dict]) -> Optional[dict]:
+        """Translate filter to Qdrant dict format.
+
+        Qdrant uses the Airweave canonical filter format natively, so this is passthrough.
+
+        Args:
+            filter: Airweave canonical filter dict
+
+        Returns:
+            Filter as dict, or None
+        """
+        if filter is None:
+            return None
+        # Convert Pydantic model to dict if needed (for safety)
+        if hasattr(filter, "model_dump"):
+            return filter.model_dump(exclude_none=True)
+        return filter
+
+    def translate_temporal(self, config: Optional[AirweaveTemporalConfig]) -> Optional[DecayConfig]:
+        """Translate Airweave temporal config to Qdrant DecayConfig.
+
+        Converts the destination-agnostic AirweaveTemporalConfig to Qdrant's
+        native DecayConfig format.
+
+        The TemporalRelevance operation sets target_datetime and scale_seconds
+        dynamically based on actual collection data. If these are not set,
+        fallback defaults are used.
+
+        Args:
+            config: Airweave temporal relevance configuration
+
+        Returns:
+            Qdrant DecayConfig, or None if config not provided
+        """
+        if config is None:
+            return None
+
+        # Use dynamic scale_seconds if set by TemporalRelevance operation,
+        # otherwise parse decay_scale string, otherwise use 7 days default
+        if config.scale_seconds is not None:
+            scale_seconds = config.scale_seconds
+        elif config.decay_scale:
+            scale_seconds = self._parse_decay_scale(config.decay_scale)
+        else:
+            scale_seconds = 604800  # 7 days default
+
+        # Use dynamic target_datetime if set by TemporalRelevance operation,
+        # otherwise use current time
+        target_datetime = config.target_datetime or datetime.now()
+
+        return DecayConfig(
+            decay_type="linear",
+            datetime_field=config.reference_field,
+            target_datetime=target_datetime,
+            scale_seconds=scale_seconds,
+            midpoint=0.5,
+            weight=config.weight,
+        )
+
+    def _parse_decay_scale(self, scale: str) -> float:
+        """Parse decay scale string to seconds.
+
+        Args:
+            scale: Scale string like "7d", "30d", "1h"
+
+        Returns:
+            Scale in seconds
+        """
+        scale = scale.lower().strip()
+        if scale.endswith("d"):
+            return float(scale[:-1]) * 86400  # days to seconds
+        elif scale.endswith("h"):
+            return float(scale[:-1]) * 3600  # hours to seconds
+        elif scale.endswith("m"):
+            return float(scale[:-1]) * 60  # minutes to seconds
+        elif scale.endswith("s"):
+            return float(scale[:-1])  # seconds
+        else:
+            # Assume days if no unit
+            return float(scale) * 86400
+
     async def bulk_search(
         self,
-        query_vectors: list[list[float]],
+        dense_vectors: list[list[float]] | None,
         limit: int = 100,
         score_threshold: float | None = None,
         with_payload: bool = True,
@@ -1283,10 +1302,12 @@ class QdrantDestination(VectorDBDestination):
     ) -> list[dict]:
         """Search multiple queries at once with neural/keyword/hybrid and optional decay."""
         await self.ensure_client_readiness()
-        if not query_vectors:
-            return []
 
-        self._validate_bulk_search_inputs(query_vectors, filter_conditions, sparse_vectors)
+        # Calculate query count once and validate inputs
+        num_queries = self._get_query_count(dense_vectors, sparse_vectors, search_method)
+        self._validate_bulk_search_inputs(
+            num_queries, filter_conditions, dense_vectors, sparse_vectors
+        )
 
         if search_method != "neural":
             vector_config_names = await self.get_vector_config_names()
@@ -1300,7 +1321,7 @@ class QdrantDestination(VectorDBDestination):
         weight = getattr(decay_config, "weight", None) if decay_config else None
         self.logger.info(
             f"[Qdrant] Executing {search_method.upper()} search: "
-            f"queries={len(query_vectors)}, limit={limit}, "
+            f"queries={num_queries}, limit={limit}, "
             f"has_sparse={sparse_vectors is not None}, "
             f"decay_enabled={decay_config is not None}, "
             f"decay_weight={weight}"
@@ -1319,11 +1340,12 @@ class QdrantDestination(VectorDBDestination):
 
         try:
             requests = await self._prepare_bulk_search_requests(
-                query_vectors=query_vectors,
+                num_queries=num_queries,
+                dense_vectors=dense_vectors,
                 limit=limit,
                 score_threshold=score_threshold,
                 with_payload=with_payload,
-                filter_conditions=filter_conditions or [None] * len(query_vectors),
+                filter_conditions=filter_conditions or [None] * num_queries,
                 sparse_vectors=sparse_vectors,
                 search_method=search_method,
                 decay_config=decay_config,
@@ -1407,11 +1429,6 @@ class QdrantDestination(VectorDBDestination):
     # ----------------------------------------------------------------------------------
     # Introspection
     # ----------------------------------------------------------------------------------
-    async def has_keyword_index(self) -> bool:
-        """Return True if the BM25 (sparse) index exists for the collection."""
-        names = await self.get_vector_config_names()
-        return KEYWORD_VECTOR_NAME in names
-
     async def get_vector_config_names(self) -> list[str]:
         """Return all configured vector names (dense and sparse) for the collection."""
         await self.ensure_client_readiness()

@@ -12,7 +12,9 @@ Processing Requirements:
 - RAW_ENTITIES: Destination handles its own chunking and embedding
 """
 
-from ._base import BaseDestination, ProcessingRequirement, VectorDBDestination
+from airweave.platform.sync.pipeline import ProcessingRequirement
+
+from ._base import BaseDestination, VectorDBDestination
 
 __all__ = [
     "BaseDestination",

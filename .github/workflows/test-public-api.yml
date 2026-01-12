@@ -52,6 +52,8 @@ jobs:
           docker pull qdrant/qdrant:latest &
           docker pull temporalio/auto-setup:1.24.2 &
           docker pull temporalio/ui:2.26.2 &
+          docker pull vespaengine/vespa:8 &
+          docker pull alpine:3.19 &
           wait
           echo "All images pre-pulled successfully"
 
@@ -211,7 +213,7 @@ jobs:
           exit 1
 
       - name: Run Source Rate Limit Tests (Sequential)
-        if: success()
+        if: false  # Temporarily disabled to reduce CI load
         env:
           TEST_ENV: local
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

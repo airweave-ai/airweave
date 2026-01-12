@@ -19,6 +19,29 @@ class Breadcrumb(BaseModel):
     entity_type: str = Field(..., description="Entity class name (e.g., 'AsanaProjectEntity').")
 
 
+class VespaContent(BaseModel):
+    """Vespa-specific content for entity-as-document model.
+
+    Unlike Qdrant (chunk-as-document where each chunk is a separate entity),
+    Vespa stores all chunks and embeddings as arrays within a single entity.
+
+    Fields:
+        chunks: List of chunked text segments from the entity's textual representation.
+        chunk_small_embeddings: Binary-packed int8 embeddings for ANN search (96-dim).
+        chunk_large_embeddings: Full precision embeddings for ranking (768-dim).
+    """
+
+    chunks: List[str] = Field(default_factory=list, description="Chunked text segments")
+    chunk_small_embeddings: List[List[int]] = Field(
+        default_factory=list,
+        description="Binary-packed int8 embeddings for ANN search (96-dim)",
+    )
+    chunk_large_embeddings: List[List[float]] = Field(
+        default_factory=list,
+        description="Full precision embeddings for ranking (768-dim)",
+    )
+
+
 class AirweaveSystemMetadata(BaseModel):
     """System metadata for this entity.
 
@@ -87,10 +110,15 @@ class BaseEntity(BaseModel):
         None, description="System metadata for this entity."
     )
 
+    # Vespa-specific content (populated by VespaChunkEmbedProcessor)
+    vespa_content: Optional[VespaContent] = Field(
+        None, description="Vespa chunks and embeddings (entity-as-document model)"
+    )
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @model_validator(mode="after")
-    def validate_flagged_fields(self) -> "BaseEntity":
+    def validate_flagged_fields(self) -> "BaseEntity":  # noqa: C901
         """Validate that exactly one field has each unique flag.
 
         This enforces composition over inheritance by ensuring entity definitions
@@ -130,8 +158,8 @@ class BaseEntity(BaseModel):
             if len(flagged_fields) == 0:
                 raise ValueError(
                     f"{self.__class__.__name__} must have exactly ONE field marked with "
-                    f"{flag_label}. Found 0. Please add AirweaveField(..., {flag_label}=True) to the "
-                    f"appropriate field (e.g., 'gid', 'id', 'name')."
+                    f"{flag_label}. Found 0. Please add AirweaveField(..., {flag_label}=True) "
+                    f"to the appropriate field (e.g., 'gid', 'id', 'name')."
                 )
             elif len(flagged_fields) > 1:
                 raise ValueError(

@@ -11,7 +11,7 @@ from airweave.platform.sync.exceptions import EntityProcessingError, SyncFailure
 from airweave.platform.sync.file_types import SUPPORTED_FILE_EXTENSIONS
 
 if TYPE_CHECKING:
-    from airweave.platform.sync.context import SyncContext
+    from airweave.platform.contexts import SyncContext
 
 
 class TextualRepresentationBuilder:
@@ -48,7 +48,7 @@ class TextualRepresentationBuilder:
             Modifies entities in-place, setting textual_representation.
             Failed entities are removed and counted as skipped.
         """
-        source_name = sync_context.source._short_name
+        source_name = sync_context.source_instance._short_name
 
         # Step 1: Build metadata section for all entities
         await self._build_metadata_for_all(entities, source_name)

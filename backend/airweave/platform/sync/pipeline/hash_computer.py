@@ -12,7 +12,7 @@ from airweave.platform.entities._base import BaseEntity, CodeFileEntity, FileEnt
 from airweave.platform.sync.exceptions import EntityProcessingError, SyncFailureError
 
 if TYPE_CHECKING:
-    from airweave.platform.sync.context import SyncContext
+    from airweave.platform.contexts import SyncContext
 
 
 class HashComputer:
@@ -167,9 +167,8 @@ class HashComputer:
             entities.remove(entity)
 
         if failed_entities:
-            # Record skipped entities in tracker if available
-            if sync_context.entity_tracker:
-                await sync_context.entity_tracker.record_skipped(len(failed_entities))
+            # TODO: Record this through exception handling instead
+            await sync_context.entity_tracker.record_skipped(len(failed_entities))
 
             sync_context.logger.warning(
                 f"Skipped {len(failed_entities)} entities with hash computation failures"

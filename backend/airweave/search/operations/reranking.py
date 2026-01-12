@@ -37,7 +37,7 @@ class Reranking(SearchOperation):
         """Depends on Retrieval and FederatedSearch (if enabled) to have all results merged."""
         return ["Retrieval", "FederatedSearch"]
 
-    async def execute(
+    async def execute(  # noqa: C901
         self,
         context: SearchContext,
         state: dict[str, Any],
@@ -61,6 +61,21 @@ class Reranking(SearchOperation):
         # Get offset and limit from retrieval operation if present, otherwise from context
         offset = context.retrieval.offset if context.retrieval else context.offset
         limit = context.retrieval.limit if context.retrieval else context.limit
+
+        # DEBUG: Log input
+        sample_docs_preview = []
+        for r in results[:3]:
+            payload = r.get("payload", {})
+            text = payload.get("textual_representation", "")[:100]
+            sample_docs_preview.append(f"{payload.get('name', 'N/A')[:30]}: {text}...")
+        ctx.logger.debug(
+            f"\n[Reranking] INPUT:\n"
+            f"  Query: '{context.query[:100]}...'\n"
+            f"  Results to rerank: {len(results)}\n"
+            f"  Offset: {offset}, Limit: {limit}\n"
+            f"  Providers: {[p.__class__.__name__ for p in self.providers]}\n"
+            f"  Sample docs (first 3):\n    - " + "\n    - ".join(sample_docs_preview) + "\n"
+        )
 
         # Track k/top_n value across provider attempts
         final_top_n = None
@@ -99,7 +114,13 @@ class Reranking(SearchOperation):
             ctx=ctx,
             state=state,
         )
-        ctx.logger.debug(f"[Reranking] Rankings: {rankings}")
+
+        # DEBUG: Log rankings from provider
+        ctx.logger.debug(
+            f"[Reranking] RANKINGS FROM PROVIDER:\n"
+            f"  Total rankings: {len(rankings) if rankings else 0}\n"
+            f"  Top 5 rankings: {rankings[:5] if rankings else 'None'}"
+        )
 
         if not isinstance(rankings, list) or not rankings:
             raise RuntimeError("Provider returned empty or invalid rankings")
@@ -121,6 +142,20 @@ class Reranking(SearchOperation):
         paginated = self._apply_pagination(reranked, offset, limit)
 
         state["results"] = paginated
+
+        # DEBUG: Log output
+        reranked_preview = []
+        for r in paginated[:5]:
+            payload = r.get("payload", {})
+            reranked_preview.append(
+                f"{payload.get('name', 'N/A')[:40]} (score={r.get('score', 0):.4f})"
+            )
+        ctx.logger.debug(
+            f"\n[Reranking] OUTPUT:\n"
+            f"  Reranked count: {len(reranked)}\n"
+            f"  After pagination: {len(paginated)}\n"
+            f"  Top 5 reranked:\n    - " + "\n    - ".join(reranked_preview) + "\n"
+        )
 
         # Report metrics for analytics
         # Check if we hit provider max_docs limit

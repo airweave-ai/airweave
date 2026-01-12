@@ -4,6 +4,8 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 from uuid import UUID
 
+from airweave.platform.cleanup.service import cleanup_service
+
 if TYPE_CHECKING:
     from airweave.platform.auth.schemas import OAuth1Settings, OAuth2Settings
 
@@ -522,7 +524,12 @@ class SourceConnectionService:
         # Capture attributes upfront to avoid lazy-loading issues after session changes
         # (cancel_job and other operations may detach the object from the session)
         sync_id = source_conn.sync_id
-        readable_collection_id = source_conn.readable_collection_id
+        collection = await crud.collection.get_by_readable_id(
+            db, readable_id=source_conn.readable_collection_id, ctx=ctx
+        )
+        if not collection:
+            raise HTTPException(status_code=404, detail="Collection not found")
+        collection_schema = schemas.Collection.model_validate(collection, from_attributes=True)
 
         # Build response before deletion
         response = await self._build_source_connection_response(db, source_conn, ctx)
@@ -548,17 +555,8 @@ class SourceConnectionService:
                     # Log but don't fail the deletion if cancellation fails
                     ctx.logger.warning(f"Failed to cancel job {latest_job.id} during deletion: {e}")
 
-        # Clean up data
-        if sync_id:
-            # Clean up destination data
-            if readable_collection_id:
-                await self._cleanup_destination_data(db, source_conn, ctx)
-
-            # Clean up Temporal schedules
-            await self._cleanup_temporal_schedules(sync_id, db, ctx)
-
-            # Clean up raw data store (if enabled)
-            await self._cleanup_raw_data(sync_id, ctx)
+        # Clean up data (schedules, destinations, ARF)
+        await cleanup_service.cleanup_sync(db, sync_id, collection_schema, ctx)
 
         # Delete the source connection
         await crud.source_connection.remove(db, id=id, ctx=ctx)
@@ -620,7 +618,7 @@ class SourceConnectionService:
 
             # Handle sync creation with schedule
             sync_id, sync, sync_job = await self._handle_sync_creation(
-                uow, obj_in, source, connection.id, collection.id, ctx
+                uow, obj_in, source, connection.id, collection.id, collection.readable_id, ctx
             )
 
             # Create source connection
@@ -977,7 +975,7 @@ class SourceConnectionService:
 
             # Handle sync creation with schedule
             sync_id, sync, sync_job = await self._handle_sync_creation(
-                uow, obj_in, source, connection.id, collection.id, ctx
+                uow, obj_in, source, connection.id, collection.id, collection.readable_id, ctx
             )
 
             # Create source connection
@@ -1163,7 +1161,7 @@ class SourceConnectionService:
 
             # Handle sync creation with schedule
             sync_id, sync, sync_job = await self._handle_sync_creation(
-                uow, obj_in, source, connection.id, collection.id, ctx
+                uow, obj_in, source, connection.id, collection.id, collection.readable_id, ctx
             )
 
             # Create source connection
@@ -1224,6 +1222,7 @@ class SourceConnectionService:
         source: schemas.Source,
         connection_id: UUID,
         collection_id: UUID,
+        collection_readable_id: str,
         ctx: ApiContext,
     ) -> Tuple[Optional[UUID], Optional[schemas.Sync], Optional[schemas.SyncJob]]:
         """Common logic for creating sync with schedule during source connection creation.
@@ -1234,6 +1233,7 @@ class SourceConnectionService:
             source: Source model
             connection_id: Connection ID (model.connection.id)
             collection_id: Collection ID
+            collection_readable_id: Collection readable ID
             ctx: API context
 
         Returns:
@@ -1265,6 +1265,7 @@ class SourceConnectionService:
             obj_in.name,
             connection_id,
             collection_id,
+            collection_readable_id,
             cron_schedule,
             obj_in.sync_immediately,
             ctx,
@@ -1369,6 +1370,7 @@ class SourceConnectionService:
                 source_conn.name,
                 source_conn.connection_id,
                 collection.id,
+                collection.readable_id,
                 new_cron,
                 False,  # Don't run immediately on update
                 ctx,
@@ -1863,20 +1865,6 @@ class SourceConnectionService:
 
         return source_conn_response
 
-    async def _cleanup_raw_data(self, sync_id: UUID, ctx: ApiContext) -> None:
-        """Clean up raw data store for a sync."""
-        try:
-            from airweave.platform.sync import raw_data_service
-
-            sync_id_str = str(sync_id)
-            if await raw_data_service.sync_exists(sync_id_str):
-                deleted = await raw_data_service.delete_sync(sync_id_str)
-                if deleted:
-                    ctx.logger.info(f"Deleted raw data store for sync {sync_id}")
-        except Exception as e:
-            # Log but don't fail deletion
-            ctx.logger.warning(f"Failed to cleanup raw data for sync {sync_id}: {e}")
-
     # Import helper methods from existing helpers
     from airweave.core.source_connection_service_helpers import (
         source_connection_helpers,
@@ -1900,8 +1888,6 @@ class SourceConnectionService:
     _create_proxy_url = source_connection_helpers.create_proxy_url
     _update_sync_schedule = source_connection_helpers.update_sync_schedule
     _update_auth_fields = source_connection_helpers.update_auth_fields
-    _cleanup_destination_data = source_connection_helpers.cleanup_destination_data
-    _cleanup_temporal_schedules = source_connection_helpers.cleanup_temporal_schedules
     _sync_job_to_source_connection_job = source_connection_helpers.sync_job_to_source_connection_job
     _reconstruct_context_from_session = source_connection_helpers.reconstruct_context_from_session
     _exchange_oauth1_code = source_connection_helpers.exchange_oauth1_code

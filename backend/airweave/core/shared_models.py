@@ -103,6 +103,10 @@ class FeatureFlag(str, Enum):
     SOURCE_RATE_LIMITING = "source_rate_limiting"
     ZEPHYR_SCALE = "zephyr_scale"  # Enables Zephyr Scale test management sync for Jira
 
+    # Scoped admin API key permissions (CASA-compliant granular access)
+    # These allow specific admin operations via API key authentication
+    API_KEY_ADMIN_SYNC = "api_key_admin_sync"  # Allows resync operations via API key
+
 
 class AuthMethod(str, Enum):
     """Authentication methods used in API requests.

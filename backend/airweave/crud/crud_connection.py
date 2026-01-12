@@ -19,7 +19,12 @@ class CRUDConnection(CRUDBaseOrganization[Connection, ConnectionCreate, Connecti
     """CRUD operations for connections."""
 
     # Native connection short names
-    NATIVE_CONNECTION_SHORT_NAMES = ["qdrant_native", "neo4j_native", "local_text2vec"]
+    NATIVE_CONNECTION_SHORT_NAMES = [
+        "qdrant_native",
+        "neo4j_native",
+        "vespa_native",
+        "local_text2vec",
+    ]
 
     def _is_native_connection(self, connection: Connection) -> bool:
         """Check if a connection is a native system-level connection.

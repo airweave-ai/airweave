@@ -1,18 +1,26 @@
 """User filter operation.
 
-Applies user-provided Qdrant filters and merges them with filters extracted
+Applies user-provided filters and merges them with filters extracted
 from query interpretation. Responsible for creating the final filter that
 will be passed to the retrieval operation.
+
+Accepts both Qdrant Filter objects and Airweave canonical filter dicts
+(Dict[str, Any] with must/should/must_not structure).
 """
 
-from typing import Any, Dict, List, Optional
-
-from qdrant_client.http.models import Filter as QdrantFilter
+from typing import Any, Dict, List, Optional, Union
 
 from airweave.api.context import ApiContext
+from airweave.schemas.search import AirweaveFilter
 from airweave.search.context import SearchContext
 
 from ._base import SearchOperation
+
+# Optional import for backwards compatibility with Qdrant Filter objects
+try:
+    from qdrant_client.http.models import Filter as QdrantFilter
+except ImportError:
+    QdrantFilter = None  # type: ignore
 
 
 class UserFilter(SearchOperation):
@@ -28,12 +36,20 @@ class UserFilter(SearchOperation):
     # Note: created_at, updated_at are entity-level fields (not nested in airweave_system_metadata)
     # They don't need path mapping - used directly in filters
 
-    def __init__(self, filter: QdrantFilter) -> None:
-        """Initialize with user-provided filter."""
+    def __init__(self, filter: Union[AirweaveFilter, "QdrantFilter", None]) -> None:
+        """Initialize with user-provided filter.
+
+        Args:
+            filter: Filter in either Airweave canonical format (dict) or Qdrant Filter object
+        """
         self.filter = filter
 
     def depends_on(self) -> List[str]:
-        """Depends on query interpretation (reads state["filter"] if it ran)."""
+        """Depends on query interpretation.
+
+        Reads from state:
+        - state["filter"] from QueryInterpretation (if ran)
+        """
         return ["QueryInterpretation"]
 
     async def execute(
@@ -81,12 +97,22 @@ class UserFilter(SearchOperation):
             )
 
     def _normalize_user_filter(self) -> Optional[Dict[str, Any]]:
-        """Normalize user filter and map field names to Qdrant paths."""
+        """Normalize user filter and map field names to Qdrant paths.
+
+        Handles both Qdrant Filter objects (with .model_dump()) and plain dicts
+        (Airweave canonical format).
+        """
         if not self.filter:
             return None
 
-        # Convert Qdrant Filter object to dict
-        filter_dict = self.filter.model_dump(exclude_none=True)
+        # Convert to dict if it's a Pydantic model (Qdrant Filter)
+        if hasattr(self.filter, "model_dump"):
+            filter_dict = self.filter.model_dump(exclude_none=True)
+        elif isinstance(self.filter, dict):
+            filter_dict = self.filter.copy()  # Don't mutate the original
+        else:
+            # Unknown type - try to use as-is
+            filter_dict = dict(self.filter)
 
         # Map field names in conditions
         return self._map_filter_keys(filter_dict)

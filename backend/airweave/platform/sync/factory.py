@@ -1,51 +1,33 @@
-"""Module for sync factory that creates context and orchestrator instances."""
+"""Module for sync factory that creates orchestrator instances.
 
-import importlib
+This factory uses SyncContextBuilder and DispatcherBuilder to construct
+all components needed for a sync run.
+"""
+
 import time
-from typing import Any, Optional
-from uuid import UUID
+from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave import crud, schemas
+from airweave import schemas
 from airweave.api.context import ApiContext
-from airweave.core import credentials
 from airweave.core.config import settings
-from airweave.core.constants.reserved_ids import NATIVE_QDRANT_UUID, RESERVED_TABLE_ENTITY_ID
-from airweave.core.exceptions import NotFoundException
-from airweave.core.guard_rail_service import GuardRailService
-from airweave.core.logging import ContextualLogger, LoggerConfigurator, logger
-from airweave.core.sync_cursor_service import sync_cursor_service
-from airweave.db.init_db_native import init_db_with_entity_definitions
-from airweave.platform.auth_providers._base import BaseAuthProvider
-from airweave.platform.destinations._base import BaseDestination, ProcessingRequirement
-from airweave.platform.entities._base import BaseEntity
-from airweave.platform.locator import resource_locator
-from airweave.platform.sources._base import BaseSource
-from airweave.platform.sync.actions import ActionDispatcher, ActionResolver
-from airweave.platform.sync.config import SyncExecutionConfig
-from airweave.platform.sync.context import SyncContext
-from airweave.platform.sync.cursor import SyncCursor
+from airweave.core.logging import logger
+from airweave.platform.builders import SyncContextBuilder
+from airweave.platform.sync.actions import EntityActionResolver, EntityDispatcherBuilder
+from airweave.platform.sync.config import SyncConfig, SyncConfigBuilder
 from airweave.platform.sync.entity_pipeline import EntityPipeline
-from airweave.platform.sync.handlers import (
-    PostgresMetadataHandler,
-    RawDataHandler,
-    VectorDBHandler,
-)
 from airweave.platform.sync.orchestrator import SyncOrchestrator
-from airweave.platform.sync.pipeline.entity_tracker import EntityTracker
-from airweave.platform.sync.state_publisher import SyncStatePublisher
 from airweave.platform.sync.stream import AsyncSourceStream
-from airweave.platform.sync.token_manager import TokenManager
 from airweave.platform.sync.worker_pool import AsyncWorkerPool
-from airweave.platform.utils.source_factory_utils import (
-    get_auth_configuration,
-    process_credentials_for_source,
-)
 
 
 class SyncFactory:
-    """Factory for sync orchestrator."""
+    """Factory for sync orchestrator.
+
+    Uses SyncContextBuilder to create contexts and DispatcherBuilder
+    to create the action dispatcher with handlers.
+    """
 
     @classmethod
     async def create_orchestrator(
@@ -59,7 +41,7 @@ class SyncFactory:
         access_token: Optional[str] = None,
         max_workers: int = None,
         force_full_sync: bool = False,
-        execution_config: Optional[SyncExecutionConfig] = None,
+        execution_config: Optional[SyncConfig] = None,
     ) -> SyncOrchestrator:
         """Create a dedicated orchestrator instance for a sync run.
 
@@ -77,6 +59,7 @@ class SyncFactory:
             max_workers: Maximum number of concurrent workers (default: from settings)
             force_full_sync: If True, forces a full sync with orphaned entity deletion
             execution_config: Optional execution config for controlling sync behavior
+                (overrides job-level config if provided)
 
         Returns:
             A dedicated SyncOrchestrator instance
@@ -88,11 +71,22 @@ class SyncFactory:
 
         # Track initialization timing
         init_start = time.time()
+        logger.info("Creating sync context via context builders...")
 
-        # Create sync context
-        logger.info("Creating sync context...")
-        context_start = time.time()
-        sync_context = await cls._create_sync_context(
+        # Step 0: Build layered sync configuration
+        # Resolution order: schema defaults → env vars → collection → sync → sync_job → execution_config
+        resolved_config = SyncConfigBuilder.build(
+            collection_overrides=collection.sync_config,
+            sync_overrides=sync.sync_config,
+            job_overrides=sync_job.sync_config or execution_config,
+        )
+        logger.debug(
+            f"Resolved layered sync config: handlers={resolved_config.handlers.model_dump()}, "
+            f"destinations={resolved_config.destinations.model_dump()}"
+        )
+
+        # Step 1: Build sync context using SyncContextBuilder
+        sync_context = await SyncContextBuilder.build(
             db=db,
             sync=sync,
             sync_job=sync_job,
@@ -101,69 +95,40 @@ class SyncFactory:
             ctx=ctx,
             access_token=access_token,
             force_full_sync=force_full_sync,
-            execution_config=execution_config,
+            execution_config=resolved_config,
         )
-        logger.debug(f"Sync context created in {time.time() - context_start:.2f}s")
 
-        # Create pipeline components
+        logger.debug(f"Sync context created in {time.time() - init_start:.2f}s")
+
+        # Step 2: Build dispatcher using DispatcherBuilder
         logger.debug("Initializing pipeline components...")
 
-        # 1. Action Resolver
-        action_resolver = ActionResolver(entity_map=sync_context.entity_map)
+        dispatcher = EntityDispatcherBuilder.build(
+            destinations=sync_context.destinations,
+            execution_config=resolved_config,
+            logger=sync_context.logger,
+        )
 
-        # 2. Handlers - conditionally created based on execution_config
-        config = sync_context.execution_config
-        enable_vector = config is None or config.enable_vector_handlers
-        enable_raw = config is None or config.enable_raw_data_handler
-        enable_postgres = config is None or config.enable_postgres_handler
+        # Step 3: Build pipeline
+        action_resolver = EntityActionResolver(entity_map=sync_context.entity_map)
 
-        handlers = []
-
-        # Add VectorDBHandler if enabled
-        if enable_vector:
-            vector_handlers = cls._create_destination_handlers(sync_context)
-            handlers.extend(vector_handlers)
-        elif sync_context.destinations:
-            logger.info(
-                f"Skipping VectorDBHandler (disabled by execution_config) for "
-                f"{len(sync_context.destinations)} destination(s)"
-            )
-
-        # Add RawDataHandler if enabled
-        if enable_raw:
-            handlers.append(RawDataHandler())
-        else:
-            logger.info("Skipping RawDataHandler (disabled by execution_config)")
-
-        # Add PostgresMetadataHandler if enabled (always runs last)
-        if enable_postgres:
-            handlers.append(PostgresMetadataHandler())
-        else:
-            logger.info("Skipping PostgresMetadataHandler (disabled by execution_config)")
-
-        if not handlers:
-            logger.warning("No handlers created - sync will fetch entities but not persist them")
-
-        # 3. Action Dispatcher
-        action_dispatcher = ActionDispatcher(handlers=handlers)
-
-        # 4. Entity Pipeline
         entity_pipeline = EntityPipeline(
             entity_tracker=sync_context.entity_tracker,
             action_resolver=action_resolver,
-            action_dispatcher=action_dispatcher,
+            action_dispatcher=dispatcher,
         )
 
-        # Create worker pool
+        # Step 4: Create worker pool
         worker_pool = AsyncWorkerPool(max_workers=max_workers, logger=sync_context.logger)
 
+        # Step 5: Create stream
         stream = AsyncSourceStream(
-            source_generator=sync_context.source.generate_entities(),
+            source_generator=sync_context.source_instance.generate_entities(),
             queue_size=10000,  # TODO: make this configurable
             logger=sync_context.logger,
         )
 
-        # Create dedicated orchestrator instance with all components
+        # Step 6: Create orchestrator
         orchestrator = SyncOrchestrator(
             entity_pipeline=entity_pipeline,
             worker_pool=worker_pool,
@@ -174,753 +139,3 @@ class SyncFactory:
         logger.info(f"Total orchestrator initialization took {time.time() - init_start:.2f}s")
 
         return orchestrator
-
-    @classmethod
-    async def _create_sync_context(
-        cls,
-        db: AsyncSession,
-        sync: schemas.Sync,
-        sync_job: schemas.SyncJob,
-        collection: schemas.Collection,
-        connection: schemas.Connection,
-        ctx: ApiContext,
-        access_token: Optional[str] = None,
-        force_full_sync: bool = False,
-        execution_config: Optional[SyncExecutionConfig] = None,
-    ) -> SyncContext:
-        """Create a sync context.
-
-        Args:
-            db: Database session
-            sync: The sync configuration
-            sync_job: The sync job
-            collection: The collection to sync to
-            connection: The connection
-            ctx: The API context
-            access_token: Optional token to use instead of stored credentials
-            force_full_sync: If True, forces a full sync with orphaned entity deletion
-            execution_config: Optional execution config for controlling sync behavior
-
-        Returns:
-            SyncContext object with all required components
-        """
-        # Get source connection data first (includes source class with cursor schema)
-        source_connection_data = await cls._get_source_connection_data(db, sync, ctx)
-
-        # Create a contextualized logger with all job metadata
-        logger = LoggerConfigurator.configure_logger(
-            "airweave.platform.sync",
-            dimensions={
-                "sync_id": str(sync.id),
-                "sync_job_id": str(sync_job.id),
-                "organization_id": str(ctx.organization.id),
-                "source_connection_id": str(source_connection_data["connection_id"]),
-                "collection_readable_id": str(collection.readable_id),
-                "organization_name": ctx.organization.name,
-                "scheduled": str(sync_job.scheduled),
-            },
-        )
-
-        source = await cls._create_source_instance_with_data(
-            db=db,
-            source_connection_data=source_connection_data,
-            ctx=ctx,
-            access_token=access_token,
-            logger=logger,  # Pass the contextual logger
-            sync_job=sync_job,  # Pass sync_job for file downloader temp directory setup
-        )
-        destinations = await cls._create_destination_instances(
-            db=db,
-            sync=sync,
-            collection=collection,
-            ctx=ctx,
-            logger=logger,
-            execution_config=execution_config,
-        )
-        entity_map = await cls._get_entity_definition_map(db=db)
-
-        # NEW: Load initial entity counts from database for state tracking
-        initial_counts = await crud.entity_count.get_counts_per_sync_and_type(db, sync.id)
-
-        logger.info(f"🔢 Loaded initial entity counts: {len(initial_counts)} entity types")
-
-        # Log the initial counts for debugging
-        for count in initial_counts:
-            logger.debug(f"  - {count.entity_definition_name}: {count.count} entities")
-
-        # Create EntityTracker (pure state tracking)
-        entity_tracker = EntityTracker(
-            job_id=sync_job.id,
-            sync_id=sync.id,
-            logger=logger,
-            initial_counts=initial_counts,
-        )
-
-        # Create SyncStatePublisher (handles pubsub publishing)
-        state_publisher = SyncStatePublisher(
-            job_id=sync_job.id,
-            sync_id=sync.id,
-            entity_tracker=entity_tracker,
-            logger=logger,
-        )
-
-        logger.info(f"✅ Created EntityTracker and SyncStatePublisher for job {sync_job.id}")
-
-        logger.info("Sync context created")
-
-        # Create GuardRailService with contextual logger
-        guard_rail = GuardRailService(
-            organization_id=ctx.organization.id,
-            logger=logger.with_context(component="guardrail"),
-        )
-
-        # Load existing cursor data from database
-        # IMPORTANT: When force_full_sync is True (daily cleanup), we intentionally
-        # skip loading cursor DATA to force a full sync.
-        # This ensures we see ALL entities in the source, not just changed ones,
-        # for accurate orphaned entity detection. We still track and save cursor
-        # values during the sync for the next incremental sync.
-
-        # Get cursor schema from source class (direct reference, no string lookup!)
-        cursor_schema = None
-        source_class = source_connection_data["source_class"]
-        if hasattr(source_class, "_cursor_class") and source_class._cursor_class:
-            cursor_schema = source_class._cursor_class  # Direct class reference
-            logger.debug(f"Source has typed cursor: {cursor_schema.__name__}")
-
-        if force_full_sync:
-            logger.info(
-                "🔄 FORCE FULL SYNC: Skipping cursor data to ensure all entities are fetched "
-                "for accurate orphaned entity cleanup. Will still track cursor for next sync."
-            )
-            cursor_data = None  # Force full sync by not providing previous cursor data
-        elif execution_config and execution_config.skip_cursor_load:
-            logger.info(
-                "🔄 SKIP CURSOR LOAD: Fetching all entities (execution_config.skip_cursor_load=True)"
-            )
-            cursor_data = None  # Skip cursor loading as requested by execution config
-        else:
-            # Normal incremental sync - load cursor data
-            cursor_data = await sync_cursor_service.get_cursor_data(db=db, sync_id=sync.id, ctx=ctx)
-            if cursor_data:
-                logger.info(f"📊 Incremental sync: Using cursor data with {len(cursor_data)} keys")
-
-        # Create typed cursor (no locator needed - direct class reference!)
-        cursor = SyncCursor(
-            sync_id=sync.id,
-            cursor_schema=cursor_schema,
-            cursor_data=cursor_data,
-        )
-
-        # Precompute destination keyword-index capability once
-        has_keyword_index = False
-        try:
-            import asyncio as _asyncio
-
-            if destinations:
-                has_keyword_index = any(
-                    await _asyncio.gather(*[dest.has_keyword_index() for dest in destinations])
-                )
-        except Exception as _e:
-            logger.warning(f"Failed to precompute keyword index capability on destinations: {_e}")
-            has_keyword_index = False
-
-        # Create sync context
-        sync_context = SyncContext(
-            source=source,
-            destinations=destinations,
-            sync=sync,
-            sync_job=sync_job,
-            collection=collection,
-            connection=connection,
-            entity_tracker=entity_tracker,
-            state_publisher=state_publisher,
-            cursor=cursor,
-            entity_map=entity_map,
-            ctx=ctx,
-            logger=logger,
-            guard_rail=guard_rail,
-            force_full_sync=force_full_sync,
-            has_keyword_index=has_keyword_index,
-            execution_config=execution_config,
-        )
-
-        # Set cursor on source so it can access cursor data
-        source.set_cursor(cursor)
-
-        return sync_context
-
-    @classmethod
-    async def _create_source_instance_with_data(
-        cls,
-        db: AsyncSession,
-        source_connection_data: dict,
-        ctx: ApiContext,
-        logger: ContextualLogger,
-        access_token: Optional[str] = None,
-        sync_job: Optional[Any] = None,
-    ) -> BaseSource:
-        """Create and configure the source instance using pre-fetched connection data."""
-        # Get auth configuration (credentials + proxy setup if needed)
-        auth_config = await get_auth_configuration(
-            db=db,
-            source_connection_data=source_connection_data,
-            ctx=ctx,
-            logger=logger,
-            access_token=access_token,
-        )
-
-        # Process credentials for source consumption
-        source_credentials = await process_credentials_for_source(
-            raw_credentials=auth_config["credentials"],
-            source_connection_data=source_connection_data,
-            logger=logger,
-        )
-
-        # Create the source instance with processed credentials
-        source = await source_connection_data["source_class"].create(
-            source_credentials, config=source_connection_data["config_fields"]
-        )
-
-        # Configure source with logger
-        if hasattr(source, "set_logger"):
-            source.set_logger(logger)
-
-        # Set HTTP client factory if proxy is needed
-        if auth_config.get("http_client_factory"):
-            source.set_http_client_factory(auth_config["http_client_factory"])
-
-        # Step 4.1: Pass sync identifiers to the source for scoped helpers
-        try:
-            organization_id = ctx.organization.id
-            source_connection_id = source_connection_data.get("source_connection_id")
-            if hasattr(source, "set_sync_identifiers") and source_connection_id:
-                source.set_sync_identifiers(
-                    organization_id=str(organization_id),
-                    source_connection_id=str(source_connection_id),
-                )
-        except Exception:
-            # Non-fatal: older sources may ignore this
-            pass
-
-        # Setup token manager for OAuth sources (if applicable)
-        # Skip for:
-        # 1. Direct token injection (when access_token parameter was explicitly passed)
-        # 2. Proxy mode (PipedreamProxyClient or other proxies manage tokens internally)
-        from airweave.platform.auth_providers.auth_result import AuthProviderMode
-
-        auth_mode = auth_config.get("auth_mode")
-        auth_provider_instance = auth_config.get("auth_provider_instance")
-
-        # Check if we should skip TokenManager
-        is_direct_token_injection = access_token is not None
-        is_proxy_mode = auth_mode == AuthProviderMode.PROXY
-
-        if not is_direct_token_injection and not is_proxy_mode:
-            try:
-                await cls._setup_token_manager(
-                    db=db,
-                    source=source,
-                    source_connection_data=source_connection_data,
-                    source_credentials=auth_config["credentials"],
-                    ctx=ctx,
-                    logger=logger,
-                    auth_provider_instance=auth_provider_instance,
-                )
-            except Exception as e:
-                logger.error(
-                    f"Failed to setup token manager for source "
-                    f"'{source_connection_data['short_name']}': {e}"
-                )
-                # Don't fail source creation if token manager setup fails
-        elif is_proxy_mode:
-            logger.info(
-                f"⏭️ Skipping token manager for {source_connection_data['short_name']} - "
-                f"proxy mode (PipedreamProxyClient manages tokens internally)"
-            )
-        else:
-            logger.debug(
-                f"⏭️ Skipping token manager for {source_connection_data['short_name']} - "
-                f"direct token injection"
-            )
-
-        # Setup file downloader for file-based sources
-        cls._setup_file_downloader(source, sync_job, logger)
-
-        # Wrap HTTP client with AirweaveHttpClient for rate limiting
-        # This wraps whatever client is currently set (httpx or Pipedream proxy)
-        from airweave.platform.utils.source_factory_utils import wrap_source_with_airweave_client
-
-        wrap_source_with_airweave_client(
-            source=source,
-            source_short_name=source_connection_data["short_name"],
-            source_connection_id=source_connection_data["source_connection_id"],
-            ctx=ctx,
-            logger=logger,
-        )
-
-        return source
-
-    @classmethod
-    async def _get_source_connection_data(
-        cls, db: AsyncSession, sync: schemas.Sync, ctx: ApiContext
-    ) -> dict:
-        """Get source connection and model data."""
-        # 1. Get SourceConnection first (has most of our data)
-        source_connection_obj = await crud.source_connection.get_by_sync_id(
-            db, sync_id=sync.id, ctx=ctx
-        )
-        if not source_connection_obj:
-            raise NotFoundException(
-                f"Source connection record not found for sync {sync.id}. "
-                f"This typically occurs when a source connection is deleted while a "
-                f"scheduled workflow is queued. The workflow should self-destruct and "
-                f"clean up orphaned schedules."
-            )
-
-        # 2. Get Connection only to access integration_credential_id
-        connection = await crud.connection.get(db, source_connection_obj.connection_id, ctx)
-        if not connection:
-            raise NotFoundException("Connection not found")
-
-        # 3. Get Source model using short_name from SourceConnection
-        source_model = await crud.source.get_by_short_name(db, source_connection_obj.short_name)
-        if not source_model:
-            raise NotFoundException(f"Source not found: {source_connection_obj.short_name}")
-
-        # Get all fields from the RIGHT places:
-        config_fields = source_connection_obj.config_fields or {}  # From SourceConnection
-
-        # Pre-fetch to avoid lazy loading - convert to pure Python types
-        auth_config_class = source_model.auth_config_class
-        # Convert SQLAlchemy values to clean Python types to avoid lazy loading
-        source_connection_id = UUID(str(source_connection_obj.id))  # From SourceConnection
-        short_name = str(source_connection_obj.short_name)  # From SourceConnection
-        connection_id = UUID(str(connection.id))
-
-        # Check if this connection uses an auth provider
-        readable_auth_provider_id = getattr(
-            source_connection_obj, "readable_auth_provider_id", None
-        )
-
-        # For auth provider connections, integration_credential_id will be None
-        # For regular connections, integration_credential_id must be set
-        if not readable_auth_provider_id and not connection.integration_credential_id:
-            raise NotFoundException(f"Connection {connection_id} has no integration credential")
-
-        integration_credential_id = (
-            UUID(str(connection.integration_credential_id))
-            if connection.integration_credential_id
-            else None
-        )
-
-        source_class = resource_locator.get_source(source_model)
-
-        # Pre-fetch oauth_type to avoid lazy loading issues
-        oauth_type = str(source_model.oauth_type) if source_model.oauth_type else None
-
-        return {
-            "source_connection_obj": source_connection_obj,  # The main entity
-            "connection": connection,  # Just for credential access
-            "source_model": source_model,
-            "source_class": source_class,
-            "config_fields": config_fields,  # From SourceConnection
-            "short_name": short_name,  # From SourceConnection
-            "source_connection_id": source_connection_id,  # Pre-fetched to avoid lazy loading
-            "auth_config_class": auth_config_class,
-            "connection_id": connection_id,
-            "integration_credential_id": integration_credential_id,  # From Connection
-            "oauth_type": oauth_type,  # Pre-fetched to avoid lazy loading
-            "readable_auth_provider_id": getattr(
-                source_connection_obj, "readable_auth_provider_id", None
-            ),
-            "auth_provider_config": getattr(source_connection_obj, "auth_provider_config", None),
-        }
-
-    @classmethod
-    def _setup_file_downloader(
-        cls, source: BaseSource, sync_job: Optional[Any], logger: ContextualLogger
-    ) -> None:
-        """Setup file downloader for file-based sources.
-
-        All sources get a file downloader (even API-only sources) since BaseSource
-        provides set_file_downloader(). Sources that don't download files simply
-        won't use it.
-
-        Args:
-            source: Source instance to configure
-            sync_job: Sync job for temp directory organization (required)
-            logger: Logger for diagnostics
-
-        Raises:
-            ValueError: If sync_job is None (programming error)
-        """
-        from airweave.platform.downloader import FileDownloadService
-
-        # Require sync_job - we're always in sync context when this is called
-        if not sync_job or not hasattr(sync_job, "id"):
-            raise ValueError(
-                "sync_job is required for file downloader initialization. "
-                "This method should only be called from create_orchestrator() "
-                "where sync_job exists."
-            )
-
-        file_downloader = FileDownloadService(sync_job_id=str(sync_job.id))
-        source.set_file_downloader(file_downloader)
-        logger.debug(
-            f"File downloader configured for {source.__class__.__name__} "
-            f"(sync_job_id: {sync_job.id})"
-        )
-
-    @classmethod
-    async def _setup_token_manager(
-        cls,
-        db: AsyncSession,
-        source: BaseSource,
-        source_connection_data: dict,
-        source_credentials: any,
-        ctx: ApiContext,
-        logger: ContextualLogger,
-        auth_provider_instance: Optional[BaseAuthProvider] = None,
-    ) -> None:
-        """Set up token manager for OAuth sources."""
-        short_name = source_connection_data["short_name"]
-        # Use pre-fetched oauth_type to avoid SQLAlchemy lazy loading issues
-        oauth_type = source_connection_data.get("oauth_type")
-
-        # Determine if we should create a token manager based on oauth_type
-        should_create_token_manager = False
-
-        if oauth_type:
-            # Import OAuthType enum
-            from airweave.schemas.source_connection import OAuthType
-
-            # Only create token manager for sources that support token refresh
-            if oauth_type in (OAuthType.WITH_REFRESH, OAuthType.WITH_ROTATING_REFRESH):
-                should_create_token_manager = True
-                logger.debug(
-                    f"✅ OAuth source {short_name} with oauth_type={oauth_type} "
-                    f"will use token manager for refresh"
-                )
-            else:
-                logger.debug(
-                    f"⏭️ Skipping token manager for {short_name} - "
-                    f"oauth_type={oauth_type} does not support token refresh"
-                )
-
-        if should_create_token_manager:
-            # Create a minimal connection object with only the fields needed by TokenManager
-            # Use pre-fetched IDs to avoid SQLAlchemy lazy loading issues
-            minimal_source_connection = type(
-                "SourceConnection",
-                (),
-                {
-                    "id": source_connection_data["connection_id"],
-                    "integration_credential_id": source_connection_data[
-                        "integration_credential_id"
-                    ],
-                    "config_fields": source_connection_data.get("config_fields"),
-                },
-            )()
-
-            token_manager = TokenManager(
-                db=db,
-                source_short_name=short_name,
-                source_connection=minimal_source_connection,
-                ctx=ctx,
-                initial_credentials=source_credentials,
-                is_direct_injection=False,  # TokenManager will determine this internally
-                logger_instance=logger,
-                auth_provider_instance=auth_provider_instance,
-            )
-            source.set_token_manager(token_manager)
-
-            logger.info(
-                f"Token manager initialized for OAuth source {short_name} "
-                f"(auth_provider: {'Yes' if auth_provider_instance else 'None'})"
-            )
-        else:
-            logger.debug(
-                f"Skipping token manager for {short_name} - "
-                "not an OAuth source or no access_token in credentials"
-            )
-
-    @classmethod
-    def _create_destination_handlers(
-        cls,
-        sync_context: SyncContext,
-    ) -> list:
-        """Create destination handlers grouped by processing requirements.
-
-        This method groups destinations by their processing requirements and creates
-        appropriate handlers:
-        - VectorDBHandler: For destinations needing chunking/embedding (Qdrant, Pinecone)
-
-        Args:
-            sync_context: Sync context with destinations and logger
-
-        Returns:
-            List of destination handlers (may be empty if no destinations)
-        """
-        from airweave.platform.sync.handlers.base import ActionHandler
-
-        handlers: list[ActionHandler] = []
-
-        # Group destinations by processing requirement
-        vector_db_destinations: list[BaseDestination] = []
-        self_processing_destinations: list[BaseDestination] = []
-
-        for dest in sync_context.destinations:
-            requirement = dest.processing_requirement
-            if requirement == ProcessingRequirement.CHUNKS_AND_EMBEDDINGS:
-                vector_db_destinations.append(dest)
-            elif requirement == ProcessingRequirement.RAW_ENTITIES:
-                self_processing_destinations.append(dest)
-            else:
-                # Default to vector DB for unknown requirements (backward compat)
-                sync_context.logger.warning(
-                    f"Unknown processing requirement {requirement} for {dest.__class__.__name__}, "
-                    "defaulting to CHUNKS_AND_EMBEDDINGS"
-                )
-                vector_db_destinations.append(dest)
-
-        # Create handlers for each non-empty group
-        if vector_db_destinations:
-            vector_handler = VectorDBHandler(destinations=vector_db_destinations)
-            handlers.append(vector_handler)
-            sync_context.logger.info(
-                f"Created VectorDBHandler for {len(vector_db_destinations)} destination(s): "
-                f"{[d.__class__.__name__ for d in vector_db_destinations]}"
-            )
-
-        if not handlers:
-            sync_context.logger.warning(
-                "No destination handlers created - sync has no valid destinations"
-            )
-
-        return handlers
-
-    @classmethod
-    async def _create_destination_instances(  # noqa: C901
-        cls,
-        db: AsyncSession,
-        sync: schemas.Sync,
-        collection: schemas.Collection,
-        ctx: ApiContext,
-        logger: ContextualLogger,
-        execution_config: Optional[SyncExecutionConfig] = None,
-    ) -> list[BaseDestination]:
-        """Create destination instances with unified credentials pattern (matches sources).
-
-        Handles two special cases:
-        1. NATIVE_QDRANT_UUID: Uses settings, no credentials needed
-        2. Org-specific destinations (e.g., S3): Loads credentials from Connection
-
-        Args:
-        -----
-            db (AsyncSession): The database session
-            sync (schemas.Sync): The sync object
-            collection (schemas.Collection): The collection object
-            ctx (ApiContext): The API context
-            logger (ContextualLogger): The contextual logger with sync metadata
-            execution_config (Optional[SyncExecutionConfig]): Optional execution config for filtering destinations
-
-        Returns:
-        --------
-            list[BaseDestination]: A list of successfully created destination instances
-
-        Raises:
-        -------
-            ValueError: If no destinations could be created
-        """
-        destinations = []
-
-        # Filter destination IDs based on execution_config
-        destination_ids = cls._filter_destination_ids(
-            sync.destination_connection_ids, execution_config, logger
-        )
-
-        # Create all destinations from filtered destination_connection_ids
-        for destination_connection_id in destination_ids:
-            try:
-                # Special case: Native Qdrant (uses settings, no DB connection)
-                if destination_connection_id == NATIVE_QDRANT_UUID:
-                    logger.info("Using native Qdrant destination (settings-based)")
-                    destination_model = await crud.destination.get_by_short_name(db, "qdrant")
-                    if not destination_model:
-                        logger.warning("Qdrant destination model not found")
-                        continue
-
-                    destination_schema = schemas.Destination.model_validate(destination_model)
-                    destination_class = resource_locator.get_destination(destination_schema)
-
-                    # Fail-fast: vector_size must be set
-                    if collection.vector_size is None:
-                        raise ValueError(f"Collection {collection.id} has no vector_size set.")
-
-                    # Native Qdrant: no credentials (uses settings)
-                    destination = await destination_class.create(
-                        credentials=None,
-                        config=None,
-                        collection_id=collection.id,
-                        organization_id=collection.organization_id,
-                        vector_size=collection.vector_size,
-                        logger=logger,
-                    )
-
-                    destinations.append(destination)
-                    logger.info("Created native Qdrant destination")
-                    continue
-
-                # Regular case: Load connection from database
-                destination_connection = await crud.connection.get(
-                    db, destination_connection_id, ctx
-                )
-                if not destination_connection:
-                    logger.warning(
-                        f"Destination connection {destination_connection_id} not found, skipping"
-                    )
-                    continue
-
-                destination_model = await crud.destination.get_by_short_name(
-                    db, destination_connection.short_name
-                )
-                if not destination_model:
-                    logger.warning(
-                        f"Destination {destination_connection.short_name} not found, skipping"
-                    )
-                    continue
-
-                # Load credentials (contains both auth and config)
-                destination_credentials = None
-                if (
-                    destination_model.auth_config_class
-                    and destination_connection.integration_credential_id
-                ):
-                    credential = await crud.integration_credential.get(
-                        db, destination_connection.integration_credential_id, ctx
-                    )
-                    if credential:
-                        decrypted_credential = credentials.decrypt(credential.encrypted_credentials)
-                        auth_config_class = resource_locator.get_auth_config(
-                            destination_model.auth_config_class
-                        )
-                        destination_credentials = auth_config_class.model_validate(
-                            decrypted_credential
-                        )
-
-                # Create destination instance with credentials (config=None)
-                destination_schema = schemas.Destination.model_validate(destination_model)
-                destination_class = resource_locator.get_destination(destination_schema)
-
-                destination = await destination_class.create(
-                    credentials=destination_credentials,
-                    config=None,  # Everything is in credentials for now
-                    collection_id=collection.id,
-                    organization_id=collection.organization_id,
-                    logger=logger,
-                    collection_readable_id=collection.readable_id,
-                    sync_id=sync.id,
-                )
-
-                destinations.append(destination)
-                logger.info(
-                    f"Created destination: {destination_connection.short_name} "
-                    f"(connection_id={destination_connection_id})"
-                )
-            except Exception as e:
-                # Log error but continue to next destination
-                logger.error(
-                    f"Failed to create destination {destination_connection_id}: {e}", exc_info=True
-                )
-                continue
-
-        if not destinations:
-            raise ValueError(
-                "No valid destinations could be created for sync. "
-                f"Tried {len(sync.destination_connection_ids)} connection(s)."
-            )
-
-        logger.info(
-            f"Successfully created {len(destinations)} destination(s) "
-            f"out of {len(sync.destination_connection_ids)} configured"
-        )
-
-        return destinations
-
-    # NOTE: Transformers removed - chunking now happens in VectorDBHandler
-    # (for destinations requiring CHUNKS_AND_EMBEDDINGS processing)
-
-    @staticmethod
-    def _filter_destination_ids(
-        destination_ids: list[UUID],
-        execution_config: Optional[SyncExecutionConfig],
-        logger: ContextualLogger,
-    ) -> list[UUID]:
-        """Filter destination IDs based on execution config.
-
-        Priority:
-        1. If target_destinations is set, use only those
-        2. If exclude_destinations is set, filter them out
-        3. Otherwise use all provided IDs
-
-        Args:
-            destination_ids: Original list of destination IDs from sync
-            execution_config: Optional execution config
-            logger: Logger for info messages
-
-        Returns:
-            Filtered list of destination IDs
-        """
-        if not execution_config:
-            return destination_ids
-
-        # Priority 1: If target_destinations is set, use only those
-        if execution_config.target_destinations:
-            logger.info(
-                f"Using target_destinations from config: {execution_config.target_destinations}"
-            )
-            return execution_config.target_destinations
-
-        # Priority 2: If exclude_destinations is set, filter them out
-        if execution_config.exclude_destinations:
-            original_count = len(destination_ids)
-            filtered_ids = [
-                dest_id
-                for dest_id in destination_ids
-                if dest_id not in execution_config.exclude_destinations
-            ]
-            excluded_count = original_count - len(filtered_ids)
-            if excluded_count > 0:
-                logger.info(
-                    f"Excluded {excluded_count} destination(s) from execution_config.exclude_destinations"
-                )
-            return filtered_ids
-
-        # No filtering
-        return destination_ids
-
-    @classmethod
-    async def _get_entity_definition_map(cls, db: AsyncSession) -> dict[type[BaseEntity], UUID]:
-        """Get entity definition map.
-
-        Map entity class to entity definition id.
-
-        Example key-value pair:
-            <class 'airweave.platform.entities.trello.TrelloBoard'>: entity_definition_id
-        """
-        # Ensure the reserved polymorphic entity definition exists (idempotent).
-        await init_db_with_entity_definitions(db)
-
-        entity_definitions = await crud.entity_definition.get_all(db)
-
-        entity_definition_map = {}
-        for entity_definition in entity_definitions:
-            if entity_definition.id == RESERVED_TABLE_ENTITY_ID:
-                continue
-            full_module_name = f"airweave.platform.entities.{entity_definition.module_name}"
-            module = importlib.import_module(full_module_name)
-            entity_class = getattr(module, entity_definition.class_name)
-            entity_definition_map[entity_class] = entity_definition.id
-
-        return entity_definition_map

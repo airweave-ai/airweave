@@ -1,0 +1,100 @@
+---
+title: Google Antigravity
+subtitle: Airweave is available natively in the Antigravity MCP Store, giving your coding agents the ability to search and retrieve context across all your apps and databases.
+slug: framework-integrations/google-antigravity
+---
+
+[Google Antigravity](https://antigravity.google) is an agentic IDE designed specifically for agent-first coding workflows. It allows developers to rapidly create, test, and deploy multiple AI agents that collaborate with code, apps, and data. Airweave MCP is part of the first set of integrations available in the Google MCP Store, enabling your coding agents to instantly search across all your synced apps and databases with zero additional setup required.
+
+
+<video
+  src="./airweave-antigravity.mp4"
+  controls
+  loop
+  autoplay
+  muted
+  playsinline
+  style={{ aspectRatio: '16 / 9', width: '100%' }}
+>
+  Your browser does not support the video tag.
+</video>
+
+### Prerequisites
+
+Before you start, you will need:
+
+- **A Google Antigravity account**: Sign up at [antigravity.google](https://antigravity.google)
+- **A collection with data**: At least one source connection must have completed its initial sync. See the [Quickstart](https://docs.airweave.ai/quickstart) if you need to set this up.
+- **An API key**: Create one in the Airweave dashboard under **API Keys**.
+
+### Adding Airweave from the MCP Store
+
+1. Open Google Antigravity
+2. Open the **MCP Store**
+3. Search for **Airweave**
+4. Click **Add** to enable the integration
+5. Enter your Airweave API key when prompted
+
+Once added, your agents can search across all your Airweave collections as part of their autonomous workflows.
+
+### Available Tools
+
+After enabling the integration, your agents have access to the following tools:
+
+#### `search-{collection}`
+
+Search within your configured Airweave collection. The tool name includes your collection ID, for example `search-my-knowledge-base`.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `query` | string | Your search query (required) |
+| `limit` | number | Maximum results to return (default: 100) |
+| `offset` | number | Number of results to skip for pagination (default: 0) |
+| `response_type` | string | `"raw"` for results, `"completion"` for AI-generated answers |
+| `recency_bias` | number | Weight recent content from 0.0 to 1.0 (0 = no bias, 1 = recency only) |
+| `score_threshold` | number | Minimum similarity score from 0.0 to 1.0 |
+| `search_method` | string | `"hybrid"`, `"neural"`, or `"keyword"` |
+| `expansion_strategy` | string | `"auto"`, `"llm"`, or `"no_expansion"` |
+| `enable_reranking` | boolean | Use LLM-based reranking (default: true) |
+| `enable_query_interpretation` | boolean | Extract filters from natural language (default: true) |
+
+#### `get-config`
+
+Display the current Airweave MCP server configuration, including the configured collection and available commands.
+
+### Example Usage
+
+Once Airweave is added, your agents can search your data using natural language:
+
+```
+Search my Slack workspace for discussions about the Q4 roadmap
+```
+
+```
+Find all documents mentioning the pricing update from last week
+```
+
+```
+What were the key decisions from yesterday's standup? Search with recency bias.
+```
+
+### Search Capabilities
+
+The Airweave MCP integration provides:
+
+- **Hybrid search**: Combines semantic and keyword matching for best results
+- **Query expansion**: Generates variations of your query for better recall
+- **Reranking**: Applies LLM-based reranking for improved relevance
+- **Context retrieval**: Returns relevant context with breadcrumbs to original sources
+- **AI-generated answers**: Optionally returns synthesized answers from search results
+
+### Self-Hosted Instances
+
+If you are running a self-hosted Airweave instance, you can configure a custom base URL in the MCP settings after adding Airweave from the store.
+
+### Learn More
+
+- [Google Antigravity MCP Documentation](https://antigravity.google/docs/mcp)
+- [Airweave Search Concepts](https://docs.airweave.ai/search)
+- [Airweave MCP Server](https://docs.airweave.ai/mcp-server)
+- [Airweave GitHub](https://github.com/airweave-ai/airweave)

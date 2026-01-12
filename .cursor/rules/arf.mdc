@@ -16,7 +16,10 @@ raw/{sync_id}/
 
 ## Key Files
 
-- **RawDataService**: `platform/sync/raw_data.py`
+- **StoragePaths**: `platform/storage/paths.py` (path constants: `arf_sync_path`, `arf_entity_path`, etc.)
+- **ArfReader**: `platform/storage/arf_reader.py` (entity reconstruction for replay)
+- **ArfReplaySource**: `platform/storage/replay_source.py` (internal source for ARF replay)
+- **RawDataService**: `platform/sync/raw_data.py` (write operations during sync)
 - **StorageBackend**: `platform/storage/backend.py` (Filesystem or Azure Blob)
 - **Config**: `AZURE_RAW_DATA_CONTAINER` (default: `"raw"`)
 

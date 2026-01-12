@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from typing import Any, AsyncGenerator, List, Optional, Union
+from typing import Any, AsyncGenerator, List, Optional
 from uuid import UUID
 
 from fastapi import BackgroundTasks, Body, Depends, HTTPException, Query
@@ -16,40 +16,9 @@ from airweave.api.router import TrailingSlashRouter
 from airweave.core.logging import logger
 from airweave.core.pubsub import core_pubsub
 from airweave.core.sync_service import sync_service
+from airweave.platform.sync.config import SyncConfig
 
 router = TrailingSlashRouter()
-
-
-@router.get("/", response_model=Union[list[schemas.Sync], list[schemas.SyncWithSourceConnection]])
-async def list_syncs(
-    *,
-    db: AsyncSession = Depends(deps.get_db),
-    skip: int = 0,
-    limit: int = 100,
-    with_source_connection: bool = False,
-    ctx: ApiContext = Depends(deps.get_context),
-) -> list[schemas.Sync] | list[schemas.SyncWithSourceConnection]:
-    """List all syncs for the current user.
-
-    Args:
-    -----
-        db: The database session
-        skip: The number of syncs to skip
-        limit: The number of syncs to return
-        with_source_connection: Whether to include the source connection in the response
-        ctx: The current authentication context
-
-    Returns:
-    --------
-        list[schemas.Sync] | list[schemas.SyncWithSourceConnection]: A list of syncs
-    """
-    return await sync_service.list_syncs(
-        db=db,
-        ctx=ctx,
-        skip=skip,
-        limit=limit,
-        with_source_connection=with_source_connection,
-    )
 
 
 @router.get("/jobs", response_model=list[schemas.SyncJob])
@@ -175,7 +144,9 @@ async def run_sync(
     sync_id: UUID,
     ctx: ApiContext = Depends(deps.get_context),
     background_tasks: BackgroundTasks,
-    execution_config: Optional[dict[str, Any]] = None,
+    execution_config: Optional[SyncConfig] = Body(
+        None, description="Optional sync configuration overrides for this run"
+    ),
 ) -> schemas.SyncJob:
     """Trigger a sync run.
 
@@ -185,7 +156,8 @@ async def run_sync(
         sync_id: The ID of the sync to run
         ctx: The current authentication context
         background_tasks: The background tasks
-        execution_config: Optional execution config for controlling sync behavior
+        execution_config: Optional sync config overrides for this specific run
+            (will be applied as job-level override with highest precedence)
 
     Returns:
     --------

@@ -19,7 +19,6 @@ from airweave.core.logging import logger
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.cursors import GmailCursor
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.gmail import (
     GmailAttachmentEntity,
@@ -31,6 +30,7 @@ from airweave.platform.sources._base import BaseSource
 from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
+from airweave.platform.storage import FileSkippedException
 from airweave.platform.utils.filename_utils import safe_filename
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 

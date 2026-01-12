@@ -21,10 +21,10 @@ import httpx
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.cursors import GoogleDocsCursor
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.entities.google_docs import GoogleDocsDocumentEntity
 from airweave.platform.sources._base import BaseSource
+from airweave.platform.storage import FileSkippedException
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 

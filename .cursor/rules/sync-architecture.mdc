@@ -54,6 +54,22 @@ await sync_context.router.initialize_transformer_cache(db)
 
 **Design Pattern**: Context Object - passes all dependencies as a single parameter
 
+### Context Builders (`platform/builders/`)
+**Purpose**: Factory classes that construct context objects with complex initialization logic
+
+**Architecture**:
+- **Contexts** (`platform/contexts/`): Dataclass containers grouping related dependencies
+- **Builders** (`platform/builders/`): Factory classes that construct contexts, encapsulating DB queries, credential handling, etc.
+- **Orchestration**: `SyncContextBuilder.build()` runs multiple builders in parallel where possible
+
+**Usage**:
+```python
+# SyncFactory delegates to SyncContextBuilder
+sync_context = await SyncContextBuilder.build(db=db, sync=sync, ...)
+```
+
+**Benefits**: Separation of concerns, parallel initialization, easier testing
+
 ### SyncOrchestrator
 **Purpose**: Coordinates the entire sync workflow with error handling and progress tracking
 

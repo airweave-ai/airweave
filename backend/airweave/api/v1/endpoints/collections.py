@@ -23,7 +23,7 @@ from airweave.core.source_connection_service_helpers import source_connection_he
 from airweave.core.sync_service import sync_service
 from airweave.core.temporal_service import temporal_service
 from airweave.models.source_connection import SourceConnection
-from airweave.platform.temporal.schedule_service import temporal_schedule_service
+from airweave.platform.cleanup import cleanup_service
 
 router = TrailingSlashRouter()
 
@@ -150,6 +150,9 @@ async def delete(
     if db_obj is None:
         raise HTTPException(status_code=404, detail="Collection not found")
 
+    # Convert to schema for cleanup service
+    collection_schema = schemas.Collection.model_validate(db_obj, from_attributes=True)
+
     # Collect sync IDs before cascading deletes remove the rows
     sync_id_rows: Sequence = await db.execute(
         select(SourceConnection.sync_id)
@@ -162,57 +165,8 @@ async def delete(
     )
     sync_ids = [row[0] for row in sync_id_rows if row[0]]
 
-    if sync_ids:
-        ctx.logger.info(
-            "Deleting Temporal schedules for %d syncs before removing collection %s",
-            len(sync_ids),
-            readable_id,
-        )
-        for sync_id in sync_ids:
-            for prefix in ("sync", "minute-sync", "daily-cleanup"):
-                schedule_id = f"{prefix}-{sync_id}"
-                try:
-                    await temporal_schedule_service.delete_schedule_handle(schedule_id)
-                except Exception as e:
-                    ctx.logger.info(
-                        "Schedule %s not deleted during collection cleanup: %s",
-                        schedule_id,
-                        e,
-                    )
-
-    # Delete collection data from shared Qdrant collection
-    try:
-        from qdrant_client.http import models as rest
-
-        from airweave.platform.destinations.qdrant import QdrantDestination
-
-        destination = await QdrantDestination.create(
-            credentials=None,  # Native Qdrant uses settings
-            config=None,
-            collection_id=db_obj.id,
-            organization_id=db_obj.organization_id,
-            # vector_size auto-detected based on embedding model configuration
-        )
-        # Delete all points for this collection from shared collection
-        if destination.client:
-            await destination.client.delete(
-                collection_name=destination.collection_name,
-                points_selector=rest.FilterSelector(
-                    filter=rest.Filter(
-                        must=[
-                            rest.FieldCondition(
-                                key="airweave_collection_id",
-                                match=rest.MatchValue(value=str(db_obj.id)),
-                            )
-                        ]
-                    )
-                ),
-                wait=True,
-            )
-            ctx.logger.info(f"Deleted data for collection {db_obj.id} from shared collection")
-    except Exception as e:
-        ctx.logger.error(f"Error deleting Qdrant collection: {str(e)}")
-        # Continue with deletion even if Qdrant deletion fails
+    # Clean up all external data (schedules, destinations, ARF)
+    await cleanup_service.cleanup_collection(db, collection_schema, sync_ids, ctx)
 
     # Delete the collection - CASCADE will handle all child objects
     return await crud.collection.remove(db, id=db_obj.id, ctx=ctx)

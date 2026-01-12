@@ -4,12 +4,10 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      # Only trigger on platform-related changes (reduced footprint)
       - "monke/**"
-      - ".github/workflows/**"
-      - "docker/**"
-      - "backend/**"
-      - "frontend/**"
-      - "start.sh"
+      - "backend/airweave/platform/**"
+      - ".github/workflows/monke.yml"
 
 concurrency:
   group: monke-${{ github.ref }}
@@ -68,6 +66,7 @@ jobs:
         id: set-matrix
         env:
           BASE_BRANCH: ${{ github.base_ref || 'main' }}
+          MONKE_MIN_CONNECTORS: 0  # Don't pad to minimum - only test what's needed
         run: |
           # Use monke.sh CLI to determine connectors (keeps logic DRY)
           # This returns space-separated list: core + changed, minimum 4 connectors
@@ -166,6 +165,8 @@ jobs:
           docker pull qdrant/qdrant:latest &
           docker pull temporalio/auto-setup:1.24.2 &
           docker pull temporalio/ui:2.26.2 &
+          docker pull vespaengine/vespa:8 &
+          docker pull alpine:3.19 &
           wait
           echo "All infrastructure images pre-pulled successfully"
 

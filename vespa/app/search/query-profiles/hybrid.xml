@@ -1,0 +1,48 @@
+<query-profile id="hybrid">
+    <!-- Max hits/offset for large result sets (reranking, prefetch) -->
+    <field name="maxHits">10000</field>
+    <field name="maxOffset">10000</field>
+
+    <!-- Schema and document type -->
+    <field name="schema">base_entity</field>
+
+    <!-- Query embeddings: int8 for ANN matching (hamming), float for ranking -->
+    <field name="ranking.features.query(embedding)">embed(nomicmb, @query)</field>
+    <field name="ranking.features.query(float_embedding)">embed(nomicmb, @query)</field>
+
+    <!--
+    Hybrid retrieval combining lexical and semantic search.
+
+    Production settings (100k+ entities, LLM input):
+    - targetHits: 400 per method → ~800 candidates before deduplication
+    - weakAnd (via userInput) retrieves by lexical matching
+    - nearestNeighbor retrieves by semantic similarity
+    - OR combines them for maximum recall
+
+    Collection filtering:
+    - collection_id filters by Airweave collection
+    - This is CRITICAL for multi-tenant isolation
+
+    NOTE: This query profile is documentation only!
+    The VespaDestination.search() builds YQL at runtime to support filter injection.
+    -->
+    <field name="yql">
+        select *
+        from %{schema}
+        where airweave_system_metadata_collection_id contains @collection_id and
+              (({targetHits:400}userInput(@query)) or
+               ({label:"chunks_label", targetHits:400}nearestNeighbor(chunk_small_embeddings, embedding)))
+    </field>
+
+    <!-- Use RRF rank profile - recommended when you don't have training data -->
+    <field name="ranking.profile">hybrid-rrf</field>
+
+    <!-- Return full document summary for reranking and answer generation -->
+    <field name="presentation.summary">full</field>
+
+    <!-- Default number of hits -->
+    <field name="hits">100</field>
+
+    <!-- Enable timing info for debugging -->
+    <field name="presentation.timing">true</field>
+</query-profile>

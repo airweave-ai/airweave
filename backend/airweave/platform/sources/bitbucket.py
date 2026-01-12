@@ -11,7 +11,6 @@ from tenacity import retry, stop_after_attempt
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.configs.auth import BitbucketAuthConfig
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.bitbucket import (
     BitbucketCodeFileEntity,
@@ -24,6 +23,7 @@ from airweave.platform.sources.retry_helpers import (
     retry_if_rate_limit_or_timeout,
     wait_rate_limit_with_backoff,
 )
+from airweave.platform.storage import FileSkippedException
 from airweave.platform.utils.file_extensions import (
     get_language_for_extension,
     is_text_file,
@@ -295,6 +295,7 @@ class BitbucketSource(BaseSource):
             workspace_slug: Workspace slug
             repo_slug: Repository slug
             branch: Branch name
+            parent_breadcrumbs: Parent breadcrumbs for navigation
 
         Yields:
             Directory and file entities

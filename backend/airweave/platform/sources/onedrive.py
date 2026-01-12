@@ -22,10 +22,10 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.onedrive import OneDriveDriveEntity, OneDriveDriveItemEntity
 from airweave.platform.sources._base import BaseSource
+from airweave.platform.storage import FileSkippedException
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 

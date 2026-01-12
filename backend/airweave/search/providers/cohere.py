@@ -54,7 +54,7 @@ class CohereProvider(BaseProvider):
         """Not supported by Cohere."""
         raise NotImplementedError("Cohere does not support structured output")
 
-    async def embed(self, texts: List[str]) -> List[List[float]]:
+    async def embed(self, texts: List[str], dimensions: Optional[int] = None) -> List[List[float]]:
         """Not supported by Cohere."""
         raise NotImplementedError("Cohere does not support embeddings")
 

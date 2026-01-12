@@ -48,10 +48,29 @@ class GenerateAnswer(SearchOperation):
 
         if not results:
             state["completion"] = "No results found for your query."
+            ctx.logger.debug("[GenerateAnswer] INPUT: No results to process")
             return
 
         if not isinstance(results, list):
             raise ValueError(f"Expected 'results' to be a list, got {type(results)}")
+
+        # DEBUG: Log input
+        sample_results = []
+        for r in results[:3]:
+            payload = r.get("payload", {})
+            sample_results.append(
+                {
+                    "name": payload.get("name", "N/A")[:50],
+                    "text_preview": payload.get("textual_representation", "")[:100] + "...",
+                }
+            )
+        ctx.logger.debug(
+            f"\n[GenerateAnswer] INPUT:\n"
+            f"  Query: '{context.query[:100]}...'\n"
+            f"  Results count: {len(results)}\n"
+            f"  Providers: {[p.__class__.__name__ for p in self.providers]}\n"
+            f"  Sample results (first 3): {sample_results}\n"
+        )
 
         # Emit completion start
         # Note: Model name not included since we don't know which provider will succeed yet
@@ -77,9 +96,19 @@ class GenerateAnswer(SearchOperation):
             )
             chosen_count_for_metrics = chosen_count  # Store for metrics
 
+            # DEBUG: Log context window details
+            context_window = provider.model_spec.llm_model.context_window
+            tokenizer = getattr(provider, "llm_tokenizer", None)
+            context_tokens = provider.count_tokens(formatted_context, tokenizer) if tokenizer else 0
             ctx.logger.debug(
-                f"[GenerateAnswer] {chosen_count} results fit in {provider.__class__.__name__} "
-                f"context window"
+                f"\n[GenerateAnswer] CONTEXT WINDOW ({provider.__class__.__name__}):\n"
+                f"  Model: {provider.model_spec.llm_model.name}\n"
+                f"  Context window: {context_window:,} tokens\n"
+                f"  Results fitting in budget: {chosen_count}/{len(results)}\n"
+                f"  Context tokens used: ~{context_tokens:,}\n"
+                f"  Max completion tokens: {self.MAX_COMPLETION_TOKENS:,}\n"
+                f"  Formatted context preview (first 500 chars):\n"
+                f"    {formatted_context[:500]}...\n"
             )
 
             # Build messages for LLM
@@ -103,6 +132,14 @@ class GenerateAnswer(SearchOperation):
             raise RuntimeError("Provider returned empty completion")
 
         state["completion"] = completion
+
+        # DEBUG: Log output
+        ctx.logger.debug(
+            f"\n[GenerateAnswer] OUTPUT:\n"
+            f"  Completion length: {len(completion)} chars (~{len(completion) // 4} tokens)\n"
+            f"  Completion preview (first 300 chars):\n"
+            f"    {completion[:300]}...\n"
+        )
 
         # Report metrics for analytics
         # Approximate token count (rough estimate: 1 token ≈ 4 characters)

@@ -6,9 +6,12 @@ File storage abstractions for Airweave sync operations.
 
 | File | Description |
 |------|-------------|
-| `storage_client.py` | `StorageBackend` interface + `FilesystemStorageBackend` implementation |
-| `storage_manager.py` | High-level `StorageManager` for sync file operations |
-| `storage_exceptions.py` | Storage-specific exceptions |
+| `backend.py` | `StorageBackend` interface + Filesystem/Azure Blob implementations |
+| `paths.py` | `StoragePaths` - centralized path constants for ARF and temp storage |
+| `arf_reader.py` | `ArfReader` - entity reconstruction for replay |
+| `replay_source.py` | `ArfReplaySource` - internal source for ARF replay mode |
+| `file_service.py` | `FileService` - file download and restoration to temp directory |
+| `exceptions.py` | Storage-specific exceptions |
 
 ## Usage
 

@@ -1,33 +1,14 @@
 """Base destination classes."""
 
 from abc import ABC, abstractmethod
-from enum import Enum
-from typing import ClassVar, List, Optional
+from typing import Any, ClassVar, Dict, List, Optional
 from uuid import UUID
 
 from airweave.core.logging import ContextualLogger
 from airweave.core.logging import logger as default_logger
 from airweave.platform.entities._base import BaseEntity
-
-
-class ProcessingRequirement(Enum):
-    """What processing a destination expects from Airweave.
-
-    This enum determines how the sync pipeline processes entities before
-    sending them to the destination.
-
-    Values:
-        CHUNKS_AND_EMBEDDINGS: Destination expects pre-chunked, pre-embedded entities.
-            Airweave performs: text extraction → chunking → embedding
-            Used by: Qdrant, Pinecone, and other vector databases
-
-        RAW_ENTITIES: Destination handles its own chunking and embedding.
-            Airweave sends raw entities without chunking/embedding.
-            Used by: Vespa (handles NLP processing internally)
-    """
-
-    CHUNKS_AND_EMBEDDINGS = "chunks_embeddings"
-    RAW_ENTITIES = "raw"
+from airweave.platform.sync.pipeline import ProcessingRequirement
+from airweave.schemas.search import AirweaveTemporalConfig, SearchResult
 
 
 class BaseDestination(ABC):
@@ -35,6 +16,12 @@ class BaseDestination(ABC):
 
     # Class variables for integration metadata
     _labels: ClassVar[List[str]] = []
+
+    # Processing requirement - override in subclasses
+    # Default is CHUNKS_AND_EMBEDDINGS for backward compatibility
+    processing_requirement: ClassVar[ProcessingRequirement] = (
+        ProcessingRequirement.CHUNKS_AND_EMBEDDINGS
+    )
 
     def __init__(self):
         """Initialize the base destination."""
@@ -81,23 +68,8 @@ class BaseDestination(ABC):
         pass
 
     @abstractmethod
-    async def insert(self, entity: BaseEntity) -> None:
-        """Insert a single entity into the destination."""
-        pass
-
-    @abstractmethod
     async def bulk_insert(self, entities: list[BaseEntity]) -> None:
         """Bulk insert entities into the destination."""
-        pass
-
-    @abstractmethod
-    async def delete(self, db_entity_id: UUID) -> None:
-        """Delete a single entity from the destination."""
-        pass
-
-    @abstractmethod
-    async def bulk_delete(self, entity_ids: list[str], sync_id: UUID) -> None:
-        """Bulk delete entities from the destination within a given sync."""
         pass
 
     @abstractmethod
@@ -106,57 +78,71 @@ class BaseDestination(ABC):
         pass
 
     @abstractmethod
-    async def bulk_delete_by_parent_id(self, parent_id: str, sync_id: UUID) -> None:
-        """Bulk delete entities from the destination by parent ID within a given sync."""
-        pass
-
     async def bulk_delete_by_parent_ids(self, parent_ids: list[str], sync_id: UUID) -> None:
-        """Bulk delete entities for multiple parent IDs within a given sync.
-
-        Default fan-out implementation that calls `bulk_delete_by_parent_id` for each ID.
-        Destinations can override this to issue a single optimized call.
-        """
-        for pid in parent_ids:
-            await self.bulk_delete_by_parent_id(pid, sync_id)
-
-    @abstractmethod
-    async def search(self, query_vector: list[float]) -> None:
-        """Search for a sync_id in the destination."""
+        """Bulk delete entities for multiple parent IDs within a given sync."""
         pass
 
     @abstractmethod
-    async def has_keyword_index(self) -> bool:
-        """Check if the destination has a keyword index."""
-        pass
+    async def search(
+        self,
+        queries: List[str],
+        airweave_collection_id: UUID,
+        limit: int,
+        offset: int,
+        filter: Optional[Dict[str, Any]] = None,
+        dense_embeddings: Optional[List[List[float]]] = None,
+        sparse_embeddings: Optional[List[Any]] = None,
+        retrieval_strategy: str = "hybrid",
+        temporal_config: Optional[AirweaveTemporalConfig] = None,
+    ) -> List[SearchResult]:
+        """Execute search against the destination.
 
-    @property
-    def processing_requirement(self) -> ProcessingRequirement:
-        """What processing this destination requires from Airweave.
-
-        Override in subclasses to change behavior. Default is CHUNKS_AND_EMBEDDINGS
-        for backward compatibility with existing vector DBs.
-
-        Returns:
-            ProcessingRequirement indicating what processing Airweave should perform
-        """
-        return ProcessingRequirement.CHUNKS_AND_EMBEDDINGS
-
-    async def bulk_insert_raw(self, entities: list[BaseEntity]) -> None:
-        """Bulk insert raw (non-chunked, non-embedded) entities.
-
-        Used by destinations with processing_requirement=RAW_ENTITIES.
-        Default implementation raises NotImplementedError.
+        This is the standard search interface that all destinations must implement.
+        Destinations handle embedding generation (if needed) and filter translation internally.
 
         Args:
-            entities: Raw entities without chunking/embedding
+            queries: List of search query texts (supports query expansion)
+            airweave_collection_id: Airweave collection UUID for multi-tenant filtering
+            limit: Maximum number of results to return
+            offset: Number of results to skip (pagination)
+            filter: Optional filter dict (Airweave canonical format, destination translates)
+            dense_embeddings: Pre-computed dense embeddings (if client-side embedding)
+            sparse_embeddings: Pre-computed sparse embeddings for hybrid search
+            retrieval_strategy: Search strategy - "hybrid", "neural", or "keyword"
+            temporal_config: Optional temporal relevance config (destination translates)
 
-        Raises:
-            NotImplementedError: If destination doesn't support raw inserts
+        Returns:
+            List of SearchResult objects in the standard format
         """
-        raise NotImplementedError(
-            f"{self.__class__.__name__} does not support raw entity inserts. "
-            "Override bulk_insert_raw() or set processing_requirement to CHUNKS_AND_EMBEDDINGS."
-        )
+        pass
+
+    def translate_filter(self, filter: Optional[Dict[str, Any]]) -> Any:
+        """Translate Airweave filter to destination-native format.
+
+        Default implementation is a no-op.
+        Override this method for destinations that use different filter formats.
+
+        Args:
+            filter: Airweave canonical filter dict
+
+        Returns:
+            Destination-native filter format
+        """
+        return filter
+
+    def translate_temporal(self, config: Optional[AirweaveTemporalConfig]) -> Any:
+        """Translate Airweave temporal config to destination-native format.
+
+        Default implementation is a no-op. Override for destinations that
+        require different temporal relevance configurations.
+
+        Args:
+            config: Airweave temporal relevance configuration
+
+        Returns:
+            Destination-native temporal config (or None if not supported)
+        """
+        return config
 
 
 class VectorDBDestination(BaseDestination):

@@ -1,0 +1,143 @@
+---
+title: "Connectors"
+description: "Connect your apps, databases, and documents to make them searchable"
+edit-this-page-url: https://github.com/airweave-ai/airweave/blob/main/fern/docs/pages/connectors/overview.mdx
+slug: connectors
+---
+
+Connectors are the integrations that let Airweave sync data from your external sources. Each connector handles authentication, data extraction, and incremental updates for a specific app or database.
+
+Once connected, your data is transformed into searchable entities that AI agents can query through Airweave's unified search layer.
+
+---
+
+## Available Connectors
+
+Airweave supports many different types of connectors across productivity tools, cloud storage, CRMs, databases, and more.
+
+### Popular Connectors
+
+<CardGroup cols={4}>
+  <Card title="Slack" icon="fa-brands fa-slack" href="/connectors/slack" />
+  <Card title="GitHub" icon="fa-brands fa-github" href="/connectors/github" />
+  <Card title="Google Drive" icon="fa-brands fa-google-drive" href="/connectors/google_drive" />
+  <Card title="Salesforce" icon="fa-brands fa-salesforce" href="/connectors/salesforce" />
+  <Card title="Gmail" icon="fa-brands fa-google" href="/connectors/gmail" />
+  <Card title="HubSpot" icon="fa-brands fa-hubspot" href="/connectors/hubspot" />
+  <Card title="Dropbox" icon="fa-brands fa-dropbox" href="/connectors/dropbox" />
+  <Card title="Stripe" icon="fa-brands fa-stripe" href="/connectors/stripe" />
+</CardGroup>
+
+### All Connectors
+
+<Accordion title="Browse all connectors by category">
+
+### Productivity & Collaboration
+- [Notion](/connectors/notion)
+- [Slack](/connectors/slack)
+- [Asana](/connectors/asana)
+- [Monday](/connectors/monday)
+- [Linear](/connectors/linear)
+- [Trello](/connectors/trello)
+- [Clickup](/connectors/clickup)
+- [Todoist](/connectors/todoist)
+- [Airtable](/connectors/airtable)
+
+### Cloud Storage & Documents
+- [Google Drive](/connectors/google_drive)
+- [Google Docs](/connectors/google_docs)
+- [Google Slides](/connectors/google_slides)
+- [Dropbox](/connectors/dropbox)
+- [OneDrive](/connectors/onedrive)
+- [Box](/connectors/box)
+- [SharePoint](/connectors/sharepoint)
+- [Word](/connectors/word)
+- [Excel](/connectors/excel)
+- [OneNote](/connectors/onenote)
+
+### Developer Tools
+- [GitHub](/connectors/github)
+- [GitLab](/connectors/gitlab)
+- [Bitbucket](/connectors/bitbucket)
+- [Jira](/connectors/jira)
+- [Confluence](/connectors/confluence)
+
+### CRM & Sales
+- [Salesforce](/connectors/salesforce)
+- [HubSpot](/connectors/hubspot)
+- [Pipedrive](/connectors/pipedrive)
+- [Attio](/connectors/attio)
+- [Zoho CRM](/connectors/zoho_crm)
+
+### Communication & Email
+- [Gmail](/connectors/gmail)
+- [Outlook Mail](/connectors/outlook_mail)
+- [Outlook Calendar](/connectors/outlook_calendar)
+- [Google Calendar](/connectors/google_calendar)
+- [Teams](/connectors/teams)
+
+### Support & Service
+- [Zendesk](/connectors/zendesk)
+
+### Databases
+- [PostgreSQL](/connectors/postgresql)
+
+### E-commerce & Payments
+- [Shopify](/connectors/shopify)
+- [Stripe](/connectors/stripe)
+
+### Other
+- [Ctti](/connectors/ctti)
+
+</Accordion>
+
+---
+
+## Authentication Methods
+
+Connectors support different authentication methods depending on the source:
+
+| Method | How It Works | Common Sources |
+|--------|--------------|----------------|
+| <Icon icon="fa-solid fa-key" size="4" color="#4199D3" /> **OAuth 2.0** | Browser-based login flow with automatic token refresh | Notion, Slack, Google apps, Salesforce |
+| <Icon icon="fa-solid fa-lock" size="4" color="#4199D3" /> **API Key** | Paste a token generated from the source | GitHub, Stripe, Linear |
+| <Icon icon="fa-solid fa-database" size="4" color="#4199D3" /> **Credentials** | Host, port, username, and password | PostgreSQL |
+
+For enterprise setups, you can also use [Auth Providers](/auth-providers) like Composio or Pipedream to reuse existing authenticated connections.
+
+---
+
+## How Connectors Work
+
+<Steps>
+  <Step title="Connect">
+    Authenticate with the source using OAuth, API key, or credentials. Airweave securely stores your connection.
+  </Step>
+  <Step title="Sync">
+    Airweave extracts entities (pages, tickets, files, rows) from the source and transforms them into searchable documents.
+  </Step>
+  <Step title="Search">
+    Query your data through Airweave's unified search API. Results include source metadata and links back to the original content.
+  </Step>
+</Steps>
+
+---
+
+## Add a Connector
+
+<CardGroup cols={2}>
+  <Card
+    title="Build a Custom Connector"
+    icon="fa-solid fa-code"
+    href="/add-new-source"
+  >
+    Follow our guide to add support for a new source
+  </Card>
+  <Card
+    title="Request a Connector"
+    icon="fa-brands fa-github"
+    href="https://github.com/airweave-ai/airweave/issues/new?labels=connector-request&template=connector_request.md&title=%5BConnector+Request%5D+"
+  >
+    Open a GitHub issue to request a new integration
+  </Card>
+</CardGroup>

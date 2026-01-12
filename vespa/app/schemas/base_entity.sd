@@ -1,0 +1,354 @@
+# OVERVIEW:
+# - matching: hybrid (lexical + ANN) to maximize recall
+# - ANN index: x[96] binary packed embeddings with hamming distance for fast retrieval
+# - ranking (large embeddings): x[768] bfloat16 for high-precision cosine similarity
+#
+# PHASED RANKING (recommended by Vespa docs):
+# - first-phase: cheap, runs on ALL matched candidates
+#   - Reuse ANN match score (closeness) + BM25 over chunks/payload
+# - second-phase: expensive, runs on top rerank-count candidates
+#   - Per-chunk cosine similarity with large embeddings
+#   - Per-chunk BM25 aggregations (max, avg top-3)
+# - global-phase: RRF (Reciprocal Rank Fusion) - no training data needed
+#   - Combines text and semantic scores by rank position, not raw values
+#   - Runs on stateless container after merging results from all content nodes
+#
+# PRODUCTION SETTINGS (100k+ entities, LLM input):
+# - targetHits: 400 per retrieval method → ~800 candidates before deduplication
+# - rerank-count: 200 (second phase), 100 (global phase)
+# - hits: controlled by caller (default 100)
+
+schema base_entity {
+
+    document base_entity {
+
+        # attribute: in-memory (unless paged), can be used for fast filtering
+        # summary: field will be returned in results
+        # This field is not keyword searchable b/c its not indexed
+        field entity_id type string {
+            indexing: summary | attribute
+        }
+
+        field name type string {
+            indexing: attribute | summary
+        }
+
+        # type breadcrumb is defined below
+        field breadcrumbs type array<breadcrumb> {
+            indexing: summary
+            struct-field entity_id {
+                indexing: attribute
+                attribute: fast-search
+            }
+            struct-field name { indexing: attribute }
+            struct-field entity_type {
+                indexing: attribute
+                attribute: fast-search
+            }
+        }
+
+        # Timestamps as epoch seconds for filtering and temporal relevance
+        field created_at type long {
+            indexing: attribute | summary
+            attribute: fast-search
+        }
+
+        field updated_at type long {
+            indexing: attribute | summary
+            attribute: fast-search
+        }
+
+        # System metadata fields (flattened - Vespa doesn't support struct-field
+        # attributes on plain structs, only on array<struct> or map types)
+        field airweave_system_metadata_collection_id type string {
+            indexing: attribute | summary
+            attribute: fast-search
+        }
+
+        field airweave_system_metadata_entity_type type string {
+            indexing: attribute | summary
+            attribute: fast-search
+        }
+
+        field airweave_system_metadata_sync_id type string {
+            indexing: attribute | summary
+            attribute: fast-search
+        }
+
+        field airweave_system_metadata_sync_job_id type string {
+            indexing: attribute | summary
+        }
+
+        field airweave_system_metadata_hash type string {
+            indexing: attribute | summary
+        }
+
+        field airweave_system_metadata_original_entity_id type string {
+            indexing: attribute | summary
+            attribute: fast-search
+        }
+
+        field airweave_system_metadata_source_name type string {
+            indexing: attribute | summary
+        }
+
+        # =============================================================================
+        # Access Control Fields
+        # =============================================================================
+        # Only populated for sources with supports_access_control=True
+        # For sources without AC, these fields will be absent and no filter is applied
+
+        # Whether the entity is publicly accessible (visible to everyone)
+        field access_is_public type bool {
+            indexing: attribute | summary
+            attribute: fast-search
+        }
+
+        # List of principal IDs (users/groups) that can view this entity
+        # Format: "user:email@example.com" or "group:sp:123" or "group:ad:DOMAIN\\Group"
+        field access_viewers type array<string> {
+            indexing: attribute | summary
+            attribute: fast-search
+        }
+
+        # Textual representation - this is what Vespa chunks and embeds
+        # Also stored in summary for downstream operations (reranking, answer generation)
+        field textual_representation type string {
+            indexing: summary
+        }
+
+        # Payload stores all other fields from the source entity (as JSON string)
+        # Indexed for keyword search (BM25)
+        field payload type string {
+            indexing: index | summary
+            index: enable-bm25
+        }
+
+    # Chunked text, keyword indexed for BM25
+        # Pre-computed externally by VespaChunkEmbedProcessor
+        # MUST be inside document block to be feedable
+    field chunks type array<string> {
+            indexing: summary | index
+        index: enable-bm25
+    }
+
+    # Binary packed embeddings for fast ANN retrieval (small and fast)
+    # Uses hamming distance on packed int8 - 32x faster than float cosine
+        # Pre-computed externally by VespaChunkEmbedProcessor (768-dim → binary → 96 int8)
+        # MUST be inside document block to be feedable
+    field chunk_small_embeddings type tensor<int8>(chunk{}, x[96]) {
+            indexing: attribute | index
+        attribute {
+            distance-metric: hamming
+        }
+        index {
+            hnsw {
+                max-links-per-node: 16
+                neighbors-to-explore-at-insert: 100
+            }
+        }
+    }
+
+    # High-precision embeddings for ranking (not indexed for ANN - too expensive)
+    # Uses angular distance which maps to cosine similarity
+        # Pre-computed externally by VespaChunkEmbedProcessor (768-dim float)
+        # MUST be inside document block to be feedable
+    field chunk_large_embeddings type tensor<bfloat16>(chunk{}, x[768]) {
+            indexing: attribute
+        attribute {
+            distance-metric: angular
+        }
+        }
+    }
+
+    struct breadcrumb {
+        field entity_id   type string {}
+        field name        type string {}
+        field entity_type type string {}
+    }
+
+    # Default fieldset used by userInput() / unspecified text search
+    fieldset default {
+        fields: payload, chunks
+    }
+
+    # Full summary - returns all fields needed for complete search results
+    # Used for reranking, answer generation, and API responses
+    document-summary full {
+        summary entity_id {}
+        summary name {}
+        summary breadcrumbs {}
+        summary created_at {}
+        summary updated_at {}
+        summary airweave_system_metadata_collection_id {}
+        summary airweave_system_metadata_entity_type {}
+        summary airweave_system_metadata_sync_id {}
+        summary airweave_system_metadata_sync_job_id {}
+        summary airweave_system_metadata_hash {}
+        summary airweave_system_metadata_original_entity_id {}
+        summary airweave_system_metadata_source_name {}
+        summary access_is_public {}
+        summary access_viewers {}
+        summary textual_representation {}
+        summary payload {}
+    }
+
+    # get top 3 most similar chunks to return in the summary
+    # this is calculated DURING ranking phase, but is not USED in the ranking
+    # =========================================================================
+    # BASE RANK PROFILE - shared functions for all ranking profiles
+    # =========================================================================
+    rank-profile default {
+        inputs {
+            query(embedding) tensor<int8>(x[96])         # Binary packed for ANN matching (hamming)
+            query(float_embedding) tensor<float>(x[768]) # Full precision for ranking
+            # Query expansion embeddings (q0=primary, q1-q9=expanded queries)
+            query(q0) tensor<int8>(x[96])
+            query(q1) tensor<int8>(x[96])
+            query(q2) tensor<int8>(x[96])
+            query(q3) tensor<int8>(x[96])
+            query(q4) tensor<int8>(x[96])
+            query(q5) tensor<int8>(x[96])
+            query(q6) tensor<int8>(x[96])
+            query(q7) tensor<int8>(x[96])
+            query(q8) tensor<int8>(x[96])
+            query(q9) tensor<int8>(x[96])
+        }
+
+        # Fixed length chunking should not cause any positional gap between elements
+        # so lexical search over chunks behaves like one big text field.
+        rank chunks {
+            element-gap: 0
+        }
+
+        # -----------------------------------------------------------------------
+        # Chunk-level text scoring (BM25)
+        # -----------------------------------------------------------------------
+        function chunk_text_scores() {
+            expression: elementwise(bm25(chunks), chunk, float)
+        }
+
+        # -----------------------------------------------------------------------
+        # Chunk-level semantic scoring (cosine similarity with large embeddings)
+        # -----------------------------------------------------------------------
+        function chunk_dot_prod() {
+            expression: reduce(query(float_embedding) * attribute(chunk_large_embeddings), sum, x)
+        }
+
+        # L2 norm helper
+        function vector_norms(t) {
+            expression: sqrt(sum(pow(t, 2), x))
+        }
+
+        # Cosine similarity per chunk
+        function chunk_sim_scores() {
+            expression: chunk_dot_prod() / (vector_norms(attribute(chunk_large_embeddings)) * vector_norms(query(float_embedding)))
+        }
+
+        # -----------------------------------------------------------------------
+        # Aggregations for chunk scores
+        # -----------------------------------------------------------------------
+        function top_3_chunk_text_scores() {
+            expression: top(3, chunk_text_scores())
+        }
+
+        function top_3_chunk_sim_scores() {
+            expression: top(3, chunk_sim_scores())
+        }
+
+        function max_chunk_text_score() {
+            expression: reduce(chunk_text_scores(), max, chunk)
+        }
+
+        function max_chunk_sim_score() {
+            expression: reduce(chunk_sim_scores(), max, chunk)
+        }
+
+        function avg_top_3_chunk_text_scores() {
+            expression: reduce(top_3_chunk_text_scores(), avg, chunk)
+        }
+
+        function avg_top_3_chunk_sim_scores() {
+            expression: reduce(top_3_chunk_sim_scores(), avg, chunk)
+        }
+
+        # Chunk selector needs this in summary-features
+        summary-features {
+            top_3_chunk_sim_scores
+        }
+    }
+
+    # =========================================================================
+    # HYBRID RANK PROFILE with RRF (Reciprocal Rank Fusion)
+    # Recommended when you don't have training data to learn optimal weights
+    # =========================================================================
+    rank-profile hybrid-rrf inherits default {
+
+        # -----------------------------------------------------------------------
+        # Document-level scores for RRF
+        # -----------------------------------------------------------------------
+
+        # Combined BM25 score across chunks and payload
+        function bm25_score() {
+            expression: bm25(chunks) + bm25(payload)
+        }
+
+        # Semantic score using closeness from ANN match (reuses HNSW graph traversal)
+        function semantic_score() {
+            expression: closeness(field, chunk_small_embeddings)
+        }
+
+        # -----------------------------------------------------------------------
+        # FIRST PHASE: Cheap, runs on all matched candidates
+        # Reuses ANN match score + BM25 (both already computed during matching)
+        # No arbitrary coefficients - just addition since RRF handles normalization
+        # -----------------------------------------------------------------------
+        first-phase {
+            expression: bm25_score() + semantic_score()
+        }
+
+        # -----------------------------------------------------------------------
+        # SECOND PHASE: Expensive per-chunk features on top candidates
+        # Uses high-precision embeddings for more accurate similarity
+        # rerank-count: 200 candidates from ~800 first-phase candidates
+        # -----------------------------------------------------------------------
+        second-phase {
+            rerank-count: 200
+            expression {
+                firstPhase +
+                max_chunk_sim_score() +
+                avg_top_3_chunk_sim_scores()
+            }
+        }
+
+        # -----------------------------------------------------------------------
+        # GLOBAL PHASE: RRF fusion - normalizes by rank, not raw scores
+        # This is the key: reciprocal_rank converts each score to 1/(k+rank)
+        # where k=60 by default. This makes scores comparable without training.
+        # rerank-count: 100 for final ranking (matches default hits)
+        # -----------------------------------------------------------------------
+        global-phase {
+            rerank-count: 100
+            expression {
+                reciprocal_rank(bm25_score) +
+                reciprocal_rank(max_chunk_sim_score)
+            }
+        }
+
+        # Match features for debugging and potential future model training
+        match-features {
+            bm25(chunks)
+            bm25(payload)
+            bm25_score
+            semantic_score
+            max_chunk_sim_score
+            max_chunk_text_score
+            avg_top_3_chunk_sim_scores
+            avg_top_3_chunk_text_scores
+        }
+
+        summary-features {
+            top_3_chunk_sim_scores
+        }
+    }
+}

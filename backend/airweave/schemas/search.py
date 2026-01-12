@@ -1,11 +1,16 @@
 """Search schemas for Airweave's search API."""
 
+from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import tiktoken
 from pydantic import BaseModel, Field, field_validator
-from qdrant_client.http.models import Filter as QdrantFilter
+
+# Type alias for the canonical Airweave filter format.
+# This follows the Qdrant filter structure (must/should/must_not) which is
+# translated to destination-specific formats by each destination's translate_filter().
+AirweaveFilter = Dict[str, Any]
 
 
 class RetrievalStrategy(str, Enum):
@@ -14,6 +19,67 @@ class RetrievalStrategy(str, Enum):
     HYBRID = "hybrid"
     NEURAL = "neural"
     KEYWORD = "keyword"
+
+
+class SearchResult(BaseModel):
+    """Standard search result format returned by all destinations.
+
+    This is the canonical result format that all destination search implementations
+    must return, ensuring the search module remains destination-agnostic.
+    """
+
+    id: str = Field(..., description="Unique identifier for the search result")
+    score: float = Field(..., description="Relevance score from the search backend")
+    payload: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Document fields and metadata associated with the result",
+    )
+
+
+class AirweaveTemporalConfig(BaseModel):
+    """Destination-agnostic temporal relevance configuration.
+
+    This configuration is translated to destination-specific formats:
+    - Qdrant: DecayConfig with linear decay
+    - Vespa: Freshness ranking function (future implementation)
+
+    The TemporalRelevance operation dynamically computes these values by analyzing
+    the actual timestamp distribution in the collection.
+    """
+
+    weight: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="Weight of temporal relevance in final ranking (0-1)",
+    )
+    reference_field: str = Field(
+        default="updated_at",
+        description="Timestamp field to use for temporal relevance calculation",
+    )
+    target_datetime: Optional[datetime] = Field(
+        default=None,
+        description=(
+            "Reference point for decay calculation. When set dynamically by "
+            "TemporalRelevance operation, this is the newest timestamp in the collection. "
+            "If None, destinations should use datetime.now()."
+        ),
+    )
+    scale_seconds: Optional[float] = Field(
+        default=None,
+        description=(
+            "Time scale for decay in seconds. When set dynamically by TemporalRelevance "
+            "operation, this is the full time span from oldest to newest document. "
+            "If None, destinations should use a sensible default (e.g., 7 days)."
+        ),
+    )
+    decay_scale: Optional[str] = Field(
+        default=None,
+        description=(
+            "DEPRECATED: Use scale_seconds instead. "
+            "Time scale as string (e.g., '7d' for 7 days). Only used if scale_seconds is None."
+        ),
+    )
 
 
 class SearchRequest(BaseModel):
@@ -60,8 +126,8 @@ class SearchRequest(BaseModel):
     retrieval_strategy: Optional[RetrievalStrategy] = Field(
         default=None, description="The retrieval strategy to use"
     )
-    filter: Optional[QdrantFilter] = Field(
-        default=None, description="Qdrant native filter for metadata-based filtering"
+    filter: Optional[AirweaveFilter] = Field(
+        default=None, description="Filter for metadata-based filtering"
     )
     offset: Optional[int] = Field(default=None, description="Number of results to skip")
     limit: Optional[int] = Field(default=None, description="Maximum number of results to return")

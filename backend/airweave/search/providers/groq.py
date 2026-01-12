@@ -111,7 +111,7 @@ class GroqProvider(BaseProvider):
 
         return parsed
 
-    async def embed(self, texts: List[str]) -> List[List[float]]:
+    async def embed(self, texts: List[str], dimensions: Optional[int] = None) -> List[List[float]]:
         """Not supported by Groq."""
         raise NotImplementedError("Groq does not support embeddings")
 

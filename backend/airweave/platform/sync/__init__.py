@@ -4,17 +4,17 @@ Provides:
 - SyncOrchestrator: Coordinates the entire sync workflow
 - EntityPipeline: Processes entities through transformation stages
 - SyncContext: Immutable container for sync resources
-- RawDataService: Stores raw entities with entity-level granularity
+- ArfService: Stores raw entities with entity-level granularity (ARF = Airweave Raw Format)
 """
 
-from .raw_data import (
-    RawDataService,
+from .arf import (
+    ArfService,
     SyncManifest,
-    raw_data_service,
+    arf_service,
 )
 
 __all__ = [
-    "RawDataService",
-    "raw_data_service",
+    "ArfService",
+    "arf_service",
     "SyncManifest",
 ]

@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from fastembed import SparseEmbedding
 
-from airweave.platform.sync.context import SyncContext
+from airweave.platform.contexts import SyncContext
 
 
 class BaseEmbedder(ABC):

@@ -36,7 +36,7 @@ class SyncJob(OrganizationBase, UserMixin):
     error: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     entities_encountered: Mapped[Optional[dict]] = mapped_column(JSON, default={})
     scheduled: Mapped[bool] = mapped_column(Boolean, default=False)
-    execution_config_json: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    sync_config: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     sync: Mapped["Sync"] = relationship(
         "Sync",

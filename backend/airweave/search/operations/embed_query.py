@@ -102,8 +102,19 @@ class EmbedQuery(SearchOperation):
     async def _generate_dense_embeddings(
         self, queries: List[str], ctx: ApiContext
     ) -> List[List[float]]:
-        """Generate dense neural embeddings using provider."""
-        dense_embeddings = await self.provider.embed(queries)
+        """Generate dense neural embeddings using provider.
+
+        Uses Matryoshka truncation to get embeddings at the configured vector_size.
+        This ensures embeddings match the destination's requirements:
+        - Qdrant: 3072-dim (text-embedding-3-large native)
+        - Vespa: 768-dim (Matryoshka truncated for binary packing)
+        """
+        # Pass vector_size for Matryoshka truncation
+        # OpenAI's text-embedding-3 models support arbitrary truncation
+        ctx.logger.debug(
+            f"[EmbedQuery] Generating {self.vector_size}-dim embeddings for {len(queries)} queries"
+        )
+        dense_embeddings = await self.provider.embed(queries, dimensions=self.vector_size)
 
         # Validate we got embeddings for all queries
         if len(dense_embeddings) != len(queries):
@@ -111,7 +122,17 @@ class EmbedQuery(SearchOperation):
                 f"Embedding count mismatch: got {len(dense_embeddings)} for {len(queries)} queries"
             )
 
-        ctx.logger.debug(f"[EmbedQuery] Dense embeddings generated: {len(dense_embeddings)}")
+        # Validate dimensions
+        if dense_embeddings and len(dense_embeddings[0]) != self.vector_size:
+            ctx.logger.warning(
+                f"[EmbedQuery] Dimension mismatch: got {len(dense_embeddings[0])}, "
+                f"expected {self.vector_size}"
+            )
+
+        ctx.logger.debug(
+            f"[EmbedQuery] Dense embeddings generated: {len(dense_embeddings)} x "
+            f"{len(dense_embeddings[0]) if dense_embeddings else 0}-dim"
+        )
 
         return dense_embeddings
 

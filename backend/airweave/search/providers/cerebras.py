@@ -147,7 +147,7 @@ class CerebrasProvider(BaseProvider):
 
     # Removed sanitizer; models are now provider-agnostic
 
-    async def embed(self, texts: List[str]) -> List[List[float]]:
+    async def embed(self, texts: List[str], dimensions: Optional[int] = None) -> List[List[float]]:
         """Not supported by Cerebras."""
         raise NotImplementedError("Cerebras does not support embeddings")
 

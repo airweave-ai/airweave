@@ -77,6 +77,7 @@ class SearchService:
         }
 
         # Track the search event with state for automatic metrics extraction
+        # TODO: use background task to track search completion, not blocking the response
         track_search_completion(
             ctx=ctx,
             query=search_context.query,
@@ -91,6 +92,7 @@ class SearchService:
         )
 
         # Persist search data to database
+        # TODO: use background task to persist search data, not blocking the response
         await search_helpers.persist_search_data(
             db=db,
             search_context=search_context,

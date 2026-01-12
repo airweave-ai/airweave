@@ -1,6 +1,6 @@
 """Snapshot source for replaying raw data captures.
 
-This source reads entities from the raw data storage structure:
+This source reads entities from ARF (Airweave Raw Format) storage:
     {path}/
     ├── manifest.json           # Sync metadata
     ├── entities/
@@ -11,12 +11,20 @@ This source reads entities from the raw data storage structure:
 Usage:
     Create a source connection with:
     - short_name: "snapshot"
-    - config: {"path": "/path/to/raw/sync-id"}
+    - config: {"path": "/local/path/to/raw/{sync_id}"} OR {"path": "raw/{sync_id}"}
     - credentials: {"placeholder": "snapshot"} (required for API)
+
+The path can be:
+- A local filesystem path (for evals): "/path/to/airweave/backend/local_storage/raw/{sync_id}"
+- A storage-relative path (for blob): "raw/{sync_id}"
+
+Note: This source is behind a feature flag (Internal label).
+For automatic ARF replay during syncs, use execution_config.behavior.replay_from_arf=True instead.
 """
 
 import importlib
 import json
+import os
 import tempfile
 from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List, Optional, Union
@@ -26,6 +34,7 @@ from airweave.platform.configs.config import SnapshotConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.sources._base import BaseSource
+from airweave.platform.storage import StorageBackend, StoragePaths
 from airweave.schemas.source_connection import AuthenticationMethod
 
 
@@ -42,8 +51,9 @@ from airweave.schemas.source_connection import AuthenticationMethod
 class SnapshotSource(BaseSource):
     """Source that replays entities from raw data captures.
 
-    Reads entities from local filesystem.
-    Supports file restoration for FileEntity types.
+    Supports two modes:
+    1. Local filesystem path (for evals): reads directly from disk
+    2. Storage-relative path (for blob): uses StorageBackend abstraction
     """
 
     def __init__(self):
@@ -51,8 +61,9 @@ class SnapshotSource(BaseSource):
         super().__init__()
         self.path: str = ""
         self.restore_files: bool = True
+        self._storage: Optional[StorageBackend] = None
         self._temp_dir: Optional[Path] = None
-        self._base_path: Optional[Path] = None
+        self._is_local_path: bool = False
 
     @classmethod
     async def create(
@@ -85,20 +96,41 @@ class SnapshotSource(BaseSource):
         if not instance.path:
             raise ValueError("path is required in config")
 
-        # Set up base path
-        instance._base_path = Path(instance.path)
+        # Determine if this is a local filesystem path or storage-relative path
+        # Local paths start with / or contain typical filesystem patterns
+        instance._is_local_path = instance.path.startswith("/") or (
+            os.name == "nt" and ":" in instance.path[:3]  # Windows drive letter
+        )
 
         return instance
 
-    async def _read_json(self, relative_path: str) -> Dict[str, Any]:
-        """Read a JSON file from the snapshot directory."""
-        file_path = self._base_path / relative_path
+    @property
+    def storage(self) -> StorageBackend:
+        """Get storage backend (lazy to avoid circular import)."""
+        if self._storage is None:
+            from airweave.platform.storage import storage_backend
+
+            self._storage = storage_backend
+        return self._storage
+
+    # =========================================================================
+    # Local filesystem methods (for evals)
+    # =========================================================================
+
+    def _local_path(self, relative: str = "") -> Path:
+        """Get local filesystem path."""
+        base = Path(self.path)
+        return base / relative if relative else base
+
+    async def _read_json_local(self, relative_path: str) -> Dict[str, Any]:
+        """Read JSON from local filesystem."""
+        file_path = self._local_path(relative_path)
         with open(file_path, "r", encoding="utf-8") as f:
             return json.load(f)
 
-    async def _list_entity_files(self) -> List[str]:
-        """List all entity JSON files."""
-        entities_dir = self._base_path / "entities"
+    async def _list_entity_files_local(self) -> List[str]:
+        """List entity files from local filesystem."""
+        entities_dir = self._local_path("entities")
         if not entities_dir.exists():
             return []
         return [
@@ -107,33 +139,26 @@ class SnapshotSource(BaseSource):
             if f.is_file() and f.suffix == ".json"
         ]
 
-    async def _restore_file(self, stored_file_path: str) -> Optional[str]:
-        """Restore a file attachment to temp directory.
-
-        Args:
-            stored_file_path: Relative path to file in storage
-
-        Returns:
-            Local path to restored file, or None if restoration failed
-        """
+    async def _restore_file_local(self, stored_file_path: str) -> Optional[str]:
+        """Restore file from local filesystem to temp directory."""
         if not self.restore_files:
             return None
 
         try:
-            source_path = self._base_path / stored_file_path
+            source_path = self._local_path(stored_file_path)
             if not source_path.exists():
                 return None
 
             # Create temp directory if needed
             if self._temp_dir is None:
-                self._temp_dir = Path(tempfile.mkdtemp(prefix="snapshot_files_"))
+                self._temp_dir = Path(
+                    tempfile.mkdtemp(prefix="snapshot_", dir=StoragePaths.TEMP_BASE)
+                )
 
-            # Extract filename from path
             filename = source_path.name
             local_path = self._temp_dir / filename
             local_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Copy file
             with open(source_path, "rb") as src, open(local_path, "wb") as dst:
                 dst.write(src.read())
 
@@ -143,18 +168,80 @@ class SnapshotSource(BaseSource):
             self.logger.warning(f"Failed to restore file {stored_file_path}: {e}")
             return None
 
+    # =========================================================================
+    # Storage backend methods (for blob storage)
+    # =========================================================================
+
+    async def _read_json_storage(self, relative_path: str) -> Dict[str, Any]:
+        """Read JSON from storage backend."""
+        full_path = f"{self.path.rstrip('/')}/{relative_path}"
+        return await self.storage.read_json(full_path)
+
+    async def _list_entity_files_storage(self) -> List[str]:
+        """List entity files from storage backend."""
+        entities_prefix = f"{self.path.rstrip('/')}/entities"
+        files = await self.storage.list_files(entities_prefix)
+        # Return relative to snapshot path
+        return [f.replace(f"{self.path.rstrip('/')}/", "") for f in files if f.endswith(".json")]
+
+    async def _restore_file_storage(self, stored_file_path: str) -> Optional[str]:
+        """Restore file from storage backend to temp directory."""
+        if not self.restore_files:
+            return None
+
+        try:
+            full_path = f"{self.path.rstrip('/')}/{stored_file_path}"
+            content = await self.storage.read_file(full_path)
+
+            # Create temp directory if needed
+            if self._temp_dir is None:
+                self._temp_dir = Path(
+                    tempfile.mkdtemp(prefix="snapshot_", dir=StoragePaths.TEMP_BASE)
+                )
+
+            filename = Path(stored_file_path).name
+            local_path = self._temp_dir / filename
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+
+            with open(local_path, "wb") as f:
+                f.write(content)
+
+            return str(local_path)
+
+        except Exception as e:
+            self.logger.warning(f"Failed to restore file {stored_file_path}: {e}")
+            return None
+
+    # =========================================================================
+    # Unified methods (route to local or storage)
+    # =========================================================================
+
+    async def _read_json(self, relative_path: str) -> Dict[str, Any]:
+        """Read JSON from appropriate backend."""
+        if self._is_local_path:
+            return await self._read_json_local(relative_path)
+        return await self._read_json_storage(relative_path)
+
+    async def _list_entity_files(self) -> List[str]:
+        """List entity files from appropriate backend."""
+        if self._is_local_path:
+            return await self._list_entity_files_local()
+        return await self._list_entity_files_storage()
+
+    async def _restore_file(self, stored_file_path: str) -> Optional[str]:
+        """Restore file from appropriate backend."""
+        if self._is_local_path:
+            return await self._restore_file_local(stored_file_path)
+        return await self._restore_file_storage(stored_file_path)
+
+    # =========================================================================
+    # Entity reconstruction
+    # =========================================================================
+
     def _reconstruct_entity(
         self, entity_dict: Dict[str, Any], restored_file_path: Optional[str] = None
     ) -> BaseEntity:
-        """Reconstruct a BaseEntity from stored dict.
-
-        Args:
-            entity_dict: Dict with entity data and __entity_class__/__entity_module__
-            restored_file_path: Optional local path to restored file
-
-        Returns:
-            Reconstructed entity instance
-        """
+        """Reconstruct a BaseEntity from stored dict."""
         # Make a copy to avoid mutating
         entity_dict = dict(entity_dict)
 
@@ -180,12 +267,19 @@ class SnapshotSource(BaseSource):
 
         return entity_class(**entity_dict)
 
+    # =========================================================================
+    # Main interface
+    # =========================================================================
+
     async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate entities from raw data storage.
 
         Reads manifest and iterates over all entity JSON files,
         reconstructing BaseEntity objects and optionally restoring files.
         """
+        mode = "local filesystem" if self._is_local_path else "storage backend"
+        self.logger.info(f"📂 Snapshot replay from {mode}: {self.path}")
+
         # Read manifest for logging
         try:
             manifest = await self._read_json("manifest.json")
@@ -221,13 +315,20 @@ class SnapshotSource(BaseSource):
     async def validate(self) -> bool:
         """Validate that the snapshot path exists and is readable."""
         self.logger.info(f"Validating snapshot source with path: {self.path}")
+
         if not self.path:
             self.logger.error("Snapshot validation failed: path is empty")
             return False
 
-        if not self._base_path or not self._base_path.exists():
-            self.logger.error(f"Snapshot validation failed: path does not exist: {self.path}")
-            return False
+        # Check path exists
+        if self._is_local_path:
+            if not self._local_path().exists():
+                self.logger.error(f"Snapshot validation failed: path does not exist: {self.path}")
+                return False
+        else:
+            if not await self.storage.exists(f"{self.path}/manifest.json"):
+                self.logger.error(f"Snapshot validation failed: manifest not found at {self.path}")
+                return False
 
         try:
             manifest = await self._read_json("manifest.json")
@@ -241,5 +342,8 @@ class SnapshotSource(BaseSource):
         if self._temp_dir and self._temp_dir.exists():
             import shutil
 
-            shutil.rmtree(self._temp_dir)
+            try:
+                shutil.rmtree(self._temp_dir)
+            except Exception:
+                pass
             self._temp_dir = None

@@ -116,8 +116,16 @@ class OpenAIProvider(BaseProvider):
 
         return parsed
 
-    async def embed(self, texts: List[str]) -> List[List[float]]:
-        """Generate embeddings with batching and validation."""
+    async def embed(self, texts: List[str], dimensions: Optional[int] = None) -> List[List[float]]:
+        """Generate embeddings with batching and validation.
+
+        Args:
+            texts: List of texts to embed
+            dimensions: Optional target dimensions for Matryoshka truncation.
+                       If None, uses the model's native dimensions.
+                       Supported by text-embedding-3-large (3072 → 768) and
+                       text-embedding-3-small (1536 → 512).
+        """
         if not self.model_spec.embedding_model:
             raise RuntimeError("Embedding model not configured for OpenAI provider")
 
@@ -125,6 +133,9 @@ class OpenAIProvider(BaseProvider):
             raise ValueError("Cannot embed empty text list")
 
         self._validate_embed_inputs(texts)
+
+        # Store dimensions for use in _embed_batch
+        self._requested_dimensions = dimensions
         return await self._process_embeddings(texts)
 
     def _validate_embed_inputs(self, texts: List[str]) -> None:
@@ -166,10 +177,21 @@ class OpenAIProvider(BaseProvider):
     async def _embed_batch(self, batch: List[str], batch_start: int) -> List[List[float]]:
         """Embed a single batch with validation."""
         try:
-            response = await self.client.embeddings.create(
-                input=batch,
-                model=self.model_spec.embedding_model.name,
-            )
+            # Build API params - add dimensions if Matryoshka truncation requested
+            api_params: Dict[str, Any] = {
+                "input": batch,
+                "model": self.model_spec.embedding_model.name,
+            }
+
+            # Add dimensions parameter for Matryoshka truncation if specified
+            # This is supported by text-embedding-3-large and text-embedding-3-small
+            if hasattr(self, "_requested_dimensions") and self._requested_dimensions:
+                api_params["dimensions"] = self._requested_dimensions
+                self.ctx.logger.debug(
+                    f"[OpenAIProvider] Matryoshka truncation: {self._requested_dimensions} dims"
+                )
+
+            response = await self.client.embeddings.create(**api_params)
         except Exception as e:
             raise RuntimeError(
                 f"OpenAI embeddings API call failed at index {batch_start}: {e}"

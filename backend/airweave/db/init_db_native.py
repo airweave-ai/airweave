@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave.core.constants.reserved_ids import (
     NATIVE_NEO4J_UUID,
     NATIVE_QDRANT_UUID,
+    NATIVE_VESPA_UUID,
     RESERVED_TABLE_ENTITY_ID,
 )
 from airweave.core.shared_models import ConnectionStatus, IntegrationType
@@ -15,9 +16,10 @@ from airweave.models.connection import Connection
 async def init_db_with_native_connections(db: AsyncSession) -> None:
     """Initialize the database with native connections.
 
-    Creates the two built-in connections for:
+    Creates the built-in connections for:
     - qdrant_native (vector database destination)
     - neo4j_native (graph database destination)
+    - vespa_native (vector database destination with internal chunking/embedding)
 
     Note: Embedding models are no longer managed as connections.
     They are handled internally by DenseEmbedder and SparseEmbedder.
@@ -40,6 +42,14 @@ async def init_db_with_native_connections(db: AsyncSession) -> None:
             "readable_id": "native-neo4j",
             "integration_type": IntegrationType.DESTINATION,
             "short_name": "neo4j_native",
+            "status": ConnectionStatus.ACTIVE,
+        },
+        "vespa_native": {
+            "id": NATIVE_VESPA_UUID,
+            "name": "Native Vespa",
+            "readable_id": "native-vespa",
+            "integration_type": IntegrationType.DESTINATION,
+            "short_name": "vespa_native",
             "status": ConnectionStatus.ACTIVE,
         },
     }

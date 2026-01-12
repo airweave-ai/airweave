@@ -115,8 +115,15 @@ class BaseProvider(ABC):
         pass
 
     @abstractmethod
-    async def embed(self, texts: List[str]) -> List[List[float]]:
-        """Generate embeddings for text."""
+    async def embed(self, texts: List[str], dimensions: Optional[int] = None) -> List[List[float]]:
+        """Generate embeddings for text.
+
+        Args:
+            texts: List of texts to embed
+            dimensions: Optional target dimensions for Matryoshka truncation.
+                       If None, uses the model's native dimensions.
+                       Supported by models like text-embedding-3-large (3072 native).
+        """
         pass
 
     @abstractmethod

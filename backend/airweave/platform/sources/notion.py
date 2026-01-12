@@ -17,7 +17,6 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt
 from airweave.core.logging import logger
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.notion import (
     NotionDatabaseEntity,
@@ -27,6 +26,7 @@ from airweave.platform.entities.notion import (
 )
 from airweave.platform.sources._base import BaseSource
 from airweave.platform.sources.retry_helpers import wait_rate_limit_with_backoff
+from airweave.platform.storage import FileSkippedException
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
@@ -270,7 +270,7 @@ class NotionSource(BaseSource):
             self.logger.error(f"Error during POST request to {url}: {str(e)}")
             raise
 
-    async def _search_objects(
+    async def _search_objects(  # noqa: C901
         self, client: httpx.AsyncClient, object_type: str
     ) -> AsyncGenerator[dict, None]:
         """Search for objects of a specific type, excluding archived objects."""
@@ -368,7 +368,7 @@ class NotionSource(BaseSource):
             f"found={total_found}, filtered={total_filtered}, yielded={yielded_count}"
         )
 
-    async def _query_database_pages(
+    async def _query_database_pages(  # noqa: C901
         self, client: httpx.AsyncClient, database_id: str
     ) -> AsyncGenerator[dict, None]:
         """Query all pages in a database, excluding archived pages.

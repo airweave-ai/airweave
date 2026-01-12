@@ -10,7 +10,6 @@ from airweave.core.exceptions import TokenRefreshError
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.configs.auth import ClickUpAuthConfig
 from airweave.platform.decorators import source
-from airweave.platform.downloader import FileSkippedException
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.clickup import (
     ClickUpCommentEntity,
@@ -27,6 +26,7 @@ from airweave.platform.sources.retry_helpers import (
     retry_if_rate_limit_or_timeout,
     wait_rate_limit_with_backoff,
 )
+from airweave.platform.storage import FileSkippedException
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
@@ -422,7 +422,7 @@ class ClickUpSource(BaseSource):
                 reactions=comment.get("reactions", []),
             )
 
-    async def _generate_file_entities(
+    async def _generate_file_entities(  # noqa: C901
         self,
         client: httpx.AsyncClient,
         task_id: str,

@@ -69,11 +69,26 @@ class QueryExpansion(SearchOperation):
 
         query = context.query
 
+        # DEBUG: Log input
+        ctx.logger.debug(
+            f"\n[QueryExpansion] INPUT:\n"
+            f"  Original query: '{query}'\n"
+            f"  Target expansions: {self.NUMBER_OF_EXPANSIONS}\n"
+            f"  Providers available: {[p.__class__.__name__ for p in self.providers]}\n"
+        )
+
         # Build prompts
         system_prompt = QUERY_EXPANSION_SYSTEM_PROMPT.format(
             number_of_expansions=self.NUMBER_OF_EXPANSIONS
         )
         user_prompt = f"Original query: {query}"
+
+        # DEBUG: Log prompt preview
+        ctx.logger.debug(
+            f"\n[QueryExpansion] PROMPT (first 500 chars):\n"
+            f"  System: {system_prompt[:500]}...\n"
+            f"  User: {user_prompt}\n"
+        )
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -98,7 +113,14 @@ class QueryExpansion(SearchOperation):
         # Validate and deduplicate alternatives
         alternatives = result.alternatives or []
         valid_alternatives = self._validate_alternatives(alternatives, query)
-        ctx.logger.debug(f"[QueryExpansion] Valid alternatives: {valid_alternatives}")
+
+        # DEBUG: Log output
+        ctx.logger.debug(
+            f"\n[QueryExpansion] OUTPUT:\n"
+            f"  Raw alternatives from LLM: {alternatives}\n"
+            f"  Valid alternatives (after dedup): {valid_alternatives}\n"
+            f"  Count: {len(valid_alternatives)}/{self.NUMBER_OF_EXPANSIONS}\n"
+        )
 
         # Ensure we got exactly the expected number of alternatives
         if len(valid_alternatives) != self.NUMBER_OF_EXPANSIONS:

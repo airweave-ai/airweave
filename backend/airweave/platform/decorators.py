@@ -22,6 +22,7 @@ def source(
     supports_temporal_relevance: bool = True,
     rate_limit_level: Optional[RateLimitLevel] = None,
     cursor_class: Optional[Type[BaseModel]] = None,
+    supports_access_control: bool = False,
 ) -> Callable[[type], type]:
     """Enhanced source decorator with OAuth type tracking and typed cursor support.
 
@@ -40,6 +41,11 @@ def source(
         cursor_class: Optional Pydantic model class for typed cursor (e.g., GmailCursor)
         rate_limit_level: Rate limiting level (RateLimitLevel.ORG, RateLimitLevel.CONNECTION,
             or None)
+        supports_access_control: Whether this source provides entity-level access control
+            metadata. When True, the source must:
+            1. Set entity.access on all yielded entities
+            2. Implement generate_access_control_memberships() method
+            Default is False (entities visible to everyone).
 
     Example:
         # OAuth source (no auth config)
@@ -62,6 +68,17 @@ def source(
             auth_config_class=GitHubAuthConfig,  # Direct auth needs this
             config_class=GitHubConfig,
             labels=["Developer Tools"],
+        )
+
+        # Source with access control (e.g., SharePoint)
+        @source(
+            name="SharePoint 2019 V2",
+            short_name="sharepoint2019v2",
+            auth_methods=[AuthenticationMethod.DIRECT],
+            auth_config_class=SharePoint2019V2AuthConfig,
+            config_class=SharePoint2019V2Config,
+            labels=["Enterprise"],
+            supports_access_control=True,  # Enables entity-level access control
         )
     """
 
@@ -88,6 +105,7 @@ def source(
         cls._supports_temporal_relevance = supports_temporal_relevance
         cls._cursor_class = cursor_class
         cls._rate_limit_level = rate_limit_level
+        cls._supports_access_control = supports_access_control
 
         # Add validation method if not present
         if not hasattr(cls, "validate"):
@@ -112,6 +130,8 @@ def destination(
     supports_delete: bool = True,
     supports_vector: bool = False,
     max_batch_size: int = 1000,
+    requires_client_embedding: bool = True,
+    supports_temporal_relevance: bool = True,
 ) -> Callable[[type], type]:
     """Decorator for destination connectors with separated auth and config.
 
@@ -124,6 +144,10 @@ def destination(
         supports_delete: Whether destination supports delete operations
         supports_vector: Whether destination supports vector storage
         max_batch_size: Maximum batch size for write operations
+        requires_client_embedding: Whether the destination requires client-side embedding
+            generation (True for Qdrant, False for Vespa which embeds server-side)
+        supports_temporal_relevance: Whether the destination supports temporal relevance
+            ranking (True for Qdrant with decay formulas, False for Vespa currently)
     """
 
     def decorator(cls: type) -> type:
@@ -138,6 +162,8 @@ def destination(
         cls._supports_delete = supports_delete
         cls._supports_vector = supports_vector
         cls._max_batch_size = max_batch_size
+        cls._requires_client_embedding = requires_client_embedding
+        cls._supports_temporal_relevance = supports_temporal_relevance
 
         return cls
 

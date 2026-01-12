@@ -7,6 +7,7 @@ import time  # for exp checks
 from abc import abstractmethod
 from contextlib import asynccontextmanager
 from typing import (
+    TYPE_CHECKING,
     Any,
     AsyncGenerator,
     AsyncIterable,
@@ -17,6 +18,9 @@ from typing import (
     Optional,
     Union,
 )
+
+if TYPE_CHECKING:
+    from airweave.platform.access_control.schemas import MembershipTuple
 
 import httpx
 from pydantic import BaseModel
@@ -230,6 +234,42 @@ class BaseSource:
     async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate entities for the source."""
         pass
+
+    async def generate_access_control_memberships(
+        self,
+    ) -> AsyncGenerator["MembershipTuple", None]:
+        r"""Generate access control membership tuples.
+
+        Only implement this if your source has @source(supports_access_control=True).
+
+        Yields user→group and group→group membership tuples for access
+        control resolution at search time. These tuples are persisted to
+        PostgreSQL and used by AccessBroker to expand user principals.
+
+        Principal format conventions:
+        - Users: "user:{identifier}" (e.g., "user:john@acme.com")
+        - SharePoint groups: "group:sp:{id}" (e.g., "group:sp:42")
+        - AD groups: "group:ad:{login_name}" (e.g., "group:ad:DOMAIN\\Engineers")
+
+        Example implementation (SharePoint):
+        ```python
+        async def generate_access_control_memberships(self):
+            for group in await self._get_all_sharepoint_groups():
+                for member in await self._get_group_members(group.id):
+                    yield MembershipTuple(
+                        member_id=member.email,
+                        member_type="user",
+                        group_id=f"sp:{group.id}",
+                        group_name=group.name,
+                    )
+        ```
+
+        Yields:
+            MembershipTuple objects
+        """
+        # Default: yield nothing (source doesn't support access control)
+        return
+        yield  # Make it a generator
 
     @abstractmethod
     async def validate(self) -> bool:

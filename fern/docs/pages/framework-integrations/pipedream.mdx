@@ -1,0 +1,167 @@
+---
+title: Pipedream
+subtitle: Connect Airweave with your Pipedream workflows to empower your agents and automations with intelligent, context-aware data from all your connected apps and databases.
+slug: framework-integrations/pipedream
+---
+
+[Pipedream](https://pipedream.com) is a low-code agent building and workflow automation platform that lets you connect APIs, automate workflows, and build event-driven applications. The Airweave integration provides a set of actions that enable you to search your synced data to retrieve relevant context, manage your collections, and trigger syncs from any Pipedream workflow, agent or automation.
+
+### Prerequisites
+
+Before you start you'll need:
+
+- **A Pipedream account**: Sign up at [pipedream.com](https://pipedream.com)
+- **A collection with data**: At least one source connection must have completed its initial sync. See the [Quickstart](https://docs.airweave.ai/quickstart) if you need to set this up.
+- **An API key**: Create one in the Airweave dashboard under **API Keys**.
+
+### Connecting Airweave to Pipedream
+
+1. Open [Pipedream](https://pipedream.com) and create a new workflow
+2. Add an Airweave action step
+3. Click **Connect Account** when prompted
+4. Enter your Airweave API key
+5. Optionally specify a custom base URL if you're using a self-hosted Airweave instance
+
+### Available Actions
+
+The Airweave integration provides the following actions:
+
+#### Search Collection
+
+Search across all data sources within a collection using semantic and keyword search.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `collectionId` | string | Yes | The collection readable ID to search |
+| `searchQuery` | string | Yes | The search query text |
+| `searchLimit` | integer | No | Maximum results to return (default: 10, max: 100) |
+| `responseType` | string | No | `"results"` for raw results, `"completion"` for AI-generated answer |
+| `offset` | integer | No | Number of results to skip for pagination (default: 0) |
+| `recencyBias` | string | No | Weight recency vs similarity from 0-1 (0 = no recency, 1 = recency only) |
+
+#### List Collections
+
+Get all collections in your organization.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `skip` | integer | No | Number of collections to skip (default: 0) |
+| `limit` | integer | No | Maximum collections to return (default: 50) |
+
+#### Get Collection
+
+Retrieve details of a specific collection by its readable ID.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `collectionId` | string | Yes | The collection readable ID |
+
+#### Create Collection
+
+Create a new collection to group data sources.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | Yes | Display name for the collection |
+| `readableId` | string | Yes | URL-friendly identifier (lowercase, hyphens allowed) |
+| `description` | string | No | Description of the collection's contents |
+
+#### Delete Collection
+
+Permanently remove a collection and all associated data. This action cannot be undone.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `collectionId` | string | Yes | The collection readable ID to delete |
+
+#### List Sources
+
+Get all available data source connectors that Airweave can connect to (e.g., GitHub, Slack, Google Drive, PostgreSQL).
+
+No parameters required.
+
+#### Trigger Source Connection Sync
+
+Manually trigger a data sync for a source connection. The sync runs asynchronously and returns immediately with job details.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `collectionId` | string | Yes | The collection containing the source connection |
+| `sourceConnectionId` | string | Yes | The source connection to sync |
+
+### Example Workflows
+
+#### Slack Q&A Bot
+
+Build a Slack bot that answers questions using your organization's data:
+
+1. **Trigger**: Slack - New Slash Command
+2. **Action**: Airweave - Search Collection (with `responseType: "completion"`)
+3. **Action**: Slack - Reply to Command
+
+#### Support Ticket Enrichment
+
+Automatically enrich support tickets with relevant documentation:
+
+1. **Trigger**: Zendesk - New Ticket
+2. **Action**: Airweave - Search Collection (search ticket content)
+3. **Action**: Zendesk - Add Internal Note (with search results)
+
+#### Scheduled Data Sync
+
+Keep your Airweave data fresh with scheduled syncs:
+
+1. **Trigger**: Schedule - Every hour
+2. **Action**: Airweave - Trigger Source Connection Sync
+
+#### GitHub Issue Assistant
+
+Auto-comment on GitHub issues with relevant code references:
+
+1. **Trigger**: GitHub - New Issue
+2. **Action**: Airweave - Search Collection (search issue title and body)
+3. **Action**: GitHub - Create Comment (with relevant code context)
+
+### Using with Code Steps
+
+You can also use the Airweave app programmatically in Pipedream code steps:
+
+```javascript
+import { axios } from "@pipedream/platform";
+
+export default defineComponent({
+  props: {
+    airweave: {
+      type: "app",
+      app: "airweave",
+    },
+  },
+  async run({ steps, $ }) {
+    const response = await axios($, {
+      url: `${this.airweave.$auth.base_url || "https://api.airweave.ai"}/collections/my-collection/search`,
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${this.airweave.$auth.api_key}`,
+        "Content-Type": "application/json",
+      },
+      data: {
+        query: "quarterly revenue report",
+        limit: 10,
+        response_type: "results",
+      },
+    });
+    return response;
+  },
+});
+```
+
+### Self-Hosted Instances
+
+If you're running a self-hosted Airweave instance, specify your custom base URL when connecting your Airweave account in Pipedream. The base URL field accepts any valid URL (e.g., `https://airweave.your-company.com`).
+
+### Learn More
+
+- [Pipedream Documentation](https://pipedream.com/docs)
+- [Airweave on Pipedream](https://pipedream.com/apps/airweave)
+- [Airweave API Reference](https://docs.airweave.ai/api-reference)
+- [Airweave GitHub](https://github.com/airweave-ai/airweave)

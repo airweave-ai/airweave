@@ -123,6 +123,12 @@ class Settings(BaseSettings):
     QDRANT_PORT: Optional[int] = None
     TEXT2VEC_INFERENCE_URL: str = "http://localhost:9878"
 
+    # Vespa configuration
+    VESPA_URL: str = "http://localhost"
+    VESPA_PORT: int = 8081
+    VESPA_TIMEOUT: float = 120.0
+    VESPA_CLUSTER: str = "airweave"  # Vespa content cluster name for bulk operations
+
     # Storage configuration (filesystem-based, cloud-agnostic)
     STORAGE_PATH: str = "./local_storage"  # In K8s: /data/airweave-storage (PVC mount)
 
@@ -363,6 +369,15 @@ class Settings(BaseSettings):
             raise ValueError("QDRANT_HOST with QDRANT_PORT or QDRANT_FULL_URL must be set")
 
         return f"http://{self.QDRANT_HOST}:{self.QDRANT_PORT}"
+
+    @property
+    def vespa_url(self) -> str:
+        """The Vespa URL.
+
+        Returns:
+            str: The Vespa URL in http://host:port format.
+        """
+        return f"{self.VESPA_URL}:{self.VESPA_PORT}"
 
     @property
     def api_url(self) -> str:

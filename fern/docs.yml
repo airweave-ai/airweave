@@ -39,6 +39,10 @@ navigation:
       path: docs/pages/framework-integrations/llamaindex.mdx
     - page: Vercel AI SDK
       path: docs/pages/framework-integrations/vercel-ai-sdk.mdx
+    - page: Google Antigravity
+      path: docs/pages/framework-integrations/google-antigravity.mdx
+    - page: Pipedream
+      path: docs/pages/framework-integrations/pipedream.mdx
   - section: Authentication
     contents:
     - section: Auth Providers
@@ -55,6 +59,8 @@ navigation:
       path: docs/pages/direct-token-injection.mdx
   - section: Connectors
     contents:
+    - page: Overview
+      path: docs/pages/connectors/overview.mdx
     - page: Airtable
       path: docs/pages/connectors/airtable/main.mdx
     - page: Asana

@@ -27,6 +27,13 @@ import { useAuth } from '@/lib/auth-context';
 import authConfig from '@/config/auth';
 import { posthog } from '@/lib/posthog-provider';
 
+// Reddit Pixel type declaration
+declare global {
+  interface Window {
+    rdt?: (...args: unknown[]) => void;
+  }
+}
+
 interface OnboardingData {
   organizationName: string;
   organizationSize: string;
@@ -332,6 +339,15 @@ export const Onboarding = () => {
         user_role: formData.userRole,
         org_type: formData.organizationType,
       });
+
+      // Fire Reddit Lead event for new signups only (first organization)
+      if (!hasOrganizations) {
+        const redditLeadFired = localStorage.getItem('reddit_lead_fired');
+        if (!redditLeadFired && window.rdt) {
+          window.rdt('track', 'Lead');
+          localStorage.setItem('reddit_lead_fired', 'true');
+        }
+      }
 
       // Step 2: Update organization context
       setCurrentOrganization(organization);

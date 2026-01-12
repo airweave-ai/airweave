@@ -1,7 +1,8 @@
 """Prometheus metrics for Temporal workers."""
 
-from typing import Dict, Any, Set
-from prometheus_client import CollectorRegistry, Gauge, Info, generate_latest, ProcessCollector
+from typing import Dict, Set
+
+from prometheus_client import CollectorRegistry, Gauge, Info, ProcessCollector, generate_latest
 
 # Create a custom registry for worker metrics
 # (separate from any other Prometheus metrics in the system)
@@ -124,7 +125,7 @@ def update_worker_metrics(
         active_sync_jobs_count: Number of unique sync jobs being processed
         task_queue: Task queue name this worker is polling
         worker_pool_active_and_pending_count: Number of workers with tasks (active + pending)
-        connector_metrics: Dict mapping connector_type to metrics (active_syncs, active_and_pending_workers)
+        connector_metrics: Dict mapping connector_type to metrics (active_syncs, pending)
         sync_max_workers: Configured SYNC_MAX_WORKERS value
         thread_pool_size: Configured SYNC_THREAD_POOL_SIZE value
         thread_pool_active: Number of threads currently executing in the shared thread pool
