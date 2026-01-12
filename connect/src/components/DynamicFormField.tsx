@@ -83,8 +83,6 @@ function StringField({ field, value, onChange, error }: StringFieldProps) {
   const isSecret = field.is_secret === true;
   const inputType = isSecret && !showSecret ? "password" : "text";
   const inputId = `input-${field.name}`;
-  const labelId = `field-${field.name}`;
-  const errorId = `error-${field.name}`;
 
   return (
     <FieldWrapper field={field} error={error}>
@@ -96,8 +94,6 @@ function StringField({ field, value, onChange, error }: StringFieldProps) {
           onChange={(e) => onChange(e.target.value)}
           className="w-full px-3 py-2 text-sm rounded-md border outline-none transition-colors"
           style={inputBaseStyles(error)}
-          aria-labelledby={labelId}
-          aria-describedby={error ? errorId : undefined}
           aria-invalid={!!error}
         />
         {isSecret && (
@@ -129,8 +125,6 @@ interface NumberFieldProps {
 
 function NumberField({ field, value, onChange, error }: NumberFieldProps) {
   const inputId = `input-${field.name}`;
-  const labelId = `field-${field.name}`;
-  const errorId = `error-${field.name}`;
 
   return (
     <FieldWrapper field={field} error={error}>
@@ -145,8 +139,6 @@ function NumberField({ field, value, onChange, error }: NumberFieldProps) {
         }}
         className="w-full px-3 py-2 text-sm rounded-md border outline-none transition-colors"
         style={inputBaseStyles(error)}
-        aria-labelledby={labelId}
-        aria-describedby={error ? errorId : undefined}
         aria-invalid={!!error}
       />
     </FieldWrapper>
@@ -163,7 +155,6 @@ interface BooleanFieldProps {
 function BooleanField({ field, value, onChange, error }: BooleanFieldProps) {
   const isChecked = value ?? false;
   const labelId = `field-${field.name}`;
-  const errorId = `error-${field.name}`;
 
   return (
     <div className="mb-4">
@@ -213,7 +204,6 @@ function BooleanField({ field, value, onChange, error }: BooleanFieldProps) {
       </div>
       {error && (
         <p
-          id={errorId}
           className="text-xs mt-1"
           style={{ color: "var(--connect-error)" }}
         >
@@ -235,8 +225,6 @@ function ArrayField({ field, value, onChange, error }: ArrayFieldProps) {
   const [inputValue, setInputValue] = useState("");
   const arrayValue = value ?? [];
   const inputId = `input-${field.name}`;
-  const labelId = `field-${field.name}`;
-  const errorId = `error-${field.name}`;
 
   const addTag = (tag: string) => {
     const trimmed = tag.trim();
@@ -301,8 +289,6 @@ function ArrayField({ field, value, onChange, error }: ArrayFieldProps) {
           placeholder={arrayValue.length === 0 ? "Type and press Enter" : ""}
           className="flex-1 min-w-[100px] text-sm bg-transparent border-none outline-none"
           style={{ color: "var(--connect-text)" }}
-          aria-labelledby={labelId}
-          aria-describedby={error ? errorId : undefined}
         />
       </div>
     </FieldWrapper>

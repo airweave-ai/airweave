@@ -461,7 +461,7 @@ if (view === "configure" && selectedSource) {
 ### Phase 4: Polish
 - [x] Add form validation (required fields)
 - [x] Add BYOC fields for `requires_byoc` sources
-- [ ] Handle popup blockers (show manual link option)
+- [x] Handle popup blockers (show manual link option)
 - [x] Add loading states during submission
 - [x] Add error states and retry options
 - [ ] Add labels to theme for new UI text

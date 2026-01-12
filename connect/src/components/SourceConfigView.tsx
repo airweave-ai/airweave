@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ExternalLink, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiClient } from "../lib/api";
 import {
@@ -21,6 +21,7 @@ import { Button } from "./Button";
 import { ByocFields } from "./ByocFields";
 import { DynamicFormField } from "./DynamicFormField";
 import { LoadingScreen } from "./LoadingScreen";
+import { OAuthStatusUI } from "./OAuthStatusUI";
 import { PageLayout } from "./PageLayout";
 import { PoweredByAirweave } from "./PoweredByAirweave";
 
@@ -60,9 +61,10 @@ export function SourceConfigView({
 
   // OAuth flow state
   const [oauthStatus, setOauthStatus] = useState<
-    "idle" | "creating" | "waiting" | "error"
+    "idle" | "creating" | "waiting" | "popup_blocked" | "error"
   >("idle");
   const [oauthError, setOauthError] = useState<string | null>(null);
+  const [blockedAuthUrl, setBlockedAuthUrl] = useState<string | null>(null);
   const oauthPopupRef = useRef<Window | null>(null);
 
   const createMutation = useMutation({
@@ -176,22 +178,27 @@ export function SourceConfigView({
 
   // Listen for OAuth completion messages
   useEffect(() => {
-    if (oauthStatus !== "waiting") return;
+    // Listen for OAuth completion in both "waiting" and "popup_blocked" states
+    // (popup_blocked: user may open the link manually)
+    if (oauthStatus !== "waiting" && oauthStatus !== "popup_blocked") return;
 
     const cleanup = listenForOAuthComplete(handleOAuthResult);
 
-    // Poll to check if popup was closed without completing
-    const pollInterval = setInterval(() => {
-      if (!isPopupOpen(oauthPopupRef.current) && oauthStatus === "waiting") {
-        setOauthStatus("error");
-        setOauthError("Authentication was cancelled. Please try again.");
-        oauthPopupRef.current = null;
-      }
-    }, 500);
+    // Poll to check if popup was closed without completing (only when "waiting")
+    let pollInterval: ReturnType<typeof setInterval> | undefined;
+    if (oauthStatus === "waiting") {
+      pollInterval = setInterval(() => {
+        if (!isPopupOpen(oauthPopupRef.current) && oauthStatus === "waiting") {
+          setOauthStatus("error");
+          setOauthError("Authentication was cancelled. Please try again.");
+          oauthPopupRef.current = null;
+        }
+      }, 500);
+    }
 
     return () => {
       cleanup();
-      clearInterval(pollInterval);
+      if (pollInterval) clearInterval(pollInterval);
     };
   }, [oauthStatus, handleOAuthResult]);
 
@@ -251,11 +258,9 @@ export function SourceConfigView({
         const popup = openOAuthPopup({ url: response.auth.auth_url });
 
         if (!popup) {
-          // Popup was blocked
-          setOauthStatus("error");
-          setOauthError(
-            "Popup was blocked. Please allow popups for this site and try again."
-          );
+          // Popup was blocked - store the URL for manual opening
+          setOauthStatus("popup_blocked");
+          setBlockedAuthUrl(response.auth.auth_url);
           return;
         }
 
@@ -271,6 +276,25 @@ export function SourceConfigView({
         err instanceof Error ? err.message : "Failed to initiate OAuth flow"
       );
     }
+  };
+
+  // Retry opening popup with stored auth URL
+  const handleRetryPopup = () => {
+    if (!blockedAuthUrl) return;
+
+    const popup = openOAuthPopup({ url: blockedAuthUrl });
+    if (popup) {
+      oauthPopupRef.current = popup;
+      setOauthStatus("waiting");
+      setBlockedAuthUrl(null);
+    }
+    // If still blocked, stay in popup_blocked state
+  };
+
+  // Handle manual link click - user will open in new tab
+  const handleManualLinkClick = () => {
+    // Switch to waiting state so we listen for the OAuth callback
+    setOauthStatus("waiting");
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -435,19 +459,6 @@ export function SourceConfigView({
                 Authentication
               </h2>
 
-              {oauthError && (
-                <div
-                  className="mb-3 p-3 rounded-md text-sm"
-                  style={{
-                    backgroundColor:
-                      "color-mix(in srgb, var(--connect-error) 10%, transparent)",
-                    color: "var(--connect-error)",
-                  }}
-                >
-                  {oauthError}
-                </div>
-              )}
-
               {sourceDetails?.requires_byoc && (
                 <ByocFields
                   values={byocValues}
@@ -457,49 +468,15 @@ export function SourceConfigView({
                 />
               )}
 
-              {oauthStatus === "waiting" ? (
-                <div
-                  className="p-4 rounded-md text-sm text-center"
-                  style={{
-                    backgroundColor: "var(--connect-surface)",
-                    border: "1px solid var(--connect-border)",
-                  }}
-                >
-                  <Loader2
-                    className="w-5 h-5 animate-spin mx-auto mb-2"
-                    style={{ color: "var(--connect-primary)" }}
-                  />
-                  <p style={{ color: "var(--connect-text)" }}>
-                    Waiting for authorization...
-                  </p>
-                  <p
-                    className="text-xs mt-1"
-                    style={{ color: "var(--connect-text-muted)" }}
-                  >
-                    Complete the sign-in in the popup window
-                  </p>
-                </div>
-              ) : (
-                <Button
-                  type="button"
-                  onClick={handleOAuthConnect}
-                  disabled={oauthStatus === "creating"}
-                  className="w-full justify-center"
-                  variant="secondary"
-                >
-                  {oauthStatus === "creating" ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Connecting...
-                    </>
-                  ) : (
-                    <>
-                      <ExternalLink className="w-4 h-4" />
-                      Connect with {source.name}
-                    </>
-                  )}
-                </Button>
-              )}
+              <OAuthStatusUI
+                status={oauthStatus}
+                error={oauthError}
+                blockedAuthUrl={blockedAuthUrl}
+                sourceName={source.name}
+                onConnect={handleOAuthConnect}
+                onRetryPopup={handleRetryPopup}
+                onManualLinkClick={handleManualLinkClick}
+              />
             </div>
           )}
 

@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Check, X } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 import type { OAuthCallbackResult } from "../lib/types";
 
@@ -54,41 +55,6 @@ const iconContainerStyle = (success: boolean): React.CSSProperties => ({
   marginBottom: "16px",
 });
 
-function SuccessIcon() {
-  return (
-    <svg
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="white"
-      strokeWidth="3"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <polyline points="20 6 9 17 4 12" />
-    </svg>
-  );
-}
-
-function ErrorIcon() {
-  return (
-    <svg
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="white"
-      strokeWidth="3"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <line x1="18" y1="6" x2="6" y2="18" />
-      <line x1="6" y1="6" x2="18" y2="18" />
-    </svg>
-  );
-}
-
 function OAuthCallback() {
   const { result, hasOpener } = useMemo(() => parseOAuthResult(), []);
   const hasNotified = useRef(false);
@@ -112,7 +78,11 @@ function OAuthCallback() {
   return (
     <div style={containerStyle}>
       <div style={iconContainerStyle(isSuccess)}>
-        {isSuccess ? <SuccessIcon /> : <ErrorIcon />}
+        {isSuccess ? (
+          <Check size={24} color="white" strokeWidth={3} />
+        ) : (
+          <X size={24} color="white" strokeWidth={3} />
+        )}
       </div>
       <p style={{ color: "#374151", fontSize: "16px" }}>
         {isSuccess ? "Authentication successful!" : "Authentication failed"}
