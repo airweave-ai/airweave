@@ -252,7 +252,7 @@ while [ $VESPA_RETRY_COUNT -lt $MAX_VESPA_RETRIES ]; do
   if [ "$INIT_STATUS" = "exited" ] && [ "$INIT_EXIT_CODE" = "0" ]; then
     # Init completed, now verify document API is actually ready for requests
     # Use timeout and write to temp file to avoid concatenation issues
-    if timeout 5 curl -s -o /dev/null -w "%{http_code}" http://localhost:8081/document/v1/ > /tmp/vespa_status_$$ 2>&1; then
+    if curl -s --max-time 5 -o /dev/null -w "%{http_code}" http://localhost:8081/document/v1/ > /tmp/vespa_status_$$ 2>&1; then
       DOC_STATUS=$(cat /tmp/vespa_status_$$ 2>/dev/null | tr -cd '0-9' || echo "000")
       rm -f /tmp/vespa_status_$$
       
