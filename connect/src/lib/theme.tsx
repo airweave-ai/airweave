@@ -118,7 +118,10 @@ interface ThemeProviderProps {
 
 export function ThemeProvider({ children, initialTheme }: ThemeProviderProps) {
   const [theme, setTheme] = useState<ConnectTheme | null>(initialTheme ?? null);
-  const [systemPrefersDark, setSystemPrefersDark] = useState(true);
+  const [systemPrefersDark, setSystemPrefersDark] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  });
   const isPending = theme === null;
 
   // Listen for system theme changes
@@ -126,8 +129,6 @@ export function ThemeProvider({ children, initialTheme }: ThemeProviderProps) {
     if (typeof window === "undefined") return;
 
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-    setSystemPrefersDark(mediaQuery.matches);
-
     const handler = (e: MediaQueryListEvent) => {
       setSystemPrefersDark(e.matches);
     };
