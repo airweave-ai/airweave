@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useState,
   useEffect,
@@ -52,10 +53,9 @@ interface ThemeProviderProps {
 }
 
 export function ThemeProvider({ children, initialTheme }: ThemeProviderProps) {
-  const [theme, setTheme] = useState<ConnectTheme>(
-    initialTheme ?? { mode: "dark" },
-  );
+  const [theme, setTheme] = useState<ConnectTheme | null>(initialTheme ?? null);
   const [systemPrefersDark, setSystemPrefersDark] = useState(true);
+  const isPending = theme === null;
 
   // Listen for system theme changes
   useEffect(() => {
@@ -74,23 +74,43 @@ export function ThemeProvider({ children, initialTheme }: ThemeProviderProps) {
 
   // Resolve the actual mode (dark or light)
   const resolvedMode: "dark" | "light" = useMemo(() => {
+    if (isPending) return "light"; // Default for pending, but colors will be transparent
     if (theme.mode === "system") {
       return systemPrefersDark ? "dark" : "light";
     }
     return theme.mode;
-  }, [theme.mode, systemPrefersDark]);
+  }, [theme, isPending, systemPrefersDark]);
+
+  // Transparent colors for pending state (no flash)
+  const pendingColors: Required<ThemeColors> = useMemo(
+    () => ({
+      background: "transparent",
+      surface: "transparent",
+      text: "transparent",
+      textMuted: "transparent",
+      primary: "transparent",
+      primaryHover: "transparent",
+      secondary: "transparent",
+      secondaryHover: "transparent",
+      border: "transparent",
+      success: "transparent",
+      error: "transparent",
+    }),
+    [],
+  );
 
   // Merge custom colors with defaults
   const colors: Required<ThemeColors> = useMemo(() => {
+    if (isPending) return pendingColors;
     const defaultColors =
       resolvedMode === "dark" ? defaultDarkColors : defaultLightColors;
-    const customColors = theme.colors?.[resolvedMode] ?? {};
+    const customColors = theme?.colors?.[resolvedMode] ?? {};
 
     return {
       ...defaultColors,
       ...customColors,
     };
-  }, [resolvedMode, theme.colors]);
+  }, [resolvedMode, theme, isPending, pendingColors]);
 
   // Apply CSS custom properties to document
   useEffect(() => {
@@ -110,14 +130,19 @@ export function ThemeProvider({ children, initialTheme }: ThemeProviderProps) {
     root.style.setProperty("--connect-error", colors.error);
   }, [colors]);
 
+  // Stable setTheme wrapper to prevent re-renders
+  const setThemeStable = useCallback((newTheme: ConnectTheme) => {
+    setTheme(newTheme);
+  }, []);
+
   const value: ThemeContextValue = useMemo(
     () => ({
-      theme,
-      setTheme,
+      theme: theme ?? { mode: "light" }, // Provide default for consumers
+      setTheme: setThemeStable,
       resolvedMode,
       colors,
     }),
-    [theme, resolvedMode, colors],
+    [theme, setThemeStable, resolvedMode, colors],
   );
 
   return (

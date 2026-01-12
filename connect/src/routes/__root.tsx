@@ -33,7 +33,7 @@ function RootDocument() {
       <head>
         <HeadContent />
       </head>
-      <body style={{ backgroundColor: "var(--connect-bg, #0f172a)" }}>
+      <body style={{ backgroundColor: "var(--connect-bg, transparent)" }}>
         <SessionProvider />
         <Scripts />
       </body>

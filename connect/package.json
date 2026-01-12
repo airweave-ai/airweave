@@ -2,6 +2,10 @@
   "name": "airweave-connect",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./lib/types": "./src/lib/types.ts"
+  },
   "scripts": {
     "dev": "vite dev --port 5173",
     "build": "vite build",

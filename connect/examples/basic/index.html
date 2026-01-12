@@ -101,7 +101,6 @@
       .apps-btn {
         display: flex;
         align-items: center;
-        gap: 8px;
         padding: 0 12px 0 0;
         border: 1px solid #e8e8e6;
         border-radius: 12px;
@@ -122,7 +121,6 @@
         font-size: 22px;
         color: #9ca3af;
         font-weight: 300;
-        border-right: 1px solid #e8e8e6;
       }
 
       .action-btn {
@@ -165,13 +163,77 @@
         height: 20px;
         color: white;
       }
+
+      /* Modal styles */
+      .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .modal-overlay.open {
+        display: flex;
+      }
+
+      .modal-content {
+        position: relative;
+        width: 90%;
+        max-width: 480px;
+        height: 80%;
+        max-height: 700px;
+        background: white;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+      }
+
+      .modal-close {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        width: 32px;
+        height: 32px;
+        border: none;
+        background: rgba(0, 0, 0, 0.1);
+        border-radius: 50%;
+        cursor: pointer;
+        font-size: 20px;
+        color: #666;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10;
+        transition: background 0.2s;
+      }
+
+      .modal-close:hover {
+        background: rgba(0, 0, 0, 0.2);
+      }
+
+      #connectFrame {
+        width: 100%;
+        height: 100%;
+        border: none;
+      }
+
+      .logo {
+        box-shadow: 0 0 10px 0 rgba(0, 0, 0, 0.1);
+      }
     </style>
   </head>
   <body>
     <div class="container">
       <img
-        src="https://avatars.githubusercontent.com/u/192721200?s=200&v=4"
+        src="https://avatars.githubusercontent.com/u/14957082?s=200&v=4"
         alt="Logo"
+        class="logo"
         class="logo"
       />
 
@@ -181,13 +243,6 @@
         </div>
 
         <div class="toolbar">
-          <button class="icon-btn">
-            <img
-              src="https://avatars.githubusercontent.com/u/192721200?s=200&v=4"
-              alt="Icon"
-            />
-          </button>
-
           <button class="apps-btn">
             <span class="plus-icon">+</span>
             Apps
@@ -213,5 +268,119 @@
         </div>
       </div>
     </div>
+
+    <!-- Modal -->
+    <div class="modal-overlay" id="modalOverlay">
+      <div class="modal-content">
+        <button class="modal-close" id="modalClose">&times;</button>
+        <iframe id="connectFrame"></iframe>
+      </div>
+    </div>
+
+    <script>
+      // Configuration
+      const CONFIG = {
+        API_URL: "http://localhost:8001",
+        API_KEY: "test",
+        COLLECTION_ID: "test-16c0r8",
+        END_USER_ID: "anand",
+        SESSION_MODE: "all",
+        CONNECT_URL: "http://localhost:5173?theme=light",
+      };
+
+      let sessionToken = null;
+
+      // Fetch session token from API
+      async function fetchSessionToken() {
+        const response = await fetch(`${CONFIG.API_URL}/connect/sessions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-API-Key": CONFIG.API_KEY,
+          },
+          body: JSON.stringify({
+            readable_collection_id: CONFIG.COLLECTION_ID,
+            mode: CONFIG.SESSION_MODE,
+            end_user_id: CONFIG.END_USER_ID,
+          }),
+        });
+        const data = await response.json();
+        return data.session_token;
+      }
+
+      // Open modal and load iframe
+      async function openModal() {
+        try {
+          sessionToken = await fetchSessionToken();
+          const modal = document.getElementById("modalOverlay");
+          const iframe = document.getElementById("connectFrame");
+
+          modal.classList.add("open");
+          iframe.src = CONFIG.CONNECT_URL;
+        } catch (error) {
+          console.error("Failed to fetch session token:", error);
+          alert("Failed to connect. Please try again.");
+        }
+      }
+
+      // Close modal
+      function closeModal() {
+        const modal = document.getElementById("modalOverlay");
+        const iframe = document.getElementById("connectFrame");
+
+        modal.classList.remove("open");
+        iframe.src = "";
+        sessionToken = null;
+      }
+
+      // Handle messages from Connect iframe
+      window.addEventListener("message", (event) => {
+        const { data } = event;
+
+        switch (data.type) {
+          case "CONNECT_READY":
+            console.log("Connect iframe is ready");
+            break;
+
+          case "REQUEST_TOKEN":
+            setTimeout(() => {
+              if (sessionToken) {
+                const iframe = document.getElementById("connectFrame");
+                iframe.contentWindow.postMessage(
+                  {
+                    type: "TOKEN_RESPONSE",
+                    requestId: data.requestId,
+                    token: sessionToken,
+                    theme: { mode: "light" },
+                  },
+                  "*",
+                );
+              }
+            }, 2000);
+            break;
+
+          case "CLOSE":
+            console.log("Close requested:", data.reason);
+            closeModal();
+            break;
+        }
+      });
+
+      // Event listeners
+      document.querySelector(".apps-btn").addEventListener("click", openModal);
+      document
+        .getElementById("modalClose")
+        .addEventListener("click", closeModal);
+      document.getElementById("modalOverlay").addEventListener("click", (e) => {
+        if (e.target === e.currentTarget) {
+          closeModal();
+        }
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          closeModal();
+        }
+      });
+    </script>
   </body>
 </html>

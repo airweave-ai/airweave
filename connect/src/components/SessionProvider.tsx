@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParentMessaging } from "../hooks/useParentMessaging";
 import { apiClient, ApiError } from "../lib/api";
 import { ThemeProvider, useTheme } from "../lib/theme";
@@ -25,31 +25,36 @@ function extractSessionIdFromToken(token: string): string | null {
 }
 
 export function SessionProvider() {
-  const [theme, setTheme] = useState<ConnectTheme | undefined>(undefined);
+  // Read initial theme from URL parameter for immediate loading state styling
+  const initialTheme = (() => {
+    if (typeof window === "undefined") return undefined;
+    const params = new URLSearchParams(window.location.search);
+    const themeParam = params.get("theme");
+    if (themeParam === "light" || themeParam === "dark" || themeParam === "system") {
+      return { mode: themeParam } as ConnectTheme;
+    }
+    return undefined;
+  })();
 
   return (
-    <ThemeProvider initialTheme={theme}>
-      <SessionContent onThemeReceived={setTheme} />
+    <ThemeProvider initialTheme={initialTheme}>
+      <SessionContent />
     </ThemeProvider>
   );
 }
 
-interface SessionContentProps {
-  onThemeReceived: (theme: ConnectTheme) => void;
-}
-
-function SessionContent({ onThemeReceived }: SessionContentProps) {
+function SessionContent() {
   const [status, setStatus] = useState<SessionStatus>({ status: "idle" });
   const [session, setSession] = useState<ConnectSessionContext | null>(null);
   const { setTheme } = useTheme();
+  const hasInitialized = useRef(false);
 
   // Handle theme changes from parent (both initial and dynamic updates)
   const handleThemeChange = useCallback(
     (theme: ConnectTheme) => {
       setTheme(theme);
-      onThemeReceived(theme);
     },
-    [setTheme, onThemeReceived],
+    [setTheme],
   );
 
   const { isConnected, requestToken, notifyStatusChange, requestClose } =
@@ -125,9 +130,10 @@ function SessionContent({ onThemeReceived }: SessionContentProps) {
     [requestToken, handleThemeChange],
   );
 
-  // Request token from parent when connected
+  // Request token from parent when connected (only once)
   useEffect(() => {
-    if (!isConnected) return;
+    if (!isConnected || hasInitialized.current) return;
+    hasInitialized.current = true;
 
     const init = async () => {
       setStatus({ status: "waiting_for_token" });

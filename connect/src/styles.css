@@ -1,18 +1,18 @@
 @import "tailwindcss";
 
-/* Default theme CSS variables (dark mode) */
+/* Default theme CSS variables (transparent until theme is set) */
 :root {
-  --connect-bg: #0f172a;
-  --connect-surface: #1e293b;
-  --connect-text: #ffffff;
-  --connect-text-muted: #9ca3af;
-  --connect-primary: #06b6d4;
-  --connect-primary-hover: #0891b2;
-  --connect-secondary: #334155;
-  --connect-secondary-hover: #475569;
-  --connect-border: #334155;
-  --connect-success: #22c55e;
-  --connect-error: #ef4444;
+  --connect-bg: transparent;
+  --connect-surface: transparent;
+  --connect-text: transparent;
+  --connect-text-muted: transparent;
+  --connect-primary: transparent;
+  --connect-primary-hover: transparent;
+  --connect-secondary: transparent;
+  --connect-secondary-hover: transparent;
+  --connect-border: transparent;
+  --connect-success: transparent;
+  --connect-error: transparent;
 }
 
 body {
