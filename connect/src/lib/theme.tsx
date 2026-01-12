@@ -2,12 +2,12 @@ import {
   createContext,
   useCallback,
   useContext,
-  useState,
   useEffect,
   useMemo,
+  useState,
   type ReactNode,
 } from "react";
-import type { ConnectTheme, ThemeColors } from "./types";
+import type { ConnectLabels, ConnectTheme, ThemeColors } from "./types";
 
 // Default theme colors
 const defaultDarkColors: Required<ThemeColors> = {
@@ -38,11 +38,68 @@ const defaultLightColors: Required<ThemeColors> = {
   error: "#dc2626",
 };
 
+// Default labels
+const defaultLabels: Required<ConnectLabels> = {
+  // Main headings
+  sourcesHeading: "Sources",
+
+  // Connection status labels
+  statusActive: "Active",
+  statusSyncing: "Syncing",
+  statusPendingAuth: "Pending Auth",
+  statusError: "Error",
+  statusInactive: "Inactive",
+
+  // Connection item
+  entitiesCount: "{count} entities",
+
+  // Menu actions
+  menuReconnect: "Reconnect",
+  menuDelete: "Delete",
+
+  // Empty state
+  emptyStateHeading: "No sources connected yet",
+  emptyStateDescription: "Connect a source to get started.",
+
+  // Connect mode error
+  connectModeErrorHeading: "Cannot View Connections",
+  connectModeErrorDescription:
+    "Viewing connections is not available in connect mode.",
+
+  // Load error
+  loadErrorHeading: "Failed to Load Connections",
+
+  // Error screen titles
+  errorInvalidTokenTitle: "Invalid Session",
+  errorExpiredTokenTitle: "Session Expired",
+  errorNetworkTitle: "Connection Error",
+  errorSessionMismatchTitle: "Session Mismatch",
+  errorDefaultTitle: "Error",
+
+  // Error screen descriptions
+  errorInvalidTokenDescription:
+    "The session token is invalid. Please try again.",
+  errorExpiredTokenDescription:
+    "Your session has expired. Please refresh and try again.",
+  errorNetworkDescription:
+    "Unable to connect to the server. Please check your connection.",
+  errorSessionMismatchDescription:
+    "The session ID does not match. Please try again.",
+
+  // Buttons
+  buttonRetry: "Retry",
+  buttonClose: "Close",
+
+  // Footer
+  poweredBy: "Powered by",
+};
+
 interface ThemeContextValue {
   theme: ConnectTheme;
   setTheme: (theme: ConnectTheme) => void;
   resolvedMode: "dark" | "light";
   colors: Required<ThemeColors>;
+  labels: Required<ConnectLabels>;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -112,6 +169,15 @@ export function ThemeProvider({ children, initialTheme }: ThemeProviderProps) {
     };
   }, [resolvedMode, theme, isPending, pendingColors]);
 
+  // Merge custom labels with defaults
+  const labels: Required<ConnectLabels> = useMemo(() => {
+    const customLabels = theme?.labels ?? {};
+    return {
+      ...defaultLabels,
+      ...customLabels,
+    };
+  }, [theme]);
+
   // Apply CSS custom properties to document
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -141,8 +207,9 @@ export function ThemeProvider({ children, initialTheme }: ThemeProviderProps) {
       setTheme: setThemeStable,
       resolvedMode,
       colors,
+      labels,
     }),
-    [theme, setThemeStable, resolvedMode, colors],
+    [theme, setThemeStable, resolvedMode, colors, labels],
   );
 
   return (
@@ -159,4 +226,4 @@ export function useTheme(): ThemeContextValue {
 }
 
 // Export defaults for reference
-export { defaultDarkColors, defaultLightColors };
+export { defaultDarkColors, defaultLabels, defaultLightColors };

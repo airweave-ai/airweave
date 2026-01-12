@@ -1,6 +1,7 @@
 import { AlertCircle, RefreshCw, X } from "lucide-react";
+import { useTheme } from "../lib/theme";
+import type { ConnectLabels, SessionError, SessionErrorCode } from "../lib/types";
 import { PoweredByAirweave } from "./PoweredByAirweave";
-import type { SessionError, SessionErrorCode } from "../lib/types";
 
 interface ErrorScreenProps {
   error: SessionError;
@@ -8,34 +9,43 @@ interface ErrorScreenProps {
   onClose?: () => void;
 }
 
-const errorMessages: Record<
-  SessionErrorCode,
-  { title: string; description: string }
-> = {
-  invalid_token: {
-    title: "Invalid Session",
-    description: "The session token is invalid. Please try again.",
-  },
-  expired_token: {
-    title: "Session Expired",
-    description: "Your session has expired. Please refresh and try again.",
-  },
-  network_error: {
-    title: "Connection Error",
-    description:
-      "Unable to connect to the server. Please check your connection.",
-  },
-  session_mismatch: {
-    title: "Session Mismatch",
-    description: "The session ID does not match. Please try again.",
-  },
-};
+function getErrorInfo(
+  errorCode: SessionErrorCode,
+  labels: Required<ConnectLabels>,
+  fallbackMessage: string,
+): { title: string; description: string } {
+  switch (errorCode) {
+    case "invalid_token":
+      return {
+        title: labels.errorInvalidTokenTitle,
+        description: labels.errorInvalidTokenDescription,
+      };
+    case "expired_token":
+      return {
+        title: labels.errorExpiredTokenTitle,
+        description: labels.errorExpiredTokenDescription,
+      };
+    case "network_error":
+      return {
+        title: labels.errorNetworkTitle,
+        description: labels.errorNetworkDescription,
+      };
+    case "session_mismatch":
+      return {
+        title: labels.errorSessionMismatchTitle,
+        description: labels.errorSessionMismatchDescription,
+      };
+    default:
+      return {
+        title: labels.errorDefaultTitle,
+        description: fallbackMessage,
+      };
+  }
+}
 
 export function ErrorScreen({ error, onRetry, onClose }: ErrorScreenProps) {
-  const errorInfo = errorMessages[error.code] || {
-    title: "Error",
-    description: error.message,
-  };
+  const { labels } = useTheme();
+  const errorInfo = getErrorInfo(error.code, labels, error.message);
 
   return (
     <div
@@ -76,7 +86,7 @@ export function ErrorScreen({ error, onRetry, onClose }: ErrorScreenProps) {
             }
           >
             <RefreshCw className="w-4 h-4" />
-            Retry
+            {labels.buttonRetry}
           </button>
         )}
         {onClose && (
@@ -97,7 +107,7 @@ export function ErrorScreen({ error, onRetry, onClose }: ErrorScreenProps) {
             }
           >
             <X className="w-4 h-4" />
-            Close
+            {labels.buttonClose}
           </button>
         )}
       </div>

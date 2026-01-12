@@ -26,14 +26,14 @@ function AirweaveLogo({ className, style }: { className?: string; style?: React.
 }
 
 export function PoweredByAirweave() {
-  const { resolvedMode } = useTheme();
+  const { resolvedMode, labels } = useTheme();
 
   return (
     <div
       className="absolute bottom-4 left-0 right-0 text-center text-[11px] flex items-center justify-center gap-2"
       style={{ color: "var(--connect-text-muted)" }}
     >
-      Powered by{" "}
+      {labels.poweredBy}{" "}
       <a
         href="https://airweave.ai"
         target="_blank"

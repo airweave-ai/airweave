@@ -19,7 +19,53 @@ export interface ThemeColors {
 }
 
 export interface ConnectLabels {
+  // Main headings
   sourcesHeading?: string;
+
+  // Connection status labels
+  statusActive?: string;
+  statusSyncing?: string;
+  statusPendingAuth?: string;
+  statusError?: string;
+  statusInactive?: string;
+
+  // Connection item
+  entitiesCount?: string; // Use {count} placeholder, e.g. "{count} entities"
+
+  // Menu actions
+  menuReconnect?: string;
+  menuDelete?: string;
+
+  // Empty state
+  emptyStateHeading?: string;
+  emptyStateDescription?: string;
+
+  // Connect mode error
+  connectModeErrorHeading?: string;
+  connectModeErrorDescription?: string;
+
+  // Load error
+  loadErrorHeading?: string;
+
+  // Error screen titles
+  errorInvalidTokenTitle?: string;
+  errorExpiredTokenTitle?: string;
+  errorNetworkTitle?: string;
+  errorSessionMismatchTitle?: string;
+  errorDefaultTitle?: string;
+
+  // Error screen descriptions
+  errorInvalidTokenDescription?: string;
+  errorExpiredTokenDescription?: string;
+  errorNetworkDescription?: string;
+  errorSessionMismatchDescription?: string;
+
+  // Buttons
+  buttonRetry?: string;
+  buttonClose?: string;
+
+  // Footer
+  poweredBy?: string;
 }
 
 export interface ConnectTheme {

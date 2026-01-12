@@ -14,6 +14,7 @@ import { apiClient } from "../lib/api";
 import { getAppIconUrl } from "../lib/icons";
 import { useTheme } from "../lib/theme";
 import type {
+  ConnectLabels,
   ConnectSessionContext,
   SourceConnectionListItem,
   SourceConnectionStatus,
@@ -39,18 +40,21 @@ function getStatusColor(status: SourceConnectionStatus): string {
   }
 }
 
-function getStatusLabel(status: SourceConnectionStatus): string {
+function getStatusLabel(
+  status: SourceConnectionStatus,
+  labels: Required<ConnectLabels>,
+): string {
   switch (status) {
     case "active":
-      return "Active";
+      return labels.statusActive;
     case "syncing":
-      return "Syncing";
+      return labels.statusSyncing;
     case "pending_auth":
-      return "Pending Auth";
+      return labels.statusPendingAuth;
     case "error":
-      return "Error";
+      return labels.statusError;
     case "inactive":
-      return "Inactive";
+      return labels.statusInactive;
     default:
       return status;
   }
@@ -60,14 +64,20 @@ function ConnectionItem({
   connection,
   onDelete,
   isDeleting,
+  labels,
 }: {
   connection: SourceConnectionListItem;
   onDelete: () => void;
   isDeleting: boolean;
+  labels: Required<ConnectLabels>;
 }) {
   const { resolvedMode } = useTheme();
   const [imgError, setImgError] = useState(false);
   const statusColor = getStatusColor(connection.status);
+  const entitiesText = labels.entitiesCount.replace(
+    "{count}",
+    String(connection.entity_count),
+  );
 
   return (
     <div
@@ -106,7 +116,7 @@ function ConnectionItem({
             {connection.name}
           </p>
           <p className="text-xs" style={{ color: "var(--connect-text-muted)" }}>
-            {connection.entity_count} entities
+            {entitiesText}
           </p>
         </div>
       </div>
@@ -118,7 +128,7 @@ function ConnectionItem({
             color: statusColor,
           }}
         >
-          {getStatusLabel(connection.status)}
+          {getStatusLabel(connection.status, labels)}
         </span>
         <Menu.Root>
           <Menu.Trigger className="p-1 rounded cursor-pointer border-none bg-transparent flex items-center justify-center transition-colors duration-150 hover:bg-black/10 dark:hover:bg-white/10 [color:var(--connect-text-muted)] hover:[color:var(--connect-text)]">
@@ -134,14 +144,14 @@ function ConnectionItem({
                   className="cursor-pointer flex items-center gap-2 px-3 py-2 rounded text-sm border-none bg-transparent w-full transition-colors duration-150 [color:var(--connect-text)] hover:bg-slate-500/10"
                 >
                   <RefreshCw size={14} />
-                  <span>Reconnect</span>
+                  <span>{labels.menuReconnect}</span>
                 </Menu.Item>
                 <Menu.Item
                   onClick={onDelete}
                   className="cursor-pointer flex items-center gap-2 px-3 py-2 rounded text-sm border-none bg-transparent w-full transition-colors duration-150 [color:var(--connect-error)] hover:bg-red-500/10"
                 >
                   <Trash2 size={14} />
-                  <span>Delete</span>
+                  <span>{labels.menuDelete}</span>
                 </Menu.Item>
               </Menu.Popup>
             </Menu.Positioner>
@@ -152,7 +162,7 @@ function ConnectionItem({
   );
 }
 
-function EmptyState() {
+function EmptyState({ labels }: { labels: Required<ConnectLabels> }) {
   return (
     <div className="flex flex-col items-center justify-center py-12 text-center">
       <div
@@ -169,16 +179,16 @@ function EmptyState() {
         />
       </div>
       <p className="font-medium mb-1" style={{ color: "var(--connect-text)" }}>
-        No apps connected yet
+        {labels.emptyStateHeading}
       </p>
       <p className="text-sm" style={{ color: "var(--connect-text-muted)" }}>
-        Connect an app to get started.
+        {labels.emptyStateDescription}
       </p>
     </div>
   );
 }
 
-function ConnectModeError() {
+function ConnectModeError({ labels }: { labels: Required<ConnectLabels> }) {
   return (
     <div
       className="min-h-screen flex flex-col items-center justify-center p-6 pb-12 text-center relative"
@@ -201,10 +211,10 @@ function ConnectModeError() {
         className="font-medium text-lg mb-2"
         style={{ color: "var(--connect-text)" }}
       >
-        Cannot View Connections
+        {labels.connectModeErrorHeading}
       </h1>
       <p style={{ color: "var(--connect-text-muted)" }}>
-        Viewing connections is not available in connect mode.
+        {labels.connectModeErrorDescription}
       </p>
       <PoweredByAirweave />
     </div>
@@ -212,10 +222,9 @@ function ConnectModeError() {
 }
 
 export function SuccessScreen({ session }: SuccessScreenProps) {
-  const { theme } = useTheme();
+  const { labels } = useTheme();
   const queryClient = useQueryClient();
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const sourcesHeading = theme.labels?.sourcesHeading ?? "Sources";
 
   const {
     data: connections,
@@ -242,7 +251,7 @@ export function SuccessScreen({ session }: SuccessScreenProps) {
   });
 
   if (session.mode === "connect") {
-    return <ConnectModeError />;
+    return <ConnectModeError labels={labels} />;
   }
 
   if (isLoading) return <LoadingScreen />;
@@ -270,7 +279,7 @@ export function SuccessScreen({ session }: SuccessScreenProps) {
           className="font-medium text-lg mb-2"
           style={{ color: "var(--connect-text)" }}
         >
-          Failed to Load Connections
+          {labels.loadErrorHeading}
         </h1>
         <p style={{ color: "var(--connect-text-muted)" }}>
           {error instanceof Error ? error.message : "An error occurred"}
@@ -289,7 +298,7 @@ export function SuccessScreen({ session }: SuccessScreenProps) {
         className="font-medium text-lg mb-4"
         style={{ color: "var(--connect-text)" }}
       >
-        Connected Apps
+        {labels.sourcesHeading}
       </h1>
 
       {connections && connections.length > 0 ? (
@@ -300,11 +309,12 @@ export function SuccessScreen({ session }: SuccessScreenProps) {
               connection={connection}
               onDelete={() => deleteMutation.mutate(connection.id)}
               isDeleting={deletingId === connection.id}
+              labels={labels}
             />
           ))}
         </div>
       ) : (
-        <EmptyState />
+        <EmptyState labels={labels} />
       )}
       <PoweredByAirweave />
     </div>
