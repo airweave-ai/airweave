@@ -41,20 +41,15 @@ export function ErrorScreen({ error, onRetry, onClose }: ErrorScreenProps) {
       className="min-h-screen flex flex-col items-center justify-center p-6 text-center"
       style={{ backgroundColor: "var(--connect-bg)" }}
     >
-      <div
-        className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6"
-        style={{
-          backgroundColor:
-            "color-mix(in srgb, var(--connect-error) 20%, transparent)",
-        }}
-      >
+      <div className="flex items-center justify-center mx-auto mb-4">
         <AlertCircle
-          className="w-8 h-8"
+          className="w-12 h-12"
+          strokeWidth={1}
           style={{ color: "var(--connect-error)" }}
         />
       </div>
       <h1
-        className="text-2xl font-bold mb-2"
+        className="font-medium text-lg mb-2"
         style={{ color: "var(--connect-text)" }}
       >
         {errorInfo.title}
@@ -66,7 +61,7 @@ export function ErrorScreen({ error, onRetry, onClose }: ErrorScreenProps) {
         {onRetry && (
           <button
             onClick={onRetry}
-            className="px-6 py-2 font-semibold rounded-lg transition-colors flex items-center gap-2"
+            className="px-4 py-1.5 font-medium rounded-md text-sm transition-colors flex items-center gap-2"
             style={{
               backgroundColor: "var(--connect-primary)",
               color: "white",
@@ -80,13 +75,13 @@ export function ErrorScreen({ error, onRetry, onClose }: ErrorScreenProps) {
             }
           >
             <RefreshCw className="w-4 h-4" />
-            Try Again
+            Retry
           </button>
         )}
         {onClose && (
           <button
             onClick={onClose}
-            className="px-6 py-2 font-semibold rounded-lg transition-colors flex items-center gap-2"
+            className="px-4 py-1.5 font-medium rounded-md text-sm transition-colors flex items-center gap-2"
             style={{
               backgroundColor: "var(--connect-secondary)",
               color: "var(--connect-text)",

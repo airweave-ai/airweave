@@ -133,6 +133,12 @@
       button.warning:hover {
         background: #b45309;
       }
+      button.success {
+        background: #16a34a;
+      }
+      button.success:hover {
+        background: #15803d;
+      }
       .button-group {
         margin-top: 10px;
         padding-top: 15px;
@@ -299,6 +305,9 @@
           <div class="button-group">
             <div class="button-group-label">Test Different States</div>
 
+            <button onclick="openWithState('success')" class="success">
+              Show Success State
+            </button>
             <button onclick="openWithState('loading')" class="secondary">
               Show Loading (no response)
             </button>
@@ -506,6 +515,7 @@
 
         switch (responseMode) {
           case "auto":
+          case "success":
             // Send token immediately if we have one
             if (sessionToken) {
               const response = {
@@ -654,6 +664,14 @@
       function openWithState(mode) {
         sessionToken = document.getElementById("token").value.trim();
         responseMode = mode;
+
+        if (mode === "success") {
+          if (!sessionToken) {
+            log("Please enter a valid token to test success state!", "error");
+            return;
+          }
+          log("Testing success state with provided token", "info");
+        }
 
         if (mode === "manual") {
           log(

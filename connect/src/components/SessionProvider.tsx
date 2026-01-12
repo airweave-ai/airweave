@@ -170,11 +170,11 @@ function SessionContent({ onThemeReceived }: SessionContentProps) {
 
   // Render based on status
   if (status.status === "idle" || status.status === "waiting_for_token") {
-    return <LoadingScreen message="Connecting..." />;
+    return <LoadingScreen />;
   }
 
   if (status.status === "validating") {
-    return <LoadingScreen message="Validating session..." />;
+    return <LoadingScreen />;
   }
 
   if (status.status === "error") {
