@@ -2,11 +2,14 @@
 
 ## Current Status
 
-The real-time sync status feature is **mostly complete**. Unit tests are comprehensive:
-- SSE subscription from frontend to backend
-- Progress updates displayed in the UI
-- Auto-subscription for syncing connections
-- Full test coverage for both `useSyncProgress` hook and `SyncProgressIndicator` component
+The real-time sync status feature is **mostly complete**. All unit tests pass (30 tests).
+
+## What Was Just Done
+
+Added error state UI to `SyncProgressIndicator`:
+- Shows red error icon + message when `is_failed: true`
+- Falls back to "Sync failed" if no error message provided
+- Added 3 tests for error state
 
 ## Next Tasks to Pick Up
 
@@ -18,19 +21,11 @@ Currently if SSE drops, there's no explicit reconnection. `fetch-event-source` d
 
 Location: `src/lib/api.ts` in `subscribeToSyncProgress()`
 
-### 2. Failed Sync UI State (Priority: Medium)
-
-When `is_failed: true` arrives, we update state but don't have distinct UI. Consider:
-- Red progress bar or error icon
-- Show error message from SSE payload
-
-Location: `src/components/SyncProgressIndicator.tsx`
-
-### 3. Integration Tests for SSE Flow (Priority: Low)
+### 2. Integration Tests for SSE Flow (Priority: Low)
 
 Would require mocking SSE at a higher level or using MSW (Mock Service Worker).
 
-### 4. E2E Tests (Priority: Low)
+### 3. E2E Tests (Priority: Low)
 
 Would require full backend running. Consider Playwright or Cypress.
 
@@ -42,7 +37,7 @@ Key files:
 - `vitest.config.ts` - jsdom environment, globals enabled
 - `vitest.setup.ts` - jest-dom matchers
 - `src/hooks/useSyncProgress.test.ts` - 22 tests for the hook
-- `src/components/SyncProgressIndicator.test.tsx` - 5 tests for the UI
+- `src/components/SyncProgressIndicator.test.tsx` - 8 tests for the UI
 
 ## How to Test Manually
 

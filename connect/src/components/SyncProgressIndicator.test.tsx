@@ -92,4 +92,44 @@ describe("SyncProgressIndicator", () => {
     // Total = 100 + 25 + 500 + 2 = 627 (deleted not included)
     expect(getByTextContent("627 synced")).toBeInTheDocument();
   });
+
+  it("renders error state when sync has failed", () => {
+    const progress: SyncProgressUpdate = {
+      ...baseProgress,
+      entities_inserted: 50,
+      is_failed: true,
+      error: "Connection timed out",
+    };
+
+    render(<SyncProgressIndicator progress={progress} />);
+
+    expect(screen.getByText("Connection timed out")).toBeInTheDocument();
+    // Should not show spinner or synced count
+    expect(document.querySelector(".animate-spin")).not.toBeInTheDocument();
+  });
+
+  it("renders default error message when no error text provided", () => {
+    const progress: SyncProgressUpdate = {
+      ...baseProgress,
+      is_failed: true,
+    };
+
+    render(<SyncProgressIndicator progress={progress} />);
+
+    expect(screen.getByText("Sync failed")).toBeInTheDocument();
+  });
+
+  it("renders error icon in error state", () => {
+    const progress: SyncProgressUpdate = {
+      ...baseProgress,
+      is_failed: true,
+      error: "API error",
+    };
+
+    const { container } = render(<SyncProgressIndicator progress={progress} />);
+
+    // AlertCircle icon should be present (lucide-react renders as svg)
+    const svg = container.querySelector("svg");
+    expect(svg).toBeInTheDocument();
+  });
 });

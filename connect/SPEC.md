@@ -74,7 +74,7 @@ This document tracks the implementation of real-time sync status updates in the 
 - [x] Auto-cleanup subscriptions on component unmount
 - [x] Delay removal of completed syncs (2 second buffer)
 - [ ] Reconnection logic for dropped SSE connections
-- [ ] Show error state when sync fails
+- [x] Show error state when sync fails
 
 ## Key Files
 

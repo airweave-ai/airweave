@@ -30,14 +30,7 @@ export default defineConfig({
       },
     },
     rollupOptions: {
-      // External dependencies for ESM/CJS builds only
-      // UMD/IIFE will bundle everything for browser script tag usage
-      external: (id, parentId, isResolved) => {
-        // Bundle everything for UMD/IIFE
-        // This function is called per module, we need to check output format
-        // Since Vite doesn't pass format here, we'll use a different approach
-        return false;
-      },
+      external: () => false,
     },
     sourcemap: true,
     minify: "esbuild",
