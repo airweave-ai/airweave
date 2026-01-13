@@ -3,49 +3,19 @@ import { apiClient } from "../lib/api";
 import type { SyncProgressUpdate, SyncSubscription } from "../lib/types";
 
 interface UseSyncProgressOptions {
-  /**
-   * Callback when sync completes (successfully or with failure)
-   */
   onComplete?: (connectionId: string, update: SyncProgressUpdate) => void;
-  /**
-   * Callback when an error occurs with the SSE connection
-   */
   onError?: (connectionId: string, error: Error) => void;
 }
 
 interface UseSyncProgressReturn {
-  /**
-   * Active subscriptions by connection ID
-   */
   subscriptions: Map<string, SyncSubscription>;
-  /**
-   * Subscribe to sync progress for a connection
-   */
   subscribe: (connectionId: string) => Promise<void>;
-  /**
-   * Unsubscribe from sync progress for a connection
-   */
   unsubscribe: (connectionId: string) => void;
-  /**
-   * Get progress for a specific connection
-   */
   getProgress: (connectionId: string) => SyncProgressUpdate | null;
-  /**
-   * Check if a connection has an active sync subscription
-   */
   hasActiveSubscription: (connectionId: string) => boolean;
-  /**
-   * Clean up all subscriptions
-   */
   cleanup: () => void;
 }
 
-/**
- * Hook for subscribing to real-time sync progress updates via SSE.
- *
- * Manages SSE subscriptions for multiple connections, tracking progress
- * updates and handling completion/error states.
- */
 export function useSyncProgress(
   options?: UseSyncProgressOptions,
 ): UseSyncProgressReturn {
@@ -53,7 +23,6 @@ export function useSyncProgress(
     Map<string, SyncSubscription>
   >(new Map());
 
-  // Use refs to access latest callback values without re-subscribing
   const onCompleteRef = useRef(options?.onComplete);
   const onErrorRef = useRef(options?.onError);
   const unsubscribeFnsRef = useRef<Map<string, () => void>>(new Map());
@@ -63,7 +32,6 @@ export function useSyncProgress(
     onErrorRef.current = options?.onError;
   });
 
-  // Cleanup on unmount
   useEffect(() => {
     const fns = unsubscribeFnsRef.current;
     return () => {
@@ -73,12 +41,10 @@ export function useSyncProgress(
   }, []);
 
   const subscribe = useCallback(async (connectionId: string) => {
-    // Don't create duplicate subscriptions
     if (unsubscribeFnsRef.current.has(connectionId)) {
       return;
     }
 
-    // First, get the jobs to find the active one
     try {
       const jobs = await apiClient.getConnectionJobs(connectionId);
       if (jobs.length === 0) {
@@ -86,17 +52,14 @@ export function useSyncProgress(
         return;
       }
 
-      // Find the active job (in_progress or most recent pending)
       const activeJob = jobs.find(
         (j) => j.status === "in_progress" || j.status === "pending",
       );
 
-      // If no active job, don't subscribe
       if (!activeJob) {
         return;
       }
 
-      // Initialize the subscription state
       const initialSubscription: SyncSubscription = {
         connectionId,
         jobId: activeJob.id,
@@ -119,10 +82,8 @@ export function useSyncProgress(
         return next;
       });
 
-      // Subscribe to SSE
       const unsubscribe = apiClient.subscribeToSyncProgress(connectionId, {
         onConnected: (jobId) => {
-          // Update job ID if different
           setSubscriptions((prev) => {
             const sub = prev.get(connectionId);
             if (sub && sub.jobId !== jobId) {
@@ -162,10 +123,8 @@ export function useSyncProgress(
             return next;
           });
 
-          // Notify via callback
           onCompleteRef.current?.(connectionId, update);
 
-          // Clean up after a short delay
           setTimeout(() => {
             unsubscribeFnsRef.current.get(connectionId)?.();
             unsubscribeFnsRef.current.delete(connectionId);
@@ -180,7 +139,6 @@ export function useSyncProgress(
           console.error(`SSE error for ${connectionId}:`, error);
           onErrorRef.current?.(connectionId, error);
 
-          // Clean up on error
           unsubscribeFnsRef.current.get(connectionId)?.();
           unsubscribeFnsRef.current.delete(connectionId);
           setSubscriptions((prev) => {

@@ -23,15 +23,11 @@ export function FolderSelectionView({
   const [selectedFolderIds, setSelectedFolderIds] = useState<string[]>([]);
 
   const handleBack = () => {
-    // Delete the connection since user cancelled folder selection
-    apiClient.deleteSourceConnection(connectionId).catch(() => {
-      // Ignore errors - connection might already be deleted
-    });
+    apiClient.deleteSourceConnection(connectionId).catch(() => {});
     onBack();
   };
 
   const handleStartSync = () => {
-    // TODO: Call API to configure sync folder paths
     onComplete();
   };
 

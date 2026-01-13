@@ -25,8 +25,8 @@ These endpoints use session token auth and reuse the existing Redis PubSub infra
 ### Remaining (Phase 3-5)
 - [x] Create `SyncProgressIndicator.tsx` component for inline progress display
 - [x] Update `ConnectionItem.tsx` to show progress during sync
-- [ ] Auto-subscribe to SSE for syncing connections in `SuccessScreen.tsx`
-- [ ] Handle sync completion and refresh connection list
+- [x] Auto-subscribe to SSE for syncing connections in `SuccessScreen.tsx`
+- [x] Handle sync completion and refresh connection list
 - [ ] Show inline progress after folder selection starts sync
 
 ## UI Approach

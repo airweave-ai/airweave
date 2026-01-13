@@ -49,7 +49,7 @@ export const defaultLabels: Required<ConnectLabels> = {
   menuDelete: "Delete",
 
   // Empty state
-  emptyStateHeading: "Connect with your apps",
+  emptyStateHeading: "Connect your apps",
   emptyStateDescription:
     "Add context from your apps to start working with your data.",
 

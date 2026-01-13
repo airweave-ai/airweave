@@ -20,10 +20,6 @@ import { OAuthStatusUI } from "./OAuthStatusUI";
 import { PageLayout } from "./PageLayout";
 import { PoweredByAirweave } from "./PoweredByAirweave";
 
-/**
- * Generates a random suffix for auto-generated connection names.
- * Returns 6 random alphanumeric characters.
- */
 function generateRandomSuffix(): string {
   const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
   let result = "";
@@ -57,7 +53,6 @@ export function SourceConfigView({
     queryFn: () => apiClient.getSourceDetails(source.short_name),
   });
 
-  // Auto-generate connection name when showConnectionName is false
   const [connectionName, setConnectionName] = useState(() =>
     options.showConnectionName
       ? ""
@@ -91,15 +86,13 @@ export function SourceConfigView({
     configValues,
     byocValues,
     requiresByoc: sourceDetails?.requires_byoc ?? false,
-    syncImmediately: false, // OAuth connections don't sync immediately
+    syncImmediately: false,
     onSuccess,
     onCancel: onBack,
   });
 
-  // Track if we've already auto-triggered OAuth
   const hasAutoTriggeredOAuth = useRef(false);
 
-  // Auto-trigger OAuth when there are no fields to fill out
   const hasConfigFields =
     (sourceDetails?.config_fields?.fields?.length ?? 0) > 0;
   const shouldAutoTriggerOAuth =
@@ -362,7 +355,6 @@ export function SourceConfigView({
 
           {effectiveAuthMethod === "oauth_browser" &&
             (() => {
-              // Determine if there's any content to show
               const hasByocFields = sourceDetails?.requires_byoc;
               const hasOAuthStatusContent =
                 oauthFlow.error ||
@@ -370,7 +362,6 @@ export function SourceConfigView({
                 oauthFlow.status === "popup_blocked";
               const hasAuthContent = hasByocFields || hasOAuthStatusContent;
 
-              // Don't render anything if there's no content
               if (!hasAuthContent) return null;
 
               return (
@@ -430,7 +421,6 @@ export function SourceConfigView({
         </form>
       </main>
 
-      {/* Show footer unless OAuth is in waiting state */}
       {!(
         effectiveAuthMethod === "oauth_browser" &&
         oauthFlow.status === "waiting"

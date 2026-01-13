@@ -2,44 +2,31 @@
 
 ## Current Status
 
-Phase 1-2 (Backend + Frontend SSE) complete. Phase 3 UI components partially done.
+Phase 3 SSE wiring in SuccessScreen.tsx is complete. Syncing connections now auto-subscribe to real-time progress updates.
 
 ## What's Done
 
-- `SyncProgressIndicator.tsx` - Shows indeterminate progress bar + entity counts (inserted/updated/deleted)
-- `ConnectionItem.tsx` - Now accepts optional `syncProgress` prop to show inline progress
+- `SuccessScreen.tsx` now uses `useSyncProgress` hook
+- Auto-subscribes to SSE for connections with `status === "syncing"`
+- Passes real-time progress to each `ConnectionItem` via `syncProgress` prop
+- Connection list refreshes automatically when sync completes
 
-## Next Task: Wire up SSE in SuccessScreen.tsx
+## Next Task: Show inline progress after folder selection
 
-The UI components exist but aren't connected to live data yet. Next step:
+The final remaining task is to show inline progress immediately after folder selection triggers a sync. Currently:
+1. User completes folder selection
+2. Sync starts (with `sync_immediately`)
+3. User is redirected to connections list
+4. Progress shows up once `connections` query returns with `status: "syncing"`
 
-```tsx
-// In SuccessScreen.tsx
-const { subscribe, getProgress } = useSyncProgress({
-  onComplete: () => queryClient.invalidateQueries(['connections']),
-});
+The gap: There's a brief moment after folder selection completes but before the connection appears with "syncing" status.
 
-// Auto-subscribe to syncing connections
-useEffect(() => {
-  connections
-    .filter(c => c.status === 'syncing')
-    .forEach(c => subscribe(c.id));
-}, [connections]);
+**Approach options:**
+1. Subscribe to SSE immediately in `FolderSelectionView.onComplete` before navigating
+2. Pass `recentConnectionId` to trigger immediate subscription in SuccessScreen
+3. Accept the brief delay (simplest - progress appears within ~1s anyway)
 
-// Pass progress to each ConnectionItem
-<ConnectionItem
-  connection={conn}
-  syncProgress={getProgress(conn.id)}
-  ...
-/>
-```
+## Files to Reference
 
-## Files to Modify
-
-- `connect/src/components/SuccessScreen.tsx` - Add useSyncProgress hook, pass progress to ConnectionItem
-
-## Available APIs
-
-- `useSyncProgress()` hook - manages SSE subscriptions, returns `subscribe`, `getProgress`, `cleanup`
-- `SyncProgressIndicator` - takes `progress: SyncProgressUpdate` prop
-- `ConnectionItem` - takes optional `syncProgress` prop
+- `connect/src/components/SuccessScreen.tsx:104-119` - SSE hook setup and auto-subscribe logic
+- `connect/src/components/FolderSelectionView.tsx` - Where folder selection completes and sync starts

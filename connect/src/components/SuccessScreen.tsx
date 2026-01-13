@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSyncProgress } from "../hooks/useSyncProgress";
 import { apiClient } from "../lib/api";
 import { canConnect } from "../lib/connection-utils";
 import { listenForOAuthComplete, openOAuthPopup } from "../lib/oauth";
@@ -68,25 +69,20 @@ export function SuccessScreen({
     mutationFn: (connectionId: string) =>
       apiClient.deleteSourceConnection(connectionId),
     onMutate: async (connectionId) => {
-      // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: ["source-connections"] });
 
-      // Snapshot the previous value
       const previousConnections = queryClient.getQueryData<
         SourceConnectionListItem[]
       >(["source-connections"]);
 
-      // Optimistically remove the connection
       queryClient.setQueryData<SourceConnectionListItem[]>(
         ["source-connections"],
         (old) => old?.filter((c) => c.id !== connectionId) ?? [],
       );
 
-      // Return context with the snapshot
       return { previousConnections };
     },
     onError: (_err, _connectionId, context) => {
-      // Rollback on error
       if (context?.previousConnections) {
         queryClient.setQueryData(
           ["source-connections"],
@@ -95,12 +91,24 @@ export function SuccessScreen({
       }
     },
     onSettled: () => {
-      // Always refetch to ensure sync
       queryClient.invalidateQueries({ queryKey: ["source-connections"] });
     },
   });
 
-  // Reconnect flow for pending_auth connections
+  const { subscribe, getProgress } = useSyncProgress({
+    onComplete: () => {
+      queryClient.invalidateQueries({ queryKey: ["source-connections"] });
+    },
+  });
+
+  useEffect(() => {
+    if (!connections) return;
+
+    connections
+      .filter((c) => c.status === "syncing")
+      .forEach((c) => subscribe(c.id));
+  }, [connections, subscribe]);
+
   const reconnectPopupRef = useRef<Window | null>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
 
@@ -137,7 +145,6 @@ export function SuccessScreen({
         if (popup) {
           reconnectPopupRef.current = popup;
         } else {
-          // Popup blocked - open in same window as fallback
           window.location.assign(connection.auth.auth_url);
         }
       } else {
@@ -153,7 +160,6 @@ export function SuccessScreen({
     setView("configure");
   };
 
-  // Configure view - show source configuration form
   if (view === "configure" && selectedSource) {
     return (
       <SourceConfigView
@@ -178,14 +184,12 @@ export function SuccessScreen({
     );
   }
 
-  // Folder selection view - show after OAuth when enabled
   if (view === "folder-selection" && selectedSource && recentConnectionId) {
     return (
       <FolderSelectionView
         source={selectedSource}
         connectionId={recentConnectionId}
         onBack={() => {
-          // Cancel folder selection - go back to sources
           setRecentConnectionId(null);
           setSelectedSource(null);
           setView("sources");
@@ -253,6 +257,7 @@ export function SuccessScreen({
               }
               onDelete={() => deleteMutation.mutate(connection.id)}
               labels={labels}
+              syncProgress={getProgress(connection.id)}
             />
           ))}
         </div>

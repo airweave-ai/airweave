@@ -37,17 +37,26 @@ export function SyncProgressIndicator({
           {totalProcessed.toLocaleString()} synced
         </span>
         {progress.entities_inserted > 0 && (
-          <span className="tabular-nums text-green-500">
+          <span
+            className="tabular-nums"
+            style={{ color: "var(--connect-success)" }}
+          >
             +{progress.entities_inserted.toLocaleString()}
           </span>
         )}
         {progress.entities_updated > 0 && (
-          <span className="tabular-nums text-blue-500">
+          <span
+            className="tabular-nums"
+            style={{ color: "var(--connect-primary)" }}
+          >
             ~{progress.entities_updated.toLocaleString()}
           </span>
         )}
         {progress.entities_deleted > 0 && (
-          <span className="tabular-nums text-red-500">
+          <span
+            className="tabular-nums"
+            style={{ color: "var(--connect-error)" }}
+          >
             -{progress.entities_deleted.toLocaleString()}
           </span>
         )}

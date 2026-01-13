@@ -51,7 +51,6 @@ class ConnectApiClient {
       throw new ApiError(response.status, error.detail || "Request failed");
     }
 
-    // Handle 204 No Content
     if (response.status === 204) {
       return undefined as T;
     }
@@ -107,10 +106,6 @@ class ConnectApiClient {
     );
   }
 
-  /**
-   * Subscribe to real-time sync progress updates for a connection via SSE.
-   * Returns an unsubscribe function to close the connection.
-   */
   subscribeToSyncProgress(
     connectionId: string,
     handlers: {
@@ -140,26 +135,20 @@ class ConnectApiClient {
         try {
           const data = JSON.parse(event.data);
 
-          // Handle connection confirmation
           if (data.type === "connected") {
             handlers.onConnected?.(data.job_id);
             return;
           }
 
-          // Skip heartbeats
           if (data.type === "heartbeat") {
             return;
           }
 
-          // Handle errors
           if (data.type === "error") {
             handlers.onError(new Error(data.message));
             return;
           }
 
-          // Map backend field names to our interface
-          // Backend sends: inserted, updated, deleted, kept, skipped
-          // We use: entities_inserted, entities_updated, etc.
           const update: SyncProgressUpdate = {
             entities_inserted: data.inserted ?? 0,
             entities_updated: data.updated ?? 0,
@@ -172,7 +161,6 @@ class ConnectApiClient {
             error: data.error,
           };
 
-          // Call appropriate handler based on completion status
           if (data.is_complete || data.is_failed) {
             handlers.onComplete(update);
           } else {
@@ -186,16 +174,11 @@ class ConnectApiClient {
         handlers.onError(
           error instanceof Error ? error : new Error("SSE connection error"),
         );
-        // Stop retrying by aborting
         controller.abort();
         throw error;
       },
-      onclose: () => {
-        // Connection closed normally
-      },
     });
 
-    // Return unsubscribe function
     return () => {
       controller.abort();
     };
