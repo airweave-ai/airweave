@@ -109,6 +109,14 @@ export function SuccessScreen({
       .forEach((c) => subscribe(c.id));
   }, [connections, subscribe]);
 
+  // Immediately subscribe to SSE for recently created connection
+  // This eliminates the gap between folder selection and connections query returning
+  useEffect(() => {
+    if (recentConnectionId && view === "connections") {
+      subscribe(recentConnectionId);
+    }
+  }, [recentConnectionId, view, subscribe]);
+
   const reconnectPopupRef = useRef<Window | null>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
 
@@ -195,7 +203,7 @@ export function SuccessScreen({
           setView("sources");
         }}
         onComplete={() => {
-          setRecentConnectionId(null);
+          // Keep recentConnectionId to trigger immediate SSE subscription
           setSelectedSource(null);
           setView("connections");
           queryClient.invalidateQueries({ queryKey: ["source-connections"] });

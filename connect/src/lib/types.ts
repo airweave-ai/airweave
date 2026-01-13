@@ -364,7 +364,6 @@ export interface SyncProgressUpdate {
 export interface SyncSubscription {
   connectionId: string;
   jobId: string;
-  controller: AbortController;
   lastUpdate: SyncProgressUpdate;
   lastMessageTime: number;
   status: "active" | "completed" | "failed";

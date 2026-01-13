@@ -86,20 +86,11 @@ export function useOAuthFlow({
         // Check oauthCompletedRef to avoid race condition where OAuth completed
         // but React hasn't re-rendered yet (stale status in closure)
         if (!isPopupOpen(popupRef.current) && !oauthCompletedRef.current) {
-          // Clean up the connection we just created (if any)
-          if (createdConnectionIdRef.current) {
-            apiClient
-              .deleteSourceConnection(createdConnectionIdRef.current)
-              .catch(() => {});
-            createdConnectionIdRef.current = null;
-            popupRef.current = null;
-            setStatus("idle");
-            onCancel?.();
-          } else {
-            setStatus("error");
-            setError("Authentication was cancelled. Please try again.");
-            popupRef.current = null;
-          }
+          // User closed popup without completing OAuth
+          createdConnectionIdRef.current = null;
+          popupRef.current = null;
+          setStatus("idle");
+          onCancel?.();
         }
       }, 500);
     }

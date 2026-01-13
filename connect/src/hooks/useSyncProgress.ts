@@ -63,7 +63,6 @@ export function useSyncProgress(
       const initialSubscription: SyncSubscription = {
         connectionId,
         jobId: activeJob.id,
-        controller: new AbortController(),
         lastUpdate: {
           entities_inserted: activeJob.entities_inserted ?? 0,
           entities_updated: activeJob.entities_updated ?? 0,
