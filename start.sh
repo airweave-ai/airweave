@@ -7,12 +7,14 @@ set -euo pipefail
 NONINTERACTIVE="${NONINTERACTIVE:-}"
 SKIP_LOCAL_EMBEDDINGS="${SKIP_LOCAL_EMBEDDINGS:-}"  # Explicitly skip local embeddings
 SKIP_FRONTEND="${SKIP_FRONTEND:-}"  # Explicitly skip frontend
+SKIP_CONNECT="${SKIP_CONNECT:-}"  # Explicitly skip connect widget
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --noninteractive) NONINTERACTIVE=1; shift ;;
     --skip-local-embeddings) SKIP_LOCAL_EMBEDDINGS=1; shift ;;
     --skip-frontend) SKIP_FRONTEND=1; shift ;;
+    --skip-connect) SKIP_CONNECT=1; shift ;;
     *) echo "Unknown arg: $1"; exit 2 ;;
   esac
 done
@@ -177,16 +179,18 @@ fi
 echo ""
 
 # Show which images will be used
-if [ -n "${BACKEND_IMAGE:-}" ] || [ -n "${FRONTEND_IMAGE:-}" ]; then
+if [ -n "${BACKEND_IMAGE:-}" ] || [ -n "${FRONTEND_IMAGE:-}" ] || [ -n "${CONNECT_IMAGE:-}" ]; then
     echo "Using custom Docker images:"
     echo "  Backend:  ${BACKEND_IMAGE:-ghcr.io/airweave-ai/airweave-backend:latest}"
     echo "  Frontend: ${FRONTEND_IMAGE:-ghcr.io/airweave-ai/airweave-frontend:latest}"
+    echo "  Connect:  ${CONNECT_IMAGE:-ghcr.io/airweave-ai/airweave-connect:latest}"
     echo ""
 fi
 
 # Determine which optional services to start (default: all enabled for local dev)
 USE_LOCAL_EMBEDDINGS=true
 USE_FRONTEND=true
+USE_CONNECT=true
 
 # Check if OpenAI API key exists in .env - auto-skip local embeddings if present
 if [ -f .env ]; then
@@ -208,7 +212,12 @@ if [ -n "$SKIP_FRONTEND" ]; then
     USE_FRONTEND=false
 fi
 
-# Build compose command with profiles (default: enable both)
+if [ -n "$SKIP_CONNECT" ]; then
+    echo "SKIP_CONNECT is set - skipping connect widget service"
+    USE_CONNECT=false
+fi
+
+# Build compose command with profiles (default: enable all)
 COMPOSE_CMD_WITH_OPTS="$COMPOSE_CMD -f docker/docker-compose.yml"
 if [ "$USE_LOCAL_EMBEDDINGS" = true ]; then
     echo "Starting with local embeddings service (text2vec-transformers)"
@@ -222,6 +231,13 @@ if [ "$USE_FRONTEND" = true ]; then
     COMPOSE_CMD_WITH_OPTS="$COMPOSE_CMD_WITH_OPTS --profile frontend"
 else
     echo "Starting without frontend (backend-only mode)"
+fi
+
+if [ "$USE_CONNECT" = true ]; then
+    echo "Starting with Connect widget"
+    COMPOSE_CMD_WITH_OPTS="$COMPOSE_CMD_WITH_OPTS --profile connect"
+else
+    echo "Starting without Connect widget"
 fi
 
 echo "Starting Docker services..."
@@ -355,6 +371,18 @@ if [ "$USE_FRONTEND" = true ]; then
   fi
 else
   echo "⏭️  Frontend UI:    Skipped (backend-only mode)"
+fi
+
+# Only check connect if we started it
+if [ "$USE_CONNECT" = true ]; then
+  if curl -f http://localhost:8082 >/dev/null 2>&1; then
+    echo "✅ Connect Widget: http://localhost:8082"
+  else
+    echo "❌ Connect Widget: Not responding (check logs with: docker logs airweave-connect)"
+    SERVICES_HEALTHY=false
+  fi
+else
+  echo "⏭️  Connect Widget: Skipped"
 fi
 
 echo ""
