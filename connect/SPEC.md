@@ -73,7 +73,7 @@ This document tracks the implementation of real-time sync status updates in the 
 - [x] Handle SSE connection errors gracefully
 - [x] Auto-cleanup subscriptions on component unmount
 - [x] Delay removal of completed syncs (2 second buffer)
-- [ ] Reconnection logic for dropped SSE connections
+- [x] Reconnection logic for dropped SSE connections
 - [x] Show error state when sync fails
 
 ## Key Files
@@ -159,6 +159,5 @@ interface SyncSubscription {
 
 ## Known Limitations
 
-1. No reconnection logic for dropped SSE connections (browser will auto-retry)
-2. Session token expiry during long syncs could disconnect SSE
-3. No progress percentage (would require knowing total entities upfront)
+1. Session token expiry during long syncs could disconnect SSE
+2. No progress percentage (would require knowing total entities upfront)

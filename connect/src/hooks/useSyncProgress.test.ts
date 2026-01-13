@@ -4,7 +4,6 @@ import { useSyncProgress } from "./useSyncProgress";
 import { apiClient } from "../lib/api";
 import type { SourceConnectionJob, SyncProgressUpdate } from "../lib/types";
 
-// Mock the api client
 vi.mock("../lib/api", () => ({
   apiClient: {
     getConnectionJobs: vi.fn(),
@@ -13,7 +12,9 @@ vi.mock("../lib/api", () => ({
 }));
 
 const mockGetConnectionJobs = vi.mocked(apiClient.getConnectionJobs);
-const mockSubscribeToSyncProgress = vi.mocked(apiClient.subscribeToSyncProgress);
+const mockSubscribeToSyncProgress = vi.mocked(
+  apiClient.subscribeToSyncProgress,
+);
 
 describe("useSyncProgress", () => {
   beforeEach(() => {
@@ -587,6 +588,98 @@ describe("useSyncProgress", () => {
         entities_skipped: 0,
         entities_encountered: {},
       });
+    });
+  });
+
+  describe("isReconnecting", () => {
+    it("returns false for non-existent subscriptions", () => {
+      const { result } = renderHook(() => useSyncProgress());
+
+      expect(result.current.isReconnecting("non-existent")).toBe(false);
+    });
+
+    it("returns false for active subscriptions", async () => {
+      const mockJob = createMockJob();
+      mockGetConnectionJobs.mockResolvedValue([mockJob]);
+      mockSubscribeToSyncProgress.mockReturnValue(() => {});
+
+      const { result } = renderHook(() => useSyncProgress());
+
+      await act(async () => {
+        await result.current.subscribe("conn-123");
+      });
+
+      expect(result.current.isReconnecting("conn-123")).toBe(false);
+    });
+
+    it("returns true when onReconnecting is called", async () => {
+      const mockJob = createMockJob();
+      mockGetConnectionJobs.mockResolvedValue([mockJob]);
+
+      let capturedHandlers: {
+        onReconnecting?: (attempt: number) => void;
+      } | null = null;
+
+      mockSubscribeToSyncProgress.mockImplementation((_, handlers) => {
+        capturedHandlers = handlers;
+        return () => {};
+      });
+
+      const { result } = renderHook(() => useSyncProgress());
+
+      await act(async () => {
+        await result.current.subscribe("conn-123");
+      });
+
+      expect(result.current.isReconnecting("conn-123")).toBe(false);
+
+      act(() => {
+        capturedHandlers?.onReconnecting?.(1);
+      });
+
+      expect(result.current.isReconnecting("conn-123")).toBe(true);
+      expect(
+        result.current.subscriptions.get("conn-123")?.reconnectAttempt,
+      ).toBe(1);
+    });
+
+    it("clears reconnecting state when onConnected is called after reconnect", async () => {
+      const mockJob = createMockJob();
+      mockGetConnectionJobs.mockResolvedValue([mockJob]);
+
+      let capturedHandlers: {
+        onReconnecting?: (attempt: number) => void;
+        onConnected?: (jobId: string) => void;
+      } | null = null;
+
+      mockSubscribeToSyncProgress.mockImplementation((_, handlers) => {
+        capturedHandlers = handlers;
+        return () => {};
+      });
+
+      const { result } = renderHook(() => useSyncProgress());
+
+      await act(async () => {
+        await result.current.subscribe("conn-123");
+      });
+
+      // Simulate reconnecting state
+      act(() => {
+        capturedHandlers?.onReconnecting?.(1);
+      });
+
+      expect(result.current.isReconnecting("conn-123")).toBe(true);
+
+      // Simulate successful reconnection
+      act(() => {
+        capturedHandlers?.onConnected?.("job-123");
+      });
+
+      expect(result.current.isReconnecting("conn-123")).toBe(false);
+      expect(result.current.hasActiveSubscription("conn-123")).toBe(true);
+      expect(
+        result.current.subscriptions.get("conn-123")?.reconnectAttempt,
+      ).toBeUndefined();
     });
   });
 });

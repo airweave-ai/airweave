@@ -13,6 +13,7 @@ interface UseSyncProgressReturn {
   unsubscribe: (connectionId: string) => void;
   getProgress: (connectionId: string) => SyncProgressUpdate | null;
   hasActiveSubscription: (connectionId: string) => boolean;
+  isReconnecting: (connectionId: string) => boolean;
   cleanup: () => void;
 }
 
@@ -29,6 +30,22 @@ function removeSubscription(
     if (!prev.has(connectionId)) return prev;
     const next = new Map(prev);
     next.delete(connectionId);
+    return next;
+  });
+}
+
+function updateSubscription(
+  connectionId: string,
+  updater: (sub: SyncSubscription) => Partial<SyncSubscription>,
+  setSubscriptions: React.Dispatch<
+    React.SetStateAction<Map<string, SyncSubscription>>
+  >,
+) {
+  setSubscriptions((prev) => {
+    const sub = prev.get(connectionId);
+    if (!sub) return prev;
+    const next = new Map(prev);
+    next.set(connectionId, { ...sub, ...updater(sub) });
     return next;
   });
 }
@@ -62,20 +79,22 @@ export function useSyncProgress(
       return;
     }
 
-    // Retry logic for when job hasn't been created yet
+    // Jobs may not exist immediately after connection creation due to async processing
     const maxRetries = 3;
     const retryDelays = [500, 1000, 2000];
 
     const findActiveJob = async (
       attempt: number,
-    ): Promise<Awaited<
-      ReturnType<typeof apiClient.getConnectionJobs>
-    >[number] | null> => {
+    ): Promise<
+      Awaited<ReturnType<typeof apiClient.getConnectionJobs>>[number] | null
+    > => {
       const jobs = await apiClient.getConnectionJobs(connectionId);
 
       if (jobs.length === 0) {
         if (attempt < maxRetries) {
-          await new Promise((resolve) => setTimeout(resolve, retryDelays[attempt]));
+          await new Promise((resolve) =>
+            setTimeout(resolve, retryDelays[attempt]),
+          );
           return findActiveJob(attempt + 1);
         }
         console.warn(
@@ -89,7 +108,9 @@ export function useSyncProgress(
       );
 
       if (!activeJob && attempt < maxRetries) {
-        await new Promise((resolve) => setTimeout(resolve, retryDelays[attempt]));
+        await new Promise((resolve) =>
+          setTimeout(resolve, retryDelays[attempt]),
+        );
         return findActiveJob(attempt + 1);
       }
 
@@ -126,49 +147,56 @@ export function useSyncProgress(
 
       const unsubscribe = apiClient.subscribeToSyncProgress(connectionId, {
         onConnected: (jobId) => {
-          setSubscriptions((prev) => {
-            const sub = prev.get(connectionId);
-            if (sub && sub.jobId !== jobId) {
-              const next = new Map(prev);
-              next.set(connectionId, { ...sub, jobId });
-              return next;
-            }
-            return prev;
-          });
+          // Reset to active status on successful connection (clears reconnecting state)
+          updateSubscription(
+            connectionId,
+            () => ({
+              jobId,
+              status: "active",
+              reconnectAttempt: undefined,
+            }),
+            setSubscriptions,
+          );
+        },
+        onReconnecting: (attempt) => {
+          updateSubscription(
+            connectionId,
+            () => ({
+              status: "reconnecting",
+              reconnectAttempt: attempt,
+            }),
+            setSubscriptions,
+          );
         },
         onProgress: (update) => {
-          setSubscriptions((prev) => {
-            const sub = prev.get(connectionId);
-            if (!sub) return prev;
-
-            const next = new Map(prev);
-            next.set(connectionId, {
-              ...sub,
+          updateSubscription(
+            connectionId,
+            () => ({
               lastUpdate: update,
               lastMessageTime: Date.now(),
-            });
-            return next;
-          });
+            }),
+            setSubscriptions,
+          );
         },
         onComplete: (update) => {
-          setSubscriptions((prev) => {
-            const sub = prev.get(connectionId);
-            if (!sub) return prev;
-
-            const next = new Map(prev);
-            next.set(connectionId, {
-              ...sub,
+          updateSubscription(
+            connectionId,
+            () => ({
               lastUpdate: update,
               lastMessageTime: Date.now(),
               status: update.is_failed ? "failed" : "completed",
-            });
-            return next;
-          });
+            }),
+            setSubscriptions,
+          );
 
           onCompleteRef.current?.(connectionId, update);
 
           setTimeout(() => {
-            removeSubscription(connectionId, unsubscribeFnsRef, setSubscriptions);
+            removeSubscription(
+              connectionId,
+              unsubscribeFnsRef,
+              setSubscriptions,
+            );
           }, 2000);
         },
         onError: (error) => {
@@ -207,6 +235,14 @@ export function useSyncProgress(
     [subscriptions],
   );
 
+  const isReconnecting = useCallback(
+    (connectionId: string): boolean => {
+      const sub = subscriptions.get(connectionId);
+      return sub?.status === "reconnecting";
+    },
+    [subscriptions],
+  );
+
   const cleanup = useCallback(() => {
     unsubscribeFnsRef.current.forEach((unsubscribe) => unsubscribe());
     unsubscribeFnsRef.current.clear();
@@ -219,6 +255,7 @@ export function useSyncProgress(
     unsubscribe,
     getProgress,
     hasActiveSubscription,
+    isReconnecting,
     cleanup,
   };
 }

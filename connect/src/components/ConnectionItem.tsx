@@ -16,6 +16,8 @@ interface ConnectionItemProps {
   labels: Required<ConnectLabels>;
   /** Real-time sync progress when connection is syncing */
   syncProgress?: SyncProgressUpdate | null;
+  /** Whether the SSE connection is reconnecting */
+  isSseReconnecting?: boolean;
 }
 
 export function ConnectionItem({
@@ -24,6 +26,7 @@ export function ConnectionItem({
   onDelete,
   labels,
   syncProgress,
+  isSseReconnecting = false,
 }: ConnectionItemProps) {
   const statusColor = getStatusColor(connection.status);
   const entitiesText = labels.entitiesCount.replace(
@@ -54,6 +57,7 @@ export function ConnectionItem({
             <SyncProgressIndicator
               progress={syncProgress}
               baseCount={connection.entity_count}
+              isReconnecting={isSseReconnecting}
             />
           ) : (
             <p

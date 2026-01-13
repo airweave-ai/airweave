@@ -176,7 +176,11 @@ export type ChildToParentMessage =
   | { type: "CLOSE"; reason: "success" | "cancel" | "error" };
 
 // Navigation views for NAVIGATE message
-export type NavigateView = "connections" | "sources" | "configure" | "folder-selection";
+export type NavigateView =
+  | "connections"
+  | "sources"
+  | "configure"
+  | "folder-selection";
 
 // postMessage types - messages sent from parent to child
 export type ParentToChildMessage =
@@ -311,11 +315,9 @@ export type OAuthFlowStatus =
   | "popup_blocked"
   | "error";
 
-// =====================================================
-// Sync Job Types (for real-time progress)
-// =====================================================
+// Sync Job Types
 
-// Status of a sync job (matches backend SyncJobStatus enum)
+// Matches backend SyncJobStatus enum
 export type SyncJobStatus =
   | "created"
   | "pending"
@@ -367,5 +369,6 @@ export interface SyncSubscription {
   jobId: string;
   lastUpdate: SyncProgressUpdate;
   lastMessageTime: number;
-  status: "active" | "completed" | "failed";
+  status: "active" | "completed" | "failed" | "reconnecting";
+  reconnectAttempt?: number;
 }

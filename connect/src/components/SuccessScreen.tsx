@@ -39,7 +39,9 @@ export function SuccessScreen({
   const { labels, options } = useTheme();
   const queryClient = useQueryClient();
   const [selectedSource, setSelectedSource] = useState<Source | null>(null);
-  const [recentConnectionId, setRecentConnectionId] = useState<string | null>(null);
+  const [recentConnectionId, setRecentConnectionId] = useState<string | null>(
+    null,
+  );
 
   const defaultView: NavigateView =
     session.mode === "connect" ? "sources" : "connections";
@@ -95,7 +97,11 @@ export function SuccessScreen({
     },
   });
 
-  const { subscribe, getProgress } = useSyncProgress({
+  const {
+    subscribe,
+    getProgress,
+    isReconnecting: isSseReconnecting,
+  } = useSyncProgress({
     onComplete: () => {
       queryClient.invalidateQueries({ queryKey: ["source-connections"] });
     },
@@ -134,7 +140,7 @@ export function SuccessScreen({
         queryClient.invalidateQueries({ queryKey: ["source-connections"] });
       }
     },
-    [onConnectionCreated, queryClient]
+    [onConnectionCreated, queryClient],
   );
 
   useEffect(() => {
@@ -241,7 +247,10 @@ export function SuccessScreen({
   const hasConnections = connections && connections.length > 0;
 
   const connectButton = allowConnect ? (
-    <Button onClick={() => setView("sources")} className="w-full justify-center">
+    <Button
+      onClick={() => setView("sources")}
+      className="w-full justify-center"
+    >
       {labels.buttonConnect}
       {!hasConnections && <ArrowRight size={16} />}
     </Button>
@@ -267,6 +276,7 @@ export function SuccessScreen({
               onDelete={() => deleteMutation.mutate(connection.id)}
               labels={labels}
               syncProgress={getProgress(connection.id)}
+              isSseReconnecting={isSseReconnecting(connection.id)}
             />
           ))}
         </div>

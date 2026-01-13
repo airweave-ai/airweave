@@ -2,30 +2,25 @@
 
 ## Current Status
 
-The real-time sync status feature is **mostly complete**. All unit tests pass (30 tests).
+The real-time sync status feature is **mostly complete**. All unit tests pass (37 tests).
 
 ## What Was Just Done
 
-Added error state UI to `SyncProgressIndicator`:
-- Shows red error icon + message when `is_failed: true`
-- Falls back to "Sync failed" if no error message provided
-- Added 3 tests for error state
+Added SSE reconnection logic with exponential backoff:
+- `api.ts`: `subscribeToSyncProgress()` now retries on connection errors (max 5 attempts, 1s/2s/4s/8s/16s delays)
+- Won't retry on 4xx client errors or after sync completes
+- Calls `onReconnecting(attempt)` callback to notify UI of retry attempts
+- `useSyncProgress` hook: Added `isReconnecting()` method and tracks `reconnectAttempt` in subscription state
+- `SyncProgressIndicator`: Shows "Reconnecting..." with pulsing WifiOff icon when reconnecting
+- Added 7 new tests covering reconnection states
 
 ## Next Tasks to Pick Up
 
-### 1. SSE Reconnection Logic (Priority: High)
-
-Currently if SSE drops, there's no explicit reconnection. `fetch-event-source` doesn't auto-retry like native EventSource. Consider:
-- Adding exponential backoff retry
-- Showing "reconnecting..." state in UI
-
-Location: `src/lib/api.ts` in `subscribeToSyncProgress()`
-
-### 2. Integration Tests for SSE Flow (Priority: Low)
+### 1. Integration Tests for SSE Flow (Priority: Low)
 
 Would require mocking SSE at a higher level or using MSW (Mock Service Worker).
 
-### 3. E2E Tests (Priority: Low)
+### 2. E2E Tests (Priority: Low)
 
 Would require full backend running. Consider Playwright or Cypress.
 
@@ -36,8 +31,8 @@ Tests run with: `npm run test`
 Key files:
 - `vitest.config.ts` - jsdom environment, globals enabled
 - `vitest.setup.ts` - jest-dom matchers
-- `src/hooks/useSyncProgress.test.ts` - 22 tests for the hook
-- `src/components/SyncProgressIndicator.test.tsx` - 8 tests for the UI
+- `src/hooks/useSyncProgress.test.ts` - 26 tests for the hook
+- `src/components/SyncProgressIndicator.test.tsx` - 11 tests for the UI
 
 ## How to Test Manually
 
@@ -45,3 +40,4 @@ Key files:
 2. Start connect: `cd connect && npm run dev`
 3. Open test harness: `http://localhost:5173/examples/`
 4. Connect a source (e.g., Slack) and watch the sync progress
+5. To test reconnection: Kill/restart the backend during a sync

@@ -63,7 +63,9 @@ class ConnectApiClient {
   }
 
   async getSourceConnections(): Promise<SourceConnectionListItem[]> {
-    return this.fetch<SourceConnectionListItem[]>("/connect/source-connections");
+    return this.fetch<SourceConnectionListItem[]>(
+      "/connect/source-connections",
+    );
   }
 
   async deleteSourceConnection(connectionId: string): Promise<void> {
@@ -100,7 +102,9 @@ class ConnectApiClient {
     );
   }
 
-  async getConnectionJobs(connectionId: string): Promise<SourceConnectionJob[]> {
+  async getConnectionJobs(
+    connectionId: string,
+  ): Promise<SourceConnectionJob[]> {
     return this.fetch<SourceConnectionJob[]>(
       `/connect/source-connections/${connectionId}/jobs`,
     );
@@ -113,10 +117,20 @@ class ConnectApiClient {
       onComplete: (update: SyncProgressUpdate) => void;
       onError: (error: Error) => void;
       onConnected?: (jobId: string) => void;
+      onReconnecting?: (attempt: number) => void;
     },
   ): () => void {
     const controller = new AbortController();
     const url = `${this.baseUrl}/connect/source-connections/${connectionId}/subscribe`;
+
+    // Exponential backoff: 1s, 2s, 4s, 8s, 16s (max 5 retries)
+    const maxRetries = 5;
+    let retryCount = 0;
+    let isComplete = false;
+
+    const getRetryDelay = (attempt: number): number => {
+      return Math.min(1000 * Math.pow(2, attempt), 16000);
+    };
 
     void fetchEventSource(url, {
       signal: controller.signal,
@@ -130,6 +144,7 @@ class ConnectApiClient {
             `SSE connection failed with status ${response.status}: ${errorText}`,
           );
         }
+        retryCount = 0;
       },
       onmessage: (event: EventSourceMessage) => {
         try {
@@ -162,6 +177,7 @@ class ConnectApiClient {
           };
 
           if (data.is_complete || data.is_failed) {
+            isComplete = true;
             handlers.onComplete(update);
           } else {
             handlers.onProgress(update);
@@ -171,11 +187,37 @@ class ConnectApiClient {
         }
       },
       onerror: (error) => {
-        handlers.onError(
-          error instanceof Error ? error : new Error("SSE connection error"),
-        );
-        controller.abort();
-        throw error;
+        // Don't retry if sync is complete or was aborted by user
+        if (isComplete || controller.signal.aborted) {
+          throw error;
+        }
+
+        // Don't retry on 4xx errors (client errors) - these won't resolve with retry
+        if (
+          error instanceof Response &&
+          error.status >= 400 &&
+          error.status < 500
+        ) {
+          handlers.onError(new Error(`SSE connection failed: ${error.status}`));
+          throw error;
+        }
+
+        retryCount++;
+
+        if (retryCount > maxRetries) {
+          handlers.onError(
+            error instanceof Error
+              ? error
+              : new Error("SSE connection error after max retries"),
+          );
+          throw error;
+        }
+
+        handlers.onReconnecting?.(retryCount);
+
+        // Return the delay for fetch-event-source to wait before retrying
+        // By not throwing, we allow the library to retry
+        return getRetryDelay(retryCount - 1);
       },
     });
 

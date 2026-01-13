@@ -15,11 +15,10 @@ function getByTextContent(text: string | RegExp) {
         ? element.textContent === text
         : text.test(element.textContent || "");
     // Only match if this element directly contains the text (not a parent)
-    const childrenDontMatch = Array.from(element.children).every(
-      (child) =>
-        typeof text === "string"
-          ? child.textContent !== text
-          : !text.test(child.textContent || ""),
+    const childrenDontMatch = Array.from(element.children).every((child) =>
+      typeof text === "string"
+        ? child.textContent !== text
+        : !text.test(child.textContent || ""),
     );
     return hasText && childrenDontMatch;
   });
@@ -131,5 +130,46 @@ describe("SyncProgressIndicator", () => {
     // AlertCircle icon should be present (lucide-react renders as svg)
     const svg = container.querySelector("svg");
     expect(svg).toBeInTheDocument();
+  });
+
+  it("renders reconnecting state when isReconnecting is true", () => {
+    const progress: SyncProgressUpdate = {
+      ...baseProgress,
+      entities_inserted: 50,
+    };
+
+    render(<SyncProgressIndicator progress={progress} isReconnecting={true} />);
+
+    expect(screen.getByText("Reconnecting...")).toBeInTheDocument();
+    // Should not show synced count or spinner when reconnecting
+    expect(document.querySelector(".animate-spin")).not.toBeInTheDocument();
+  });
+
+  it("renders pulsing icon in reconnecting state", () => {
+    const progress: SyncProgressUpdate = {
+      ...baseProgress,
+    };
+
+    const { container } = render(
+      <SyncProgressIndicator progress={progress} isReconnecting={true} />,
+    );
+
+    // WifiOff icon should be present with animate-pulse class
+    const pulsingIcon = container.querySelector(".animate-pulse");
+    expect(pulsingIcon).toBeInTheDocument();
+  });
+
+  it("prioritizes error state over reconnecting state", () => {
+    const progress: SyncProgressUpdate = {
+      ...baseProgress,
+      is_failed: true,
+      error: "Connection lost",
+    };
+
+    render(<SyncProgressIndicator progress={progress} isReconnecting={true} />);
+
+    // Error state should take precedence
+    expect(screen.getByText("Connection lost")).toBeInTheDocument();
+    expect(screen.queryByText("Reconnecting...")).not.toBeInTheDocument();
   });
 });
