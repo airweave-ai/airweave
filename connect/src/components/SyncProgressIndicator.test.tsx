@@ -26,52 +26,15 @@ describe("SyncProgressIndicator", () => {
     expect(screen.getByText("160 synced")).toBeInTheDocument();
   });
 
-  it("shows inserted count in green when present", () => {
+  it("includes baseCount in total", () => {
     const progress: SyncProgressUpdate = {
       ...baseProgress,
-      entities_inserted: 42,
+      entities_inserted: 50,
     };
 
-    render(<SyncProgressIndicator progress={progress} />);
+    render(<SyncProgressIndicator progress={progress} baseCount={200} />);
 
-    expect(screen.getByText("+42")).toBeInTheDocument();
-  });
-
-  it("shows updated count when present", () => {
-    const progress: SyncProgressUpdate = {
-      ...baseProgress,
-      entities_updated: 15,
-    };
-
-    render(<SyncProgressIndicator progress={progress} />);
-
-    expect(screen.getByText("~15")).toBeInTheDocument();
-  });
-
-  it("shows deleted count in red when present", () => {
-    const progress: SyncProgressUpdate = {
-      ...baseProgress,
-      entities_deleted: 5,
-    };
-
-    render(<SyncProgressIndicator progress={progress} />);
-
-    expect(screen.getByText("-5")).toBeInTheDocument();
-  });
-
-  it("hides zero counts", () => {
-    const progress: SyncProgressUpdate = {
-      ...baseProgress,
-      entities_inserted: 10,
-      entities_updated: 0,
-      entities_deleted: 0,
-    };
-
-    render(<SyncProgressIndicator progress={progress} />);
-
-    expect(screen.getByText("+10")).toBeInTheDocument();
-    expect(screen.queryByText("~0")).not.toBeInTheDocument();
-    expect(screen.queryByText("-0")).not.toBeInTheDocument();
+    expect(screen.getByText("250 synced")).toBeInTheDocument();
   });
 
   it("formats large numbers with locale separators", () => {
@@ -82,20 +45,17 @@ describe("SyncProgressIndicator", () => {
 
     render(<SyncProgressIndicator progress={progress} />);
 
-    // The exact format depends on locale, but it should be formatted
     expect(screen.getByText(/1,234,567 synced/)).toBeInTheDocument();
-    expect(screen.getByText(/\+1,234,567/)).toBeInTheDocument();
   });
 
-  it("renders progress bar element", () => {
+  it("renders spinning loader icon", () => {
     render(<SyncProgressIndicator progress={baseProgress} />);
 
-    // Check for progress bar container
-    const progressBar = document.querySelector(".animate-progress-indeterminate");
-    expect(progressBar).toBeInTheDocument();
+    const spinner = document.querySelector(".animate-spin");
+    expect(spinner).toBeInTheDocument();
   });
 
-  it("shows all count types together", () => {
+  it("excludes deleted entities from total", () => {
     const progress: SyncProgressUpdate = {
       ...baseProgress,
       entities_inserted: 100,
@@ -107,10 +67,7 @@ describe("SyncProgressIndicator", () => {
 
     render(<SyncProgressIndicator progress={progress} />);
 
-    // Total = 100 + 25 + 3 + 500 + 2 = 630
-    expect(screen.getByText("630 synced")).toBeInTheDocument();
-    expect(screen.getByText("+100")).toBeInTheDocument();
-    expect(screen.getByText("~25")).toBeInTheDocument();
-    expect(screen.getByText("-3")).toBeInTheDocument();
+    // Total = 100 + 25 + 500 + 2 = 627 (deleted not included)
+    expect(screen.getByText("627 synced")).toBeInTheDocument();
   });
 });

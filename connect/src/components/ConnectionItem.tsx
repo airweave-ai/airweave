@@ -51,7 +51,10 @@ export function ConnectionItem({
             {connection.name}
           </p>
           {syncProgress ? (
-            <SyncProgressIndicator progress={syncProgress} />
+            <SyncProgressIndicator
+              progress={syncProgress}
+              baseCount={connection.entity_count}
+            />
           ) : (
             <p
               className="text-xs"

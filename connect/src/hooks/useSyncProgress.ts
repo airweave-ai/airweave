@@ -62,16 +62,42 @@ export function useSyncProgress(
       return;
     }
 
-    try {
+    // Retry logic for when job hasn't been created yet
+    const maxRetries = 3;
+    const retryDelays = [500, 1000, 2000];
+
+    const findActiveJob = async (
+      attempt: number,
+    ): Promise<Awaited<
+      ReturnType<typeof apiClient.getConnectionJobs>
+    >[number] | null> => {
       const jobs = await apiClient.getConnectionJobs(connectionId);
+
       if (jobs.length === 0) {
-        console.warn(`No sync jobs found for connection ${connectionId}`);
-        return;
+        if (attempt < maxRetries) {
+          await new Promise((resolve) => setTimeout(resolve, retryDelays[attempt]));
+          return findActiveJob(attempt + 1);
+        }
+        console.warn(
+          `No sync jobs found for connection ${connectionId} after ${maxRetries} retries`,
+        );
+        return null;
       }
 
       const activeJob = jobs.find(
-        (j) => j.status === "in_progress" || j.status === "pending",
+        (j) => j.status === "running" || j.status === "pending",
       );
+
+      if (!activeJob && attempt < maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelays[attempt]));
+        return findActiveJob(attempt + 1);
+      }
+
+      return activeJob ?? null;
+    };
+
+    try {
+      const activeJob = await findActiveJob(0);
 
       if (!activeJob) {
         return;

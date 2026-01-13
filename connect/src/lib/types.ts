@@ -319,9 +319,10 @@ export type OAuthFlowStatus =
 export type SyncJobStatus =
   | "created"
   | "pending"
-  | "in_progress"
+  | "running"
   | "completed"
   | "failed"
+  | "cancelling"
   | "cancelled";
 
 // Sync job returned from GET /connect/source-connections/{id}/jobs

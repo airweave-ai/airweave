@@ -129,6 +129,7 @@ export function SuccessScreen({
       setIsReconnecting(false);
 
       if (result.status === "success" && result.source_connection_id) {
+        setRecentConnectionId(result.source_connection_id);
         onConnectionCreated(result.source_connection_id);
         queryClient.invalidateQueries({ queryKey: ["source-connections"] });
       }
@@ -179,8 +180,8 @@ export function SuccessScreen({
         }}
         onSuccess={(connectionId) => {
           onConnectionCreated(connectionId);
+          setRecentConnectionId(connectionId);
           if (options.enableFolderSelection) {
-            setRecentConnectionId(connectionId);
             setView("folder-selection");
           } else {
             setSelectedSource(null);

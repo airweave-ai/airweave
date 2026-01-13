@@ -31,7 +31,7 @@ describe("useSyncProgress", () => {
     id: "job-123",
     source_connection_id: "conn-123",
     organization_id: "org-123",
-    status: "in_progress",
+    status: "running",
     scheduled: false,
     entities_inserted: 0,
     entities_updated: 0,
@@ -85,7 +85,10 @@ describe("useSyncProgress", () => {
       const { result } = renderHook(() => useSyncProgress());
 
       await act(async () => {
-        await result.current.subscribe("conn-123");
+        const subscribePromise = result.current.subscribe("conn-123");
+        // Advance through all retry delays (500 + 1000 + 2000 = 3500ms)
+        await vi.advanceTimersByTimeAsync(3500);
+        await subscribePromise;
       });
 
       expect(mockSubscribeToSyncProgress).not.toHaveBeenCalled();
@@ -99,7 +102,10 @@ describe("useSyncProgress", () => {
       const { result } = renderHook(() => useSyncProgress());
 
       await act(async () => {
-        await result.current.subscribe("conn-123");
+        const subscribePromise = result.current.subscribe("conn-123");
+        // Advance through all retry delays (500 + 1000 + 2000 = 3500ms)
+        await vi.advanceTimersByTimeAsync(3500);
+        await subscribePromise;
       });
 
       expect(mockSubscribeToSyncProgress).not.toHaveBeenCalled();
