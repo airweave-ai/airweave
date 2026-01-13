@@ -214,8 +214,41 @@ class ArfService:
         Returns:
             Number of entities stored
         """
+        if not entities:
+            return 0
+
+        # Ensure manifest exists before storing entities
+        await self.upsert_manifest(sync_context)
+
+        # Count new entities (for manifest update)
+        new_entity_count = 0
+        new_file_count = 0
+
         for entity in entities:
+            # Check if this is a new entity
+            sync_id = str(sync_context.sync.id)
+            entity_id = str(entity.entity_id)
+            entity_path = self._entity_path(sync_id, entity_id)
+            is_new = not await self.storage.exists(entity_path)
+
             await self.upsert_entity(entity, sync_context)
+
+            if is_new:
+                new_entity_count += 1
+                # Check if file was stored
+                if self._is_file_entity(entity) and hasattr(entity, "local_path"):
+                    local_path = getattr(entity, "local_path", None)
+                    if local_path and Path(local_path).exists():
+                        new_file_count += 1
+
+        # Update manifest with new counts
+        if new_entity_count > 0 or new_file_count > 0:
+            await self._update_manifest(
+                sync_context,
+                delta_entities=new_entity_count,
+                delta_files=new_file_count,
+            )
+
         return len(entities)
 
     async def delete_entity(
@@ -273,9 +306,31 @@ class ArfService:
             Number of entities deleted
         """
         deleted_count = 0
+        deleted_files = 0
+
         for entity_id in entity_ids:
+            # Check if entity has a file before deleting
+            sync_id = str(sync_context.sync.id)
+            entity_path = self._entity_path(sync_id, entity_id)
+            try:
+                entity_data = await self.storage.read_json(entity_path)
+                has_file = "__stored_file__" in entity_data
+            except Exception:
+                has_file = False
+
             if await self.delete_entity(entity_id, sync_context):
                 deleted_count += 1
+                if has_file:
+                    deleted_files += 1
+
+        # Update manifest with deleted counts (negative delta)
+        if deleted_count > 0:
+            await self._update_manifest(
+                sync_context,
+                delta_entities=-deleted_count,
+                delta_files=-deleted_files,
+            )
+
         return deleted_count
 
     async def get_entity(self, sync_id: str, entity_id: str) -> Optional[Dict[str, Any]]:
@@ -600,6 +655,84 @@ class ArfService:
             "updated_at": manifest.updated_at,
             "sync_jobs": manifest.sync_jobs,
         }
+
+    # =========================================================================
+    # Backfill utilities
+    # =========================================================================
+
+    async def backfill_manifest(self, sync_id: str, source_short_name: str = "unknown") -> bool:
+        """Create a manifest for existing ARF data that doesn't have one.
+
+        This is useful for:
+        - Local development where manifests weren't created
+        - Migration of old ARF data
+
+        Args:
+            sync_id: The sync ID (folder name in raw/)
+            source_short_name: Source type (e.g., 'notion', 'github')
+
+        Returns:
+            True if manifest was created, False if it already exists
+        """
+        manifest_path = self._manifest_path(sync_id)
+
+        # Don't overwrite existing manifest
+        if await self.storage.exists(manifest_path):
+            return False
+
+        # Count entities and files
+        entity_ids = await self.list_entity_ids(sync_id)
+        entity_count = len(entity_ids)
+
+        # Count files by checking entities for __stored_file__
+        file_count = 0
+        for entity_id in entity_ids:
+            entity_data = await self.get_entity(sync_id, entity_id)
+            if entity_data and "__stored_file__" in entity_data:
+                file_count += 1
+
+        now = datetime.now(timezone.utc).isoformat()
+
+        manifest = SyncManifest(
+            sync_id=sync_id,
+            source_short_name=source_short_name,
+            collection_id="",  # Unknown for backfilled data
+            collection_readable_id="",
+            organization_id="",
+            created_at=now,
+            updated_at=now,
+            sync_jobs=[],  # No jobs for backfilled data
+            entity_count=entity_count,
+            file_count=file_count,
+        )
+
+        await self.storage.write_json(manifest_path, manifest.model_dump())
+        return True
+
+    async def backfill_all_manifests(self, source_short_name_map: dict | None = None) -> dict:
+        """Backfill manifests for all ARF stores that don't have them.
+
+        Args:
+            source_short_name_map: Optional dict mapping sync_id to source_short_name.
+                                   If not provided, uses "unknown" for all.
+
+        Returns:
+            Dict with stats: {"created": [...], "skipped": [...]}
+        """
+        source_short_name_map = source_short_name_map or {}
+        created = []
+        skipped = []
+
+        sync_ids = await self.list_syncs()
+
+        for sync_id in sync_ids:
+            source_name = source_short_name_map.get(sync_id, "unknown")
+            if await self.backfill_manifest(sync_id, source_name):
+                created.append(sync_id)
+            else:
+                skipped.append(sync_id)
+
+        return {"created": created, "skipped": skipped}
 
 
 # Singleton instance
