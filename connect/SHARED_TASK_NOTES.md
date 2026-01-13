@@ -1,48 +1,57 @@
 # Shared Task Notes
 
 ## Current Status
-Phase 4 (Polish) in progress. Build and lint pass (`npm run build`, `npm run lint`).
 
-## What Was Done This Iteration
-Added customizable labels to the theme system for all new UI text:
+Phase 1 (Backend) and Phase 2 (Frontend SSE Support) are complete.
 
-**Files modified:**
-- `src/lib/types.ts` - Added 27 new label fields to `ConnectLabels` interface
-- `src/lib/theme-defaults.ts` - Added default values for all new labels
-- `src/components/SourceConfigView.tsx` - Updated to use labels from theme
-- `src/components/AuthMethodSelector.tsx` - Updated to use labels from theme
-- `src/components/OAuthStatusUI.tsx` - Updated to use labels from theme
-- `src/components/ByocFields.tsx` - Updated to use labels from theme
+## Available APIs
 
-**New labels added:**
-- Connection name: `configureNameLabel`, `configureNameDescription`, `configureNamePlaceholder`
-- Sections: `configureAuthSection`, `configureConfigSection`
-- Buttons: `buttonCreateConnection`, `buttonCreatingConnection`, `buttonTryAgain`, `buttonOpenLinkManually`, `buttonConnectOAuth`, `buttonConnecting`
-- Status/errors: `connectionFailed`, `loadSourceDetailsFailed`, `fieldRequired`
-- Auth method selector: `authMethodLabel`, `authMethodDirect`, `authMethodDirectDescription`, `authMethodOAuth`, `authMethodOAuthDescription`
-- OAuth status: `oauthWaiting`, `oauthWaitingDescription`, `oauthPopupBlocked`, `oauthPopupBlockedDescription`
-- BYOC: `byocDescription`, `byocClientIdLabel`, `byocClientIdPlaceholder`, `byocClientSecretLabel`, `byocClientSecretPlaceholder`
+### Hook: `useSyncProgress`
+Location: `connect/src/hooks/useSyncProgress.ts`
 
-Labels with `{source}` placeholder get interpolated with the source name at runtime.
-
-## Next Tasks (from SPEC.md Phase 4)
-Remaining unchecked items:
-1. **Add unit tests, linting, formatting, e2e tests** - Testing infrastructure
-
-Also unchecked from Phase 2:
-- Test direct auth flow end-to-end (manual testing required)
-
-## Notes for Testing
-The theme labels can be customized by passing a `theme.labels` object through the parent window's `TOKEN_RESPONSE` message. Example:
-```typescript
-{
-  type: "TOKEN_RESPONSE",
-  token: "...",
-  theme: {
-    labels: {
-      buttonCreateConnection: "Add Integration",
-      configureAuthSection: "Credentials"
-    }
+```tsx
+const { subscribe, getProgress, subscriptions, cleanup } = useSyncProgress({
+  onComplete: (connectionId, update) => {
+    // Refetch connection list to update status
+    queryClient.invalidateQueries(['connections']);
+  },
+  onError: (connectionId, error) => {
+    console.error('SSE error:', error);
   }
-}
+});
+
+// Subscribe to a connection's sync progress
+await subscribe(connectionId);
+
+// Get current progress
+const progress = getProgress(connectionId);
 ```
+
+### API Client Methods
+- `apiClient.getConnectionJobs(connectionId)` - Get sync jobs for a connection
+- `apiClient.subscribeToSyncProgress(connectionId, handlers)` - Subscribe to SSE
+
+## Next Steps
+
+1. Create `SyncProgressIndicator.tsx` component showing:
+   - Progress bar (indeterminate)
+   - Entity counts: inserted, updated, deleted, kept, skipped
+   - Animated transitions for count updates
+
+2. Update `ConnectionItem.tsx` to show inline progress when `status === "syncing"`
+
+3. In `SuccessScreen.tsx`, auto-subscribe to SSE for syncing connections:
+   ```tsx
+   useEffect(() => {
+     connections
+       .filter(c => c.status === 'syncing')
+       .forEach(c => subscribe(c.id));
+   }, [connections]);
+   ```
+
+## Backend Endpoints
+
+- `GET /connect/source-connections/{connection_id}/subscribe` - SSE stream
+- `GET /connect/source-connections/{connection_id}/jobs` - List jobs
+
+Both require session token auth.

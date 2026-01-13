@@ -22,8 +22,18 @@ function darkenColor(hex: string, percent: number): string {
   // Handle non-hex colors (transparent, rgb, etc.)
   if (!hex.startsWith("#")) return hex;
 
-  // Remove # and parse
-  const num = parseInt(hex.slice(1), 16);
+  let hexValue = hex.slice(1);
+
+  // Expand 3-digit hex to 6-digit (e.g., #fff -> #ffffff)
+  if (hexValue.length === 3) {
+    hexValue = hexValue
+      .split("")
+      .map((c) => c + c)
+      .join("");
+  }
+
+  // Parse and darken
+  const num = parseInt(hexValue, 16);
   const r = Math.max(0, Math.floor((num >> 16) * (1 - percent / 100)));
   const g = Math.max(0, Math.floor(((num >> 8) & 0x00ff) * (1 - percent / 100)));
   const b = Math.max(0, Math.floor((num & 0x0000ff) * (1 - percent / 100)));

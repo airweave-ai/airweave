@@ -32,10 +32,6 @@ export function FolderSelectionView({
 
   const handleStartSync = () => {
     // TODO: Call API to configure sync folder paths
-    console.log(
-      `Starting sync for connection ${connectionId} with folders:`,
-      selectedFolderIds,
-    );
     onComplete();
   };
 
@@ -83,7 +79,7 @@ export function FolderSelectionView({
         >
           Start sync
           {selectedFolderIds.length > 0 &&
-            ` (${selectedFolderIds.length} folders)`}
+            ` (${selectedFolderIds.length} ${selectedFolderIds.length === 1 ? "folder" : "folders"})`}
         </Button>
       </div>
 

@@ -12,16 +12,21 @@ Flow:
    - POST /connect/source-connections - create a new connection
    - GET /connect/source-connections - list connections in collection
    - DELETE /connect/source-connections/{id} - remove a connection
+   - GET /connect/source-connections/{id}/jobs - list sync jobs for connection
+   - GET /connect/source-connections/{id}/subscribe - SSE for real-time sync progress
 
 Note: OAuth callbacks are handled by /source-connections/callback which validates
 the connect session token stored in init session overrides.
 """
 
+import asyncio
+import json
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import AsyncGenerator, List, Optional
 from uuid import UUID, uuid4
 
 from fastapi import Depends, Header, HTTPException, Path
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
@@ -37,6 +42,7 @@ from airweave.api.router import TrailingSlashRouter
 from airweave.core.auth_provider_service import auth_provider_service
 from airweave.core.config import settings
 from airweave.core.logging import logger
+from airweave.core.pubsub import core_pubsub
 from airweave.core.shared_models import AuthMethod
 from airweave.core.source_connection_service import source_connection_service
 from airweave.db.session import get_db
@@ -586,3 +592,169 @@ async def create_source_connection(
         )
 
     return result
+
+
+# =============================================================================
+# Sync Job Endpoints (real-time progress)
+# =============================================================================
+
+
+@router.get(
+    "/source-connections/{connection_id}/jobs",
+    response_model=List[schemas.SourceConnectionJob],
+)
+async def get_connection_jobs(
+    connection_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    session: ConnectSessionContext = Depends(deps.get_connect_session),
+) -> List[schemas.SourceConnectionJob]:
+    """Get sync jobs for a source connection.
+
+    Returns the list of sync jobs associated with this source connection,
+    ordered by creation time (most recent first). Use this to get job IDs
+    for subscribing to real-time progress updates.
+
+    Authentication: Bearer <session_token>
+    """
+    # Build context for service call
+    ctx = await _build_session_context(db, session)
+
+    # Get the connection to verify it belongs to this session's collection
+    try:
+        connection = await source_connection_service.get(db, id=connection_id, ctx=ctx)
+    except HTTPException as e:
+        if e.status_code == 404:
+            raise HTTPException(status_code=404, detail="Source connection not found") from e
+        raise
+
+    # Verify connection belongs to session's collection
+    if connection.readable_collection_id != session.collection_id:
+        raise HTTPException(
+            status_code=403, detail="Source connection does not belong to this session's collection"
+        )
+
+    # Check if allowed_integrations restricts access to this connection type
+    if session.allowed_integrations and connection.short_name not in session.allowed_integrations:
+        raise HTTPException(
+            status_code=403, detail="Session does not have access to this integration type"
+        )
+
+    # Get sync_id from connection
+    if not connection.sync_id:
+        # No sync configured yet, return empty list
+        return []
+
+    # Get jobs for the sync
+    jobs = await crud.sync_job.get_all_by_sync_id(db, sync_id=connection.sync_id)
+
+    # Convert SyncJob model to schema, then to SourceConnectionJob
+    return [
+        schemas.SyncJob.model_validate(job).to_source_connection_job(connection_id)
+        for job in jobs
+    ]
+
+
+@router.get("/source-connections/{connection_id}/subscribe")
+async def subscribe_to_connection_sync(
+    connection_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    session: ConnectSessionContext = Depends(deps.get_connect_session),
+) -> StreamingResponse:
+    """Server-Sent Events (SSE) endpoint for real-time sync progress.
+
+    Subscribe to receive real-time updates about sync progress for a source
+    connection. The connection will emit events as entities are processed.
+
+    Event types:
+    - connected: Initial connection confirmation with job_id
+    - heartbeat: Keep-alive signal (every 30 seconds)
+    - Progress updates: Entity counts (inserted, updated, deleted, kept, skipped)
+    - sync_complete: Final event when sync finishes
+
+    Authentication: Bearer <session_token>
+    """
+    # Build context for service call
+    ctx = await _build_session_context(db, session)
+
+    # Get the connection to verify it belongs to this session's collection
+    try:
+        connection = await source_connection_service.get(db, id=connection_id, ctx=ctx)
+    except HTTPException as e:
+        if e.status_code == 404:
+            raise HTTPException(status_code=404, detail="Source connection not found") from e
+        raise
+
+    # Verify connection belongs to session's collection
+    if connection.readable_collection_id != session.collection_id:
+        raise HTTPException(
+            status_code=403, detail="Source connection does not belong to this session's collection"
+        )
+
+    # Check if allowed_integrations restricts access
+    if session.allowed_integrations and connection.short_name not in session.allowed_integrations:
+        raise HTTPException(
+            status_code=403, detail="Session does not have access to this integration type"
+        )
+
+    # Get sync_id from connection
+    if not connection.sync_id:
+        raise HTTPException(status_code=404, detail="No sync configured for this connection")
+
+    # Get the latest job (active or most recent)
+    job = await crud.sync_job.get_latest_by_sync_id(db, sync_id=connection.sync_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="No sync jobs found for this connection")
+
+    job_id = job.id
+    ctx.logger.info(
+        f"SSE subscription for connect session: connection={connection_id}, job={job_id}"
+    )
+
+    # Subscribe to Redis pubsub channel for this job
+    pubsub = await core_pubsub.subscribe("sync_job", job_id)
+
+    async def event_stream() -> AsyncGenerator[str, None]:
+        try:
+            # Send initial connection event
+            yield f"data: {json.dumps({'type': 'connected', 'job_id': str(job_id)})}\n\n"
+
+            # Send heartbeat every 30 seconds to keep connection alive
+            last_heartbeat = asyncio.get_event_loop().time()
+            heartbeat_interval = 30  # seconds
+
+            async for message in pubsub.listen():
+                # Check if we need to send a heartbeat
+                current_time = asyncio.get_event_loop().time()
+                if current_time - last_heartbeat > heartbeat_interval:
+                    yield 'data: {"type": "heartbeat"}\n\n'
+                    last_heartbeat = current_time
+
+                if message["type"] == "message":
+                    # Forward the sync progress update
+                    yield f"data: {message['data']}\n\n"
+                elif message["type"] == "subscribe":
+                    logger.info(f"SSE subscribed to job {job_id} for connect session")
+
+        except asyncio.CancelledError:
+            logger.info(f"SSE connection cancelled for job {job_id}")
+        except Exception as e:
+            logger.error(f"SSE error for job {job_id}: {str(e)}")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+        finally:
+            # Clean up when SSE connection closes
+            try:
+                await pubsub.close()
+            except Exception as e:
+                logger.warning(f"Error closing pubsub for job {job_id}: {e}")
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable Nginx buffering
+            "Content-Type": "text/event-stream",
+            "Access-Control-Allow-Origin": "*",
+        },
+    )

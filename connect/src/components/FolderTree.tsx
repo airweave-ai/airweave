@@ -42,7 +42,6 @@ const DEMO_FOLDERS: FolderNode[] = [
   },
 ];
 
-// Get all descendant IDs of a folder (including itself)
 function getAllDescendantIds(folder: FolderNode): string[] {
   const ids = [folder.id];
   if (folder.children) {
@@ -53,7 +52,6 @@ function getAllDescendantIds(folder: FolderNode): string[] {
   return ids;
 }
 
-// Get all folder IDs in the tree
 function getAllFolderIds(folders: FolderNode[]): string[] {
   const ids: string[] = [];
   for (const folder of folders) {
@@ -62,17 +60,44 @@ function getAllFolderIds(folders: FolderNode[]): string[] {
   return ids;
 }
 
-// Check selection state: 'all' | 'some' | 'none'
-function getSelectionState(
-  folder: FolderNode,
-  selectedIds: string[]
-): "all" | "some" | "none" {
+type SelectionState = "all" | "some" | "none";
+
+function getSelectionState(folder: FolderNode, selectedIds: string[]): SelectionState {
   const descendantIds = getAllDescendantIds(folder);
   const selectedCount = descendantIds.filter((id) => selectedIds.includes(id)).length;
 
   if (selectedCount === 0) return "none";
   if (selectedCount === descendantIds.length) return "all";
   return "some";
+}
+
+function SelectionCheckIcon({
+  state,
+  size,
+  style,
+}: {
+  state: SelectionState;
+  size: number;
+  style?: React.CSSProperties;
+}) {
+  if (state === "all") return <CheckSquare size={size} style={style} />;
+  if (state === "some") return <MinusSquare size={size} style={style} />;
+  return <Square size={size} style={style} />;
+}
+
+function getButtonStyle(isSelected: boolean) {
+  return {
+    backgroundColor: isSelected
+      ? "color-mix(in srgb, var(--connect-primary) 20%, transparent)"
+      : "transparent",
+    color: isSelected ? "var(--connect-primary)" : "var(--connect-text)",
+  };
+}
+
+function getCheckIconStyle(isHighlighted: boolean) {
+  return {
+    color: isHighlighted ? "var(--connect-primary)" : "var(--connect-text-muted)",
+  };
 }
 
 interface FolderTreeProps {
@@ -87,6 +112,34 @@ interface FolderItemProps {
   onToggleFolder: (folder: FolderNode) => void;
 }
 
+interface FolderButtonContentProps {
+  name: string;
+  isOpen: boolean;
+  hasChildren: boolean;
+  selectionState: SelectionState;
+}
+
+function FolderButtonContent({
+  name,
+  isOpen,
+  hasChildren,
+  selectionState,
+}: FolderButtonContentProps) {
+  const isHighlighted = selectionState !== "none";
+
+  return (
+    <>
+      <SelectionCheckIcon
+        state={selectionState}
+        size={16}
+        style={getCheckIconStyle(isHighlighted)}
+      />
+      {hasChildren && isOpen ? <FolderOpen size={16} /> : <Folder size={16} />}
+      <span className="flex-1 text-left">{name}</span>
+    </>
+  );
+}
+
 function FolderItem({
   folder,
   depth,
@@ -97,58 +150,28 @@ function FolderItem({
   const hasChildren = folder.children && folder.children.length > 0;
   const selectionState = getSelectionState(folder, selectedFolderIds);
   const isSelected = selectionState === "all";
-  const isIndeterminate = selectionState === "some";
 
-  const handleClick = () => {
-    onToggleFolder(folder);
-  };
+  const handleClick = () => onToggleFolder(folder);
 
-  const CheckIcon = isSelected
-    ? CheckSquare
-    : isIndeterminate
-      ? MinusSquare
-      : Square;
-
-  // Extra padding for folders without children to align with folders that have chevrons
-  const chevronSpace = 22; // chevron width (~14px) + padding
-
-  const content = (
-    <button
-      type="button"
-      onClick={handleClick}
-      className="flex items-center gap-2 w-full px-2 py-1.5 rounded text-sm transition-colors"
-      style={{
-        paddingLeft: `${depth * 16 + 8 + chevronSpace}px`,
-        backgroundColor: isSelected
-          ? "color-mix(in srgb, var(--connect-primary) 20%, transparent)"
-          : "transparent",
-        color: isSelected ? "var(--connect-primary)" : "var(--connect-text)",
-      }}
-    >
-      <CheckIcon
-        size={16}
-        style={{
-          color:
-            isSelected || isIndeterminate
-              ? "var(--connect-primary)"
-              : "var(--connect-text-muted)",
-        }}
-      />
-      {hasChildren ? (
-        isOpen ? (
-          <FolderOpen size={16} />
-        ) : (
-          <Folder size={16} />
-        )
-      ) : (
-        <Folder size={16} />
-      )}
-      <span className="flex-1 text-left">{folder.name}</span>
-    </button>
-  );
+  const buttonStyle = getButtonStyle(isSelected);
+  const chevronSpace = 22;
 
   if (!hasChildren) {
-    return content;
+    return (
+      <button
+        type="button"
+        onClick={handleClick}
+        className="flex items-center gap-2 w-full px-2 py-1.5 rounded text-sm transition-colors"
+        style={{ paddingLeft: `${depth * 16 + 8 + chevronSpace}px`, ...buttonStyle }}
+      >
+        <FolderButtonContent
+          name={folder.name}
+          isOpen={false}
+          hasChildren={false}
+          selectionState={selectionState}
+        />
+      </button>
+    );
   }
 
   return (
@@ -167,24 +190,14 @@ function FolderItem({
           type="button"
           onClick={handleClick}
           className="flex items-center gap-2 flex-1 px-2 py-1.5 rounded text-sm transition-colors"
-          style={{
-            backgroundColor: isSelected
-              ? "color-mix(in srgb, var(--connect-primary) 20%, transparent)"
-              : "transparent",
-            color: isSelected ? "var(--connect-primary)" : "var(--connect-text)",
-          }}
+          style={buttonStyle}
         >
-          <CheckIcon
-            size={16}
-            style={{
-              color:
-                isSelected || isIndeterminate
-                  ? "var(--connect-primary)"
-                  : "var(--connect-text-muted)",
-            }}
+          <FolderButtonContent
+            name={folder.name}
+            isOpen={isOpen}
+            hasChildren={true}
+            selectionState={selectionState}
           />
-          {isOpen ? <FolderOpen size={16} /> : <Folder size={16} />}
-          <span className="flex-1 text-left">{folder.name}</span>
         </button>
       </div>
       <Collapsible.Panel>
@@ -202,24 +215,26 @@ function FolderItem({
   );
 }
 
+function getRootSelectionState(
+  allFolderIds: string[],
+  selectedFolderIds: string[],
+): SelectionState {
+  const selectedCount = allFolderIds.filter((id) =>
+    selectedFolderIds.includes(id),
+  ).length;
+
+  if (selectedCount === 0) return "none";
+  if (selectedCount === allFolderIds.length && allFolderIds.length > 0) return "all";
+  return "some";
+}
+
 export function FolderTree({
   selectedFolderIds,
   onSelectionChange,
 }: FolderTreeProps) {
   const allFolderIds = getAllFolderIds(DEMO_FOLDERS);
-  
-  // Compute root selection state from children (not from "root" in selectedFolderIds)
-  const selectedChildCount = allFolderIds.filter((id) =>
-    selectedFolderIds.includes(id)
-  ).length;
-  const isRootSelected = selectedChildCount === allFolderIds.length && allFolderIds.length > 0;
-  const isRootIndeterminate = selectedChildCount > 0 && selectedChildCount < allFolderIds.length;
-  
-  const CheckIcon = isRootSelected
-    ? CheckSquare
-    : isRootIndeterminate
-      ? MinusSquare
-      : Square;
+  const rootSelectionState = getRootSelectionState(allFolderIds, selectedFolderIds);
+  const isRootSelected = rootSelectionState === "all";
 
   const handleToggleFolder = useCallback(
     (folder: FolderNode) => {
@@ -227,12 +242,10 @@ export function FolderTree({
       const isCurrentlySelected = selectedFolderIds.includes(folder.id);
 
       if (isCurrentlySelected) {
-        // Deselect this folder and all its descendants
         onSelectionChange(
           selectedFolderIds.filter((id) => !descendantIds.includes(id)),
         );
       } else {
-        // Select this folder and all its descendants
         const newSelection = new Set([...selectedFolderIds, ...descendantIds]);
         onSelectionChange([...newSelection]);
       }
@@ -241,43 +254,26 @@ export function FolderTree({
   );
 
   const handleToggleRoot = useCallback(() => {
-    if (isRootSelected) {
-      // Deselect all folders
-      onSelectionChange([]);
-    } else {
-      // Select all folders (root state is computed, not stored)
-      onSelectionChange([...allFolderIds]);
-    }
+    onSelectionChange(isRootSelected ? [] : [...allFolderIds]);
   }, [isRootSelected, allFolderIds, onSelectionChange]);
 
   return (
     <div className="flex flex-col">
-      {/* Root folder option */}
       <button
         type="button"
         onClick={handleToggleRoot}
         className="flex items-center gap-2 w-full px-2 py-1.5 rounded text-sm transition-colors mb-1"
-        style={{
-          backgroundColor: isRootSelected
-            ? "color-mix(in srgb, var(--connect-primary) 20%, transparent)"
-            : "transparent",
-          color: isRootSelected ? "var(--connect-primary)" : "var(--connect-text)",
-        }}
+        style={getButtonStyle(isRootSelected)}
       >
-        <CheckIcon
+        <SelectionCheckIcon
+          state={rootSelectionState}
           size={16}
-          style={{
-            color:
-              isRootSelected || isRootIndeterminate
-                ? "var(--connect-primary)"
-                : "var(--connect-text-muted)",
-          }}
+          style={getCheckIconStyle(rootSelectionState !== "none")}
         />
         <Folder size={16} />
         <span className="flex-1 text-left font-medium">/ (Root)</span>
       </button>
 
-      {/* Subfolders */}
       {DEMO_FOLDERS.map((folder) => (
         <FolderItem
           key={folder.id}

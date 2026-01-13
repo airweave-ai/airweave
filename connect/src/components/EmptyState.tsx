@@ -1,3 +1,4 @@
+import type { LucideIcon } from "lucide-react";
 import { AppWindowMac, Key, Link2, ShieldCheck } from "lucide-react";
 import { useTheme } from "../lib/theme";
 import type { ConnectLabels } from "../lib/types";
@@ -7,29 +8,85 @@ interface EmptyStateProps {
   showConnect: boolean;
 }
 
+const FEATURED_APPS = ["notion", "gmail", "slack", "jira"];
+
+function IconCard({
+  children,
+  resolvedMode,
+}: {
+  children: React.ReactNode;
+  resolvedMode: "dark" | "light";
+}) {
+  return (
+    <div
+      className="p-3 rounded-xl size-18"
+      style={{
+        backgroundColor: "var(--connect-bg)",
+        boxShadow:
+          resolvedMode === "dark"
+            ? "0 4px 12px rgba(0, 0, 0, 0.3)"
+            : "0 4px 12px rgba(0, 0, 0, 0.08)",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function InfoItem({ icon: Icon, text }: { icon: LucideIcon; text: string }) {
+  return (
+    <div className="flex items-center gap-4">
+      <div
+        className="flex-shrink-0 size-10 rounded-full flex items-center justify-center"
+        style={{
+          backgroundColor:
+            "color-mix(in srgb, var(--connect-text-muted) 15%, transparent)",
+        }}
+      >
+        <Icon
+          size={20}
+          strokeWidth={1.5}
+          style={{ color: "var(--connect-text-muted)" }}
+        />
+      </div>
+      <p className="text-sm" style={{ color: "var(--connect-text-muted)" }}>
+        {text}
+      </p>
+    </div>
+  );
+}
+
+function ConnectionDots() {
+  return (
+    <div className="flex gap-1">
+      <div
+        className="size-1.5 rounded-full"
+        style={{
+          backgroundColor: "var(--connect-text-muted)",
+          opacity: 0.5,
+        }}
+      />
+      <div
+        className="size-1.5 rounded-full"
+        style={{
+          backgroundColor: "var(--connect-text-muted)",
+          opacity: 0.5,
+        }}
+      />
+    </div>
+  );
+}
+
 export function EmptyState({ labels, showConnect }: EmptyStateProps) {
   const { options, resolvedMode } = useTheme();
   const logoUrl = options.logoUrl;
 
-  // Use nice design when connect is allowed
   if (showConnect) {
     return (
       <div className="flex flex-col -mx-6">
-        {/* Header with icon */}
         <header className="pt-8 pb-6 px-6">
-          {/* App icons */}
           <div className="flex items-center justify-center gap-3 mb-5">
-            {/* Logo or fallback icon */}
-            <div
-              className="p-3 rounded-xl size-18"
-              style={{
-                backgroundColor: "var(--connect-bg)",
-                boxShadow:
-                  resolvedMode === "dark"
-                    ? "0 4px 12px rgba(0, 0, 0, 0.3)"
-                    : "0 4px 12px rgba(0, 0, 0, 0.08)",
-              }}
-            >
+            <IconCard resolvedMode={resolvedMode}>
               {logoUrl ? (
                 <img
                   src={logoUrl}
@@ -51,39 +108,13 @@ export function EmptyState({ labels, showConnect }: EmptyStateProps) {
                   />
                 </div>
               )}
-            </div>
+            </IconCard>
 
-            {/* Connection indicator dots */}
-            <div className="flex gap-1">
-              <div
-                className="size-1.5 rounded-full"
-                style={{
-                  backgroundColor: "var(--connect-text-muted)",
-                  opacity: 0.5,
-                }}
-              />
-              <div
-                className="size-1.5 rounded-full"
-                style={{
-                  backgroundColor: "var(--connect-text-muted)",
-                  opacity: 0.5,
-                }}
-              />
-            </div>
+            <ConnectionDots />
 
-            {/* 2x2 grid of popular app icons */}
-            <div
-              className="p-2 rounded-xl size-18"
-              style={{
-                backgroundColor: "var(--connect-bg)",
-                boxShadow:
-                  resolvedMode === "dark"
-                    ? "0 4px 12px rgba(0, 0, 0, 0.3)"
-                    : "0 4px 12px rgba(0, 0, 0, 0.08)",
-              }}
-            >
-              <div className="grid grid-cols-2 gap-1 items-center justify-center gap-2 p-1">
-                {["notion", "gmail", "slack", "jira"].map((app) => (
+            <IconCard resolvedMode={resolvedMode}>
+              <div className="grid grid-cols-2 gap-1 p-1">
+                {FEATURED_APPS.map((app) => (
                   <div
                     className="rounded flex items-center justify-center"
                     key={app}
@@ -96,10 +127,9 @@ export function EmptyState({ labels, showConnect }: EmptyStateProps) {
                   </div>
                 ))}
               </div>
-            </div>
+            </IconCard>
           </div>
 
-          {/* Title */}
           <h1
             className="text-xl font-semibold text-center"
             style={{ color: "var(--connect-text)" }}
@@ -114,61 +144,16 @@ export function EmptyState({ labels, showConnect }: EmptyStateProps) {
           </p>
         </header>
 
-        {/* Info items */}
         <div className="px-6 py-5">
           <div className="flex flex-col gap-4">
-            {/* Verify info */}
-            <div className="flex items-center gap-4">
-              <div
-                className="flex-shrink-0 size-10 rounded-full flex items-center justify-center"
-                style={{
-                  backgroundColor:
-                    "color-mix(in srgb, var(--connect-text-muted) 15%, transparent)",
-                }}
-              >
-                <ShieldCheck
-                  size={20}
-                  strokeWidth={1.5}
-                  style={{ color: "var(--connect-text-muted)" }}
-                />
-              </div>
-              <p
-                className="text-sm"
-                style={{ color: "var(--connect-text-muted)" }}
-              >
-                {labels.welcomeInfoVerify}
-              </p>
-            </div>
-
-            {/* Access info */}
-            <div className="flex items-center gap-4">
-              <div
-                className="flex-shrink-0 size-10 rounded-full flex items-center justify-center"
-                style={{
-                  backgroundColor:
-                    "color-mix(in srgb, var(--connect-text-muted) 15%, transparent)",
-                }}
-              >
-                <Key
-                  size={20}
-                  strokeWidth={1.5}
-                  style={{ color: "var(--connect-text-muted)" }}
-                />
-              </div>
-              <p
-                className="text-sm"
-                style={{ color: "var(--connect-text-muted)" }}
-              >
-                {labels.welcomeInfoAccess}
-              </p>
-            </div>
+            <InfoItem icon={ShieldCheck} text={labels.welcomeInfoVerify} />
+            <InfoItem icon={Key} text={labels.welcomeInfoAccess} />
           </div>
         </div>
       </div>
     );
   }
 
-  // Default simple design (for manage-only mode)
   return (
     <div className="flex flex-col items-center justify-center py-12 text-center">
       <div
