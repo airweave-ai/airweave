@@ -1,4 +1,5 @@
 import { useTheme } from "../lib/theme";
+import { inputBaseStyles } from "./form-fields/styles";
 
 interface ByocFieldsProps {
   values: { client_id: string; client_secret: string };
@@ -45,13 +46,7 @@ export function ByocFields({
           }}
           placeholder={labels.byocClientIdPlaceholder}
           className="w-full px-3 py-2 text-sm rounded-md border outline-none transition-colors"
-          style={{
-            backgroundColor: "var(--connect-surface)",
-            color: "var(--connect-text)",
-            borderColor: errors.byoc_client_id
-              ? "var(--connect-error)"
-              : "var(--connect-border)",
-          }}
+          style={inputBaseStyles(errors.byoc_client_id)}
         />
         {errors.byoc_client_id && (
           <p
@@ -84,13 +79,7 @@ export function ByocFields({
           }}
           placeholder={labels.byocClientSecretPlaceholder}
           className="w-full px-3 py-2 text-sm rounded-md border outline-none transition-colors"
-          style={{
-            backgroundColor: "var(--connect-surface)",
-            color: "var(--connect-text)",
-            borderColor: errors.byoc_client_secret
-              ? "var(--connect-error)"
-              : "var(--connect-border)",
-          }}
+          style={inputBaseStyles(errors.byoc_client_secret)}
         />
         {errors.byoc_client_secret && (
           <p

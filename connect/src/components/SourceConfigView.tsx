@@ -345,7 +345,7 @@ export function SourceConfigView({
           />
         )}
 
-        {showConfigFields !== undefined && showConfigFields > 0 && sourceDetails?.config_fields?.fields && (
+        {showConfigFields && sourceDetails?.config_fields?.fields && (
           <ConfigFieldsSection
             fields={sourceDetails.config_fields.fields}
             configValues={configValues}

@@ -210,7 +210,7 @@
 - [x] Fix 5 (exception handling) - improves debugging
 - [x] Fix 6 (SSE errors) - security improvement
 - [x] Fix 7 (audit logging) - uses centralized mode checks
-- [ ] Fix 8 (heartbeat constant) - minor cleanup
+- [x] Fix 8 (heartbeat constant) - minor cleanup
 
  ---
  Verification

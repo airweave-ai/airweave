@@ -78,6 +78,9 @@ MODES_DELETE: FrozenSet[schemas.ConnectSessionMode] = frozenset(
     }
 )
 
+# SSE configuration
+SSE_HEARTBEAT_INTERVAL_SECONDS = 30
+
 
 def _check_session_mode(
     session: ConnectSessionContext,
@@ -751,9 +754,9 @@ async def subscribe_to_connection_sync(
             # Send initial connection event
             yield f"data: {json.dumps({'type': 'connected', 'job_id': str(job_id)})}\n\n"
 
-            # Send heartbeat every 30 seconds to keep connection alive
+            # Send heartbeat to keep connection alive
             last_heartbeat = asyncio.get_event_loop().time()
-            heartbeat_interval = 30  # seconds
+            heartbeat_interval = SSE_HEARTBEAT_INTERVAL_SECONDS
 
             async for message in pubsub.listen():
                 # Check if we need to send a heartbeat

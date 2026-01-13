@@ -1,4 +1,5 @@
 import type { ConnectLabels } from "../../lib/types";
+import { inputBaseStyles } from "../form-fields/styles";
 
 interface ConnectionNameFieldProps {
   value: string;
@@ -38,11 +39,7 @@ export function ConnectionNameField({
           sourceName,
         )}
         className="w-full px-3 py-2 text-sm rounded-md border outline-none transition-colors"
-        style={{
-          backgroundColor: "var(--connect-surface)",
-          color: "var(--connect-text)",
-          borderColor: "var(--connect-border)",
-        }}
+        style={inputBaseStyles()}
       />
     </div>
   );

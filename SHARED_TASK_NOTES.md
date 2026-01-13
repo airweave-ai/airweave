@@ -1,25 +1,23 @@
 # Connect API Code Review Fixes - Task Notes
 
 ## Current Status
-Fix 7 (audit logging) is complete. Only Fix 8 remains.
+All 8 fixes from the code review are now complete!
 
-## Next Priority: Fix 8 (Extract Heartbeat Constant)
-Location: `backend/airweave/api/v1/endpoints/connect.py`
+## Completed Tasks
+- Fix 1: KeyError handling in token parsing (CRITICAL)
+- Fix 2: Extract bearer token utility
+- Fix 3: Dynamic Pydantic attributes
+- Fix 4: Centralize mode checking logic
+- Fix 5: Improve exception handling in _build_source_schema
+- Fix 6: Sanitize SSE error messages
+- Fix 7: Add audit logging for failed authorization
+- Fix 8: Extract heartbeat constant
 
-This is a minor cleanup:
-1. Add module-level constant at top of file (after other constants like MODES_*):
-   ```python
-   SSE_HEARTBEAT_INTERVAL_SECONDS = 30
-   ```
-2. Update line ~747 (in `event_stream()` function) to use the constant:
-   ```python
-   heartbeat_interval = SSE_HEARTBEAT_INTERVAL_SECONDS
-   ```
-
-See SPEC.md Fix 8 for exact details.
-
-## Remaining Tasks
-- Fix 8: Extract heartbeat constant (MINOR) - 2 small changes
+## Next Steps
+The implementation work is complete. Consider:
+1. Creating a PR for review if not already done
+2. Running full E2E tests in an environment with proper credentials
+3. Manual testing of the Connect API flows
 
 ## Testing Note
 E2E tests require environment variables not available in local dev. Use `python3 -m py_compile <file>` to verify syntax.
