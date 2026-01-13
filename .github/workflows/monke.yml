@@ -194,6 +194,7 @@ jobs:
           # Skip services not needed for connector tests
           SKIP_LOCAL_EMBEDDINGS: "1" # Use OpenAI embeddings (saves ~2GB)
           SKIP_FRONTEND: "1" # Backend-only testing (saves time)
+          SKIP_CONNECT: "1" # Backend-only testing (saves time)
           # Set required environment variables for the containers
           AUTH0_ENABLED: "false"
           DEV_MODE: "true"
