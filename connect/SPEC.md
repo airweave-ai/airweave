@@ -23,8 +23,8 @@ These endpoints use session token auth and reuse the existing Redis PubSub infra
 - `@microsoft/fetch-event-source` dependency
 
 ### Remaining (Phase 3-5)
-- [ ] Create `SyncProgressIndicator.tsx` component for inline progress display
-- [ ] Update `ConnectionItem.tsx` to show progress during sync
+- [x] Create `SyncProgressIndicator.tsx` component for inline progress display
+- [x] Update `ConnectionItem.tsx` to show progress during sync
 - [ ] Auto-subscribe to SSE for syncing connections in `SuccessScreen.tsx`
 - [ ] Handle sync completion and refresh connection list
 - [ ] Show inline progress after folder selection starts sync

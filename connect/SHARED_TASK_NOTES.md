@@ -2,56 +2,44 @@
 
 ## Current Status
 
-Phase 1 (Backend) and Phase 2 (Frontend SSE Support) are complete.
+Phase 1-2 (Backend + Frontend SSE) complete. Phase 3 UI components partially done.
+
+## What's Done
+
+- `SyncProgressIndicator.tsx` - Shows indeterminate progress bar + entity counts (inserted/updated/deleted)
+- `ConnectionItem.tsx` - Now accepts optional `syncProgress` prop to show inline progress
+
+## Next Task: Wire up SSE in SuccessScreen.tsx
+
+The UI components exist but aren't connected to live data yet. Next step:
+
+```tsx
+// In SuccessScreen.tsx
+const { subscribe, getProgress } = useSyncProgress({
+  onComplete: () => queryClient.invalidateQueries(['connections']),
+});
+
+// Auto-subscribe to syncing connections
+useEffect(() => {
+  connections
+    .filter(c => c.status === 'syncing')
+    .forEach(c => subscribe(c.id));
+}, [connections]);
+
+// Pass progress to each ConnectionItem
+<ConnectionItem
+  connection={conn}
+  syncProgress={getProgress(conn.id)}
+  ...
+/>
+```
+
+## Files to Modify
+
+- `connect/src/components/SuccessScreen.tsx` - Add useSyncProgress hook, pass progress to ConnectionItem
 
 ## Available APIs
 
-### Hook: `useSyncProgress`
-Location: `connect/src/hooks/useSyncProgress.ts`
-
-```tsx
-const { subscribe, getProgress, subscriptions, cleanup } = useSyncProgress({
-  onComplete: (connectionId, update) => {
-    // Refetch connection list to update status
-    queryClient.invalidateQueries(['connections']);
-  },
-  onError: (connectionId, error) => {
-    console.error('SSE error:', error);
-  }
-});
-
-// Subscribe to a connection's sync progress
-await subscribe(connectionId);
-
-// Get current progress
-const progress = getProgress(connectionId);
-```
-
-### API Client Methods
-- `apiClient.getConnectionJobs(connectionId)` - Get sync jobs for a connection
-- `apiClient.subscribeToSyncProgress(connectionId, handlers)` - Subscribe to SSE
-
-## Next Steps
-
-1. Create `SyncProgressIndicator.tsx` component showing:
-   - Progress bar (indeterminate)
-   - Entity counts: inserted, updated, deleted, kept, skipped
-   - Animated transitions for count updates
-
-2. Update `ConnectionItem.tsx` to show inline progress when `status === "syncing"`
-
-3. In `SuccessScreen.tsx`, auto-subscribe to SSE for syncing connections:
-   ```tsx
-   useEffect(() => {
-     connections
-       .filter(c => c.status === 'syncing')
-       .forEach(c => subscribe(c.id));
-   }, [connections]);
-   ```
-
-## Backend Endpoints
-
-- `GET /connect/source-connections/{connection_id}/subscribe` - SSE stream
-- `GET /connect/source-connections/{connection_id}/jobs` - List jobs
-
-Both require session token auth.
+- `useSyncProgress()` hook - manages SSE subscriptions, returns `subscribe`, `getProgress`, `cleanup`
+- `SyncProgressIndicator` - takes `progress: SyncProgressUpdate` prop
+- `ConnectionItem` - takes optional `syncProgress` prop

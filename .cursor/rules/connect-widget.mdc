@@ -26,7 +26,7 @@ connect/src/
 │   ├── ConnectionItem.tsx     # Single connection display
 │   ├── ConnectionsErrorView.tsx
 │   ├── DynamicFormField.tsx   # Dynamic form fields with markdown support
-│   ├── EmptyState.tsx         # Empty state with CTA
+│   ├── EmptyState.tsx         # Dual-layout empty state (rich hero when showConnect=true, simple manage view otherwise)
 │   ├── ErrorScreen.tsx        # Full-screen error display
 │   ├── FolderSelectionView.tsx # Folder picker wrapper (optional feature)
 │   ├── FolderTree.tsx         # Hierarchical folder checkbox tree

@@ -1,14 +1,21 @@
 import { Menu } from "@base-ui/react/menu";
 import { MoreHorizontal, RefreshCw, Trash2 } from "lucide-react";
 import { getStatusColor, getStatusLabel } from "../lib/connection-utils";
-import type { ConnectLabels, SourceConnectionListItem } from "../lib/types";
+import type {
+  ConnectLabels,
+  SourceConnectionListItem,
+  SyncProgressUpdate,
+} from "../lib/types";
 import { AppIcon } from "./AppIcon";
+import { SyncProgressIndicator } from "./SyncProgressIndicator";
 
 interface ConnectionItemProps {
   connection: SourceConnectionListItem;
   onReconnect?: () => void;
   onDelete: () => void;
   labels: Required<ConnectLabels>;
+  /** Real-time sync progress when connection is syncing */
+  syncProgress?: SyncProgressUpdate | null;
 }
 
 export function ConnectionItem({
@@ -16,6 +23,7 @@ export function ConnectionItem({
   onReconnect,
   onDelete,
   labels,
+  syncProgress,
 }: ConnectionItemProps) {
   const statusColor = getStatusColor(connection.status);
   const entitiesText = labels.entitiesCount.replace(
@@ -42,9 +50,16 @@ export function ConnectionItem({
           >
             {connection.name}
           </p>
-          <p className="text-xs" style={{ color: "var(--connect-text-muted)" }}>
-            {entitiesText}
-          </p>
+          {syncProgress ? (
+            <SyncProgressIndicator progress={syncProgress} />
+          ) : (
+            <p
+              className="text-xs"
+              style={{ color: "var(--connect-text-muted)" }}
+            >
+              {entitiesText}
+            </p>
+          )}
         </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">

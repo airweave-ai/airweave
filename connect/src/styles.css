@@ -61,6 +61,20 @@ code {
   animation: dropdown-out 100ms ease-in;
 }
 
+/* Indeterminate progress bar animation */
+@keyframes progress-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+.animate-progress-indeterminate {
+  animation: progress-indeterminate 1.5s ease-in-out infinite;
+}
+
 /* Scrollable content with fade mask */
 .scrollable-content {
   mask-image: linear-gradient(
