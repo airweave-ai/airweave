@@ -2,7 +2,7 @@
 
 ## Current Status
 
-The real-time sync status feature is **mostly complete**. Unit tests are now comprehensive:
+The real-time sync status feature is **mostly complete**. Unit tests are comprehensive:
 - SSE subscription from frontend to backend
 - Progress updates displayed in the UI
 - Auto-subscription for syncing connections
@@ -42,7 +42,7 @@ Key files:
 - `vitest.config.ts` - jsdom environment, globals enabled
 - `vitest.setup.ts` - jest-dom matchers
 - `src/hooks/useSyncProgress.test.ts` - 22 tests for the hook
-- `src/components/SyncProgressIndicator.test.tsx` - 8 tests for the UI
+- `src/components/SyncProgressIndicator.test.tsx` - 5 tests for the UI
 
 ## How to Test Manually
 

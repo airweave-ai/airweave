@@ -257,7 +257,7 @@ export function useAirweaveConnect(
         rootRef.current.render(<></>);
       }
     }
-  }, [isOpen, iframeUrl, handleClose]);
+  }, [isOpen, iframeUrl, handleClose, modalStyle, showCloseButton]);
 
   // Cleanup on unmount
   useEffect(() => {
