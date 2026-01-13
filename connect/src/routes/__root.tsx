@@ -1,8 +1,11 @@
 import type { ReactNode } from "react";
 import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createHead, UnheadProvider } from "@unhead/react/client";
 import { SessionProvider } from "../components/SessionProvider";
 import appCss from "../styles.css?url";
+
+const head = createHead();
 
 const queryClient = new QueryClient();
 
@@ -45,10 +48,12 @@ function RootDocument({ children }: { children: ReactNode }) {
         <HeadContent />
       </head>
       <body style={{ backgroundColor: "var(--connect-bg, transparent)" }}>
-        <QueryClientProvider client={queryClient}>
-          <SessionProvider />
-          {children}
-        </QueryClientProvider>
+        <UnheadProvider head={head}>
+          <QueryClientProvider client={queryClient}>
+            <SessionProvider />
+            {children}
+          </QueryClientProvider>
+        </UnheadProvider>
         <Scripts />
       </body>
     </html>

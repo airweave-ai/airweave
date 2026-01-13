@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useHead } from "@unhead/react";
 import {
   defaultDarkColors,
   defaultLabels,
@@ -68,39 +69,6 @@ function buildGoogleFontsUrl(fonts: ThemeFonts | undefined): string | null {
     .join("&");
 
   return `https://fonts.googleapis.com/css2?${familyParams}&display=swap`;
-}
-
-/**
- * Injects a Google Fonts stylesheet into the document head.
- * Returns a cleanup function to remove the stylesheet.
- * Silently falls back to system fonts on failure.
- */
-function injectGoogleFontsStylesheet(url: string): () => void {
-  const linkId = "connect-google-fonts";
-
-  // Remove existing stylesheet if present
-  const existing = document.getElementById(linkId);
-  if (existing) {
-    existing.remove();
-  }
-
-  // Create and inject new stylesheet
-  const link = document.createElement("link");
-  link.id = linkId;
-  link.rel = "stylesheet";
-  link.href = url;
-
-  // Handle load errors silently - system fonts will be used as fallback
-  link.onerror = () => {
-    link.remove();
-  };
-
-  document.head.appendChild(link);
-
-  return () => {
-    const el = document.getElementById(linkId);
-    if (el) el.remove();
-  };
 }
 
 /**
@@ -277,16 +245,21 @@ export function ThemeProvider({ children, initialTheme }: ThemeProviderProps) {
     root.style.setProperty("--connect-font-button", buttonFont);
   }, [colors, theme?.fonts]);
 
-  // Load Google Fonts stylesheet
-  useEffect(() => {
-    if (typeof document === "undefined" || isPending) return;
-
-    const fontsUrl = buildGoogleFontsUrl(theme?.fonts);
-    if (!fontsUrl) return;
-
-    const cleanup = injectGoogleFontsStylesheet(fontsUrl);
-    return cleanup;
-  }, [theme?.fonts, isPending]);
+  // Load Google Fonts stylesheet via useHead
+  const fontsUrl = buildGoogleFontsUrl(theme?.fonts);
+  useHead({
+    link: fontsUrl
+      ? [
+          { rel: "preconnect", href: "https://fonts.googleapis.com" },
+          {
+            rel: "preconnect",
+            href: "https://fonts.gstatic.com",
+            crossorigin: "anonymous",
+          },
+          { rel: "stylesheet", href: fontsUrl },
+        ]
+      : [],
+  });
 
   // Stable setTheme wrapper to prevent re-renders
   const setThemeStable = useCallback((newTheme: ConnectTheme) => {
