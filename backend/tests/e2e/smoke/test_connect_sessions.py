@@ -1146,6 +1146,7 @@ class TestConnectSourceConnectionCreation:
         connection_data = {
             "name": f"Test Stripe {int(time.time())}",
             "short_name": "stripe",
+            "readable_collection_id": "ignored-uses-session",  # Overridden by session
             "authentication": {"credentials": {"api_key": config.TEST_STRIPE_API_KEY}},
             "sync_immediately": False,
         }
@@ -1179,6 +1180,7 @@ class TestConnectSourceConnectionCreation:
         connection_data = {
             "name": "Test Connection",
             "short_name": "stripe",
+            "readable_collection_id": "ignored-uses-session",  # Overridden by session
             "authentication": {"credentials": {"api_key": "sk_test_xxx"}},
         }
 
@@ -1208,6 +1210,7 @@ class TestConnectSourceConnectionCreation:
         connection_data = {
             "name": "Test Connection",
             "short_name": "stripe",
+            "readable_collection_id": "ignored-uses-session",  # Overridden by session
             "authentication": {"credentials": {"api_key": "sk_test_xxx"}},
         }
 
@@ -1237,6 +1240,7 @@ class TestConnectSourceConnectionCreation:
         connection_data = {
             "name": "Test Stripe",
             "short_name": "stripe",  # Not in allowed list
+            "readable_collection_id": "ignored-uses-session",  # Overridden by session
             "authentication": {"credentials": {"api_key": config.TEST_STRIPE_API_KEY}},
         }
 
@@ -1267,6 +1271,7 @@ class TestConnectSourceConnectionCreation:
         connection_data = {
             "name": f"Test Stripe {int(time.time())}",
             "short_name": "stripe",  # In allowed list
+            "readable_collection_id": "ignored-uses-session",  # Overridden by session
             "authentication": {"credentials": {"api_key": config.TEST_STRIPE_API_KEY}},
             "sync_immediately": False,
         }
@@ -1290,6 +1295,7 @@ class TestConnectSourceConnectionCreation:
         connection_data = {
             "name": "Test Connection",
             "short_name": "stripe",
+            "readable_collection_id": "ignored-uses-session",  # Overridden by session
             "authentication": {"credentials": {"api_key": "sk_test_xxx"}},
         }
 
