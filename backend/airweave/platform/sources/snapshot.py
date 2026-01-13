@@ -17,6 +17,7 @@ Usage:
 The path can be:
 - A local filesystem path (for evals): "/path/to/airweave/backend/local_storage/raw/{sync_id}"
 - A storage-relative path (for blob): "raw/{sync_id}"
+- A full Azure blob URL: "https://{account}.blob.core.windows.net/{container}/{path}"
 
 Note: This source is behind a feature flag (Internal label).
 For automatic ARF replay during syncs, use execution_config.behavior.replay_from_arf=True instead.
@@ -25,6 +26,7 @@ For automatic ARF replay during syncs, use execution_config.behavior.replay_from
 import importlib
 import json
 import os
+import re
 import tempfile
 from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List, Optional, Union
@@ -36,6 +38,10 @@ from airweave.platform.entities._base import BaseEntity
 from airweave.platform.sources._base import BaseSource
 from airweave.platform.storage import StorageBackend, StoragePaths
 from airweave.schemas.source_connection import AuthenticationMethod
+
+# Regex to parse Azure blob URLs
+# Format: https://{account}.blob.core.windows.net/{container}/{path}
+AZURE_BLOB_URL_PATTERN = re.compile(r"^https://([^.]+)\.blob\.core\.windows\.net/([^/]+)/(.+)$")
 
 
 @source(
@@ -51,9 +57,10 @@ from airweave.schemas.source_connection import AuthenticationMethod
 class SnapshotSource(BaseSource):
     """Source that replays entities from raw data captures.
 
-    Supports two modes:
+    Supports three modes:
     1. Local filesystem path (for evals): reads directly from disk
-    2. Storage-relative path (for blob): uses StorageBackend abstraction
+    2. Azure blob URL: reads directly from Azure using DefaultAzureCredential
+    3. Storage-relative path (for blob): uses StorageBackend abstraction
     """
 
     def __init__(self):
@@ -64,6 +71,11 @@ class SnapshotSource(BaseSource):
         self._storage: Optional[StorageBackend] = None
         self._temp_dir: Optional[Path] = None
         self._is_local_path: bool = False
+        self._is_azure_url: bool = False
+        self._azure_account: Optional[str] = None
+        self._azure_container: Optional[str] = None
+        self._azure_blob_prefix: Optional[str] = None
+        self._azure_client: Optional[Any] = None  # BlobServiceClient
 
     @classmethod
     async def create(
@@ -96,11 +108,20 @@ class SnapshotSource(BaseSource):
         if not instance.path:
             raise ValueError("path is required in config")
 
-        # Determine if this is a local filesystem path or storage-relative path
-        # Local paths start with / or contain typical filesystem patterns
-        instance._is_local_path = instance.path.startswith("/") or (
-            os.name == "nt" and ":" in instance.path[:3]  # Windows drive letter
-        )
+        # Check if this is a full Azure blob URL
+        azure_match = AZURE_BLOB_URL_PATTERN.match(instance.path)
+        if azure_match:
+            instance._is_azure_url = True
+            instance._azure_account = azure_match.group(1)
+            instance._azure_container = azure_match.group(2)
+            instance._azure_blob_prefix = azure_match.group(3)
+            instance._is_local_path = False
+        else:
+            # Determine if this is a local filesystem path or storage-relative path
+            # Local paths start with / or contain typical filesystem patterns
+            instance._is_local_path = instance.path.startswith("/") or (
+                os.name == "nt" and ":" in instance.path[:3]  # Windows drive letter
+            )
 
         return instance
 
@@ -145,6 +166,10 @@ class SnapshotSource(BaseSource):
             return None
 
         try:
+            # Ensure stored_file_path includes 'files/' prefix
+            if not stored_file_path.startswith("files/"):
+                stored_file_path = f"files/{stored_file_path}"
+
             source_path = self._local_path(stored_file_path)
             if not source_path.exists():
                 return None
@@ -169,6 +194,100 @@ class SnapshotSource(BaseSource):
             return None
 
     # =========================================================================
+    # Azure blob URL methods (direct access to any Azure blob)
+    # =========================================================================
+
+    def _get_azure_client(self) -> Any:
+        """Get or create Azure BlobServiceClient using DefaultAzureCredential."""
+        if self._azure_client is None:
+            from azure.identity.aio import DefaultAzureCredential
+            from azure.storage.blob.aio import BlobServiceClient
+
+            credential = DefaultAzureCredential()
+            account_url = f"https://{self._azure_account}.blob.core.windows.net"
+            self._azure_client = BlobServiceClient(account_url, credential=credential)
+        return self._azure_client
+
+    async def _read_json_azure(self, relative_path: str) -> Dict[str, Any]:
+        """Read JSON from Azure blob storage using direct URL access."""
+        blob_path = f"{self._azure_blob_prefix.rstrip('/')}/{relative_path}"
+        client = self._get_azure_client()
+        container_client = client.get_container_client(self._azure_container)
+        blob_client = container_client.get_blob_client(blob_path)
+
+        try:
+            download = await blob_client.download_blob()
+            content = await download.readall()
+            return json.loads(content.decode("utf-8"))
+        except Exception as e:
+            raise ValueError(f"Failed to read {blob_path} from Azure: {e}")
+
+    async def _list_entity_files_azure(self) -> List[str]:
+        """List entity files from Azure blob storage."""
+        client = self._get_azure_client()
+        container_client = client.get_container_client(self._azure_container)
+        entities_prefix = f"{self._azure_blob_prefix.rstrip('/')}/entities/"
+
+        files = []
+        async for blob in container_client.list_blobs(name_starts_with=entities_prefix):
+            if blob.name.endswith(".json"):
+                # Return relative to snapshot path
+                rel_path = blob.name.replace(f"{self._azure_blob_prefix.rstrip('/')}/", "")
+                files.append(rel_path)
+        return files
+
+    async def _restore_file_azure(self, stored_file_path: str) -> Optional[str]:
+        """Restore file from Azure blob storage to temp directory."""
+        if not self.restore_files:
+            return None
+
+        try:
+            # Ensure stored_file_path includes 'files/' prefix
+            # Legacy snapshots may have just the filename without the folder
+            if not stored_file_path.startswith("files/"):
+                stored_file_path = f"files/{stored_file_path}"
+
+            blob_path = f"{self._azure_blob_prefix.rstrip('/')}/{stored_file_path}"
+            client = self._get_azure_client()
+            container_client = client.get_container_client(self._azure_container)
+            blob_client = container_client.get_blob_client(blob_path)
+
+            download = await blob_client.download_blob()
+            content = await download.readall()
+
+            # Create temp directory if needed
+            if self._temp_dir is None:
+                self._temp_dir = Path(
+                    tempfile.mkdtemp(prefix="snapshot_", dir=StoragePaths.TEMP_BASE)
+                )
+
+            filename = Path(stored_file_path).name
+            local_path = self._temp_dir / filename
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+
+            with open(local_path, "wb") as f:
+                f.write(content)
+
+            return str(local_path)
+
+        except Exception as e:
+            self.logger.warning(f"Failed to restore file {stored_file_path} from Azure: {e}")
+            return None
+
+    async def _azure_blob_exists(self, relative_path: str) -> bool:
+        """Check if a blob exists in Azure storage."""
+        blob_path = f"{self._azure_blob_prefix.rstrip('/')}/{relative_path}"
+        client = self._get_azure_client()
+        container_client = client.get_container_client(self._azure_container)
+        blob_client = container_client.get_blob_client(blob_path)
+
+        try:
+            await blob_client.get_blob_properties()
+            return True
+        except Exception:
+            return False
+
+    # =========================================================================
     # Storage backend methods (for blob storage)
     # =========================================================================
 
@@ -190,6 +309,10 @@ class SnapshotSource(BaseSource):
             return None
 
         try:
+            # Ensure stored_file_path includes 'files/' prefix
+            if not stored_file_path.startswith("files/"):
+                stored_file_path = f"files/{stored_file_path}"
+
             full_path = f"{self.path.rstrip('/')}/{stored_file_path}"
             content = await self.storage.read_file(full_path)
 
@@ -213,25 +336,31 @@ class SnapshotSource(BaseSource):
             return None
 
     # =========================================================================
-    # Unified methods (route to local or storage)
+    # Unified methods (route to local, Azure URL, or storage backend)
     # =========================================================================
 
     async def _read_json(self, relative_path: str) -> Dict[str, Any]:
         """Read JSON from appropriate backend."""
         if self._is_local_path:
             return await self._read_json_local(relative_path)
+        if self._is_azure_url:
+            return await self._read_json_azure(relative_path)
         return await self._read_json_storage(relative_path)
 
     async def _list_entity_files(self) -> List[str]:
         """List entity files from appropriate backend."""
         if self._is_local_path:
             return await self._list_entity_files_local()
+        if self._is_azure_url:
+            return await self._list_entity_files_azure()
         return await self._list_entity_files_storage()
 
     async def _restore_file(self, stored_file_path: str) -> Optional[str]:
         """Restore file from appropriate backend."""
         if self._is_local_path:
             return await self._restore_file_local(stored_file_path)
+        if self._is_azure_url:
+            return await self._restore_file_azure(stored_file_path)
         return await self._restore_file_storage(stored_file_path)
 
     # =========================================================================
@@ -277,7 +406,12 @@ class SnapshotSource(BaseSource):
         Reads manifest and iterates over all entity JSON files,
         reconstructing BaseEntity objects and optionally restoring files.
         """
-        mode = "local filesystem" if self._is_local_path else "storage backend"
+        if self._is_local_path:
+            mode = "local filesystem"
+        elif self._is_azure_url:
+            mode = f"Azure blob ({self._azure_account}/{self._azure_container})"
+        else:
+            mode = "storage backend"
         self.logger.info(f"📂 Snapshot replay from {mode}: {self.path}")
 
         # Read manifest for logging
@@ -320,12 +454,18 @@ class SnapshotSource(BaseSource):
             self.logger.error("Snapshot validation failed: path is empty")
             return False
 
-        # Check path exists
+        # Check path exists based on storage type
         if self._is_local_path:
             if not self._local_path().exists():
                 self.logger.error(f"Snapshot validation failed: path does not exist: {self.path}")
                 return False
+        elif self._is_azure_url:
+            # Direct Azure URL access
+            if not await self._azure_blob_exists("manifest.json"):
+                self.logger.error(f"Snapshot validation failed: manifest not found at {self.path}")
+                return False
         else:
+            # Storage-relative path
             if not await self.storage.exists(f"{self.path}/manifest.json"):
                 self.logger.error(f"Snapshot validation failed: manifest not found at {self.path}")
                 return False
@@ -338,7 +478,7 @@ class SnapshotSource(BaseSource):
             return False
 
     def cleanup(self) -> None:
-        """Clean up temp files."""
+        """Clean up temp files and close Azure client."""
         if self._temp_dir and self._temp_dir.exists():
             import shutil
 
@@ -347,3 +487,7 @@ class SnapshotSource(BaseSource):
             except Exception:
                 pass
             self._temp_dir = None
+
+        # Note: Azure client cleanup happens via garbage collection
+        # The async close should be called if we want explicit cleanup
+        self._azure_client = None

@@ -130,7 +130,7 @@ class Retrieval(SearchOperation):
         # Convert SearchResult objects to dicts for downstream compatibility
         results_as_dicts = self._results_to_dicts(raw_results)
 
-        # For bulk search (query expansion), deduplicate results
+        # For bulk search (query expansion), deduplicate results by chunk ID
         if is_bulk:
             results_as_dicts = self._deduplicate_results(results_as_dicts)
 

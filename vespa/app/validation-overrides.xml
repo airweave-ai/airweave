@@ -2,4 +2,5 @@
 <validation-overrides>
     <allow until="2026-02-11">schema-removal</allow>
     <allow until="2026-02-11">indexing-change</allow>
+    <allow until="2026-02-11">field-type-change</allow>
 </validation-overrides>
