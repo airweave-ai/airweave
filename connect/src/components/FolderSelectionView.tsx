@@ -32,7 +32,10 @@ export function FolderSelectionView({
 
   const handleStartSync = () => {
     // TODO: Call API to configure sync folder paths
-    console.log(`Starting sync for connection ${connectionId} with folders:`, selectedFolderIds);
+    console.log(
+      `Starting sync for connection ${connectionId} with folders:`,
+      selectedFolderIds,
+    );
     onComplete();
   };
 
@@ -56,12 +59,6 @@ export function FolderSelectionView({
             Select folders to sync
           </h1>
         </div>
-        <p
-          className="text-sm mt-2 ml-8"
-          style={{ color: "var(--connect-text-muted)" }}
-        >
-          Choose which folders from {source.name} to sync
-        </p>
       </header>
 
       <main className="flex-1 overflow-y-auto px-6 scrollable-content">
@@ -84,7 +81,9 @@ export function FolderSelectionView({
           disabled={selectedFolderIds.length === 0}
           className="w-full justify-center"
         >
-          Start sync{selectedFolderIds.length > 0 && ` (${selectedFolderIds.length})`}
+          Start sync
+          {selectedFolderIds.length > 0 &&
+            ` (${selectedFolderIds.length} folders)`}
         </Button>
       </div>
 

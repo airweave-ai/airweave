@@ -207,10 +207,14 @@ export function FolderTree({
   onSelectionChange,
 }: FolderTreeProps) {
   const allFolderIds = getAllFolderIds(DEMO_FOLDERS);
-  const isRootSelected = selectedFolderIds.includes("root");
-  // Root is indeterminate if some folders are selected but not root itself
-  const isRootIndeterminate =
-    !isRootSelected && selectedFolderIds.some((id) => allFolderIds.includes(id));
+  
+  // Compute root selection state from children (not from "root" in selectedFolderIds)
+  const selectedChildCount = allFolderIds.filter((id) =>
+    selectedFolderIds.includes(id)
+  ).length;
+  const isRootSelected = selectedChildCount === allFolderIds.length && allFolderIds.length > 0;
+  const isRootIndeterminate = selectedChildCount > 0 && selectedChildCount < allFolderIds.length;
+  
   const CheckIcon = isRootSelected
     ? CheckSquare
     : isRootIndeterminate
@@ -238,11 +242,11 @@ export function FolderTree({
 
   const handleToggleRoot = useCallback(() => {
     if (isRootSelected) {
-      // Deselect everything
+      // Deselect all folders
       onSelectionChange([]);
     } else {
-      // Select root and all folders
-      onSelectionChange(["root", ...allFolderIds]);
+      // Select all folders (root state is computed, not stored)
+      onSelectionChange([...allFolderIds]);
     }
   }, [isRootSelected, allFolderIds, onSelectionChange]);
 

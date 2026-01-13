@@ -28,12 +28,15 @@ connect/src/
 │   ├── DynamicFormField.tsx   # Dynamic form fields with markdown support
 │   ├── EmptyState.tsx         # Empty state with CTA
 │   ├── ErrorScreen.tsx        # Full-screen error display
+│   ├── FolderSelectionView.tsx # Folder picker wrapper (optional feature)
+│   ├── FolderTree.tsx         # Hierarchical folder checkbox tree
 │   ├── LoadingScreen.tsx      # Loading spinner
 │   ├── PoweredByAirweave.tsx  # Footer branding
 │   ├── SessionProvider.tsx    # Session context provider
 │   ├── SourceItem.tsx         # Single source in picker
 │   ├── SourcesList.tsx        # Source selection grid
-│   └── SuccessScreen.tsx      # Main connected state
+│   ├── SuccessScreen.tsx      # Main connected state
+│   └── WelcomeView.tsx        # Consent/intro screen (optional feature)
 ├── hooks/
 │   └── useParentMessaging.ts  # iframe ↔ parent communication
 ├── lib/
@@ -133,10 +136,38 @@ interface ConnectTheme {
 Theme values are injected as CSS custom properties (`--connect-*`).
 
 ### 5. View Navigation
-Internal view state managed within components:
+Internal view state managed within `SuccessScreen.tsx`:
 ```typescript
-type NavigateView = "connections" | "sources" | "configure";
+type NavigateView = "connections" | "sources" | "welcome" | "configure" | "folder-selection";
 ```
+
+**View flow:**
+- `connections` - List of existing source connections (default for manage mode)
+- `sources` - Source picker grid (default for connect mode)
+- `welcome` - Optional consent/intro screen shown before configure (when `showWelcomeScreen` enabled)
+- `configure` - Source configuration form (auth fields, config fields)
+- `folder-selection` - Optional folder picker shown after OAuth (when `enableFolderSelection` enabled)
+
+### 6. Connect Options
+Optional features controlled via `ConnectOptions`:
+```typescript
+interface ConnectOptions {
+  showConnectionName?: boolean;     // Show name field in configure form (default: false)
+  enableFolderSelection?: boolean;  // Show folder picker after OAuth (default: false)
+  showWelcomeScreen?: boolean;      // Show consent screen before configure (default: false)
+  hostApp?: HostAppInfo;            // Host app info for welcome screen
+}
+
+interface HostAppInfo {
+  name: string;      // e.g., "Acme Corp"
+  iconUrl?: string;  // Optional icon URL
+}
+```
+
+**Related components:**
+- `WelcomeView.tsx` - Consent/intro screen with host app + source icons
+- `FolderSelectionView.tsx` - Wrapper for folder selection UI
+- `FolderTree.tsx` - Hierarchical folder checkbox tree with indeterminate states
 
 ## Component Patterns
 

@@ -76,6 +76,7 @@ jobs:
           # Skip services not needed for backend API tests
           SKIP_LOCAL_EMBEDDINGS: "1" # Use OpenAI embeddings (saves ~2GB)
           SKIP_FRONTEND: "1" # Backend-only testing (saves time)
+          SKIP_CONNECT: "1" # Skip Connect widget (image not needed for API tests)
           # Set required environment variables for the containers
           AUTH0_ENABLED: "false"
           DEV_MODE: "true"
@@ -213,7 +214,7 @@ jobs:
           exit 1
 
       - name: Run Source Rate Limit Tests (Sequential)
-        if: false  # Temporarily disabled to reduce CI load
+        if: false # Temporarily disabled to reduce CI load
         env:
           TEST_ENV: local
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

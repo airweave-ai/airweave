@@ -2,12 +2,13 @@ import type { ReactNode } from "react";
 import { PoweredByAirweave } from "./PoweredByAirweave";
 
 interface PageLayoutProps {
-  title: string;
+  title?: string;
   headerRight?: ReactNode;
   headerLeft?: ReactNode;
   footerContent?: ReactNode;
   children: ReactNode;
   centerContent?: boolean;
+  hideHeader?: boolean;
 }
 
 export function PageLayout({
@@ -17,26 +18,31 @@ export function PageLayout({
   footerContent,
   children,
   centerContent = false,
+  hideHeader = false,
 }: PageLayoutProps) {
   return (
     <div
       className="h-screen flex flex-col"
       style={{ backgroundColor: "var(--connect-bg)" }}
     >
-      <header className="flex-shrink-0 p-6 pb-4">
-        <div className="flex items-center gap-3">
-          {headerLeft}
-          <div className="flex-1 flex items-center justify-between">
-            <h1
-              className="font-medium text-lg"
-              style={{ color: "var(--connect-text)" }}
-            >
-              {title}
-            </h1>
-            {headerRight}
+      {!hideHeader && (
+        <header className="flex-shrink-0 p-6 pb-4">
+          <div className="flex items-center gap-3">
+            {headerLeft}
+            <div className="flex-1 flex items-center justify-between">
+              {title && (
+                <h1
+                  className="font-medium text-lg"
+                  style={{ color: "var(--connect-text)" }}
+                >
+                  {title}
+                </h1>
+              )}
+              {headerRight}
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
+      )}
 
       <main
         className={`flex-1 overflow-y-auto px-6 scrollable-content ${

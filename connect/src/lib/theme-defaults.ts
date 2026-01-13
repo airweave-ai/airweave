@@ -49,8 +49,9 @@ export const defaultLabels: Required<ConnectLabels> = {
   menuDelete: "Delete",
 
   // Empty state
-  emptyStateHeading: "No sources connected yet",
-  emptyStateDescription: "Connect a source to get started.",
+  emptyStateHeading: "Connect with your apps",
+  emptyStateDescription:
+    "Add context from your apps to start working with your data.",
 
   // Connect mode error
   connectModeErrorHeading: "Cannot View Connections",
@@ -133,10 +134,17 @@ export const defaultLabels: Required<ConnectLabels> = {
   byocClientIdPlaceholder: "Your OAuth app client ID",
   byocClientSecretLabel: "Client Secret",
   byocClientSecretPlaceholder: "Your OAuth app client secret",
+
+  // Empty state info
+  welcomeInfoVerify:
+    "Your credentials are encrypted and your data is securely stored.",
+  welcomeInfoAccess:
+    "You control which apps to connect and can disconnect anytime.",
 };
 
 // Default options
 export const defaultOptions: Required<ConnectOptions> = {
   showConnectionName: false,
   enableFolderSelection: false,
+  logoUrl: "",
 };

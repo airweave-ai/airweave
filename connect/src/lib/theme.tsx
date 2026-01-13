@@ -15,6 +15,22 @@ import {
 } from "./theme-defaults";
 import type { ConnectLabels, ConnectOptions, ConnectTheme, ThemeColors } from "./types";
 
+/**
+ * Darken a hex color by a percentage (0-100)
+ */
+function darkenColor(hex: string, percent: number): string {
+  // Handle non-hex colors (transparent, rgb, etc.)
+  if (!hex.startsWith("#")) return hex;
+
+  // Remove # and parse
+  const num = parseInt(hex.slice(1), 16);
+  const r = Math.max(0, Math.floor((num >> 16) * (1 - percent / 100)));
+  const g = Math.max(0, Math.floor(((num >> 8) & 0x00ff) * (1 - percent / 100)));
+  const b = Math.max(0, Math.floor((num & 0x0000ff) * (1 - percent / 100)));
+
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
+}
+
 interface ThemeContextValue {
   theme: ConnectTheme;
   setTheme: (theme: ConnectTheme) => void;
@@ -79,17 +95,29 @@ export function ThemeProvider({ children, initialTheme }: ThemeProviderProps) {
     [],
   );
 
-  // Merge custom colors with defaults
+  // Merge custom colors with defaults, auto-deriving hover colors
   const colors: Required<ThemeColors> = useMemo(() => {
     if (isPending) return pendingColors;
     const defaultColors =
       resolvedMode === "dark" ? defaultDarkColors : defaultLightColors;
     const customColors = theme?.colors?.[resolvedMode] ?? {};
 
-    return {
+    // Merge base colors first
+    const merged = {
       ...defaultColors,
       ...customColors,
     };
+
+    // Auto-derive hover colors if not explicitly provided
+    // Darken by 15% for a subtle but visible hover effect
+    if (customColors.primary && !customColors.primaryHover) {
+      merged.primaryHover = darkenColor(merged.primary, 15);
+    }
+    if (customColors.secondary && !customColors.secondaryHover) {
+      merged.secondaryHover = darkenColor(merged.secondary, 15);
+    }
+
+    return merged;
   }, [resolvedMode, theme, isPending, pendingColors]);
 
   // Merge custom labels with defaults

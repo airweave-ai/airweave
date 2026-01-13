@@ -486,6 +486,8 @@
         END_USER_ID: "anand",
         SESSION_MODE: "all",
         CONNECT_URL: "http://localhost:5173?theme=light",
+        PRIMARY_COLOR: "#FA500E",
+        LOGO_URL: "https://avatars.githubusercontent.com/u/132372032?s=200&v=4",
       };
 
       let sessionToken = null;
@@ -545,8 +547,14 @@
 
         const theme = {
           mode: "light",
+          colors: {
+            light: {
+              primary: CONFIG.PRIMARY_COLOR,
+            },
+          },
           options: {
             enableFolderSelection: folderSelectionEnabled,
+            logoUrl: CONFIG.LOGO_URL,
           },
         };
 

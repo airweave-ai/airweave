@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiClient } from "../lib/api";
 import { canConnect } from "../lib/connection-utils";
@@ -224,16 +225,22 @@ export function SuccessScreen({
     return <ConnectionsErrorView error={error} labels={labels} />;
   }
 
-  const connectButton =
-    allowConnect && connections && connections.length > 0 ? (
-      <Button onClick={() => setView("sources")} className="w-full justify-center">
-        {labels.buttonConnect}
-      </Button>
-    ) : undefined;
+  const hasConnections = connections && connections.length > 0;
+
+  const connectButton = allowConnect ? (
+    <Button onClick={() => setView("sources")} className="w-full justify-center">
+      {labels.buttonConnect}
+      {!hasConnections && <ArrowRight size={16} />}
+    </Button>
+  ) : undefined;
 
   return (
-    <PageLayout title={labels.sourcesHeading} footerContent={connectButton}>
-      {connections && connections.length > 0 ? (
+    <PageLayout
+      title={hasConnections ? labels.sourcesHeading : undefined}
+      footerContent={connectButton}
+      hideHeader={!hasConnections}
+    >
+      {hasConnections ? (
         <div className="flex flex-col gap-3 pb-4">
           {connections.map((connection) => (
             <ConnectionItem
@@ -250,11 +257,7 @@ export function SuccessScreen({
           ))}
         </div>
       ) : (
-        <EmptyState
-          labels={labels}
-          showConnect={allowConnect}
-          onConnect={() => setView("sources")}
-        />
+        <EmptyState labels={labels} showConnect={allowConnect} />
       )}
     </PageLayout>
   );

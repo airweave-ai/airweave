@@ -114,11 +114,16 @@ export interface ConnectLabels {
   byocClientIdPlaceholder?: string;
   byocClientSecretLabel?: string;
   byocClientSecretPlaceholder?: string;
+
+  // Empty state info
+  welcomeInfoVerify?: string;
+  welcomeInfoAccess?: string;
 }
 
 export interface ConnectOptions {
   showConnectionName?: boolean; // default: false
   enableFolderSelection?: boolean; // default: false
+  logoUrl?: string; // Logo URL for empty state
 }
 
 export interface ConnectTheme {

@@ -353,9 +353,7 @@
           <div class="button-group">
             <div class="button-group-label">Test Different States</div>
 
-            <button onclick="openCreateConnection()">
-              Create connection
-            </button>
+            <button onclick="openCreateConnection()">Create connection</button>
             <button onclick="openWithState('success')" class="success">
               Show Success State
             </button>
@@ -373,6 +371,9 @@
             </button>
             <button onclick="openWithFolderSelection()" class="success">
               Test Folder Selection
+            </button>
+            <button onclick="openWithWelcomeScreen()" class="success">
+              Test Welcome Screen
             </button>
           </div>
 
@@ -433,6 +434,7 @@
       let pendingRequestId = null;
       let hasProvidedToken = false; // Track if we've already sent a token (for retry detection)
       let folderSelectionEnabled = false; // Track if folder selection mode is enabled
+      let logoUrl = ""; // Logo URL for empty state
 
       // Initialize form fields from CONFIG on page load
       async function initializeConfig() {
@@ -579,11 +581,13 @@
       // Build theme object from UI
       function buildTheme() {
         const mode = document.getElementById("themeMode").value;
+        const options = {
+          enableFolderSelection: folderSelectionEnabled,
+          logoUrl: logoUrl,
+        };
         const theme = {
           mode,
-          options: {
-            enableFolderSelection: folderSelectionEnabled,
-          },
+          options,
         };
 
         // Check if custom colors are set
@@ -711,7 +715,10 @@
             // If we've already provided a token and iframe is asking again, it likely expired
             // Fetch a fresh token from the API
             if (hasProvidedToken) {
-              log("Token retry detected - fetching fresh token from API...", "info");
+              log(
+                "Token retry detected - fetching fresh token from API...",
+                "info",
+              );
               await fetchSessionToken();
               sessionToken = document.getElementById("token").value.trim();
             }
@@ -868,7 +875,10 @@
           log("Please open Connect first!", "error");
           return;
         }
-        iframe.contentWindow.postMessage({ type: "NAVIGATE", view: "sources" }, "*");
+        iframe.contentWindow.postMessage(
+          { type: "NAVIGATE", view: "sources" },
+          "*",
+        );
         log("Sent navigation to sources view", "sent");
       }
 
@@ -907,6 +917,18 @@
         startConnect();
       }
 
+      function openWithWelcomeScreen() {
+        sessionToken = document.getElementById("token").value.trim();
+        if (!sessionToken) {
+          log("Please enter a valid token first!", "error");
+          return;
+        }
+
+        responseMode = "auto";
+        log("Opening Connect with custom logo...", "info");
+        startConnect();
+      }
+
       function startConnect() {
         log(`Opening Connect (mode: ${responseMode})...`, "sent");
 
@@ -936,6 +958,7 @@
         responseMode = "auto";
         hasProvidedToken = false;
         folderSelectionEnabled = false;
+        logoUrl = "";
 
         log("Connect closed", "sent");
       }
