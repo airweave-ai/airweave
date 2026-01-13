@@ -21,6 +21,7 @@
   "dependencies": {
     "@base-ui/react": "^1.0.0",
     "@microsoft/fetch-event-source": "^2.0.1",
+    "@number-flow/react": "^0.5.10",
     "@tailwindcss/vite": "^4.0.6",
     "@tanstack/react-devtools": "^0.9.2",
     "@tanstack/react-query": "^5.62.0",

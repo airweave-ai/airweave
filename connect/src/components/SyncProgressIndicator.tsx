@@ -1,3 +1,4 @@
+import NumberFlow from "@number-flow/react";
 import { Loader2 } from "lucide-react";
 import type { SyncProgressUpdate } from "../lib/types";
 
@@ -28,7 +29,7 @@ export function SyncProgressIndicator({
         style={{ color: "var(--connect-primary)" }}
       />
       <span className="tabular-nums">
-        {totalProcessed.toLocaleString()} synced
+        <NumberFlow value={totalProcessed} /> synced
       </span>
     </p>
   );
