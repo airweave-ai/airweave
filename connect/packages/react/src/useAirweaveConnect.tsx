@@ -34,6 +34,8 @@ export interface UseAirweaveConnectReturn {
   open: () => void;
   /** Close the Connect modal */
   close: () => void;
+  /** Dynamically update theme/labels while modal is open */
+  setTheme: (theme: ConnectTheme) => void;
   /** Whether the modal is currently open */
   isOpen: boolean;
   /** Whether a token is being fetched */
@@ -261,9 +263,18 @@ export function useAirweaveConnect(
     handleClose("cancel");
   }, [handleClose]);
 
+  const setTheme = useCallback(
+    (newTheme: ConnectTheme) => {
+      themeRef.current = newTheme;
+      sendToIframe({ type: "SET_THEME", theme: newTheme });
+    },
+    [sendToIframe],
+  );
+
   return {
     open,
     close,
+    setTheme,
     isOpen,
     isLoading,
     error,

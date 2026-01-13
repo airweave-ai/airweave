@@ -4,7 +4,10 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./lib/types": "./src/lib/types.ts"
+    "./lib/types": "./src/lib/types.ts",
+    "./lib/connection-utils": "./src/lib/connection-utils.ts",
+    "./lib/icons": "./src/lib/icons.ts",
+    "./lib/theme-defaults": "./src/lib/theme-defaults.ts"
   },
   "scripts": {
     "dev": "vite dev --port 5173",
