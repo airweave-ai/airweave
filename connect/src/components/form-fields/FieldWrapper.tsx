@@ -1,26 +1,6 @@
-import { marked } from "marked";
 import { useTheme } from "../../lib/theme";
 import type { ConfigField } from "../../lib/types";
-
-const SAFE_PROTOCOLS = ["http:", "https:", "mailto:"];
-
-function isSafeUrl(href: string): boolean {
-  try {
-    const url = new URL(href, window.location.origin);
-    return SAFE_PROTOCOLS.includes(url.protocol);
-  } catch {
-    return false;
-  }
-}
-
-const renderer = new marked.Renderer();
-renderer.link = ({ href, text }) => {
-  if (!isSafeUrl(href)) {
-    return text;
-  }
-  return `<a href="${href}" target="_blank" rel="noopener noreferrer" style="text-decoration: underline; font-weight: 500;">${text}</a>`;
-};
-marked.use({ renderer });
+import { parseInlineMarkdown } from "./markdown";
 
 interface FieldWrapperProps {
   field: ConfigField;
@@ -58,7 +38,7 @@ export function FieldWrapper({ field, error, children }: FieldWrapperProps) {
           className="text-xs mt-1 mb-2"
           style={{ color: "var(--connect-text-muted)" }}
           dangerouslySetInnerHTML={{
-            __html: marked.parseInline(field.description) as string,
+            __html: parseInlineMarkdown(field.description),
           }}
         />
       )}

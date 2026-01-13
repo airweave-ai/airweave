@@ -279,6 +279,7 @@ async def get_source(
     """
     # Verify source is in allowed_integrations (if restricted)
     if session.allowed_integrations and short_name not in session.allowed_integrations:
+        logger.warning(f"Access denied: attempted to access restricted source '{short_name}'")
         raise HTTPException(
             status_code=403,
             detail=f"Source '{short_name}' is not allowed for this session",
@@ -454,6 +455,9 @@ async def get_source_connection(
 
     # Check if allowed_integrations restricts access
     if session.allowed_integrations and connection.short_name not in session.allowed_integrations:
+        ctx.logger.warning(
+            f"Access denied: attempted to access restricted source '{connection.short_name}'"
+        )
         raise HTTPException(
             status_code=403, detail="Session does not have access to this integration type"
         )
@@ -499,6 +503,9 @@ async def delete_source_connection(
 
     # Check if allowed_integrations restricts access to this connection type
     if session.allowed_integrations and connection.short_name not in session.allowed_integrations:
+        ctx.logger.warning(
+            f"Access denied: attempted to access restricted source '{connection.short_name}'"
+        )
         raise HTTPException(
             status_code=403, detail="Session does not have access to this integration type"
         )
@@ -552,6 +559,10 @@ async def create_source_connection(
     # Verify source is in allowed integrations (if restricted)
     if session.allowed_integrations:
         if source_connection_in.short_name not in session.allowed_integrations:
+            logger.warning(
+                f"Access denied: attempted to access restricted source "
+                f"'{source_connection_in.short_name}'"
+            )
             raise HTTPException(
                 status_code=403,
                 detail=f"Source '{source_connection_in.short_name}' is not allowed for this session",
@@ -646,6 +657,9 @@ async def get_connection_jobs(
 
     # Check if allowed_integrations restricts access to this connection type
     if session.allowed_integrations and connection.short_name not in session.allowed_integrations:
+        ctx.logger.warning(
+            f"Access denied: attempted to access restricted source '{connection.short_name}'"
+        )
         raise HTTPException(
             status_code=403, detail="Session does not have access to this integration type"
         )
@@ -702,6 +716,9 @@ async def subscribe_to_connection_sync(
 
     # Check if allowed_integrations restricts access
     if session.allowed_integrations and connection.short_name not in session.allowed_integrations:
+        ctx.logger.warning(
+            f"Access denied: attempted to access restricted source '{connection.short_name}'"
+        )
         raise HTTPException(
             status_code=403, detail="Session does not have access to this integration type"
         )

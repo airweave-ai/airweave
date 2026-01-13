@@ -1,5 +1,6 @@
 import { useTheme } from "../../lib/theme";
 import type { ConfigField } from "../../lib/types";
+import { parseInlineMarkdown } from "./markdown";
 
 interface BooleanFieldProps {
   field: ConfigField;
@@ -38,9 +39,10 @@ export function BooleanField({ field, value, onChange, error }: BooleanFieldProp
             <p
               className="text-xs mt-1 mb-2"
               style={{ color: "var(--connect-text-muted)" }}
-            >
-              {field.description}
-            </p>
+              dangerouslySetInnerHTML={{
+                __html: parseInlineMarkdown(field.description),
+              }}
+            />
           )}
         </div>
         <button

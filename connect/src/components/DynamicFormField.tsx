@@ -2,10 +2,10 @@ import type { ConfigField } from "../lib/types";
 import {
   ArrayField,
   BooleanField,
-  FieldWrapper,
   NumberField,
   StringField,
 } from "./form-fields";
+import { FieldWrapper } from "./form-fields/FieldWrapper";
 
 interface DynamicFormFieldProps {
   field: ConfigField;
