@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <validation-overrides>
-    <allow until="2025-12-31">schema-removal</allow>
-    <allow until="2025-12-31">indexing-change</allow>
+    <allow until="2026-02-10">schema-removal</allow>
+    <allow until="2026-02-10">indexing-change</allow>
+    <allow until="2026-02-10">field-type-change</allow>
 </validation-overrides>

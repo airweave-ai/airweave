@@ -1,22 +1,21 @@
-"""Vespa chunk and embed processor for entity-as-document architecture.
+"""Vespa chunk and embed processor - unified chunk-as-document architecture.
 
-Unlike QdrantChunkEmbedProcessor which creates separate chunk entities,
-this processor keeps the original entity and stores chunks + embeddings as arrays
-within entity.vespa_content.
+Like QdrantChunkEmbedProcessor, this creates separate chunk entities (1:N expansion).
+Each chunk becomes its own document in Vespa with:
+- entity_id: "{original_id}__chunk_{idx}"
+- original_entity_id: original entity_id
+- vectors: [large_768_float_embedding]
+- packed_vectors: binary-packed int8 for ANN (96 int8)
 
-Key differences from QdrantChunkEmbedProcessor:
-- Output: N entities → N entities (1:1, not 1:N)
-- entity_id: Unchanged (no __chunk_N suffix)
-- Content location: entity.vespa_content (not airweave_system_metadata.vectors)
-- Embedding: 768-dim for ranking + binary-packed 96 int8 for ANN
+This unifies the architecture between Qdrant and Vespa for fair comparison.
 """
 
 import time
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
 import numpy as np
 
-from airweave.platform.entities._base import BaseEntity, CodeFileEntity, VespaContent
+from airweave.platform.entities._base import BaseEntity, CodeFileEntity
 from airweave.platform.sync.exceptions import SyncFailureError
 from airweave.platform.sync.pipeline.text_builder import text_builder
 from airweave.platform.sync.processors.protocol import ContentProcessor
@@ -32,19 +31,23 @@ SMALL_EMBEDDING_DIM = 96  # Binary-packed for ANN (768 bits → 96 bytes)
 
 
 class VespaChunkEmbedProcessor(ContentProcessor):
-    """Processor for Vespa's entity-as-document model.
+    """Processor for Vespa using chunk-as-document model (same as Qdrant).
 
     Pipeline:
     1. Build textual representation (text extraction from files/web)
     2. Chunk text (semantic for text, AST for code)
     3. Compute 768-dim embeddings via OpenAI (single API call per chunk batch)
     4. Binary-pack embeddings for ANN index (768 float → 96 int8)
+    5. Create chunk entities (1:N expansion)
 
     Output:
-        Same entities with vespa_content populated:
-        - chunks: List[str] - chunked text segments
-        - chunk_large_embeddings: List[List[float]] - 768-dim for ranking
-        - chunk_small_embeddings: List[List[int]] - binary-packed for ANN
+        Chunk entities with:
+        - entity_id: "{original_id}__chunk_{idx}"
+        - textual_representation: chunk text
+        - airweave_system_metadata.vectors: [large_768_float_embedding]
+        - airweave_system_metadata.packed_vectors: binary-packed int8 (96 int8)
+        - airweave_system_metadata.original_entity_id: original entity_id
+        - airweave_system_metadata.chunk_index: chunk position
     """
 
     async def process(
@@ -59,7 +62,7 @@ class VespaChunkEmbedProcessor(ContentProcessor):
             sync_context: Sync context with logger, collection info, etc.
 
         Returns:
-            Same entities with vespa_content populated
+            Chunk entities (N per input entity)
         """
         if not entities:
             return []
@@ -84,116 +87,97 @@ class VespaChunkEmbedProcessor(ContentProcessor):
             sync_context.logger.debug("[VespaChunkEmbedProcessor] No entities after text building")
             return []
 
-        # Step 3: Chunk entities (returns chunk lists per entity)
+        # Step 3: Chunk entities and create chunk entities (1:N expansion)
         step_start = time.perf_counter()
-        chunk_lists = await self._chunk_entities(processed, sync_context)
+        chunk_entities = await self._chunk_entities(processed, sync_context)
         chunk_ms = (time.perf_counter() - step_start) * 1000
-        total_chunks = sum(len(cl) for cl in chunk_lists)
         sync_context.logger.debug(
             f"[VespaChunkEmbedProcessor] Chunking: {chunk_ms:.1f}ms → "
-            f"{total_chunks} chunks from {len(processed)} entities"
+            f"{len(chunk_entities)} chunks from {len(processed)} entities"
         )
 
-        # Step 4: Flatten chunks for batch embedding
-        all_chunks, chunk_counts = self._flatten_chunks(chunk_lists)
+        # Step 4: Release parent text (memory optimization)
+        for entity in processed:
+            entity.textual_representation = None
 
-        if not all_chunks:
+        if not chunk_entities:
             sync_context.logger.debug("[VespaChunkEmbedProcessor] No chunks generated")
             return []
 
-        # Step 5: Embed all chunks in one batch (768-dim)
+        # Step 5: Embed all chunks (768-dim)
         step_start = time.perf_counter()
-        large_embeddings = await self._embed_chunks(all_chunks, sync_context)
+        await self._embed_entities(chunk_entities, sync_context)
         embed_ms = (time.perf_counter() - step_start) * 1000
-        ms_per_chunk = embed_ms / len(all_chunks)
         sync_context.logger.debug(
-            f"[VespaChunkEmbedProcessor] OpenAI embedding: {embed_ms:.1f}ms "
-            f"for {len(all_chunks)} chunks ({ms_per_chunk:.1f}ms/chunk)"
+            f"[VespaChunkEmbedProcessor] Embedding: {embed_ms:.1f}ms "
+            f"for {len(chunk_entities)} chunks"
         )
-
-        # Step 6: Binary pack embeddings for ANN (768 float → 96 int8)
-        step_start = time.perf_counter()
-        small_embeddings = [self._pack_bits(emb) for emb in large_embeddings]
-        pack_ms = (time.perf_counter() - step_start) * 1000
-        sync_context.logger.debug(
-            f"[VespaChunkEmbedProcessor] Binary packing: {pack_ms:.1f}ms "
-            f"for {len(large_embeddings)} embeddings"
-        )
-
-        # Step 7: Assign to entities (unflatten)
-        step_start = time.perf_counter()
-        self._assign_vespa_content(processed, chunk_lists, large_embeddings, small_embeddings)
-        assign_ms = (time.perf_counter() - step_start) * 1000
 
         total_ms = (time.perf_counter() - total_start) * 1000
         sync_context.logger.debug(
             f"[VespaChunkEmbedProcessor] TOTAL: {total_ms:.1f}ms | "
-            f"{len(entities)} entities → {sum(chunk_counts)} chunks | "
-            f"text={text_build_ms:.0f}ms, chunk={chunk_ms:.0f}ms, embed={embed_ms:.0f}ms, "
-            f"pack={pack_ms:.0f}ms, assign={assign_ms:.0f}ms"
+            f"{len(entities)} entities → {len(chunk_entities)} chunks | "
+            f"text={text_build_ms:.0f}ms, chunk={chunk_ms:.0f}ms, embed={embed_ms:.0f}ms"
         )
 
-        return processed
+        return chunk_entities
 
     # -------------------------------------------------------------------------
-    # Chunking
+    # Chunking (same as QdrantChunkEmbedProcessor)
     # -------------------------------------------------------------------------
 
     async def _chunk_entities(
         self,
         entities: List[BaseEntity],
         sync_context: "SyncContext",
-    ) -> List[List[Dict[str, Any]]]:
-        """Chunk all entities, routing to appropriate chunker.
+    ) -> List[BaseEntity]:
+        """Route entities to appropriate chunker and create chunk entities."""
+        code_entities = [e for e in entities if isinstance(e, CodeFileEntity)]
+        textual_entities = [e for e in entities if not isinstance(e, CodeFileEntity)]
 
-        Returns:
-            List of chunk lists (one per entity), preserving order
-        """
-        # Separate code and text entities while preserving indices
-        code_indices = [i for i, e in enumerate(entities) if isinstance(e, CodeFileEntity)]
-        text_indices = [i for i, e in enumerate(entities) if not isinstance(e, CodeFileEntity)]
+        all_chunks: List[BaseEntity] = []
 
-        code_entities = [entities[i] for i in code_indices]
-        text_entities = [entities[i] for i in text_indices]
-
-        # Initialize result list (will be filled at correct indices)
-        chunk_lists: List[List[Dict[str, Any]]] = [[] for _ in entities]
-
-        # Process code entities
         if code_entities:
-            code_chunk_lists = await self._chunk_code_entities(code_entities, sync_context)
-            for i, chunks in zip(code_indices, code_chunk_lists, strict=True):
-                chunk_lists[i] = chunks
+            chunks = await self._chunk_code_entities(code_entities, sync_context)
+            all_chunks.extend(chunks)
 
-        # Process text entities
-        if text_entities:
-            text_chunk_lists = await self._chunk_text_entities(text_entities, sync_context)
-            for i, chunks in zip(text_indices, text_chunk_lists, strict=True):
-                chunk_lists[i] = chunks
+        if textual_entities:
+            chunks = await self._chunk_textual_entities(textual_entities, sync_context)
+            all_chunks.extend(chunks)
 
-        return chunk_lists
+        return all_chunks
 
     async def _chunk_code_entities(
         self,
         entities: List[BaseEntity],
         sync_context: "SyncContext",
-    ) -> List[List[Dict[str, Any]]]:
+    ) -> List[BaseEntity]:
         """Chunk code with AST-aware CodeChunker."""
         from airweave.platform.chunkers.code import CodeChunker
 
+        # Filter unsupported languages
+        supported, unsupported = await self._filter_unsupported_languages(entities)
+        if unsupported:
+            await sync_context.entity_tracker.record_skipped(len(unsupported))
+
+        if not supported:
+            return []
+
         chunker = CodeChunker()
-        texts = [e.textual_representation for e in entities]
+        texts = [e.textual_representation for e in supported]
 
         try:
-            return await chunker.chunk_batch(texts)
+            chunk_lists = await chunker.chunk_batch(texts)
         except Exception as e:
             raise SyncFailureError(f"[VespaChunkEmbedProcessor] CodeChunker failed: {e}")
 
-    async def _chunk_text_entities(
+        return self._multiply_entities(supported, chunk_lists, sync_context)
+
+    async def _chunk_textual_entities(
         self,
         entities: List[BaseEntity],
         sync_context: "SyncContext",
-    ) -> List[List[Dict[str, Any]]]:
+    ) -> List[BaseEntity]:
         """Chunk text with SemanticChunker."""
         from airweave.platform.chunkers.semantic import SemanticChunker
 
@@ -201,59 +185,121 @@ class VespaChunkEmbedProcessor(ContentProcessor):
         texts = [e.textual_representation for e in entities]
 
         try:
-            return await chunker.chunk_batch(texts)
+            chunk_lists = await chunker.chunk_batch(texts)
         except Exception as e:
             raise SyncFailureError(f"[VespaChunkEmbedProcessor] SemanticChunker failed: {e}")
 
-    def _flatten_chunks(
+        return self._multiply_entities(entities, chunk_lists, sync_context)
+
+    async def _filter_unsupported_languages(
         self,
+        entities: List[BaseEntity],
+    ) -> Tuple[List[BaseEntity], List[BaseEntity]]:
+        """Filter code entities by tree-sitter support."""
+        try:
+            from magika import Magika
+            from tree_sitter_language_pack import get_parser
+        except ImportError:
+            return entities, []
+
+        magika = Magika()
+        supported: List[BaseEntity] = []
+        unsupported: List[BaseEntity] = []
+
+        for entity in entities:
+            try:
+                text_bytes = entity.textual_representation.encode("utf-8")
+                result = magika.identify_bytes(text_bytes)
+                lang = result.output.label.lower()
+                get_parser(lang)
+                supported.append(entity)
+            except (LookupError, Exception):
+                unsupported.append(entity)
+
+        return supported, unsupported
+
+    def _multiply_entities(
+        self,
+        entities: List[BaseEntity],
         chunk_lists: List[List[Dict[str, Any]]],
-    ) -> tuple[List[str], List[int]]:
-        """Flatten chunk lists for batch embedding.
-
-        Returns:
-            Tuple of (all_chunk_texts, chunk_counts_per_entity)
-        """
-        all_chunks: List[str] = []
-        chunk_counts: List[int] = []
-
-        for chunks in chunk_lists:
-            chunk_texts = [c.get("text", "") for c in chunks if c.get("text", "").strip()]
-            all_chunks.extend(chunk_texts)
-            chunk_counts.append(len(chunk_texts))
-
-        return all_chunks, chunk_counts
-
-    # -------------------------------------------------------------------------
-    # Embedding
-    # -------------------------------------------------------------------------
-
-    async def _embed_chunks(
-        self,
-        chunks: List[str],
         sync_context: "SyncContext",
-    ) -> List[List[float]]:
-        """Embed all chunks in one batch using 768-dim Matryoshka embeddings.
+    ) -> List[BaseEntity]:
+        """Create chunk entities from chunker output (same as Qdrant).
 
-        Uses text-embedding-3-large model (3072 native dims) with Matryoshka truncation
-        to get 768-dim embeddings. This provides a good balance between quality and
-        storage cost for Vespa's two-phase ranking (ANN + re-ranking).
-
-        Args:
-            chunks: List of chunk texts
-            sync_context: Sync context with logger
-
-        Returns:
-            List of 768-dim embeddings
+        Preserves character positions (start_index, end_index) from chunker output
+        for span-based evaluation. This allows checking if retrieved chunks overlap
+        with labeled spans, independent of chunking strategy.
         """
+        chunk_entities: List[BaseEntity] = []
+
+        for entity, chunks in zip(entities, chunk_lists, strict=True):
+            if not chunks:
+                continue
+
+            original_id = entity.entity_id
+
+            for idx, chunk in enumerate(chunks):
+                chunk_text = chunk.get("text", "")
+                if not chunk_text or not chunk_text.strip():
+                    continue
+
+                chunk_entity = entity.model_copy(deep=True)
+                chunk_entity.textual_representation = chunk_text
+                chunk_entity.entity_id = f"{original_id}__chunk_{idx}"
+                chunk_entity.airweave_system_metadata.chunk_index = idx
+                chunk_entity.airweave_system_metadata.original_entity_id = original_id
+
+                # Store character positions for span-based evaluation
+                chunk_entity.airweave_system_metadata.chunk_start_char = chunk.get("start_index")
+                chunk_entity.airweave_system_metadata.chunk_end_char = chunk.get("end_index")
+
+                chunk_entities.append(chunk_entity)
+
+        return chunk_entities
+
+    # -------------------------------------------------------------------------
+    # Embedding (Vespa-specific: large float + small binary-packed)
+    # -------------------------------------------------------------------------
+
+    async def _embed_entities(
+        self,
+        chunk_entities: List[BaseEntity],
+        sync_context: "SyncContext",
+    ) -> None:
+        """Compute large (768-dim float) and small (96-dim int8 packed) embeddings.
+
+        Unlike Qdrant (dense + sparse), Vespa uses:
+        - vectors[0]: 768-dim float embedding for ranking (cosine similarity)
+        - packed_vectors: 96 int8 binary-packed for ANN index (hamming distance)
+        """
+        if not chunk_entities:
+            return
+
         from airweave.platform.embedders import DenseEmbedder
 
-        # Use default model (text-embedding-3-large) and request 768-dim via Matryoshka
-        # Note: Don't pass vector_size - that selects a model. Use dimensions param instead.
-        embedder = DenseEmbedder()  # Uses text-embedding-3-large (3072 native dims)
-        embeddings = await embedder.embed_many(chunks, sync_context, dimensions=LARGE_EMBEDDING_DIM)
+        # Embed all chunks at once (768-dim)
+        texts = [e.textual_representation for e in chunk_entities]
+        embedder = DenseEmbedder()  # Uses text-embedding-3-large
+        large_embeddings = await embedder.embed_many(
+            texts, sync_context, dimensions=LARGE_EMBEDDING_DIM
+        )
 
-        return embeddings
+        # Assign vectors and packed_vectors to entities
+        for i, entity in enumerate(chunk_entities):
+            large_emb = large_embeddings[i]
+            small_emb = self._pack_bits(large_emb)
+
+            # Store large embedding in vectors (for ranking)
+            entity.airweave_system_metadata.vectors = [large_emb]
+            # Store binary-packed embedding for ANN index
+            entity.airweave_system_metadata.packed_vectors = small_emb
+
+        # Validate
+        for entity in chunk_entities:
+            if not entity.airweave_system_metadata.vectors:
+                raise SyncFailureError(f"Entity {entity.entity_id} has no vectors")
+            if entity.airweave_system_metadata.packed_vectors is None:
+                raise SyncFailureError(f"Entity {entity.entity_id} has no packed_vectors")
 
     def _pack_bits(self, embedding: List[float]) -> List[int]:
         """Binary pack a float embedding into int8 for Vespa's hamming distance.
@@ -274,63 +320,9 @@ class VespaChunkEmbedProcessor(ContentProcessor):
         bits = (arr > 0).astype(np.uint8)
 
         # Pack 8 bits per byte (big-endian to match Vespa)
-        # np.packbits packs bits into bytes
         packed = np.packbits(bits)
 
         # Convert to signed int8 (-128 to 127) for Vespa
-        # Note: Vespa expects int8, packbits returns uint8
         packed_int8 = packed.astype(np.int8)
 
         return packed_int8.tolist()
-
-    # -------------------------------------------------------------------------
-    # Assignment
-    # -------------------------------------------------------------------------
-
-    def _assign_vespa_content(
-        self,
-        entities: List[BaseEntity],
-        chunk_lists: List[List[Dict[str, Any]]],
-        large_embeddings: List[List[float]],
-        small_embeddings: List[List[int]],
-    ) -> None:
-        """Assign chunked content and embeddings to entities.
-
-        Unflattens the embedding results back to per-entity arrays.
-
-        Args:
-            entities: Entities to update
-            chunk_lists: Chunk dicts per entity (for text extraction)
-            large_embeddings: Flat list of 768-dim embeddings
-            small_embeddings: Flat list of 96 int8 embeddings
-        """
-        idx = 0
-        for entity, chunks in zip(entities, chunk_lists, strict=True):
-            # Filter empty chunks (same logic as _flatten_chunks)
-            valid_chunks = [c for c in chunks if c.get("text", "").strip()]
-            count = len(valid_chunks)
-
-            if count == 0:
-                # Entity has no valid chunks - set empty content
-                entity.vespa_content = VespaContent(
-                    chunks=[],
-                    chunk_small_embeddings=[],
-                    chunk_large_embeddings=[],
-                )
-                continue
-
-            # Extract chunk texts
-            chunk_texts = [c["text"] for c in valid_chunks]
-
-            # Slice embeddings for this entity
-            entity_large_embs = large_embeddings[idx : idx + count]
-            entity_small_embs = small_embeddings[idx : idx + count]
-
-            # Populate vespa_content
-            entity.vespa_content = VespaContent(
-                chunks=chunk_texts,
-                chunk_small_embeddings=entity_small_embs,
-                chunk_large_embeddings=entity_large_embs,
-            )
-
-            idx += count

@@ -42,29 +42,6 @@ class AccessControl(BaseModel):
     )
 
 
-class VespaContent(BaseModel):
-    """Vespa-specific content for entity-as-document model.
-
-    Unlike Qdrant (chunk-as-document where each chunk is a separate entity),
-    Vespa stores all chunks and embeddings as arrays within a single entity.
-
-    Fields:
-        chunks: List of chunked text segments from the entity's textual representation.
-        chunk_small_embeddings: Binary-packed int8 embeddings for ANN search (96-dim).
-        chunk_large_embeddings: Full precision embeddings for ranking (768-dim).
-    """
-
-    chunks: List[str] = Field(default_factory=list, description="Chunked text segments")
-    chunk_small_embeddings: List[List[int]] = Field(
-        default_factory=list,
-        description="Binary-packed int8 embeddings for ANN search (96-dim)",
-    )
-    chunk_large_embeddings: List[List[float]] = Field(
-        default_factory=list,
-        description="Full precision embeddings for ranking (768-dim)",
-    )
-
-
 class AirweaveSystemMetadata(BaseModel):
     """System metadata for this entity.
 
@@ -92,10 +69,24 @@ class AirweaveSystemMetadata(BaseModel):
     original_entity_id: Optional[str] = Field(
         None, description="Original entity_id before chunking (for bulk deletes)"
     )
+    # Character positions in the original textual_representation (for span-based evaluation)
+    # These allow evaluating whether the correct SPAN of text was retrieved, independent of
+    # how the document was chunked. Labels can be at span level, and evaluation checks overlap.
+    chunk_start_char: Optional[int] = Field(
+        None, description="Start character position of this chunk in original document"
+    )
+    chunk_end_char: Optional[int] = Field(
+        None, description="End character position of this chunk in original document"
+    )
 
     # Set during embedding
     vectors: Optional[List[List[float] | SparseEmbedding]] = Field(
         None, description="Vectors for this entity."
+    )
+    # Vespa-specific: Binary-packed int8 embeddings for ANN search (768 bits → 96 int8)
+    # Used by VespaChunkEmbedProcessor. Qdrant uses sparse embeddings in vectors[1] instead.
+    packed_vectors: Optional[List[int]] = Field(
+        None, description="Binary-packed int8 embedding for Vespa ANN (96 int8)."
     )
 
     # Set during persistence
@@ -136,11 +127,6 @@ class BaseEntity(BaseModel):
     # Access control - only set by sources with supports_access_control=True
     access: Optional[AccessControl] = Field(
         None, description="Access control - who can view this entity (not expanded)"
-    )
-
-    # Vespa-specific content (populated by VespaChunkEmbedProcessor)
-    vespa_content: Optional[VespaContent] = Field(
-        None, description="Vespa chunks and embeddings (entity-as-document model)"
     )
 
     model_config = ConfigDict(arbitrary_types_allowed=True)

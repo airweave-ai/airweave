@@ -170,7 +170,12 @@ class QdrantChunkEmbedProcessor(ContentProcessor):
         chunk_lists: List[List[Dict[str, Any]]],
         sync_context: "SyncContext",
     ) -> List[BaseEntity]:
-        """Create chunk entities from chunker output."""
+        """Create chunk entities from chunker output.
+
+        Preserves character positions (start_index, end_index) from chunker output
+        for span-based evaluation. This allows checking if retrieved chunks overlap
+        with labeled spans, independent of chunking strategy.
+        """
         chunk_entities: List[BaseEntity] = []
 
         for entity, chunks in zip(entities, chunk_lists, strict=True):
@@ -189,6 +194,10 @@ class QdrantChunkEmbedProcessor(ContentProcessor):
                 chunk_entity.entity_id = f"{original_id}__chunk_{idx}"
                 chunk_entity.airweave_system_metadata.chunk_index = idx
                 chunk_entity.airweave_system_metadata.original_entity_id = original_id
+
+                # Store character positions for span-based evaluation
+                chunk_entity.airweave_system_metadata.chunk_start_char = chunk.get("start_index")
+                chunk_entity.airweave_system_metadata.chunk_end_char = chunk.get("end_index")
 
                 chunk_entities.append(chunk_entity)
 

@@ -1,9 +1,12 @@
-"""Vespa destination implementation.
+"""Vespa destination implementation - chunk-as-document model.
 
-Vespa stores entities with pre-computed chunks and embeddings as arrays.
-The VespaChunkEmbedProcessor handles chunking and embedding externally,
-storing results in entity.vespa_content which this destination transforms
-to Vespa's tensor format.
+Like Qdrant, each chunk is a separate document in Vespa. The VespaChunkEmbedProcessor
+creates chunk entities with:
+- entity_id: "{original_id}__chunk_{idx}"
+- airweave_system_metadata.vectors[0]: 768-dim float embedding (for ranking)
+- airweave_system_metadata.packed_vectors: 96 int8 binary-packed (for ANN)
+
+This destination transforms those to Vespa's tensor format.
 
 IMPORTANT: pyvespa methods are synchronous and would block the event loop.
 All pyvespa calls are wrapped in asyncio.to_thread() to maintain concurrency.
@@ -15,7 +18,7 @@ import asyncio
 import json
 import time
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from urllib.parse import quote
 from uuid import UUID
 
@@ -102,11 +105,11 @@ def _get_schema_fields_for_entity(entity: BaseEntity) -> set[str]:
     supports_temporal_relevance=False,
 )
 class VespaDestination(VectorDBDestination):
-    """Vespa destination with external chunking and embedding.
+    """Vespa destination with chunk-as-document model (same as Qdrant).
 
-    Uses VespaChunkEmbedProcessor to chunk text and compute embeddings externally,
-    storing them in entity.vespa_content as arrays. This destination transforms
-    those arrays to Vespa's tensor format for efficient storage and retrieval.
+    Uses VespaChunkEmbedProcessor to create chunk entities, each with its own embeddings:
+    - airweave_system_metadata.vectors[0]: 768-dim float embedding
+    - airweave_system_metadata.packed_vectors: 96 int8 binary-packed for ANN
     """
 
     # Use VespaChunkEmbedProcessor for external chunking/embedding
@@ -202,7 +205,7 @@ class VespaDestination(VectorDBDestination):
         self._add_system_metadata_fields(fields, entity, entity_type)
         self._add_type_specific_fields(fields, entity)
         self._add_access_control_fields(fields, entity)
-        self._add_vespa_content_fields(fields, entity)  # Add chunks and embeddings
+        self._add_embedding_fields(fields, entity)  # Add embeddings for chunk documents
         self._add_payload_field(fields, entity)
 
         # Remove None values from top-level fields
@@ -266,6 +269,10 @@ class VespaDestination(VectorDBDestination):
             ("hash", "hash", None),
             ("original_entity_id", "original_entity_id", None),
             ("source_name", "source_name", None),
+            ("chunk_index", "chunk_index", None),  # For chunk-as-document model
+            # Character positions for span-based evaluation
+            ("chunk_start_char", "chunk_start_char", None),
+            ("chunk_end_char", "chunk_end_char", None),
         ]
 
         for attr, field_name, transform in attr_mappings:
@@ -317,64 +324,64 @@ class VespaDestination(VectorDBDestination):
             fields["access_is_public"] = True
             fields["access_viewers"] = []
 
-    def _add_vespa_content_fields(self, fields: dict[str, Any], entity: BaseEntity) -> None:
-        """Add pre-computed chunks and embeddings from VespaContent.
+    def _add_embedding_fields(self, fields: dict[str, Any], entity: BaseEntity) -> None:
+        """Add pre-computed embeddings from airweave_system_metadata.
 
-        VespaChunkEmbedProcessor populates entity.vespa_content with:
-        - chunks: List[str] - chunked text segments
-        - chunk_small_embeddings: List[List[int]] - binary-packed for ANN (96 int8)
-        - chunk_large_embeddings: List[List[float]] - full precision for ranking (768 dim)
+        VespaChunkEmbedProcessor populates each chunk entity with:
+        - airweave_system_metadata.vectors[0]: 768-dim float embedding (for ranking)
+        - airweave_system_metadata.packed_vectors: 96 int8 binary-packed (for ANN)
 
         This method transforms those to Vespa's tensor format.
 
         Args:
             fields: Fields dict to update
-            entity: The entity to extract vespa_content from
+            entity: The entity to extract embeddings from
         """
-        vc = entity.vespa_content
-        if vc is None:
+        meta = entity.airweave_system_metadata
+        if meta is None:
+            self.logger.warning(
+                f"[VespaDestination] Entity {entity.entity_id} has NO system metadata!"
+            )
             return
 
-        # Chunks array - direct assignment
-        if vc.chunks:
-            fields["chunks"] = vc.chunks
+        # DEBUG: Log what embeddings we have
+        has_vectors = meta.vectors is not None and len(meta.vectors) > 0
+        has_packed = meta.packed_vectors is not None
+        vectors_len = len(meta.vectors) if meta.vectors else 0
+        packed_len = len(meta.packed_vectors) if meta.packed_vectors else 0
+        self.logger.debug(
+            f"[VespaDestination] _add_embedding_fields for {entity.entity_id}: "
+            f"vecs={has_vectors}({vectors_len}), packed={has_packed}({packed_len})"
+        )
 
-        # Small embeddings - transform to Vespa tensor format (int8)
-        if vc.chunk_small_embeddings:
-            fields["chunk_small_embeddings"] = self._to_vespa_tensor(
-                vc.chunk_small_embeddings, indexed_dim=96
-            )
-
-        # Large embeddings - transform to Vespa tensor format (bfloat16)
-        if vc.chunk_large_embeddings:
-            fields["chunk_large_embeddings"] = self._to_vespa_tensor(
-                vc.chunk_large_embeddings, indexed_dim=768
-            )
-
-    def _to_vespa_tensor(self, embeddings: List[List[Union[int, float]]], indexed_dim: int) -> dict:
-        """Convert Python list of embeddings to Vespa tensor format.
-
-        Vespa expects tensors with mixed dimensions (mapped + indexed) in cell format:
-        {"cells": [{"address": {"chunk": "0", "x": "0"}, "value": v}, ...]}
-
-        For tensor<int8>(chunk{}, x[96]) or tensor<bfloat16>(chunk{}, x[768]):
-        - chunk{} is a mapped dimension (sparse, labeled)
-        - x[N] is an indexed dimension (dense, positional)
-
-        Args:
-            embeddings: List of embedding vectors (one per chunk)
-            indexed_dim: Expected dimension of each embedding
-
-        Returns:
-            Vespa tensor dict with cells format
-        """
-        cells = []
-        for chunk_idx, embedding in enumerate(embeddings):
-            for x_idx, value in enumerate(embedding):
-                cells.append(
-                    {"address": {"chunk": str(chunk_idx), "x": str(x_idx)}, "value": value}
+        # Large embedding for ranking - tensor<bfloat16>(x[768])
+        if meta.vectors and len(meta.vectors) > 0 and meta.vectors[0] is not None:
+            large_emb = meta.vectors[0]
+            if isinstance(large_emb, list) and len(large_emb) > 0:
+                fields["chunk_large_embedding"] = {"values": large_emb}
+                self.logger.debug(
+                    f"[VespaDestination] Added chunk_large_embedding with {len(large_emb)} dims"
                 )
-        return {"cells": cells}
+            else:
+                self.logger.warning(
+                    f"[VespaDestination] Entity {entity.entity_id}: "
+                    f"vectors[0] is not a list or empty: type={type(large_emb)}"
+                )
+        else:
+            self.logger.warning(
+                f"[VespaDestination] Entity {entity.entity_id}: "
+                f"No valid vectors - meta.vectors={meta.vectors is not None}, "
+                f"len={len(meta.vectors) if meta.vectors else 0}"
+            )
+
+        # Small embedding for ANN - tensor<int8>(x[96])
+        if meta.packed_vectors is not None:
+            fields["chunk_small_embedding"] = {"values": meta.packed_vectors}
+            self.logger.debug(
+                f"[VespaDestination] Added chunk_small_embedding: {len(meta.packed_vectors)} dims"
+            )
+        else:
+            self.logger.warning(f"[VespaDestination] Entity {entity.entity_id}: No packed_vectors!")
 
     def _add_payload_field(self, fields: dict[str, Any], entity: BaseEntity) -> None:
         """Extract extra fields into payload JSON."""
@@ -391,6 +398,16 @@ class VespaDestination(VectorDBDestination):
             try:
                 schema, vespa_doc = self._transform_entity(entity)
                 docs_by_schema[schema].append(vespa_doc)
+
+                # DEBUG: Log what fields are in the Vespa doc
+                doc_fields = vespa_doc.get("fields", {})
+                has_small = "chunk_small_embedding" in doc_fields
+                has_large = "chunk_large_embedding" in doc_fields
+                self.logger.debug(
+                    f"[VespaDestination] Transformed {entity.entity_id} → "
+                    f"has_small_emb={has_small}, has_large_emb={has_large}, "
+                    f"all_fields={list(doc_fields.keys())}"
+                )
             except Exception as e:
                 self.logger.error(f"Failed to transform entity {entity.entity_id}: {e}")
         return docs_by_schema
@@ -432,15 +449,10 @@ class VespaDestination(VectorDBDestination):
         total_docs = sum(len(docs) for docs in docs_by_schema.values())
         transform_ms = (time.perf_counter() - transform_start) * 1000
 
-        # Count total chunks being fed
-        total_chunks = 0
-        for entity in entities:
-            if entity.vespa_content and entity.vespa_content.chunks:
-                total_chunks += len(entity.vespa_content.chunks)
-
+        # In chunk-as-document model, each entity is a chunk
         self.logger.info(
-            f"[VespaDestination] Transform: {transform_ms:.1f}ms for {len(entities)} entities "
-            f"→ {total_docs} docs with {total_chunks} total chunks"
+            f"[VespaDestination] Transform: {transform_ms:.1f}ms "
+            f"for {len(entities)} chunks → {total_docs} docs"
         )
 
         if total_docs == 0:
@@ -892,10 +904,10 @@ class VespaDestination(VectorDBDestination):
             expanded queries from query expansion to participate in retrieval.
 
             Example YQL for 2 queries:
-                ({label:"q0", targetHits:400}nearestNeighbor(chunk_small_embeddings, q0) OR
-                 {label:"q1", targetHits:400}nearestNeighbor(chunk_small_embeddings, q1))
+                ({label:"q0", targetHits:400}nearestNeighbor(chunk_small_embedding, q0) OR
+                 {label:"q1", targetHits:400}nearestNeighbor(chunk_small_embedding, q1))
 
-            The rank profile's closeness(field, chunk_small_embeddings) automatically
+            The rank profile's closeness(field, chunk_small_embedding) automatically
             returns the maximum closeness across all operators. Labels (q0, q1, etc.)
             can be used with closeness(label, q0) for per-query similarity if needed.
 
@@ -916,7 +928,7 @@ class VespaDestination(VectorDBDestination):
             # Wrap in parens - required for YQL parsing after OR
             nn_parts.append(
                 f'({{label:"q{i}", targetHits:{self.TARGET_HITS}}}'
-                f"nearestNeighbor(chunk_small_embeddings, q{i}))"
+                f"nearestNeighbor(chunk_small_embedding, q{i}))"
             )
 
         # Combine all nearestNeighbor operators with OR
@@ -1339,12 +1351,25 @@ class VespaDestination(VectorDBDestination):
         for i, hit in enumerate(response.hits or []):
             fields = hit.get("fields", {})
 
-            # Debug: Log first few results with their field keys
-            if i < 3:
+            # Debug: Log first 5 results with their match features for ranking analysis
+            if i < 5:
+                entity_name = fields.get("name", "N/A")
+                entity_type = fields.get("airweave_system_metadata_entity_type", "N/A")
+
+                # Extract match-features (returned by hybrid-rrf profile)
+                match_features = hit.get("matchfeatures", {})
+                bm25_text = match_features.get("bm25(textual_representation)", 0)
+                bm25_payload = match_features.get("bm25(payload)", 0)
+                bm25_score = match_features.get("bm25_score", 0)
+                semantic_score = match_features.get("semantic_score", 0)
+                semantic_sim = match_features.get("semantic_similarity", 0)
+
                 self.logger.debug(
-                    f"[VespaSearch] Hit {i}: id={hit.get('id', 'N/A')}, "
-                    f"relevance={hit.get('relevance', 0.0):.4f}, "
-                    f"field_keys={list(fields.keys())[:15]}..."
+                    f"[VespaSearch] Hit {i}: name='{entity_name[:40]}' "
+                    f"type={entity_type} relevance={hit.get('relevance', 0.0):.4f}\n"
+                    f"    Match features: bm25_text={bm25_text:.3f}, "
+                    f"bm25_payload={bm25_payload:.3f}, bm25_total={bm25_score:.3f}, "
+                    f"semantic_score={semantic_score:.4f}, semantic_sim={semantic_sim:.4f}"
                 )
 
             # Just use all fields as payload, extracting id and score
@@ -1358,7 +1383,7 @@ class VespaDestination(VectorDBDestination):
         # Summary log
         if results:
             first_payload = results[0].payload
-            self.logger.info(
+            self.logger.debug(
                 f"[VespaSearch] Result sample - Available fields: {list(first_payload.keys())}"
             )
 
@@ -1370,7 +1395,7 @@ class VespaDestination(VectorDBDestination):
         Returns:
             List of vector field names configured in Vespa schema
         """
-        return ["chunk_small_embeddings", "chunk_large_embeddings"]
+        return ["chunk_small_embedding", "chunk_large_embedding"]
 
     async def close_connection(self) -> None:
         """Close the Vespa connection."""

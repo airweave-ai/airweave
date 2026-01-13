@@ -78,7 +78,10 @@ class DispatcherBuilder:
 
             for dest in destinations:
                 requirement = dest.processing_requirement
-                if requirement == ProcessingRequirement.CHUNKS_AND_EMBEDDINGS:
+                if requirement in (
+                    ProcessingRequirement.CHUNKS_AND_EMBEDDINGS,
+                    ProcessingRequirement.VESPA_CHUNKS_AND_EMBEDDINGS,
+                ):
                     vector_db_destinations.append(dest)
                 elif requirement == ProcessingRequirement.RAW:
                     # Self-processing destinations don't need VectorDBHandler
