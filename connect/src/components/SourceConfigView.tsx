@@ -239,9 +239,10 @@ export function SourceConfigView({
 
   const showDirectAuthFields =
     effectiveAuthMethod === "direct" &&
-    sourceDetails?.auth_fields?.fields?.length;
+    (sourceDetails?.auth_fields?.fields?.length ?? 0) > 0;
 
-  const showConfigFields = sourceDetails?.config_fields?.fields?.length;
+  const showConfigFields =
+    (sourceDetails?.config_fields?.fields?.length ?? 0) > 0;
 
   const showOAuthSection =
     effectiveAuthMethod === "oauth_browser" &&
