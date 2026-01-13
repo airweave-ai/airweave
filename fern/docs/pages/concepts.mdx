@@ -6,45 +6,77 @@ slug: concepts
 
 Airweave connects to your apps, databases, and documents, then turns them into knowledge you can search. To understand how it works, you only need a few core concepts.
 
+
 ## <Icon icon="fa-solid fa-database" size="5" color="#4199D3" /> Source
 
-A **Source** is a specific application, database, or workspace that Airweave has a connector for. Sources are the external systems where your data lives.
+A **Source** is an external application, database, or document store where your data lives. Sources are the systems Airweave pulls data from to build your retrieval layer.
 
-**Examples:** Zendesk, GitHub, Google Drive, Notion, PostgreSQL, Stripe
+Sources can be:
+- **Productivity tools**: Notion, Slack, Asana, Jira, Confluence
+- **Cloud storage**: Google Drive, Dropbox, OneDrive, SharePoint
+- **CRMs and sales tools**: Salesforce, HubSpot, Pipedrive
+- **Databases**: PostgreSQL
+- **Developer tools**: GitHub, GitLab, Bitbucket
+
+Each source type has its own data structures, authentication methods, and API patterns. Airweave abstracts these differences so your agents can query across all of them through a single interface.
 
 ## <Icon icon="fa-solid fa-plug" size="5" color="#4199D3"/> Connector
 
-A **Connector** is the integration that Airweave provides for a source. It defines what data types can be synced, how authentication works, and the specific entities that can be extracted.
+A **Connector** is the integration code that allows Airweave to communicate with a specific source. Each connector handles:
 
-**Examples:**
-- Zendesk connector (for tickets, users, organizations)
-- GitHub connector (for repositories, issues, pull requests)
-- Google Drive connector (for documents, folders, comments)
+- **Authentication**: OAuth flows, API keys, or database credentials depending on the source
+- **Data extraction**: Fetching records, documents, or rows from the source API
+- **Entity mapping**: Transforming source-specific data structures into Airweave's unified entity format
+- **Incremental sync**: Tracking changes so only new or modified data is re-synced
+
+Connectors are designed to be reliable and efficient. They handle rate limits, pagination, and API quirks so you don't have to build custom ingestion logic for each data source.
+
+For more information on the connectors supported and how they work, see the [Connectors overview](/connectors/overview).
 
 ## <Icon icon="fa-solid fa-link" size="5" color="#4199D3"/> Source Connection
 
-A **Source Connection** is a live connection created from a connector between Airweave and a specific source using your credentials. In that sense, each connection represents an authenticated and synced instance of connection between Airweave and a source.
+A **Source Connection** is a configured, authenticated instance of a connector linked to your specific account or workspace. While a connector defines *how* to integrate with a source, a source connection is the *actual* live connection using your credentials.
 
-**Examples:**
-- A live connection between Airweave and a Zendesk workspace
-- A live connection between Airweave and a specific GitHub repository
+When you create a source connection, you:
+1. Select a connector (e.g., Slack)
+2. Authenticate with your credentials (e.g., OAuth login to your Slack workspace)
+3. Assign it to a collection
+
+Once created, Airweave continuously syncs data from that source connection, keeping your retrieval layer fresh and up-to-date. You can have multiple source connections of the same type (e.g., connecting to several different Slack workspaces).
 
 ## <Icon icon="fa-solid fa-file-alt" size="5" color="#4199D3" /> Entity
 
-An **Entity** is an individual data item pulled from a source. These are the actual pieces of data that get synced and made searchable.
+An **Entity** is a single, searchable item extracted from a source. Entities are the atomic units of data that get indexed and returned in search results.
 
-**Examples:**
-- A Zendesk ticket or message
-- A GitHub issue or pull request
+Examples of entities:
+- A Slack message or thread
+- A Notion page or database row
+- A GitHub issue, pull request, or code file
 - A Google Doc or spreadsheet
-- A database table row
+- A Zendesk ticket or customer conversation
+- A row from a PostgreSQL table
+
+Each entity is processed through Airweave's pipeline:
+1. **Extracted** from the source via its connector
+2. **Transformed** into a standardized format with metadata
+3. **Chunked** if the content is long (for better retrieval accuracy)
+4. **Embedded** using vector embeddings for semantic search
+5. **Indexed** and stored in the retrieval layer
+
+When an AI agent queries Airweave, it searches across these entities and receives results optimized for LLM consumption, with source attribution and links back to the original content.
 
 ## <Icon icon="fa-solid fa-layer-group" size="5" color="#4199D3"/> Collection
 
-A **Collection** is a searchable knowledge base made up of synced data from one or more source connections. When you search a collection, queries run across all entities from all its connected sources.
+A **Collection** is a searchable knowledge base composed of entities from one or more source connections. Collections are what your AI agents actually query.
 
-**Key features:**
-- Unified search interface across multiple sources
-- Vector embeddings for semantic search
-- Real-time data synchronization
-- Configurable search parameters and filters
+A single collection might include:
+- Slack messages from your team workspace
+- Documentation from Notion
+- Issues and PRs from GitHub
+- Customer data from Salesforce
+
+When an agent searches a collection, the query runs across all entities from all connected sources, returning the most relevant results regardless of where the data originally came from. This is what makes Airweave a *unified* retrieval layer.
+
+Collections can be queried via the REST API, SDKs, or MCP, making them accessible to any AI agent, RAG pipeline, or application that needs grounded, up-to-date context.
+
+To learn more about querying collections, including semantic search, hybrid search, filtering, and reranking, see the [Search](/search) documentation.

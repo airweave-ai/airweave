@@ -511,12 +511,12 @@ class OutlookMailSource(BaseSource):
         to_recipients = [
             r.get("emailAddress", {}).get("address")
             for r in message_data.get("toRecipients", [])
-            if r.get("emailAddress")
+            if r.get("emailAddress") and r.get("emailAddress", {}).get("address")
         ]
         cc_recipients = [
             r.get("emailAddress", {}).get("address")
             for r in message_data.get("ccRecipients", [])
-            if r.get("emailAddress")
+            if r.get("emailAddress") and r.get("emailAddress", {}).get("address")
         ]
 
         # Parse dates

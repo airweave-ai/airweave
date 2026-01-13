@@ -92,7 +92,7 @@ cd airweave
 
 <!-- END_APP_GRID -->
 
-<p align="center"><a href="https://docs.airweave.ai/connectors"><img src="https://img.shields.io/badge/View_all_integrations-0066FF" alt="View all integrations"></a></p>
+<p align="center"><a href="https://docs.airweave.ai/connectors/overview"><img src="https://img.shields.io/badge/View_all_integrations-0066FF" alt="View all integrations"></a></p>
 
 ## SDKs
 

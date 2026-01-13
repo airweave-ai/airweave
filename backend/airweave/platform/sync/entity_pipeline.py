@@ -238,6 +238,9 @@ class EntityPipeline:
                 f"All {len(batch.keeps)} entities unchanged - skipping pipeline"
             )
 
+            # Progressive cleanup: delete temp files for KEEP entities
+            await self._cleanup_temp_files_for_batch(batch, sync_context)
+
     # -------------------------------------------------------------------------
     # Phase 6: Update Entity Tracker
     # -------------------------------------------------------------------------
@@ -343,6 +346,7 @@ class EntityPipeline:
         partitions = {
             "inserts": [a.entity for a in batch.inserts],
             "updates": [a.entity for a in batch.updates],
+            "keeps": [a.entity for a in batch.keeps],
         }
         await cleanup_service.cleanup_processed_files(partitions, sync_context)
 

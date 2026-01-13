@@ -24,6 +24,7 @@ class AuthenticationMethod(str, Enum):
     OAUTH_TOKEN = "oauth_token"
     OAUTH_BYOC = "oauth_byoc"
     AUTH_PROVIDER = "auth_provider"
+    IAM_ROLE = "iam_role"
 
 
 class OAuthType(str, Enum):

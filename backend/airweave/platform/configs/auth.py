@@ -731,55 +731,52 @@ class PipedreamAuthConfig(AuthConfig):
 
 
 class S3AuthConfig(AuthConfig):
-    """S3-compatible storage authentication configuration.
+    """S3 destination using cross-account IAM role assumption.
 
-    Supports AWS S3, MinIO, LocalStack, Cloudflare R2, or any S3 API-compatible service.
-    Used for dual-destination syncing (Qdrant + S3) for event streaming.
+    Uses AWS STS AssumeRole to obtain temporary credentials for writing to
+    customer S3 buckets without requiring long-lived access keys.
     """
 
-    aws_access_key_id: str = Field(
-        title="Access Key ID",
-        description="S3 access key ID (AWS_ACCESS_KEY_ID)",
+    # Cross-account role assumption
+    role_arn: str = Field(
+        title="IAM Role ARN",
+        description="ARN of the IAM role to assume in customer's AWS account "
+        "(e.g., arn:aws:iam::123456789012:role/airweave-writer)",
     )
-    aws_secret_access_key: str = Field(
-        title="Secret Access Key",
-        description="S3 secret access key (AWS_SECRET_ACCESS_KEY)",
+    external_id: str = Field(
+        title="External ID",
+        description="External ID for secure cross-account access (provided by customer)",
     )
+
+    # Bucket configuration
     bucket_name: str = Field(
         title="Bucket Name",
         description="S3 bucket name where data will be written",
     )
     bucket_prefix: str = Field(
-        default="airweave-outbound/",
+        default="airweave/",
         title="Bucket Prefix",
-        description="Prefix for all Airweave data in the bucket (e.g., 'airweave-outbound/')",
+        description="Prefix for all Airweave data in the bucket",
     )
     aws_region: str = Field(
         default="us-east-1",
         title="AWS Region",
-        description="AWS region (or dummy value for non-AWS S3 services)",
-    )
-    endpoint_url: Optional[str] = Field(
-        default=None,
-        title="Custom Endpoint URL",
-        description="Custom S3 endpoint URL (for MinIO, LocalStack, etc.). Leave empty for AWS S3.",
-    )
-    use_ssl: bool = Field(
-        default=True,
-        title="Use SSL",
-        description="Use SSL/TLS for S3 connections",
+        description="AWS region where the S3 bucket is located",
     )
 
     @model_validator(mode="after")
-    def validate_credentials(self):
-        """Ensure required credentials are provided."""
-        # Strip whitespace from all credential fields
-        self.aws_access_key_id = self.aws_access_key_id.strip()
-        self.aws_secret_access_key = self.aws_secret_access_key.strip()
+    def validate_config(self):
+        """Ensure required fields are provided."""
+        self.role_arn = self.role_arn.strip()
+        self.external_id = self.external_id.strip()
         self.bucket_name = self.bucket_name.strip()
 
-        if not self.aws_access_key_id or not self.aws_secret_access_key:
-            raise ValueError("S3 requires aws_access_key_id and aws_secret_access_key")
+        if not self.role_arn:
+            raise ValueError("S3 requires role_arn")
+        if not self.role_arn.startswith("arn:aws:iam::"):
+            raise ValueError("role_arn must be a valid AWS IAM role ARN")
+        if not self.external_id:
+            raise ValueError("S3 requires external_id for secure cross-account access")
         if not self.bucket_name:
             raise ValueError("S3 requires bucket_name")
         return self

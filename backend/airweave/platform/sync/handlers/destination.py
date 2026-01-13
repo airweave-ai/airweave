@@ -235,12 +235,16 @@ class DestinationHandler(EntityActionHandler):
                 if attempt < max_retries:
                     wait = 2 * (2**attempt)
                     sync_context.logger.warning(
-                        f"[{self.name}] {operation_name} failed (attempt {attempt + 1}): {e}. "
-                        f"Retrying in {wait}s..."
+                        f"[{self.name}] {operation_name} failed (attempt {attempt + 1}): "
+                        f"{type(e).__name__}: {e}. Retrying in {wait}s..."
                     )
                     await asyncio.sleep(wait)
                 else:
-                    raise SyncFailureError(f"Destination unavailable: {e}") from e
+                    raise SyncFailureError(
+                        f"Destination unavailable: {type(e).__name__}: {e}"
+                    ) from e
             except Exception as e:
-                sync_context.logger.error(f"[{self.name}] {operation_name} failed: {e}")
-                raise SyncFailureError(f"Destination failed: {e}") from e
+                sync_context.logger.error(
+                    f"[{self.name}] {operation_name} failed: {type(e).__name__}: {e}"
+                )
+                raise SyncFailureError(f"Destination failed: {type(e).__name__}: {e}") from e
