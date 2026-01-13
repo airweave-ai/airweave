@@ -75,7 +75,7 @@ class SourceConnectionHelpers:
 
         # Write to both Qdrant and Vespa by default
         # TODO: Remove Qdrant once we Vespa is fully supported
-        destination_ids = [NATIVE_VESPA_UUID]
+        destination_ids = [NATIVE_VESPA_UUID, NATIVE_QDRANT_UUID]
 
         # Add S3 if feature flag enabled
         if ctx.has_feature(FeatureFlag.S3_DESTINATION):
