@@ -9,12 +9,14 @@ import {
   Square,
 } from "lucide-react";
 import { useCallback, useState } from "react";
-
-interface FolderNode {
-  id: string;
-  name: string;
-  children?: FolderNode[];
-}
+import {
+  getAllDescendantIds,
+  getAllFolderIds,
+  getRootSelectionState,
+  getSelectionState,
+  type FolderNode,
+  type SelectionState,
+} from "../lib/folder-utils";
 
 const DEMO_FOLDERS: FolderNode[] = [
   {
@@ -42,35 +44,6 @@ const DEMO_FOLDERS: FolderNode[] = [
   },
 ];
 
-function getAllDescendantIds(folder: FolderNode): string[] {
-  const ids = [folder.id];
-  if (folder.children) {
-    for (const child of folder.children) {
-      ids.push(...getAllDescendantIds(child));
-    }
-  }
-  return ids;
-}
-
-function getAllFolderIds(folders: FolderNode[]): string[] {
-  const ids: string[] = [];
-  for (const folder of folders) {
-    ids.push(...getAllDescendantIds(folder));
-  }
-  return ids;
-}
-
-type SelectionState = "all" | "some" | "none";
-
-function getSelectionState(folder: FolderNode, selectedIds: string[]): SelectionState {
-  const descendantIds = getAllDescendantIds(folder);
-  const selectedCount = descendantIds.filter((id) => selectedIds.includes(id)).length;
-
-  if (selectedCount === 0) return "none";
-  if (selectedCount === descendantIds.length) return "all";
-  return "some";
-}
-
 function SelectionCheckIcon({
   state,
   size,
@@ -96,7 +69,9 @@ function getButtonStyle(isSelected: boolean) {
 
 function getCheckIconStyle(isHighlighted: boolean) {
   return {
-    color: isHighlighted ? "var(--connect-primary)" : "var(--connect-text-muted)",
+    color: isHighlighted
+      ? "var(--connect-primary)"
+      : "var(--connect-text-muted)",
   };
 }
 
@@ -162,7 +137,10 @@ function FolderItem({
         type="button"
         onClick={handleClick}
         className="flex items-center gap-2 w-full px-2 py-1.5 rounded text-sm transition-colors"
-        style={{ paddingLeft: `${depth * 16 + 8 + chevronSpace}px`, ...buttonStyle }}
+        style={{
+          paddingLeft: `${depth * 16 + 8 + chevronSpace}px`,
+          ...buttonStyle,
+        }}
       >
         <FolderButtonContent
           name={folder.name}
@@ -215,25 +193,15 @@ function FolderItem({
   );
 }
 
-function getRootSelectionState(
-  allFolderIds: string[],
-  selectedFolderIds: string[],
-): SelectionState {
-  const selectedCount = allFolderIds.filter((id) =>
-    selectedFolderIds.includes(id),
-  ).length;
-
-  if (selectedCount === 0) return "none";
-  if (selectedCount === allFolderIds.length && allFolderIds.length > 0) return "all";
-  return "some";
-}
-
 export function FolderTree({
   selectedFolderIds,
   onSelectionChange,
 }: FolderTreeProps) {
   const allFolderIds = getAllFolderIds(DEMO_FOLDERS);
-  const rootSelectionState = getRootSelectionState(allFolderIds, selectedFolderIds);
+  const rootSelectionState = getRootSelectionState(
+    allFolderIds,
+    selectedFolderIds,
+  );
   const isRootSelected = rootSelectionState === "all";
 
   const handleToggleFolder = useCallback(

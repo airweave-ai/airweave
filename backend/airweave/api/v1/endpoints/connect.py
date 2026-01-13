@@ -207,7 +207,9 @@ async def _build_source_schema(
 
         return schemas.Source.model_validate(source_dict)
 
-    except Exception:
+    except Exception as e:
+        # Unexpected error - log for investigation
+        ctx.logger.error(f"Unexpected error building source schema for {source.short_name}: {e}")
         return None
 
 
