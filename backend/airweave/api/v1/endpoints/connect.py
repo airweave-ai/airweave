@@ -574,7 +574,7 @@ async def create_source_connection(
             )
             raise HTTPException(
                 status_code=403,
-                detail=f"Source '{source_connection_in.short_name}' is not allowed for this session",
+                detail=f"Source '{source_connection_in.short_name}' not allowed for this session",
             )
 
     # SECURITY: Override collection_id from session (ignore request body)
@@ -600,8 +600,8 @@ async def create_source_connection(
         "collection_id": session.collection_id,
         "end_user_id": session.end_user_id,
     }
-    setattr(source_connection_in, "_connect_session_token", session_token)
-    setattr(source_connection_in, "_connect_session_context", connect_context)
+    source_connection_in._connect_session_token = session_token  # noqa: SLF001
+    source_connection_in._connect_session_context = connect_context  # noqa: SLF001
 
     # Create the connection
     result = await source_connection_service.create(
@@ -688,7 +688,7 @@ async def get_connection_jobs(
 
 
 @router.get("/source-connections/{connection_id}/subscribe")
-async def subscribe_to_connection_sync(
+async def subscribe_to_connection_sync(  # noqa: C901 - SSE streaming complexity
     connection_id: UUID,
     db: AsyncSession = Depends(get_db),
     session: ConnectSessionContext = Depends(deps.get_connect_session),
