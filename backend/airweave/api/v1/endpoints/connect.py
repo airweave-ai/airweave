@@ -648,7 +648,9 @@ async def get_connection_jobs(
     jobs = await crud.sync_job.get_all_by_sync_id(db, sync_id=connection.sync_id)
 
     # Convert SyncJob model to schema, then to SourceConnectionJob
-    return [schemas.SyncJob.model_validate(job).to_source_connection_job(connection_id) for job in jobs]
+    return [
+        schemas.SyncJob.model_validate(job).to_source_connection_job(connection_id) for job in jobs
+    ]
 
 
 @router.get("/source-connections/{connection_id}/subscribe")
