@@ -236,10 +236,9 @@ class Reranking(SearchOperation):
         return documents, top_n
 
     def _prepare_documents(self, results: List[dict], ctx: ApiContext) -> List[str]:
-        """Extract textual_representation from result payloads.
+        """Extract text content from result payloads for reranking.
 
-        textual_representation already contains formatted content from entity_pipeline.py,
-        so we use it directly without building document strings.
+        In chunk-as-document model, each document's textual_representation IS the chunk text.
 
         For backward compatibility with old entities, falls back to embeddable_text and
         other legacy fields if textual_representation is missing.
@@ -252,7 +251,7 @@ class Reranking(SearchOperation):
             if not isinstance(payload, dict):
                 payload = {}
 
-            # Try new field first (present in all newly synced entities)
+            # textual_representation is the chunk text (in chunk-as-document model)
             doc = payload.get("textual_representation", "").strip()
 
             # Fallback to legacy fields for old entities (pre-refactor)
