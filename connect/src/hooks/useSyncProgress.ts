@@ -16,6 +16,23 @@ interface UseSyncProgressReturn {
   cleanup: () => void;
 }
 
+function removeSubscription(
+  connectionId: string,
+  unsubscribeFnsRef: React.MutableRefObject<Map<string, () => void>>,
+  setSubscriptions: React.Dispatch<
+    React.SetStateAction<Map<string, SyncSubscription>>
+  >,
+) {
+  unsubscribeFnsRef.current.get(connectionId)?.();
+  unsubscribeFnsRef.current.delete(connectionId);
+  setSubscriptions((prev) => {
+    if (!prev.has(connectionId)) return prev;
+    const next = new Map(prev);
+    next.delete(connectionId);
+    return next;
+  });
+}
+
 export function useSyncProgress(
   options?: UseSyncProgressOptions,
 ): UseSyncProgressReturn {
@@ -125,26 +142,13 @@ export function useSyncProgress(
           onCompleteRef.current?.(connectionId, update);
 
           setTimeout(() => {
-            unsubscribeFnsRef.current.get(connectionId)?.();
-            unsubscribeFnsRef.current.delete(connectionId);
-            setSubscriptions((prev) => {
-              const next = new Map(prev);
-              next.delete(connectionId);
-              return next;
-            });
+            removeSubscription(connectionId, unsubscribeFnsRef, setSubscriptions);
           }, 2000);
         },
         onError: (error) => {
           console.error(`SSE error for ${connectionId}:`, error);
           onErrorRef.current?.(connectionId, error);
-
-          unsubscribeFnsRef.current.get(connectionId)?.();
-          unsubscribeFnsRef.current.delete(connectionId);
-          setSubscriptions((prev) => {
-            const next = new Map(prev);
-            next.delete(connectionId);
-            return next;
-          });
+          removeSubscription(connectionId, unsubscribeFnsRef, setSubscriptions);
         },
       });
 
@@ -159,18 +163,7 @@ export function useSyncProgress(
   }, []);
 
   const unsubscribe = useCallback((connectionId: string) => {
-    const unsubscribeFn = unsubscribeFnsRef.current.get(connectionId);
-    if (unsubscribeFn) {
-      unsubscribeFn();
-      unsubscribeFnsRef.current.delete(connectionId);
-    }
-
-    setSubscriptions((prev) => {
-      if (!prev.has(connectionId)) return prev;
-      const next = new Map(prev);
-      next.delete(connectionId);
-      return next;
-    });
+    removeSubscription(connectionId, unsubscribeFnsRef, setSubscriptions);
   }, []);
 
   const getProgress = useCallback(

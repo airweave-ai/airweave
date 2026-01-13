@@ -63,7 +63,7 @@ This document tracks the implementation of real-time sync status updates in the 
 
 ### Testing
 
-- [ ] Unit tests for `useSyncProgress` hook
+- [x] Unit tests for `useSyncProgress` hook
 - [x] Unit tests for `SyncProgressIndicator` component
 - [ ] Integration tests for SSE subscription flow
 - [ ] E2E test for complete sync progress flow

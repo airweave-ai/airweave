@@ -2,29 +2,15 @@
 
 ## Current Status
 
-The real-time sync status feature is **mostly complete**. The core implementation is working:
+The real-time sync status feature is **mostly complete**. Unit tests are now comprehensive:
 - SSE subscription from frontend to backend
 - Progress updates displayed in the UI
 - Auto-subscription for syncing connections
-- Test infrastructure set up with Vitest + jsdom
+- Full test coverage for both `useSyncProgress` hook and `SyncProgressIndicator` component
 
 ## Next Tasks to Pick Up
 
-### 1. Add Unit Tests for useSyncProgress Hook (Priority: High)
-
-`SyncProgressIndicator` tests done. Still need tests for:
-
-```bash
-src/hooks/useSyncProgress.test.ts
-```
-
-Key scenarios:
-- Hook subscribes to connection when called
-- Hook cleans up subscriptions on unmount
-- Completion callback triggered correctly
-- Error callback triggered on SSE failure
-
-### 2. SSE Reconnection Logic (Priority: Medium)
+### 1. SSE Reconnection Logic (Priority: High)
 
 Currently if SSE drops, there's no explicit reconnection. `fetch-event-source` doesn't auto-retry like native EventSource. Consider:
 - Adding exponential backoff retry
@@ -32,13 +18,21 @@ Currently if SSE drops, there's no explicit reconnection. `fetch-event-source` d
 
 Location: `src/lib/api.ts` in `subscribeToSyncProgress()`
 
-### 3. Failed Sync UI State (Priority: Medium)
+### 2. Failed Sync UI State (Priority: Medium)
 
 When `is_failed: true` arrives, we update state but don't have distinct UI. Consider:
 - Red progress bar or error icon
 - Show error message from SSE payload
 
 Location: `src/components/SyncProgressIndicator.tsx`
+
+### 3. Integration Tests for SSE Flow (Priority: Low)
+
+Would require mocking SSE at a higher level or using MSW (Mock Service Worker).
+
+### 4. E2E Tests (Priority: Low)
+
+Would require full backend running. Consider Playwright or Cypress.
 
 ## Test Setup
 
@@ -47,17 +41,12 @@ Tests run with: `npm run test`
 Key files:
 - `vitest.config.ts` - jsdom environment, globals enabled
 - `vitest.setup.ts` - jest-dom matchers
+- `src/hooks/useSyncProgress.test.ts` - 22 tests for the hook
+- `src/components/SyncProgressIndicator.test.tsx` - 8 tests for the UI
 
 ## How to Test Manually
 
 1. Start backend: `cd backend && ./scripts/dev.sh`
 2. Start connect: `cd connect && npm run dev`
-3. Open test harness: `http://localhost:5173/examples/` (note: port changed)
+3. Open test harness: `http://localhost:5173/examples/`
 4. Connect a source (e.g., Slack) and watch the sync progress
-
-## Relevant Commits
-
-- `959e3287` - Improve SSE subscription timing
-- `8d774a1a` - Wire up SSE sync progress in SuccessScreen
-- `a53d84ef` - Add SyncProgressIndicator component
-- `cf8b5e39` - Add SSE endpoints for real-time sync progress
