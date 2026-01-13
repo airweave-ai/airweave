@@ -559,18 +559,19 @@ async def create_source_connection(
     )
 
     # For OAuth flows, attach session context for callback validation
-    # Extract token from Authorization header
-    session_token = authorization[7:] if authorization.startswith("Bearer ") else authorization
+    # Extract token using shared utility
+    session_token = deps.extract_bearer_token(authorization)
 
     # Attach connect session data for OAuth callback validation
-    # These are temporary attributes that will be read by create_init_session
-    source_connection_in._connect_session_token = session_token
-    source_connection_in._connect_session_context = {
+    # Note: These temporary attributes are consumed by create_init_session for OAuth flows
+    connect_context = {
         "session_id": str(session.session_id),
         "organization_id": str(session.organization_id),
         "collection_id": session.collection_id,
         "end_user_id": session.end_user_id,
     }
+    setattr(source_connection_in, "_connect_session_token", session_token)
+    setattr(source_connection_in, "_connect_session_context", connect_context)
 
     # Create the connection
     result = await source_connection_service.create(

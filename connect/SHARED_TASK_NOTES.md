@@ -1,43 +1,29 @@
-# Shared Task Notes - Real-Time Sync Status
+# Connect API Code Review Fixes - Progress Notes
 
-## Current Status
+## Completed This Iteration (Jan 13, 2026)
 
-The real-time sync status feature is **mostly complete**. All unit tests pass (37 tests).
+Implemented Fixes 1, 2, and 3:
 
-## What Was Just Done
+1. **Fix 2**: Added `extract_bearer_token()` utility function to `backend/airweave/api/deps.py:583-597`
+2. **Fix 1**: Added KeyError/ValueError handling around ConnectSessionContext creation in `deps.py:637-648`
+3. **Fix 3**: Updated `connect.py:561-574` to use the new utility and explicit `setattr()` for Pydantic attributes
 
-Added SSE reconnection logic with exponential backoff:
-- `api.ts`: `subscribeToSyncProgress()` now retries on connection errors (max 5 attempts, 1s/2s/4s/8s/16s delays)
-- Won't retry on 4xx client errors or after sync completes
-- Calls `onReconnecting(attempt)` callback to notify UI of retry attempts
-- `useSyncProgress` hook: Added `isReconnecting()` method and tracks `reconnectAttempt` in subscription state
-- `SyncProgressIndicator`: Shows "Reconnecting..." with pulsing WifiOff icon when reconnecting
-- Added 7 new tests covering reconnection states
+## Next Up
 
-## Next Tasks to Pick Up
+Continue with Fix 4 (mode checking centralization) - this is the next item in the implementation order.
 
-### 1. Integration Tests for SSE Flow (Priority: Low)
+Key locations:
+- Mode check helper should go near top of `connect.py` after imports
+- Update these endpoints to use the new helper:
+  - `list_source_connections`
+  - `get_source_connection`
+  - `delete_source_connection`
+  - `create_source_connection`
 
-Would require mocking SSE at a higher level or using MSW (Mock Service Worker).
+## Testing
 
-### 2. E2E Tests (Priority: Low)
+Could not run pytest directly (missing virtual environment setup). Verified Python syntax is valid for both modified files. Full testing should be done when the project environment is properly set up:
 
-Would require full backend running. Consider Playwright or Cypress.
-
-## Test Setup
-
-Tests run with: `npm run test`
-
-Key files:
-- `vitest.config.ts` - jsdom environment, globals enabled
-- `vitest.setup.ts` - jest-dom matchers
-- `src/hooks/useSyncProgress.test.ts` - 26 tests for the hook
-- `src/components/SyncProgressIndicator.test.tsx` - 11 tests for the UI
-
-## How to Test Manually
-
-1. Start backend: `cd backend && ./scripts/dev.sh`
-2. Start connect: `cd connect && npm run dev`
-3. Open test harness: `http://localhost:5173/examples/`
-4. Connect a source (e.g., Slack) and watch the sync progress
-5. To test reconnection: Kill/restart the backend during a sync
+```bash
+pytest backend/tests/e2e/smoke/test_connect_sessions.py -v
+```

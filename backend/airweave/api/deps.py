@@ -580,6 +580,23 @@ def _extract_headers_from_request(request: Request) -> RequestHeaders:
     )
 
 
+def extract_bearer_token(authorization: str) -> str:
+    """Extract token from Bearer authorization header.
+
+    Args:
+        authorization: Authorization header value (e.g., "Bearer <token>")
+
+    Returns:
+        The extracted token string
+
+    Raises:
+        HTTPException: If authorization header doesn't start with "Bearer "
+    """
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid authorization header format")
+    return authorization[7:]
+
+
 async def get_connect_session(
     authorization: str = Header(..., alias="Authorization"),
 ) -> schemas.ConnectSessionContext:
@@ -602,10 +619,7 @@ async def get_connect_session(
     from airweave.platform.auth.state import verify_state
     from airweave.schemas.connect_session import ConnectSessionContext, ConnectSessionMode
 
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Invalid authorization header format")
-
-    token = authorization[7:]
+    token = extract_bearer_token(authorization)
 
     try:
         # verify_state checks signature and expiration (default 10 min)
@@ -620,12 +634,15 @@ async def get_connect_session(
     except ValueError:
         mode = ConnectSessionMode.ALL
 
-    return ConnectSessionContext(
-        session_id=uuid.UUID(payload["sid"]),
-        organization_id=uuid.UUID(payload["oid"]),
-        collection_id=payload["cid"],
-        allowed_integrations=payload.get("int"),
-        mode=mode,
-        end_user_id=payload.get("uid"),
-        expires_at=datetime.fromtimestamp(payload["ts"] + 600, tz=timezone.utc),
-    )
+    try:
+        return ConnectSessionContext(
+            session_id=uuid.UUID(payload["sid"]),
+            organization_id=uuid.UUID(payload["oid"]),
+            collection_id=payload["cid"],
+            allowed_integrations=payload.get("int"),
+            mode=mode,
+            end_user_id=payload.get("uid"),
+            expires_at=datetime.fromtimestamp(payload["ts"] + 600, tz=timezone.utc),
+        )
+    except (KeyError, ValueError) as e:
+        raise HTTPException(status_code=401, detail="Invalid session token payload") from e

@@ -58,20 +58,14 @@ function InfoItem({ icon: Icon, text }: { icon: LucideIcon; text: string }) {
 
 function ConnectionDots() {
   return (
-    <div className="flex gap-1">
+    <div className="flex gap-1 opacity-50">
       <div
         className="size-1.5 rounded-full"
-        style={{
-          backgroundColor: "var(--connect-text-muted)",
-          opacity: 0.5,
-        }}
+        style={{ backgroundColor: "var(--connect-text-muted)" }}
       />
       <div
         className="size-1.5 rounded-full"
-        style={{
-          backgroundColor: "var(--connect-text-muted)",
-          opacity: 0.5,
-        }}
+        style={{ backgroundColor: "var(--connect-text-muted)" }}
       />
     </div>
   );
