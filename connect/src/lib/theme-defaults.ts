@@ -7,6 +7,7 @@ export const defaultDarkColors: Required<ThemeColors> = {
   text: "#ffffff",
   textMuted: "#9ca3af",
   primary: "#06b6d4",
+  primaryForeground: "#ffffff",
   primaryHover: "#0891b2",
   secondary: "#334155",
   secondaryHover: "#475569",
@@ -21,6 +22,7 @@ export const defaultLightColors: Required<ThemeColors> = {
   text: "#111827",
   textMuted: "#6b7280",
   primary: "#0891b2",
+  primaryForeground: "#ffffff",
   primaryHover: "#0e7490",
   secondary: "#e5e7eb",
   secondaryHover: "#d1d5db",
@@ -140,6 +142,11 @@ export const defaultLabels: Required<ConnectLabels> = {
     "Your credentials are encrypted and your data is securely stored.",
   welcomeInfoAccess:
     "You control which apps to connect and can disconnect anytime.",
+
+  // Folder selection
+  folderSelectionHeading: "Select folders to sync",
+  folderSelectionStartSync: "Start sync",
+  folderSelectionCount: "{count} folders",
 };
 
 // Default options

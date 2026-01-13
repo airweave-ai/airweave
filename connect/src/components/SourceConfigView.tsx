@@ -18,7 +18,6 @@ import { DynamicFormField } from "./DynamicFormField";
 import { LoadingScreen } from "./LoadingScreen";
 import { OAuthStatusUI } from "./OAuthStatusUI";
 import { PageLayout } from "./PageLayout";
-import { PoweredByAirweave } from "./PoweredByAirweave";
 
 function generateRandomSuffix(): string {
   const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -252,230 +251,198 @@ export function SourceConfigView({
 
   const showConfigFields = sourceDetails?.config_fields?.fields?.length;
 
+  const isOAuthWaiting =
+    effectiveAuthMethod === "oauth_browser" && oauthFlow.status === "waiting";
+
+  const headerLeft = (
+    <div className="flex items-center gap-2">
+      <BackButton onClick={onBack} />
+      <AppIcon shortName={source.short_name} name={source.name} className="size-5" />
+    </div>
+  );
+
+  const footerContent = isOAuthWaiting ? undefined : (
+    effectiveAuthMethod === "direct" ? (
+      <Button
+        type="submit"
+        form="source-config-form"
+        disabled={createMutation.isPending}
+        className="w-full justify-center"
+      >
+        {createMutation.isPending ? (
+          <>
+            <Loader2 className="w-4 h-4 animate-spin" />
+            {labels.buttonCreatingConnection}
+          </>
+        ) : (
+          labels.buttonCreateConnection
+        )}
+      </Button>
+    ) : (
+      <Button
+        type="button"
+        onClick={handleOAuthConnect}
+        disabled={oauthFlow.status === "creating"}
+        className="w-full justify-center"
+      >
+        {oauthFlow.status === "creating" ? (
+          <>
+            <Loader2 className="w-4 h-4 animate-spin" />
+            {labels.buttonConnecting}
+          </>
+        ) : (
+          labels.buttonConnectOAuth.replace("{source}", source.name)
+        )}
+      </Button>
+    )
+  );
+
   return (
-    <div
-      className="h-screen flex flex-col"
-      style={{ backgroundColor: "var(--connect-bg)" }}
-    >
-      <header className="flex-shrink-0 p-6 pb-4">
-        <div className="flex items-center gap-2">
-          <BackButton onClick={onBack} />
-          <AppIcon
-            shortName={source.short_name}
-            name={source.name}
-            className="size-5"
-          />
-          <h1
-            className="font-medium text-lg"
+    <PageLayout title={source.name} headerLeft={headerLeft} footerContent={footerContent}>
+      <form onSubmit={handleSubmit} id="source-config-form">
+        {errors._form && (
+          <div
+            className="mb-4 p-3 rounded-md text-sm"
+            role="alert"
             style={{
-              color: "var(--connect-text)",
-              fontFamily: "var(--connect-font-heading)",
+              backgroundColor:
+                "color-mix(in srgb, var(--connect-error) 10%, transparent)",
+              color: "var(--connect-error)",
             }}
           >
-            {source.name}
-          </h1>
-        </div>
-      </header>
+            {errors._form}
+          </div>
+        )}
 
-      <main className="flex-1 overflow-y-auto px-6 scrollable-content">
-        <form onSubmit={handleSubmit} id="source-config-form">
-          {errors._form && (
-            <div
-              className="mb-4 p-3 rounded-md text-sm"
-              role="alert"
-              style={{
-                backgroundColor:
-                  "color-mix(in srgb, var(--connect-error) 10%, transparent)",
-                color: "var(--connect-error)",
-              }}
+        {options.showConnectionName && (
+          <div className="mb-4">
+            <label
+              htmlFor="connection-name"
+              className="block text-sm font-medium mb-1"
+              style={{ color: "var(--connect-text)" }}
             >
-              {errors._form}
-            </div>
-          )}
-
-          {options.showConnectionName && (
-            <div className="mb-4">
-              <label
-                htmlFor="connection-name"
-                className="block text-sm font-medium mb-1"
-                style={{ color: "var(--connect-text)" }}
-              >
-                {labels.configureNameLabel}
-              </label>
-              <p
-                className="text-xs mt-1 mb-2"
-                style={{ color: "var(--connect-text-muted)" }}
-              >
-                {labels.configureNameDescription}
-              </p>
-              <input
-                id="connection-name"
-                type="text"
-                value={connectionName}
-                onChange={(e) => setConnectionName(e.target.value)}
-                placeholder={labels.configureNamePlaceholder.replace(
-                  "{source}",
-                  source.name,
-                )}
-                className="w-full px-3 py-2 text-sm rounded-md border outline-none transition-colors"
-                style={{
-                  backgroundColor: "var(--connect-surface)",
-                  color: "var(--connect-text)",
-                  borderColor: "var(--connect-border)",
-                }}
-              />
-            </div>
-          )}
-
-          {sourceDetails && (
-            <AuthMethodSelector
-              methods={sourceDetails.auth_methods}
-              selected={effectiveAuthMethod}
-              onChange={setAuthMethod}
-              sourceName={source.name}
+              {labels.configureNameLabel}
+            </label>
+            <p
+              className="text-xs mt-1 mb-2"
+              style={{ color: "var(--connect-text-muted)" }}
+            >
+              {labels.configureNameDescription}
+            </p>
+            <input
+              id="connection-name"
+              type="text"
+              value={connectionName}
+              onChange={(e) => setConnectionName(e.target.value)}
+              placeholder={labels.configureNamePlaceholder.replace(
+                "{source}",
+                source.name,
+              )}
+              className="w-full px-3 py-2 text-sm rounded-md border outline-none transition-colors"
+              style={{
+                backgroundColor: "var(--connect-surface)",
+                color: "var(--connect-text)",
+                borderColor: "var(--connect-border)",
+              }}
             />
-          )}
+          </div>
+        )}
 
-          {showDirectAuthFields && (
-            <div className="mb-4">
-              <h2
-                className="text-sm font-bold opacity-70 mb-3"
-                style={{ color: "var(--connect-text)" }}
-              >
-                {labels.configureAuthSection}
-              </h2>
-              {sourceDetails.auth_fields?.fields.map((field: ConfigField) => (
+        {sourceDetails && (
+          <AuthMethodSelector
+            methods={sourceDetails.auth_methods}
+            selected={effectiveAuthMethod}
+            onChange={setAuthMethod}
+            sourceName={source.name}
+          />
+        )}
+
+        {showDirectAuthFields && (
+          <div className="mb-4">
+            <h2
+              className="text-sm font-bold opacity-70 mb-3"
+              style={{ color: "var(--connect-text)" }}
+            >
+              {labels.configureAuthSection}
+            </h2>
+            {sourceDetails.auth_fields?.fields.map((field: ConfigField) => (
+              <DynamicFormField
+                key={field.name}
+                field={field}
+                value={authValues[field.name]}
+                onChange={(value) => handleAuthValueChange(field.name, value)}
+                error={errors[field.name]}
+              />
+            ))}
+          </div>
+        )}
+
+        {effectiveAuthMethod === "oauth_browser" &&
+          (() => {
+            const hasByocFields = sourceDetails?.requires_byoc;
+            const hasOAuthStatusContent =
+              oauthFlow.error ||
+              oauthFlow.status === "waiting" ||
+              oauthFlow.status === "popup_blocked";
+            const hasAuthContent = hasByocFields || hasOAuthStatusContent;
+
+            if (!hasAuthContent) return null;
+
+            return (
+              <div className="mb-4">
+                <h2
+                  className="text-sm font-bold opacity-70 mb-3"
+                  style={{ color: "var(--connect-text)" }}
+                >
+                  {labels.configureAuthSection}
+                </h2>
+
+                {sourceDetails?.requires_byoc && (
+                  <ByocFields
+                    values={byocValues}
+                    onChange={setByocValues}
+                    errors={errors}
+                    onClearError={clearError}
+                  />
+                )}
+
+                <OAuthStatusUI
+                  status={oauthFlow.status}
+                  error={oauthFlow.error}
+                  blockedAuthUrl={oauthFlow.blockedAuthUrl}
+                  onRetryPopup={oauthFlow.retryPopup}
+                  onManualLinkClick={oauthFlow.handleManualLinkClick}
+                />
+              </div>
+            );
+          })()}
+
+        {showConfigFields !== undefined && showConfigFields > 0 && (
+          <div className="mb-4">
+            <h2
+              className="text-sm font-bold opacity-70 mb-3"
+              style={{ color: "var(--connect-text)" }}
+            >
+              {labels.configureConfigSection}
+            </h2>
+            {sourceDetails?.config_fields?.fields?.map(
+              (field: ConfigField) => (
                 <DynamicFormField
                   key={field.name}
                   field={field}
-                  value={authValues[field.name]}
-                  onChange={(value) => handleAuthValueChange(field.name, value)}
-                  error={errors[field.name]}
+                  value={configValues[field.name]}
+                  onChange={(value) =>
+                    handleConfigValueChange(field.name, value)
+                  }
+                  error={errors[`config_${field.name}`]}
                 />
-              ))}
-            </div>
-          )}
+              ),
+            )}
+          </div>
+        )}
 
-          {effectiveAuthMethod === "oauth_browser" &&
-            (() => {
-              const hasByocFields = sourceDetails?.requires_byoc;
-              const hasOAuthStatusContent =
-                oauthFlow.error ||
-                oauthFlow.status === "waiting" ||
-                oauthFlow.status === "popup_blocked";
-              const hasAuthContent = hasByocFields || hasOAuthStatusContent;
-
-              if (!hasAuthContent) return null;
-
-              return (
-                <div className="mb-4">
-                  <h2
-                    className="text-sm font-bold opacity-70 mb-3"
-                    style={{ color: "var(--connect-text)" }}
-                  >
-                    {labels.configureAuthSection}
-                  </h2>
-
-                  {sourceDetails?.requires_byoc && (
-                    <ByocFields
-                      values={byocValues}
-                      onChange={setByocValues}
-                      errors={errors}
-                      onClearError={clearError}
-                    />
-                  )}
-
-                  <OAuthStatusUI
-                    status={oauthFlow.status}
-                    error={oauthFlow.error}
-                    blockedAuthUrl={oauthFlow.blockedAuthUrl}
-                    onRetryPopup={oauthFlow.retryPopup}
-                    onManualLinkClick={oauthFlow.handleManualLinkClick}
-                  />
-                </div>
-              );
-            })()}
-
-          {showConfigFields !== undefined && showConfigFields > 0 && (
-            <div className="mb-4">
-              <h2
-                className="text-sm font-bold opacity-70 mb-3"
-                style={{ color: "var(--connect-text)" }}
-              >
-                {labels.configureConfigSection}
-              </h2>
-              {sourceDetails?.config_fields?.fields?.map(
-                (field: ConfigField) => (
-                  <DynamicFormField
-                    key={field.name}
-                    field={field}
-                    value={configValues[field.name]}
-                    onChange={(value) =>
-                      handleConfigValueChange(field.name, value)
-                    }
-                    error={errors[`config_${field.name}`]}
-                  />
-                ),
-              )}
-            </div>
-          )}
-
-          <div className="h-20" />
-        </form>
-      </main>
-
-      {!(
-        effectiveAuthMethod === "oauth_browser" &&
-        oauthFlow.status === "waiting"
-      ) && (
-        <div
-          className="flex-shrink-0 px-6 pt-4 border-t"
-          style={{
-            backgroundColor: "var(--connect-bg)",
-            borderColor: "var(--connect-border)",
-          }}
-        >
-          {effectiveAuthMethod === "direct" ? (
-            <Button
-              type="submit"
-              form="source-config-form"
-              disabled={createMutation.isPending}
-              className="w-full justify-center"
-            >
-              {createMutation.isPending ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  {labels.buttonCreatingConnection}
-                </>
-              ) : (
-                labels.buttonCreateConnection
-              )}
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              onClick={handleOAuthConnect}
-              disabled={oauthFlow.status === "creating"}
-              className="w-full justify-center"
-            >
-              {oauthFlow.status === "creating" ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  {labels.buttonConnecting}
-                </>
-              ) : (
-                <>
-                  {labels.buttonConnectOAuth.replace("{source}", source.name)}
-                </>
-              )}
-            </Button>
-          )}
-        </div>
-      )}
-
-      <footer className="flex-shrink-0">
-        <PoweredByAirweave />
-      </footer>
-    </div>
+        <div className="h-20" />
+      </form>
+    </PageLayout>
   );
 }

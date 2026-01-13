@@ -593,13 +593,15 @@
         },
         firstquadrant: {
           name: "FirstQuadrant",
+          mode: "dark",
           logoUrl:
             "https://avatars.githubusercontent.com/u/122780401?s=200&v=4",
           colors: {
-            light: {
-              primary: "#000000",
-              background: "#FFFFFF",
-              surface: "#F7F7F8",
+            dark: {
+              primary: "#FFFFFF",
+              primaryForeground: "#000000",
+              background: "#09090B",
+              surface: "#18181B",
             },
           },
           fonts: {
@@ -668,18 +670,64 @@
         document.getElementById(`theme-${preset}`).classList.add("active");
 
         const theme = THEME_PRESETS[preset];
-        log(`Theme preset set to: ${theme.name}`, "info");
+        const mode = theme.mode || "light";
+        log(`Theme preset set to: ${theme.name} (${mode})`, "info");
 
-        // Update mic button color
+        // Update mic button color (use darker shade in dark mode for better UX)
         const micBtn = document.querySelector(".mic-btn");
         if (micBtn) {
-          micBtn.style.backgroundColor = theme.colors.light.primary;
+          micBtn.style.backgroundColor =
+            mode === "dark" ? "#27272A" : theme.colors[mode].primary;
         }
 
         // Update main logo
         const mainLogo = document.querySelector(".logo");
         if (mainLogo) {
           mainLogo.src = theme.logoUrl;
+        }
+
+        // Update page body background for dark/light mode
+        document.body.style.backgroundColor =
+          mode === "dark" ? "#09090B" : "#f5f5f3";
+
+        // Update chat input container for dark/light mode
+        const chatContainer = document.querySelector(".chat-input-container");
+        if (chatContainer) {
+          chatContainer.style.backgroundColor =
+            mode === "dark" ? "#18181B" : "white";
+          chatContainer.style.boxShadow =
+            mode === "dark"
+              ? "0 40px 40px rgba(0, 0, 0, 0.3)"
+              : "0 40px 40px rgba(0, 0, 0, 0.03)";
+        }
+
+        // Update chat input text color
+        const chatInput = document.querySelector(".chat-input");
+        if (chatInput) {
+          chatInput.style.color = mode === "dark" ? "#ffffff" : "#333";
+        }
+
+        // Update apps button for dark/light mode
+        const appsBtn = document.querySelector(".apps-btn");
+        if (appsBtn) {
+          appsBtn.style.backgroundColor = mode === "dark" ? "#27272A" : "white";
+          appsBtn.style.borderColor = mode === "dark" ? "#3f3f46" : "#e8e8e6";
+          appsBtn.style.color = mode === "dark" ? "#ffffff" : "#1f2937";
+        }
+
+        // Update plus icon color in apps button
+        const plusIcon = document.querySelector(".apps-btn .plus-icon");
+        if (plusIcon) {
+          plusIcon.style.color = mode === "dark" ? "#a1a1aa" : "#9ca3af";
+        }
+
+        // Update modal overlay background for dark/light mode
+        const modalOverlay = document.getElementById("modalOverlay");
+        if (modalOverlay) {
+          modalOverlay.style.background =
+            mode === "dark"
+              ? "rgba(255, 255, 255, 0.1)"
+              : "rgba(0, 0, 0, 0.5)";
         }
 
         // If modal is open, send SET_THEME to update live
@@ -697,8 +745,9 @@
       // Build theme payload from current preset
       function buildThemePayload() {
         const preset = THEME_PRESETS[currentThemePreset];
+        const mode = preset.mode || "light";
         const payload = {
-          mode: "light",
+          mode,
           colors: preset.colors,
           fonts: preset.fonts,
           options: {
@@ -962,8 +1011,9 @@
 
       // Initialize with default theme
       const defaultTheme = THEME_PRESETS[currentThemePreset];
+      const defaultMode = defaultTheme.mode || "light";
       document.querySelector(".mic-btn").style.backgroundColor =
-        defaultTheme.colors.light.primary;
+        defaultTheme.colors[defaultMode].primary;
       document.querySelector(".logo").src = defaultTheme.logoUrl;
     </script>
   </body>

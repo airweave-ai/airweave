@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import { AppWindowMac, Key, Link2, ShieldCheck } from "lucide-react";
+import { getAppIconUrl } from "../lib/icons";
 import { useTheme } from "../lib/theme";
 import type { ConnectLabels } from "../lib/types";
 
@@ -119,7 +120,7 @@ export function EmptyState({ labels, showConnect }: EmptyStateProps) {
                     key={app}
                   >
                     <img
-                      src={`/icons/apps/${app}.svg`}
+                      src={getAppIconUrl(app, resolvedMode)}
                       alt={app}
                       className="object-contain rounded"
                     />

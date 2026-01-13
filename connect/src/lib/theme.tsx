@@ -183,6 +183,7 @@ export function ThemeProvider({ children, initialTheme }: ThemeProviderProps) {
       text: "transparent",
       textMuted: "transparent",
       primary: "transparent",
+      primaryForeground: "transparent",
       primaryHover: "transparent",
       secondary: "transparent",
       secondaryHover: "transparent",
@@ -248,6 +249,10 @@ export function ThemeProvider({ children, initialTheme }: ThemeProviderProps) {
     root.style.setProperty("--connect-text", colors.text);
     root.style.setProperty("--connect-text-muted", colors.textMuted);
     root.style.setProperty("--connect-primary", colors.primary);
+    root.style.setProperty(
+      "--connect-primary-foreground",
+      colors.primaryForeground,
+    );
     root.style.setProperty("--connect-primary-hover", colors.primaryHover);
     root.style.setProperty("--connect-secondary", colors.secondary);
     root.style.setProperty("--connect-secondary-hover", colors.secondaryHover);

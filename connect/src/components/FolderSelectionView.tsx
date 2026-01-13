@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { apiClient } from "../lib/api";
+import { useTheme } from "../lib/theme";
 import type { Source } from "../lib/types";
 import { AppIcon } from "./AppIcon";
 import { BackButton } from "./BackButton";
 import { Button } from "./Button";
 import { FolderTree } from "./FolderTree";
-import { PoweredByAirweave } from "./PoweredByAirweave";
+import { PageLayout } from "./PageLayout";
 
 interface FolderSelectionViewProps {
   source: Source;
@@ -20,6 +21,7 @@ export function FolderSelectionView({
   onBack,
   onComplete,
 }: FolderSelectionViewProps) {
+  const { labels } = useTheme();
   const [selectedFolderIds, setSelectedFolderIds] = useState<string[]>([]);
 
   const handleBack = () => {
@@ -27,64 +29,39 @@ export function FolderSelectionView({
     onBack();
   };
 
-  const handleStartSync = () => {
-    onComplete();
-  };
+  const buttonLabel =
+    selectedFolderIds.length > 0
+      ? `${labels.folderSelectionStartSync} (${labels.folderSelectionCount.replace("{count}", String(selectedFolderIds.length))})`
+      : labels.folderSelectionStartSync;
+
+  const headerLeft = (
+    <div className="flex items-center gap-2">
+      <BackButton onClick={handleBack} />
+      <AppIcon shortName={source.short_name} name={source.name} className="size-5" />
+    </div>
+  );
+
+  const footerContent = (
+    <Button
+      onClick={onComplete}
+      disabled={selectedFolderIds.length === 0}
+      className="w-full justify-center"
+    >
+      {buttonLabel}
+    </Button>
+  );
 
   return (
-    <div
-      className="h-screen flex flex-col"
-      style={{ backgroundColor: "var(--connect-bg)" }}
+    <PageLayout
+      title={labels.folderSelectionHeading}
+      headerLeft={headerLeft}
+      footerContent={footerContent}
     >
-      <header className="flex-shrink-0 p-6 pb-4">
-        <div className="flex items-center gap-2">
-          <BackButton onClick={handleBack} />
-          <AppIcon
-            shortName={source.short_name}
-            name={source.name}
-            className="size-5"
-          />
-          <h1
-            className="font-medium text-lg"
-            style={{
-              color: "var(--connect-text)",
-              fontFamily: "var(--connect-font-heading)",
-            }}
-          >
-            Select folders to sync
-          </h1>
-        </div>
-      </header>
-
-      <main className="flex-1 overflow-y-auto px-6 scrollable-content">
-        <FolderTree
-          selectedFolderIds={selectedFolderIds}
-          onSelectionChange={setSelectedFolderIds}
-        />
-        <div className="h-20" />
-      </main>
-
-      <div
-        className="flex-shrink-0 px-6 pt-4 border-t"
-        style={{
-          backgroundColor: "var(--connect-bg)",
-          borderColor: "var(--connect-border)",
-        }}
-      >
-        <Button
-          onClick={handleStartSync}
-          disabled={selectedFolderIds.length === 0}
-          className="w-full justify-center"
-        >
-          Start sync
-          {selectedFolderIds.length > 0 &&
-            ` (${selectedFolderIds.length} ${selectedFolderIds.length === 1 ? "folder" : "folders"})`}
-        </Button>
-      </div>
-
-      <footer className="flex-shrink-0">
-        <PoweredByAirweave />
-      </footer>
-    </div>
+      <FolderTree
+        selectedFolderIds={selectedFolderIds}
+        onSelectionChange={setSelectedFolderIds}
+      />
+      <div className="h-20" />
+    </PageLayout>
   );
 }

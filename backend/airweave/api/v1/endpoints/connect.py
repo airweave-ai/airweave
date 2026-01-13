@@ -22,7 +22,7 @@ the connect session token stored in init session overrides.
 import asyncio
 import json
 from datetime import datetime, timedelta, timezone
-from typing import AsyncGenerator, List, Optional
+from typing import AsyncGenerator, FrozenSet, List, Optional
 from uuid import UUID, uuid4
 
 from fastapi import Depends, Header, HTTPException, Path
@@ -56,6 +56,34 @@ from airweave.schemas.connect_session import (
 )
 
 router = TrailingSlashRouter()
+
+# Mode permission sets
+MODES_VIEW: FrozenSet[schemas.ConnectSessionMode] = frozenset({
+    schemas.ConnectSessionMode.ALL,
+    schemas.ConnectSessionMode.MANAGE,
+    schemas.ConnectSessionMode.REAUTH,
+})
+MODES_CREATE: FrozenSet[schemas.ConnectSessionMode] = frozenset({
+    schemas.ConnectSessionMode.ALL,
+    schemas.ConnectSessionMode.CONNECT,
+})
+MODES_DELETE: FrozenSet[schemas.ConnectSessionMode] = frozenset({
+    schemas.ConnectSessionMode.ALL,
+    schemas.ConnectSessionMode.MANAGE,
+})
+
+
+def _check_session_mode(
+    session: ConnectSessionContext,
+    allowed_modes: FrozenSet[schemas.ConnectSessionMode],
+    operation: str,
+) -> None:
+    """Validate session mode allows the requested operation."""
+    if session.mode not in allowed_modes:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Session mode does not allow {operation}",
+        )
 
 
 async def _build_session_context(
@@ -365,15 +393,7 @@ async def list_source_connections(
 
     Authentication: Bearer <session_token>
     """
-    # Verify session mode allows viewing connections (CONNECT mode is add-only)
-    if session.mode not in (
-        schemas.ConnectSessionMode.ALL,
-        schemas.ConnectSessionMode.MANAGE,
-        schemas.ConnectSessionMode.REAUTH,
-    ):
-        raise HTTPException(
-            status_code=403, detail="Session mode does not allow viewing source connections"
-        )
+    _check_session_mode(session, MODES_VIEW, "viewing source connections")
 
     # Build context for service call
     ctx = await _build_session_context(db, session)
@@ -404,15 +424,7 @@ async def get_source_connection(
 
     Authentication: Bearer <session_token>
     """
-    # Verify session mode allows viewing connections
-    if session.mode not in (
-        schemas.ConnectSessionMode.ALL,
-        schemas.ConnectSessionMode.MANAGE,
-        schemas.ConnectSessionMode.REAUTH,
-    ):
-        raise HTTPException(
-            status_code=403, detail="Session mode does not allow viewing source connections"
-        )
+    _check_session_mode(session, MODES_VIEW, "viewing source connections")
 
     # Build context for service call
     ctx = await _build_session_context(db, session)
@@ -457,6 +469,8 @@ async def delete_source_connection(
 
     Authentication: Bearer <session_token>
     """
+    _check_session_mode(session, MODES_DELETE, "deleting source connections")
+
     # Build context for service call
     ctx = await _build_session_context(db, session)
 
@@ -480,11 +494,6 @@ async def delete_source_connection(
             status_code=403, detail="Session does not have access to this integration type"
         )
 
-    # Verify session mode allows deletion (only MANAGE and ALL are permitted)
-    if session.mode not in (schemas.ConnectSessionMode.MANAGE, schemas.ConnectSessionMode.ALL):
-        raise HTTPException(
-            status_code=403, detail="Session mode does not allow deleting source connections"
-        )
     ctx.logger.info(
         f"Deleting source connection {connection_id} via connect session {session.session_id}"
     )
@@ -529,15 +538,7 @@ async def create_source_connection(
 
     Authentication: Bearer <session_token>
     """
-    # Verify session mode allows connection creation
-    if session.mode not in (
-        schemas.ConnectSessionMode.ALL,
-        schemas.ConnectSessionMode.CONNECT,
-    ):
-        raise HTTPException(
-            status_code=403,
-            detail="Session mode does not allow creating source connections",
-        )
+    _check_session_mode(session, MODES_CREATE, "creating source connections")
 
     # Verify source is in allowed integrations (if restricted)
     if session.allowed_integrations:

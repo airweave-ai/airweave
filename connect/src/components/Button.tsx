@@ -23,7 +23,7 @@ export function Button({
 }: ButtonProps) {
   const variantClasses =
     variant === "primary"
-      ? "[background-color:var(--connect-primary)] [color:white] hover:[background-color:var(--connect-primary-hover)]"
+      ? "[background-color:var(--connect-primary)] [color:var(--connect-primary-foreground)] hover:[background-color:var(--connect-primary-hover)]"
       : "[background-color:var(--connect-secondary)] [color:var(--connect-text)] hover:[background-color:var(--connect-secondary-hover)]";
 
   return (

@@ -10,6 +10,7 @@ export interface ThemeColors {
   text?: string;
   textMuted?: string;
   primary?: string;
+  primaryForeground?: string;
   primaryHover?: string;
   secondary?: string;
   secondaryHover?: string;
@@ -127,6 +128,11 @@ export interface ConnectLabels {
   // Empty state info
   welcomeInfoVerify?: string;
   welcomeInfoAccess?: string;
+
+  // Folder selection
+  folderSelectionHeading?: string;
+  folderSelectionStartSync?: string;
+  folderSelectionCount?: string; // Use {count} placeholder
 }
 
 export interface ConnectOptions {
