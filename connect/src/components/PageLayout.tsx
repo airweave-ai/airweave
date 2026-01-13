@@ -33,7 +33,10 @@ export function PageLayout({
               {title && (
                 <h1
                   className="font-medium text-lg"
-                  style={{ color: "var(--connect-text)" }}
+                  style={{
+                    color: "var(--connect-text)",
+                    fontFamily: "var(--connect-font-heading)",
+                  }}
                 >
                   {title}
                 </h1>

@@ -327,6 +327,47 @@
         outline-offset: 1px;
       }
 
+      .theme-btn {
+        padding: 4px 10px;
+        border: 1px solid #e5e7eb;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+        background: white;
+        color: #374151;
+      }
+
+      .theme-btn:hover {
+        background: #f3f4f6;
+      }
+
+      .theme-btn.active {
+        outline: 2px solid #3b82f6;
+        outline-offset: 1px;
+      }
+
+      .log-section {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .log-section-label {
+        font-size: 11px;
+        font-weight: 600;
+        color: #6b7280;
+        margin-right: 4px;
+      }
+
+      .log-divider {
+        width: 1px;
+        height: 20px;
+        background: #e5e7eb;
+        margin: 0 8px;
+      }
+
       .log-content {
         max-height: 80px;
         overflow-y: auto;
@@ -427,48 +468,85 @@
       <div class="log-header">
         <h3 onclick="toggleLog()">Logs</h3>
         <div class="log-buttons">
-          <button
-            class="state-btn success active"
-            onclick="setResponseMode('auto')"
-            id="btn-auto"
-          >
-            Auto
-          </button>
-          <button
-            class="state-btn loading"
-            onclick="setResponseMode('loading')"
-            id="btn-loading"
-          >
-            Loading
-          </button>
-          <button
-            class="state-btn error"
-            onclick="setResponseMode('error-invalid')"
-            id="btn-error-invalid"
-          >
-            Invalid Token
-          </button>
-          <button
-            class="state-btn error"
-            onclick="setResponseMode('error-expired')"
-            id="btn-error-expired"
-          >
-            Expired Token
-          </button>
-          <button
-            class="state-btn warning"
-            onclick="setResponseMode('error-network')"
-            id="btn-error-network"
-          >
-            Network Error
-          </button>
-          <button
-            class="state-btn success"
-            onclick="toggleFolderSelection()"
-            id="btn-folder-selection"
-          >
-            Folder Select
-          </button>
+          <div class="log-section">
+            <span class="log-section-label">State:</span>
+            <button
+              class="state-btn success active"
+              onclick="setResponseMode('auto')"
+              id="btn-auto"
+            >
+              Auto
+            </button>
+            <button
+              class="state-btn loading"
+              onclick="setResponseMode('loading')"
+              id="btn-loading"
+            >
+              Loading
+            </button>
+            <button
+              class="state-btn error"
+              onclick="setResponseMode('error-invalid')"
+              id="btn-error-invalid"
+            >
+              Invalid Token
+            </button>
+            <button
+              class="state-btn error"
+              onclick="setResponseMode('error-expired')"
+              id="btn-error-expired"
+            >
+              Expired Token
+            </button>
+            <button
+              class="state-btn warning"
+              onclick="setResponseMode('error-network')"
+              id="btn-error-network"
+            >
+              Network Error
+            </button>
+            <button
+              class="state-btn success"
+              onclick="toggleFolderSelection()"
+              id="btn-folder-selection"
+            >
+              Folder Select
+            </button>
+          </div>
+
+          <div class="log-divider"></div>
+
+          <div class="log-section">
+            <span class="log-section-label">Theme:</span>
+            <button
+              class="theme-btn active"
+              onclick="setThemePreset('mistral')"
+              id="theme-mistral"
+            >
+              Mistral
+            </button>
+            <button
+              class="theme-btn"
+              onclick="setThemePreset('firstquadrant')"
+              id="theme-firstquadrant"
+            >
+              FirstQuadrant
+            </button>
+            <button
+              class="theme-btn"
+              onclick="setThemePreset('samsung')"
+              id="theme-samsung"
+            >
+              Samsung
+            </button>
+            <button
+              class="theme-btn"
+              onclick="setThemePreset('coolblue')"
+              id="theme-coolblue"
+            >
+              Coolblue
+            </button>
+          </div>
         </div>
         <span class="log-toggle" id="logToggle" onclick="toggleLog()">−</span>
       </div>
@@ -493,6 +571,147 @@
       let sessionToken = null;
       let responseMode = "auto";
       let folderSelectionEnabled = false;
+      let currentThemePreset = "mistral";
+
+      // Theme presets with fonts, colors, and logos
+      const THEME_PRESETS = {
+        mistral: {
+          name: "Mistral",
+          logoUrl:
+            "https://avatars.githubusercontent.com/u/132372032?s=200&v=4",
+          colors: {
+            light: {
+              primary: "#FF7000",
+              background: "#FFFFFF",
+              surface: "#F8F8F8",
+            },
+          },
+          fonts: {
+            body: "Inter",
+            heading: "Inter",
+          },
+        },
+        firstquadrant: {
+          name: "FirstQuadrant",
+          logoUrl:
+            "https://avatars.githubusercontent.com/u/122780401?s=200&v=4",
+          colors: {
+            light: {
+              primary: "#000000",
+              background: "#FFFFFF",
+              surface: "#F7F7F8",
+            },
+          },
+          fonts: {
+            body: "Roboto Mono",
+            heading: "Roboto Mono",
+          },
+        },
+        samsung: {
+          name: "Samsung",
+          logoUrl: "https://avatars.githubusercontent.com/u/6210390?s=200&v=4",
+          colors: {
+            light: {
+              primary: "#1428A0",
+              background: "#FFFFFF",
+              surface: "#F5F5F5",
+            },
+          },
+          fonts: {
+            body: "Noto Sans KR",
+            heading: "Noto Sans KR",
+          },
+          labels: {
+            emptyStateHeading: "앱 연결하기",
+            emptyStateDescription: "데이터를 동기화하려면 앱을 연결하세요",
+            welcomeInfoVerify: "연결 전에 권한을 확인합니다",
+            welcomeInfoAccess: "언제든지 접근 권한을 취소할 수 있습니다",
+            buttonConnect: "연결",
+            sourcesListHeading: "앱 선택",
+            buttonBack: "뒤로",
+            poweredBy: "제공",
+          },
+        },
+        coolblue: {
+          name: "Coolblue",
+          logoUrl: "https://avatars.githubusercontent.com/u/29755319?s=200&v=4",
+          colors: {
+            light: {
+              primary: "#0090E3",
+              background: "#FFFFFF",
+              surface: "#F5F5F5",
+            },
+          },
+          fonts: {
+            body: "Open Sans",
+            heading: "Open Sans",
+          },
+          labels: {
+            emptyStateHeading: "Koppel je favoriete apps",
+            emptyStateDescription: "Verbind je apps en wij zorgen dat alles soepel samenwerkt. Makkelijk toch?",
+            welcomeInfoVerify: "We checken eerst even of alles goed staat ingesteld",
+            welcomeInfoAccess: "Geen zorgen, je kunt de toegang altijd weer intrekken",
+            buttonConnect: "Koppelen",
+            sourcesListHeading: "Welke app wil je koppelen?",
+            buttonBack: "Terug",
+            poweredBy: "Mogelijk gemaakt door",
+          },
+        },
+      };
+
+      // Set theme preset
+      function setThemePreset(preset) {
+        currentThemePreset = preset;
+        document
+          .querySelectorAll(".theme-btn")
+          .forEach((btn) => btn.classList.remove("active"));
+        document.getElementById(`theme-${preset}`).classList.add("active");
+
+        const theme = THEME_PRESETS[preset];
+        log(`Theme preset set to: ${theme.name}`, "info");
+
+        // Update mic button color
+        const micBtn = document.querySelector(".mic-btn");
+        if (micBtn) {
+          micBtn.style.backgroundColor = theme.colors.light.primary;
+        }
+
+        // Update main logo
+        const mainLogo = document.querySelector(".logo");
+        if (mainLogo) {
+          mainLogo.src = theme.logoUrl;
+        }
+
+        // If modal is open, send SET_THEME to update live
+        const iframe = document.getElementById("connectFrame");
+        if (iframe && iframe.src) {
+          const themePayload = buildThemePayload();
+          iframe.contentWindow.postMessage(
+            { type: "SET_THEME", theme: themePayload },
+            "*",
+          );
+          log(`Sent: SET_THEME (${theme.name})`, "sent");
+        }
+      }
+
+      // Build theme payload from current preset
+      function buildThemePayload() {
+        const preset = THEME_PRESETS[currentThemePreset];
+        const payload = {
+          mode: "light",
+          colors: preset.colors,
+          fonts: preset.fonts,
+          options: {
+            enableFolderSelection: folderSelectionEnabled,
+            logoUrl: preset.logoUrl,
+          },
+        };
+        // Include labels if preset has custom labels (e.g., for i18n)
+        if (preset.labels) {
+          payload.labels = preset.labels;
+        }
+        return payload;
+      }
 
       // Response mode handling
       function setResponseMode(mode) {
@@ -545,18 +764,7 @@
         const iframe = document.getElementById("connectFrame");
         if (!iframe || !iframe.contentWindow) return;
 
-        const theme = {
-          mode: "light",
-          colors: {
-            light: {
-              primary: CONFIG.PRIMARY_COLOR,
-            },
-          },
-          options: {
-            enableFolderSelection: folderSelectionEnabled,
-            logoUrl: CONFIG.LOGO_URL,
-          },
-        };
+        const theme = buildThemePayload();
 
         switch (responseMode) {
           case "auto":
@@ -751,6 +959,12 @@
           closeModal();
         }
       });
+
+      // Initialize with default theme
+      const defaultTheme = THEME_PRESETS[currentThemePreset];
+      document.querySelector(".mic-btn").style.backgroundColor =
+        defaultTheme.colors.light.primary;
+      document.querySelector(".logo").src = defaultTheme.logoUrl;
     </script>
   </body>
 </html>

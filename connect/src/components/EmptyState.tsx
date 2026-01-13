@@ -83,7 +83,12 @@ export function EmptyState({ labels, showConnect }: EmptyStateProps) {
 
   if (showConnect) {
     return (
-      <div className="flex flex-col -mx-6">
+      <div
+        className="flex flex-col -mx-6 -mt-4"
+        style={{
+          background: `linear-gradient(to bottom, color-mix(in srgb, var(--connect-primary) 8%, var(--connect-bg)) 0%, var(--connect-bg) 100%)`,
+        }}
+      >
         <header className="pt-8 pb-6 px-6">
           <div className="flex items-center justify-center gap-3 mb-5">
             <IconCard resolvedMode={resolvedMode}>
@@ -132,7 +137,10 @@ export function EmptyState({ labels, showConnect }: EmptyStateProps) {
 
           <h1
             className="text-xl font-semibold text-center"
-            style={{ color: "var(--connect-text)" }}
+            style={{
+              color: "var(--connect-text)",
+              fontFamily: "var(--connect-font-heading)",
+            }}
           >
             {labels.emptyStateHeading}
           </h1>
@@ -169,7 +177,13 @@ export function EmptyState({ labels, showConnect }: EmptyStateProps) {
           style={{ color: "var(--connect-text-muted)" }}
         />
       </div>
-      <p className="font-medium mb-1" style={{ color: "var(--connect-text)" }}>
+      <p
+        className="font-medium mb-1"
+        style={{
+          color: "var(--connect-text)",
+          fontFamily: "var(--connect-font-heading)",
+        }}
+      >
         {labels.emptyStateHeading}
       </p>
       <p

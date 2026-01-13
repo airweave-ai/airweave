@@ -33,6 +33,7 @@ export function Button({
       disabled={disabled}
       form={form}
       className={`px-4 py-1.5 font-medium rounded-md text-sm transition-colors flex items-center gap-2 cursor-pointer border-none disabled:opacity-50 disabled:cursor-not-allowed ${variantClasses} ${className}`}
+      style={{ fontFamily: "var(--connect-font-button)" }}
     >
       {children}
     </button>

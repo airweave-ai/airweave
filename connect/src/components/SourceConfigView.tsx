@@ -267,7 +267,10 @@ export function SourceConfigView({
           />
           <h1
             className="font-medium text-lg"
-            style={{ color: "var(--connect-text)" }}
+            style={{
+              color: "var(--connect-text)",
+              fontFamily: "var(--connect-font-heading)",
+            }}
           >
             {source.name}
           </h1>

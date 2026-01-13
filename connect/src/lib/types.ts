@@ -18,6 +18,15 @@ export interface ThemeColors {
   error?: string;
 }
 
+export interface ThemeFonts {
+  /** Google Font family name for body text (e.g., "Inter", "Open Sans") */
+  body?: string;
+  /** Google Font family name for headings (e.g., "Poppins", "Montserrat") */
+  heading?: string;
+  /** Google Font family name for buttons. If not specified, inherits from body */
+  button?: string;
+}
+
 export interface ConnectLabels {
   // Main headings
   sourcesHeading?: string;
@@ -132,6 +141,7 @@ export interface ConnectTheme {
     dark?: ThemeColors;
     light?: ThemeColors;
   };
+  fonts?: ThemeFonts;
   labels?: ConnectLabels;
   options?: ConnectOptions;
 }
