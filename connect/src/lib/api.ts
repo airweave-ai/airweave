@@ -23,7 +23,7 @@ class ConnectApiClient {
   private token: string | null = null;
 
   constructor() {
-    this.baseUrl = env.VITE_API_URL;
+    this.baseUrl = env.API_URL;
   }
 
   setToken(token: string) {

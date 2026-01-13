@@ -44,14 +44,14 @@
         background: white;
         border-radius: 28px;
         padding: 20px 24px;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+        box-shadow: 0 40px 40px rgba(0, 0, 0, 0.03);
       }
 
       .input-row {
         display: flex;
         align-items: center;
         width: 100%;
-        margin-bottom: 16px;
+        margin-bottom: 24px;
       }
 
       .chat-input {
@@ -377,7 +377,7 @@
   <body>
     <div class="container">
       <img
-        src="https://avatars.githubusercontent.com/u/14957082?s=200&v=4"
+        src="https://avatars.githubusercontent.com/u/132372032?s=200&v=4"
         alt="Logo"
         class="logo"
       />
@@ -462,6 +462,13 @@
           >
             Network Error
           </button>
+          <button
+            class="state-btn success"
+            onclick="toggleFolderSelection()"
+            id="btn-folder-selection"
+          >
+            Folder Select
+          </button>
         </div>
         <span class="log-toggle" id="logToggle" onclick="toggleLog()">−</span>
       </div>
@@ -483,16 +490,33 @@
 
       let sessionToken = null;
       let responseMode = "auto";
+      let folderSelectionEnabled = false;
 
       // Response mode handling
       function setResponseMode(mode) {
         responseMode = mode;
-        // Update active button
+        // Update active button (except folder selection which is a toggle)
         document
-          .querySelectorAll(".state-btn")
+          .querySelectorAll(".state-btn:not(#btn-folder-selection)")
           .forEach((btn) => btn.classList.remove("active"));
         document.getElementById(`btn-${mode}`).classList.add("active");
         log(`Response mode set to: ${mode}`, "info");
+      }
+
+      // Toggle folder selection mode
+      function toggleFolderSelection() {
+        folderSelectionEnabled = !folderSelectionEnabled;
+        const btn = document.getElementById("btn-folder-selection");
+        if (folderSelectionEnabled) {
+          btn.classList.add("active");
+          log(
+            "Folder selection enabled - next connection will show folder picker",
+            "info",
+          );
+        } else {
+          btn.classList.remove("active");
+          log("Folder selection disabled", "info");
+        }
       }
 
       // Log functions
@@ -519,7 +543,12 @@
         const iframe = document.getElementById("connectFrame");
         if (!iframe || !iframe.contentWindow) return;
 
-        const theme = { mode: "light" };
+        const theme = {
+          mode: "light",
+          options: {
+            enableFolderSelection: folderSelectionEnabled,
+          },
+        };
 
         switch (responseMode) {
           case "auto":
@@ -650,6 +679,10 @@
         modal.classList.remove("open");
         iframe.src = "";
         sessionToken = null;
+        folderSelectionEnabled = false;
+        document
+          .getElementById("btn-folder-selection")
+          .classList.remove("active");
         log("Connect modal closed", "info");
       }
 

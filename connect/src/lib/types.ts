@@ -118,6 +118,7 @@ export interface ConnectLabels {
 
 export interface ConnectOptions {
   showConnectionName?: boolean; // default: false
+  enableFolderSelection?: boolean; // default: false
 }
 
 export interface ConnectTheme {
@@ -170,7 +171,7 @@ export type ChildToParentMessage =
   | { type: "CLOSE"; reason: "success" | "cancel" | "error" };
 
 // Navigation views for NAVIGATE message
-export type NavigateView = "connections" | "sources" | "configure";
+export type NavigateView = "connections" | "sources" | "configure" | "folder-selection";
 
 // postMessage types - messages sent from parent to child
 export type ParentToChildMessage =

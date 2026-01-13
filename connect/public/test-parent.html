@@ -371,6 +371,9 @@
             <button onclick="openWithState('error-network')" class="warning">
               Show Network Error
             </button>
+            <button onclick="openWithFolderSelection()" class="success">
+              Test Folder Selection
+            </button>
           </div>
 
           <div class="button-group">
@@ -429,6 +432,7 @@
       let responseMode = "auto"; // 'auto', 'loading', 'error-invalid', 'error-expired', 'error-network', 'manual'
       let pendingRequestId = null;
       let hasProvidedToken = false; // Track if we've already sent a token (for retry detection)
+      let folderSelectionEnabled = false; // Track if folder selection mode is enabled
 
       // Initialize form fields from CONFIG on page load
       async function initializeConfig() {
@@ -575,7 +579,12 @@
       // Build theme object from UI
       function buildTheme() {
         const mode = document.getElementById("themeMode").value;
-        const theme = { mode };
+        const theme = {
+          mode,
+          options: {
+            enableFolderSelection: folderSelectionEnabled,
+          },
+        };
 
         // Check if custom colors are set
         const customColorsOpen = document
@@ -885,6 +894,19 @@
         startConnect();
       }
 
+      function openWithFolderSelection() {
+        sessionToken = document.getElementById("token").value.trim();
+        if (!sessionToken) {
+          log("Please enter a valid token first!", "error");
+          return;
+        }
+
+        folderSelectionEnabled = true;
+        responseMode = "auto";
+        log("Opening Connect with folder selection enabled...", "info");
+        startConnect();
+      }
+
       function startConnect() {
         log(`Opening Connect (mode: ${responseMode})...`, "sent");
 
@@ -913,6 +935,7 @@
         pendingRequestId = null;
         responseMode = "auto";
         hasProvidedToken = false;
+        folderSelectionEnabled = false;
 
         log("Connect closed", "sent");
       }

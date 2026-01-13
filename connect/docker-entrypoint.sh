@@ -3,12 +3,10 @@ set -e
 
 # Input validation for environment variables
 validate_url() {
-  local value="$1"
-  local name="$2"
   # Allow full URLs: http://... or https://...
-  if ! echo "$value" | grep -qE '^https?://[a-zA-Z0-9][a-zA-Z0-9.-]*(:[0-9]+)?(/[a-zA-Z0-9/_-]*)?$'; then
-    echo "ERROR: Invalid $name format: $value"
-    echo "$name must be a full URL (http://... or https://...)"
+  if ! echo "$1" | grep -qE '^https?://[a-zA-Z0-9][a-zA-Z0-9.-]*(:[0-9]+)?(/[a-zA-Z0-9/_-]*)?$'; then
+    echo "ERROR: Invalid $2 format: $1"
+    echo "$2 must be a full URL (http://... or https://...)"
     exit 1
   fi
 }

@@ -15,6 +15,7 @@ import { Button } from "./Button";
 import { ConnectionItem } from "./ConnectionItem";
 import { ConnectionsErrorView } from "./ConnectionsErrorView";
 import { EmptyState } from "./EmptyState";
+import { FolderSelectionView } from "./FolderSelectionView";
 import { LoadingScreen } from "./LoadingScreen";
 import { PageLayout } from "./PageLayout";
 import { SourceConfigView } from "./SourceConfigView";
@@ -33,9 +34,10 @@ export function SuccessScreen({
   onViewChange,
   onConnectionCreated,
 }: SuccessScreenProps) {
-  const { labels } = useTheme();
+  const { labels, options } = useTheme();
   const queryClient = useQueryClient();
   const [selectedSource, setSelectedSource] = useState<Source | null>(null);
+  const [recentConnectionId, setRecentConnectionId] = useState<string | null>(null);
 
   const defaultView: NavigateView =
     session.mode === "connect" ? "sources" : "connections";
@@ -135,7 +137,7 @@ export function SuccessScreen({
           reconnectPopupRef.current = popup;
         } else {
           // Popup blocked - open in same window as fallback
-          window.location.href = connection.auth.auth_url;
+          window.location.assign(connection.auth.auth_url);
         }
       } else {
         setIsReconnecting(false);
@@ -162,6 +164,33 @@ export function SuccessScreen({
         }}
         onSuccess={(connectionId) => {
           onConnectionCreated(connectionId);
+          if (options.enableFolderSelection) {
+            setRecentConnectionId(connectionId);
+            setView("folder-selection");
+          } else {
+            setSelectedSource(null);
+            setView("connections");
+            queryClient.invalidateQueries({ queryKey: ["source-connections"] });
+          }
+        }}
+      />
+    );
+  }
+
+  // Folder selection view - show after OAuth when enabled
+  if (view === "folder-selection" && selectedSource && recentConnectionId) {
+    return (
+      <FolderSelectionView
+        source={selectedSource}
+        connectionId={recentConnectionId}
+        onBack={() => {
+          // Cancel folder selection - go back to sources
+          setRecentConnectionId(null);
+          setSelectedSource(null);
+          setView("sources");
+        }}
+        onComplete={() => {
+          setRecentConnectionId(null);
           setSelectedSource(null);
           setView("connections");
           queryClient.invalidateQueries({ queryKey: ["source-connections"] });

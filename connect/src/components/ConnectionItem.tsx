@@ -49,9 +49,10 @@ export function ConnectionItem({
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <span
-          className="text-xs px-2 py-1 rounded-full shrink-0"
+          className="text-xs px-2 py-1 rounded-full shrink-0 border"
           style={{
-            backgroundColor: `color-mix(in srgb, ${statusColor} 20%, transparent)`,
+            backgroundColor: `color-mix(in srgb, ${statusColor} 5%, transparent)`,
+            borderColor: `color-mix(in srgb, ${statusColor} 20%, transparent)`,
             color: statusColor,
           }}
         >

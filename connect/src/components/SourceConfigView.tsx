@@ -91,6 +91,7 @@ export function SourceConfigView({
     configValues,
     byocValues,
     requiresByoc: sourceDetails?.requires_byoc ?? false,
+    syncImmediately: false, // OAuth connections don't sync immediately
     onSuccess,
     onCancel: onBack,
   });
@@ -215,7 +216,7 @@ export function SourceConfigView({
       short_name: source.short_name,
       name: connectionName || source.name,
       readable_collection_id: collectionId,
-      sync_immediately: true,
+      sync_immediately: !options.enableFolderSelection,
     };
 
     if (effectiveAuthMethod === "direct") {

@@ -14,6 +14,7 @@ interface UseOAuthFlowOptions {
   configValues: Record<string, unknown>;
   byocValues?: { client_id: string; client_secret: string };
   requiresByoc: boolean;
+  syncImmediately?: boolean;
   onSuccess: (connectionId: string) => void;
   onCancel?: () => void;
 }
@@ -34,6 +35,7 @@ export function useOAuthFlow({
   configValues,
   byocValues,
   requiresByoc,
+  syncImmediately = true,
   onSuccess,
   onCancel,
 }: UseOAuthFlowOptions): UseOAuthFlowResult {
@@ -65,11 +67,12 @@ export function useOAuthFlow({
       } else {
         setStatus("error");
         setError(
-          result.error_message ?? "OAuth authentication failed. Please try again."
+          result.error_message ??
+            "OAuth authentication failed. Please try again.",
         );
       }
     },
-    [onSuccess]
+    [onSuccess],
   );
 
   useEffect(() => {
@@ -85,7 +88,9 @@ export function useOAuthFlow({
         if (!isPopupOpen(popupRef.current) && !oauthCompletedRef.current) {
           // Clean up the connection we just created (if any)
           if (createdConnectionIdRef.current) {
-            apiClient.deleteSourceConnection(createdConnectionIdRef.current).catch(() => {});
+            apiClient
+              .deleteSourceConnection(createdConnectionIdRef.current)
+              .catch(() => {});
             createdConnectionIdRef.current = null;
             popupRef.current = null;
             setStatus("idle");
@@ -124,6 +129,7 @@ export function useOAuthFlow({
         name: sourceName,
         readable_collection_id: collectionId,
         redirect_url: redirectUri, // Where to redirect after OAuth completes
+        sync_immediately: syncImmediately,
         authentication: {
           redirect_uri: redirectUri,
           ...(requiresByoc &&
@@ -160,10 +166,18 @@ export function useOAuthFlow({
     } catch (err) {
       setStatus("error");
       setError(
-        err instanceof Error ? err.message : "Failed to initiate OAuth flow"
+        err instanceof Error ? err.message : "Failed to initiate OAuth flow",
       );
     }
-  }, [shortName, sourceName, collectionId, configValues, byocValues, requiresByoc]);
+  }, [
+    shortName,
+    sourceName,
+    collectionId,
+    configValues,
+    byocValues,
+    requiresByoc,
+    syncImmediately,
+  ]);
 
   const retryPopup = useCallback(() => {
     if (!blockedAuthUrl) return;

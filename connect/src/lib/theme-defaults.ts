@@ -138,4 +138,5 @@ export const defaultLabels: Required<ConnectLabels> = {
 // Default options
 export const defaultOptions: Required<ConnectOptions> = {
   showConnectionName: false,
+  enableFolderSelection: false,
 };
