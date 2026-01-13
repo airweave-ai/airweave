@@ -79,7 +79,7 @@ export function EmptyState({ labels, showConnect }: EmptyStateProps) {
   if (showConnect) {
     return (
       <div
-        className="flex flex-col -mx-6 -mt-4"
+        className="flex flex-col -mx-6"
         style={{
           background: `linear-gradient(to bottom, color-mix(in srgb, var(--connect-primary) 8%, var(--connect-bg)) 0%, var(--connect-bg) 100%)`,
         }}

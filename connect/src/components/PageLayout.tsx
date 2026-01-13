@@ -48,9 +48,9 @@ export function PageLayout({
       )}
 
       <main
-        className={`flex-1 overflow-y-auto px-6 scrollable-content ${
-          centerContent ? "flex flex-col items-center justify-center text-center" : ""
-        }`}
+        className={`flex-1 overflow-y-auto px-6 ${
+          hideHeader ? "" : "scrollable-content"
+        } ${centerContent ? "flex flex-col items-center justify-center text-center" : ""}`}
       >
         {children}
       </main>

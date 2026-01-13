@@ -52,7 +52,7 @@ export function ArrayField({ field, value, onChange, error }: ArrayFieldProps) {
       >
         {arrayValue.map((tag, index) => (
           <span
-            key={index}
+            key={tag}
             className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded"
             style={{
               backgroundColor: "var(--connect-primary)",
