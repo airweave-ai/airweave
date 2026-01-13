@@ -13,8 +13,9 @@ class SyncManifest(BaseModel):
 
     Stored at: raw/{sync_id}/manifest.json
 
-    Note: Entity and file counts are computed on-demand via get_entity_count()
-    to avoid inconsistencies from incremental updates.
+    Note: Entity and file counts are NOT updated during sync to avoid write
+    overhead. Use get_entity_count() to compute on-demand. These fields exist
+    for backwards compatibility and are only set during backfill operations.
     """
 
     sync_id: str
@@ -24,6 +25,9 @@ class SyncManifest(BaseModel):
     organization_id: str
     created_at: str
     updated_at: str
+    # Legacy count fields - not updated during sync (computed on-demand)
+    entity_count: int = 0
+    file_count: int = 0
     # Track sync jobs that have written to this store
     sync_jobs: List[str] = Field(default_factory=list)
     # Optional config reference

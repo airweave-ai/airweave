@@ -29,13 +29,15 @@ import httpx
 # TODO: have to be able to re-generate items and access in SP and AD using the generate script
 
 # Mode: Set to True to force delete and re-sync, False to reuse existing collection
-FORCE_RESYNC = True  # Force new sync to measure ACL sync timing
+# - FORCE_RESYNC=True: Delete collection → Full sync (60-80 min with 50K users) → Tests
+# - FORCE_RESYNC=False: Reuse existing collection → Skip sync → Tests only (~1-2 min)
+FORCE_RESYNC = True  # Fresh sync to benchmark 50K users + 150K memberships
 
 # Run static verification (verify.py from test 4)
-RUN_STATIC_TESTS = False  # Skip verify.py, we just want to measure sync timing
+RUN_STATIC_TESTS = True  # Run verify.py to test ACL correctness (fast, ~1-2 min)
 
 # Run incremental tests (test 5)
-RUN_INCREMENTAL_TESTS = False  # Skip incremental tests
+RUN_INCREMENTAL_TESTS = False  # Skip - each test triggers re-sync (~30-45 min each with 50K users)
 
 # Incremental test markers to run (e.g., "critical" for security-critical only)
 # Set to None to run all tests, or "critical" for security tests only

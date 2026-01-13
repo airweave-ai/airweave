@@ -93,6 +93,9 @@ class ACPostgresHandler(ACActionHandler):
     ) -> int:
         """Handle upsert actions - bulk insert with ON CONFLICT.
 
+        Uses batched upserts to avoid massive transactions that can crash
+        PostgreSQL or the Python driver when processing 100K+ memberships.
+
         Args:
             actions: List of upsert actions
             sync_context: Sync context
@@ -105,18 +108,34 @@ class ACPostgresHandler(ACActionHandler):
 
         memberships = [action.membership for action in actions]
 
-        async with get_db_context() as db:
-            count = await crud.access_control_membership.bulk_create(
-                db=db,
-                memberships=memberships,
-                organization_id=sync_context.organization_id,
-                source_connection_id=sync_context.source_connection_id,
-                source_name=sync_context.connection.short_name,
-            )
+        # Batch upserts to prevent massive transactions (150K rows = ~1M params)
+        BATCH_SIZE = 5000
+        total_count = 0
 
-        sync_context.logger.debug(f"[ACPostgresHandler] Upserted {count} memberships")
+        for i in range(0, len(memberships), BATCH_SIZE):
+            batch = memberships[i : i + BATCH_SIZE]
 
-        return count
+            async with get_db_context() as db:
+                count = await crud.access_control_membership.bulk_create(
+                    db=db,
+                    memberships=batch,
+                    organization_id=sync_context.organization_id,
+                    source_connection_id=sync_context.source_connection_id,
+                    source_name=sync_context.connection.short_name,
+                )
+
+            total_count += count
+
+            # Log progress for large batches
+            if len(memberships) > BATCH_SIZE:
+                sync_context.logger.info(
+                    f"[ACPostgresHandler] Batch upsert progress: "
+                    f"{min(i + BATCH_SIZE, len(memberships))}/{len(memberships)} memberships"
+                )
+
+        sync_context.logger.debug(f"[ACPostgresHandler] Upserted {total_count} memberships total")
+
+        return total_count
 
     async def handle_inserts(
         self,

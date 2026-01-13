@@ -210,8 +210,9 @@ class SyncOrchestrator:
                     try:
                         await self.sync_context.guard_rail.is_allowed(ActionType.ENTITIES)
                     except (UsageLimitExceededException, PaymentRequiredException) as guard_error:
+                        err_type = type(guard_error).__name__
                         self.sync_context.logger.error(
-                            f"Guard rail check failed: {type(guard_error).__name__}: {str(guard_error)}"
+                            f"Guard rail check failed: {err_type}: {str(guard_error)}"
                         )
                         stream_error = guard_error
                         # Flush any buffered work so we don't drop it
@@ -520,9 +521,9 @@ class SyncOrchestrator:
                 if is_new:
                     memberships.append(membership)
 
-                # Log progress every 100 unique memberships
-                if len(memberships) % 100 == 0 and len(memberships) > 0:
-                    self.sync_context.logger.debug(
+                # Log progress every 1000 unique memberships
+                if len(memberships) % 1000 == 0 and len(memberships) > 0:
+                    self.sync_context.logger.info(
                         f"🔐 Collected {len(memberships)} unique memberships so far..."
                     )
         except Exception as e:
@@ -539,6 +540,11 @@ class SyncOrchestrator:
             f"🔐 Collected {stats.encountered} unique memberships "
             f"({stats.duplicates_skipped} duplicates skipped)"
         )
+
+        # Log LDAP cache stats if available
+        ldap_client = getattr(source, "_ldap_client", None)
+        if ldap_client and hasattr(ldap_client, "log_cache_stats"):
+            ldap_client.log_cache_stats()
 
         # Process through AccessControlPipeline with encountered keys for orphan detection
         # Note: Even if no new memberships, we still need to check for orphans!
