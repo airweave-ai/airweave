@@ -108,8 +108,10 @@ class ACPostgresHandler(ACActionHandler):
 
         memberships = [action.membership for action in actions]
 
-        # Batch upserts to prevent massive transactions (150K rows = ~1M params)
-        BATCH_SIZE = 5000
+        # Batch upserts to prevent massive transactions
+        # PostgreSQL limit is 32,767 parameters. Each membership has ~10 columns.
+        # 3000 * 10 = 30,000 params (safely under the limit)
+        BATCH_SIZE = 2000
         total_count = 0
 
         for i in range(0, len(memberships), BATCH_SIZE):
