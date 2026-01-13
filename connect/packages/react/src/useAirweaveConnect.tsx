@@ -1,6 +1,7 @@
 import type {
   ChildToParentMessage,
   ConnectTheme,
+  NavigateView,
   ParentToChildMessage,
   SessionError,
   SessionStatus,
@@ -9,6 +10,20 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot, Root } from "react-dom/client";
 import { ConnectModal } from "./ConnectModal";
 import { DEFAULT_CONNECT_URL } from "./constants";
+
+/** Modal styling options */
+export interface ModalStyle {
+  /** Modal width (default: "90%") */
+  width?: string;
+  /** Modal max width (default: "400px") */
+  maxWidth?: string;
+  /** Modal height (default: "80%") */
+  height?: string;
+  /** Modal max height (default: "540px") */
+  maxHeight?: string;
+  /** Modal border radius (default: "16px") */
+  borderRadius?: string;
+}
 
 export interface UseAirweaveConnectOptions {
   /** Async function to get a session token from your backend */
@@ -27,6 +42,12 @@ export interface UseAirweaveConnectOptions {
   onConnectionCreated?: (connectionId: string) => void;
   /** Called when the session status changes */
   onStatusChange?: (status: SessionStatus) => void;
+  /** Initial view to show when modal opens (default: shows connections or sources based on mode) */
+  initialView?: NavigateView;
+  /** Custom modal styling */
+  modalStyle?: ModalStyle;
+  /** Show a close button in the modal (default: false) */
+  showCloseButton?: boolean;
 }
 
 export interface UseAirweaveConnectReturn {
@@ -36,6 +57,8 @@ export interface UseAirweaveConnectReturn {
   close: () => void;
   /** Dynamically update theme/labels while modal is open */
   setTheme: (theme: ConnectTheme) => void;
+  /** Navigate to a specific view within the modal */
+  navigate: (view: NavigateView) => void;
   /** Whether the modal is currently open */
   isOpen: boolean;
   /** Whether a token is being fetched */
@@ -60,6 +83,9 @@ export function useAirweaveConnect(
     onClose,
     onConnectionCreated,
     onStatusChange,
+    initialView,
+    modalStyle,
+    showCloseButton = false,
   } = options;
 
   const [isOpen, setIsOpen] = useState(false);
@@ -103,6 +129,10 @@ export function useAirweaveConnect(
   const themeRef = useRef(theme);
   themeRef.current = theme;
 
+  // Store initialView in ref to use on CONNECT_READY
+  const initialViewRef = useRef(initialView);
+  initialViewRef.current = initialView;
+
   // Send message to iframe with restricted origin
   const sendToIframe = useCallback(
     (message: ParentToChildMessage) => {
@@ -137,7 +167,10 @@ export function useAirweaveConnect(
 
       switch (data.type) {
         case "CONNECT_READY":
-          // Iframe is ready
+          // Iframe is ready - navigate to initial view if specified
+          if (initialViewRef.current) {
+            sendToIframe({ type: "NAVIGATE", view: initialViewRef.current });
+          }
           break;
 
         case "REQUEST_TOKEN":
@@ -214,6 +247,8 @@ export function useAirweaveConnect(
           onIframeRef={(iframe) => {
             iframeRef.current = iframe;
           }}
+          modalStyle={modalStyle}
+          showCloseButton={showCloseButton}
         />,
       );
     } else {
@@ -271,10 +306,18 @@ export function useAirweaveConnect(
     [sendToIframe],
   );
 
+  const navigate = useCallback(
+    (view: NavigateView) => {
+      sendToIframe({ type: "NAVIGATE", view });
+    },
+    [sendToIframe],
+  );
+
   return {
     open,
     close,
     setTheme,
+    navigate,
     isOpen,
     isLoading,
     error,

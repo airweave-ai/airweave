@@ -22,7 +22,14 @@ export {
   useAirweaveConnect,
   type UseAirweaveConnectOptions,
   type UseAirweaveConnectReturn,
+  type ModalStyle,
 } from "./useAirweaveConnect";
+
+// Export the component and its types
+export {
+  AirweaveConnect,
+  type AirweaveConnectProps,
+} from "./AirweaveConnect";
 
 // Export constants
 export { DEFAULT_CONNECT_URL } from "./constants";
