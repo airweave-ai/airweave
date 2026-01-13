@@ -174,7 +174,7 @@
         left: 0;
         width: 100%;
         height: 100%;
-        background: rgba(0, 0, 0, 0.5);
+        background: rgba(220, 220, 220, 0.5);
         z-index: 1000;
         align-items: center;
         justify-content: center;
@@ -650,9 +650,12 @@
           },
           labels: {
             emptyStateHeading: "Koppel je favoriete apps",
-            emptyStateDescription: "Verbind je apps en wij zorgen dat alles soepel samenwerkt. Makkelijk toch?",
-            welcomeInfoVerify: "We checken eerst even of alles goed staat ingesteld",
-            welcomeInfoAccess: "Geen zorgen, je kunt de toegang altijd weer intrekken",
+            emptyStateDescription:
+              "Verbind je apps en wij zorgen dat alles soepel samenwerkt. Makkelijk toch?",
+            welcomeInfoVerify:
+              "We checken eerst even of alles goed staat ingesteld",
+            welcomeInfoAccess:
+              "Geen zorgen, je kunt de toegang altijd weer intrekken",
             buttonConnect: "Koppelen",
             sourcesListHeading: "Welke app wil je koppelen?",
             buttonBack: "Terug",
@@ -725,9 +728,7 @@
         const modalOverlay = document.getElementById("modalOverlay");
         if (modalOverlay) {
           modalOverlay.style.background =
-            mode === "dark"
-              ? "rgba(255, 255, 255, 0.1)"
-              : "rgba(0, 0, 0, 0.5)";
+            mode === "dark" ? "rgba(0, 0, 0, 0.5)" : "rgba(220, 220, 220, 0.5)";
         }
 
         // If modal is open, send SET_THEME to update live
