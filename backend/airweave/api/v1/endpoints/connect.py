@@ -58,19 +58,25 @@ from airweave.schemas.connect_session import (
 router = TrailingSlashRouter()
 
 # Mode permission sets
-MODES_VIEW: FrozenSet[schemas.ConnectSessionMode] = frozenset({
-    schemas.ConnectSessionMode.ALL,
-    schemas.ConnectSessionMode.MANAGE,
-    schemas.ConnectSessionMode.REAUTH,
-})
-MODES_CREATE: FrozenSet[schemas.ConnectSessionMode] = frozenset({
-    schemas.ConnectSessionMode.ALL,
-    schemas.ConnectSessionMode.CONNECT,
-})
-MODES_DELETE: FrozenSet[schemas.ConnectSessionMode] = frozenset({
-    schemas.ConnectSessionMode.ALL,
-    schemas.ConnectSessionMode.MANAGE,
-})
+MODES_VIEW: FrozenSet[schemas.ConnectSessionMode] = frozenset(
+    {
+        schemas.ConnectSessionMode.ALL,
+        schemas.ConnectSessionMode.MANAGE,
+        schemas.ConnectSessionMode.REAUTH,
+    }
+)
+MODES_CREATE: FrozenSet[schemas.ConnectSessionMode] = frozenset(
+    {
+        schemas.ConnectSessionMode.ALL,
+        schemas.ConnectSessionMode.CONNECT,
+    }
+)
+MODES_DELETE: FrozenSet[schemas.ConnectSessionMode] = frozenset(
+    {
+        schemas.ConnectSessionMode.ALL,
+        schemas.ConnectSessionMode.MANAGE,
+    }
+)
 
 
 def _check_session_mode(

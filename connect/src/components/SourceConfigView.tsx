@@ -2,31 +2,23 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiClient } from "../lib/api";
+import { generateRandomSuffix } from "../lib/sourceConfig-utils";
 import { useTheme } from "../lib/theme";
-import type {
-  ConfigField,
-  Source,
-  SourceConnectionCreateRequest,
-} from "../lib/types";
+import type { Source, SourceConnectionCreateRequest } from "../lib/types";
 import { useOAuthFlow } from "../lib/useOAuthFlow";
 import { AppIcon } from "./AppIcon";
 import { AuthMethodSelector } from "./AuthMethodSelector";
 import { BackButton } from "./BackButton";
 import { Button } from "./Button";
-import { ByocFields } from "./ByocFields";
-import { DynamicFormField } from "./DynamicFormField";
 import { LoadingScreen } from "./LoadingScreen";
-import { OAuthStatusUI } from "./OAuthStatusUI";
 import { PageLayout } from "./PageLayout";
-
-function generateRandomSuffix(): string {
-  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-  let result = "";
-  for (let i = 0; i < 6; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
-}
+import {
+  ConfigFieldsSection,
+  ConnectionNameField,
+  DirectAuthSection,
+  FormErrorAlert,
+  OAuthSection,
+} from "./SourceConfigView/index";
 
 interface SourceConfigViewProps {
   source: Source;
@@ -307,52 +299,15 @@ export function SourceConfigView({
   return (
     <PageLayout title={source.name} headerLeft={headerLeft} footerContent={footerContent}>
       <form onSubmit={handleSubmit} id="source-config-form">
-        {errors._form && (
-          <div
-            className="mb-4 p-3 rounded-md text-sm"
-            role="alert"
-            style={{
-              backgroundColor:
-                "color-mix(in srgb, var(--connect-error) 10%, transparent)",
-              color: "var(--connect-error)",
-            }}
-          >
-            {errors._form}
-          </div>
-        )}
+        {errors._form && <FormErrorAlert message={errors._form} />}
 
         {options.showConnectionName && (
-          <div className="mb-4">
-            <label
-              htmlFor="connection-name"
-              className="block text-sm font-medium mb-1"
-              style={{ color: "var(--connect-text)" }}
-            >
-              {labels.configureNameLabel}
-            </label>
-            <p
-              className="text-xs mt-1 mb-2"
-              style={{ color: "var(--connect-text-muted)" }}
-            >
-              {labels.configureNameDescription}
-            </p>
-            <input
-              id="connection-name"
-              type="text"
-              value={connectionName}
-              onChange={(e) => setConnectionName(e.target.value)}
-              placeholder={labels.configureNamePlaceholder.replace(
-                "{source}",
-                source.name,
-              )}
-              className="w-full px-3 py-2 text-sm rounded-md border outline-none transition-colors"
-              style={{
-                backgroundColor: "var(--connect-surface)",
-                color: "var(--connect-text)",
-                borderColor: "var(--connect-border)",
-              }}
-            />
-          </div>
+          <ConnectionNameField
+            value={connectionName}
+            onChange={setConnectionName}
+            sourceName={source.name}
+            labels={labels}
+          />
         )}
 
         {sourceDetails && (
@@ -364,76 +319,40 @@ export function SourceConfigView({
           />
         )}
 
-        {showDirectAuthFields && (
-          <div className="mb-4">
-            <h2
-              className="text-sm font-bold opacity-70 mb-3"
-              style={{ color: "var(--connect-text)" }}
-            >
-              {labels.configureAuthSection}
-            </h2>
-            {sourceDetails.auth_fields?.fields.map((field: ConfigField) => (
-              <DynamicFormField
-                key={field.name}
-                field={field}
-                value={authValues[field.name]}
-                onChange={(value) => handleAuthValueChange(field.name, value)}
-                error={errors[field.name]}
-              />
-            ))}
-          </div>
+        {showDirectAuthFields && sourceDetails?.auth_fields?.fields && (
+          <DirectAuthSection
+            fields={sourceDetails.auth_fields.fields}
+            authValues={authValues}
+            errors={errors}
+            onFieldChange={handleAuthValueChange}
+            labels={labels}
+          />
         )}
 
         {showOAuthSection && (
-          <div className="mb-4">
-            <h2
-              className="text-sm font-bold opacity-70 mb-3"
-              style={{ color: "var(--connect-text)" }}
-            >
-              {labels.configureAuthSection}
-            </h2>
-
-            {sourceDetails?.requires_byoc && (
-              <ByocFields
-                values={byocValues}
-                onChange={setByocValues}
-                errors={errors}
-                onClearError={clearError}
-              />
-            )}
-
-            <OAuthStatusUI
-              status={oauthFlow.status}
-              error={oauthFlow.error}
-              blockedAuthUrl={oauthFlow.blockedAuthUrl}
-              onRetryPopup={oauthFlow.retryPopup}
-              onManualLinkClick={oauthFlow.handleManualLinkClick}
-            />
-          </div>
+          <OAuthSection
+            requiresByoc={sourceDetails?.requires_byoc ?? false}
+            byocValues={byocValues}
+            onByocChange={setByocValues}
+            errors={errors}
+            onClearError={clearError}
+            oauthStatus={oauthFlow.status}
+            oauthError={oauthFlow.error}
+            blockedAuthUrl={oauthFlow.blockedAuthUrl}
+            onRetryPopup={oauthFlow.retryPopup}
+            onManualLinkClick={oauthFlow.handleManualLinkClick}
+            labels={labels}
+          />
         )}
 
-        {showConfigFields !== undefined && showConfigFields > 0 && (
-          <div className="mb-4">
-            <h2
-              className="text-sm font-bold opacity-70 mb-3"
-              style={{ color: "var(--connect-text)" }}
-            >
-              {labels.configureConfigSection}
-            </h2>
-            {sourceDetails?.config_fields?.fields?.map(
-              (field: ConfigField) => (
-                <DynamicFormField
-                  key={field.name}
-                  field={field}
-                  value={configValues[field.name]}
-                  onChange={(value) =>
-                    handleConfigValueChange(field.name, value)
-                  }
-                  error={errors[`config_${field.name}`]}
-                />
-              ),
-            )}
-          </div>
+        {showConfigFields !== undefined && showConfigFields > 0 && sourceDetails?.config_fields?.fields && (
+          <ConfigFieldsSection
+            fields={sourceDetails.config_fields.fields}
+            configValues={configValues}
+            errors={errors}
+            onFieldChange={handleConfigValueChange}
+            labels={labels}
+          />
         )}
 
         <div className="h-20" />

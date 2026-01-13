@@ -19,83 +19,8 @@ import type {
   ConnectOptions,
   ConnectTheme,
   ThemeColors,
-  ThemeFonts,
 } from "./types";
-
-// Font weight constants
-const DEFAULT_BODY_WEIGHTS = [400, 500];
-const DEFAULT_HEADING_WEIGHTS = [500, 600, 700];
-const DEFAULT_BUTTON_WEIGHTS = [500, 600];
-
-const SYSTEM_FONT_STACK = `-apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif`;
-
-/**
- * Constructs a Google Fonts API URL from font specifications.
- * Returns null if no fonts are specified.
- *
- * Google Fonts API v2 format:
- * https://fonts.googleapis.com/css2?family=Font+Name:wght@400;500&family=Other+Font:wght@600&display=swap
- */
-function buildGoogleFontsUrl(fonts: ThemeFonts | undefined): string | null {
-  if (!fonts) return null;
-
-  const fontEntries: Map<string, Set<number>> = new Map();
-
-  // Helper to add font with weights
-  const addFont = (fontName: string | undefined, weights: number[]) => {
-    if (!fontName) return;
-    const existing = fontEntries.get(fontName) || new Set();
-    weights.forEach((w) => existing.add(w));
-    fontEntries.set(fontName, existing);
-  };
-
-  // Collect fonts with their weights
-  addFont(fonts.body, DEFAULT_BODY_WEIGHTS);
-  addFont(fonts.heading, DEFAULT_HEADING_WEIGHTS);
-  addFont(fonts.button || fonts.body, DEFAULT_BUTTON_WEIGHTS);
-
-  if (fontEntries.size === 0) return null;
-
-  // Build URL
-  const familyParams = Array.from(fontEntries.entries())
-    .map(([name, weights]) => {
-      const sortedWeights = Array.from(weights)
-        .sort((a, b) => a - b)
-        .join(";");
-      // Replace spaces with + for URL encoding
-      const encodedName = name.replace(/ /g, "+");
-      return `family=${encodedName}:wght@${sortedWeights}`;
-    })
-    .join("&");
-
-  return `https://fonts.googleapis.com/css2?${familyParams}&display=swap`;
-}
-
-/**
- * Darken a hex color by a percentage (0-100)
- */
-function darkenColor(hex: string, percent: number): string {
-  // Handle non-hex colors (transparent, rgb, etc.)
-  if (!hex.startsWith("#")) return hex;
-
-  let hexValue = hex.slice(1);
-
-  // Expand 3-digit hex to 6-digit (e.g., #fff -> #ffffff)
-  if (hexValue.length === 3) {
-    hexValue = hexValue
-      .split("")
-      .map((c) => c + c)
-      .join("");
-  }
-
-  // Parse and darken
-  const num = parseInt(hexValue, 16);
-  const r = Math.max(0, Math.floor((num >> 16) * (1 - percent / 100)));
-  const g = Math.max(0, Math.floor(((num >> 8) & 0x00ff) * (1 - percent / 100)));
-  const b = Math.max(0, Math.floor((num & 0x0000ff) * (1 - percent / 100)));
-
-  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
-}
+import { buildGoogleFontsUrl, SYSTEM_FONT_STACK, PENDING_COLORS } from "./theme/index";
 
 interface ThemeContextValue {
   theme: ConnectTheme;
@@ -143,28 +68,9 @@ export function ThemeProvider({ children, initialTheme }: ThemeProviderProps) {
     return theme.mode;
   }, [theme, isPending, systemPrefersDark]);
 
-  // Transparent colors for pending state (no flash)
-  const pendingColors: Required<ThemeColors> = useMemo(
-    () => ({
-      background: "transparent",
-      surface: "transparent",
-      text: "transparent",
-      textMuted: "transparent",
-      primary: "transparent",
-      primaryForeground: "transparent",
-      primaryHover: "transparent",
-      secondary: "transparent",
-      secondaryHover: "transparent",
-      border: "transparent",
-      success: "transparent",
-      error: "transparent",
-    }),
-    [],
-  );
-
   // Merge custom colors with defaults, auto-deriving hover colors
   const colors: Required<ThemeColors> = useMemo(() => {
-    if (isPending) return pendingColors;
+    if (isPending) return PENDING_COLORS;
     const defaultColors =
       resolvedMode === "dark" ? defaultDarkColors : defaultLightColors;
     const customColors = theme?.colors?.[resolvedMode] ?? {};
@@ -176,16 +82,16 @@ export function ThemeProvider({ children, initialTheme }: ThemeProviderProps) {
     };
 
     // Auto-derive hover colors if not explicitly provided
-    // Darken by 15% for a subtle but visible hover effect
+    // Use CSS color-mix to darken by 15%
     if (customColors.primary && !customColors.primaryHover) {
-      merged.primaryHover = darkenColor(merged.primary, 15);
+      merged.primaryHover = `color-mix(in srgb, ${merged.primary} 85%, black)`;
     }
     if (customColors.secondary && !customColors.secondaryHover) {
-      merged.secondaryHover = darkenColor(merged.secondary, 15);
+      merged.secondaryHover = `color-mix(in srgb, ${merged.secondary} 85%, black)`;
     }
 
     return merged;
-  }, [resolvedMode, theme, isPending, pendingColors]);
+  }, [resolvedMode, theme, isPending]);
 
   // Merge custom labels with defaults
   const labels: Required<ConnectLabels> = useMemo(() => {

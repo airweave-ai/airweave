@@ -10,64 +10,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot, Root } from "react-dom/client";
 import { ConnectModal } from "./ConnectModal";
 import { DEFAULT_CONNECT_URL } from "./constants";
+import { buildIframeUrl, getExpectedOrigin } from "./iframeUrl";
+import type {
+  UseAirweaveConnectOptions,
+  UseAirweaveConnectReturn,
+} from "./useAirweaveConnect.types";
 
-/** Modal styling options */
-export interface ModalStyle {
-  /** Modal width (default: "90%") */
-  width?: string;
-  /** Modal max width (default: "400px") */
-  maxWidth?: string;
-  /** Modal height (default: "80%") */
-  height?: string;
-  /** Modal max height (default: "540px") */
-  maxHeight?: string;
-  /** Modal border radius (default: "16px") */
-  borderRadius?: string;
-}
-
-export interface UseAirweaveConnectOptions {
-  /** Async function to get a session token from your backend */
-  getSessionToken: () => Promise<string>;
-  /** Theme configuration for the Connect UI */
-  theme?: ConnectTheme;
-  /** URL of the hosted Connect iframe (defaults to Airweave hosted) */
-  connectUrl?: string;
-  /** Called when a connection is successfully created */
-  onSuccess?: (connectionId: string) => void;
-  /** Called when an error occurs */
-  onError?: (error: SessionError) => void;
-  /** Called when the modal is closed */
-  onClose?: (reason: "success" | "cancel" | "error") => void;
-  /** Called when a new connection is created */
-  onConnectionCreated?: (connectionId: string) => void;
-  /** Called when the session status changes */
-  onStatusChange?: (status: SessionStatus) => void;
-  /** Initial view to show when modal opens (default: shows connections or sources based on mode) */
-  initialView?: NavigateView;
-  /** Custom modal styling */
-  modalStyle?: ModalStyle;
-  /** Show a close button in the modal (default: false) */
-  showCloseButton?: boolean;
-}
-
-export interface UseAirweaveConnectReturn {
-  /** Open the Connect modal */
-  open: () => void;
-  /** Close the Connect modal */
-  close: () => void;
-  /** Dynamically update theme/labels while modal is open */
-  setTheme: (theme: ConnectTheme) => void;
-  /** Navigate to a specific view within the modal */
-  navigate: (view: NavigateView) => void;
-  /** Whether the modal is currently open */
-  isOpen: boolean;
-  /** Whether a token is being fetched */
-  isLoading: boolean;
-  /** Current error, if any */
-  error: SessionError | null;
-  /** Current session status from the iframe */
-  status: SessionStatus | null;
-}
+// Re-export types for consumers
+export type { ModalStyle, UseAirweaveConnectOptions, UseAirweaveConnectReturn } from "./useAirweaveConnect.types";
 
 const CONTAINER_ID = "airweave-connect-root";
 
@@ -99,15 +49,7 @@ export function useAirweaveConnect(
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   // Derive expected origin from connectUrl for secure postMessage
-  const expectedOrigin = (() => {
-    try {
-      const url = new URL(connectUrl);
-      return url.origin;
-    } catch {
-      // Fallback for invalid URLs - will cause postMessage to fail safely
-      return connectUrl;
-    }
-  })();
+  const expectedOrigin = getExpectedOrigin(connectUrl);
 
   // Store callbacks in refs to avoid re-creating message handler
   const callbacksRef = useRef({
@@ -216,13 +158,7 @@ export function useAirweaveConnect(
   }, [isOpen, handleClose, sendToIframe, expectedOrigin]);
 
   // Build the iframe URL with theme query parameter
-  const iframeUrl = (() => {
-    const url = new URL(connectUrl);
-    if (theme?.mode) {
-      url.searchParams.set("theme", theme.mode);
-    }
-    return url.toString();
-  })();
+  const iframeUrl = buildIframeUrl(connectUrl, theme);
 
   // Manage modal rendering via createRoot
   useEffect(() => {
