@@ -15,6 +15,7 @@ export function ArrayField({ field, value, onChange, error }: ArrayFieldProps) {
   const [inputValue, setInputValue] = useState("");
   const arrayValue = value ?? [];
   const inputId = `input-${field.name}`;
+  const errorId = `error-${field.name}`;
 
   const addTag = (tag: string) => {
     const trimmed = tag.trim();
@@ -55,7 +56,7 @@ export function ArrayField({ field, value, onChange, error }: ArrayFieldProps) {
             className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded"
             style={{
               backgroundColor: "var(--connect-primary)",
-              color: "white",
+              color: "var(--connect-primary-foreground)",
             }}
           >
             {tag}
@@ -79,6 +80,8 @@ export function ArrayField({ field, value, onChange, error }: ArrayFieldProps) {
           placeholder={arrayValue.length === 0 ? "Type and press Enter" : ""}
           className="flex-1 min-w-[100px] text-sm bg-transparent border-none outline-none"
           style={{ color: "var(--connect-text)" }}
+          aria-invalid={!!error}
+          aria-describedby={error ? errorId : undefined}
         />
       </div>
     </FieldWrapper>

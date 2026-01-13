@@ -16,6 +16,7 @@ export function StringField({ field, value, onChange, error }: StringFieldProps)
   const isSecret = field.is_secret === true;
   const inputType = isSecret && !showSecret ? "password" : "text";
   const inputId = `input-${field.name}`;
+  const errorId = `error-${field.name}`;
 
   return (
     <FieldWrapper field={field} error={error}>
@@ -28,6 +29,7 @@ export function StringField({ field, value, onChange, error }: StringFieldProps)
           className="w-full px-3 py-2 text-sm rounded-md border outline-none transition-colors"
           style={inputBaseStyles(error)}
           aria-invalid={!!error}
+          aria-describedby={error ? errorId : undefined}
         />
         {isSecret && (
           <button

@@ -251,6 +251,13 @@ export function SourceConfigView({
 
   const showConfigFields = sourceDetails?.config_fields?.fields?.length;
 
+  const showOAuthSection =
+    effectiveAuthMethod === "oauth_browser" &&
+    (sourceDetails?.requires_byoc ||
+      oauthFlow.error ||
+      oauthFlow.status === "waiting" ||
+      oauthFlow.status === "popup_blocked");
+
   const isOAuthWaiting =
     effectiveAuthMethod === "oauth_browser" && oauthFlow.status === "waiting";
 
@@ -377,45 +384,33 @@ export function SourceConfigView({
           </div>
         )}
 
-        {effectiveAuthMethod === "oauth_browser" &&
-          (() => {
-            const hasByocFields = sourceDetails?.requires_byoc;
-            const hasOAuthStatusContent =
-              oauthFlow.error ||
-              oauthFlow.status === "waiting" ||
-              oauthFlow.status === "popup_blocked";
-            const hasAuthContent = hasByocFields || hasOAuthStatusContent;
+        {showOAuthSection && (
+          <div className="mb-4">
+            <h2
+              className="text-sm font-bold opacity-70 mb-3"
+              style={{ color: "var(--connect-text)" }}
+            >
+              {labels.configureAuthSection}
+            </h2>
 
-            if (!hasAuthContent) return null;
+            {sourceDetails?.requires_byoc && (
+              <ByocFields
+                values={byocValues}
+                onChange={setByocValues}
+                errors={errors}
+                onClearError={clearError}
+              />
+            )}
 
-            return (
-              <div className="mb-4">
-                <h2
-                  className="text-sm font-bold opacity-70 mb-3"
-                  style={{ color: "var(--connect-text)" }}
-                >
-                  {labels.configureAuthSection}
-                </h2>
-
-                {sourceDetails?.requires_byoc && (
-                  <ByocFields
-                    values={byocValues}
-                    onChange={setByocValues}
-                    errors={errors}
-                    onClearError={clearError}
-                  />
-                )}
-
-                <OAuthStatusUI
-                  status={oauthFlow.status}
-                  error={oauthFlow.error}
-                  blockedAuthUrl={oauthFlow.blockedAuthUrl}
-                  onRetryPopup={oauthFlow.retryPopup}
-                  onManualLinkClick={oauthFlow.handleManualLinkClick}
-                />
-              </div>
-            );
-          })()}
+            <OAuthStatusUI
+              status={oauthFlow.status}
+              error={oauthFlow.error}
+              blockedAuthUrl={oauthFlow.blockedAuthUrl}
+              onRetryPopup={oauthFlow.retryPopup}
+              onManualLinkClick={oauthFlow.handleManualLinkClick}
+            />
+          </div>
+        )}
 
         {showConfigFields !== undefined && showConfigFields > 0 && (
           <div className="mb-4">

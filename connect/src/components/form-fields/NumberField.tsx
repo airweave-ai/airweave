@@ -11,6 +11,7 @@ interface NumberFieldProps {
 
 export function NumberField({ field, value, onChange, error }: NumberFieldProps) {
   const inputId = `input-${field.name}`;
+  const errorId = `error-${field.name}`;
 
   return (
     <FieldWrapper field={field} error={error}>
@@ -25,6 +26,7 @@ export function NumberField({ field, value, onChange, error }: NumberFieldProps)
         className="w-full px-3 py-2 text-sm rounded-md border outline-none transition-colors"
         style={inputBaseStyles(error)}
         aria-invalid={!!error}
+        aria-describedby={error ? errorId : undefined}
       />
     </FieldWrapper>
   );

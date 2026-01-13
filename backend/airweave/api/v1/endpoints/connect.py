@@ -86,6 +86,13 @@ def _check_session_mode(
         )
 
 
+def _sanitize_sse_error(error: Exception) -> str:
+    """Return a safe error message for SSE client consumption."""
+    if isinstance(error, HTTPException):
+        return error.detail
+    return "An unexpected error occurred"
+
+
 async def _build_session_context(
     db: AsyncSession,
     session: ConnectSessionContext,
@@ -742,7 +749,8 @@ async def subscribe_to_connection_sync(
             logger.info(f"SSE connection cancelled for job {job_id}")
         except Exception as e:
             logger.error(f"SSE error for job {job_id}: {str(e)}")
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            safe_message = _sanitize_sse_error(e)
+            yield f"data: {json.dumps({'type': 'error', 'message': safe_message})}\n\n"
         finally:
             # Clean up when SSE connection closes
             try:
