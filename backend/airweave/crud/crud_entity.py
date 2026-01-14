@@ -26,6 +26,31 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
         """
         super().__init__(Entity, track_user=False)
 
+    def _prepare_entity_data(self, obj_in: EntityCreate | dict, org_id: UUID) -> dict:
+        """Prepare entity data with organization ID and timestamps.
+
+        Args:
+            obj_in: Entity data (Pydantic model or dict)
+            org_id: Organization ID to set
+
+        Returns:
+            Dict with organization_id and timestamps guaranteed
+        """
+        if not isinstance(obj_in, dict):
+            data = obj_in.model_dump(exclude_unset=True)
+        else:
+            data = obj_in.copy()
+
+        data["organization_id"] = org_id
+
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        if "created_at" not in data:
+            data["created_at"] = now
+        if "modified_at" not in data:
+            data["modified_at"] = now
+
+        return data
+
     async def create(
         self,
         db: AsyncSession,
@@ -51,21 +76,9 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
             The created or updated entity
         """
         if not skip_validation:
-            # Validate auth context has org access
             await self._validate_organization_access(ctx, ctx.organization.id)
 
-        if not isinstance(obj_in, dict):
-            obj_in_dict = obj_in.model_dump(exclude_unset=True)
-        else:
-            obj_in_dict = obj_in
-
-        obj_in_dict["organization_id"] = ctx.organization.id
-
-        # Ensure we have timestamps
-        if "created_at" not in obj_in_dict:
-            obj_in_dict["created_at"] = datetime.now(timezone.utc).replace(tzinfo=None)
-        if "modified_at" not in obj_in_dict:
-            obj_in_dict["modified_at"] = datetime.now(timezone.utc).replace(tzinfo=None)
+        obj_in_dict = self._prepare_entity_data(obj_in, ctx.organization.id)
 
         # Use PostgreSQL's INSERT ... ON CONFLICT DO UPDATE
         stmt = insert(Entity).values(**obj_in_dict)
@@ -157,12 +170,68 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
         Returns:
             Dict mapping (entity_id, entity_definition_id) -> Entity
         """
+        return await self._bulk_get_by_entity_and_definition(
+            db,
+            scope_filter=Entity.sync_id == sync_id,
+            entity_requests=entity_requests,
+            first_match_wins=False,
+        )
+
+    async def bulk_get_by_entity_collection_and_definition(
+        self,
+        db: AsyncSession,
+        *,
+        collection_id: UUID,
+        entity_requests: list[tuple[str, UUID]],
+    ) -> dict[tuple[str, UUID], Entity]:
+        """Get entities by (entity_id, collection_id, entity_definition_id).
+
+        Used for collection-level deduplication to check if ANY sync in the
+        collection already has a given entity. Returns the first matching
+        entity for each (entity_id, entity_definition_id) pair.
+
+        Args:
+            db: Database session
+            collection_id: The collection ID to filter by
+            entity_requests: List of (entity_id, entity_definition_id) tuples
+
+        Returns:
+            Dict mapping (entity_id, entity_definition_id) -> Entity
+        """
+        return await self._bulk_get_by_entity_and_definition(
+            db,
+            scope_filter=Entity.collection_id == collection_id,
+            entity_requests=entity_requests,
+            first_match_wins=True,
+        )
+
+    async def _bulk_get_by_entity_and_definition(
+        self,
+        db: AsyncSession,
+        *,
+        scope_filter,
+        entity_requests: list[tuple[str, UUID]],
+        first_match_wins: bool = False,
+    ) -> dict[tuple[str, UUID], Entity]:
+        """Internal helper for bulk entity lookups by (entity_id, entity_definition_id).
+
+        Chunks large requests to avoid database timeouts from massive OR conditions.
+
+        Args:
+            db: Database session
+            scope_filter: SQLAlchemy filter clause (e.g., Entity.sync_id == sync_id)
+            entity_requests: List of (entity_id, entity_definition_id) tuples
+            first_match_wins: If True, keep first match per key (for collection dedup).
+                              If False, last match overwrites (for sync-level lookup).
+
+        Returns:
+            Dict mapping (entity_id, entity_definition_id) -> Entity
+        """
         if not entity_requests:
             return {}
 
         from sqlalchemy import and_, or_
 
-        # Chunk requests to avoid timeouts with large datasets
         CHUNK_SIZE = 1000
         result_map: dict[tuple[str, UUID], Entity] = {}
 
@@ -175,14 +244,17 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
                 for eid, def_id in chunk
             ]
 
-            stmt = select(Entity).where(Entity.sync_id == sync_id, or_(*conditions))
+            stmt = select(Entity).where(scope_filter, or_(*conditions))
 
             result = await db.execute(stmt)
             rows = list(result.unique().scalars().all())
 
-            # Merge into result map with composite key to avoid collisions
+            # Merge into result map
             for row in rows:
-                result_map[(row.entity_id, row.entity_definition_id)] = row
+                key = (row.entity_id, row.entity_definition_id)
+                if first_match_wins and key in result_map:
+                    continue  # Keep first match
+                result_map[key] = row
 
         return result_map
 
@@ -233,17 +305,8 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
         if org_id is None:
             raise ValueError("ApiContext must contain valid organization information")
 
-        # Prepare data for bulk upsert
-        values_list = []
-        for o in objs:
-            data = o.model_dump()
-            data["organization_id"] = org_id
-            # Ensure we have timestamps
-            if "created_at" not in data:
-                data["created_at"] = datetime.now(timezone.utc).replace(tzinfo=None)
-            if "modified_at" not in data:
-                data["modified_at"] = datetime.now(timezone.utc).replace(tzinfo=None)
-            values_list.append(data)
+        # Prepare data for bulk upsert using shared helper
+        values_list = [self._prepare_entity_data(o, org_id) for o in objs]
 
         # Use PostgreSQL's INSERT ... ON CONFLICT DO UPDATE
         # This handles the unique constraint on (sync_id, entity_id, entity_definition_id)

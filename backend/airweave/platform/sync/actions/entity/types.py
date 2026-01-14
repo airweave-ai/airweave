@@ -20,11 +20,20 @@ if TYPE_CHECKING:
 
 @dataclass
 class EntityInsertAction:
-    """Entity should be inserted (new entity, not in database)."""
+    """Entity should be inserted (new entity, not in database).
+
+    For collection-level dedup: if another sync in the collection already has
+    this entity with the same hash, skip_content_handlers is set to True to
+    avoid redundant vector DB and ARF writes. Only postgres handler runs to
+    record this sync's ownership of the entity.
+    """
 
     entity: "BaseEntity"
     entity_definition_id: UUID
     chunk_entities: List["BaseEntity"] = field(default_factory=list)
+    # Skip destination + ARF handlers if another sync already has this entity (collection dedup)
+    # Only postgres handler should run to record this sync's ownership
+    skip_content_handlers: bool = False
 
     @property
     def entity_id(self) -> str:

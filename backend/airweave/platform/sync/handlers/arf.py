@@ -64,7 +64,10 @@ class ArfHandler(EntityActionHandler):
         batch: EntityActionBatch,
         sync_context: "SyncContext",
     ) -> None:
-        """Handle a full action batch."""
+        """Handle a full action batch.
+
+        Note: skip_content_handlers filtering is done by EntityActionDispatcher.
+        """
         # Order: deletes first, then updates, then inserts
         if batch.deletes:
             await self.handle_deletes(batch.deletes, sync_context)
@@ -78,7 +81,10 @@ class ArfHandler(EntityActionHandler):
         actions: List[EntityInsertAction],
         sync_context: "SyncContext",
     ) -> None:
-        """Store inserted entities to ARF."""
+        """Store inserted entities to ARF.
+
+        Note: skip_content_handlers filtering is done by EntityActionDispatcher.
+        """
         if not actions:
             return
 

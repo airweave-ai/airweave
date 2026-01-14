@@ -69,13 +69,13 @@ jobs:
           set +e
           diff-cover coverage.xml \
             --compare-branch=origin/${{ github.base_ref }} \
-            --markdown-report=diff-coverage.md \
+            --format markdown:diff-coverage.md \
             --fail-under=80
           EXIT_CODE=$?
           set -e
 
-          # Exit code 2 = coverage below threshold, others = error/no files
-          if [ $EXIT_CODE -eq 2 ]; then
+          # Exit code 1 = coverage below threshold, 0 = success
+          if [ $EXIT_CODE -ne 0 ]; then
             echo "coverage_failed=true" >> $GITHUB_OUTPUT
           else
             echo "coverage_failed=false" >> $GITHUB_OUTPUT

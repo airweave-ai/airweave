@@ -98,6 +98,7 @@ class DestinationHandler(EntityActionHandler):
             )
 
         # Process and insert (inserts + updates)
+        # Note: skip_content_handlers filtering is done by EntityActionDispatcher
         entities = batch.get_entities_to_process()
         if entities:
             await self._do_process_and_insert(entities, sync_context)
@@ -111,9 +112,13 @@ class DestinationHandler(EntityActionHandler):
         actions: List[EntityInsertAction],
         sync_context: "SyncContext",
     ) -> None:
-        """Handle inserts - process and insert to destinations."""
+        """Handle inserts - process and insert to destinations.
+
+        Note: skip_content_handlers filtering is done by EntityActionDispatcher.
+        """
         if not actions:
             return
+
         entities = [a.entity for a in actions]
         sync_context.logger.debug(f"[{self.name}] Inserting {len(entities)} entities")
         await self._do_process_and_insert(entities, sync_context)
