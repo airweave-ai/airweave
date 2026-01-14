@@ -14,7 +14,8 @@ from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.router import TrailingSlashRouter
 from airweave.core.credentials import encrypt
-from airweave.core.shared_models import AuthenticationMethod, ConnectionStatus, FeatureFlag
+from airweave.core.shared_models import ConnectionStatus, FeatureFlag
+from airweave.schemas.source_connection import AuthenticationMethod
 from airweave.models.connection import Connection
 from airweave.models.integration_credential import IntegrationCredential
 from airweave.platform.configs.auth import S3AuthConfig

@@ -1606,7 +1606,7 @@ class GoogleDriveSource(BaseSource):
                     except Exception as e:
                         self.logger.error(f"Include mode error for My Drive: {str(e)}")
 
-                # Store the next start page token for future incremental syncs
+                # Store the next start page token for future syncs (both incremental and full)
                 await self._store_next_start_page_token(client)
 
         except Exception as e:

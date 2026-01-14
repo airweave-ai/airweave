@@ -632,8 +632,11 @@ class QdrantDestination(VectorDBDestination):
             # Build comprehensive error context
             error_context = {
                 "wrapper_exception": "ResponseHandlingException",
-                "source_exception_type": type(source_error).__name__,
-                "source_exception_message": str(source_error),
+                "source_exception_type": type(source_error).__name__ if source_error else "None",
+                "source_exception_message": str(source_error)
+                if source_error
+                else "No source error provided",
+                "response_handling_exception_str": str(e) or "Empty ResponseHandlingException",
                 "collection_name": self.collection_name,
                 "collection_id": str(self.collection_id),
                 "vector_size": self.vector_size,
@@ -643,16 +646,24 @@ class QdrantDestination(VectorDBDestination):
             }
 
             # Extract any HTTP-related details from source error
-            if hasattr(source_error, "status_code"):
+            if source_error and hasattr(source_error, "status_code"):
                 error_context["http_status"] = source_error.status_code
-            if hasattr(source_error, "request"):
+            if source_error and hasattr(source_error, "request"):
                 try:
                     error_context["request_method"] = source_error.request.method
                     error_context["request_url"] = str(source_error.request.url)
                 except Exception:
                     pass
 
-            error_summary = f"{type(source_error).__name__}: {source_error}"
+            # Build error summary with fallback for missing source
+            if source_error:
+                error_summary = (
+                    f"{type(source_error).__name__}: {source_error or '(empty error message)'}"
+                )
+            else:
+                error_summary = (
+                    f"ResponseHandlingException with no source error: {str(e) or '(empty)'}"
+                )
 
             if n <= 1 or n <= min_batch:
                 self.logger.error(

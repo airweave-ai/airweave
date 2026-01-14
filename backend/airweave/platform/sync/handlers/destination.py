@@ -243,11 +243,12 @@ class DestinationHandler(EntityActionHandler):
             try:
                 return await operation()
             except _RETRYABLE_EXCEPTIONS as e:
+                error_msg = str(e) or "(empty error message)"
                 if attempt < max_retries:
                     wait = 2 * (2**attempt)
                     sync_context.logger.warning(
                         f"[{self.name}] {operation_name} failed (attempt {attempt + 1}): "
-                        f"{type(e).__name__}: {e}. Retrying in {wait}s..."
+                        f"{type(e).__name__}: {error_msg}. Retrying in {wait}s..."
                     )
                     await asyncio.sleep(wait)
                 else:
@@ -255,24 +256,28 @@ class DestinationHandler(EntityActionHandler):
                     if destination.soft_fail:
                         sync_context.logger.error(
                             f"🔴 [{self.name}] {operation_name} SOFT-FAIL after {max_retries + 1} attempts: "
-                            f"{type(e).__name__}: {e}. Sync continues (soft_fail=True)",
+                            f"{type(e).__name__}: {error_msg}. Sync continues (soft_fail=True)",
                             exc_info=True,
                         )
                         return  # Continue sync
                     raise SyncFailureError(
-                        f"Destination unavailable: {type(e).__name__}: {e}"
+                        f"Destination unavailable: {type(e).__name__}: {error_msg}"
                     ) from e
             except Exception as e:
+                error_msg = str(e) or "(empty error message)"
                 # Soft-fail: log error but don't crash sync
                 if destination.soft_fail:
                     sync_context.logger.error(
                         f"🔴 [{self.name}] {operation_name} SOFT-FAIL: "
-                        f"{type(e).__name__}: {e}. Sync continues (soft_fail=True)",
+                        f"{type(e).__name__}: {error_msg}. Sync continues (soft_fail=True)",
                         exc_info=True,
                     )
                     return  # Continue sync
 
                 sync_context.logger.error(
-                    f"[{self.name}] {operation_name} failed: {type(e).__name__}: {e}"
+                    f"[{self.name}] {operation_name} failed: {type(e).__name__}: {error_msg}",
+                    exc_info=True,  # Include full traceback for debugging
                 )
-                raise SyncFailureError(f"Destination failed: {type(e).__name__}: {e}") from e
+                raise SyncFailureError(
+                    f"Destination failed: {type(e).__name__}: {error_msg}"
+                ) from e
