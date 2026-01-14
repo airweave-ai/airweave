@@ -18,9 +18,21 @@ import os
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
+
+
+@dataclass
+class SyncStats:
+    """Statistics from a completed sync."""
+
+    total_time_seconds: float
+    entities_inserted: int
+    entities_updated: int
+    memberships_count: int = 0
+
 
 # =============================================================================
 # CONFIGURATION - Modify these as needed
@@ -31,13 +43,15 @@ import httpx
 # Mode: Set to True to force delete and re-sync, False to reuse existing collection
 # - FORCE_RESYNC=True: Delete collection → Full sync (60-80 min with 50K users) → Tests
 # - FORCE_RESYNC=False: Reuse existing collection → Skip sync → Tests only (~1-2 min)
-FORCE_RESYNC = True  # Fresh sync to benchmark 50K users + 150K memberships
+FORCE_RESYNC = True  # Reuse existing collection, run verification only
 
 # Run static verification (verify.py from test 4)
 RUN_STATIC_TESTS = True  # Run verify.py to test ACL correctness (fast, ~1-2 min)
 
 # Run incremental tests (test 5)
-RUN_INCREMENTAL_TESTS = False  # Skip - each test triggers re-sync (~30-45 min each with 50K users)
+RUN_INCREMENTAL_TESTS = (
+    False  # Skip - each test triggers re-sync (~30-45 min each with 50K users)
+)
 
 # Incremental test markers to run (e.g., "critical" for security-critical only)
 # Set to None to run all tests, or "critical" for security tests only
@@ -116,10 +130,77 @@ async def delete_collection(client: httpx.AsyncClient, collection_id: str) -> bo
         return False
 
 
+async def get_membership_count(source_connection_id: str) -> int:
+    """Query PostgreSQL directly to get membership count for the source connection."""
+    try:
+        import asyncpg
+
+        conn = await asyncpg.connect(
+            host="localhost",
+            port=5432,
+            database="airweave",
+            user="airweave",
+            password="airweave1234!",
+        )
+        count = await conn.fetchval(
+            """
+            SELECT COUNT(*) FROM access_control_membership
+            WHERE source_connection_id = $1
+            """,
+            source_connection_id,
+        )
+        await conn.close()
+        return count or 0
+    except Exception as e:
+        print(f"   ⚠️ Could not query membership count: {e}")
+        return 0
+
+
+def print_sync_summary(stats: SyncStats) -> None:
+    """Print a beautiful summary of the sync performance."""
+    total_entities = stats.entities_inserted + stats.entities_updated
+    minutes = int(stats.total_time_seconds // 60)
+    seconds = int(stats.total_time_seconds % 60)
+
+    # Calculate rates
+    entities_per_sec = (
+        total_entities / stats.total_time_seconds if stats.total_time_seconds > 0 else 0
+    )
+    memberships_per_sec = (
+        stats.memberships_count / stats.total_time_seconds
+        if stats.total_time_seconds > 0
+        else 0
+    )
+
+    print()
+    print("╔" + "═" * 62 + "╗")
+    print("║" + " " * 18 + "✨ SYNC COMPLETE ✨" + " " * 19 + "║")
+    print("╠" + "═" * 62 + "╣")
+    print("║" + " " * 62 + "║")
+    print(f"║   ⏱️  Total Time:          {minutes:>3}m {seconds:02d}s" + " " * 26 + "║")
+    print("║" + " " * 62 + "║")
+    print("╠" + "─" * 62 + "╣")
+    print("║   📄 ENTITIES" + " " * 48 + "║")
+    print(f"║      • Inserted:          {stats.entities_inserted:>8,}" + " " * 22 + "║")
+    print(f"║      • Updated:           {stats.entities_updated:>8,}" + " " * 22 + "║")
+    print(f"║      • Total:             {total_entities:>8,}" + " " * 22 + "║")
+    print(f"║      • Rate:              {entities_per_sec:>8.1f}/sec" + " " * 18 + "║")
+    print("║" + " " * 62 + "║")
+    print("╠" + "─" * 62 + "╣")
+    print("║   🔐 ACL MEMBERSHIPS" + " " * 41 + "║")
+    print(f"║      • Total:             {stats.memberships_count:>8,}" + " " * 22 + "║")
+    print(
+        f"║      • Rate:              {memberships_per_sec:>8.1f}/sec" + " " * 18 + "║"
+    )
+    print("║" + " " * 62 + "║")
+    print("╚" + "═" * 62 + "╝")
+    print()
+
+
 async def wait_for_sync_completion(
     client: httpx.AsyncClient, source_connection_id: str
-) -> bool:
-    """Wait indefinitely for sync to complete. Returns True if successful."""
+) -> SyncStats | None:
+    """Wait indefinitely for sync to complete. Returns SyncStats if successful."""
     poll_interval = 5
     start_time = time.time()
 
@@ -147,14 +228,25 @@ async def wait_for_sync_completion(
             )
 
             if status == "completed":
-                print(f"\n✅ Sync completed in {int(elapsed)} seconds!")
-                print(f"   Total entities synced: {total}")
-                return True
+                # Get membership count
+                memberships = await get_membership_count(source_connection_id)
+
+                stats = SyncStats(
+                    total_time_seconds=elapsed,
+                    entities_inserted=inserted,
+                    entities_updated=updated,
+                    memberships_count=memberships,
+                )
+
+                # Print beautiful summary
+                print_sync_summary(stats)
+
+                return stats
             elif status in ("failed", "cancelled"):
                 print(f"\n❌ Sync {status.upper()}")
                 error = latest_job.get("error_message", "Unknown error")
                 print(f"   Error: {error}")
-                return False
+                return None
         else:
             print(f"   [{int(elapsed)}s] Waiting for sync job to start...")
 
@@ -230,8 +322,8 @@ async def create_collection_and_sync(client: httpx.AsyncClient) -> tuple[str, st
     print("Waiting for sync to complete (no timeout)...")
     print("=" * 60)
 
-    sync_success = await wait_for_sync_completion(client, source_connection_id)
-    if not sync_success:
+    sync_stats = await wait_for_sync_completion(client, source_connection_id)
+    if not sync_stats:
         print("\n⚠️  Sync did not complete successfully, but continuing to verify...")
 
     return collection_id, collection_uuid, source_connection_id
