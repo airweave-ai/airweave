@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vanilla JS Example - Airweave Connect</title>
+  </head>
+  <body>
+    <div class="container">
+      <img
+        src="https://avatars.githubusercontent.com/u/14957082?s=200&v=4"
+        alt="Logo"
+        class="logo"
+      />
+
+      <div class="chat-input-container">
+        <div class="input-row">
+          <input
+            type="text"
+            class="chat-input"
+            placeholder="Ask anything..."
+          />
+        </div>
+
+        <div class="toolbar">
+          <button class="apps-btn" id="apps-btn">
+            <span class="plus-icon">+</span>
+            Apps
+          </button>
+        </div>
+      </div>
+
+      <div class="error-message" id="error-message" style="display: none;"></div>
+
+      <div class="status-bar" id="status-bar">
+        <span id="modal-status">Modal: Closed</span>
+        <span id="session-status"></span>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

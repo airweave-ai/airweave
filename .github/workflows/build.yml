@@ -7,6 +7,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME_BACKEND: ${{ github.repository }}-backend
   IMAGE_NAME_FRONTEND: ${{ github.repository }}-frontend
+  IMAGE_NAME_CONNECT: ${{ github.repository }}-connect
 
 jobs:
   build-and-push-image:
@@ -58,3 +59,19 @@ jobs:
           push: true
           tags: ${{ steps.meta-frontend.outputs.tags }}
           labels: ${{ steps.meta-frontend.outputs.labels }}
+
+      - name: Extract metadata (tags, labels) for Docker (Connect)
+        id: meta-connect
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_CONNECT }}
+
+      - name: Build and push Docker image (Connect)
+        id: push-connect
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./connect/Dockerfile
+          push: true
+          tags: ${{ steps.meta-connect.outputs.tags }}
+          labels: ${{ steps.meta-connect.outputs.labels }}
