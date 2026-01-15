@@ -1,0 +1,887 @@
+"""Miro source implementation for syncing boards, items, connectors, and tags."""
+
+import os
+import re
+from datetime import datetime, timezone
+from typing import Any, AsyncGenerator, Dict, List, Optional
+from urllib.parse import parse_qs, unquote, urlparse
+
+import httpx
+from tenacity import retry, stop_after_attempt
+
+from airweave.core.exceptions import TokenRefreshError
+from airweave.core.shared_models import RateLimitLevel
+from airweave.platform.decorators import source
+from airweave.platform.entities._base import BaseEntity, Breadcrumb
+from airweave.platform.entities.miro import (
+    MiroAppCardEntity,
+    MiroBoardEntity,
+    MiroCardEntity,
+    MiroDocumentEntity,
+    MiroFrameEntity,
+    MiroImageEntity,
+    MiroStickyNoteEntity,
+    MiroTagEntity,
+    MiroTextEntity,
+)
+from airweave.platform.sources._base import BaseSource
+from airweave.platform.sources.retry_helpers import (
+    retry_if_rate_limit_or_timeout,
+    wait_rate_limit_with_backoff,
+)
+from airweave.platform.storage import FileSkippedException
+from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+
+
+@source(
+    name="Miro",
+    short_name="miro",
+    auth_methods=[
+        AuthenticationMethod.OAUTH_BROWSER,
+        AuthenticationMethod.OAUTH_TOKEN,
+        AuthenticationMethod.AUTH_PROVIDER,
+    ],
+    oauth_type=OAuthType.WITH_ROTATING_REFRESH,
+    auth_config_class=None,
+    config_class="MiroConfig",
+    labels=["Collaboration", "Whiteboard"],
+    supports_continuous=False,
+    rate_limit_level=RateLimitLevel.ORG,
+)
+class MiroSource(BaseSource):
+    """Miro source connector integrates with the Miro API to extract and synchronize data.
+
+    Connects to your Miro boards and syncs boards, sticky notes, cards, text items,
+    frames, tags, app cards, documents, and images.
+    """
+
+    API_BASE = "https://api.miro.com/v2"
+
+    @classmethod
+    async def create(
+        cls, access_token: str, config: Optional[Dict[str, Any]] = None
+    ) -> "MiroSource":
+        """Create a new Miro source.
+
+        Args:
+            access_token: OAuth access token for Miro API
+            config: Optional configuration parameters
+
+        Returns:
+            Configured MiroSource instance
+        """
+        instance = cls()
+        instance.access_token = access_token
+
+        # Store config values as instance attributes
+        if config:
+            instance.exclude_boards = config.get("exclude_boards", "")
+        else:
+            instance.exclude_boards = ""
+
+        return instance
+
+    @retry(
+        stop=stop_after_attempt(5),
+        retry=retry_if_rate_limit_or_timeout,
+        wait=wait_rate_limit_with_backoff,
+        reraise=True,
+    )
+    async def _get_with_auth(
+        self, client: httpx.AsyncClient, url: str, params: Optional[Dict[str, Any]] = None
+    ) -> Dict:
+        """Make authenticated GET request to Miro API with retry logic.
+
+        Retries on:
+        - 429 rate limits (respects Retry-After header)
+        - Timeout errors (exponential backoff)
+
+        Max 5 attempts with intelligent wait strategy.
+
+        Args:
+            client: HTTP client to use for the request
+            url: API endpoint URL
+            params: Optional query parameters
+        """
+        access_token = await self.get_access_token()
+        if not access_token:
+            raise ValueError("No access token available")
+
+        headers = {"Authorization": f"Bearer {access_token}"}
+
+        try:
+            response = await client.get(url, headers=headers, params=params)
+
+            # Handle 401 Unauthorized - token might have expired
+            if response.status_code == 401:
+                self.logger.warning(f"Received 401 Unauthorized for {url}, refreshing token...")
+
+                if self.token_manager:
+                    try:
+                        new_token = await self.token_manager.refresh_on_unauthorized()
+                        headers = {"Authorization": f"Bearer {new_token}"}
+                        self.logger.debug(f"Retrying request with refreshed token: {url}")
+                        response = await client.get(url, headers=headers, params=params)
+                    except TokenRefreshError as e:
+                        self.logger.error(f"Failed to refresh token: {str(e)}")
+                        response.raise_for_status()
+                else:
+                    self.logger.error("No token manager available to refresh expired token")
+                    response.raise_for_status()
+
+            response.raise_for_status()
+            return response.json()
+
+        except httpx.HTTPStatusError as e:
+            self.logger.error(f"HTTP error from Miro API: {e.response.status_code} for {url}")
+            raise
+        except Exception as e:
+            self.logger.error(f"Unexpected error accessing Miro API: {url}, {str(e)}")
+            raise
+
+    async def _paginate(
+        self, client: httpx.AsyncClient, url: str, params: Optional[Dict[str, Any]] = None
+    ) -> AsyncGenerator[Dict, None]:
+        """Handle Miro v2 cursor-based pagination.
+
+        Yields individual items from paginated response.
+
+        Args:
+            client: HTTP client to use
+            url: API endpoint URL
+            params: Optional query parameters
+        """
+        params = dict(params) if params else {}
+        params.setdefault("limit", 50)  # Miro default is 10, max is 50
+        cursor = None
+
+        while True:
+            if cursor:
+                params["cursor"] = cursor
+
+            response = await self._get_with_auth(client, url, params)
+
+            for item in response.get("data", []):
+                yield item
+
+            cursor = response.get("cursor")
+            if not cursor:
+                break
+
+    @staticmethod
+    def _parse_datetime(date_str: Optional[str]) -> Optional[datetime]:
+        """Parse ISO datetime string to datetime object.
+
+        Args:
+            date_str: ISO format datetime string
+
+        Returns:
+            datetime object or None if parsing fails
+        """
+        if not date_str:
+            return None
+        try:
+            # Handle ISO format with Z suffix
+            if date_str.endswith("Z"):
+                date_str = date_str[:-1] + "+00:00"
+            return datetime.fromisoformat(date_str)
+        except (ValueError, TypeError):
+            return None
+
+    @staticmethod
+    def _strip_html(text: Optional[str]) -> str:
+        """Strip HTML tags from text content.
+
+        Args:
+            text: HTML text content
+
+        Returns:
+            Plain text with HTML tags removed
+        """
+        if not text:
+            return ""
+        return re.sub(r"<[^>]+>", "", text).strip()
+
+    @staticmethod
+    def _extract_filename_from_url(url: str) -> Optional[str]:
+        """Extract filename from URL's response-content-disposition parameter.
+
+        Miro download URLs contain the original filename in the query string:
+        ?response-content-disposition=attachment%3B%20filename%3D%22file.pdf%22
+
+        Args:
+            url: Download URL with content-disposition parameter
+
+        Returns:
+            Extracted filename or None if not found
+        """
+        try:
+            parsed = urlparse(url)
+            params = parse_qs(parsed.query)
+            disposition = params.get("response-content-disposition", [None])[0]
+            if not disposition:
+                return None
+
+            # URL-decode the disposition value
+            disposition = unquote(disposition)
+
+            # Extract filename from: attachment; filename="file.pdf"
+            match = re.search(r'filename="([^"]+)"', disposition)
+            if match:
+                return match.group(1)
+
+            return None
+        except Exception:
+            return None
+
+    async def _generate_board_entities(
+        self, client: httpx.AsyncClient
+    ) -> AsyncGenerator[MiroBoardEntity, None]:
+        """Generate board entities for the authenticated user."""
+        self.logger.info("Fetching Miro boards...")
+
+        async for board in self._paginate(client, f"{self.API_BASE}/boards"):
+            # Skip boards matching exclusion pattern
+            if self.exclude_boards and self.exclude_boards in board.get("name", ""):
+                self.logger.info(f"Skipping excluded board: {board.get('name')}")
+                continue
+
+            owner = board.get("owner", {})
+            board_name = board.get("name", "Untitled Board")
+            created_at = self._parse_datetime(board.get("createdAt"))
+            modified_at = self._parse_datetime(board.get("modifiedAt"))
+
+            yield MiroBoardEntity(
+                # Base entity fields
+                entity_id=board["id"],
+                breadcrumbs=[],  # Root entity
+                # API-specific fields
+                board_id=board["id"],
+                board_name=board_name,
+                created_at=created_at,
+                modified_at=modified_at,
+                description=board.get("description"),
+                team_id=board.get("team", {}).get("id") if board.get("team") else None,
+                owner_id=owner.get("id"),
+                owner_name=owner.get("name"),
+                view_link=board.get("viewLink"),
+            )
+
+    async def _get_board_tags(
+        self, client: httpx.AsyncClient, board_id: str
+    ) -> Dict[str, Dict]:
+        """Fetch all tags for a board in a single API call.
+
+        Args:
+            client: HTTP client
+            board_id: Board ID to fetch tags for
+
+        Returns:
+            Dict mapping tag ID to tag data
+        """
+        try:
+            url = f"{self.API_BASE}/boards/{board_id}/tags"
+            tags = []
+            async for tag in self._paginate(client, url):
+                tags.append(tag)
+            return {tag["id"]: tag for tag in tags}
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                # Tags endpoint may not be available for this board
+                return {}
+            self.logger.warning(f"Failed to fetch tags for board {board_id}: {e}")
+            return {}
+        except Exception as e:
+            self.logger.warning(f"Failed to fetch tags for board {board_id}: {e}")
+            return {}
+
+    async def _get_item_tags(
+        self, client: httpx.AsyncClient, board_id: str, item_id: str
+    ) -> List[Dict]:
+        """Fetch tags for a specific item on a board.
+
+        Note: This method makes an API call per item. For bulk operations,
+        use _get_board_tags to fetch all tags once and look up by ID.
+
+        Args:
+            client: HTTP client
+            board_id: Board ID containing the item
+            item_id: Item ID to get tags for
+
+        Returns:
+            List of tag dictionaries
+        """
+        try:
+            url = f"{self.API_BASE}/boards/{board_id}/items/{item_id}/tags"
+            response = await self._get_with_auth(client, url)
+            return response.get("data", [])
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                # Item may not have tags or endpoint may not be available
+                return []
+            self.logger.warning(f"Failed to fetch tags for item {item_id}: {e}")
+            return []
+        except Exception as e:
+            self.logger.warning(f"Failed to fetch tags for item {item_id}: {e}")
+            return []
+
+    async def _generate_sticky_note_entities(
+        self,
+        client: httpx.AsyncClient,
+        board_id: str,
+        board_name: str,
+        board_breadcrumbs: List[Breadcrumb],
+        board_tags: Dict[str, Dict],
+    ) -> AsyncGenerator[MiroStickyNoteEntity, None]:
+        """Generate sticky note entities for a board.
+
+        Args:
+            client: HTTP client
+            board_id: Board ID
+            board_name: Board name
+            board_breadcrumbs: Breadcrumbs for hierarchy
+            board_tags: Pre-fetched tag lookup dict from _get_board_tags
+        """
+        url = f"{self.API_BASE}/boards/{board_id}/sticky_notes"
+
+        async for item in self._paginate(client, url):
+            data = item.get("data", {})
+            content = self._strip_html(data.get("content", "")) or "Empty sticky note"
+            created_at = self._parse_datetime(item.get("createdAt"))
+            modified_at = self._parse_datetime(item.get("modifiedAt"))
+
+            # Get tags from item data if available, lookup from board_tags
+            item_tags = item.get("tags", [])
+            tags = [board_tags.get(t.get("id"), t) for t in item_tags if t.get("id")]
+
+            yield MiroStickyNoteEntity(
+                # Base entity fields
+                entity_id=item["id"],
+                breadcrumbs=board_breadcrumbs,
+                # API-specific fields
+                item_id=item["id"],
+                content=content,
+                created_at=created_at,
+                modified_at=modified_at,
+                board_id=board_id,
+                board_name=board_name,
+                created_by=item.get("createdBy"),
+                modified_by=item.get("modifiedBy"),
+                tags=tags,
+            )
+
+    async def _generate_card_entities(
+        self,
+        client: httpx.AsyncClient,
+        board_id: str,
+        board_name: str,
+        board_breadcrumbs: List[Breadcrumb],
+        board_tags: Dict[str, Dict],
+    ) -> AsyncGenerator[MiroCardEntity, None]:
+        """Generate card entities for a board.
+
+        Args:
+            client: HTTP client
+            board_id: Board ID
+            board_name: Board name
+            board_breadcrumbs: Breadcrumbs for hierarchy
+            board_tags: Pre-fetched tag lookup dict from _get_board_tags
+        """
+        url = f"{self.API_BASE}/boards/{board_id}/cards"
+
+        async for item in self._paginate(client, url):
+            data = item.get("data", {})
+            title = self._strip_html(data.get("title", "")) or "Untitled Card"
+            description = self._strip_html(data.get("description", "")) or None
+            created_at = self._parse_datetime(item.get("createdAt"))
+            modified_at = self._parse_datetime(item.get("modifiedAt"))
+
+            # Get tags from item data if available, lookup from board_tags
+            item_tags = item.get("tags", [])
+            tags = [board_tags.get(t.get("id"), t) for t in item_tags if t.get("id")]
+
+            yield MiroCardEntity(
+                # Base entity fields
+                entity_id=item["id"],
+                breadcrumbs=board_breadcrumbs,
+                # API-specific fields
+                item_id=item["id"],
+                title=title,
+                created_at=created_at,
+                modified_at=modified_at,
+                board_id=board_id,
+                board_name=board_name,
+                description=description,
+                due_date=data.get("dueDate"),
+                assignee_id=data.get("assigneeId"),
+                fields=data.get("fields", []),
+                tags=tags,
+                created_by=item.get("createdBy"),
+                modified_by=item.get("modifiedBy"),
+            )
+
+    async def _generate_text_entities(
+        self,
+        client: httpx.AsyncClient,
+        board_id: str,
+        board_name: str,
+        board_breadcrumbs: List[Breadcrumb],
+    ) -> AsyncGenerator[MiroTextEntity, None]:
+        """Generate text entities for a board."""
+        url = f"{self.API_BASE}/boards/{board_id}/texts"
+
+        async for item in self._paginate(client, url):
+            data = item.get("data", {})
+            content = self._strip_html(data.get("content", ""))
+
+            if not content:
+                continue  # Skip empty text items
+
+            created_at = self._parse_datetime(item.get("createdAt"))
+            modified_at = self._parse_datetime(item.get("modifiedAt"))
+
+            yield MiroTextEntity(
+                # Base entity fields
+                entity_id=item["id"],
+                breadcrumbs=board_breadcrumbs,
+                # API-specific fields
+                item_id=item["id"],
+                content=content,
+                created_at=created_at,
+                modified_at=modified_at,
+                board_id=board_id,
+                board_name=board_name,
+                created_by=item.get("createdBy"),
+                modified_by=item.get("modifiedBy"),
+            )
+
+    async def _generate_frame_entities(
+        self,
+        client: httpx.AsyncClient,
+        board_id: str,
+        board_name: str,
+        board_breadcrumbs: List[Breadcrumb],
+    ) -> AsyncGenerator[MiroFrameEntity, None]:
+        """Generate frame entities for a board."""
+        url = f"{self.API_BASE}/boards/{board_id}/frames"
+
+        async for item in self._paginate(client, url):
+            data = item.get("data", {})
+            title = data.get("title", "Untitled Frame")
+            created_at = self._parse_datetime(item.get("createdAt"))
+            modified_at = self._parse_datetime(item.get("modifiedAt"))
+
+            yield MiroFrameEntity(
+                # Base entity fields
+                entity_id=item["id"],
+                breadcrumbs=board_breadcrumbs,
+                # API-specific fields
+                item_id=item["id"],
+                title=title,
+                created_at=created_at,
+                modified_at=modified_at,
+                board_id=board_id,
+                board_name=board_name,
+                format=data.get("format"),
+                frame_type=data.get("type"),
+                created_by=item.get("createdBy"),
+                modified_by=item.get("modifiedBy"),
+            )
+
+    async def _generate_tag_entities(
+        self,
+        client: httpx.AsyncClient,
+        board_id: str,
+        board_name: str,
+        board_breadcrumbs: List[Breadcrumb],
+    ) -> AsyncGenerator[MiroTagEntity, None]:
+        """Generate tag entities for a board."""
+        url = f"{self.API_BASE}/boards/{board_id}/tags"
+
+        try:
+            async for item in self._paginate(client, url):
+                snapshot_time = datetime.now(timezone.utc)
+                title = item.get("title", "Untitled Tag")
+
+                yield MiroTagEntity(
+                    # Base entity fields
+                    entity_id=item["id"],
+                    breadcrumbs=board_breadcrumbs,
+                    # API-specific fields
+                    tag_id=item["id"],
+                    title=title,
+                    created_at=snapshot_time,
+                    modified_at=snapshot_time,
+                    board_id=board_id,
+                    board_name=board_name,
+                )
+        except httpx.HTTPStatusError as e:
+            # Tags endpoint may not be available for all boards
+            if e.response.status_code == 404:
+                self.logger.debug(f"Tags not available for board {board_id}")
+            else:
+                raise
+
+    async def _generate_app_card_entities(
+        self,
+        client: httpx.AsyncClient,
+        board_id: str,
+        board_name: str,
+        board_breadcrumbs: List[Breadcrumb],
+    ) -> AsyncGenerator[MiroAppCardEntity, None]:
+        """Generate app card entities for a board (Jira, GitHub, Asana integrations)."""
+        url = f"{self.API_BASE}/boards/{board_id}/app_cards"
+
+        try:
+            async for item in self._paginate(client, url):
+                data = item.get("data", {})
+                title = self._strip_html(data.get("title", "")) or "Untitled App Card"
+                description = self._strip_html(data.get("description", "")) or None
+                created_at = self._parse_datetime(item.get("createdAt"))
+                modified_at = self._parse_datetime(item.get("modifiedAt"))
+
+                yield MiroAppCardEntity(
+                    # Base entity fields
+                    entity_id=item["id"],
+                    breadcrumbs=board_breadcrumbs,
+                    # API-specific fields
+                    item_id=item["id"],
+                    title=title,
+                    created_at=created_at,
+                    modified_at=modified_at,
+                    board_id=board_id,
+                    board_name=board_name,
+                    description=description,
+                    status=data.get("status"),
+                    fields=data.get("fields", []),
+                    owned=data.get("owned"),
+                    created_by=item.get("createdBy"),
+                    modified_by=item.get("modifiedBy"),
+                )
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                self.logger.debug(f"App cards not available for board {board_id}")
+            else:
+                raise
+
+    async def _generate_document_entities(
+        self,
+        client: httpx.AsyncClient,
+        board_id: str,
+        board_name: str,
+        board_breadcrumbs: List[Breadcrumb],
+    ) -> AsyncGenerator[MiroDocumentEntity, None]:
+        """Generate document entities for a board (PDFs, DOCXs, etc.)."""
+        url = f"{self.API_BASE}/boards/{board_id}/documents"
+
+        try:
+            async for item in self._paginate(client, url):
+                data = item.get("data", {})
+
+                # Extract documentUrl from data object
+                document_url = data.get("documentUrl", "")
+                if not document_url:
+                    self.logger.warning(
+                        f"No documentUrl for document {item['id']} on board {board_id}"
+                    )
+                    continue
+
+                # Keep redirect=false to get presigned URL with filename
+                # (documentUrl should already have redirect=false by default)
+
+                # Step 1: GET the resource URL to get presigned download URL
+                try:
+                    download_info = await self._get_with_auth(client, document_url)
+                    download_url = download_info.get("url", "")
+                    if not download_url:
+                        self.logger.warning(
+                            f"No download URL in response for document {item['id']}"
+                        )
+                        continue
+                except Exception as e:
+                    self.logger.error(
+                        f"Failed to get download URL for document {item['id']}: {e}"
+                    )
+                    continue
+
+                # Extract filename from download URL
+                title = self._extract_filename_from_url(download_url)
+                if not title:
+                    self.logger.warning(
+                        f"Could not extract filename for document {item['id']} on board {board_id}, skipping"
+                    )
+                    continue
+
+                created_at = self._parse_datetime(item.get("createdAt"))
+                modified_at = self._parse_datetime(item.get("modifiedAt"))
+
+                file_entity = MiroDocumentEntity(
+                    # Base entity fields
+                    entity_id=item["id"],
+                    breadcrumbs=board_breadcrumbs,
+                    name=title,  # Required for file_downloader
+                    # FileEntity fields
+                    url=download_url,  # Presigned URL - no auth needed
+                    size=0,  # Size not provided by API
+                    file_type="document",
+                    mime_type=None,
+                    local_path=None,
+                    # API-specific fields
+                    item_id=item["id"],
+                    title=title,
+                    created_at=created_at,
+                    modified_at=modified_at,
+                    board_id=board_id,
+                    board_name=board_name,
+                    document_url=download_url,
+                    created_by=item.get("createdBy"),
+                    modified_by=item.get("modifiedBy"),
+                )
+
+                # Download file using downloader
+                # URL is presigned, so no auth token needed
+                try:
+                    await self.file_downloader.download_from_url(
+                        entity=file_entity,
+                        http_client_factory=self.http_client,
+                        access_token_provider=self.get_access_token,
+                        logger=self.logger,
+                    )
+
+                    # Verify download succeeded
+                    if not file_entity.local_path:
+                        raise ValueError(
+                            f"Download failed - no local path set for {file_entity.title}"
+                        )
+
+                    yield file_entity
+
+                except FileSkippedException as e:
+                    self.logger.debug(f"Skipping document {item['id']}: {e.reason}")
+                    continue
+
+                except Exception as e:
+                    self.logger.error(
+                        f"Failed to download document {item['id']} from board {board_id}: {e}"
+                    )
+                    # Continue with next document, don't fail entire sync
+
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                self.logger.debug(f"Documents not available for board {board_id}")
+            else:
+                raise
+
+    async def _generate_image_entities(
+        self,
+        client: httpx.AsyncClient,
+        board_id: str,
+        board_name: str,
+        board_breadcrumbs: List[Breadcrumb],
+    ) -> AsyncGenerator[MiroImageEntity, None]:
+        """Generate image entities for a board."""
+        url = f"{self.API_BASE}/boards/{board_id}/images"
+
+        try:
+            async for item in self._paginate(client, url):
+                data = item.get("data", {})
+
+                # Extract imageUrl from data object
+                image_url = data.get("imageUrl", "")
+                if not image_url:
+                    self.logger.warning(
+                        f"No imageUrl for image {item['id']} on board {board_id}"
+                    )
+                    continue
+
+                # Change format=preview to format=original for full resolution
+                # Keep redirect=false to get presigned URL with filename
+                if "format=preview" in image_url:
+                    image_url = image_url.replace("format=preview", "format=original")
+
+                # Step 1: GET the resource URL to get presigned download URL
+                try:
+                    download_info = await self._get_with_auth(client, image_url)
+                    download_url = download_info.get("url", "")
+                    if not download_url:
+                        self.logger.warning(
+                            f"No download URL in response for image {item['id']}"
+                        )
+                        continue
+                except Exception as e:
+                    self.logger.error(
+                        f"Failed to get download URL for image {item['id']}: {e}"
+                    )
+                    continue
+
+                # Extract filename from download URL
+                title = self._extract_filename_from_url(download_url)
+                if not title:
+                    self.logger.warning(
+                        f"Could not extract filename for image {item['id']} on board {board_id}, skipping"
+                    )
+                    continue
+
+                created_at = self._parse_datetime(item.get("createdAt"))
+                modified_at = self._parse_datetime(item.get("modifiedAt"))
+
+                file_entity = MiroImageEntity(
+                    # Base entity fields
+                    entity_id=item["id"],
+                    breadcrumbs=board_breadcrumbs,
+                    name=title,  # Required for file_downloader
+                    # FileEntity fields
+                    url=download_url,  # Presigned URL - no auth needed
+                    size=0,  # Size not provided by API
+                    file_type="image",
+                    mime_type=None,
+                    local_path=None,
+                    # API-specific fields
+                    item_id=item["id"],
+                    title=title,
+                    created_at=created_at,
+                    modified_at=modified_at,
+                    board_id=board_id,
+                    board_name=board_name,
+                    image_url=download_url,
+                    created_by=item.get("createdBy"),
+                    modified_by=item.get("modifiedBy"),
+                )
+
+                # Download file using downloader
+                # URL is presigned (has Signature, Key-Pair-Id), so no auth token needed
+                try:
+                    await self.file_downloader.download_from_url(
+                        entity=file_entity,
+                        http_client_factory=self.http_client,
+                        access_token_provider=self.get_access_token,
+                        logger=self.logger,
+                    )
+
+                    # Verify download succeeded
+                    if not file_entity.local_path:
+                        raise ValueError(
+                            f"Download failed - no local path set for {file_entity.title}"
+                        )
+
+                    yield file_entity
+
+                except FileSkippedException as e:
+                    self.logger.debug(f"Skipping image {item['id']}: {e.reason}")
+                    continue
+
+                except Exception as e:
+                    self.logger.error(
+                        f"Failed to download image {item['id']} from board {board_id}: {e}"
+                    )
+                    # Continue with next image, don't fail entire sync
+
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                self.logger.debug(f"Images not available for board {board_id}")
+            else:
+                raise
+
+    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
+        """Generate all entities from Miro."""
+        self.logger.info("Starting Miro sync")
+
+        async with self.http_client() as client:
+            async for board_entity in self._generate_board_entities(client):
+                yield board_entity
+
+                board_breadcrumb = Breadcrumb(
+                    entity_id=board_entity.board_id,
+                    name=board_entity.board_name,
+                    entity_type="MiroBoardEntity",
+                )
+                board_breadcrumbs = [board_breadcrumb]
+                board_id = board_entity.board_id
+                board_name = board_entity.board_name
+
+                self.logger.info(f"Processing board: {board_name}")
+
+                # Fetch all board tags once to avoid N+1 queries
+                board_tags = await self._get_board_tags(client, board_id)
+
+                # Generate sticky notes with error isolation
+                try:
+                    async for sticky_note in self._generate_sticky_note_entities(
+                        client, board_id, board_name, board_breadcrumbs, board_tags
+                    ):
+                        yield sticky_note
+                except Exception as e:
+                    self.logger.error(f"Failed to generate sticky notes for board {board_name}: {e}")
+
+                # Generate cards with error isolation
+                try:
+                    async for card in self._generate_card_entities(
+                        client, board_id, board_name, board_breadcrumbs, board_tags
+                    ):
+                        yield card
+                except Exception as e:
+                    self.logger.error(f"Failed to generate cards for board {board_name}: {e}")
+
+                # Generate text items with error isolation
+                try:
+                    async for text in self._generate_text_entities(
+                        client, board_id, board_name, board_breadcrumbs
+                    ):
+                        yield text
+                except Exception as e:
+                    self.logger.error(f"Failed to generate text items for board {board_name}: {e}")
+
+                # Generate frames with error isolation
+                try:
+                    async for frame in self._generate_frame_entities(
+                        client, board_id, board_name, board_breadcrumbs
+                    ):
+                        yield frame
+                except Exception as e:
+                    self.logger.error(f"Failed to generate frames for board {board_name}: {e}")
+
+                # Generate tags with error isolation
+                try:
+                    async for tag in self._generate_tag_entities(
+                        client, board_id, board_name, board_breadcrumbs
+                    ):
+                        yield tag
+                except Exception as e:
+                    self.logger.error(f"Failed to generate tags for board {board_name}: {e}")
+
+                # Generate app cards (Jira, GitHub, Asana integrations) with error isolation
+                try:
+                    async for app_card in self._generate_app_card_entities(
+                        client, board_id, board_name, board_breadcrumbs
+                    ):
+                        yield app_card
+                except Exception as e:
+                    self.logger.error(f"Failed to generate app cards for board {board_name}: {e}")
+
+                # Generate documents with error isolation
+                try:
+                    async for document in self._generate_document_entities(
+                        client, board_id, board_name, board_breadcrumbs
+                    ):
+                        yield document
+                except Exception as e:
+                    self.logger.error(f"Failed to generate documents for board {board_name}: {e}")
+
+                # Generate images with error isolation
+                try:
+                    async for image in self._generate_image_entities(
+                        client, board_id, board_name, board_breadcrumbs
+                    ):
+                        yield image
+                except Exception as e:
+                    self.logger.error(f"Failed to generate images for board {board_name}: {e}")
+
+        self.logger.info("Miro sync completed")
+
+    async def validate(self) -> bool:
+        """Verify OAuth2 token by pinging Miro's boards endpoint."""
+        return await self._validate_oauth2(
+            ping_url=f"{self.API_BASE}/boards?limit=1",
+            headers={"Accept": "application/json"},
+            timeout=10.0,
+        )
