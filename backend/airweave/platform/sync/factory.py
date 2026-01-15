@@ -14,10 +14,18 @@ from airweave.api.context import ApiContext
 from airweave.core.config import settings
 from airweave.core.logging import logger
 from airweave.platform.builders import SyncContextBuilder
-from airweave.platform.sync.actions import EntityActionResolver, EntityDispatcherBuilder
-from airweave.platform.sync.config import SyncConfig, SyncConfigBuilder
+from airweave.platform.sync.access_control_pipeline import AccessControlPipeline
+from airweave.platform.sync.actions import (
+    ACActionDispatcher,
+    ACActionResolver,
+    EntityActionResolver,
+    EntityDispatcherBuilder,
+)
+from airweave.platform.sync.config import SyncExecutionConfig
 from airweave.platform.sync.entity_pipeline import EntityPipeline
+from airweave.platform.sync.handlers import ACPostgresHandler
 from airweave.platform.sync.orchestrator import SyncOrchestrator
+from airweave.platform.sync.pipeline.acl_membership_tracker import ACLMembershipTracker
 from airweave.platform.sync.stream import AsyncSourceStream
 from airweave.platform.sync.worker_pool import AsyncWorkerPool
 
@@ -41,7 +49,7 @@ class SyncFactory:
         access_token: Optional[str] = None,
         max_workers: int = None,
         force_full_sync: bool = False,
-        execution_config: Optional[SyncConfig] = None,
+        execution_config: Optional[SyncExecutionConfig] = None,
     ) -> SyncOrchestrator:
         """Create a dedicated orchestrator instance for a sync run.
 
@@ -59,7 +67,6 @@ class SyncFactory:
             max_workers: Maximum number of concurrent workers (default: from settings)
             force_full_sync: If True, forces a full sync with orphaned entity deletion
             execution_config: Optional execution config for controlling sync behavior
-                (overrides job-level config if provided)
 
         Returns:
             A dedicated SyncOrchestrator instance
@@ -73,18 +80,6 @@ class SyncFactory:
         init_start = time.time()
         logger.info("Creating sync context via context builders...")
 
-        # Step 0: Build layered sync configuration
-        # Resolution order: schema defaults → env vars → collection → sync → sync_job → execution_config
-        resolved_config = SyncConfigBuilder.build(
-            collection_overrides=collection.sync_config,
-            sync_overrides=sync.sync_config,
-            job_overrides=sync_job.sync_config or execution_config,
-        )
-        logger.debug(
-            f"Resolved layered sync config: handlers={resolved_config.handlers.model_dump()}, "
-            f"destinations={resolved_config.destinations.model_dump()}"
-        )
-
         # Step 1: Build sync context using SyncContextBuilder
         sync_context = await SyncContextBuilder.build(
             db=db,
@@ -95,7 +90,7 @@ class SyncFactory:
             ctx=ctx,
             access_token=access_token,
             force_full_sync=force_full_sync,
-            execution_config=resolved_config,
+            execution_config=execution_config,
         )
 
         logger.debug(f"Sync context created in {time.time() - init_start:.2f}s")
@@ -105,17 +100,31 @@ class SyncFactory:
 
         dispatcher = EntityDispatcherBuilder.build(
             destinations=sync_context.destinations,
-            execution_config=resolved_config,
+            execution_config=execution_config,
             logger=sync_context.logger,
         )
 
-        # Step 3: Build pipeline
+        # Step 3: Build pipelines
         action_resolver = EntityActionResolver(entity_map=sync_context.entity_map)
 
         entity_pipeline = EntityPipeline(
             entity_tracker=sync_context.entity_tracker,
             action_resolver=action_resolver,
             action_dispatcher=dispatcher,
+        )
+
+        # Access control pipeline (simple resolver + dispatcher)
+        access_control_resolver = ACActionResolver()
+        access_control_dispatcher = ACActionDispatcher(handlers=[ACPostgresHandler()])
+        access_control_tracker = ACLMembershipTracker(
+            source_connection_id=sync_context.source_connection_id,
+            organization_id=sync_context.organization_id,
+            logger=sync_context.logger,
+        )
+        access_control_pipeline = AccessControlPipeline(
+            resolver=access_control_resolver,
+            dispatcher=access_control_dispatcher,
+            tracker=access_control_tracker,
         )
 
         # Step 4: Create worker pool
@@ -134,6 +143,7 @@ class SyncFactory:
             worker_pool=worker_pool,
             stream=stream,
             sync_context=sync_context,
+            access_control_pipeline=access_control_pipeline,
         )
 
         logger.info(f"Total orchestrator initialization took {time.time() - init_start:.2f}s")

@@ -40,12 +40,14 @@ class SyncOrchestrator:
         worker_pool: AsyncWorkerPool,
         stream: AsyncSourceStream,
         sync_context: SyncContext,
+        access_control_pipeline: AccessControlPipeline,
     ):
         """Initialize the sync orchestrator with ALL required components."""
         self.entity_pipeline = entity_pipeline
         self.worker_pool = worker_pool
         self.stream = stream  # Stream is now passed in, not created here!
         self.sync_context = sync_context
+        self.access_control_pipeline = access_control_pipeline
 
         # Batch config from context
         self.should_batch = sync_context.should_batch
@@ -205,24 +207,21 @@ class SyncOrchestrator:
         try:
             # Use the pre-created stream (already started in _start_sync)
             async for entity in self.stream.get_entities():
-                # Check guardrails unless explicitly skipped
-                if not self.sync_context.execution_config.behavior.skip_guardrails:
-                    try:
-                        await self.sync_context.guard_rail.is_allowed(ActionType.ENTITIES)
-                    except (UsageLimitExceededException, PaymentRequiredException) as guard_error:
-                        err_type = type(guard_error).__name__
-                        self.sync_context.logger.error(
-                            f"Guard rail check failed: {err_type}: {str(guard_error)}"
+                try:
+                    await self.sync_context.guard_rail.is_allowed(ActionType.ENTITIES)
+                except (UsageLimitExceededException, PaymentRequiredException) as guard_error:
+                    self.sync_context.logger.error(
+                        f"Guard rail check failed: {type(guard_error).__name__}: {str(guard_error)}"
+                    )
+                    stream_error = guard_error
+                    # Flush any buffered work so we don't drop it
+                    if batch_buffer:
+                        pending_tasks = await self._submit_batch_and_trim(
+                            batch_buffer, pending_tasks
                         )
-                        stream_error = guard_error
-                        # Flush any buffered work so we don't drop it
-                        if batch_buffer:
-                            pending_tasks = await self._submit_batch_and_trim(
-                                batch_buffer, pending_tasks
-                            )
-                            batch_buffer = []
-                            flush_deadline = None
-                        break
+                        batch_buffer = []
+                        flush_deadline = None
+                    break
 
                 # Accumulate into batch
                 batch_buffer.append(entity)
@@ -478,13 +477,10 @@ class SyncOrchestrator:
         generate_access_control_memberships() method and processes them
         through the AccessControlPipeline to persist to PostgreSQL.
 
-        Key security feature: This method now tracks all encountered memberships
-        and passes them to the pipeline for orphan detection. Memberships that
-        exist in the database but were NOT encountered during this sync are
-        considered "orphans" (revoked permissions) and will be deleted.
+        Key security feature: Memberships encountered during this sync are
+        tracked in the access control pipeline to detect and delete orphans
+        (revoked permissions).
         """
-        from airweave.platform.sync.pipeline.acl_membership_tracker import ACLMembershipTracker
-
         source = self.sync_context.source_instance
         source_name = getattr(source, "_name", "unknown")
 
@@ -500,31 +496,16 @@ class SyncOrchestrator:
             )
             return
 
-        # Create tracker for this sync (tracks encountered memberships for orphan detection)
-        tracker = ACLMembershipTracker(
-            source_connection_id=self.sync_context.source_connection_id,
-            organization_id=self.sync_context.organization_id,
-            logger=self.sync_context.logger,
-        )
-
-        # Collect memberships from source generator, tracking each one
+        # Collect memberships from source generator
         memberships: List[MembershipTuple] = []
         try:
             async for membership in source.generate_access_control_memberships():
-                # Track the membership - returns True if new (not a duplicate)
-                is_new = tracker.track_membership(
-                    member_id=membership.member_id,
-                    member_type=membership.member_type,
-                    group_id=membership.group_id,
-                )
+                memberships.append(membership)
 
-                if is_new:
-                    memberships.append(membership)
-
-                # Log progress every 1000 unique memberships
-                if len(memberships) % 1000 == 0 and len(memberships) > 0:
-                    self.sync_context.logger.info(
-                        f"🔐 Collected {len(memberships)} unique memberships so far..."
+                # Log progress every 100 memberships collected
+                if len(memberships) % 100 == 0 and len(memberships) > 0:
+                    self.sync_context.logger.debug(
+                        f"🔐 Collected {len(memberships)} memberships so far..."
                     )
         except Exception as e:
             self.sync_context.logger.error(
@@ -535,36 +516,19 @@ class SyncOrchestrator:
             # Also don't do orphan cleanup if collection failed (could delete valid memberships)
             return
 
-        stats = tracker.get_stats()
-        self.sync_context.logger.info(
-            f"🔐 Collected {stats.encountered} unique memberships "
-            f"({stats.duplicates_skipped} duplicates skipped)"
-        )
-
-        # Log LDAP cache stats if available
-        ldap_client = getattr(source, "_ldap_client", None)
-        if ldap_client and hasattr(ldap_client, "log_cache_stats"):
-            ldap_client.log_cache_stats()
-
-        # Process through AccessControlPipeline with encountered keys for orphan detection
+        # Process through AccessControlPipeline (handles tracking + orphan detection)
         # Note: Even if no new memberships, we still need to check for orphans!
         try:
-            pipeline = AccessControlPipeline()
-            count = await pipeline.process(
+            await self.access_control_pipeline.process(
                 memberships=memberships,
                 sync_context=self.sync_context,
-                encountered_keys=tracker.get_encountered_keys(),
             )
-            tracker.record_upserted(count)
         except Exception as e:
             self.sync_context.logger.error(
                 f"Error processing access control memberships: {get_error_message(e)}",
                 exc_info=True,
             )
             # Don't fail the entire sync for ACL errors
-
-        # Log final summary
-        tracker.log_summary()
 
     async def _finalize_progress_and_trackers(
         self, status: SyncJobStatus, error: Optional[str] = None
@@ -636,7 +600,7 @@ class SyncOrchestrator:
         # Check if cursor updates are disabled
         if (
             self.sync_context.execution_config
-            and self.sync_context.execution_config.cursor.skip_updates
+            and self.sync_context.execution_config.skip_cursor_updates
         ):
             self.sync_context.logger.info("⏭️ Skipping cursor update (disabled by execution_config)")
             return

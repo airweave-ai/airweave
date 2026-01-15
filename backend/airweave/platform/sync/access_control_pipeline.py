@@ -8,13 +8,13 @@ Key difference from old implementation:
 - When permissions are revoked at the source, the corresponding DB records are deleted
 """
 
-from typing import TYPE_CHECKING, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, List, Set, Tuple
 
 from airweave import crud
 from airweave.db.session import get_db_context
 from airweave.platform.access_control.schemas import MembershipTuple
 from airweave.platform.sync.actions.access_control import ACActionDispatcher, ACActionResolver
-from airweave.platform.sync.handlers.access_control_postgres import ACPostgresHandler
+from airweave.platform.sync.pipeline.acl_membership_tracker import ACLMembershipTracker
 
 if TYPE_CHECKING:
     from airweave.platform.contexts import SyncContext
@@ -35,49 +35,77 @@ class AccessControlPipeline:
     - Future extensions (additional destinations, caching, etc.)
     """
 
-    def __init__(self):
-        """Initialize pipeline with default components."""
-        self._resolver = ACActionResolver()
-        # TODO: Move to builder as it gets more complex
-        self._dispatcher = ACActionDispatcher(handlers=[ACPostgresHandler()])
+    def __init__(
+        self,
+        resolver: ACActionResolver,
+        dispatcher: ACActionDispatcher,
+        tracker: ACLMembershipTracker,
+    ):
+        """Initialize pipeline with injected components."""
+        self._resolver = resolver
+        self._dispatcher = dispatcher
+        self._tracker = tracker
 
     async def process(
         self,
         memberships: List[MembershipTuple],
         sync_context: "SyncContext",
-        encountered_keys: Optional[Set[Tuple[str, str, str]]] = None,
     ) -> int:
         """Process a batch of membership tuples and cleanup orphans.
 
         Args:
-            memberships: Membership tuples to process (already deduplicated by tracker)
+            memberships: Membership tuples to process (may include duplicates)
             sync_context: Sync context
-            encountered_keys: Set of (member_id, member_type, group_id) tuples that
-                            were encountered during this sync. Used for orphan detection.
-                            If None, orphan cleanup is skipped.
 
         Returns:
             Number of memberships upserted (does not include deleted orphans)
         """
         upserted_count = 0
 
-        # Step 1: Process memberships (upsert)
-        if memberships:
+        # Step 1: Track + dedupe memberships (for orphan detection + stats)
+        unique_memberships: List[MembershipTuple] = []
+        for membership in memberships:
+            is_new = self._tracker.track_membership(
+                member_id=membership.member_id,
+                member_type=membership.member_type,
+                group_id=membership.group_id,
+            )
+            if is_new:
+                unique_memberships.append(membership)
+                if len(unique_memberships) % 100 == 0:
+                    sync_context.logger.debug(
+                        f"🔐 Collected {len(unique_memberships)} unique memberships so far..."
+                    )
+
+        stats = self._tracker.get_stats()
+        sync_context.logger.info(
+            f"🔐 Collected {stats.encountered} unique memberships "
+            f"({stats.duplicates_skipped} duplicates skipped)"
+        )
+
+        # Step 2: Process memberships (upsert)
+        if unique_memberships:
             # Resolve to actions
-            batch = await self._resolver.resolve(memberships, sync_context)
+            batch = await self._resolver.resolve(unique_memberships, sync_context)
 
             # Dispatch to handlers
             upserted_count = await self._dispatcher.dispatch(batch, sync_context)
+            self._tracker.record_upserted(upserted_count)
 
             sync_context.logger.info(f"🔐 Upserted {upserted_count} ACL memberships to PostgreSQL")
 
-        # Step 2: Cleanup orphan memberships (critical for security!)
-        if encountered_keys is not None:
-            deleted_count = await self._cleanup_orphan_memberships(sync_context, encountered_keys)
-            if deleted_count > 0:
-                sync_context.logger.warning(
-                    f"🗑️ Deleted {deleted_count} orphan ACL memberships (revoked permissions)"
-                )
+        # Step 3: Cleanup orphan memberships (critical for security!)
+        deleted_count = await self._cleanup_orphan_memberships(
+            sync_context, self._tracker.get_encountered_keys()
+        )
+        self._tracker.record_deleted(deleted_count)
+        if deleted_count > 0:
+            sync_context.logger.warning(
+                f"🗑️ Deleted {deleted_count} orphan ACL memberships (revoked permissions)"
+            )
+
+        # Log final summary
+        self._tracker.log_summary()
 
         return upserted_count
 
