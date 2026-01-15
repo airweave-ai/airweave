@@ -6,6 +6,7 @@ export const protectedPaths = {
     apiKeys: "/api-keys",
     authProviders: "/auth-providers",
     authCallback: "/auth/callback/:short_name",
+    events: "/events",
 }
 
 export const publicPaths = {

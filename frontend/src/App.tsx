@@ -25,6 +25,7 @@ import BillingCancel from '@/pages/BillingCancel';
 import BillingSetup from '@/pages/BillingSetup';
 import BillingPortal from '@/pages/BillingPortal';
 import { AdminDashboard } from '@/pages/AdminDashboard';
+import EventsPage from '@/pages/Events';
 
 function App() {
   // Initialize collections event listeners when the app loads
@@ -55,6 +56,7 @@ function App() {
           <Route path={protectedPaths.collectionDetail} element={<CollectionDetailView />} />
           <Route path={protectedPaths.apiKeys} />
           <Route path={protectedPaths.authProviders} element={<AuthProviders />} />
+          <Route path={protectedPaths.events} element={<EventsPage />} />
 
           {/* Organization routes */}
           <Route path="/organization/settings" element={<OrganizationSettingsUnified />} />

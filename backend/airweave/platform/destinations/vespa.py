@@ -117,9 +117,13 @@ class VespaDestination(VectorDBDestination):
 
     processing_requirement = ProcessingRequirement.VESPA_CHUNKS_AND_EMBEDDINGS
 
-    def __init__(self):
-        """Initialize the Vespa destination."""
-        super().__init__()
+    def __init__(self, soft_fail: bool = True):
+        """Initialize the Vespa destination.
+
+        Args:
+            soft_fail: If True, errors won't fail the sync (default True for migration)
+        """
+        super().__init__(soft_fail=soft_fail)
         self.collection_id: UUID | None = None
         self.sync_id: UUID | None = None
         self.organization_id: UUID | None = None
@@ -134,6 +138,7 @@ class VespaDestination(VectorDBDestination):
         organization_id: Optional[UUID] = None,
         vector_size: Optional[int] = None,
         logger: Optional[ContextualLogger] = None,
+        soft_fail: bool = True,
         **kwargs,
     ) -> "VespaDestination":
         """Create and return a connected Vespa destination.
@@ -145,6 +150,7 @@ class VespaDestination(VectorDBDestination):
             organization_id: Organization UUID
             vector_size: Vector dimensions (unused - Vespa handles embeddings)
             logger: Logger instance
+            soft_fail: If True, errors won't fail the sync (default True for migration)
             **kwargs: Additional keyword arguments (unused)
 
         Returns:
@@ -152,7 +158,7 @@ class VespaDestination(VectorDBDestination):
         """
         from vespa.application import Vespa
 
-        instance = cls()
+        instance = cls(soft_fail=soft_fail)
         instance.set_logger(logger or default_logger)
         instance.collection_id = collection_id
         instance.organization_id = organization_id
@@ -161,7 +167,8 @@ class VespaDestination(VectorDBDestination):
         instance.app = Vespa(url=settings.VESPA_URL, port=settings.VESPA_PORT)
 
         instance.logger.info(
-            f"Connected to Vespa at {settings.vespa_url} for collection {collection_id}"
+            f"Connected to Vespa at {settings.vespa_url} for collection {collection_id} "
+            f"(soft_fail={'enabled' if soft_fail else 'disabled'})"
         )
 
         return instance

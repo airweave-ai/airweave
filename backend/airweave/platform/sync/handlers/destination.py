@@ -187,6 +187,7 @@ class DestinationHandler(EntityActionHandler):
             await self._execute_with_retry(
                 operation=lambda d=dest, p=processed: d.bulk_insert(p),
                 operation_name=f"insert_{dest.__class__.__name__}",
+                destination=dest,
                 sync_context=sync_context,
             )
 
@@ -203,6 +204,7 @@ class DestinationHandler(EntityActionHandler):
                     ids, sync_context.sync.id
                 ),
                 operation_name=f"{operation}_{dest.__class__.__name__}",
+                destination=dest,
                 sync_context=sync_context,
             )
 
@@ -224,23 +226,58 @@ class DestinationHandler(EntityActionHandler):
         self,
         operation: Callable[[], Awaitable],
         operation_name: str,
+        destination: BaseDestination,
         sync_context: "SyncContext",
         max_retries: int = 4,
     ) -> None:
-        """Execute operation with exponential backoff retry for network issues."""
+        """Execute operation with exponential backoff retry for network issues.
+
+        Args:
+            operation: The operation to execute
+            operation_name: Name for logging
+            destination: The destination instance (for soft_fail check)
+            sync_context: Sync context
+            max_retries: Max retry attempts for network errors
+        """
         for attempt in range(max_retries + 1):
             try:
                 return await operation()
             except _RETRYABLE_EXCEPTIONS as e:
+                error_msg = str(e) or "(empty error message)"
                 if attempt < max_retries:
                     wait = 2 * (2**attempt)
                     sync_context.logger.warning(
-                        f"[{self.name}] {operation_name} failed (attempt {attempt + 1}): {e}. "
-                        f"Retrying in {wait}s..."
+                        f"[{self.name}] {operation_name} failed (attempt {attempt + 1}): "
+                        f"{type(e).__name__}: {error_msg}. Retrying in {wait}s..."
                     )
                     await asyncio.sleep(wait)
                 else:
-                    raise SyncFailureError(f"Destination unavailable: {e}") from e
+                    # Soft-fail: log error but don't crash sync
+                    if destination.soft_fail:
+                        sync_context.logger.error(
+                            f"🔴 [{self.name}] {operation_name} SOFT-FAIL after {max_retries + 1} attempts: "
+                            f"{type(e).__name__}: {error_msg}. Sync continues (soft_fail=True)",
+                            exc_info=True,
+                        )
+                        return  # Continue sync
+                    raise SyncFailureError(
+                        f"Destination unavailable: {type(e).__name__}: {error_msg}"
+                    ) from e
             except Exception as e:
-                sync_context.logger.error(f"[{self.name}] {operation_name} failed: {e}")
-                raise SyncFailureError(f"Destination failed: {e}") from e
+                error_msg = str(e) or "(empty error message)"
+                # Soft-fail: log error but don't crash sync
+                if destination.soft_fail:
+                    sync_context.logger.error(
+                        f"🔴 [{self.name}] {operation_name} SOFT-FAIL: "
+                        f"{type(e).__name__}: {error_msg}. Sync continues (soft_fail=True)",
+                        exc_info=True,
+                    )
+                    return  # Continue sync
+
+                sync_context.logger.error(
+                    f"[{self.name}] {operation_name} failed: {type(e).__name__}: {error_msg}",
+                    exc_info=True,  # Include full traceback for debugging
+                )
+                raise SyncFailureError(
+                    f"Destination failed: {type(e).__name__}: {error_msg}"
+                ) from e

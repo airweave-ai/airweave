@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from typing import Any, AsyncGenerator, List, Optional
+from typing import AsyncGenerator, List, Optional
 from uuid import UUID
 
 from fastapi import BackgroundTasks, Body, Depends, HTTPException, Query
@@ -16,7 +16,6 @@ from airweave.api.router import TrailingSlashRouter
 from airweave.core.logging import logger
 from airweave.core.pubsub import core_pubsub
 from airweave.core.sync_service import sync_service
-from airweave.platform.sync.config import SyncConfig
 
 router = TrailingSlashRouter()
 
@@ -135,56 +134,6 @@ async def delete_sync(
         sync (schemas.Sync): The deleted sync
     """
     return await sync_service.delete_sync(db=db, sync_id=sync_id, ctx=ctx, delete_data=delete_data)
-
-
-@router.post("/{sync_id}/run", response_model=schemas.SyncJob)
-async def run_sync(
-    *,
-    db: AsyncSession = Depends(deps.get_db),
-    sync_id: UUID,
-    ctx: ApiContext = Depends(deps.get_context),
-    background_tasks: BackgroundTasks,
-    execution_config: Optional[SyncConfig] = Body(
-        None, description="Optional sync configuration overrides for this run"
-    ),
-) -> schemas.SyncJob:
-    """Trigger a sync run.
-
-    Args:
-    -----
-        db: The database session
-        sync_id: The ID of the sync to run
-        ctx: The current authentication context
-        background_tasks: The background tasks
-        execution_config: Optional sync config overrides for this specific run
-            (will be applied as job-level override with highest precedence)
-
-    Returns:
-    --------
-        sync_job (schemas.SyncJob): The sync job
-    """
-    # Trigger the sync run - kinda, not really, we'll do that in the background
-    sync, sync_job = await sync_service.trigger_sync_run(
-        db=db, sync_id=sync_id, ctx=ctx, execution_config=execution_config
-    )
-
-    # Get collection and source connection for sync.run
-    source_conn = await crud.source_connection.get_by_sync_id(db=db, sync_id=sync.id, ctx=ctx)
-    collection = await crud.collection.get_by_readable_id(
-        db=db, readable_id=source_conn.readable_collection_id, ctx=ctx
-    )
-    collection_schema = schemas.Collection.model_validate(collection, from_attributes=True)
-    source_conn_connection = await crud.connection.get(db=db, id=source_conn.connection_id, ctx=ctx)
-    connection_schema = schemas.Connection.model_validate(
-        source_conn_connection, from_attributes=True
-    )
-
-    # Start the sync job in the background - this is where the sync actually runs
-    background_tasks.add_task(
-        sync_service.run, sync, sync_job, collection_schema, connection_schema, ctx
-    )
-
-    return sync_job
 
 
 @router.get("/{sync_id}/jobs", response_model=list[schemas.SyncJob])

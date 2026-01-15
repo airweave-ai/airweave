@@ -309,12 +309,76 @@ class GoogleDriveSource(BaseSource):
             return None
         return token
 
+    def _has_file_changed(self, file_obj: Dict) -> bool:
+        """Check if file metadata indicates change without downloading.
+
+        Compares: modifiedTime, md5Checksum, size
+        Returns True if file is new or changed, False if unchanged.
+
+        Args:
+            file_obj: File metadata from Google Drive API
+
+        Returns:
+            True if file should be processed (new or changed), False if unchanged
+        """
+        if not self.cursor:
+            return True  # No cursor = treat as changed
+
+        file_id = file_obj.get("id")
+        if not file_id:
+            return True
+
+        cursor_data = self.cursor.data
+        file_metadata = cursor_data.get("file_metadata", {})
+        stored_meta = file_metadata.get(file_id)
+
+        if not stored_meta:
+            return True  # New file
+
+        # Compare metadata
+        current_modified = file_obj.get("modifiedTime")
+        current_md5 = file_obj.get("md5Checksum")
+        current_size = file_obj.get("size")
+
+        if (
+            stored_meta.get("modified_time") != current_modified
+            or stored_meta.get("md5_checksum") != current_md5
+            or stored_meta.get("size") != current_size
+        ):
+            return True
+
+        return False  # Unchanged
+
+    def _store_file_metadata(self, file_obj: Dict) -> None:
+        """Store file metadata in cursor for future change detection.
+
+        Args:
+            file_obj: File metadata from Google Drive API
+        """
+        if not self.cursor:
+            return
+
+        file_id = file_obj.get("id")
+        if not file_id:
+            return
+
+        cursor_data = self.cursor.data
+        file_metadata = cursor_data.get("file_metadata", {})
+
+        file_metadata[file_id] = {
+            "modified_time": file_obj.get("modifiedTime"),
+            "md5_checksum": file_obj.get("md5Checksum"),
+            "size": file_obj.get("size"),
+        }
+
+        self.cursor.update(file_metadata=file_metadata)
+
     async def _emit_changes_since_token(
         self, client: httpx.AsyncClient, start_token: str
     ) -> AsyncGenerator[BaseEntity, None]:
-        """Emit change entities (currently deletions) since the given token."""
+        """Emit change entities (modifications, additions, and deletions) since the given token."""
         self.logger.info(
-            f"📊 Processing Drive changes since token {start_token} to capture deletions"
+            f"📊 Processing Drive changes since token {start_token[:20]}... (incremental sync)"
         )
         # Reset token tracker before iterating
         self._latest_new_start_page_token = None
@@ -341,20 +405,20 @@ class GoogleDriveSource(BaseSource):
             else:
                 raise
 
-    async def _build_entity_from_change(
+    def _build_deletion_entity_from_change(
         self, change: Dict
     ) -> Optional[GoogleDriveFileDeletionEntity]:
-        """Convert a Drive change object into an entity (currently deletions only)."""
+        """Build a deletion entity from a Drive change object.
+
+        Args:
+            change: Change object from Google Drive Changes API
+
+        Returns:
+            GoogleDriveFileDeletionEntity if this is a valid deletion, None otherwise
+        """
         file_obj = change.get("file") or {}
-        removed = change.get("removed", False)
-        trashed = bool(file_obj.get("trashed")) or bool(file_obj.get("explicitlyTrashed"))
-        change_type = change.get("changeType")
-
-        is_deletion = removed or trashed or (change_type and change_type.lower() == "removed")
-        if not is_deletion:
-            return None
-
         file_id = change.get("fileId") or file_obj.get("id")
+
         if not file_id:
             self.logger.debug(
                 "Drive change marked as deletion but missing fileId. Raw change: %s", change
@@ -375,6 +439,46 @@ class GoogleDriveSource(BaseSource):
             drive_id=drive_id,
             deletion_status="removed",
         )
+
+    async def _build_entity_from_change(self, change: Dict) -> Optional[BaseEntity]:
+        """Convert a Drive change object into an entity (file or deletion).
+
+        Handles both deletions and modifications/additions. Uses metadata comparison
+        to avoid downloading unchanged files during incremental sync.
+
+        Args:
+            change: Change object from Google Drive Changes API
+
+        Returns:
+            GoogleDriveFileEntity for changed files, GoogleDriveFileDeletionEntity for deletions,
+            or None if file is unchanged or should be skipped
+        """
+        file_obj = change.get("file") or {}
+        removed = change.get("removed", False)
+        trashed = bool(file_obj.get("trashed")) or bool(file_obj.get("explicitlyTrashed"))
+        change_type = change.get("changeType")
+
+        # Handle deletions first
+        is_deletion = removed or trashed or (change_type and change_type.lower() == "removed")
+        if is_deletion:
+            return self._build_deletion_entity_from_change(change)
+
+        # Handle modifications/additions
+        if not file_obj.get("id"):
+            return None
+
+        # Skip folders (only process files)
+        if file_obj.get("mimeType") == "application/vnd.google-apps.folder":
+            return None
+
+        # Check if file actually changed using metadata
+        if not self._has_file_changed(file_obj):
+            self.logger.debug(f"File {file_obj.get('name')} unchanged (metadata match) - skipping")
+            return None
+
+        # File changed - download and process
+        self.logger.debug(f"File {file_obj.get('name')} changed - processing")
+        return await self._process_changed_file(file_obj)
 
     async def _store_next_start_page_token(self, client: httpx.AsyncClient) -> None:
         """Persist the next startPageToken for future incremental runs."""
@@ -911,6 +1015,9 @@ class GoogleDriveSource(BaseSource):
                 if not file_entity.local_path:
                     raise ValueError(f"Download failed - no local path set for {file_entity.name}")
 
+                # Store metadata for future change detection
+                self._store_file_metadata(file_obj)
+
                 self.logger.debug(f"Successfully downloaded file: {file_entity.name}")
                 return file_entity
 
@@ -926,6 +1033,75 @@ class GoogleDriveSource(BaseSource):
         except Exception as e:
             self.logger.error(f"Failed to process file {file_obj.get('name', 'unknown')}: {str(e)}")
             return None
+
+    async def _process_changed_file(
+        self, file_obj: Dict, parent_breadcrumb: Optional[Breadcrumb] = None
+    ) -> Optional[GoogleDriveFileEntity]:
+        """Process a file that has changed based on metadata.
+
+        This method is used during incremental sync to process files that have been
+        identified as changed through metadata comparison.
+
+        Args:
+            file_obj: File metadata from Google Drive API
+            parent_breadcrumb: Optional breadcrumb for parent folder
+
+        Returns:
+            GoogleDriveFileEntity if processing succeeded, None if skipped or failed
+        """
+        # Build entity
+        file_entity = self._build_file_entity(file_obj, parent_breadcrumb)
+        if not file_entity:
+            return None
+
+        self.logger.debug(f"Processing changed file: {file_entity.file_id} '{file_entity.name}'")
+
+        # Download file
+        try:
+            await self.file_downloader.download_from_url(
+                entity=file_entity,
+                http_client_factory=self.http_client,
+                access_token_provider=self.get_access_token,
+                logger=self.logger,
+            )
+
+            if not file_entity.local_path:
+                raise ValueError(f"Download failed for {file_entity.name}")
+
+            # Store metadata for future comparison
+            self._store_file_metadata(file_obj)
+
+            self.logger.debug(f"Successfully processed changed file: {file_entity.name}")
+            return file_entity
+
+        except FileSkippedException as e:
+            self.logger.debug(f"Skipping file {file_entity.name}: {e.reason}")
+            return None
+
+        except Exception as e:
+            self.logger.error(f"Failed to download changed file {file_entity.name}: {e}")
+            return None
+
+    def _setup_breadcrumbs(self, drive_objs: List[Dict[str, Any]]) -> None:
+        """Setup breadcrumbs for drives and My Drive.
+
+        Args:
+            drive_objs: List of drive objects from Google Drive API
+        """
+        drive_breadcrumbs: Dict[str, Breadcrumb] = {}
+        for drive_obj in drive_objs:
+            drive_breadcrumbs[drive_obj["id"]] = Breadcrumb(
+                entity_id=drive_obj["id"],
+                name=drive_obj.get("name", "Untitled Drive"),
+                entity_type=GoogleDriveDriveEntity.__name__,
+            )
+
+        self._drive_breadcrumbs = drive_breadcrumbs
+        self._my_drive_breadcrumb = Breadcrumb(
+            entity_id="my_drive",
+            name="My Drive",
+            entity_type=GoogleDriveDriveEntity.__name__,
+        )
 
     async def _generate_file_entities(  # noqa: C901
         self,
@@ -979,6 +1155,9 @@ class GoogleDriveSource(BaseSource):
                                     f"Download failed - no local path set for {file_entity.name}"
                                 )
 
+                            # Store metadata for future change detection
+                            self._store_file_metadata(file_obj)
+
                             yield file_entity
 
                         except FileSkippedException as e:
@@ -1030,90 +1209,179 @@ class GoogleDriveSource(BaseSource):
                 except Exception as e:
                     self.logger.error(f"Error generating drive entities: {str(e)}")
 
-                drive_breadcrumbs: Dict[str, Breadcrumb] = {}
-                for drive_obj in drive_objs:
-                    drive_breadcrumbs[drive_obj["id"]] = Breadcrumb(
-                        entity_id=drive_obj["id"],
-                        name=drive_obj.get("name", "Untitled Drive"),
-                        entity_type=GoogleDriveDriveEntity.__name__,
-                    )
-
-                self._drive_breadcrumbs = drive_breadcrumbs
-                self._my_drive_breadcrumb = Breadcrumb(
-                    entity_id="my_drive",
-                    name="My Drive",
-                    entity_type=GoogleDriveDriveEntity.__name__,
-                )
-
+                # Setup breadcrumbs for navigation
+                self._setup_breadcrumbs(drive_objs)
+                drive_breadcrumbs = self._drive_breadcrumbs
                 drive_ids = [drive["id"] for drive in drive_objs]
 
-                # If no include patterns: default behavior (all files in drives + My Drive)
-                if not patterns:
+                # INCREMENTAL MODE: Use Changes API exclusively
+                if start_page_token:
+                    self.logger.info(
+                        f"📊 Incremental sync mode - processing changes only (token={start_page_token[:20]}...)"
+                    )
+                    async for change_entity in self._emit_changes_since_token(
+                        client, start_page_token
+                    ):
+                        yield change_entity
+
+                else:
+                    # FULL SYNC MODE: List all files (first run or forced full sync)
+                    self.logger.info("🔄 Full sync mode - listing all files")
+
+                    # If no include patterns: default behavior (all files in drives + My Drive)
+                    if not patterns:
+                        for drive_id in drive_ids:
+                            try:
+                                drive_breadcrumb = drive_breadcrumbs.get(drive_id)
+                                async for file_entity in self._generate_file_entities(
+                                    client,
+                                    corpora="drive",
+                                    include_all_drives=True,
+                                    drive_id=drive_id,
+                                    context=f"drive {drive_id}",
+                                    parent_breadcrumb=drive_breadcrumb,
+                                ):
+                                    yield file_entity
+                            except Exception as e:
+                                self.logger.error(
+                                    f"Error processing shared drive {drive_id}: {str(e)}"
+                                )
+                                continue
+
+                        try:
+                            async for mydrive_file_entity in self._generate_file_entities(
+                                client,
+                                corpora="user",
+                                include_all_drives=False,
+                                context="MY DRIVE",
+                                parent_breadcrumb=self._my_drive_breadcrumb,
+                            ):
+                                yield mydrive_file_entity
+                        except Exception as e:
+                            self.logger.error(f"Error processing My Drive files: {str(e)}")
+
+                    # INCLUDE MODE: Resolve patterns and traverse only matched subtrees
+                    # Shared drives first
                     for drive_id in drive_ids:
                         try:
                             drive_breadcrumb = drive_breadcrumbs.get(drive_id)
-                            async for file_entity in self._generate_file_entities(
-                                client,
-                                corpora="drive",
-                                include_all_drives=True,
-                                drive_id=drive_id,
-                                context=f"drive {drive_id}",
-                                parent_breadcrumb=drive_breadcrumb,
-                            ):
-                                yield file_entity
-                        except Exception as e:
-                            self.logger.error(f"Error processing shared drive {drive_id}: {str(e)}")
-                            continue
+                            # Resolve and traverse per pattern to keep logic simple and precise
+                            for p in patterns:
+                                roots, fname_glob = await self._resolve_pattern_to_roots(
+                                    client,
+                                    corpora="drive",
+                                    include_all_drives=True,
+                                    drive_id=drive_id,
+                                    pattern=p,
+                                )
+                                if roots:
+                                    if getattr(self, "batch_generation", False):
+                                        # Concurrent traversal
+                                        async def _worker_traverse(
+                                            file_obj: Dict, breadcrumb=drive_breadcrumb
+                                        ):
+                                            ent = await self._process_file_batch(
+                                                file_obj, breadcrumb
+                                            )
+                                            if ent is not None:
+                                                yield ent
 
-                    try:
-                        async for mydrive_file_entity in self._generate_file_entities(
-                            client,
-                            corpora="user",
-                            include_all_drives=False,
-                            context="MY DRIVE",
-                            parent_breadcrumb=self._my_drive_breadcrumb,
-                        ):
-                            yield mydrive_file_entity
-                    except Exception as e:
-                        self.logger.error(f"Error processing My Drive files: {str(e)}")
+                                        items_gen = self._traverse_and_yield_files(
+                                            client,
+                                            corpora="drive",
+                                            include_all_drives=True,
+                                            drive_id=drive_id,
+                                            start_folder_ids=list(set(roots)),
+                                            filename_glob=fname_glob,
+                                            context=f"drive {drive_id}",
+                                        )
 
-                # INCLUDE MODE: Resolve patterns and traverse only matched subtrees
-                # Shared drives first
-                for drive_id in drive_ids:
-                    try:
-                        drive_breadcrumb = drive_breadcrumbs.get(drive_id)
-                        # Resolve and traverse per pattern to keep logic simple and precise
-                        for p in patterns:
-                            roots, fname_glob = await self._resolve_pattern_to_roots(
-                                client,
-                                corpora="drive",
-                                include_all_drives=True,
-                                drive_id=drive_id,
-                                pattern=p,
-                            )
-                            if roots:
+                                        async for processed in self.process_entities_concurrent(
+                                            items=items_gen,
+                                            worker=_worker_traverse,
+                                            batch_size=getattr(self, "batch_size", 30),
+                                            preserve_order=getattr(self, "preserve_order", False),
+                                            stop_on_error=getattr(self, "stop_on_error", False),
+                                            max_queue_size=getattr(self, "max_queue_size", 200),
+                                        ):
+                                            yield processed
+                                    else:
+                                        # Sequential traversal
+                                        async for file_obj in self._traverse_and_yield_files(
+                                            client,
+                                            corpora="drive",
+                                            include_all_drives=True,
+                                            drive_id=drive_id,
+                                            start_folder_ids=list(set(roots)),
+                                            filename_glob=fname_glob,
+                                            context=f"drive {drive_id}",
+                                        ):
+                                            file_entity = self._build_file_entity(
+                                                file_obj, drive_breadcrumb
+                                            )
+                                            if not file_entity:
+                                                continue
+
+                                            # Download file using downloader
+                                            try:
+                                                await self.file_downloader.download_from_url(
+                                                    entity=file_entity,
+                                                    http_client_factory=self.http_client,
+                                                    access_token_provider=self.get_access_token,
+                                                    logger=self.logger,
+                                                )
+
+                                                # Verify download succeeded
+                                                if not file_entity.local_path:
+                                                    raise ValueError(
+                                                        f"Download failed - no local path set "
+                                                        f"for {file_entity.name}"
+                                                    )
+
+                                                yield file_entity
+
+                                            except FileSkippedException as e:
+                                                # Skipped unsupported or oversized file
+                                                self.logger.debug(
+                                                    f"Skipping file {file_entity.name}: {e.reason}"
+                                                )
+                                                continue
+
+                                            except Exception as e:
+                                                self.logger.error(
+                                                    f"Failed to download file {file_entity.name}: {e}"
+                                                )
+                                                continue
+
+                            # Filename-only patterns (no folder segments) -> global name search
+                            filename_only_patterns = [p for p in patterns if "/" not in p]
+                            import fnmatch as _fn
+
+                            for pat in filename_only_patterns:
                                 if getattr(self, "batch_generation", False):
-                                    # Concurrent traversal
-                                    async def _worker_traverse(
-                                        file_obj: Dict, breadcrumb=drive_breadcrumb
-                                    ):
-                                        ent = await self._process_file_batch(file_obj, breadcrumb)
-                                        if ent is not None:
-                                            yield ent
 
-                                    items_gen = self._traverse_and_yield_files(
-                                        client,
-                                        corpora="drive",
-                                        include_all_drives=True,
-                                        drive_id=drive_id,
-                                        start_folder_ids=list(set(roots)),
-                                        filename_glob=fname_glob,
-                                        context=f"drive {drive_id}",
-                                    )
+                                    async def _worker_match(
+                                        file_obj: Dict,
+                                        pattern=pat,
+                                        breadcrumb=drive_breadcrumb,
+                                    ):
+                                        name = file_obj.get("name", "")
+                                        if _fn.fnmatch(name, pattern):
+                                            ent = await self._process_file_batch(
+                                                file_obj, breadcrumb
+                                            )
+                                            if ent is not None:
+                                                yield ent
 
                                     async for processed in self.process_entities_concurrent(
-                                        items=items_gen,
-                                        worker=_worker_traverse,
+                                        items=self._list_files(
+                                            client,
+                                            corpora="drive",
+                                            include_all_drives=True,
+                                            drive_id=drive_id,
+                                            context=f"drive {drive_id}",
+                                        ),
+                                        worker=_worker_match,
                                         batch_size=getattr(self, "batch_size", 30),
                                         preserve_order=getattr(self, "preserve_order", False),
                                         stop_on_error=getattr(self, "stop_on_error", False),
@@ -1121,18 +1389,106 @@ class GoogleDriveSource(BaseSource):
                                     ):
                                         yield processed
                                 else:
-                                    # Sequential traversal
-                                    async for file_obj in self._traverse_and_yield_files(
+                                    async for file_obj in self._list_files(
                                         client,
                                         corpora="drive",
                                         include_all_drives=True,
                                         drive_id=drive_id,
-                                        start_folder_ids=list(set(roots)),
-                                        filename_glob=fname_glob,
                                         context=f"drive {drive_id}",
                                     ):
+                                        name = file_obj.get("name", "")
+                                        if _fn.fnmatch(name, pat):
+                                            file_entity = self._build_file_entity(
+                                                file_obj, drive_breadcrumb
+                                            )
+                                            if not file_entity:
+                                                continue
+
+                                            # Download file using downloader
+                                            try:
+                                                await self.file_downloader.download_from_url(
+                                                    entity=file_entity,
+                                                    http_client_factory=self.http_client,
+                                                    access_token_provider=self.get_access_token,
+                                                    logger=self.logger,
+                                                )
+
+                                                # Verify download succeeded
+                                                if not file_entity.local_path:
+                                                    raise ValueError(
+                                                        f"Download failed - no local path set "
+                                                        f"for {file_entity.name}"
+                                                    )
+
+                                                yield file_entity
+
+                                            except FileSkippedException as e:
+                                                # Skipped unsupported or oversized file
+                                                self.logger.debug(
+                                                    f"Skipping file {file_entity.name}: {e.reason}"
+                                                )
+                                                continue
+
+                                            except Exception as e:
+                                                self.logger.error(
+                                                    f"Failed to download file {file_entity.name}: {e}"
+                                                )
+                                                continue
+
+                        except Exception as e:
+                            self.logger.error(f"Include mode error for drive {drive_id}: {str(e)}")
+
+                    # My Drive include patterns
+                    try:
+                        for p in patterns:
+                            roots, fname_glob = await self._resolve_pattern_to_roots(
+                                client,
+                                corpora="user",
+                                include_all_drives=False,
+                                drive_id=None,
+                                pattern=p,
+                            )
+                            if roots:
+                                if getattr(self, "batch_generation", False):
+
+                                    async def _worker_traverse_user(
+                                        file_obj: Dict, breadcrumb=self._my_drive_breadcrumb
+                                    ):
+                                        ent = await self._process_file_batch(file_obj, breadcrumb)
+                                        if ent is not None:
+                                            yield ent
+
+                                    items_gen_user = self._traverse_and_yield_files(
+                                        client,
+                                        corpora="user",
+                                        include_all_drives=False,
+                                        drive_id=None,
+                                        start_folder_ids=list(set(roots)),
+                                        filename_glob=fname_glob,
+                                        context="MY DRIVE",
+                                    )
+
+                                    async for processed in self.process_entities_concurrent(
+                                        items=items_gen_user,
+                                        worker=_worker_traverse_user,
+                                        batch_size=getattr(self, "batch_size", 30),
+                                        preserve_order=getattr(self, "preserve_order", False),
+                                        stop_on_error=getattr(self, "stop_on_error", False),
+                                        max_queue_size=getattr(self, "max_queue_size", 200),
+                                    ):
+                                        yield processed
+                                else:
+                                    async for file_obj in self._traverse_and_yield_files(
+                                        client,
+                                        corpora="user",
+                                        include_all_drives=False,
+                                        drive_id=None,
+                                        start_folder_ids=list(set(roots)),
+                                        filename_glob=fname_glob,
+                                        context="MY DRIVE",
+                                    ):
                                         file_entity = self._build_file_entity(
-                                            file_obj, drive_breadcrumb
+                                            file_obj, self._my_drive_breadcrumb
                                         )
                                         if not file_entity:
                                             continue
@@ -1168,17 +1524,16 @@ class GoogleDriveSource(BaseSource):
                                             )
                                             continue
 
-                        # Filename-only patterns (no folder segments) -> global name search
                         filename_only_patterns = [p for p in patterns if "/" not in p]
                         import fnmatch as _fn
 
                         for pat in filename_only_patterns:
                             if getattr(self, "batch_generation", False):
 
-                                async def _worker_match(
+                                async def _worker_match_user(
                                     file_obj: Dict,
                                     pattern=pat,
-                                    breadcrumb=drive_breadcrumb,
+                                    breadcrumb=self._my_drive_breadcrumb,
                                 ):
                                     name = file_obj.get("name", "")
                                     if _fn.fnmatch(name, pattern):
@@ -1189,12 +1544,12 @@ class GoogleDriveSource(BaseSource):
                                 async for processed in self.process_entities_concurrent(
                                     items=self._list_files(
                                         client,
-                                        corpora="drive",
-                                        include_all_drives=True,
-                                        drive_id=drive_id,
-                                        context=f"drive {drive_id}",
+                                        corpora="user",
+                                        include_all_drives=False,
+                                        drive_id=None,
+                                        context="MY DRIVE",
                                     ),
-                                    worker=_worker_match,
+                                    worker=_worker_match_user,
                                     batch_size=getattr(self, "batch_size", 30),
                                     preserve_order=getattr(self, "preserve_order", False),
                                     stop_on_error=getattr(self, "stop_on_error", False),
@@ -1204,15 +1559,15 @@ class GoogleDriveSource(BaseSource):
                             else:
                                 async for file_obj in self._list_files(
                                     client,
-                                    corpora="drive",
-                                    include_all_drives=True,
-                                    drive_id=drive_id,
-                                    context=f"drive {drive_id}",
+                                    corpora="user",
+                                    include_all_drives=False,
+                                    drive_id=None,
+                                    context="MY DRIVE",
                                 ):
                                     name = file_obj.get("name", "")
                                     if _fn.fnmatch(name, pat):
                                         file_entity = self._build_file_entity(
-                                            file_obj, drive_breadcrumb
+                                            file_obj, self._my_drive_breadcrumb
                                         )
                                         if not file_entity:
                                             continue
@@ -1249,180 +1604,9 @@ class GoogleDriveSource(BaseSource):
                                             continue
 
                     except Exception as e:
-                        self.logger.error(f"Include mode error for drive {drive_id}: {str(e)}")
+                        self.logger.error(f"Include mode error for My Drive: {str(e)}")
 
-                # My Drive include patterns
-                try:
-                    for p in patterns:
-                        roots, fname_glob = await self._resolve_pattern_to_roots(
-                            client,
-                            corpora="user",
-                            include_all_drives=False,
-                            drive_id=None,
-                            pattern=p,
-                        )
-                        if roots:
-                            if getattr(self, "batch_generation", False):
-
-                                async def _worker_traverse_user(
-                                    file_obj: Dict, breadcrumb=self._my_drive_breadcrumb
-                                ):
-                                    ent = await self._process_file_batch(file_obj, breadcrumb)
-                                    if ent is not None:
-                                        yield ent
-
-                                items_gen_user = self._traverse_and_yield_files(
-                                    client,
-                                    corpora="user",
-                                    include_all_drives=False,
-                                    drive_id=None,
-                                    start_folder_ids=list(set(roots)),
-                                    filename_glob=fname_glob,
-                                    context="MY DRIVE",
-                                )
-
-                                async for processed in self.process_entities_concurrent(
-                                    items=items_gen_user,
-                                    worker=_worker_traverse_user,
-                                    batch_size=getattr(self, "batch_size", 30),
-                                    preserve_order=getattr(self, "preserve_order", False),
-                                    stop_on_error=getattr(self, "stop_on_error", False),
-                                    max_queue_size=getattr(self, "max_queue_size", 200),
-                                ):
-                                    yield processed
-                            else:
-                                async for file_obj in self._traverse_and_yield_files(
-                                    client,
-                                    corpora="user",
-                                    include_all_drives=False,
-                                    drive_id=None,
-                                    start_folder_ids=list(set(roots)),
-                                    filename_glob=fname_glob,
-                                    context="MY DRIVE",
-                                ):
-                                    file_entity = self._build_file_entity(
-                                        file_obj, self._my_drive_breadcrumb
-                                    )
-                                    if not file_entity:
-                                        continue
-
-                                    # Download file using downloader
-                                    try:
-                                        await self.file_downloader.download_from_url(
-                                            entity=file_entity,
-                                            http_client_factory=self.http_client,
-                                            access_token_provider=self.get_access_token,
-                                            logger=self.logger,
-                                        )
-
-                                        # Verify download succeeded
-                                        if not file_entity.local_path:
-                                            raise ValueError(
-                                                f"Download failed - no local path set "
-                                                f"for {file_entity.name}"
-                                            )
-
-                                        yield file_entity
-
-                                    except FileSkippedException as e:
-                                        # Skipped unsupported or oversized file
-                                        self.logger.debug(
-                                            f"Skipping file {file_entity.name}: {e.reason}"
-                                        )
-                                        continue
-
-                                    except Exception as e:
-                                        self.logger.error(
-                                            f"Failed to download file {file_entity.name}: {e}"
-                                        )
-                                        continue
-
-                    filename_only_patterns = [p for p in patterns if "/" not in p]
-                    import fnmatch as _fn
-
-                    for pat in filename_only_patterns:
-                        if getattr(self, "batch_generation", False):
-
-                            async def _worker_match_user(
-                                file_obj: Dict, pattern=pat, breadcrumb=self._my_drive_breadcrumb
-                            ):
-                                name = file_obj.get("name", "")
-                                if _fn.fnmatch(name, pattern):
-                                    ent = await self._process_file_batch(file_obj, breadcrumb)
-                                    if ent is not None:
-                                        yield ent
-
-                            async for processed in self.process_entities_concurrent(
-                                items=self._list_files(
-                                    client,
-                                    corpora="user",
-                                    include_all_drives=False,
-                                    drive_id=None,
-                                    context="MY DRIVE",
-                                ),
-                                worker=_worker_match_user,
-                                batch_size=getattr(self, "batch_size", 30),
-                                preserve_order=getattr(self, "preserve_order", False),
-                                stop_on_error=getattr(self, "stop_on_error", False),
-                                max_queue_size=getattr(self, "max_queue_size", 200),
-                            ):
-                                yield processed
-                        else:
-                            async for file_obj in self._list_files(
-                                client,
-                                corpora="user",
-                                include_all_drives=False,
-                                drive_id=None,
-                                context="MY DRIVE",
-                            ):
-                                name = file_obj.get("name", "")
-                                if _fn.fnmatch(name, pat):
-                                    file_entity = self._build_file_entity(
-                                        file_obj, self._my_drive_breadcrumb
-                                    )
-                                    if not file_entity:
-                                        continue
-
-                                    # Download file using downloader
-                                    try:
-                                        await self.file_downloader.download_from_url(
-                                            entity=file_entity,
-                                            http_client_factory=self.http_client,
-                                            access_token_provider=self.get_access_token,
-                                            logger=self.logger,
-                                        )
-
-                                        # Verify download succeeded
-                                        if not file_entity.local_path:
-                                            raise ValueError(
-                                                f"Download failed - no local path set "
-                                                f"for {file_entity.name}"
-                                            )
-
-                                        yield file_entity
-
-                                    except FileSkippedException as e:
-                                        # Skipped unsupported or oversized file
-                                        self.logger.debug(
-                                            f"Skipping file {file_entity.name}: {e.reason}"
-                                        )
-                                        continue
-
-                                    except Exception as e:
-                                        self.logger.error(
-                                            f"Failed to download file {file_entity.name}: {e}"
-                                        )
-                                        continue
-
-                except Exception as e:
-                    self.logger.error(f"Include mode error for My Drive: {str(e)}")
-
-                if start_page_token:
-                    async for change_entity in self._emit_changes_since_token(
-                        client, start_page_token
-                    ):
-                        yield change_entity
-
+                # Store the next start page token for future incremental syncs
                 await self._store_next_start_page_token(client)
 
         except Exception as e:

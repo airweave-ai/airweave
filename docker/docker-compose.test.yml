@@ -57,6 +57,28 @@ services:
       timeout: 5s
       retries: 5
 
+  svix:
+    image: svix/svix-server
+    ports:
+      - "9071:8071"
+    environment:
+      SVIX_WHITELIST_SUBNETS: "[127.0.0.1/32, 172.17.0.0/16, 192.168.0.0/16, 10.0.0.0/8]"
+      WAIT_FOR: "true"
+      SVIX_REDIS_DSN: "redis://redis:6379"
+      SVIX_DB_DSN: "postgresql://airweave:airweave1234!@postgres:5432/airweave"
+      SVIX_JWT_SECRET: "test_signing_secret"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "svix-server healthcheck http://localhost:8071"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: on-failure
+
   backend:
     build:
       context: ../backend
@@ -67,6 +89,8 @@ services:
       redis:
         condition: service_healthy
       qdrant:
+        condition: service_healthy
+      svix:
         condition: service_healthy
 
     # Override specific variables for container-specific settings
@@ -86,6 +110,9 @@ services:
       - ENCRYPTION_KEY="SpgLrrEEgJ/7QdhSMSvagL1juEY5eoyCG0tZN7OSQV0="
       - TEXT2VEC_INFERENCE_URL=http://text2vec-transformers:8080
       - AUTH_ENABLED=false
+      # Svix configuration
+      - SVIX_URL=http://svix:8071
+      - SVIX_AUTH_TOKEN=
 
     ports:
       - "9001:8001"

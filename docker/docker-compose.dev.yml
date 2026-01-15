@@ -38,20 +38,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-  text2vec-transformers:
-    container_name: airweave-embeddings
-    image: semitechnologies/transformers-inference:sentence-transformers-all-MiniLM-L6-v2
-    ports:
-      - "9878:8080"
-    environment:
-      ENABLE_CUDA: 0
-      WORKERS_PER_NODE: 1
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
-      interval: 5s
-      timeout: 10s
-      retries: 3
-    restart: on-failure
   qdrant:
     container_name: airweave-qdrant
     image: qdrant/qdrant:latest
@@ -84,6 +70,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      svix:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "tctl", "--address", "temporal:7233", "workflow", "list"]
       interval: 30s
@@ -101,24 +89,6 @@ services:
     depends_on:
       temporal:
         condition: service_healthy
-    restart: on-failure
-  minio:
-    container_name: airweave-minio
-    image: minio/minio:latest
-    ports:
-      - "9000:9000" # S3 API
-      - "9001:9001" # Web Console
-    environment:
-      MINIO_ROOT_USER: airweave
-      MINIO_ROOT_PASSWORD: airweave-dev-password
-    command: server /data --console-address ":9001"
-    volumes:
-      - minio_data:/data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
     restart: on-failure
   # Vespa single-node for development (config server + content + container combined)
   vespa:
@@ -154,6 +124,28 @@ services:
       vespa:
         condition: service_healthy
     restart: "no"
+
+  svix:
+    container_name: airweave-svix
+    image: svix/svix-server
+    healthcheck:
+      test: ["CMD-SHELL", "svix-server healthcheck http://localhost:8071"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    environment:
+      SVIX_WHITELIST_SUBNETS: "[127.0.0.1/32, 172.17.0.0/16, 192.168.0.0/16, 10.0.0.0/8]" # Allow local calls to local for development.
+      WAIT_FOR: "true" # We want to wait for the default services
+      SVIX_REDIS_DSN: "redis://redis:6379"
+      SVIX_DB_DSN: "postgresql://airweave:airweave1234!@postgres:5432/airweave"
+      SVIX_JWT_SECRET: 'default_signing_secret'
+    ports:
+      - "8071:8071"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
 volumes:
   postgres_data:

@@ -19,6 +19,7 @@ from airweave.db.unit_of_work import UnitOfWork
 from airweave.integrations.auth0_management import auth0_management_client
 from airweave.models import Organization, User, UserOrganization
 from airweave.schemas.api_key import APIKeyCreate
+from airweave.webhooks.service import service as webhooks_service
 
 if settings.STRIPE_ENABLED:
     from airweave.billing.service import billing_service
@@ -249,6 +250,9 @@ class OrganizationService:
                 # include the newly created organization, causing 403 errors.
                 await context_cache.invalidate_user(owner_user.email)
                 logger.debug(f"Invalidated user cache for {owner_user.email}")
+
+                # Create organization for webhooks
+                await webhooks_service.create_organization(organization)
 
                 return organization
 
@@ -696,7 +700,7 @@ class OrganizationService:
         await db.commit()
         logger.info(f"Successfully deleted local organization: {org_name}")
 
-    async def delete_organization_with_auth0(
+    async def delete_organization_with_integrations(
         self, db: AsyncSession, organization_id: UUID, deleting_user: User
     ) -> bool:
         """Delete organization from both local database and Auth0.
@@ -750,6 +754,9 @@ class OrganizationService:
                 await context_cache.invalidate_user(email)
             if affected_user_emails:
                 logger.debug(f"Invalidated user cache for {len(affected_user_emails)} users")
+
+            # Delete organization from webhooks service
+            await webhooks_service.delete_organization(org)
 
             logger.info(f"Successfully deleted organization: {org.name}")
             return True

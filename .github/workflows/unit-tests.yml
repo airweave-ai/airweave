@@ -14,7 +14,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   test:
@@ -61,45 +60,12 @@ jobs:
         if: github.event_name == 'pull_request'
         run: pip install diff-cover
 
-      - name: Generate diff coverage report
+      - name: Check diff coverage
         if: github.event_name == 'pull_request'
-        id: diff-cover
         run: |
-          # Run diff-cover and capture exit code
-          set +e
           diff-cover coverage.xml \
             --compare-branch=origin/${{ github.base_ref }} \
-            --markdown-report=diff-coverage.md \
             --fail-under=80
-          EXIT_CODE=$?
-          set -e
-
-          # Exit code 2 = coverage below threshold, others = error/no files
-          if [ $EXIT_CODE -eq 2 ]; then
-            echo "coverage_failed=true" >> $GITHUB_OUTPUT
-          else
-            echo "coverage_failed=false" >> $GITHUB_OUTPUT
-          fi
-
-          # Create report if it doesn't exist (no Python files changed)
-          if [ ! -f diff-coverage.md ]; then
-            echo "## ✅ Diff Coverage Report" > diff-coverage.md
-            echo "" >> diff-coverage.md
-            echo "No Python source files were changed in this PR." >> diff-coverage.md
-          fi
-
-      - name: Post coverage comment
-        if: github.event_name == 'pull_request'
-        uses: marocchino/sticky-pull-request-comment@v2
-        with:
-          header: coverage
-          path: backend/diff-coverage.md
-
-      - name: Fail if coverage too low
-        if: github.event_name == 'pull_request' && steps.diff-cover.outputs.coverage_failed == 'true'
-        run: |
-          echo "::error::Diff coverage is below 80% threshold. Please add tests for your changes."
-          exit 1
 
       - name: Upload coverage to Codecov
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

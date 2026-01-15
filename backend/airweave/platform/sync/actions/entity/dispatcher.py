@@ -191,7 +191,7 @@ class EntityActionDispatcher:
                 failures.append((handler.name, result))
 
         if failures:
-            failure_msgs = [f"{name}: {err}" for name, err in failures]
+            failure_msgs = [f"{name}: {type(err).__name__}: {err}" for name, err in failures]
             sync_context.logger.error(f"[EntityDispatcher] Handler failures: {failure_msgs}")
             raise SyncFailureError(
                 f"[EntityDispatcher] Handler(s) failed: {', '.join(failure_msgs)}"

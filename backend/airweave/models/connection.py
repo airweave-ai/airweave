@@ -53,7 +53,7 @@ class Connection(Base):
 
     # Relationships
     integration_credential: Mapped[Optional["IntegrationCredential"]] = relationship(
-        "IntegrationCredential", back_populates="connections"
+        "IntegrationCredential", back_populates="connections", lazy="noload"
     )
     source: Mapped[Optional["Source"]] = relationship(
         "Source",

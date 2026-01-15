@@ -86,9 +86,13 @@ class QdrantDestination(VectorDBDestination):
     # Default write concurrency (simple, code-local tuning)
     DEFAULT_WRITE_CONCURRENCY: int = 16
 
-    def __init__(self):
-        """Initialize defaults and placeholders for connection and collection state."""
-        super().__init__()
+    def __init__(self, soft_fail: bool = False):
+        """Initialize defaults and placeholders for connection and collection state.
+
+        Args:
+            soft_fail: If True, errors won't fail the sync (default False)
+        """
+        super().__init__(soft_fail=soft_fail)
         # Logical identifiers (from SQL)
         self.collection_id: UUID | None = None
         self.organization_id: UUID | None = None
@@ -122,6 +126,7 @@ class QdrantDestination(VectorDBDestination):
         credentials: Optional[QdrantAuthConfig] = None,
         config: Optional[dict] = None,
         logger: Optional[ContextualLogger] = None,
+        soft_fail: bool = False,
     ) -> "QdrantDestination":
         """Create and return a connected destination (matches source pattern).
 
@@ -134,6 +139,7 @@ class QdrantDestination(VectorDBDestination):
             credentials: Optional QdrantAuthConfig with url and api_key (None for native)
             config: Unused (kept for interface consistency with sources)
             logger: Logger instance
+            soft_fail: If True, errors won't fail the sync (default False)
 
         Returns:
             Configured QdrantDestination instance with multi-tenant shared collection
@@ -142,7 +148,7 @@ class QdrantDestination(VectorDBDestination):
             Tenant isolation is achieved via airweave_collection_id filtering in Qdrant.
             Each collection belongs to exactly one organization, so collection_id is sufficient.
         """
-        instance = cls()
+        instance = cls(soft_fail=soft_fail)
         instance.set_logger(logger or default_logger)
         instance.collection_id = collection_id
         instance.organization_id = organization_id
@@ -625,8 +631,11 @@ class QdrantDestination(VectorDBDestination):
             # Build comprehensive error context
             error_context = {
                 "wrapper_exception": "ResponseHandlingException",
-                "source_exception_type": type(source_error).__name__,
-                "source_exception_message": str(source_error),
+                "source_exception_type": type(source_error).__name__ if source_error else "None",
+                "source_exception_message": str(source_error)
+                if source_error
+                else "No source error provided",
+                "response_handling_exception_str": str(e) or "Empty ResponseHandlingException",
                 "collection_name": self.collection_name,
                 "collection_id": str(self.collection_id),
                 "vector_size": self.vector_size,
@@ -636,16 +645,24 @@ class QdrantDestination(VectorDBDestination):
             }
 
             # Extract any HTTP-related details from source error
-            if hasattr(source_error, "status_code"):
+            if source_error and hasattr(source_error, "status_code"):
                 error_context["http_status"] = source_error.status_code
-            if hasattr(source_error, "request"):
+            if source_error and hasattr(source_error, "request"):
                 try:
                     error_context["request_method"] = source_error.request.method
                     error_context["request_url"] = str(source_error.request.url)
                 except Exception:
                     pass
 
-            error_summary = f"{type(source_error).__name__}: {source_error}"
+            # Build error summary with fallback for missing source
+            if source_error:
+                error_summary = (
+                    f"{type(source_error).__name__}: {source_error or '(empty error message)'}"
+                )
+            else:
+                error_summary = (
+                    f"ResponseHandlingException with no source error: {str(e) or '(empty)'}"
+                )
 
             if n <= 1 or n <= min_batch:
                 self.logger.error(

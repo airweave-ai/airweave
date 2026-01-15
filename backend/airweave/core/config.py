@@ -141,6 +141,10 @@ class Settings(BaseSettings):
     CEREBRAS_API_KEY: Optional[str] = None
     AZURE_KEYVAULT_NAME: Optional[str] = None
 
+    # AWS S3 Destination credentials (for local testing)
+    AWS_S3_DESTINATION_ACCESS_KEY_ID: Optional[str] = None
+    AWS_S3_DESTINATION_SECRET_ACCESS_KEY: Optional[str] = None
+
     # Temporal configuration
     TEMPORAL_HOST: str = "localhost"
     TEMPORAL_PORT: int = 7233
@@ -201,6 +205,10 @@ class Settings(BaseSettings):
     APP_FULL_URL: Optional[str] = None
     QDRANT_FULL_URL: Optional[str] = None
     ADDITIONAL_CORS_ORIGINS: Optional[str] = None  # Separated by commas or semicolons
+
+    # Svix (webhooks) configuration
+    SVIX_URL: str = "http://localhost:8071"
+    SVIX_JWT_SECRET: str = "default_signing_secret"
 
     @field_validator("AZURE_KEYVAULT_NAME", mode="before")
     def validate_azure_keyvault_name(cls, v: Optional[str], info: ValidationInfo) -> Optional[str]:

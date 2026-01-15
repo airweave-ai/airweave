@@ -23,11 +23,16 @@ class BaseDestination(ABC):
         ProcessingRequirement.CHUNKS_AND_EMBEDDINGS
     )
 
-    def __init__(self):
-        """Initialize the base destination."""
+    def __init__(self, soft_fail: bool = False):
+        """Initialize the base destination.
+
+        Args:
+            soft_fail: If True, errors won't fail the sync (for migrations)
+        """
         self._logger: Optional[ContextualLogger] = (
             None  # Store contextual logger as instance variable
         )
+        self.soft_fail = soft_fail
 
     @property
     def logger(self):

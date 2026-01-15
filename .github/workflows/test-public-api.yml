@@ -53,6 +53,7 @@ jobs:
           docker pull temporalio/auto-setup:1.24.2 &
           docker pull temporalio/ui:2.26.2 &
           docker pull vespaengine/vespa:8 &
+          docker pull svix/svix-server &
           docker pull alpine:3.19 &
           wait
           echo "All images pre-pulled successfully"
@@ -76,6 +77,7 @@ jobs:
           # Skip services not needed for backend API tests
           SKIP_LOCAL_EMBEDDINGS: "1" # Use OpenAI embeddings (saves ~2GB)
           SKIP_FRONTEND: "1" # Backend-only testing (saves time)
+          SKIP_CONNECT: "1" # Backend-only testing (saves time)
           # Set required environment variables for the containers
           AUTH0_ENABLED: "false"
           DEV_MODE: "true"

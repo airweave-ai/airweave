@@ -38,6 +38,7 @@ from airweave.schemas.source_connection import (
     SourceConnectionListItem,
     SourceConnectionUpdate,
 )
+from airweave.webhooks.service import service as webhooks_service
 
 
 class SourceConnectionService:
@@ -1546,6 +1547,16 @@ class SourceConnectionService:
         # Trigger sync through Temporal only
         sync, sync_job = await sync_service.trigger_sync_run(
             db, sync_id=source_conn.sync_id, ctx=ctx
+        )
+        sync_job_schema = schemas.SyncJob.model_validate(sync_job, from_attributes=True)
+
+        # Publish PENDING webhook event
+        await webhooks_service.publish_event_sync(
+            source_connection_id=source_connection_schema.id,
+            organisation=ctx.organization,
+            sync_job=sync_job_schema,
+            collection=collection_schema,
+            source_type=connection_schema.short_name,
         )
 
         await temporal_service.run_source_connection_workflow(

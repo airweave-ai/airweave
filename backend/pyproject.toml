@@ -14,7 +14,7 @@ fastapi = "^0.115.12"
 uvicorn = { extras = ["standard"], version = "^0.27.0" }
 sqlalchemy = { extras = ["asyncio"], version = "^2.0.25" }
 alembic = "^1.13.1"
-asyncpg = "^0.29.0"
+asyncpg = "^0.31.0"
 pydantic = { extras = ["email"], version = "^2.5.3" }
 python-jose = { extras = ["cryptography"], version = "^3.3.0" }
 passlib = { extras = ["bcrypt"], version = "^1.7.4" }
@@ -73,6 +73,8 @@ chonkie = {extras = ["code", "semantic"], version = "^1.4.0"}
 prometheus-client = "^0.21.0"
 psutil = "^5.9.0"
 pyvespa = "^0.62.0"
+svix = "^1.84.1"
+pyjwt = "^2.10.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"

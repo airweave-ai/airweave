@@ -12,7 +12,7 @@ connector:
     # access_token: "${GOOGLE_DRIVE_ACCESS_TOKEN}"
   config_fields:
     openai_model: "gpt-4.1-mini"
-    file_types: ["document", "spreadsheet", "text"]  # Exclude PDF - requires real binary generation
+    file_types: ["document", "text"]  # Exclude PDF and spreadsheet - requires real binary generation / xlsx not supported
     post_create_sleep_seconds: 20  # Wait for Google Drive API to index new files
 
 test_flow:

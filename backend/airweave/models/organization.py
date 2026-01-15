@@ -62,12 +62,12 @@ class Organization(Base):
         order_by="desc(BillingPeriod.period_start)",  # Most recent first
     )
 
-    # Relationship with feature flags (eager loaded for ApiContext)
+    # Relationship with feature flags (loaded via selectinload in CRUD)
     feature_flags: Mapped[List["FeatureFlag"]] = relationship(
         "FeatureFlag",
         back_populates="organization",
         cascade="all, delete-orphan",
-        lazy="selectin",  # Auto-load for feature checking
+        lazy="noload",
     )
 
     # Relationship with source rate limits

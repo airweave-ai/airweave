@@ -166,6 +166,16 @@ navigation:
     contents:
     - GET /sources
     - GET /sources/{short_name}
+  - section: Events
+    contents:
+    - GET /events/messages
+    - GET /events/messages/{message_id}
+    - GET /events/messages/{message_id}/attempts
+    - GET /events/subscriptions
+    - GET /events/subscriptions/{subscription_id}
+    - POST /events/subscriptions
+    - PATCH /events/subscriptions/{subscription_id}
+    - DELETE /events/subscriptions/{subscription_id}
   snippets:
     python: airweave-sdk
     typescript: '@airweave/sdk'

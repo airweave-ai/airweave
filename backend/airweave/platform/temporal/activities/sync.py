@@ -90,8 +90,10 @@ async def run_sync_activity(  # noqa: C901
     from airweave import crud, schemas
     from airweave.api.context import ApiContext
     from airweave.core.logging import LoggerConfigurator
+    from airweave.core.shared_models import SyncJobStatus
     from airweave.db.session import get_db_context
     from airweave.platform.temporal.worker_metrics import worker_metrics
+    from airweave.webhooks.service import service as webhooks_service
 
     # Convert dicts back to Pydantic models
     sync = schemas.Sync(**sync_dict)
@@ -164,6 +166,15 @@ async def run_sync_activity(  # noqa: C901
                 force_full_sync,
             )
         )
+        # Publish RUNNING webhook
+        running_sync_job = sync_job.model_copy(update={"status": SyncJobStatus.RUNNING})
+        await webhooks_service.publish_event_sync(
+            source_connection_id=sync.source_connection_id,
+            organisation=organization,
+            sync_job=running_sync_job,
+            collection=collection,
+            source_type=connection.short_name,
+        )
 
         try:
             while True:
@@ -175,6 +186,26 @@ async def run_sync_activity(  # noqa: C901
                 ctx.logger.debug("HEARTBEAT: Sync in progress")
                 activity.heartbeat("Sync in progress")
 
+            # Fetch updated sync_job with metrics for COMPLETED webhook
+            from airweave import crud
+            from airweave.db.session import get_db_context
+
+            async with get_db_context() as db:
+                updated_sync_job_model = await crud.sync_job.get(db, id=sync_job.id, ctx=ctx)
+                if updated_sync_job_model:
+                    completed_sync_job = schemas.SyncJob.model_validate(
+                        updated_sync_job_model, from_attributes=True
+                    )
+                    completed_sync_job = completed_sync_job.model_copy(
+                        update={"status": SyncJobStatus.COMPLETED}
+                    )
+                    await webhooks_service.publish_event_sync(
+                        source_connection_id=sync.source_connection_id,
+                        organisation=organization,
+                        sync_job=completed_sync_job,
+                        collection=collection,
+                        source_type=connection.short_name,
+                    )
             ctx.logger.info(f"\n\nCompleted sync activity for job {sync_job.id}\n\n")
 
         except asyncio.CancelledError:
@@ -194,6 +225,17 @@ async def run_sync_activity(  # noqa: C901
                     failed_at=utc_now_naive(),
                 )
                 ctx.logger.debug(f"\n\n[ACTIVITY] Updated job {sync_job.id} to CANCELLED\n\n")
+                cancelled_sync_job = sync_job.model_copy(
+                    update={"status": SyncJobStatus.CANCELLED, "error": "Workflow was cancelled"}
+                )
+                await webhooks_service.publish_event_sync(
+                    source_connection_id=sync.source_connection_id,
+                    organisation=organization,
+                    sync_job=cancelled_sync_job,
+                    collection=collection,
+                    source_type=connection.short_name,
+                    error="Workflow was cancelled",
+                )
             except Exception as status_err:
                 ctx.logger.error(f"Failed to update job {sync_job.id} to CANCELLED: {status_err}")
 
@@ -211,6 +253,17 @@ async def run_sync_activity(  # noqa: C901
             raise
         except Exception as e:
             ctx.logger.error(f"Failed sync activity for job {sync_job.id}: {e}")
+            failed_sync_job = sync_job.model_copy(
+                update={"status": SyncJobStatus.FAILED, "error": str(e)}
+            )
+            await webhooks_service.publish_event_sync(
+                organisation=organization,
+                source_connection_id=sync.source_connection_id,
+                sync_job=failed_sync_job,
+                collection=collection,
+                source_type=connection.short_name,
+                error=str(e),
+            )
             raise
     finally:
         # Clean up metrics tracking (fail-safe)
@@ -437,9 +490,166 @@ async def create_sync_job_activity(
 
         ctx.logger.info(f"Created sync job {sync_job_id} for sync {sync_id}")
 
+        # Publish PENDING webhook event
+        try:
+            from airweave.webhooks.service import service as webhooks_service
+
+            source_conn = await crud.source_connection.get_by_sync_id(
+                db=db, sync_id=UUID(sync_id), ctx=ctx
+            )
+            if source_conn:
+                connection = await crud.connection.get(db=db, id=source_conn.connection_id, ctx=ctx)
+                collection = await crud.collection.get(db=db, id=source_conn.collection_id, ctx=ctx)
+                if connection and collection:
+                    collection_schema = schemas.Collection.model_validate(
+                        collection, from_attributes=True
+                    )
+                    sync_job_schema = schemas.SyncJob.model_validate(sync_job)
+                    await webhooks_service.publish_event_sync(
+                        organisation=organization,
+                        sync_job=sync_job_schema,
+                        collection=collection_schema,
+                        source_type=connection.short_name,
+                        source_connection_id=source_conn.id,
+                    )
+        except Exception as webhook_err:
+            ctx.logger.warning(f"Failed to publish pending webhook: {webhook_err}")
+
         # Convert to dict for return
         sync_job_schema = schemas.SyncJob.model_validate(sync_job)
         return sync_job_schema.model_dump(mode="json")
+
+
+async def _is_running_job_stuck(job, running_cutoff, db, redis_client, crud, logger) -> bool:
+    """Check if a running job is stuck (no recent activity).
+
+    Returns True if the job should be considered stuck, False otherwise.
+    """
+    import json
+    from datetime import datetime
+
+    # Skip ARF-only backfills (no postgres handler = no stats updates)
+    if job.sync_config:
+        handlers = job.sync_config.get("handlers", {})
+        is_arf_only = not handlers.get("enable_postgres_handler", True)
+        if is_arf_only:
+            logger.debug(
+                f"Skipping ARF-only job {job.id} from stuck detection (no stats updates expected)"
+            )
+            return False
+
+    job_id_str = str(job.id)
+    snapshot_key = f"sync_progress_snapshot:{job_id_str}"
+
+    try:
+        snapshot_json = await redis_client.client.get(snapshot_key)
+
+        if not snapshot_json:
+            logger.debug(f"No snapshot for job {job_id_str} - skipping")
+            return False
+
+        snapshot = json.loads(snapshot_json)
+        last_update_str = snapshot.get("last_update_timestamp")
+
+        if not last_update_str:
+            # Old snapshot without timestamp - fall back to DB check
+            latest_entity_time = await crud.entity.get_latest_entity_time_for_job(
+                db=db, sync_job_id=job.id
+            )
+            return latest_entity_time is None or latest_entity_time < running_cutoff
+
+        # Check if activity is recent
+        last_update = datetime.fromisoformat(last_update_str)
+        if last_update.tzinfo is not None:
+            last_update = last_update.replace(tzinfo=None)
+
+        if last_update < running_cutoff:
+            total_ops = sum(
+                [
+                    snapshot.get("inserted", 0),
+                    snapshot.get("updated", 0),
+                    snapshot.get("deleted", 0),
+                    snapshot.get("kept", 0),
+                    snapshot.get("skipped", 0),
+                ]
+            )
+            logger.info(
+                f"Job {job_id_str} last activity at {last_update} "
+                f"({total_ops} total ops) - marking as stuck"
+            )
+            return True
+
+        logger.debug(f"Job {job_id_str} active at {last_update} - healthy")
+        return False
+
+    except Exception as e:
+        logger.warning(f"Error checking job {job_id_str}: {e}, falling back to DB check")
+        latest_entity_time = await crud.entity.get_latest_entity_time_for_job(
+            db=db, sync_job_id=job.id
+        )
+        return latest_entity_time is None or latest_entity_time < running_cutoff
+
+
+async def _cancel_stuck_job(job, now, db, crud, logger) -> bool:
+    """Cancel a single stuck job via Temporal and update database.
+
+    Returns True if cancellation succeeded, False otherwise.
+    """
+    from airweave import schemas
+    from airweave.api.context import ApiContext
+    from airweave.core.shared_models import SyncJobStatus
+    from airweave.core.sync_job_service import sync_job_service
+    from airweave.core.temporal_service import temporal_service
+
+    job_id = str(job.id)
+    sync_id = str(job.sync_id)
+    org_id = str(job.organization_id)
+
+    logger.info(
+        f"Attempting to cancel stuck job {job_id} "
+        f"(status: {job.status}, sync: {sync_id}, org: {org_id})"
+    )
+
+    try:
+        organization = await crud.organization.get(
+            db=db,
+            id=job.organization_id,
+            skip_access_validation=True,
+        )
+    except Exception as e:
+        logger.error(f"Failed to fetch organization {org_id} for job {job_id}: {e}")
+        return False
+
+    ctx = ApiContext(
+        request_id=f"cleanup-{job_id}",
+        organization=schemas.Organization.model_validate(organization),
+        user=None,
+        auth_method="system",
+        auth_metadata={"source": "cleanup_activity"},
+        logger=logger,
+    )
+
+    try:
+        cancel_success = await temporal_service.cancel_sync_job_workflow(job_id, ctx)
+
+        if cancel_success:
+            logger.info(f"Successfully requested Temporal cancellation for job {job_id}")
+            await asyncio.sleep(2)
+
+        await sync_job_service.update_status(
+            sync_job_id=UUID(job_id),
+            status=SyncJobStatus.CANCELLED,
+            ctx=ctx,
+            error="Cancelled by cleanup job (stuck in transitional state)",
+            failed_at=now,
+        )
+
+        logger.info(f"Successfully cancelled stuck job {job_id}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to cancel stuck job {job_id}: {e}", exc_info=True)
+        return False
 
 
 @activity.defn
@@ -456,15 +666,13 @@ async def cleanup_stuck_sync_jobs_activity() -> None:
     """
     from datetime import timedelta
 
-    from airweave.api.context import ApiContext
+    from airweave import crud
     from airweave.core.datetime_utils import utc_now_naive
     from airweave.core.logging import LoggerConfigurator
+    from airweave.core.redis_client import redis_client
     from airweave.core.shared_models import SyncJobStatus
-    from airweave.core.sync_job_service import sync_job_service
-    from airweave.core.temporal_service import temporal_service
     from airweave.db.session import get_db_context
 
-    # Configure logger for cleanup activity
     logger = LoggerConfigurator.configure_logger(
         "airweave.temporal.cleanup",
         dimensions={"activity": "cleanup_stuck_sync_jobs"},
@@ -472,121 +680,38 @@ async def cleanup_stuck_sync_jobs_activity() -> None:
 
     logger.info("Starting cleanup of stuck sync jobs...")
 
-    # Calculate cutoff times
     now = utc_now_naive()
     cancelling_pending_cutoff = now - timedelta(minutes=3)
-    running_cutoff = now - timedelta(minutes=15)  # Jobs older than 15 min with no activity
-
-    stuck_job_count = 0
-    cancelled_count = 0
-    failed_count = 0
+    running_cutoff = now - timedelta(minutes=15)
 
     try:
         async with get_db_context() as db:
-            # Import CRUD layer inside to avoid sandbox issues
-            import json
-
-            from airweave import crud
-            from airweave.core.redis_client import redis_client
-
-            # Query 1: Find CANCELLING/PENDING jobs stuck for > 3 minutes
+            # Query CANCELLING/PENDING jobs stuck for > 3 minutes
             cancelling_pending_jobs = await crud.sync_job.get_stuck_jobs_by_status(
                 db=db,
                 status=[SyncJobStatus.CANCELLING.value, SyncJobStatus.PENDING.value],
                 modified_before=cancelling_pending_cutoff,
             )
-
             logger.info(
                 f"Found {len(cancelling_pending_jobs)} CANCELLING/PENDING jobs "
                 f"stuck for > 3 minutes"
             )
 
-            # Query 2: Find RUNNING jobs > 5 minutes old
+            # Query RUNNING jobs > 15 minutes old
             running_jobs = await crud.sync_job.get_stuck_jobs_by_status(
                 db=db,
                 status=[SyncJobStatus.RUNNING.value],
                 started_before=running_cutoff,
             )
-
             logger.info(
                 f"Found {len(running_jobs)} RUNNING jobs started >15min ago (will check activity)"
             )
 
-            # Check which RUNNING jobs have no recent activity (via Redis snapshot)
-            # Skip ARF-only jobs (they don't update entity stats, so no activity expected)
+            # Filter to jobs with no recent activity
             stuck_running_jobs = []
             for job in running_jobs:
-                # Skip ARF-only backfills (no postgres handler = no stats updates)
-                if job.sync_config:
-                    # Check if postgres handler is disabled (nested structure)
-                    handlers = job.sync_config.get("handlers", {})
-                    is_arf_only = not handlers.get("enable_postgres_handler", True)
-                    if is_arf_only:
-                        logger.debug(
-                            f"Skipping ARF-only job {job.id} from stuck detection "
-                            f"(no stats updates expected)"
-                        )
-                        continue
-                job_id_str = str(job.id)
-                snapshot_key = f"sync_progress_snapshot:{job_id_str}"
-
-                try:
-                    snapshot_json = await redis_client.client.get(snapshot_key)
-
-                    if not snapshot_json:
-                        logger.debug(f"No snapshot for job {job_id_str} - skipping")
-                        continue
-
-                    snapshot = json.loads(snapshot_json)
-                    last_update_str = snapshot.get("last_update_timestamp")
-
-                    if not last_update_str:
-                        # Old snapshot without timestamp - fall back to DB check
-                        # (ARF-only jobs already skipped above, so safe to check DB)
-                        latest_entity_time = await crud.entity.get_latest_entity_time_for_job(
-                            db=db, sync_job_id=job.id
-                        )
-                        if latest_entity_time is None or latest_entity_time < running_cutoff:
-                            stuck_running_jobs.append(job)
-                        continue
-
-                    # Check if activity is recent
-                    from datetime import datetime
-
-                    last_update = datetime.fromisoformat(last_update_str)
-                    # Convert to naive datetime to match running_cutoff (from utc_now_naive)
-                    if last_update.tzinfo is not None:
-                        last_update = last_update.replace(tzinfo=None)
-
-                    if last_update < running_cutoff:
-                        total_ops = sum(
-                            [
-                                snapshot.get("inserted", 0),
-                                snapshot.get("updated", 0),
-                                snapshot.get("deleted", 0),
-                                snapshot.get("kept", 0),
-                                snapshot.get("skipped", 0),
-                            ]
-                        )
-                        stuck_running_jobs.append(job)
-                        logger.info(
-                            f"Job {job_id_str} last activity at {last_update} "
-                            f"({total_ops} total ops) - marking as stuck"
-                        )
-                    else:
-                        logger.debug(f"Job {job_id_str} active at {last_update} - healthy")
-
-                except Exception as e:
-                    logger.warning(
-                        f"Error checking job {job_id_str}: {e}, falling back to DB check"
-                    )
-                    # ARF-only jobs already skipped above, so safe to check DB
-                    latest_entity_time = await crud.entity.get_latest_entity_time_for_job(
-                        db=db, sync_job_id=job.id
-                    )
-                    if latest_entity_time is None or latest_entity_time < running_cutoff:
-                        stuck_running_jobs.append(job)
-
+                if await _is_running_job_stuck(job, running_cutoff, db, redis_client, crud, logger):
+                    stuck_running_jobs.append(job)
             logger.info(
                 f"Found {len(stuck_running_jobs)} RUNNING jobs with no activity in last 15 minutes"
             )
@@ -602,76 +727,19 @@ async def cleanup_stuck_sync_jobs_activity() -> None:
             logger.info(f"Processing {stuck_job_count} stuck sync jobs...")
 
             # Process each stuck job
+            cancelled_count = 0
+            failed_count = 0
             for job in all_stuck_jobs:
-                job_id = str(job.id)
-                sync_id = str(job.sync_id)
-                org_id = str(job.organization_id)
-
-                logger.info(
-                    f"Attempting to cancel stuck job {job_id} "
-                    f"(status: {job.status}, sync: {sync_id}, org: {org_id})"
-                )
-
-                # Create a system-level API context for this organization
-                # Fetch the organization using CRUD layer
-                try:
-                    # Create a temporary context to fetch the organization
-                    # (skip_access_validation=True since this is a system operation)
-                    organization = await crud.organization.get(
-                        db=db,
-                        id=job.organization_id,
-                        skip_access_validation=True,
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to fetch organization {org_id} for job {job_id}: {e}")
-                    failed_count += 1
-                    continue
-
-                # Create a system-level context (no user)
-                from airweave import schemas
-
-                ctx = ApiContext(
-                    request_id=f"cleanup-{job_id}",
-                    organization=schemas.Organization.model_validate(organization),
-                    user=None,
-                    auth_method="system",
-                    auth_metadata={"source": "cleanup_activity"},
-                    logger=logger,
-                )
-
-                try:
-                    # Step 1: Try to cancel via Temporal (graceful)
-                    cancel_success = await temporal_service.cancel_sync_job_workflow(job_id, ctx)
-
-                    if cancel_success:
-                        logger.info(
-                            f"Successfully requested Temporal cancellation for job {job_id}"
-                        )
-                        # Give Temporal a moment to process the cancellation
-                        await asyncio.sleep(2)
-
-                    # Step 2: Force update status to CANCELLED in database
-                    # (Either the workflow doesn't exist or we're ensuring the state is correct)
-                    await sync_job_service.update_status(
-                        sync_job_id=UUID(job_id),
-                        status=SyncJobStatus.CANCELLED,
-                        ctx=ctx,
-                        error="Cancelled by cleanup job (stuck in transitional state)",
-                        failed_at=now,
-                    )
-
-                    logger.info(f"Successfully cancelled stuck job {job_id}")
+                success = await _cancel_stuck_job(job, now, db, crud, logger)
+                if success:
                     cancelled_count += 1
-
-                except Exception as e:
-                    logger.error(f"Failed to cancel stuck job {job_id}: {e}", exc_info=True)
+                else:
                     failed_count += 1
 
-        # Log summary
-        logger.info(
-            f"Cleanup complete. Processed {stuck_job_count} stuck jobs: "
-            f"{cancelled_count} cancelled, {failed_count} failed"
-        )
+            logger.info(
+                f"Cleanup complete. Processed {stuck_job_count} stuck jobs: "
+                f"{cancelled_count} cancelled, {failed_count} failed"
+            )
 
     except Exception as e:
         logger.error(f"Error during cleanup activity: {e}", exc_info=True)

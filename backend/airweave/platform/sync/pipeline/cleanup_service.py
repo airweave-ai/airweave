@@ -34,7 +34,7 @@ class CleanupService:
             partitions: Entity partitions from action determination
             sync_context: Sync context with logger
         """
-        entities_to_clean = partitions["inserts"] + partitions["updates"]
+        entities_to_clean = partitions["inserts"] + partitions["updates"] + partitions["keeps"]
         cleaned_count = 0
         failed_deletions: List[str] = []
 
