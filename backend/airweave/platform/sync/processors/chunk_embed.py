@@ -1,6 +1,11 @@
-"""Chunk and embed processor for vector databases requiring pre-computed embeddings.
+"""Unified chunk and embed processor for vector databases.
 
-Used by: Qdrant, Pinecone, and similar vector DBs.
+Used by: Qdrant, Vespa, Pinecone, and similar vector DBs.
+
+Both destinations use chunk-as-document model where each chunk becomes
+a separate document with its own embedding. The key difference:
+- Qdrant: needs sparse embeddings for hybrid search (computed client-side)
+- Vespa: computes BM25 server-side, only needs dense embeddings
 """
 
 import json
@@ -16,22 +21,34 @@ if TYPE_CHECKING:
     from airweave.platform.contexts import SyncContext
 
 
-class QdrantChunkEmbedProcessor(ContentProcessor):
-    """Processor that chunks text and computes embeddings for Qdrant.
+class ChunkEmbedProcessor(ContentProcessor):
+    """Unified processor that chunks text and computes embeddings.
 
     Pipeline:
     1. Build textual representation (text extraction from files/web)
     2. Chunk text (semantic for text, AST for code)
-    3. Compute embeddings (dense + sparse)
+    3. Compute embeddings:
+       - Dense embeddings (always - 3072-dim for both Qdrant and Vespa)
+       - Sparse embeddings (only for Qdrant - BM25 for hybrid search)
 
     Output:
         Chunk entities with:
         - entity_id: "{original_id}__chunk_{idx}"
         - textual_representation: chunk text
-        - airweave_system_metadata.vectors: [dense_vector, sparse_vector]
+        - airweave_system_metadata.dense_embedding: 3072-dim vector
+        - airweave_system_metadata.sparse_embedding: BM25 sparse vector (Qdrant only)
         - airweave_system_metadata.original_entity_id: original entity_id
         - airweave_system_metadata.chunk_index: chunk position
     """
+
+    def __init__(self, generate_sparse: bool = True):
+        """Initialize processor.
+
+        Args:
+            generate_sparse: Whether to generate sparse embeddings for hybrid search.
+                            Set to True for Qdrant, False for Vespa.
+        """
+        self._generate_sparse = generate_sparse
 
     async def process(
         self,
@@ -48,7 +65,7 @@ class QdrantChunkEmbedProcessor(ContentProcessor):
         # Step 2: Filter empty representations
         processed = await filter_empty_representations(processed, sync_context, "ChunkEmbed")
         if not processed:
-            sync_context.logger.debug("[QdrantChunkEmbedProcessor] No entities after text building")
+            sync_context.logger.debug("[ChunkEmbedProcessor] No entities after text building")
             return []
 
         # Step 3: Chunk entities
@@ -62,7 +79,7 @@ class QdrantChunkEmbedProcessor(ContentProcessor):
         await self._embed_entities(chunk_entities, sync_context)
 
         sync_context.logger.debug(
-            f"[QdrantChunkEmbedProcessor] {len(entities)} entities → {len(chunk_entities)} chunks"
+            f"[ChunkEmbedProcessor] {len(entities)} entities -> {len(chunk_entities)} chunks"
         )
 
         return chunk_entities
@@ -103,7 +120,6 @@ class QdrantChunkEmbedProcessor(ContentProcessor):
         # Filter unsupported languages
         supported, unsupported = await self._filter_unsupported_languages(entities)
         if unsupported:
-            # TODO: Record skipped entities through exception handling
             await sync_context.entity_tracker.record_skipped(len(unsupported))
 
         if not supported:
@@ -115,7 +131,7 @@ class QdrantChunkEmbedProcessor(ContentProcessor):
         try:
             chunk_lists = await chunker.chunk_batch(texts)
         except Exception as e:
-            raise SyncFailureError(f"[QdrantChunkEmbedProcessor] CodeChunker failed: {e}")
+            raise SyncFailureError(f"[ChunkEmbedProcessor] CodeChunker failed: {e}")
 
         return self._multiply_entities(supported, chunk_lists, sync_context)
 
@@ -133,7 +149,7 @@ class QdrantChunkEmbedProcessor(ContentProcessor):
         try:
             chunk_lists = await chunker.chunk_batch(texts)
         except Exception as e:
-            raise SyncFailureError(f"[QdrantChunkEmbedProcessor] SemanticChunker failed: {e}")
+            raise SyncFailureError(f"[ChunkEmbedProcessor] SemanticChunker failed: {e}")
 
         return self._multiply_entities(entities, chunk_lists, sync_context)
 
@@ -170,12 +186,7 @@ class QdrantChunkEmbedProcessor(ContentProcessor):
         chunk_lists: List[List[Dict[str, Any]]],
         sync_context: "SyncContext",
     ) -> List[BaseEntity]:
-        """Create chunk entities from chunker output.
-
-        Preserves character positions (start_index, end_index) from chunker output
-        for span-based evaluation. This allows checking if retrieved chunks overlap
-        with labeled spans, independent of chunking strategy.
-        """
+        """Create chunk entities from chunker output."""
         chunk_entities: List[BaseEntity] = []
 
         for entity, chunks in zip(entities, chunk_lists, strict=True):
@@ -195,10 +206,6 @@ class QdrantChunkEmbedProcessor(ContentProcessor):
                 chunk_entity.airweave_system_metadata.chunk_index = idx
                 chunk_entity.airweave_system_metadata.original_entity_id = original_id
 
-                # Store character positions for span-based evaluation
-                chunk_entity.airweave_system_metadata.chunk_start_char = chunk.get("start_index")
-                chunk_entity.airweave_system_metadata.chunk_end_char = chunk.get("end_index")
-
                 chunk_entities.append(chunk_entity)
 
         return chunk_entities
@@ -212,39 +219,45 @@ class QdrantChunkEmbedProcessor(ContentProcessor):
         chunk_entities: List[BaseEntity],
         sync_context: "SyncContext",
     ) -> None:
-        """Compute dense and sparse embeddings.
+        """Compute dense embeddings (always) and sparse embeddings (conditionally).
 
-        This processor is only used for CHUNKS_AND_EMBEDDINGS destinations,
-        which always need both dense and sparse embeddings for hybrid search.
+        Both Qdrant and Vespa use 3072-dim dense embeddings:
+        - Qdrant: stores as float32, server-side INT8 quantization for ANN
+        - Vespa: auto-converts to bfloat16, no additional quantization
+
+        Sparse embeddings are only generated when _generate_sparse=True (Qdrant).
+        Vespa computes BM25 server-side via userInput().
         """
         if not chunk_entities:
             return
 
         from airweave.platform.embedders import DenseEmbedder, SparseEmbedder
 
-        # Dense embeddings
+        # Dense embeddings (always - 3072-dim)
         dense_texts = [e.textual_representation for e in chunk_entities]
         dense_embedder = DenseEmbedder(vector_size=sync_context.collection.vector_size)
         dense_embeddings = await dense_embedder.embed_many(dense_texts, sync_context)
 
-        # Sparse embeddings for hybrid search
-        sparse_texts = [
-            json.dumps(
-                e.model_dump(mode="json", exclude={"airweave_system_metadata"}),
-                sort_keys=True,
-            )
-            for e in chunk_entities
-        ]
-        sparse_embedder = SparseEmbedder()
-        sparse_embeddings = await sparse_embedder.embed_many(sparse_texts, sync_context)
+        # Sparse embeddings (only for Qdrant-style destinations)
+        sparse_embeddings = None
+        if self._generate_sparse:
+            sparse_texts = [
+                json.dumps(
+                    e.model_dump(mode="json", exclude={"airweave_system_metadata"}),
+                    sort_keys=True,
+                )
+                for e in chunk_entities
+            ]
+            sparse_embedder = SparseEmbedder()
+            sparse_embeddings = await sparse_embedder.embed_many(sparse_texts, sync_context)
 
-        # Assign vectors to entities
+        # Assign embeddings to entities
         for i, entity in enumerate(chunk_entities):
-            entity.airweave_system_metadata.vectors = [dense_embeddings[i], sparse_embeddings[i]]
+            entity.airweave_system_metadata.dense_embedding = dense_embeddings[i]
+            if sparse_embeddings is not None:
+                entity.airweave_system_metadata.sparse_embedding = sparse_embeddings[i]
 
         # Validate
         for entity in chunk_entities:
-            if not entity.airweave_system_metadata.vectors:
-                raise SyncFailureError(f"Entity {entity.entity_id} has no vectors")
-            if entity.airweave_system_metadata.vectors[0] is None:
-                raise SyncFailureError(f"Entity {entity.entity_id} has no dense vector")
+            if entity.airweave_system_metadata.dense_embedding is None:
+                raise SyncFailureError(f"Entity {entity.entity_id} has no dense embedding")

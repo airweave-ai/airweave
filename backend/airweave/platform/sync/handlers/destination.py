@@ -21,11 +21,10 @@ from airweave.platform.sync.exceptions import SyncFailureError
 from airweave.platform.sync.handlers.protocol import EntityActionHandler
 from airweave.platform.sync.pipeline import ProcessingRequirement
 from airweave.platform.sync.processors import (
+    ChunkEmbedProcessor,
     ContentProcessor,
-    QdrantChunkEmbedProcessor,
     RawProcessor,
     TextOnlyProcessor,
-    VespaChunkEmbedProcessor,
 )
 
 if TYPE_CHECKING:
@@ -34,9 +33,13 @@ if TYPE_CHECKING:
 
 
 # Singleton processors - stateless, reusable
+# ChunkEmbedProcessor with generate_sparse=True for Qdrant (needs client-side BM25)
+# ChunkEmbedProcessor with generate_sparse=False for Vespa (computes BM25 server-side)
 _PROCESSORS: Dict[ProcessingRequirement, ContentProcessor] = {
-    ProcessingRequirement.CHUNKS_AND_EMBEDDINGS: QdrantChunkEmbedProcessor(),
-    ProcessingRequirement.VESPA_CHUNKS_AND_EMBEDDINGS: VespaChunkEmbedProcessor(),
+    ProcessingRequirement.CHUNKS_AND_EMBEDDINGS: ChunkEmbedProcessor(generate_sparse=True),
+    ProcessingRequirement.CHUNKS_AND_EMBEDDINGS_DENSE_ONLY: ChunkEmbedProcessor(
+        generate_sparse=False
+    ),
     ProcessingRequirement.TEXT_ONLY: TextOnlyProcessor(),
     ProcessingRequirement.RAW: RawProcessor(),
 }
@@ -254,9 +257,10 @@ class DestinationHandler(EntityActionHandler):
                 else:
                     # Soft-fail: log error but don't crash sync
                     if destination.soft_fail:
+                        retries = max_retries + 1
                         sync_context.logger.error(
-                            f"🔴 [{self.name}] {operation_name} SOFT-FAIL after {max_retries + 1} attempts: "
-                            f"{type(e).__name__}: {error_msg}. Sync continues (soft_fail=True)",
+                            f"🔴 [{self.name}] {operation_name} SOFT-FAIL after {retries} "
+                            f"attempts: {type(e).__name__}: {error_msg}. (soft_fail=True)",
                             exc_info=True,
                         )
                         return  # Continue sync
