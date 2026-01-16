@@ -84,7 +84,7 @@ class DispatcherBuilder:
                 requirement = dest.processing_requirement
                 if requirement in (
                     ProcessingRequirement.CHUNKS_AND_EMBEDDINGS,
-                    ProcessingRequirement.VESPA_CHUNKS_AND_EMBEDDINGS,
+                    ProcessingRequirement.CHUNKS_AND_EMBEDDINGS_DENSE_ONLY,
                 ):
                     vector_db_destinations.append(dest)
                 elif requirement == ProcessingRequirement.RAW:

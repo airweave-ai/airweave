@@ -69,24 +69,13 @@ class AirweaveSystemMetadata(BaseModel):
     original_entity_id: Optional[str] = Field(
         None, description="Original entity_id before chunking (for bulk deletes)"
     )
-    # Character positions in the original textual_representation (for span-based evaluation)
-    # These allow evaluating whether the correct SPAN of text was retrieved, independent of
-    # how the document was chunked. Labels can be at span level, and evaluation checks overlap.
-    chunk_start_char: Optional[int] = Field(
-        None, description="Start character position of this chunk in original document"
-    )
-    chunk_end_char: Optional[int] = Field(
-        None, description="End character position of this chunk in original document"
-    )
 
     # Set during embedding
-    vectors: Optional[List[List[float] | SparseEmbedding]] = Field(
-        None, description="Vectors for this entity."
+    dense_embedding: Optional[List[float]] = Field(
+        None, description="3072-dim dense embedding from text-embedding-3-large"
     )
-    # Vespa-specific: Binary-packed int8 embeddings for ANN search (768 bits → 96 int8)
-    # Used by VespaChunkEmbedProcessor. Qdrant uses sparse embeddings in vectors[1] instead.
-    packed_vectors: Optional[List[int]] = Field(
-        None, description="Binary-packed int8 embedding for Vespa ANN (96 int8)."
+    sparse_embedding: Optional[SparseEmbedding] = Field(
+        None, description="BM25 sparse embedding for hybrid search (Qdrant only)"
     )
 
     # Set during persistence

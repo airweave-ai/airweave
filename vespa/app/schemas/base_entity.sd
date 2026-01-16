@@ -1,16 +1,17 @@
-# OVERVIEW (chunk-as-document model):
-# - Each chunk is a separate document (same as Qdrant architecture)
+# OVERVIEW (chunk-as-document model - unified with Qdrant):
+# - Each chunk is a separate document
 # - entity_id: "{original_id}__chunk_{idx}"
 # - original_entity_id: tracks parent entity
-# - Embeddings are single values per document (not arrays)
+# - Single 3072-dim bfloat16 embedding for both matching and ranking
 #
 # MATCHING: hybrid (lexical + ANN) to maximize recall
-# - ANN index: x[96] binary packed embeddings with hamming distance for fast retrieval
-# - Ranking: x[768] bfloat16 for high-precision cosine similarity
+# - ANN index: bfloat16 3072-dim with angular distance
+# - HNSW: M=32 (higher recall), ef_construct=200
+# - Pre-filtering by collection_id (approximateThreshold=0.05 for exact NN fallback)
+# - targetHits: 5000 candidates (matches Qdrant)
 #
-# RANKING (simplified for chunk-as-document):
-# - first-phase: BM25 + ANN closeness (cheap, all candidates)
-# - second-phase: cosine similarity with large embedding (top 200)
+# RANKING (simplified - no second-phase needed with bfloat16 precision):
+# - first-phase: BM25 + closeness (all candidates)
 # - global-phase: RRF fusion (top 100)
 #
 # NOTE: Entity-level deduplication is now handled in the backend search module
@@ -97,17 +98,6 @@ schema base_entity {
             indexing: attribute | summary
         }
 
-        # Character positions in original document (for span-based evaluation)
-        # These allow evaluating whether the correct SPAN of text was retrieved,
-        # independent of how the document was chunked.
-        field airweave_system_metadata_chunk_start_char type int {
-            indexing: attribute | summary
-        }
-
-        field airweave_system_metadata_chunk_end_char type int {
-            indexing: attribute | summary
-        }
-
         # =============================================================================
         # Access Control Fields
         # =============================================================================
@@ -126,7 +116,6 @@ schema base_entity {
         # =============================================================================
 
         # The chunk text (this is what gets embedded and searched)
-        # Note: We keep this field instead of textual_representation for clarity
         field textual_representation type string {
             indexing: index | summary
             index: enable-bm25
@@ -140,32 +129,25 @@ schema base_entity {
         }
 
         # =============================================================================
-        # Embedding Fields (single values per chunk document)
+        # Embedding Field (unified 3072-dim - same as Qdrant)
         # =============================================================================
 
-        # Binary packed embedding for fast ANN retrieval (small and fast)
-        # Uses hamming distance on packed int8 - 32x faster than float cosine
-        # Pre-computed externally: 768-dim → binary → 96 int8
-        field chunk_small_embedding type tensor<int8>(x[96]) {
+        # Single 3072-dim bfloat16 embedding for both ANN matching and ranking
+        # Client sends float32, Vespa auto-converts to bfloat16 for storage
+        # Uses angular distance (maps to cosine similarity)
+        # HNSW parameters tuned for high recall with 5000 candidates:
+        # - M=32: more links per node for better recall
+        # - ef_construct=200: more neighbors explored during index building
+        field dense_embedding type tensor<bfloat16>(x[3072]) {
             indexing: attribute | index
             attribute {
-                distance-metric: hamming
+                distance-metric: angular
             }
             index {
                 hnsw {
-                    max-links-per-node: 16
-                    neighbors-to-explore-at-insert: 100
+                    max-links-per-node: 32
+                    neighbors-to-explore-at-insert: 200
                 }
-            }
-        }
-
-        # High-precision embedding for ranking (not indexed for ANN - too expensive)
-        # Uses angular distance which maps to cosine similarity
-        # Pre-computed externally: 768-dim float
-        field chunk_large_embedding type tensor<bfloat16>(x[768]) {
-            indexing: attribute
-            attribute {
-                distance-metric: angular
             }
         }
     }
@@ -196,8 +178,6 @@ schema base_entity {
         summary airweave_system_metadata_original_entity_id {}
         summary airweave_system_metadata_source_name {}
         summary airweave_system_metadata_chunk_index {}
-        summary airweave_system_metadata_chunk_start_char {}
-        summary airweave_system_metadata_chunk_end_char {}
         summary access_is_public {}
         summary access_viewers {}
         summary textual_representation {}
@@ -209,35 +189,34 @@ schema base_entity {
     # =========================================================================
     rank-profile default {
         inputs {
-            query(embedding) tensor<int8>(x[96])         # Binary packed for ANN matching
-            query(float_embedding) tensor<float>(x[768]) # Full precision for ranking
-            # Query expansion embeddings (q0=primary, q1-q9=expanded queries)
-            query(q0) tensor<int8>(x[96])
-            query(q1) tensor<int8>(x[96])
-            query(q2) tensor<int8>(x[96])
-            query(q3) tensor<int8>(x[96])
-            query(q4) tensor<int8>(x[96])
-            query(q5) tensor<int8>(x[96])
-            query(q6) tensor<int8>(x[96])
-            query(q7) tensor<int8>(x[96])
-            query(q8) tensor<int8>(x[96])
-            query(q9) tensor<int8>(x[96])
+            # Query embedding for ranking - client sends float32
+            query(query_embedding) tensor<float>(x[3072])
+            # Multi-query support: q0=primary, q1-q9=expanded queries
+            # Each used by nearestNeighbor operators in YQL
+            query(q0) tensor<float>(x[3072])
+            query(q1) tensor<float>(x[3072])
+            query(q2) tensor<float>(x[3072])
+            query(q3) tensor<float>(x[3072])
+            query(q4) tensor<float>(x[3072])
+            query(q5) tensor<float>(x[3072])
+            query(q6) tensor<float>(x[3072])
+            query(q7) tensor<float>(x[3072])
+            query(q8) tensor<float>(x[3072])
+            query(q9) tensor<float>(x[3072])
         }
 
         # -----------------------------------------------------------------------
-        # Semantic similarity (cosine) with large embedding
+        # Semantic similarity (cosine) with the single embedding
+        # Uses closeness from HNSW which is already computed during matching
         # -----------------------------------------------------------------------
-        function semantic_similarity() {
-            expression {
-                reduce(query(float_embedding) * attribute(chunk_large_embedding), sum, x) /
-                (sqrt(sum(pow(attribute(chunk_large_embedding), 2), x)) * sqrt(sum(pow(query(float_embedding), 2), x)))
-            }
+        function semantic_score() {
+            expression: closeness(field, dense_embedding)
         }
     }
 
     # =========================================================================
     # HYBRID RANK PROFILE with RRF (Reciprocal Rank Fusion)
-    # Simplified for chunk-as-document (no per-chunk aggregations)
+    # Simplified: no second-phase needed with bfloat16 precision
     # =========================================================================
     rank-profile hybrid-rrf inherits default {
 
@@ -250,30 +229,16 @@ schema base_entity {
             expression: bm25(textual_representation) + bm25(payload)
         }
 
-        # Semantic score using closeness from ANN match (reuses HNSW graph traversal)
-        function semantic_score() {
-            expression: closeness(field, chunk_small_embedding)
-        }
-
         # -----------------------------------------------------------------------
-        # FIRST PHASE: Cheap, runs on all matched candidates
-        # Reuses ANN match score + BM25 (both already computed during matching)
+        # FIRST PHASE: Runs on all matched candidates
+        # Combines BM25 and semantic closeness (both already computed during matching)
         # -----------------------------------------------------------------------
         first-phase {
             expression: bm25_score() + semantic_score()
         }
 
-        # -----------------------------------------------------------------------
-        # SECOND PHASE: Expensive high-precision similarity on top candidates
-        # Uses large embedding for accurate cosine similarity
-        # rerank-count: 200 candidates from first-phase
-        # -----------------------------------------------------------------------
-        second-phase {
-            rerank-count: 200
-            expression {
-                firstPhase + semantic_similarity()
-            }
-        }
+        # NO SECOND PHASE - bfloat16 with 3072 dimensions is accurate enough
+        # No need for expensive rescoring with float32 like in Qdrant
 
         # -----------------------------------------------------------------------
         # GLOBAL PHASE: RRF fusion - normalizes by rank, not raw scores
@@ -285,7 +250,7 @@ schema base_entity {
             rerank-count: 100
             expression {
                 reciprocal_rank(bm25_score) +
-                reciprocal_rank(semantic_similarity)
+                reciprocal_rank(semantic_score)
             }
         }
 
@@ -295,7 +260,28 @@ schema base_entity {
             bm25(payload)
             bm25_score
             semantic_score
-            semantic_similarity
+        }
+    }
+
+    # =========================================================================
+    # SEMANTIC-ONLY RANK PROFILE (for neural-only search)
+    # =========================================================================
+    rank-profile semantic-only inherits default {
+        first-phase {
+            expression: semantic_score()
+        }
+    }
+
+    # =========================================================================
+    # KEYWORD-ONLY RANK PROFILE (for BM25-only search)
+    # =========================================================================
+    rank-profile keyword-only inherits default {
+        function bm25_score() {
+            expression: bm25(textual_representation) + bm25(payload)
+        }
+
+        first-phase {
+            expression: bm25_score()
         }
     }
 }
