@@ -8,7 +8,8 @@ from airweave.core.logging import ContextualLogger
 from airweave.core.logging import logger as default_logger
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.sync.pipeline import ProcessingRequirement
-from airweave.schemas.search import AirweaveTemporalConfig, SearchResult
+from airweave.schemas.search import AirweaveTemporalConfig
+from airweave.schemas.search_result import AirweaveSearchResult
 
 
 class BaseDestination(ABC):
@@ -99,7 +100,7 @@ class BaseDestination(ABC):
         sparse_embeddings: Optional[List[Any]] = None,
         retrieval_strategy: str = "hybrid",
         temporal_config: Optional[AirweaveTemporalConfig] = None,
-    ) -> List[SearchResult]:
+    ) -> List[AirweaveSearchResult]:
         """Execute search against the destination.
 
         This is the standard search interface that all destinations must implement.
@@ -117,7 +118,7 @@ class BaseDestination(ABC):
             temporal_config: Optional temporal relevance config (destination translates)
 
         Returns:
-            List of SearchResult objects in the standard format
+            List of AirweaveSearchResult objects (unified format for all destinations)
         """
         pass
 

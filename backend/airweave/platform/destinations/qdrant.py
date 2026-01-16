@@ -47,7 +47,13 @@ from airweave.platform.destinations.collection_strategy import (
     get_physical_collection_name,
 )
 from airweave.platform.entities._base import BaseEntity
-from airweave.schemas.search import AirweaveTemporalConfig, SearchResult
+from airweave.schemas.search import AirweaveTemporalConfig, RetrievalStrategy
+from airweave.schemas.search_result import (
+    AccessControlResult,
+    AirweaveSearchResult,
+    BreadcrumbResult,
+    SystemMetadataResult,
+)
 
 
 class DecayConfig(BaseModel):
@@ -78,7 +84,7 @@ KEYWORD_VECTOR_NAME = "bm25"
     auth_config_class=QdrantAuthConfig,
     supports_vector=True,
     requires_client_embedding=True,
-    supports_temporal_relevance=True,
+    supports_temporal_relevance=False,  # Disabled while Vespa support is pending
 )
 class QdrantDestination(VectorDBDestination):
     """Qdrant destination with multi-tenant support and legacy compatibility."""
@@ -430,14 +436,16 @@ class QdrantDestination(VectorDBDestination):
         # Validate required fields first
         if not entity.airweave_system_metadata:
             raise ValueError(f"Entity {entity.entity_id} has no system metadata")
-        if not entity.airweave_system_metadata.vectors:
-            raise ValueError(f"Entity {entity.entity_id} has no vector in system metadata")
+        if entity.airweave_system_metadata.dense_embedding is None:
+            raise ValueError(f"Entity {entity.entity_id} has no dense_embedding in system metadata")
         if not entity.airweave_system_metadata.sync_id:
             raise ValueError(f"Entity {entity.entity_id} has no sync_id in system metadata")
 
-        # Get entity data as dict, excluding vectors to avoid numpy serialization issues
+        # Get entity data as dict, excluding embeddings to avoid numpy serialization issues
         entity_data = entity.model_dump(
-            mode="json", exclude_none=True, exclude={"airweave_system_metadata": {"vectors"}}
+            mode="json",
+            exclude_none=True,
+            exclude={"airweave_system_metadata": {"dense_embedding", "sparse_embedding"}},
         )
 
         # CRITICAL: Remove explicit None values from timestamps (Pydantic may include them)
@@ -464,8 +472,9 @@ class QdrantDestination(VectorDBDestination):
 
         point_id = self._make_point_uuid(entity.airweave_system_metadata.sync_id, entity.entity_id)
 
-        sv = entity.airweave_system_metadata.vectors[1]
+        # Build sparse vector part if present
         sparse_part: dict = {}
+        sv = entity.airweave_system_metadata.sparse_embedding
         if sv is not None:
             obj = sv.as_object() if hasattr(sv, "as_object") else sv
             if isinstance(obj, dict):
@@ -473,7 +482,8 @@ class QdrantDestination(VectorDBDestination):
 
         return rest.PointStruct(
             id=point_id,
-            vector={DEFAULT_VECTOR_NAME: entity.airweave_system_metadata.vectors[0]} | sparse_part,
+            vector={DEFAULT_VECTOR_NAME: entity.airweave_system_metadata.dense_embedding}
+            | sparse_part,
             payload=entity_data,
         )
 
@@ -913,9 +923,9 @@ class QdrantDestination(VectorDBDestination):
             **({"limit": limit} if limit is not None else {}),
         }
 
-    async def _prepare_query_request(
+    async def _prepare_query_request(  # noqa: C901
         self,
-        query_vector: list[float] | None,
+        dense_vector: list[float] | None,
         limit: int,
         sparse_vector: SparseEmbedding | dict | None,
         search_method: Literal["hybrid", "neural", "keyword"],
@@ -923,144 +933,139 @@ class QdrantDestination(VectorDBDestination):
         filter: Optional[rest.Filter] = None,
     ) -> rest.QueryRequest:
         """Create a single QueryRequest consistent with the old method."""
+        query_request_params: dict = {}
+
         if search_method == "neural":
-            return self._prepare_neural_request(query_vector, limit, decay_config)
-        if search_method == "keyword":
-            return self._prepare_keyword_request(sparse_vector, limit, decay_config)
-        # hybrid
-        return self._prepare_hybrid_request(
-            query_vector, sparse_vector, limit, decay_config, filter
-        )
-
-    def _prepare_neural_request(
-        self,
-        query_vector: list[float] | None,
-        limit: int,
-        decay_config: Optional[DecayConfig],
-    ) -> rest.QueryRequest:
-        """Prepare neural (dense vector) search request."""
-        if not query_vector:
-            raise ValueError("Neural search requires dense vector")
-        neural_params = {
-            "query": query_vector,
-            "using": DEFAULT_VECTOR_NAME,
-            "limit": limit,
-        }
-        params = self._prepare_index_search_request(neural_params, decay_config, limit=limit)
-        return rest.QueryRequest(**params)
-
-    def _prepare_keyword_request(
-        self,
-        sparse_vector: SparseEmbedding | dict | None,
-        limit: int,
-        decay_config: Optional[DecayConfig],
-    ) -> rest.QueryRequest:
-        """Prepare keyword (sparse vector) search request."""
-        if not sparse_vector:
-            raise ValueError("Keyword search requires sparse vector")
-        obj = sparse_vector.as_object() if hasattr(sparse_vector, "as_object") else sparse_vector
-        keyword_params = {
-            "query": rest.SparseVector(**obj),
-            "using": KEYWORD_VECTOR_NAME,
-            "limit": limit,
-        }
-        params = self._prepare_index_search_request(keyword_params, decay_config, limit=limit)
-        return rest.QueryRequest(**params)
-
-    def _prepare_hybrid_request(
-        self,
-        query_vector: list[float] | None,
-        sparse_vector: SparseEmbedding | dict | None,
-        limit: int,
-        decay_config: Optional[DecayConfig],
-        filter: Optional[rest.Filter],
-    ) -> rest.QueryRequest:
-        """Prepare hybrid (dense + sparse with RRF fusion) search request."""
-        if not sparse_vector:
-            raise ValueError("Hybrid search requires sparse vector")
-        if not query_vector:
-            raise ValueError("Hybrid search requires dense vector")
-
-        obj = sparse_vector.as_object() if hasattr(sparse_vector, "as_object") else sparse_vector
-        prefetch_limit = self._compute_prefetch_limit(decay_config)
-
-        prefetches = [
-            rest.Prefetch(
-                query=query_vector,
-                using=DEFAULT_VECTOR_NAME,
-                limit=prefetch_limit,
-                **({"filter": filter} if filter else {}),
-            ),
-            rest.Prefetch(
-                query=rest.SparseVector(**obj),
-                using=KEYWORD_VECTOR_NAME,
-                limit=prefetch_limit,
-                **({"filter": filter} if filter else {}),
-            ),
-        ]
-
-        if decay_config is None or getattr(decay_config, "weight", 0.0) <= 0.0:
-            return rest.QueryRequest(
-                prefetch=prefetches,
-                query=rest.FusionQuery(fusion=rest.Fusion.RRF),
-                limit=limit,
+            if not dense_vector:
+                raise ValueError("Neural search requires dense vector")
+            neural_params = {
+                "query": dense_vector,
+                "using": DEFAULT_VECTOR_NAME,
+                "limit": limit,
+            }
+            query_request_params = self._prepare_index_search_request(
+                neural_params, decay_config, limit=limit
             )
 
-        # With decay: wrap RRF in prefetch, apply decay formula on top
-        rrf_prefetch = rest.Prefetch(
-            prefetch=prefetches,
-            query=rest.FusionQuery(fusion=rest.Fusion.RRF),
-            limit=prefetch_limit,
-        )
-        decay_params = self._prepare_index_search_request(params={}, decay_config=decay_config)
-        return rest.QueryRequest(
-            prefetch=[rrf_prefetch],
-            query=decay_params["query"],
-            limit=limit,
-        )
+        if search_method == "keyword":
+            if not sparse_vector:
+                raise ValueError("Keyword search requires sparse vector")
+            obj = (
+                sparse_vector.as_object() if hasattr(sparse_vector, "as_object") else sparse_vector
+            )
+            keyword_params = {
+                "query": rest.SparseVector(**obj),
+                "using": KEYWORD_VECTOR_NAME,
+                "limit": limit,
+            }
+            query_request_params = self._prepare_index_search_request(
+                keyword_params, decay_config, limit=limit
+            )
 
-    def _compute_prefetch_limit(self, decay_config: Optional[DecayConfig]) -> int:
-        """Compute prefetch limit, increasing for high temporal decay weights."""
-        prefetch_limit = 5000
-        if decay_config is not None:
-            try:
-                weight = max(0.0, min(1.0, float(getattr(decay_config, "weight", 0.0) or 0.0)))
-                if weight > 0.3:
-                    prefetch_limit = int(5000 * (1 + weight))
-            except Exception:
-                pass
-        return prefetch_limit
+        if search_method == "hybrid":
+            if not sparse_vector:
+                raise ValueError("Hybrid search requires sparse vector")
+            if not dense_vector:
+                raise ValueError("Hybrid search requires dense vector")
+            obj = (
+                sparse_vector.as_object() if hasattr(sparse_vector, "as_object") else sparse_vector
+            )
 
-    def _validate_bulk_search_inputs(
+            prefetch_limit = 5000
+            if decay_config is not None:
+                try:
+                    weight = max(0.0, min(1.0, float(getattr(decay_config, "weight", 0.0) or 0.0)))
+                    if weight > 0.3:
+                        # Allow up to 10K for high temporal weight
+                        prefetch_limit = int(5000 * (1 + weight))
+                except Exception:
+                    pass
+
+            prefetch_params = [
+                {
+                    "query": dense_vector,
+                    "using": DEFAULT_VECTOR_NAME,
+                    "limit": prefetch_limit,
+                    **({"filter": filter} if filter else {}),
+                },
+                {
+                    "query": rest.SparseVector(**obj),
+                    "using": KEYWORD_VECTOR_NAME,
+                    "limit": prefetch_limit,
+                    **({"filter": filter} if filter else {}),
+                },
+            ]
+            prefetches = [rest.Prefetch(**p) for p in prefetch_params]
+
+            if decay_config is None or getattr(decay_config, "weight", 0.0) <= 0.0:
+                query_request_params = {
+                    "prefetch": prefetches,
+                    "query": rest.FusionQuery(fusion=rest.Fusion.RRF),
+                }
+            else:
+                rrf_prefetch = rest.Prefetch(
+                    prefetch=prefetches,
+                    query=rest.FusionQuery(fusion=rest.Fusion.RRF),
+                    limit=prefetch_limit,
+                )
+                decay_params = self._prepare_index_search_request(
+                    params={}, decay_config=decay_config
+                )
+                query_request_params = {"prefetch": [rrf_prefetch], "query": decay_params["query"]}
+
+        # Ensure top-level limit is set for final results
+        query_request_params["limit"] = limit
+
+        return rest.QueryRequest(**query_request_params)
+
+    def _get_query_count(
         self,
-        query_vectors: list[list[float]] | None,
-        filter_conditions: list[dict] | None,
+        dense_vectors: list[list[float]] | None,
         sparse_vectors: list[SparseEmbedding] | list[dict] | None,
-        search_method: Literal["hybrid", "neural", "keyword"] = "hybrid",
-    ) -> None:
-        """Validate lengths of per-query inputs for bulk search."""
-        # Determine the reference count based on available vectors
+        search_method: Literal["hybrid", "neural", "keyword"],
+    ) -> int:
+        """Get number of queries based on search method and available vectors.
+
+        Args:
+            dense_vectors: Dense embeddings (None for keyword-only)
+            sparse_vectors: Sparse embeddings (None for neural-only)
+            search_method: Search strategy
+
+        Returns:
+            Number of queries
+
+        Raises:
+            ValueError: If required vectors are missing for the search method
+        """
         if search_method == "keyword":
             if not sparse_vectors:
                 raise ValueError("Keyword search requires sparse vectors")
-            ref_count = len(sparse_vectors)
+            return len(sparse_vectors)
         else:
-            if not query_vectors:
+            if not dense_vectors:
                 raise ValueError(f"{search_method} search requires dense vectors")
-            ref_count = len(query_vectors)
+            return len(dense_vectors)
 
-        if filter_conditions and len(filter_conditions) != ref_count:
+    def _validate_bulk_search_inputs(
+        self,
+        num_queries: int,
+        filter_conditions: list[dict] | None,
+        dense_vectors: list[list[float]] | None,
+        sparse_vectors: list[SparseEmbedding] | list[dict] | None,
+    ) -> None:
+        """Validate lengths of per-query inputs for bulk search."""
+        if filter_conditions and len(filter_conditions) != num_queries:
             raise ValueError(
                 f"Number of filter conditions ({len(filter_conditions)}) must match "
-                f"number of queries ({ref_count})"
+                f"number of queries ({num_queries})"
             )
-        if search_method == "hybrid" and sparse_vectors and query_vectors:
-            if len(query_vectors) != len(sparse_vectors):
-                raise ValueError("Sparse vector count does not match query vectors")
+        if dense_vectors and sparse_vectors and len(dense_vectors) != len(sparse_vectors):
+            raise ValueError("Sparse vector count does not match dense vectors")
 
     async def _prepare_bulk_search_requests(
         self,
-        query_vectors: list[list[float]] | None,
+        num_queries: int,
+        dense_vectors: list[list[float]] | None,
         limit: int,
         score_threshold: float | None,
         with_payload: bool,
@@ -1071,14 +1076,9 @@ class QdrantDestination(VectorDBDestination):
         offset: Optional[int],
     ) -> list[rest.QueryRequest]:
         """Create per-query request objects with automatic tenant filtering."""
-        # Determine iteration count based on available vectors
-        if search_method == "keyword":
-            num_queries = len(sparse_vectors) if sparse_vectors else 0
-        else:
-            num_queries = len(query_vectors) if query_vectors else 0
-
         requests: list[rest.QueryRequest] = []
         for i in range(num_queries):
+            dense_vector = dense_vectors[i] if dense_vectors else None
             # CRITICAL: Build tenant filter BEFORE preparing query request
             # This ensures prefetch operations are also filtered by tenant
             tenant_filter = rest.Filter(
@@ -1103,13 +1103,11 @@ class QdrantDestination(VectorDBDestination):
             else:
                 combined_filter = tenant_filter
 
-            # Get vectors for this query (may be None for keyword-only)
-            qv = query_vectors[i] if query_vectors else None
-            sv = sparse_vectors[i] if sparse_vectors else None
+            sparse_vector = sparse_vectors[i] if sparse_vectors else None
             req = await self._prepare_query_request(
-                query_vector=qv,
+                dense_vector=dense_vector,
                 limit=limit,
-                sparse_vector=sv,
+                sparse_vector=sparse_vector,
                 search_method=search_method,
                 decay_config=decay_config,
                 filter=combined_filter,  # Pass filter to prefetch operations!
@@ -1155,7 +1153,7 @@ class QdrantDestination(VectorDBDestination):
         sparse_embeddings: Optional[List[Any]] = None,
         retrieval_strategy: str = "hybrid",
         temporal_config: Optional[AirweaveTemporalConfig] = None,
-    ) -> List[SearchResult]:
+    ) -> List[AirweaveSearchResult]:
         """Execute search against Qdrant using pre-computed embeddings.
 
         Qdrant requires client-side embeddings (unlike Vespa which embeds server-side).
@@ -1173,29 +1171,24 @@ class QdrantDestination(VectorDBDestination):
             temporal_config: Optional temporal config (translated to DecayConfig internally)
 
         Returns:
-            List of SearchResult objects
+            List of AirweaveSearchResult objects (unified format for all destinations)
 
         Raises:
             ValueError: If required embeddings are not provided for the strategy
         """
-        # Validate embeddings based on strategy
-        if retrieval_strategy in ("neural", "hybrid") and not dense_embeddings:
+        # Keyword-only searches don't need dense embeddings
+        if retrieval_strategy != RetrievalStrategy.KEYWORD.value and not dense_embeddings:
             raise ValueError(
-                f"Qdrant requires dense embeddings for {retrieval_strategy} search. "
-                "Ensure EmbedQuery operation ran before Retrieval."
-            )
-        if retrieval_strategy == "keyword" and not sparse_embeddings:
-            raise ValueError(
-                "Qdrant requires sparse embeddings for keyword search. "
+                "Qdrant requires pre-computed dense embeddings for neural/hybrid search. "
                 "Ensure EmbedQuery operation ran before Retrieval."
             )
 
-        primary_query = queries[0] if queries else ""
-        num_embeddings = len(dense_embeddings) if dense_embeddings else len(sparse_embeddings or [])
-        self.logger.debug(
-            f"[QdrantSearch] Executing search: query='{primary_query[:50]}...', "
-            f"limit={limit}, embeddings={num_embeddings}, strategy={retrieval_strategy}"
-        )
+        # Keyword searches require sparse embeddings
+        if retrieval_strategy == RetrievalStrategy.KEYWORD.value and not sparse_embeddings:
+            raise ValueError(
+                "Keyword search requires sparse embeddings. "
+                "Ensure EmbedQuery operation generated sparse embeddings."
+            )
 
         # Translate temporal config to Qdrant-native DecayConfig
         decay_config = self.translate_temporal(temporal_config)
@@ -1203,11 +1196,18 @@ class QdrantDestination(VectorDBDestination):
         # Filter already in dict format (Airweave canonical = Qdrant-compatible)
         filter_dict = self.translate_filter(filter)
 
-        # Call bulk_search directly with proper parameter mapping
-        # For keyword-only search, use sparse_embeddings count for num_queries
-        num_queries = num_embeddings
+        # Call bulk_search with appropriate vectors for the strategy
+        # For keyword-only, dense vectors aren't needed (only sparse embeddings)
+        dense_vectors_to_use = (
+            None if retrieval_strategy == RetrievalStrategy.KEYWORD.value else dense_embeddings
+        )
+
+        # Get query count for filter conditions
+        num_queries = self._get_query_count(
+            dense_vectors_to_use, sparse_embeddings, retrieval_strategy
+        )
         raw_results = await self.bulk_search(
-            query_vectors=dense_embeddings,
+            dense_vectors=dense_vectors_to_use,
             limit=limit,
             with_payload=True,
             filter_conditions=[filter_dict] * num_queries if filter_dict else None,
@@ -1217,17 +1217,109 @@ class QdrantDestination(VectorDBDestination):
             offset=offset,
         )
 
-        # Convert to SearchResult format
+        # Convert to unified AirweaveSearchResult format
+        results = self._convert_to_airweave_results(raw_results)
+
+        self.logger.debug(f"[QdrantSearch] Retrieved {len(results)} results")
+        return results
+
+    def _convert_to_airweave_results(self, raw_results: List[dict]) -> List[AirweaveSearchResult]:
+        """Convert raw Qdrant results to AirweaveSearchResult format.
+
+        Transforms Qdrant's payload structure into the unified AirweaveSearchResult
+        format that matches what Vespa returns.
+
+        Args:
+            raw_results: List of raw result dicts from bulk_search
+
+        Returns:
+            List of AirweaveSearchResult objects
+        """
         results = []
         for r in raw_results:
-            result = SearchResult(
+            payload = r.get("payload", {})
+
+            # Extract system metadata from nested dict
+            sys_meta = payload.get("airweave_system_metadata", {})
+            system_metadata = SystemMetadataResult(
+                entity_type=sys_meta.get("entity_type", ""),
+                source_name=sys_meta.get("source_name"),
+                sync_id=sys_meta.get("sync_id"),
+                sync_job_id=sys_meta.get("sync_job_id"),
+                original_entity_id=sys_meta.get("original_entity_id"),
+                chunk_index=sys_meta.get("chunk_index"),
+            )
+
+            # Extract access control from nested dict
+            access = None
+            access_data = payload.get("access")
+            if access_data:
+                access = AccessControlResult(
+                    is_public=access_data.get("is_public", False),
+                    viewers=access_data.get("viewers", []),
+                )
+
+            # Extract breadcrumbs
+            breadcrumbs = []
+            raw_breadcrumbs = payload.get("breadcrumbs", [])
+            if raw_breadcrumbs:
+                for bc in raw_breadcrumbs:
+                    if isinstance(bc, dict):
+                        breadcrumbs.append(
+                            BreadcrumbResult(
+                                entity_id=bc.get("entity_id", ""),
+                                name=bc.get("name", ""),
+                                entity_type=bc.get("entity_type", ""),
+                            )
+                        )
+
+            # Parse timestamps (Qdrant stores as ISO strings)
+            created_at = None
+            updated_at = None
+            if payload.get("created_at"):
+                try:
+                    created_at = datetime.fromisoformat(
+                        payload["created_at"].replace("Z", "+00:00")
+                    )
+                except (ValueError, TypeError, AttributeError):
+                    pass
+            if payload.get("updated_at"):
+                try:
+                    updated_at = datetime.fromisoformat(
+                        payload["updated_at"].replace("Z", "+00:00")
+                    )
+                except (ValueError, TypeError, AttributeError):
+                    pass
+
+            # Build source_fields from remaining payload fields
+            # Exclude known fields that are in the schema
+            known_fields = {
+                "entity_id",
+                "name",
+                "textual_representation",
+                "created_at",
+                "updated_at",
+                "breadcrumbs",
+                "airweave_system_metadata",
+                "access",
+            }
+            source_fields = {k: v for k, v in payload.items() if k not in known_fields}
+
+            result = AirweaveSearchResult(
                 id=str(r.get("id", "")),
                 score=r.get("score", 0.0),
-                payload=r.get("payload", {}),
+                entity_id=payload.get("entity_id", ""),
+                name=payload.get("name", ""),
+                textual_representation=payload.get("textual_representation", ""),
+                created_at=created_at,
+                updated_at=updated_at,
+                breadcrumbs=breadcrumbs,
+                system_metadata=system_metadata,
+                access=access,
+                source_fields=source_fields,
             )
             results.append(result)
 
-        self.logger.debug(f"[QdrantSearch] Retrieved {len(results)} results")
         return results
 
     def translate_filter(self, filter: Optional[dict]) -> Optional[dict]:
@@ -1313,7 +1405,7 @@ class QdrantDestination(VectorDBDestination):
 
     async def bulk_search(
         self,
-        query_vectors: list[list[float]] | None,
+        dense_vectors: list[list[float]] | None,
         limit: int = 100,
         score_threshold: float | None = None,
         with_payload: bool = True,
@@ -1326,13 +1418,10 @@ class QdrantDestination(VectorDBDestination):
         """Search multiple queries at once with neural/keyword/hybrid and optional decay."""
         await self.ensure_client_readiness()
 
-        # Determine number of queries based on available vectors
-        num_queries = len(query_vectors) if query_vectors else len(sparse_vectors or [])
-        if num_queries == 0:
-            return []
-
+        # Calculate query count once and validate inputs
+        num_queries = self._get_query_count(dense_vectors, sparse_vectors, search_method)
         self._validate_bulk_search_inputs(
-            query_vectors, filter_conditions, sparse_vectors, search_method
+            num_queries, filter_conditions, dense_vectors, sparse_vectors
         )
 
         if search_method != "neural":
@@ -1365,20 +1454,13 @@ class QdrantDestination(VectorDBDestination):
             )
 
         try:
-            # Determine num_queries based on available vectors (handle keyword-only search)
-            if query_vectors:
-                num_queries_for_filter = len(query_vectors)
-            elif sparse_vectors:
-                num_queries_for_filter = len(sparse_vectors)
-            else:
-                num_queries_for_filter = 0
-
             requests = await self._prepare_bulk_search_requests(
-                query_vectors=query_vectors,
+                num_queries=num_queries,
+                dense_vectors=dense_vectors,
                 limit=limit,
                 score_threshold=score_threshold,
                 with_payload=with_payload,
-                filter_conditions=filter_conditions or [None] * num_queries_for_filter,
+                filter_conditions=filter_conditions or [None] * num_queries,
                 sparse_vectors=sparse_vectors,
                 search_method=search_method,
                 decay_config=decay_config,
