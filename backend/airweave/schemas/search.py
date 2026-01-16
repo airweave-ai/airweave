@@ -1,11 +1,14 @@
 """Search schemas for Airweave's search API."""
 
+import logging
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 import tiktoken
 from pydantic import BaseModel, Field, field_validator
+
+logger = logging.getLogger(__name__)
 
 # Type alias for the canonical Airweave filter format.
 # This follows the Qdrant filter structure (must/should/must_not) which is
@@ -136,9 +139,25 @@ class SearchRequest(BaseModel):
         default=None,
         description=(
             "Weight recent content higher than older content; "
-            "0 = no recency effect, 1 = only recent items matter"
+            "0 = no recency effect, 1 = only recent items matter. "
+            "NOTE: This feature is currently under construction and will be ignored."
         ),
     )
+
+    @field_validator("temporal_relevance")
+    @classmethod
+    def warn_temporal_disabled(cls, v: Optional[float]) -> Optional[float]:
+        """Warn when temporal_relevance is requested but feature is disabled.
+
+        Temporal relevance is currently disabled while Vespa support is pending.
+        This validator logs a warning but does not reject the value.
+        """
+        if v is not None and v > 0:
+            logger.warning(
+                "temporal_relevance is currently under construction and will be ignored. "
+                "The feature is disabled while Vespa support is pending."
+            )
+        return v
 
     expand_query: Optional[bool] = Field(
         default=None, description="Generate a few query variations to improve recall"
@@ -164,11 +183,24 @@ class SearchDefaults(BaseModel):
     retrieval_strategy: RetrievalStrategy
     offset: int
     limit: int
-    temporal_relevance: float
+    # temporal_relevance can be false (disabled) or a float (enabled)
+    temporal_relevance: Union[bool, float]
     expand_query: bool
     interpret_filters: bool
     rerank: bool
     generate_answer: bool
+
+    @field_validator("temporal_relevance", mode="before")
+    @classmethod
+    def normalize_temporal_relevance(cls, v: Union[bool, float]) -> Union[bool, float]:
+        """Normalize temporal_relevance value.
+
+        When false/False, the feature is disabled.
+        When a float, the feature is enabled with that weight.
+        """
+        if v is False or v == 0:
+            return False
+        return v
 
 
 class SearchResponse(BaseModel):

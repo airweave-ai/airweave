@@ -8,11 +8,10 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ArrowUp, CodeXml, X, Loader2, Square, ClockArrowUp, ListStart, ChartScatter, RefreshCw } from "lucide-react";
-import { FiGitMerge, FiType, FiLayers, FiFilter, FiSliders, FiClock, FiList, FiMessageSquare, FiBox } from "react-icons/fi";
+import { ArrowUp, CodeXml, X, Loader2, Square, ListStart, ChartScatter, RefreshCw } from "lucide-react";
+import { FiGitMerge, FiType, FiLayers, FiFilter, FiSliders, FiMessageSquare } from "react-icons/fi";
 import { ApiIntegrationDoc } from "@/search/CodeBlock";
 import { JsonFilterEditor } from "@/search/JsonFilterEditor";
-import { RecencyBiasSlider } from "@/search/RecencyBiasSlider";
 import { apiClient } from "@/lib/api";
 import type { SearchEvent, PartialStreamUpdate, StreamPhase } from "@/search/types";
 import { DESIGN_SYSTEM } from "@/lib/design-system";
@@ -26,7 +25,6 @@ interface SearchToggles {
     queryExpansion: boolean;
     filter: boolean;
     queryInterpretation: boolean;
-    recencyBias: boolean;
     reRanking: boolean;
     answer: boolean;
 }
@@ -36,7 +34,7 @@ export interface SearchConfig {
     search_method: SearchMethod;
     expansion_strategy: "auto" | "no_expansion";
     enable_query_interpretation: boolean;
-    recency_bias: number | null;
+    recency_bias: number;  // Always 0 - feature under construction
     enable_reranking: boolean;
     response_type: "completion" | "raw";
     filter?: any;
@@ -101,9 +99,6 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
     // API key state
     const [apiKey, setApiKey] = useState<string>("YOUR_API_KEY");
 
-    // Recency bias state
-    const [recencyBiasValue, setRecencyBiasValue] = useState(0.0);
-
     // Code block modal state
     const [showCodeBlock, setShowCodeBlock] = useState(false);
 
@@ -112,7 +107,6 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
         queryExpansion: true,
         filter: false,
         queryInterpretation: false,
-        recencyBias: false,
         reRanking: true,
         answer: true
     });
@@ -269,29 +263,16 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                 }
             }
 
-            // Determine the recency bias value to send
-            // IMPORTANT: Always send a number (0 or the slider value), never null
-            // If we send null, the backend applies DEFAULT_RECENCY_BIAS = 0.3
-            const recencyBiasToSend = toggles.recencyBias ? recencyBiasValue : 0;
-
-            console.log('[SearchBox] Recency bias logic:', {
-                toggleState: toggles.recencyBias,
-                sliderValue: recencyBiasValue,
-                valueToSend: recencyBiasToSend,
-                explanation: toggles.recencyBias
-                    ? `Toggle ON, sending slider value: ${recencyBiasValue}`
-                    : `Toggle OFF, sending 0 (not null to avoid default 0.3)`
-            });
-
             // Build request body with all parameters (matching new backend schema)
+            // Note: temporal_relevance is always 0 as the feature is under construction
             const requestBody: any = {
                 query: query,
-                retrieval_strategy: searchMethod,  // Changed from search_method
-                expand_query: toggles.queryExpansion,  // Changed from expansion_strategy
-                interpret_filters: toggles.queryInterpretation,  // Changed from enable_query_interpretation
-                temporal_relevance: recencyBiasToSend,  // Changed from recency_bias
-                rerank: toggles.reRanking,  // Changed from enable_reranking
-                generate_answer: toggles.answer,  // Changed from response_type
+                retrieval_strategy: searchMethod,
+                expand_query: toggles.queryExpansion,
+                interpret_filters: toggles.queryInterpretation,
+                temporal_relevance: 0,  // Feature disabled - under construction
+                rerank: toggles.reRanking,
+                generate_answer: toggles.answer,
             };
 
             // Add filter only if it's valid
@@ -472,7 +453,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                 }
             }
         }
-    }, [hasQuery, collectionId, query, searchMethod, toggles, filterJson, isFilterValid, recencyBiasValue, isSearching, onSearch, onSearchStart, onSearchEnd, onStreamEventProp, onStreamUpdateProp, queriesAllowed, isCheckingUsage, disabled, checkQueriesAllowed]);
+    }, [hasQuery, collectionId, query, searchMethod, toggles, filterJson, isFilterValid, isSearching, onSearch, onSearchStart, onSearchEnd, onStreamEventProp, onStreamUpdateProp, queriesAllowed, isCheckingUsage, disabled, checkQueriesAllowed]);
 
     // Handle search method change
     const handleMethodChange = useCallback((newMethod: SearchMethod) => {
@@ -481,43 +462,11 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
 
     // Handle toggle button clicks
     const handleToggle = useCallback((name: keyof SearchToggles, displayName: string) => {
-        // Special handling for recency bias
-        if (name === 'recencyBias') {
-            const newToggleState = !toggles.recencyBias;
-            console.log('[SearchBox] Recency toggle clicked:', {
-                currentToggle: toggles.recencyBias,
-                newToggle: newToggleState,
-                currentSliderValue: recencyBiasValue
-            });
-
-            // If turning off manually, keep the slider value
-            setToggles(prev => ({
-                ...prev,
-                recencyBias: !prev.recencyBias
-            }));
-        } else {
-            setToggles(prev => ({
-                ...prev,
-                [name]: !prev[name]
-            }));
-        }
-    }, [toggles.recencyBias, recencyBiasValue]);
-
-    // Handle recency bias slider changes
-    const handleRecencyBiasChange = useCallback((value: number) => {
-        console.log('[SearchBox] Recency slider changed:', {
-            newValue: value,
-            currentToggle: toggles.recencyBias,
-            willAutoToggle: value > 0
-        });
-
-        setRecencyBiasValue(value);
-        // Auto-toggle on when value > 0, off when value = 0
         setToggles(prev => ({
             ...prev,
-            recencyBias: value > 0
+            [name]: !prev[name]
         }));
-    }, [toggles.recencyBias]);
+    }, []);
 
     // Tooltip management helpers
     const handleTooltipMouseEnter = useCallback((tooltipId: string) => {
@@ -1051,73 +1000,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                     </TooltipContent>
                                 </Tooltip>
 
-                                {/* 5. Recency bias */}
-                                <Tooltip open={openTooltip === "recencyBias"}>
-                                    <TooltipTrigger asChild>
-                                        <div
-                                            onMouseEnter={() => handleTooltipMouseEnter("recencyBias")}
-                                            onMouseLeave={() => handleTooltipMouseLeave("recencyBias")}
-                                            className={cn(
-                                                DESIGN_SYSTEM.buttons.heights.secondary,
-                                                "w-8 p-0 overflow-hidden border",
-                                                DESIGN_SYSTEM.radius.button,
-                                                toggles.recencyBias ? "border-primary" : (isDark ? "border-border/50" : "border-border"),
-                                                isDark ? "bg-background" : "bg-white"
-                                            )}
-                                        >
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    handleToggle("recencyBias", "recency bias");
-                                                    // Open tooltip when enabling
-                                                    if (!toggles.recencyBias) {
-                                                        setOpenTooltip("recencyBias");
-                                                    }
-                                                }}
-                                                className={cn(
-                                                    "h-full w-full flex items-center justify-center",
-                                                    DESIGN_SYSTEM.radius.button,
-                                                    DESIGN_SYSTEM.transitions.standard,
-                                                    toggles.recencyBias
-                                                        ? "text-primary hover:bg-primary/10"
-                                                        : "text-foreground hover:bg-muted"
-                                                )}
-                                            >
-                                                <ClockArrowUp className="h-4 w-4" strokeWidth={1.5} />
-                                            </button>
-                                        </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent
-                                        side="bottom"
-                                        className={cn(DESIGN_SYSTEM.tooltip.content, "w-[240px] max-w-[90vw]")}
-                                        arrowClassName={DESIGN_SYSTEM.tooltip.arrow}
-                                        onMouseEnter={() => handleTooltipContentMouseEnter("recencyBias")}
-                                        onMouseLeave={() => handleTooltipContentMouseLeave("recencyBias")}
-                                    >
-                                        <div className="space-y-2">
-                                            <div className={DESIGN_SYSTEM.tooltip.title}>Recency bias</div>
-                                            <p className={DESIGN_SYSTEM.tooltip.description}>Prioritize recent documents. Higher values give more weight to newer content.</p>
-                                            <div className="pt-1 pb-1 px-1.5">
-                                                <RecencyBiasSlider
-                                                    value={recencyBiasValue}
-                                                    onChange={handleRecencyBiasChange}
-                                                />
-                                            </div>
-                                            <div className={DESIGN_SYSTEM.tooltip.divider}>
-                                                <a
-                                                    href="https://docs.airweave.ai/search#recency-bias"
-                                                    target="_blank"
-                                                    rel="noreferrer"
-                                                    className={DESIGN_SYSTEM.tooltip.link}
-                                                >
-                                                    Docs
-                                                </a>
-                                            </div>
-                                        </div>
-                                    </TooltipContent>
-                                </Tooltip>
-
-                                {/* 6. Re-ranking */}
+                                {/* 5. Re-ranking (Recency bias removed - feature under construction) */}
                                 <Tooltip open={openTooltip === "reRanking"}>
                                     <TooltipTrigger asChild>
                                         <div
@@ -1359,7 +1242,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                     search_method: searchMethod,
                                     expansion_strategy: toggles.queryExpansion ? "auto" : "no_expansion",
                                     enable_query_interpretation: toggles.queryInterpretation,
-                                    recency_bias: toggles.recencyBias ? recencyBiasValue : 0.0,
+                                    recency_bias: 0,  // Feature under construction
                                     enable_reranking: toggles.reRanking,
                                     response_type: toggles.answer ? "completion" : "raw"
                                 }}

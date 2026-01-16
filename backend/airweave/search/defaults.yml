@@ -4,7 +4,9 @@ search_defaults:
 
   retrieval_strategy: hybrid
 
-  temporal_relevance: 0.3
+  # Temporal relevance is disabled while Vespa support is pending
+  # Set to 0 or false to disable; set to a float (0.0-1.0) to enable
+  temporal_relevance: false
 
   expand_query: true
   interpret_filters: false

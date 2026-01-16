@@ -149,6 +149,17 @@ async def search(
         requested_response_type = search_request.response_type
         search_request = convert_legacy_request_to_new(search_request)
 
+    # Warn if temporal_relevance was requested but is disabled
+    if (
+        hasattr(search_request, "temporal_relevance")
+        and search_request.temporal_relevance is not None
+        and search_request.temporal_relevance > 0
+    ):
+        http_response.headers["X-Feature-Disabled"] = "temporal_relevance"
+        http_response.headers["X-Feature-Disabled-Message"] = (
+            "temporal_relevance is under construction and was ignored"
+        )
+
     # Execute search with new service
     search_response = await service.search(
         request_id=ctx.request_id,
