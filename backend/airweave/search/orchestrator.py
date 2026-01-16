@@ -9,12 +9,13 @@ The orchestrator is responsible for:
 """
 
 import time
-from typing import Any, List, Set
+from typing import Any, Dict, List, Set
 
 from airweave.api.context import ApiContext
 from airweave.schemas.search import SearchResponse
 from airweave.search.context import SearchContext
 from airweave.search.operations._base import SearchOperation
+from airweave.search.state import SearchState
 
 
 class SearchOrchestrator:
@@ -26,7 +27,7 @@ class SearchOrchestrator:
 
     async def run(
         self, ctx: ApiContext, context: SearchContext
-    ) -> tuple[SearchResponse, dict[str, Any]]:
+    ) -> tuple[SearchResponse, Dict[str, Any]]:
         """Execute search operations and return response with state.
 
         Automatically captures timing metrics for each operation and stores them
@@ -49,9 +50,8 @@ class SearchOrchestrator:
             },
         )
 
-        # Initialize shared state with metrics tracking
-        state: dict[str, Any] = {}
-        state["_operation_metrics"] = {}
+        # Initialize typed search state
+        state = SearchState()
 
         # Resolve execution order
         execution_order = self._resolve_execution_order(context, ctx)
@@ -74,9 +74,9 @@ class SearchOrchestrator:
                 duration_ms = (time.monotonic() - start_time) * 1000
 
                 # Store timing metric automatically
-                if op_name not in state["_operation_metrics"]:
-                    state["_operation_metrics"][op_name] = {}
-                state["_operation_metrics"][op_name]["duration_ms"] = duration_ms
+                if op_name not in state.operation_metrics:
+                    state.operation_metrics[op_name] = {}
+                state.operation_metrics[op_name]["duration_ms"] = duration_ms
 
                 # Emit operator_end
                 await emitter.emit("operator_end", {"name": op_name}, op_name=op_name)
@@ -89,13 +89,15 @@ class SearchOrchestrator:
                 raise
 
         # Emit results event
-        await emitter.emit("results", {"results": state.get("results", [])})
+        await emitter.emit("results", {"results": state.results})
 
         # Emit done event
         await emitter.emit("done", {"request_id": context.request_id})
 
-        response = SearchResponse(results=state.get("results"), completion=state.get("completion"))
-        return response, state
+        # Build response and convert state to dict for analytics
+        response = SearchResponse(results=state.results, completion=state.completion)
+        state_dict = state.model_dump()
+        return response, state_dict
 
     def _resolve_execution_order(
         self, context: SearchContext, ctx: ApiContext

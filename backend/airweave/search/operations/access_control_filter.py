@@ -3,11 +3,11 @@
 Resolves user's access context and builds the access control filter
 that restricts search results to entities the user has permission to view.
 
-This operation writes directly to state["filter"], merging with any existing
+This operation writes directly to state.filter, merging with any existing
 filter from QueryInterpretation. This makes it independent of UserFilter.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +17,9 @@ from airweave.platform.access_control.broker import access_broker
 from airweave.search.context import SearchContext
 
 from ._base import SearchOperation
+
+if TYPE_CHECKING:
+    from airweave.search.state import SearchState
 
 
 class AccessControlFilter(SearchOperation):
@@ -61,12 +64,12 @@ class AccessControlFilter(SearchOperation):
     async def execute(
         self,
         context: SearchContext,
-        state: Dict[str, Any],
+        state: "SearchState",
         ctx: ApiContext,
     ) -> None:
         """Resolve access context and build filter.
 
-        Writes directly to state["filter"], merging with any existing filter.
+        Writes directly to state.filter, merging with any existing filter.
         """
         ctx.logger.info("[AccessControlFilter] Resolving access context...")
 
@@ -85,7 +88,7 @@ class AccessControlFilter(SearchOperation):
                 "[AccessControlFilter] Collection has no access-control-enabled sources. "
                 "Skipping access filtering - all entities visible."
             )
-            state["access_principals"] = None
+            state.access_principals = None
             await context.emitter.emit(
                 "access_control_skipped",
                 {"reason": "no_ac_sources_in_collection"},
@@ -105,12 +108,12 @@ class AccessControlFilter(SearchOperation):
         access_filter = self._build_access_control_filter(principals)
 
         # Merge with any existing filter in state (e.g., from QueryInterpretation)
-        existing_filter = state.get("filter")
+        existing_filter = state.filter
         merged_filter = self._merge_with_existing_filter(access_filter, existing_filter)
 
-        # Write directly to state["filter"] - no dependency on UserFilter
-        state["filter"] = merged_filter
-        state["access_principals"] = list(principals)
+        # Write directly to state.filter - no dependency on UserFilter
+        state.filter = merged_filter
+        state.access_principals = list(principals)
 
         await context.emitter.emit(
             "access_control_resolved",

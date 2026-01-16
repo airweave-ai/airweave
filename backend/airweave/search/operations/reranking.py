@@ -8,16 +8,19 @@ This operation:
   - Prepares provider documents from result payloads
   - Calls provider.rerank(query, documents, top_n)
   - Applies the returned ranking to reorder results
-  - Writes reordered list back to `state["results"]`
+  - Writes reordered list back to `state.results`
 """
 
-from typing import Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List
 
 from airweave.api.context import ApiContext
 from airweave.search.context import SearchContext
 from airweave.search.providers._base import BaseProvider
 
 from ._base import SearchOperation
+
+if TYPE_CHECKING:
+    from airweave.search.state import SearchState
 
 
 class Reranking(SearchOperation):
@@ -40,22 +43,18 @@ class Reranking(SearchOperation):
     async def execute(  # noqa: C901
         self,
         context: SearchContext,
-        state: dict[str, Any],
+        state: "SearchState",
         ctx: ApiContext,
     ) -> None:
         """Rerank results using the configured provider."""
         ctx.logger.debug("[Reranking] Reranking results")
 
-        results = state.get("results")
+        results = state.results
 
-        if results is None:
-            raise RuntimeError(
-                "Reranking requires results produced by Retrieval or FederatedSearch"
-            )
         if not isinstance(results, list):
             raise ValueError(f"Expected 'results' to be a list, got {type(results)}")
         if len(results) == 0:
-            state["results"] = []
+            # results is already empty list in SearchState
             return
 
         # Get offset and limit from retrieval operation if present, otherwise from context
@@ -65,9 +64,9 @@ class Reranking(SearchOperation):
         # DEBUG: Log input
         sample_docs_preview = []
         for r in results[:3]:
-            payload = r.get("payload", {})
-            text = payload.get("textual_representation", "")[:100]
-            sample_docs_preview.append(f"{payload.get('name', 'N/A')[:30]}: {text}...")
+            text = r.get("textual_representation", "")[:100]
+            name = r.get("name", "N/A")
+            sample_docs_preview.append(f"{name[:30] if name else 'N/A'}: {text}...")
         ctx.logger.debug(
             f"\n[Reranking] INPUT:\n"
             f"  Query: '{context.query[:100]}...'\n"
@@ -141,15 +140,13 @@ class Reranking(SearchOperation):
         # Apply pagination after reranking to ensure consistent offset behavior
         paginated = self._apply_pagination(reranked, offset, limit)
 
-        state["results"] = paginated
+        state.results = paginated
 
         # DEBUG: Log output
         reranked_preview = []
         for r in paginated[:5]:
-            payload = r.get("payload", {})
-            reranked_preview.append(
-                f"{payload.get('name', 'N/A')[:40]} (score={r.get('score', 0):.4f})"
-            )
+            name = r.get("name", "N/A")
+            reranked_preview.append(f"{name} (score={r.get('score', 0):.4f})")
         ctx.logger.debug(
             f"\n[Reranking] OUTPUT:\n"
             f"  Reranked count: {len(reranked)}\n"
@@ -236,41 +233,39 @@ class Reranking(SearchOperation):
         return documents, top_n
 
     def _prepare_documents(self, results: List[dict], ctx: ApiContext) -> List[str]:
-        """Extract text content from result payloads for reranking.
+        """Extract text content from results for reranking.
 
-        In chunk-as-document model, each document's textual_representation IS the chunk text.
-
-        For backward compatibility with old entities, falls back to embeddable_text and
-        other legacy fields if textual_representation is missing.
+        In the unified AirweaveSearchResult schema, textual_representation is a
+        top-level required field. Legacy fields may exist in source_fields for
+        backward compatibility.
         """
         documents: List[str] = []
         for i, result in enumerate(results):
             if not isinstance(result, dict):
                 raise ValueError(f"Result at index {i} is not a dict: {type(result)}")
-            payload = result.get("payload", {})
-            if not isinstance(payload, dict):
-                payload = {}
 
-            # textual_representation is the chunk text (in chunk-as-document model)
-            doc = payload.get("textual_representation", "").strip()
+            # textual_representation is a top-level required field in AirweaveSearchResult
+            doc = result.get("textual_representation", "").strip()
 
-            # Fallback to legacy fields for old entities (pre-refactor)
+            # Fallback to source_fields for legacy entities
             if not doc:
-                doc = (
-                    payload.get("embeddable_text", "").strip()
-                    or payload.get("md_content", "").strip()
-                    or payload.get("content", "").strip()
-                    or payload.get("text", "").strip()
-                    or ""
-                )
+                source_fields = result.get("source_fields", {})
+                if isinstance(source_fields, dict):
+                    doc = (
+                        source_fields.get("embeddable_text", "").strip()
+                        or source_fields.get("md_content", "").strip()
+                        or source_fields.get("content", "").strip()
+                        or source_fields.get("text", "").strip()
+                        or ""
+                    )
 
             if not doc:
-                # Ultimate fallback: stringify the entire payload
+                # Ultimate fallback: stringify the result
                 # This ensures reranking never fails, even for malformed entities
-                doc = str(payload)
+                doc = str(result)
                 ctx.logger.warning(
-                    f"[Reranking] Result at index {i} missing textual content fields. "
-                    f"Using str(payload) fallback. Entity ID: {payload.get('entity_id', 'unknown')}"
+                    f"[Reranking] Result at index {i} missing textual_representation. "
+                    f"Using str(result) fallback. Entity ID: {result.get('entity_id', 'unknown')}"
                 )
             documents.append(doc)
 

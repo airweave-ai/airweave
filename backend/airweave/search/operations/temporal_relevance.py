@@ -23,6 +23,7 @@ from ._base import SearchOperation
 
 if TYPE_CHECKING:
     from airweave.platform.destinations.qdrant import QdrantDestination
+    from airweave.search.state import SearchState
 
 
 class TemporalRelevance(SearchOperation):
@@ -59,7 +60,7 @@ class TemporalRelevance(SearchOperation):
     async def execute(
         self,
         context: SearchContext,
-        state: dict[str, Any],
+        state: "SearchState",
         ctx: ApiContext,
     ) -> None:
         """Compute decay configuration from collection timestamps."""
@@ -68,7 +69,7 @@ class TemporalRelevance(SearchOperation):
         )
 
         # Emit recency start
-        emit_data = {"requested_weight": self.weight}
+        emit_data: dict[str, Any] = {"requested_weight": self.weight}
         if self.supporting_sources is not None:
             emit_data["supporting_sources"] = self.supporting_sources
             emit_data["source_filtering_enabled"] = True
@@ -79,7 +80,7 @@ class TemporalRelevance(SearchOperation):
         )
 
         # Get filter from state if available (respects filtered timespan)
-        filter_dict = state.get("filter")
+        filter_dict = state.filter
         qdrant_filter = self._build_temporal_filter(filter_dict, context.collection_id, ctx)
 
         # Import QdrantDestination for type checking
@@ -186,12 +187,12 @@ class TemporalRelevance(SearchOperation):
         ctx.logger.debug(f"[TemporalRelevance] Temporal config: {temporal_config}")
 
         # Write to state - includes temporal config AND updated filter with timestamp req
-        state["temporal_config"] = temporal_config
+        state.temporal_config = temporal_config
 
         # CRITICAL: Update the filter in state to exclude documents without timestamps
         # This ensures Retrieval operation only searches documents compatible with decay formula
         filter_with_timestamp = self._build_filter_excluding_null_timestamps(filter_dict)
-        state["filter"] = filter_with_timestamp
+        state.filter = filter_with_timestamp
         ctx.logger.debug(
             f"[TemporalRelevance] Updated filter to require {self.DATETIME_FIELD} field "
             "for decay calculation"

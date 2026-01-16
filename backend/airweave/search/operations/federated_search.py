@@ -6,7 +6,7 @@ with vector database results using Reciprocal Rank Fusion (RRF).
 """
 
 import asyncio
-from typing import Any, Dict, List, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
 from pydantic import BaseModel, Field
 
@@ -16,6 +16,9 @@ from airweave.search.context import SearchContext
 from airweave.search.providers._base import BaseProvider
 
 from ._base import SearchOperation
+
+if TYPE_CHECKING:
+    from airweave.search.state import SearchState
 
 
 class QueryKeywords(BaseModel):
@@ -83,7 +86,7 @@ class FederatedSearch(SearchOperation):
     async def execute(
         self,
         context: SearchContext,
-        state: dict[str, Any],
+        state: "SearchState",
         ctx: ApiContext,
     ) -> None:
         """Execute federated search and merge with vector results using RRF.
@@ -94,10 +97,10 @@ class FederatedSearch(SearchOperation):
         """
         ctx.logger.debug(f"[FederatedSearch] Searching {len(self.sources)} federated source(s)")
 
-        vector_results = state.get("results", [])
+        vector_results = state.results
         ctx.logger.debug(f"[FederatedSearch] Starting with {len(vector_results)} vector results")
 
-        all_queries = [context.query] + state.get("expanded_queries", [])
+        all_queries = [context.query] + (state.expanded_queries or [])
 
         keywords_to_search = await self._extract_keywords_from_queries(all_queries, ctx)
 
@@ -183,9 +186,7 @@ class FederatedSearch(SearchOperation):
 
                 # Track auth failures for post-search DB update
                 if self._is_auth_error(error_str) and source_conn_id:
-                    if "_failed_federated_auth" not in state:
-                        state["_failed_federated_auth"] = []
-                    state["_failed_federated_auth"].append(source_conn_id)
+                    state.failed_federated_auth.append(source_conn_id)
 
                 ctx.logger.warning(f"[FederatedSearch] {source_name} failed: {error_str}")
                 await context.emitter.emit(
@@ -210,10 +211,7 @@ class FederatedSearch(SearchOperation):
                 },
                 op_name=self.__class__.__name__,
             )
-            # If there were no vector results and we're in federated-only flow,
-            # write an explicit empty list to indicate that this operation ran.
-            if "results" not in state:
-                state["results"] = []
+            # results is already initialized as empty list in SearchState
             return
 
         # Merge vector and federated results using RRF
@@ -229,7 +227,7 @@ class FederatedSearch(SearchOperation):
         )
 
         # Replace results in state with merged results
-        state["results"] = final_results
+        state.results = final_results
 
         # Report metrics for analytics
         self._report_metrics(

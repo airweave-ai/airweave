@@ -8,13 +8,16 @@ Accepts both Qdrant Filter objects and Airweave canonical filter dicts
 (Dict[str, Any] with must/should/must_not structure).
 """
 
-from typing import Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from airweave.api.context import ApiContext
 from airweave.schemas.search import AirweaveFilter
 from airweave.search.context import SearchContext
 
 from ._base import SearchOperation
+
+if TYPE_CHECKING:
+    from airweave.search.state import SearchState
 
 # Optional import for backwards compatibility with Qdrant Filter objects
 try:
@@ -55,7 +58,7 @@ class UserFilter(SearchOperation):
     async def execute(
         self,
         context: SearchContext,
-        state: dict[str, Any],
+        state: "SearchState",
         ctx: ApiContext,
     ) -> None:
         """Merge user filter with existing filter in state.
@@ -67,7 +70,7 @@ class UserFilter(SearchOperation):
         ctx.logger.debug("[UserFilter] Applying user filter")
 
         # Get existing filter from state (may include access control + extracted filters)
-        existing_filter = state.get("filter")
+        existing_filter = state.filter
         ctx.logger.debug(f"[UserFilter] Existing filter: {existing_filter}")
 
         # Normalize user filter to dict and map keys
@@ -91,11 +94,11 @@ class UserFilter(SearchOperation):
             )
 
         # Write final filter to state
-        state["filter"] = merged_filter
+        state.filter = merged_filter
 
         # Emit filter applied
         if merged_filter:
-            has_access_control = state.get("access_principals") is not None
+            has_access_control = state.access_principals is not None
             await context.emitter.emit(
                 "filter_applied",
                 {"filter": merged_filter, "has_access_control": has_access_control},

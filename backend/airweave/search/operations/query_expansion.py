@@ -5,7 +5,7 @@ Uses LLM to generate semantic alternatives that might match relevant documents
 using different terminology while preserving the original search intent.
 """
 
-from typing import Any, List
+from typing import TYPE_CHECKING, List
 
 from pydantic import BaseModel, Field
 
@@ -15,6 +15,9 @@ from airweave.search.prompts import QUERY_EXPANSION_SYSTEM_PROMPT
 from airweave.search.providers._base import BaseProvider
 
 from ._base import SearchOperation
+
+if TYPE_CHECKING:
+    from airweave.search.state import SearchState
 
 # Number of query expansion alternatives to generate (module-level for Pydantic model)
 _NUMBER_OF_EXPANSIONS = 4
@@ -61,7 +64,7 @@ class QueryExpansion(SearchOperation):
     async def execute(
         self,
         context: SearchContext,
-        state: dict[str, Any],
+        state: "SearchState",
         ctx: ApiContext,
     ) -> None:
         """Expand the query into variations."""
@@ -131,7 +134,7 @@ class QueryExpansion(SearchOperation):
             )
 
         # Write alternatives to state (original query remains in context.query)
-        state["expanded_queries"] = valid_alternatives
+        state.expanded_queries = valid_alternatives
 
         # Report metrics for analytics
         self._report_metrics(

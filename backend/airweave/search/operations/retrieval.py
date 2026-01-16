@@ -5,14 +5,18 @@ destination-agnostic search interface. This is the core search operation that
 queries the vector database (Qdrant, Vespa, or future destinations).
 """
 
-from typing import Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List
 
 from airweave.api.context import ApiContext
 from airweave.platform.destinations._base import BaseDestination
-from airweave.schemas.search import RetrievalStrategy, SearchResult
+from airweave.schemas.search import RetrievalStrategy
+from airweave.schemas.search_result import AirweaveSearchResult
 from airweave.search.context import SearchContext
 
 from ._base import SearchOperation
+
+if TYPE_CHECKING:
+    from airweave.search.state import SearchState
 
 
 class Retrieval(SearchOperation):
@@ -57,17 +61,17 @@ class Retrieval(SearchOperation):
     async def execute(
         self,
         context: SearchContext,
-        state: dict[str, Any],
+        state: "SearchState",
         ctx: ApiContext,
     ) -> None:
         """Execute search against the destination."""
         ctx.logger.debug("[Retrieval] Executing search")
 
         # Get inputs from state (may be None for server-side embedding destinations)
-        dense_embeddings = state.get("dense_embeddings")
-        sparse_embeddings = state.get("sparse_embeddings")
-        filter_obj = state.get("filter")
-        temporal_config = state.get("temporal_config")
+        dense_embeddings = state.dense_embeddings
+        sparse_embeddings = state.sparse_embeddings
+        filter_obj = state.filter
+        temporal_config = state.temporal_config
 
         # Determine search strategy from strategy enum
         retrieval_strategy = self._get_search_method()
@@ -77,7 +81,7 @@ class Retrieval(SearchOperation):
         num_embeddings = len(dense_embeddings) if dense_embeddings else 0
 
         # DEBUG: Log inputs
-        expanded_queries = state.get("expanded_queries", [])
+        expanded_queries = state.expanded_queries or []
         ctx.logger.debug(
             f"\n[Retrieval] INPUT:\n"
             f"  Original query: '{context.query[:100]}...'\n"
@@ -110,8 +114,8 @@ class Retrieval(SearchOperation):
         ctx.logger.debug(f"[Retrieval] Fetch limit: {fetch_limit}")
 
         # Build queries list - includes original query plus any expanded queries
-        # If query expansion ran, state may have expanded_queries; otherwise use original
-        expanded_queries = state.get("expanded_queries", [])
+        # If query expansion ran, state has expanded_queries; otherwise use original
+        expanded_queries = state.expanded_queries or []
         queries = [context.query] + expanded_queries if expanded_queries else [context.query]
 
         # Execute search via destination interface
@@ -145,16 +149,16 @@ class Retrieval(SearchOperation):
             final_results = paginated_results
 
         # Write to state
-        state["results"] = final_results
+        state.results = final_results
 
         # DEBUG: Log output with sample results
         sample_results = []
         for r in final_results[:3]:
-            payload = r.get("payload", {})
+            sys_meta = r.get("system_metadata", {})
             sample_results.append(
                 {
-                    "name": payload.get("name", "N/A")[:50],
-                    "entity_type": payload.get("airweave_system_metadata_entity_type", "N/A"),
+                    "name": r.get("name", "N/A"),
+                    "entity_type": sys_meta.get("entity_type", "N/A"),
                     "score": r.get("score", 0),
                 }
             )
@@ -226,23 +230,20 @@ class Retrieval(SearchOperation):
 
         return base_limit
 
-    def _results_to_dicts(self, results: List[SearchResult]) -> List[Dict[str, Any]]:
-        """Convert SearchResult objects to dicts for downstream compatibility.
+    def _results_to_dicts(self, results: List[AirweaveSearchResult]) -> List[Dict[str, Any]]:
+        """Serialize AirweaveSearchResult objects to dicts for API compatibility.
+
+        The AirweaveSearchResult provides a unified schema guaranteeing both
+        Qdrant and Vespa return identical structures. This method serializes
+        them to dicts for API responses.
 
         Args:
-            results: List of SearchResult objects
+            results: List of AirweaveSearchResult objects
 
         Returns:
-            List of result dictionaries
+            List of result dictionaries (serialized for API)
         """
-        return [
-            {
-                "id": r.id,
-                "score": r.score,
-                "payload": r.payload,
-            }
-            for r in results
-        ]
+        return [r.model_dump(mode="json") for r in results]
 
     def _deduplicate_results(self, results: List[Dict]) -> List[Dict]:
         """Deduplicate results keeping highest scores.
@@ -258,23 +259,14 @@ class Retrieval(SearchOperation):
             if not isinstance(result, dict):
                 raise ValueError(f"Invalid result type in search results: {type(result)}")
 
-            # Extract document ID
-            doc_id = result.get("id") or result.get("_id")
-
-            if not doc_id and "payload" in result:
-                payload = result.get("payload", {})
-                if isinstance(payload, dict):
-                    doc_id = (
-                        payload.get("entity_id")
-                        or payload.get("id")
-                        or payload.get("_id")
-                        or payload.get("db_entity_id")
-                    )
+            # Extract document ID - use 'id' first (always present in AirweaveSearchResult)
+            # Fallback to entity_id for uniqueness
+            doc_id = result.get("id") or result.get("entity_id")
 
             if not doc_id:
                 raise ValueError(
                     "Search result missing document ID. Cannot deduplicate. "
-                    f"Result: {result.keys() if isinstance(result, dict) else result}"
+                    f"Result keys: {result.keys() if isinstance(result, dict) else result}"
                 )
 
             score = result.get("score", 0)

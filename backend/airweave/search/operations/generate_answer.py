@@ -5,7 +5,7 @@ Synthesizes information from multiple results into a coherent response
 with inline citations.
 """
 
-from typing import Any, Dict, List
+from typing import TYPE_CHECKING, Dict, List
 
 from airweave.api.context import ApiContext
 from airweave.search.context import SearchContext
@@ -13,6 +13,9 @@ from airweave.search.prompts import GENERATE_ANSWER_SYSTEM_PROMPT
 from airweave.search.providers._base import BaseProvider
 
 from ._base import SearchOperation
+
+if TYPE_CHECKING:
+    from airweave.search.state import SearchState
 
 
 class GenerateAnswer(SearchOperation):
@@ -38,16 +41,16 @@ class GenerateAnswer(SearchOperation):
     async def execute(
         self,
         context: SearchContext,
-        state: dict[str, Any],
+        state: "SearchState",
         ctx: ApiContext,
     ) -> None:
         """Generate natural language answer from results."""
         ctx.logger.debug("[GenerateAnswer] Generating natural language answer from results")
 
-        results = state.get("results")
+        results = state.results
 
         if not results:
-            state["completion"] = "No results found for your query."
+            state.completion = "No results found for your query."
             ctx.logger.debug("[GenerateAnswer] INPUT: No results to process")
             return
 
@@ -57,11 +60,12 @@ class GenerateAnswer(SearchOperation):
         # DEBUG: Log input
         sample_results = []
         for r in results[:3]:
-            payload = r.get("payload", {})
+            name = r.get("name", "N/A")
+            text = r.get("textual_representation", "")
             sample_results.append(
                 {
-                    "name": payload.get("name", "N/A")[:50],
-                    "text_preview": payload.get("textual_representation", "")[:100] + "...",
+                    "name": name[:50] if name else "N/A",
+                    "text_preview": (text[:100] if text else "") + "...",
                 }
             )
         ctx.logger.debug(
@@ -131,7 +135,7 @@ class GenerateAnswer(SearchOperation):
         if not completion or not completion.strip():
             raise RuntimeError("Provider returned empty completion")
 
-        state["completion"] = completion
+        state.completion = completion
 
         # DEBUG: Log output
         ctx.logger.debug(
@@ -230,52 +234,46 @@ class GenerateAnswer(SearchOperation):
     def _format_single_result(self, index: int, result: Dict, ctx: ApiContext) -> str:
         """Format a single search result for LLM context.
 
-        textual_representation already contains all formatted content from entity_pipeline.py,
-        so we use it directly with minimal wrapping.
-
-        For backward compatibility with old entities, falls back to embeddable_text and
-        other legacy fields if textual_representation is missing.
+        In the unified AirweaveSearchResult schema, textual_representation is a
+        top-level required field. Legacy fields may exist in source_fields for
+        backward compatibility.
 
         Args:
             index: Result index (1-based)
-            result: Single search result
+            result: Single search result dict (serialized AirweaveSearchResult)
             ctx: API context for logging
 
         Returns:
             Formatted string with entity ID and textual representation
         """
-        # Extract payload and score
-        if isinstance(result, dict) and "payload" in result:
-            payload = result["payload"]
-            score = result.get("score", 0.0)
-        else:
-            payload = result
-            score = 0.0
+        score = result.get("score", 0.0)
 
-        # Extract entity ID
-        entity_id = payload.get("entity_id") or f"result_{index}"
+        # Extract entity ID (top-level in AirweaveSearchResult)
+        entity_id = result.get("entity_id") or f"result_{index}"
 
-        # Try new field first (present in all newly synced entities)
-        content = payload.get("textual_representation", "").strip()
+        # textual_representation is a top-level required field in AirweaveSearchResult
+        content = result.get("textual_representation", "").strip()
 
-        # Fallback to legacy fields for old entities (pre-refactor)
+        # Fallback to source_fields for legacy entities
         if not content:
-            content = (
-                payload.get("embeddable_text", "").strip()
-                or payload.get("md_content", "").strip()
-                or payload.get("content", "").strip()
-                or payload.get("text", "").strip()
-                or payload.get("description", "").strip()
-                or ""
-            )
+            source_fields = result.get("source_fields", {})
+            if isinstance(source_fields, dict):
+                content = (
+                    source_fields.get("embeddable_text", "").strip()
+                    or source_fields.get("md_content", "").strip()
+                    or source_fields.get("content", "").strip()
+                    or source_fields.get("text", "").strip()
+                    or source_fields.get("description", "").strip()
+                    or ""
+                )
 
         if not content:
-            # Ultimate fallback: stringify the entire payload
+            # Ultimate fallback: stringify the entire result
             # This ensures answer generation never fails, even for malformed entities
-            content = str(payload)
+            content = str(result)
             ctx.logger.warning(
-                f"[GenerateAnswer] Result {index} (entity {entity_id}) missing text fields. "
-                f"Using str(payload) fallback."
+                f"[GenerateAnswer] Result {index} (entity {entity_id}) missing "
+                f"textual_representation. Using str(result) fallback."
             )
 
         # Build formatted entry with score and content

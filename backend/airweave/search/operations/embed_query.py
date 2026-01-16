@@ -5,7 +5,7 @@ Generates dense neural embeddings and/or sparse BM25 embeddings based on
 the retrieval strategy (hybrid, neural, or keyword).
 """
 
-from typing import Any, List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from airweave.api.context import ApiContext
 from airweave.platform.embedders import SparseEmbedder
@@ -14,6 +14,9 @@ from airweave.search.context import SearchContext
 from airweave.search.providers._base import BaseProvider
 
 from ._base import SearchOperation
+
+if TYPE_CHECKING:
+    from airweave.search.state import SearchState
 
 
 class EmbedQuery(SearchOperation):
@@ -34,7 +37,7 @@ class EmbedQuery(SearchOperation):
     async def execute(
         self,
         context: SearchContext,
-        state: dict[str, Any],
+        state: "SearchState",
         ctx: ApiContext,
     ) -> None:
         """Generate embeddings for queries."""
@@ -70,8 +73,8 @@ class EmbedQuery(SearchOperation):
                 f"No embeddings generated for strategy {self.strategy}. This is a bug."
             )
 
-        state["dense_embeddings"] = dense_embeddings
-        state["sparse_embeddings"] = sparse_embeddings
+        state.dense_embeddings = dense_embeddings
+        state.sparse_embeddings = sparse_embeddings
 
         # Report metrics for analytics
         self._report_metrics(
@@ -85,14 +88,13 @@ class EmbedQuery(SearchOperation):
         # Emit embedding done with stats
         await self._emit_embedding_done(dense_embeddings, sparse_embeddings, context.emitter)
 
-    def _get_queries_to_embed(self, context: SearchContext, state: dict[str, Any]) -> List[str]:
+    def _get_queries_to_embed(self, context: SearchContext, state: "SearchState") -> List[str]:
         """Get all queries to embed (original + expanded)."""
         queries = [context.query]
 
         # Add expanded queries if available
-        expanded = state.get("expanded_queries", [])
-        if expanded:
-            queries.extend(expanded)
+        if state.expanded_queries:
+            queries.extend(state.expanded_queries)
 
         if not queries:
             raise ValueError("No queries to embed")
