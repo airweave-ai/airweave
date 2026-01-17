@@ -33,7 +33,7 @@
     "@radix-ui/react-toast": "^1.2.1",
     "@radix-ui/react-toggle-group": "^1.1.9",
     "@radix-ui/react-tooltip": "^1.1.4",
-    "@tanstack/react-query": "^5.90.17",
+    "@tanstack/react-query": "^5.90.18",
     "@textea/json-viewer": "^4.0.1",
     "@types/dagre": "^0.7.52",
     "@types/react-syntax-highlighter": "^15.5.13",
