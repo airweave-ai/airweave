@@ -58,11 +58,11 @@ class VespaDestination(VectorDBDestination):
 
     processing_requirement = ProcessingRequirement.CHUNKS_AND_EMBEDDINGS_DENSE_ONLY
 
-    def __init__(self, soft_fail: bool = True):
+    def __init__(self, soft_fail: bool = False):
         """Initialize the Vespa destination.
 
         Args:
-            soft_fail: If True, errors won't fail the sync (default True for migration)
+            soft_fail: If True, errors won't fail the sync (default False - Vespa is primary)
         """
         super().__init__(soft_fail=soft_fail)
         self.collection_id: Optional[UUID] = None
@@ -82,7 +82,7 @@ class VespaDestination(VectorDBDestination):
         organization_id: Optional[UUID] = None,
         vector_size: Optional[int] = None,
         logger: Optional[ContextualLogger] = None,
-        soft_fail: bool = True,
+        soft_fail: bool = False,
         **kwargs,
     ) -> "VespaDestination":
         """Create and return a connected Vespa destination.
@@ -94,7 +94,7 @@ class VespaDestination(VectorDBDestination):
             organization_id: Organization UUID
             vector_size: Vector dimensions (unused - Vespa handles embeddings)
             logger: Logger instance
-            soft_fail: If True, errors won't fail the sync
+            soft_fail: If True, errors won't fail the sync (default False - Vespa is primary)
             **kwargs: Additional keyword arguments (unused)
 
         Returns:

@@ -92,11 +92,11 @@ class QdrantDestination(VectorDBDestination):
     # Default write concurrency (simple, code-local tuning)
     DEFAULT_WRITE_CONCURRENCY: int = 16
 
-    def __init__(self, soft_fail: bool = False):
+    def __init__(self, soft_fail: bool = True):
         """Initialize defaults and placeholders for connection and collection state.
 
         Args:
-            soft_fail: If True, errors won't fail the sync (default False)
+            soft_fail: If True, errors won't fail the sync (default True - Qdrant is secondary)
         """
         super().__init__(soft_fail=soft_fail)
         # Logical identifiers (from SQL)
@@ -132,7 +132,7 @@ class QdrantDestination(VectorDBDestination):
         credentials: Optional[QdrantAuthConfig] = None,
         config: Optional[dict] = None,
         logger: Optional[ContextualLogger] = None,
-        soft_fail: bool = False,
+        soft_fail: bool = True,
     ) -> "QdrantDestination":
         """Create and return a connected destination (matches source pattern).
 
@@ -145,7 +145,7 @@ class QdrantDestination(VectorDBDestination):
             credentials: Optional QdrantAuthConfig with url and api_key (None for native)
             config: Unused (kept for interface consistency with sources)
             logger: Logger instance
-            soft_fail: If True, errors won't fail the sync (default False)
+            soft_fail: If True, errors won't fail the sync (default True - Qdrant is secondary)
 
         Returns:
             Configured QdrantDestination instance with multi-tenant shared collection
