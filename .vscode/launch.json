@@ -9,7 +9,9 @@
             "args": [
                 "--reload",
                 "--reload-exclude",
-                "local_storage",
+                "local_storage/**",
+                "--reload-exclude",
+                "**/local_storage/**",
                 "--host",
                 "127.0.0.1",
                 "--port",
