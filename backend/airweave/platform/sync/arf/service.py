@@ -126,7 +126,7 @@ class ArfService:
 
     def _get_source_short_name(self, sync_context: "SyncContext") -> str:
         """Extract short name from source class."""
-        source = sync_context.source
+        source = sync_context.source_instance  # The actual BaseSource, not SourceContext
         if hasattr(source.__class__, "_short_name"):
             return source.__class__._short_name
         return source.__class__.__name__.lower().replace("source", "")
@@ -220,34 +220,9 @@ class ArfService:
         # Ensure manifest exists before storing entities
         await self.upsert_manifest(sync_context)
 
-        # Count new entities (for manifest update)
-        new_entity_count = 0
-        new_file_count = 0
-
+        # Store each entity (counts are computed on-demand, not tracked during sync)
         for entity in entities:
-            # Check if this is a new entity
-            sync_id = str(sync_context.sync.id)
-            entity_id = str(entity.entity_id)
-            entity_path = self._entity_path(sync_id, entity_id)
-            is_new = not await self.storage.exists(entity_path)
-
             await self.upsert_entity(entity, sync_context)
-
-            if is_new:
-                new_entity_count += 1
-                # Check if file was stored
-                if self._is_file_entity(entity) and hasattr(entity, "local_path"):
-                    local_path = getattr(entity, "local_path", None)
-                    if local_path and Path(local_path).exists():
-                        new_file_count += 1
-
-        # Update manifest with new counts
-        if new_entity_count > 0 or new_file_count > 0:
-            await self._update_manifest(
-                sync_context,
-                delta_entities=new_entity_count,
-                delta_files=new_file_count,
-            )
 
         return len(entities)
 
@@ -304,31 +279,12 @@ class ArfService:
             Number of entities deleted
         """
         deleted_count = 0
-        deleted_files = 0
 
         for entity_id in entity_ids:
-            # Check if entity has a file before deleting
-            sync_id = str(sync_context.sync.id)
-            entity_path = self._entity_path(sync_id, entity_id)
-            try:
-                entity_data = await self.storage.read_json(entity_path)
-                has_file = "__stored_file__" in entity_data
-            except Exception:
-                has_file = False
-
             if await self.delete_entity(entity_id, sync_context):
                 deleted_count += 1
-                if has_file:
-                    deleted_files += 1
 
-        # Update manifest with deleted counts (negative delta)
-        if deleted_count > 0:
-            await self._update_manifest(
-                sync_context,
-                delta_entities=-deleted_count,
-                delta_files=-deleted_files,
-            )
-
+        # Note: counts are computed on-demand, not tracked during sync
         return deleted_count
 
     async def get_entity(self, sync_id: str, entity_id: str) -> Optional[Dict[str, Any]]:
@@ -495,11 +451,10 @@ class ArfService:
         existing_manifest = await self.get_manifest(sync_id)
 
         if existing_manifest:
-            # Update existing: add job ID, update timestamp
+            # Update existing: add job ID only (updated_at is set in finalize_manifest_counts)
             if job_id not in existing_manifest.sync_jobs:
                 existing_manifest.sync_jobs.append(job_id)
-            existing_manifest.updated_at = now
-            await self.storage.write_json(manifest_path, existing_manifest.model_dump())
+                await self.storage.write_json(manifest_path, existing_manifest.model_dump())
         else:
             # Create new manifest
             manifest = SyncManifest(
@@ -516,28 +471,34 @@ class ArfService:
             )
             await self.storage.write_json(manifest_path, manifest.model_dump())
 
-    async def _update_manifest(
+    async def finalize_manifest_counts(
         self,
         sync_context: "SyncContext",
-        delta_entities: int = 0,
-        delta_files: int = 0,
+        entity_count: int,
+        file_count: int = 0,
     ) -> None:
-        """Update manifest entity/file counts.
+        """Finalize manifest with accurate counts from database.
+
+        Called at the end of a sync to update the manifest with the
+        actual entity/file counts from the database (source of truth).
 
         Args:
             sync_context: Sync context
-            delta_entities: Change in entity count (can be negative)
-            delta_files: Change in file count (can be negative)
+            entity_count: Total entity count from database
+            file_count: Total file count (optional, defaults to 0)
         """
         sync_id = str(sync_context.sync.id)
         manifest = await self.get_manifest(sync_id)
 
         if manifest:
-            manifest.entity_count = max(0, manifest.entity_count + delta_entities)
-            manifest.file_count = max(0, manifest.file_count + delta_files)
+            manifest.entity_count = entity_count
+            manifest.file_count = file_count
             manifest.updated_at = datetime.now(timezone.utc).isoformat()
             manifest_path = self._manifest_path(sync_id)
             await self.storage.write_json(manifest_path, manifest.model_dump())
+            sync_context.logger.debug(
+                f"[ARF] Finalized manifest counts: {entity_count} entities, {file_count} files"
+            )
 
     # =========================================================================
     # Entity reconstruction

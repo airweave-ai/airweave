@@ -64,6 +64,7 @@ class EntityActionResolver:
         # Check if skip_hash_comparison is enabled
         if (
             sync_context.execution_config
+            and sync_context.execution_config.behavior
             and sync_context.execution_config.behavior.skip_hash_comparison
         ):
             sync_context.logger.info(

@@ -208,7 +208,12 @@ class SyncOrchestrator:
             # Use the pre-created stream (already started in _start_sync)
             async for entity in self.stream.get_entities():
                 # Check guardrails unless explicitly skipped
-                if not self.sync_context.execution_config.behavior.skip_guardrails:
+                skip_guardrails = (
+                    self.sync_context.execution_config
+                    and self.sync_context.execution_config.behavior
+                    and self.sync_context.execution_config.behavior.skip_guardrails
+                )
+                if not skip_guardrails:
                     try:
                         await self.sync_context.guard_rail.is_allowed(ActionType.ENTITIES)
                     except (UsageLimitExceededException, PaymentRequiredException) as guard_error:
@@ -566,6 +571,9 @@ class SyncOrchestrator:
             stats=stats,
         )
 
+        # Finalize ARF manifest with accurate count from database
+        await self._finalize_arf_manifest()
+
         # Track sync completed
         from airweave.analytics import business_events
 
@@ -645,6 +653,25 @@ class SyncOrchestrator:
                 f"Failed to save cursor data for sync {self.sync_context.sync.id}: {e}",
                 exc_info=True,
             )
+
+    async def _finalize_arf_manifest(self) -> None:
+        """Finalize ARF manifest with accurate entity count from database."""
+        from airweave import crud
+        from airweave.platform.sync.arf import arf_service
+
+        try:
+            async with get_db_context() as db:
+                entity_count = await crud.entity_count.get_total_count_by_sync(
+                    db, self.sync_context.sync.id
+                )
+
+            await arf_service.finalize_manifest_counts(
+                sync_context=self.sync_context,
+                entity_count=entity_count,
+            )
+        except Exception as e:
+            # Non-critical: log but don't fail the sync
+            self.sync_context.logger.warning(f"Failed to finalize ARF manifest counts: {e}")
 
     async def _handle_sync_failure(self, error: Exception) -> None:
         """Handle sync failure by updating job status with error details."""
