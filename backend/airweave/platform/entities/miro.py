@@ -79,6 +79,12 @@ class MiroStickyNoteEntity(BaseEntity):
     board_name: str = AirweaveField(
         ..., description="Board name this item belongs to", embeddable=True
     )
+    frame_id: Optional[str] = AirweaveField(
+        None, description="ID of containing frame, if any", embeddable=False
+    )
+    frame_title: Optional[str] = AirweaveField(
+        None, description="Title of containing frame, if any", embeddable=True
+    )
     created_by: Optional[Dict] = AirweaveField(
         None, description="User who created the item", embeddable=True
     )
@@ -118,6 +124,12 @@ class MiroCardEntity(BaseEntity):
     )
     board_name: str = AirweaveField(
         ..., description="Board name this card belongs to", embeddable=True
+    )
+    frame_id: Optional[str] = AirweaveField(
+        None, description="ID of containing frame, if any", embeddable=False
+    )
+    frame_title: Optional[str] = AirweaveField(
+        None, description="Title of containing frame, if any", embeddable=True
     )
     description: Optional[str] = AirweaveField(
         None, description="Card description", embeddable=True
@@ -171,6 +183,12 @@ class MiroTextEntity(BaseEntity):
     board_name: str = AirweaveField(
         ..., description="Board name this text belongs to", embeddable=True
     )
+    frame_id: Optional[str] = AirweaveField(
+        None, description="ID of containing frame, if any", embeddable=False
+    )
+    frame_title: Optional[str] = AirweaveField(
+        None, description="Title of containing frame, if any", embeddable=True
+    )
     created_by: Optional[Dict] = AirweaveField(
         None, description="User who created the text", embeddable=True
     )
@@ -207,6 +225,12 @@ class MiroFrameEntity(BaseEntity):
     )
     board_name: str = AirweaveField(
         ..., description="Board name this frame belongs to", embeddable=True
+    )
+    frame_id: Optional[str] = AirweaveField(
+        None, description="ID of containing frame, if any (for nested frames)", embeddable=False
+    )
+    frame_title: Optional[str] = AirweaveField(
+        None, description="Title of containing frame, if any (for nested frames)", embeddable=True
     )
     format: Optional[str] = AirweaveField(
         None, description="Frame format (e.g. custom, a4, letter)", embeddable=True
@@ -282,6 +306,12 @@ class MiroAppCardEntity(BaseEntity):
     board_name: str = AirweaveField(
         ..., description="Board name this app card belongs to", embeddable=True
     )
+    frame_id: Optional[str] = AirweaveField(
+        None, description="ID of containing frame, if any", embeddable=False
+    )
+    frame_title: Optional[str] = AirweaveField(
+        None, description="Title of containing frame, if any", embeddable=True
+    )
     description: Optional[str] = AirweaveField(
         None, description="App card description", embeddable=True
     )
@@ -331,8 +361,11 @@ class MiroDocumentEntity(FileEntity):
     board_name: str = AirweaveField(
         ..., description="Board name this document belongs to", embeddable=True
     )
-    document_url: Optional[str] = AirweaveField(
-        None, description="URL to download the document", embeddable=False, unhashable=True
+    frame_id: Optional[str] = AirweaveField(
+        None, description="ID of containing frame, if any", embeddable=False
+    )
+    frame_title: Optional[str] = AirweaveField(
+        None, description="Title of containing frame, if any", embeddable=True
     )
     created_by: Optional[Dict] = AirweaveField(
         None, description="User who created the document", embeddable=True
@@ -371,8 +404,11 @@ class MiroImageEntity(FileEntity):
     board_name: str = AirweaveField(
         ..., description="Board name this image belongs to", embeddable=True
     )
-    image_url: Optional[str] = AirweaveField(
-        None, description="URL to download the image", embeddable=False, unhashable=True
+    frame_id: Optional[str] = AirweaveField(
+        None, description="ID of containing frame, if any", embeddable=False
+    )
+    frame_title: Optional[str] = AirweaveField(
+        None, description="Title of containing frame, if any", embeddable=True
     )
     created_by: Optional[Dict] = AirweaveField(
         None, description="User who created the image", embeddable=True

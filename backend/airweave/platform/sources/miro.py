@@ -1,6 +1,5 @@
 """Miro source implementation for syncing boards, items, connectors, and tags."""
 
-import os
 import re
 from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict, List, Optional
@@ -332,6 +331,7 @@ class MiroSource(BaseSource):
         board_name: str,
         board_breadcrumbs: List[Breadcrumb],
         board_tags: Dict[str, Dict],
+        frame_lookup: Dict[str, str],
     ) -> AsyncGenerator[MiroStickyNoteEntity, None]:
         """Generate sticky note entities for a board.
 
@@ -341,6 +341,7 @@ class MiroSource(BaseSource):
             board_name: Board name
             board_breadcrumbs: Breadcrumbs for hierarchy
             board_tags: Pre-fetched tag lookup dict from _get_board_tags
+            frame_lookup: Dict mapping frame_id -> frame_title for parent relationships
         """
         url = f"{self.API_BASE}/boards/{board_id}/sticky_notes"
 
@@ -354,10 +355,24 @@ class MiroSource(BaseSource):
             item_tags = item.get("tags", [])
             tags = [board_tags.get(t.get("id"), t) for t in item_tags if t.get("id")]
 
+            # Extract parent frame info
+            parent = item.get("parent", {})
+            parent_frame_id = parent.get("id") if parent else None
+            parent_frame_title = frame_lookup.get(parent_frame_id) if parent_frame_id else None
+
+            # Build breadcrumbs including parent frame if present
+            item_breadcrumbs = list(board_breadcrumbs)
+            if parent_frame_id and parent_frame_title:
+                item_breadcrumbs.append(Breadcrumb(
+                    entity_id=parent_frame_id,
+                    name=parent_frame_title,
+                    entity_type="MiroFrameEntity",
+                ))
+
             yield MiroStickyNoteEntity(
                 # Base entity fields
                 entity_id=item["id"],
-                breadcrumbs=board_breadcrumbs,
+                breadcrumbs=item_breadcrumbs,
                 # API-specific fields
                 item_id=item["id"],
                 content=content,
@@ -365,6 +380,8 @@ class MiroSource(BaseSource):
                 modified_at=modified_at,
                 board_id=board_id,
                 board_name=board_name,
+                frame_id=parent_frame_id,
+                frame_title=parent_frame_title,
                 created_by=item.get("createdBy"),
                 modified_by=item.get("modifiedBy"),
                 tags=tags,
@@ -377,6 +394,7 @@ class MiroSource(BaseSource):
         board_name: str,
         board_breadcrumbs: List[Breadcrumb],
         board_tags: Dict[str, Dict],
+        frame_lookup: Dict[str, str],
     ) -> AsyncGenerator[MiroCardEntity, None]:
         """Generate card entities for a board.
 
@@ -386,6 +404,7 @@ class MiroSource(BaseSource):
             board_name: Board name
             board_breadcrumbs: Breadcrumbs for hierarchy
             board_tags: Pre-fetched tag lookup dict from _get_board_tags
+            frame_lookup: Dict mapping frame_id -> frame_title for parent relationships
         """
         url = f"{self.API_BASE}/boards/{board_id}/cards"
 
@@ -400,10 +419,24 @@ class MiroSource(BaseSource):
             item_tags = item.get("tags", [])
             tags = [board_tags.get(t.get("id"), t) for t in item_tags if t.get("id")]
 
+            # Extract parent frame info
+            parent = item.get("parent", {})
+            parent_frame_id = parent.get("id") if parent else None
+            parent_frame_title = frame_lookup.get(parent_frame_id) if parent_frame_id else None
+
+            # Build breadcrumbs including parent frame if present
+            item_breadcrumbs = list(board_breadcrumbs)
+            if parent_frame_id and parent_frame_title:
+                item_breadcrumbs.append(Breadcrumb(
+                    entity_id=parent_frame_id,
+                    name=parent_frame_title,
+                    entity_type="MiroFrameEntity",
+                ))
+
             yield MiroCardEntity(
                 # Base entity fields
                 entity_id=item["id"],
-                breadcrumbs=board_breadcrumbs,
+                breadcrumbs=item_breadcrumbs,
                 # API-specific fields
                 item_id=item["id"],
                 title=title,
@@ -411,6 +444,8 @@ class MiroSource(BaseSource):
                 modified_at=modified_at,
                 board_id=board_id,
                 board_name=board_name,
+                frame_id=parent_frame_id,
+                frame_title=parent_frame_title,
                 description=description,
                 due_date=data.get("dueDate"),
                 assignee_id=data.get("assigneeId"),
@@ -426,8 +461,17 @@ class MiroSource(BaseSource):
         board_id: str,
         board_name: str,
         board_breadcrumbs: List[Breadcrumb],
+        frame_lookup: Dict[str, str],
     ) -> AsyncGenerator[MiroTextEntity, None]:
-        """Generate text entities for a board."""
+        """Generate text entities for a board.
+
+        Args:
+            client: HTTP client
+            board_id: Board ID
+            board_name: Board name
+            board_breadcrumbs: Breadcrumbs for hierarchy
+            frame_lookup: Dict mapping frame_id -> frame_title for parent relationships
+        """
         url = f"{self.API_BASE}/boards/{board_id}/texts"
 
         async for item in self._paginate(client, url):
@@ -440,10 +484,24 @@ class MiroSource(BaseSource):
             created_at = self._parse_datetime(item.get("createdAt"))
             modified_at = self._parse_datetime(item.get("modifiedAt"))
 
+            # Extract parent frame info
+            parent = item.get("parent", {})
+            parent_frame_id = parent.get("id") if parent else None
+            parent_frame_title = frame_lookup.get(parent_frame_id) if parent_frame_id else None
+
+            # Build breadcrumbs including parent frame if present
+            item_breadcrumbs = list(board_breadcrumbs)
+            if parent_frame_id and parent_frame_title:
+                item_breadcrumbs.append(Breadcrumb(
+                    entity_id=parent_frame_id,
+                    name=parent_frame_title,
+                    entity_type="MiroFrameEntity",
+                ))
+
             yield MiroTextEntity(
                 # Base entity fields
                 entity_id=item["id"],
-                breadcrumbs=board_breadcrumbs,
+                breadcrumbs=item_breadcrumbs,
                 # API-specific fields
                 item_id=item["id"],
                 content=content,
@@ -451,6 +509,8 @@ class MiroSource(BaseSource):
                 modified_at=modified_at,
                 board_id=board_id,
                 board_name=board_name,
+                frame_id=parent_frame_id,
+                frame_title=parent_frame_title,
                 created_by=item.get("createdBy"),
                 modified_by=item.get("modifiedBy"),
             )
@@ -461,8 +521,17 @@ class MiroSource(BaseSource):
         board_id: str,
         board_name: str,
         board_breadcrumbs: List[Breadcrumb],
+        frame_lookup: Dict[str, str],
     ) -> AsyncGenerator[MiroFrameEntity, None]:
-        """Generate frame entities for a board."""
+        """Generate frame entities for a board.
+
+        Args:
+            client: HTTP client
+            board_id: Board ID
+            board_name: Board name
+            board_breadcrumbs: Breadcrumbs for hierarchy
+            frame_lookup: Dict mapping frame_id -> frame_title for nested frames
+        """
         url = f"{self.API_BASE}/boards/{board_id}/frames"
 
         async for item in self._paginate(client, url):
@@ -471,10 +540,24 @@ class MiroSource(BaseSource):
             created_at = self._parse_datetime(item.get("createdAt"))
             modified_at = self._parse_datetime(item.get("modifiedAt"))
 
+            # Extract parent frame info (for nested frames)
+            parent = item.get("parent", {})
+            parent_frame_id = parent.get("id") if parent else None
+            parent_frame_title = frame_lookup.get(parent_frame_id) if parent_frame_id else None
+
+            # Build breadcrumbs including parent frame if present
+            item_breadcrumbs = list(board_breadcrumbs)
+            if parent_frame_id and parent_frame_title:
+                item_breadcrumbs.append(Breadcrumb(
+                    entity_id=parent_frame_id,
+                    name=parent_frame_title,
+                    entity_type="MiroFrameEntity",
+                ))
+
             yield MiroFrameEntity(
                 # Base entity fields
                 entity_id=item["id"],
-                breadcrumbs=board_breadcrumbs,
+                breadcrumbs=item_breadcrumbs,
                 # API-specific fields
                 item_id=item["id"],
                 title=title,
@@ -482,6 +565,8 @@ class MiroSource(BaseSource):
                 modified_at=modified_at,
                 board_id=board_id,
                 board_name=board_name,
+                frame_id=parent_frame_id,
+                frame_title=parent_frame_title,
                 format=data.get("format"),
                 frame_type=data.get("type"),
                 created_by=item.get("createdBy"),
@@ -528,8 +613,17 @@ class MiroSource(BaseSource):
         board_id: str,
         board_name: str,
         board_breadcrumbs: List[Breadcrumb],
+        frame_lookup: Dict[str, str],
     ) -> AsyncGenerator[MiroAppCardEntity, None]:
-        """Generate app card entities for a board (Jira, GitHub, Asana integrations)."""
+        """Generate app card entities for a board (Jira, GitHub, Asana integrations).
+
+        Args:
+            client: HTTP client
+            board_id: Board ID
+            board_name: Board name
+            board_breadcrumbs: Breadcrumbs for hierarchy
+            frame_lookup: Dict mapping frame_id -> frame_title for parent relationships
+        """
         url = f"{self.API_BASE}/boards/{board_id}/app_cards"
 
         try:
@@ -540,10 +634,24 @@ class MiroSource(BaseSource):
                 created_at = self._parse_datetime(item.get("createdAt"))
                 modified_at = self._parse_datetime(item.get("modifiedAt"))
 
+                # Extract parent frame info
+                parent = item.get("parent", {})
+                parent_frame_id = parent.get("id") if parent else None
+                parent_frame_title = frame_lookup.get(parent_frame_id) if parent_frame_id else None
+
+                # Build breadcrumbs including parent frame if present
+                item_breadcrumbs = list(board_breadcrumbs)
+                if parent_frame_id and parent_frame_title:
+                    item_breadcrumbs.append(Breadcrumb(
+                        entity_id=parent_frame_id,
+                        name=parent_frame_title,
+                        entity_type="MiroFrameEntity",
+                    ))
+
                 yield MiroAppCardEntity(
                     # Base entity fields
                     entity_id=item["id"],
-                    breadcrumbs=board_breadcrumbs,
+                    breadcrumbs=item_breadcrumbs,
                     # API-specific fields
                     item_id=item["id"],
                     title=title,
@@ -551,6 +659,8 @@ class MiroSource(BaseSource):
                     modified_at=modified_at,
                     board_id=board_id,
                     board_name=board_name,
+                    frame_id=parent_frame_id,
+                    frame_title=parent_frame_title,
                     description=description,
                     status=data.get("status"),
                     fields=data.get("fields", []),
@@ -570,8 +680,17 @@ class MiroSource(BaseSource):
         board_id: str,
         board_name: str,
         board_breadcrumbs: List[Breadcrumb],
+        frame_lookup: Dict[str, str],
     ) -> AsyncGenerator[MiroDocumentEntity, None]:
-        """Generate document entities for a board (PDFs, DOCXs, etc.)."""
+        """Generate document entities for a board (PDFs, DOCXs, etc.).
+
+        Args:
+            client: HTTP client
+            board_id: Board ID
+            board_name: Board name
+            board_breadcrumbs: Breadcrumbs for hierarchy
+            frame_lookup: Dict mapping frame_id -> frame_title for parent relationships
+        """
         url = f"{self.API_BASE}/boards/{board_id}/documents"
 
         try:
@@ -615,10 +734,24 @@ class MiroSource(BaseSource):
                 created_at = self._parse_datetime(item.get("createdAt"))
                 modified_at = self._parse_datetime(item.get("modifiedAt"))
 
+                # Extract parent frame info
+                parent = item.get("parent", {})
+                parent_frame_id = parent.get("id") if parent else None
+                parent_frame_title = frame_lookup.get(parent_frame_id) if parent_frame_id else None
+
+                # Build breadcrumbs including parent frame if present
+                item_breadcrumbs = list(board_breadcrumbs)
+                if parent_frame_id and parent_frame_title:
+                    item_breadcrumbs.append(Breadcrumb(
+                        entity_id=parent_frame_id,
+                        name=parent_frame_title,
+                        entity_type="MiroFrameEntity",
+                    ))
+
                 file_entity = MiroDocumentEntity(
                     # Base entity fields
                     entity_id=item["id"],
-                    breadcrumbs=board_breadcrumbs,
+                    breadcrumbs=item_breadcrumbs,
                     name=title,  # Required for file_downloader
                     # FileEntity fields
                     url=download_url,  # Presigned URL - no auth needed
@@ -633,7 +766,8 @@ class MiroSource(BaseSource):
                     modified_at=modified_at,
                     board_id=board_id,
                     board_name=board_name,
-                    document_url=download_url,
+                    frame_id=parent_frame_id,
+                    frame_title=parent_frame_title,
                     created_by=item.get("createdBy"),
                     modified_by=item.get("modifiedBy"),
                 )
@@ -678,8 +812,17 @@ class MiroSource(BaseSource):
         board_id: str,
         board_name: str,
         board_breadcrumbs: List[Breadcrumb],
+        frame_lookup: Dict[str, str],
     ) -> AsyncGenerator[MiroImageEntity, None]:
-        """Generate image entities for a board."""
+        """Generate image entities for a board.
+
+        Args:
+            client: HTTP client
+            board_id: Board ID
+            board_name: Board name
+            board_breadcrumbs: Breadcrumbs for hierarchy
+            frame_lookup: Dict mapping frame_id -> frame_title for parent relationships
+        """
         url = f"{self.API_BASE}/boards/{board_id}/images"
 
         try:
@@ -725,10 +868,24 @@ class MiroSource(BaseSource):
                 created_at = self._parse_datetime(item.get("createdAt"))
                 modified_at = self._parse_datetime(item.get("modifiedAt"))
 
+                # Extract parent frame info
+                parent = item.get("parent", {})
+                parent_frame_id = parent.get("id") if parent else None
+                parent_frame_title = frame_lookup.get(parent_frame_id) if parent_frame_id else None
+
+                # Build breadcrumbs including parent frame if present
+                item_breadcrumbs = list(board_breadcrumbs)
+                if parent_frame_id and parent_frame_title:
+                    item_breadcrumbs.append(Breadcrumb(
+                        entity_id=parent_frame_id,
+                        name=parent_frame_title,
+                        entity_type="MiroFrameEntity",
+                    ))
+
                 file_entity = MiroImageEntity(
                     # Base entity fields
                     entity_id=item["id"],
-                    breadcrumbs=board_breadcrumbs,
+                    breadcrumbs=item_breadcrumbs,
                     name=title,  # Required for file_downloader
                     # FileEntity fields
                     url=download_url,  # Presigned URL - no auth needed
@@ -743,7 +900,8 @@ class MiroSource(BaseSource):
                     modified_at=modified_at,
                     board_id=board_id,
                     board_name=board_name,
-                    image_url=download_url,
+                    frame_id=parent_frame_id,
+                    frame_title=parent_frame_title,
                     created_by=item.get("createdBy"),
                     modified_by=item.get("modifiedBy"),
                 )
@@ -804,10 +962,23 @@ class MiroSource(BaseSource):
                 # Fetch all board tags once to avoid N+1 queries
                 board_tags = await self._get_board_tags(client, board_id)
 
+                # Generate frames FIRST to build lookup for parent relationships
+                # The frame_lookup maps frame_id -> frame_title for child items
+                frame_lookup: Dict[str, str] = {}
+                try:
+                    async for frame in self._generate_frame_entities(
+                        client, board_id, board_name, board_breadcrumbs, frame_lookup
+                    ):
+                        # Store in lookup for child items to reference
+                        frame_lookup[frame.item_id] = frame.title
+                        yield frame
+                except Exception as e:
+                    self.logger.error(f"Failed to generate frames for board {board_name}: {e}")
+
                 # Generate sticky notes with error isolation
                 try:
                     async for sticky_note in self._generate_sticky_note_entities(
-                        client, board_id, board_name, board_breadcrumbs, board_tags
+                        client, board_id, board_name, board_breadcrumbs, board_tags, frame_lookup
                     ):
                         yield sticky_note
                 except Exception as e:
@@ -816,7 +987,7 @@ class MiroSource(BaseSource):
                 # Generate cards with error isolation
                 try:
                     async for card in self._generate_card_entities(
-                        client, board_id, board_name, board_breadcrumbs, board_tags
+                        client, board_id, board_name, board_breadcrumbs, board_tags, frame_lookup
                     ):
                         yield card
                 except Exception as e:
@@ -825,20 +996,11 @@ class MiroSource(BaseSource):
                 # Generate text items with error isolation
                 try:
                     async for text in self._generate_text_entities(
-                        client, board_id, board_name, board_breadcrumbs
+                        client, board_id, board_name, board_breadcrumbs, frame_lookup
                     ):
                         yield text
                 except Exception as e:
                     self.logger.error(f"Failed to generate text items for board {board_name}: {e}")
-
-                # Generate frames with error isolation
-                try:
-                    async for frame in self._generate_frame_entities(
-                        client, board_id, board_name, board_breadcrumbs
-                    ):
-                        yield frame
-                except Exception as e:
-                    self.logger.error(f"Failed to generate frames for board {board_name}: {e}")
 
                 # Generate tags with error isolation
                 try:
@@ -852,7 +1014,7 @@ class MiroSource(BaseSource):
                 # Generate app cards (Jira, GitHub, Asana integrations) with error isolation
                 try:
                     async for app_card in self._generate_app_card_entities(
-                        client, board_id, board_name, board_breadcrumbs
+                        client, board_id, board_name, board_breadcrumbs, frame_lookup
                     ):
                         yield app_card
                 except Exception as e:
@@ -861,7 +1023,7 @@ class MiroSource(BaseSource):
                 # Generate documents with error isolation
                 try:
                     async for document in self._generate_document_entities(
-                        client, board_id, board_name, board_breadcrumbs
+                        client, board_id, board_name, board_breadcrumbs, frame_lookup
                     ):
                         yield document
                 except Exception as e:
@@ -870,7 +1032,7 @@ class MiroSource(BaseSource):
                 # Generate images with error isolation
                 try:
                     async for image in self._generate_image_entities(
-                        client, board_id, board_name, board_breadcrumbs
+                        client, board_id, board_name, board_breadcrumbs, frame_lookup
                     ):
                         yield image
                 except Exception as e:
