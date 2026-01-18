@@ -3,7 +3,6 @@
 import re
 from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict, List, Optional
-from urllib.parse import parse_qs, unquote, urlparse
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -187,6 +186,56 @@ class MiroSource(BaseSource):
         except (ValueError, TypeError):
             return None
 
+    def _has_file_changed(self, item_id: str, modified_at: Optional[datetime]) -> bool:
+        """Check if file metadata indicates change without downloading.
+
+        Compares the modified_at timestamp against stored cursor data.
+        Returns True if file is new or changed, False if unchanged.
+
+        Args:
+            item_id: Unique identifier for the file item
+            modified_at: Current modified timestamp from API
+
+        Returns:
+            True if file should be processed (new or changed), False if unchanged
+        """
+        if not self.cursor:
+            return True  # No cursor = first sync, treat as changed
+
+        if not modified_at:
+            return True  # No timestamp = can't compare, treat as changed
+
+        file_metadata = self.cursor.data.get("file_metadata", {})
+        stored_meta = file_metadata.get(item_id)
+
+        if not stored_meta:
+            return True  # New file
+
+        stored_modified = stored_meta.get("modified_at")
+        if stored_modified != modified_at.isoformat():
+            return True  # File changed
+
+        return False  # Unchanged
+
+    def _store_file_metadata(self, item_id: str, modified_at: Optional[datetime]) -> None:
+        """Store file metadata in cursor for future change detection.
+
+        Args:
+            item_id: Unique identifier for the file item
+            modified_at: Modified timestamp from API
+        """
+        if not self.cursor:
+            return
+
+        if not modified_at:
+            return
+
+        file_metadata = self.cursor.data.get("file_metadata", {})
+        file_metadata[item_id] = {
+            "modified_at": modified_at.isoformat(),
+        }
+        self.cursor.update(file_metadata=file_metadata)
+
     @staticmethod
     def _strip_html(text: Optional[str]) -> str:
         """Strip HTML tags from text content.
@@ -200,38 +249,6 @@ class MiroSource(BaseSource):
         if not text:
             return ""
         return re.sub(r"<[^>]+>", "", text).strip()
-
-    @staticmethod
-    def _extract_filename_from_url(url: str) -> Optional[str]:
-        """Extract filename from URL's response-content-disposition parameter.
-
-        Miro download URLs contain the original filename in the query string:
-        ?response-content-disposition=attachment%3B%20filename%3D%22file.pdf%22
-
-        Args:
-            url: Download URL with content-disposition parameter
-
-        Returns:
-            Extracted filename or None if not found
-        """
-        try:
-            parsed = urlparse(url)
-            params = parse_qs(parsed.query)
-            disposition = params.get("response-content-disposition", [None])[0]
-            if not disposition:
-                return None
-
-            # URL-decode the disposition value
-            disposition = unquote(disposition)
-
-            # Extract filename from: attachment; filename="file.pdf"
-            match = re.search(r'filename="([^"]+)"', disposition)
-            if match:
-                return match.group(1)
-
-            return None
-        except Exception:
-            return None
 
     async def _generate_board_entities(
         self, client: httpx.AsyncClient
@@ -684,6 +701,9 @@ class MiroSource(BaseSource):
     ) -> AsyncGenerator[MiroDocumentEntity, None]:
         """Generate document entities for a board (PDFs, DOCXs, etc.).
 
+        Uses redirect=true to download files directly via API redirect,
+        extracting filename from Content-Disposition header.
+
         Args:
             client: HTTP client
             board_id: Board ID
@@ -697,6 +717,15 @@ class MiroSource(BaseSource):
             async for item in self._paginate(client, url):
                 data = item.get("data", {})
 
+                # Parse timestamps early for change detection
+                created_at = self._parse_datetime(item.get("createdAt"))
+                modified_at = self._parse_datetime(item.get("modifiedAt"))
+
+                # Skip if file hasn't changed since last sync
+                if not self._has_file_changed(item["id"], modified_at):
+                    self.logger.debug(f"Skipping unchanged document {item['id']}")
+                    continue
+
                 # Extract documentUrl from data object
                 document_url = data.get("documentUrl", "")
                 if not document_url:
@@ -705,34 +734,14 @@ class MiroSource(BaseSource):
                     )
                     continue
 
-                # Keep redirect=false to get presigned URL with filename
-                # (documentUrl should already have redirect=false by default)
-
-                # Step 1: GET the resource URL to get presigned download URL
-                try:
-                    download_info = await self._get_with_auth(client, document_url)
-                    download_url = download_info.get("url", "")
-                    if not download_url:
-                        self.logger.warning(
-                            f"No download URL in response for document {item['id']}"
-                        )
-                        continue
-                except Exception as e:
-                    self.logger.error(
-                        f"Failed to get download URL for document {item['id']}: {e}"
-                    )
-                    continue
-
-                # Extract filename from download URL
-                title = self._extract_filename_from_url(download_url)
-                if not title:
-                    self.logger.warning(
-                        f"Could not extract filename for document {item['id']} on board {board_id}, skipping"
-                    )
-                    continue
-
-                created_at = self._parse_datetime(item.get("createdAt"))
-                modified_at = self._parse_datetime(item.get("modifiedAt"))
+                # Use redirect=true for direct download (API returns 307 redirect)
+                # Filename will be extracted from Content-Disposition header
+                if "redirect=false" in document_url:
+                    document_url = document_url.replace("redirect=false", "redirect=true")
+                elif "redirect=" not in document_url:
+                    # Add redirect=true if not present
+                    separator = "&" if "?" in document_url else "?"
+                    document_url = f"{document_url}{separator}redirect=true"
 
                 # Extract parent frame info
                 parent = item.get("parent", {})
@@ -748,13 +757,16 @@ class MiroSource(BaseSource):
                         entity_type="MiroFrameEntity",
                     ))
 
+                # Get title from API data
+                title = data.get("title") or item["id"]
+
                 file_entity = MiroDocumentEntity(
                     # Base entity fields
                     entity_id=item["id"],
                     breadcrumbs=item_breadcrumbs,
-                    name=title,  # Required for file_downloader
+                    name=None,  # Will be extracted from Content-Disposition header
                     # FileEntity fields
-                    url=download_url,  # Presigned URL - no auth needed
+                    url=document_url,  # API URL with redirect=true
                     size=0,  # Size not provided by API
                     file_type="document",
                     mime_type=None,
@@ -773,7 +785,7 @@ class MiroSource(BaseSource):
                 )
 
                 # Download file using downloader
-                # URL is presigned, so no auth token needed
+                # Auth token needed for initial request, API redirects to file
                 try:
                     await self.file_downloader.download_from_url(
                         entity=file_entity,
@@ -785,10 +797,13 @@ class MiroSource(BaseSource):
                     # Verify download succeeded
                     if not file_entity.local_path:
                         raise ValueError(
-                            f"Download failed - no local path set for {file_entity.title}"
+                            f"Download failed - no local path set for document {item['id']}"
                         )
 
                     yield file_entity
+
+                    # Store metadata for future change detection
+                    self._store_file_metadata(item["id"], modified_at)
 
                 except FileSkippedException as e:
                     self.logger.debug(f"Skipping document {item['id']}: {e.reason}")
@@ -816,6 +831,9 @@ class MiroSource(BaseSource):
     ) -> AsyncGenerator[MiroImageEntity, None]:
         """Generate image entities for a board.
 
+        Uses format=original for full resolution and redirect=true to download
+        files directly via API redirect, extracting filename from Content-Disposition.
+
         Args:
             client: HTTP client
             board_id: Board ID
@@ -829,6 +847,15 @@ class MiroSource(BaseSource):
             async for item in self._paginate(client, url):
                 data = item.get("data", {})
 
+                # Parse timestamps early for change detection
+                created_at = self._parse_datetime(item.get("createdAt"))
+                modified_at = self._parse_datetime(item.get("modifiedAt"))
+
+                # Skip if file hasn't changed since last sync
+                if not self._has_file_changed(item["id"], modified_at):
+                    self.logger.debug(f"Skipping unchanged image {item['id']}")
+                    continue
+
                 # Extract imageUrl from data object
                 image_url = data.get("imageUrl", "")
                 if not image_url:
@@ -837,36 +864,18 @@ class MiroSource(BaseSource):
                     )
                     continue
 
-                # Change format=preview to format=original for full resolution
-                # Keep redirect=false to get presigned URL with filename
+                # Request original format (not preview) for full resolution
                 if "format=preview" in image_url:
                     image_url = image_url.replace("format=preview", "format=original")
 
-                # Step 1: GET the resource URL to get presigned download URL
-                try:
-                    download_info = await self._get_with_auth(client, image_url)
-                    download_url = download_info.get("url", "")
-                    if not download_url:
-                        self.logger.warning(
-                            f"No download URL in response for image {item['id']}"
-                        )
-                        continue
-                except Exception as e:
-                    self.logger.error(
-                        f"Failed to get download URL for image {item['id']}: {e}"
-                    )
-                    continue
-
-                # Extract filename from download URL
-                title = self._extract_filename_from_url(download_url)
-                if not title:
-                    self.logger.warning(
-                        f"Could not extract filename for image {item['id']} on board {board_id}, skipping"
-                    )
-                    continue
-
-                created_at = self._parse_datetime(item.get("createdAt"))
-                modified_at = self._parse_datetime(item.get("modifiedAt"))
+                # Use redirect=true for direct download (API returns 307 redirect)
+                # Filename will be extracted from Content-Disposition header
+                if "redirect=false" in image_url:
+                    image_url = image_url.replace("redirect=false", "redirect=true")
+                elif "redirect=" not in image_url:
+                    # Add redirect=true if not present
+                    separator = "&" if "?" in image_url else "?"
+                    image_url = f"{image_url}{separator}redirect=true"
 
                 # Extract parent frame info
                 parent = item.get("parent", {})
@@ -882,13 +891,16 @@ class MiroSource(BaseSource):
                         entity_type="MiroFrameEntity",
                     ))
 
+                # Get title from API data
+                title = data.get("title") or item["id"]
+
                 file_entity = MiroImageEntity(
                     # Base entity fields
                     entity_id=item["id"],
                     breadcrumbs=item_breadcrumbs,
-                    name=title,  # Required for file_downloader
+                    name=None,  # Will be extracted from Content-Disposition header
                     # FileEntity fields
-                    url=download_url,  # Presigned URL - no auth needed
+                    url=image_url,  # API URL with format=original&redirect=true
                     size=0,  # Size not provided by API
                     file_type="image",
                     mime_type=None,
@@ -907,7 +919,7 @@ class MiroSource(BaseSource):
                 )
 
                 # Download file using downloader
-                # URL is presigned (has Signature, Key-Pair-Id), so no auth token needed
+                # Auth token needed for initial request, API redirects to file
                 try:
                     await self.file_downloader.download_from_url(
                         entity=file_entity,
@@ -919,10 +931,13 @@ class MiroSource(BaseSource):
                     # Verify download succeeded
                     if not file_entity.local_path:
                         raise ValueError(
-                            f"Download failed - no local path set for {file_entity.title}"
+                            f"Download failed - no local path set for image {item['id']}"
                         )
 
                     yield file_entity
+
+                    # Store metadata for future change detection
+                    self._store_file_metadata(item["id"], modified_at)
 
                 except FileSkippedException as e:
                     self.logger.debug(f"Skipping image {item['id']}: {e.reason}")
