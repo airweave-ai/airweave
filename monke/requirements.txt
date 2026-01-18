@@ -20,3 +20,6 @@ openpyxl>=3.1.0
 
 # Word document manipulation
 python-docx>=1.2.0
+
+# Image generation for testing
+Pillow>=10.0.0

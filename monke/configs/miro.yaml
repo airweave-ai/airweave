@@ -1,0 +1,52 @@
+name: miro_test
+description: End-to-end test for Miro source using Monke
+
+connector:
+  name: Miro
+  type: miro
+  auth_mode: composio
+  composio_config:
+    account_id: ca_MC8xZK0au3EU
+    auth_config_id: ac_onjuamny-U3M
+  config_fields:
+    openai_model: "gpt-4.1-mini"
+    rate_limit_delay_ms: 300
+    max_concurrency: 3
+
+test_flow:
+  steps:
+    - cleanup
+    - create
+    - sync
+    - verify
+    - update
+    - sync
+    - verify
+    - partial_delete
+    - sync
+    - verify_partial_deletion
+    - verify_remaining_entities
+    - complete_delete
+    - sync
+    - verify_complete_deletion
+    - cleanup
+    - collection_cleanup
+
+deletion:
+  partial_delete_count: 2
+  verify_partial_deletion: true
+  verify_remaining_entities: true
+  verify_complete_deletion: true
+
+entity_count: 3
+
+collection:
+  name: Miro Test Collection
+
+verification:
+  retry_attempts: 5
+  retry_delay_seconds: 10
+  score_threshold: 0.0
+  expected_fields:
+    - name
+    - entity_id
