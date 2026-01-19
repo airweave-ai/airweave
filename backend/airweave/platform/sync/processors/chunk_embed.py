@@ -3,9 +3,12 @@
 Used by: Qdrant, Vespa, Pinecone, and similar vector DBs.
 
 Both destinations use chunk-as-document model where each chunk becomes
-a separate document with its own embedding. The key difference:
-- Qdrant: needs sparse embeddings for hybrid search (computed client-side)
-- Vespa: computes BM25 server-side, only needs dense embeddings
+a separate document with its own embedding. Both Qdrant and Vespa use:
+- Dense embeddings (3072-dim) for neural/semantic search
+- Sparse embeddings (FastEmbed Qdrant/bm25) for keyword search scoring
+
+This ensures consistent keyword search behavior across both vector databases,
+with benefits of pre-trained vocabulary/IDF, stopword removal, and learned term weights.
 """
 
 import json
@@ -28,27 +31,18 @@ class ChunkEmbedProcessor(ContentProcessor):
     1. Build textual representation (text extraction from files/web)
     2. Chunk text (semantic for text, AST for code)
     3. Compute embeddings:
-       - Dense embeddings (always - 3072-dim for both Qdrant and Vespa)
-       - Sparse embeddings (only for Qdrant - BM25 for hybrid search)
+       - Dense embeddings (3072-dim for neural/semantic search)
+       - Sparse embeddings (FastEmbed Qdrant/bm25 for keyword search scoring)
 
     Output:
         Chunk entities with:
         - entity_id: "{original_id}__chunk_{idx}"
         - textual_representation: chunk text
         - airweave_system_metadata.dense_embedding: 3072-dim vector
-        - airweave_system_metadata.sparse_embedding: BM25 sparse vector (Qdrant only)
+        - airweave_system_metadata.sparse_embedding: FastEmbed BM25 sparse vector
         - airweave_system_metadata.original_entity_id: original entity_id
         - airweave_system_metadata.chunk_index: chunk position
     """
-
-    def __init__(self, generate_sparse: bool = True):
-        """Initialize processor.
-
-        Args:
-            generate_sparse: Whether to generate sparse embeddings for hybrid search.
-                            Set to True for Qdrant, False for Vespa.
-        """
-        self._generate_sparse = generate_sparse
 
     async def process(
         self,
@@ -219,45 +213,45 @@ class ChunkEmbedProcessor(ContentProcessor):
         chunk_entities: List[BaseEntity],
         sync_context: "SyncContext",
     ) -> None:
-        """Compute dense embeddings (always) and sparse embeddings (conditionally).
+        """Compute dense and sparse embeddings for all destinations.
 
-        Both Qdrant and Vespa use 3072-dim dense embeddings:
-        - Qdrant: stores as float32, server-side INT8 quantization for ANN
-        - Vespa: auto-converts to bfloat16, no additional quantization
+        Both Qdrant and Vespa use:
+        - Dense embeddings (3072-dim) for neural/semantic search
+        - Sparse embeddings (FastEmbed Qdrant/bm25) for keyword search scoring
 
-        Sparse embeddings are only generated when _generate_sparse=True (Qdrant).
-        Vespa computes BM25 server-side via userInput().
+        This ensures consistent keyword search behavior across both vector databases,
+        with benefits of pre-trained vocabulary/IDF, stopword removal, and learned term weights.
         """
         if not chunk_entities:
             return
 
         from airweave.platform.embedders import DenseEmbedder, SparseEmbedder
 
-        # Dense embeddings (always - 3072-dim)
+        # Dense embeddings (3072-dim for neural search)
         dense_texts = [e.textual_representation for e in chunk_entities]
         dense_embedder = DenseEmbedder(vector_size=sync_context.collection.vector_size)
         dense_embeddings = await dense_embedder.embed_many(dense_texts, sync_context)
 
-        # Sparse embeddings (only for Qdrant-style destinations)
-        sparse_embeddings = None
-        if self._generate_sparse:
-            sparse_texts = [
-                json.dumps(
-                    e.model_dump(mode="json", exclude={"airweave_system_metadata"}),
-                    sort_keys=True,
-                )
-                for e in chunk_entities
-            ]
-            sparse_embedder = SparseEmbedder()
-            sparse_embeddings = await sparse_embedder.embed_many(sparse_texts, sync_context)
+        # Sparse embeddings (FastEmbed Qdrant/bm25 for keyword search scoring)
+        # Uses full entity JSON (minus system metadata) to capture all searchable content
+        sparse_texts = [
+            json.dumps(
+                e.model_dump(mode="json", exclude={"airweave_system_metadata"}),
+                sort_keys=True,
+            )
+            for e in chunk_entities
+        ]
+        sparse_embedder = SparseEmbedder()
+        sparse_embeddings = await sparse_embedder.embed_many(sparse_texts, sync_context)
 
         # Assign embeddings to entities
         for i, entity in enumerate(chunk_entities):
             entity.airweave_system_metadata.dense_embedding = dense_embeddings[i]
-            if sparse_embeddings is not None:
-                entity.airweave_system_metadata.sparse_embedding = sparse_embeddings[i]
+            entity.airweave_system_metadata.sparse_embedding = sparse_embeddings[i]
 
         # Validate
         for entity in chunk_entities:
             if entity.airweave_system_metadata.dense_embedding is None:
                 raise SyncFailureError(f"Entity {entity.entity_id} has no dense embedding")
+            if entity.airweave_system_metadata.sparse_embedding is None:
+                raise SyncFailureError(f"Entity {entity.entity_id} has no sparse embedding")

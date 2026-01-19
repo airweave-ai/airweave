@@ -33,13 +33,9 @@ if TYPE_CHECKING:
 
 
 # Singleton processors - stateless, reusable
-# ChunkEmbedProcessor with generate_sparse=True for Qdrant (needs client-side BM25)
-# ChunkEmbedProcessor with generate_sparse=False for Vespa (computes BM25 server-side)
+# ChunkEmbedProcessor generates both dense and sparse embeddings for all vector DBs
 _PROCESSORS: Dict[ProcessingRequirement, ContentProcessor] = {
-    ProcessingRequirement.CHUNKS_AND_EMBEDDINGS: ChunkEmbedProcessor(generate_sparse=True),
-    ProcessingRequirement.CHUNKS_AND_EMBEDDINGS_DENSE_ONLY: ChunkEmbedProcessor(
-        generate_sparse=False
-    ),
+    ProcessingRequirement.CHUNKS_AND_EMBEDDINGS: ChunkEmbedProcessor(),
     ProcessingRequirement.TEXT_ONLY: TextOnlyProcessor(),
     ProcessingRequirement.RAW: RawProcessor(),
 }
