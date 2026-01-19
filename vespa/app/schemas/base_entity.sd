@@ -150,6 +150,25 @@ schema base_entity {
                 }
             }
         }
+
+        # =============================================================================
+        # Sparse Embedding Field (FastEmbed BM25 - for keyword SCORING)
+        # =============================================================================
+
+        # Sparse embedding for keyword SCORING (FastEmbed Qdrant/bm25 model)
+        # Mapped tensor: token ID → weight
+        # Uses same pre-computed embeddings as Qdrant for consistent keyword ranking
+        # Note: Retrieval still uses inverted index via userInput(), this is for SCORING only
+        # Benefits over Vespa native BM25:
+        # - Pre-trained vocabulary & IDF (not dependent on Vespa index size)
+        # - Stopword removal built into the model
+        # - Learned term weights (not just raw frequency)
+        field sparse_embedding type tensor<float>(token{}) {
+            indexing: attribute
+            attribute {
+                paged  # Disk-based, not in RAM - only loaded during ranking
+            }
+        }
     }
 
     struct breadcrumb {
@@ -203,6 +222,10 @@ schema base_entity {
             query(q7) tensor<float>(x[3072])
             query(q8) tensor<float>(x[3072])
             query(q9) tensor<float>(x[3072])
+
+            # Sparse query embedding for keyword SCORING (FastEmbed BM25)
+            # Token IDs as strings mapped to weights
+            query(q_sparse) tensor<float>(token{})
         }
 
         # -----------------------------------------------------------------------
@@ -212,29 +235,30 @@ schema base_entity {
         function semantic_score() {
             expression: closeness(field, dense_embedding)
         }
+
+        # -----------------------------------------------------------------------
+        # Keyword score using pre-computed FastEmbed sparse embeddings
+        # Replaces bm25() for consistent scoring with Qdrant
+        # Benefits: pre-trained IDF, stopword removal, learned term weights
+        # -----------------------------------------------------------------------
+        function keyword_score() {
+            expression: sum(query(q_sparse) * attribute(sparse_embedding))
+        }
     }
 
     # =========================================================================
     # HYBRID RANK PROFILE with RRF (Reciprocal Rank Fusion)
-    # Simplified: no second-phase needed with bfloat16 precision
+    # Uses FastEmbed sparse embeddings for keyword scoring instead of Vespa BM25
     # =========================================================================
     rank-profile hybrid-rrf inherits default {
 
         # -----------------------------------------------------------------------
-        # Document-level scores for RRF
-        # -----------------------------------------------------------------------
-
-        # Combined BM25 score across textual_representation and payload
-        function bm25_score() {
-            expression: bm25(textual_representation) + bm25(payload)
-        }
-
-        # -----------------------------------------------------------------------
         # FIRST PHASE: Runs on all matched candidates
-        # Combines BM25 and semantic closeness (both already computed during matching)
+        # Combines FastEmbed sparse dotproduct and semantic closeness
+        # Note: keyword_score() uses pre-computed FastEmbed embeddings
         # -----------------------------------------------------------------------
         first-phase {
-            expression: bm25_score() + semantic_score()
+            expression: keyword_score() + semantic_score()
         }
 
         # NO SECOND PHASE - bfloat16 with 3072 dimensions is accurate enough
@@ -249,16 +273,14 @@ schema base_entity {
         global-phase {
             rerank-count: 100
             expression {
-                reciprocal_rank(bm25_score) +
+                reciprocal_rank(keyword_score) +
                 reciprocal_rank(semantic_score)
             }
         }
 
         # Match features for debugging and potential future model training
         match-features {
-            bm25(textual_representation)
-            bm25(payload)
-            bm25_score
+            keyword_score
             semantic_score
         }
     }
@@ -273,15 +295,17 @@ schema base_entity {
     }
 
     # =========================================================================
-    # KEYWORD-ONLY RANK PROFILE (for BM25-only search)
+    # KEYWORD-ONLY RANK PROFILE (for keyword-only search)
+    # Uses FastEmbed sparse embeddings for consistent behavior with Qdrant
     # =========================================================================
     rank-profile keyword-only inherits default {
-        function bm25_score() {
-            expression: bm25(textual_representation) + bm25(payload)
+        first-phase {
+            expression: keyword_score()
         }
 
-        first-phase {
-            expression: bm25_score()
+        # Match features for debugging
+        match-features {
+            keyword_score
         }
     }
 }
