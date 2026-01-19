@@ -458,6 +458,11 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
     // Handle search method change
     const handleMethodChange = useCallback((newMethod: SearchMethod) => {
         setSearchMethod(newMethod);
+        // Disable query expansion for keyword-only search
+        // Reason: Expansion only benefits neural/semantic search, not keyword matching
+        if (newMethod === "keyword") {
+            setToggles(prev => ({ ...prev, queryExpansion: false }));
+        }
     }, []);
 
     // Handle toggle button clicks
@@ -816,7 +821,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                     </div>
                                 </div>
 
-                                {/* 2. Query expansion (icon) */}
+                                {/* 2. Query expansion (icon) - disabled for keyword-only search */}
                                 <Tooltip open={openTooltip === "queryExpansion"}>
                                     <TooltipTrigger asChild>
                                         <div
@@ -826,20 +831,30 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                                 DESIGN_SYSTEM.buttons.heights.secondary,
                                                 "w-8 p-0 overflow-hidden border",
                                                 DESIGN_SYSTEM.radius.button,
-                                                toggles.queryExpansion ? "border-primary" : (isDark ? "border-border/50" : "border-border"),
-                                                isDark ? "bg-background" : "bg-white"
+                                                searchMethod === "keyword"
+                                                    ? (isDark ? "border-border/30 bg-background/50" : "border-border/50 bg-gray-50")
+                                                    : toggles.queryExpansion
+                                                        ? "border-primary"
+                                                        : (isDark ? "border-border/50" : "border-border"),
+                                                searchMethod !== "keyword" && (isDark ? "bg-background" : "bg-white")
                                             )}
                                         >
                                             <button
                                                 type="button"
-                                                onClick={() => handleToggle("queryExpansion", "query expansion")}
+                                                onClick={() => {
+                                                    if (searchMethod === "keyword") return; // Disabled for keyword search
+                                                    handleToggle("queryExpansion", "query expansion");
+                                                }}
+                                                disabled={searchMethod === "keyword"}
                                                 className={cn(
                                                     "h-full w-full flex items-center justify-center",
                                                     DESIGN_SYSTEM.radius.button,
                                                     DESIGN_SYSTEM.transitions.standard,
-                                                    toggles.queryExpansion
-                                                        ? "text-primary hover:bg-primary/10"
-                                                        : "text-foreground hover:bg-muted"
+                                                    searchMethod === "keyword"
+                                                        ? "text-muted-foreground/50 cursor-not-allowed"
+                                                        : toggles.queryExpansion
+                                                            ? "text-primary hover:bg-primary/10"
+                                                            : "text-foreground hover:bg-muted"
                                                 )}
                                             >
                                                 <FiLayers className="h-4 w-4" strokeWidth={1.5} />
@@ -855,7 +870,13 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                     >
                                         <div className="space-y-2">
                                             <div className={DESIGN_SYSTEM.tooltip.title}>Query expansion</div>
-                                            <p className={DESIGN_SYSTEM.tooltip.description}>Generates similar versions of your query to improve recall.</p>
+                                            {searchMethod === "keyword" ? (
+                                                <p className={DESIGN_SYSTEM.tooltip.description}>
+                                                    Not available with keyword search. Switch to hybrid or neural to use query expansion.
+                                                </p>
+                                            ) : (
+                                                <p className={DESIGN_SYSTEM.tooltip.description}>Generates similar versions of your query to improve recall.</p>
+                                            )}
                                             <div className={DESIGN_SYSTEM.tooltip.divider}>
                                                 <a
                                                     href="https://docs.airweave.ai/search#query-expansion"

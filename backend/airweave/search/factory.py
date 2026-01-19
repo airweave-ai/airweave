@@ -19,7 +19,7 @@ from airweave.platform.utils.source_factory_utils import (
     get_auth_configuration,
     process_credentials_for_source,
 )
-from airweave.schemas.search import SearchDefaults, SearchRequest
+from airweave.schemas.search import RetrievalStrategy, SearchDefaults, SearchRequest
 from airweave.search.context import SearchContext
 from airweave.search.emitter import EventEmitter
 from airweave.search.helpers import search_helpers
@@ -103,7 +103,7 @@ class SearchFactory:
             raise HTTPException(status_code=422, detail="Query is required")
 
         # Apply defaults and validate parameters
-        params = self._apply_defaults_and_validate(search_request)
+        params = self._apply_defaults_and_validate(search_request, ctx)
 
         # Get collection - with or without organization filtering
         if skip_organization_check:
@@ -217,7 +217,9 @@ class SearchFactory:
 
         return search_context
 
-    def _apply_defaults_and_validate(self, search_request: SearchRequest) -> Dict[str, Any]:
+    def _apply_defaults_and_validate(
+        self, search_request: SearchRequest, ctx: Optional["ApiContext"] = None
+    ) -> Dict[str, Any]:
         """Apply defaults to search request and validate parameters."""
         retrieval_strategy = (
             search_request.retrieval_strategy
@@ -237,6 +239,18 @@ class SearchFactory:
             if search_request.expand_query is not None
             else defaults.expand_query
         )
+
+        # Disable query expansion for keyword-only search
+        # Reason: Vespa uses a single sparse embedding for keyword scoring, not per-expanded-query.
+        # Qdrant does support expanded sparse queries, but for consistency across destinations,
+        # we disable expansion for keyword-only searches entirely.
+        if retrieval_strategy == RetrievalStrategy.KEYWORD and expand_query:
+            if ctx:
+                ctx.logger.warning(
+                    "[SearchFactory] Query expansion disabled for keyword-only search. "
+                    "Expansion only benefits neural/hybrid retrieval strategies."
+                )
+            expand_query = False
         interpret_filters = (
             search_request.interpret_filters
             if search_request.interpret_filters is not None
