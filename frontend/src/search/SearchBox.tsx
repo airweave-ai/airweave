@@ -853,8 +853,8 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                                     searchMethod === "keyword"
                                                         ? "text-muted-foreground/50 cursor-not-allowed"
                                                         : toggles.queryExpansion
-                                                            ? "text-primary hover:bg-primary/10"
-                                                            : "text-foreground hover:bg-muted"
+                                                        ? "text-primary hover:bg-primary/10"
+                                                        : "text-foreground hover:bg-muted"
                                                 )}
                                             >
                                                 <FiLayers className="h-4 w-4" strokeWidth={1.5} />
@@ -875,7 +875,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                                     Not available with keyword search. Switch to hybrid or neural to use query expansion.
                                                 </p>
                                             ) : (
-                                                <p className={DESIGN_SYSTEM.tooltip.description}>Generates similar versions of your query to improve recall.</p>
+                                            <p className={DESIGN_SYSTEM.tooltip.description}>Generates similar versions of your query to improve recall.</p>
                                             )}
                                             <div className={DESIGN_SYSTEM.tooltip.divider}>
                                                 <a

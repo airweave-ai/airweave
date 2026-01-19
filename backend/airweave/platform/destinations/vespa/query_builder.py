@@ -176,7 +176,7 @@ class QueryBuilder:
         if sparse_embeddings and retrieval_strategy in ("keyword", "hybrid"):
             sparse_tensor = self._convert_sparse_query_to_tensor(sparse_embeddings[0])
             if sparse_tensor:
-                query_params["ranking.features.query(q_sparse)"] = sparse_tensor
+                query_params["input.query(q_sparse)"] = sparse_tensor
 
         return query_params
 
@@ -187,7 +187,8 @@ class QueryBuilder:
             sparse_emb: FastEmbed SparseEmbedding with indices and values
 
         Returns:
-            Vespa tensor format: {"cells": [{"address": {"token": "123"}, "value": 0.5}, ...]}
+            Vespa tensor format: {"cells": {"token_id": weight, ...}}
+            Note: Uses object format (not array) to match Vespa's mapped tensor expectations
         """
         try:
             if hasattr(sparse_emb, "indices") and hasattr(sparse_emb, "values"):
@@ -199,12 +200,19 @@ class QueryBuilder:
             else:
                 return None
 
+            # Convert numpy arrays to Python lists if needed
+            if hasattr(indices, "tolist"):
+                indices = indices.tolist()
+            if hasattr(values, "tolist"):
+                values = values.tolist()
+
             if not indices or not values:
                 return None
 
-            cells = []
+            # Build cells as object format: {"token_id": weight, ...}
+            cells = {}
             for idx, val in zip(indices, values, strict=False):
-                cells.append({"address": {"token": str(idx)}, "value": float(val)})
+                cells[str(idx)] = float(val)
 
             return {"cells": cells}
         except Exception:

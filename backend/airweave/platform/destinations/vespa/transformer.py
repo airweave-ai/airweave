@@ -293,8 +293,8 @@ class EntityTransformer:
         """Convert FastEmbed SparseEmbedding to Vespa mapped tensor format.
 
         FastEmbed SparseEmbedding has:
-        - indices: List[int] - token IDs
-        - values: List[float] - token weights
+        - indices: numpy.ndarray[int] - token IDs
+        - values: numpy.ndarray[float] - token weights
 
         Vespa mapped tensor format:
         - {"cells": [{"address": {"token": "123"}, "value": 0.5}, ...]}
@@ -316,6 +316,13 @@ class EntityTransformer:
                 )
                 return None
 
+            # Convert numpy arrays to Python lists (FastEmbed returns numpy arrays)
+            if hasattr(indices, "tolist"):
+                indices = indices.tolist()
+            if hasattr(values, "tolist"):
+                values = values.tolist()
+
+            # Check for empty after conversion
             if not indices or not values:
                 return None
 
@@ -335,7 +342,9 @@ class EntityTransformer:
     def _add_payload_field(self, fields: Dict[str, Any], entity: BaseEntity) -> None:
         """Extract extra fields into payload JSON."""
         schema_fields = _get_schema_fields_for_entity(entity)
-        entity_dict = entity.model_dump(mode="json")
+        # Exclude airweave_system_metadata from dump to avoid serializing numpy arrays
+        # (sparse_embedding contains FastEmbed SparseEmbedding with numpy arrays)
+        entity_dict = entity.model_dump(mode="json", exclude={"airweave_system_metadata"})
         payload = {k: v for k, v in entity_dict.items() if k not in schema_fields}
         if payload:
             fields["payload"] = json.dumps(payload)
