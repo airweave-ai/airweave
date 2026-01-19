@@ -971,13 +971,17 @@ class QdrantDestination(VectorDBDestination):
                 sparse_vector.as_object() if hasattr(sparse_vector, "as_object") else sparse_vector
             )
 
-            prefetch_limit = 5000
+            # Prefetch limit controls how many candidates each neural/sparse branch fetches
+            # before RRF fusion. Trade-off: higher = better recall, lower = less memory.
+            # 5000 was causing OOM with expand_query (5 queries × 5000 × 2 = 50K vectors).
+            # 1000 provides good recall while staying under memory limits.
+            prefetch_limit = 1000
             if decay_config is not None:
                 try:
                     weight = max(0.0, min(1.0, float(getattr(decay_config, "weight", 0.0) or 0.0)))
                     if weight > 0.3:
-                        # Allow up to 10K for high temporal weight
-                        prefetch_limit = int(5000 * (1 + weight))
+                        # Allow up to 2K for high temporal weight
+                        prefetch_limit = int(1000 * (1 + weight))
                 except Exception:
                     pass
 

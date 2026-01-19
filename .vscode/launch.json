@@ -8,21 +8,40 @@
             "module": "uvicorn",
             "args": [
                 "--reload",
-                "--reload-exclude",
-                "local_storage/**",
-                "--reload-exclude",
-                "**/local_storage/**",
+                "--reload-dir",
+                "airweave",
                 "--host",
                 "127.0.0.1",
                 "--port",
                 "8001",
-                "--workers",
-                "4",
                 "airweave.main:app"
             ],
             "cwd": "${workspaceFolder}/backend",
             "console": "integratedTerminal",
             "consoleName": "⚡ FastAPI Backend",
+            "jinja": true,
+            "justMyCode": true,
+            "envFile": "${workspaceFolder}/.env",
+            "env": {
+                "LOCAL_DEVELOPMENT": "true",
+                "PYTHONPATH": "${workspaceFolder}/backend"
+            }
+        },
+        {
+            "name": "FastAPI (no reload)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": [
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "8001",
+                "airweave.main:app"
+            ],
+            "cwd": "${workspaceFolder}/backend",
+            "console": "integratedTerminal",
+            "consoleName": "⚡ FastAPI Backend (Stable)",
             "jinja": true,
             "justMyCode": true,
             "envFile": "${workspaceFolder}/.env",
@@ -153,6 +172,15 @@
                 "FastAPI",
                 "Temporal Worker (hot reload)",
                 "Attach to Worker"
+            ],
+            "stopAll": true,
+            "preLaunchTask": "start-dev-stack"
+        },
+        {
+            "name": "Stable Stack (no reload)",
+            "configurations": [
+                "FastAPI (no reload)",
+                "Temporal Worker"
             ],
             "stopAll": true,
             "preLaunchTask": "start-dev-stack"
