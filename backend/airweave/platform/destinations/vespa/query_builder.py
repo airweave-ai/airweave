@@ -121,6 +121,7 @@ class QueryBuilder:
         limit: int,
         offset: int,
         dense_embeddings: Optional[List[List[float]]],
+        sparse_embeddings: Optional[List[Any]] = None,
         retrieval_strategy: str = "hybrid",
     ) -> Dict[str, Any]:
         """Build Vespa query parameters with pre-computed embeddings.
@@ -133,6 +134,7 @@ class QueryBuilder:
             limit: Maximum number of results
             offset: Results to skip (pagination) - passed to Vespa for server-side pagination
             dense_embeddings: Pre-computed 3072-dim embeddings (one per query), None for keyword
+            sparse_embeddings: Pre-computed FastEmbed sparse embeddings for keyword scoring
             retrieval_strategy: Search strategy - "hybrid", "neural", or "keyword"
 
         Returns:
@@ -159,7 +161,7 @@ class QueryBuilder:
             "ranking.globalPhase.rerankCount": global_phase_rerank,
         }
 
-        # Add embeddings only if provided (not needed for keyword-only search)
+        # Add dense embeddings (for neural/hybrid search)
         if dense_embeddings:
             # Primary embedding for ranking
             query_params["ranking.features.query(query_embedding)"] = {
@@ -170,7 +172,43 @@ class QueryBuilder:
             for i, dense_emb in enumerate(dense_embeddings):
                 query_params[f"input.query(q{i})"] = {"values": dense_emb}
 
+        # Add sparse embedding for keyword scoring (for keyword/hybrid search)
+        if sparse_embeddings and retrieval_strategy in ("keyword", "hybrid"):
+            sparse_tensor = self._convert_sparse_query_to_tensor(sparse_embeddings[0])
+            if sparse_tensor:
+                query_params["ranking.features.query(q_sparse)"] = sparse_tensor
+
         return query_params
+
+    def _convert_sparse_query_to_tensor(self, sparse_emb: Any) -> Optional[Dict[str, Any]]:
+        """Convert FastEmbed sparse embedding to Vespa query tensor format.
+
+        Args:
+            sparse_emb: FastEmbed SparseEmbedding with indices and values
+
+        Returns:
+            Vespa tensor format: {"cells": [{"address": {"token": "123"}, "value": 0.5}, ...]}
+        """
+        try:
+            if hasattr(sparse_emb, "indices") and hasattr(sparse_emb, "values"):
+                indices = sparse_emb.indices
+                values = sparse_emb.values
+            elif isinstance(sparse_emb, dict):
+                indices = sparse_emb.get("indices", [])
+                values = sparse_emb.get("values", [])
+            else:
+                return None
+
+            if not indices or not values:
+                return None
+
+            cells = []
+            for idx, val in zip(indices, values, strict=False):
+                cells.append({"address": {"token": str(idx)}, "value": float(val)})
+
+            return {"cells": cells}
+        except Exception:
+            return None
 
     def _get_ranking_profile(self, retrieval_strategy: str) -> str:
         """Get the Vespa ranking profile for the retrieval strategy.

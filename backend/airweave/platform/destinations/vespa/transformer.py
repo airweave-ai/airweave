@@ -249,8 +249,9 @@ class EntityTransformer:
 
         ChunkEmbedProcessor populates each chunk entity with:
         - airweave_system_metadata.dense_embedding: 3072-dim float32 embedding
+        - airweave_system_metadata.sparse_embedding: FastEmbed BM25 sparse vector
 
-        Vespa auto-converts float32 to bfloat16 for storage.
+        Vespa auto-converts float32 to bfloat16 for dense embedding storage.
         """
         meta = entity.airweave_system_metadata
         if meta is None:
@@ -259,6 +260,7 @@ class EntityTransformer:
             )
             return
 
+        # Dense embedding (3072-dim for neural search)
         dense_emb = meta.dense_embedding
         if dense_emb is not None and isinstance(dense_emb, list) and len(dense_emb) > 0:
             fields["dense_embedding"] = {"values": dense_emb}
@@ -269,6 +271,66 @@ class EntityTransformer:
             self._logger.warning(
                 f"[EntityTransformer] Entity {entity.entity_id}: No valid dense_embedding"
             )
+
+        # Sparse embedding (FastEmbed BM25 for keyword scoring)
+        sparse_emb = meta.sparse_embedding
+        if sparse_emb is not None:
+            sparse_tensor = self._convert_sparse_to_vespa_tensor(sparse_emb, entity.entity_id)
+            if sparse_tensor:
+                fields["sparse_embedding"] = sparse_tensor
+                self._logger.debug(
+                    f"[EntityTransformer] Added sparse_embedding with "
+                    f"{len(sparse_tensor.get('cells', []))} tokens"
+                )
+        else:
+            self._logger.warning(
+                f"[EntityTransformer] Entity {entity.entity_id}: No sparse_embedding"
+            )
+
+    def _convert_sparse_to_vespa_tensor(
+        self, sparse_emb: Any, entity_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Convert FastEmbed SparseEmbedding to Vespa mapped tensor format.
+
+        FastEmbed SparseEmbedding has:
+        - indices: List[int] - token IDs
+        - values: List[float] - token weights
+
+        Vespa mapped tensor format:
+        - {"cells": [{"address": {"token": "123"}, "value": 0.5}, ...]}
+
+        We use token IDs as strings since we don't need actual token text.
+        This works because Vespa just needs consistent keys for matching.
+        """
+        try:
+            # Get indices and values from sparse embedding
+            if hasattr(sparse_emb, "indices") and hasattr(sparse_emb, "values"):
+                indices = sparse_emb.indices
+                values = sparse_emb.values
+            elif isinstance(sparse_emb, dict):
+                indices = sparse_emb.get("indices", [])
+                values = sparse_emb.get("values", [])
+            else:
+                self._logger.warning(
+                    f"[EntityTransformer] Entity {entity_id}: Unknown sparse embedding format"
+                )
+                return None
+
+            if not indices or not values:
+                return None
+
+            # Convert to Vespa cells format
+            cells = []
+            for idx, val in zip(indices, values, strict=False):
+                cells.append({"address": {"token": str(idx)}, "value": float(val)})
+
+            return {"cells": cells}
+
+        except Exception as e:
+            self._logger.warning(
+                f"[EntityTransformer] Failed to convert sparse embedding for {entity_id}: {e}"
+            )
+            return None
 
     def _add_payload_field(self, fields: Dict[str, Any], entity: BaseEntity) -> None:
         """Extract extra fields into payload JSON."""

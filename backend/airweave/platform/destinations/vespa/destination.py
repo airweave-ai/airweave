@@ -56,7 +56,7 @@ class VespaDestination(VectorDBDestination):
 
     from airweave.platform.sync.pipeline import ProcessingRequirement
 
-    processing_requirement = ProcessingRequirement.CHUNKS_AND_EMBEDDINGS_DENSE_ONLY
+    processing_requirement = ProcessingRequirement.CHUNKS_AND_EMBEDDINGS
 
     def __init__(self, soft_fail: bool = False):
         """Initialize the Vespa destination.
@@ -251,9 +251,9 @@ class VespaDestination(VectorDBDestination):
             limit: Maximum number of results
             offset: Results to skip (pagination)
             filter: Optional filter dict
-            dense_embeddings: Pre-computed embeddings
-            sparse_embeddings: Ignored (Vespa handles BM25 server-side)
-            retrieval_strategy: Search strategy (currently always hybrid)
+            dense_embeddings: Pre-computed dense embeddings for neural/hybrid search
+            sparse_embeddings: Pre-computed sparse embeddings for keyword scoring
+            retrieval_strategy: Search strategy - "hybrid", "neural", or "keyword"
             temporal_config: Ignored (not yet supported)
 
         Returns:
@@ -269,13 +269,11 @@ class VespaDestination(VectorDBDestination):
 
         self.logger.debug(
             f"[VespaSearch] Executing search: query='{primary_query[:50]}...', "
-            f"num_queries={len(queries)}, limit={limit}"
+            f"num_queries={len(queries)}, limit={limit}, strategy={retrieval_strategy}"
         )
 
         # Validate embeddings based on retrieval strategy
-        # Keyword-only uses BM25 server-side, no embeddings needed
-        # Neural/hybrid requires dense embeddings
-        if retrieval_strategy != "keyword":
+        if retrieval_strategy == "neural" or retrieval_strategy == "hybrid":
             if not dense_embeddings:
                 raise ValueError(
                     "Vespa requires pre-computed dense embeddings for neural/hybrid search. "
@@ -283,8 +281,15 @@ class VespaDestination(VectorDBDestination):
                 )
             if len(dense_embeddings) != len(queries):
                 raise ValueError(
-                    f"Embedding count ({len(dense_embeddings)}) does not match "
+                    f"Dense embedding count ({len(dense_embeddings)}) does not match "
                     f"query count ({len(queries)}). Each query needs an embedding."
+                )
+
+        if retrieval_strategy == "keyword" or retrieval_strategy == "hybrid":
+            if not sparse_embeddings:
+                raise ValueError(
+                    "Vespa requires pre-computed sparse embeddings for keyword/hybrid search. "
+                    "Ensure EmbedQuery operation ran before Retrieval."
                 )
 
         # Build YQL and params
@@ -292,7 +297,7 @@ class VespaDestination(VectorDBDestination):
             queries, airweave_collection_id, filter, retrieval_strategy
         )
         query_params = self._query_builder.build_params(
-            queries, limit, offset, dense_embeddings, retrieval_strategy
+            queries, limit, offset, dense_embeddings, sparse_embeddings, retrieval_strategy
         )
         query_params["yql"] = yql
 
