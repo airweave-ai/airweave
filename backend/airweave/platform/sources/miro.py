@@ -217,12 +217,15 @@ class MiroSource(BaseSource):
 
         return False  # Unchanged
 
-    def _store_file_metadata(self, item_id: str, modified_at: Optional[datetime]) -> None:
+    def _store_file_metadata(
+        self, item_id: str, modified_at: Optional[datetime], filename: Optional[str] = None
+    ) -> None:
         """Store file metadata in cursor for future change detection.
 
         Args:
             item_id: Unique identifier for the file item
             modified_at: Modified timestamp from API
+            filename: Extracted filename (for unchanged file retrieval)
         """
         if not self.cursor:
             return
@@ -234,7 +237,29 @@ class MiroSource(BaseSource):
         file_metadata[item_id] = {
             "modified_at": modified_at.isoformat(),
         }
+        if filename:
+            file_metadata[item_id]["filename"] = filename
         self.cursor.update(file_metadata=file_metadata)
+
+    def _get_stored_filename(self, item_id: str) -> Optional[str]:
+        """Get stored filename from cursor for unchanged files.
+
+        Args:
+            item_id: Unique identifier for the file item
+
+        Returns:
+            Stored filename or None if not found
+        """
+        if not self.cursor:
+            return None
+
+        file_metadata = self.cursor.data.get("file_metadata", {})
+        stored_meta = file_metadata.get(item_id)
+
+        if not stored_meta:
+            return None
+
+        return stored_meta.get("filename")
 
     @staticmethod
     def _strip_html(text: Optional[str]) -> str:
@@ -721,10 +746,13 @@ class MiroSource(BaseSource):
                 created_at = self._parse_datetime(item.get("createdAt"))
                 modified_at = self._parse_datetime(item.get("modifiedAt"))
 
-                # Skip if file hasn't changed since last sync
-                if not self._has_file_changed(item["id"], modified_at):
-                    self.logger.debug(f"Skipping unchanged document {item['id']}")
-                    continue
+                # Check if file has changed since last sync
+                file_changed = self._has_file_changed(item["id"], modified_at)
+                stored_filename = None
+                if not file_changed:
+                    # Get stored filename for unchanged files
+                    stored_filename = self._get_stored_filename(item["id"])
+                    self.logger.debug(f"Document {item['id']} unchanged, skipping download")
 
                 # Extract documentUrl from data object
                 document_url = data.get("documentUrl", "")
@@ -764,7 +792,8 @@ class MiroSource(BaseSource):
                     # Base entity fields
                     entity_id=item["id"],
                     breadcrumbs=item_breadcrumbs,
-                    name=None,  # Will be extracted from Content-Disposition header
+                    # Use stored filename for unchanged files, otherwise extract during download
+                    name=stored_filename,
                     # FileEntity fields
                     url=document_url,  # API URL with redirect=true
                     size=0,  # Size not provided by API
@@ -784,36 +813,42 @@ class MiroSource(BaseSource):
                     modified_by=item.get("modifiedBy"),
                 )
 
-                # Download file using downloader
-                # Auth token needed for initial request, API redirects to file
-                try:
-                    await self.file_downloader.download_from_url(
-                        entity=file_entity,
-                        http_client_factory=self.http_client,
-                        access_token_provider=self.get_access_token,
-                        logger=self.logger,
-                    )
-
-                    # Verify download succeeded
-                    if not file_entity.local_path:
-                        raise ValueError(
-                            f"Download failed - no local path set for document {item['id']}"
+                # Only download if file has changed
+                if file_changed:
+                    # Download file using downloader
+                    # Auth token needed for initial request, API redirects to file
+                    try:
+                        await self.file_downloader.download_from_url(
+                            entity=file_entity,
+                            http_client_factory=self.http_client,
+                            access_token_provider=self.get_access_token,
+                            logger=self.logger,
                         )
 
-                    yield file_entity
+                        # Verify download succeeded
+                        if not file_entity.local_path:
+                            raise ValueError(
+                                f"Download failed - no local path set for document {item['id']}"
+                            )
 
-                    # Store metadata for future change detection
-                    self._store_file_metadata(item["id"], modified_at)
+                        # Store metadata (including filename) for future change detection
+                        self._store_file_metadata(
+                            item["id"], modified_at, filename=file_entity.name
+                        )
 
-                except FileSkippedException as e:
-                    self.logger.debug(f"Skipping document {item['id']}: {e.reason}")
-                    continue
+                    except FileSkippedException as e:
+                        self.logger.debug(f"Skipping document {item['id']}: {e.reason}")
+                        continue
 
-                except Exception as e:
-                    self.logger.error(
-                        f"Failed to download document {item['id']} from board {board_id}: {e}"
-                    )
-                    # Continue with next document, don't fail entire sync
+                    except Exception as e:
+                        self.logger.error(
+                            f"Failed to download document {item['id']} from board {board_id}: {e}"
+                        )
+                        # Continue with next document, don't fail entire sync
+                        continue
+
+                # Always yield entity (even unchanged ones need to be "kept" in sync)
+                yield file_entity
 
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
@@ -851,10 +886,13 @@ class MiroSource(BaseSource):
                 created_at = self._parse_datetime(item.get("createdAt"))
                 modified_at = self._parse_datetime(item.get("modifiedAt"))
 
-                # Skip if file hasn't changed since last sync
-                if not self._has_file_changed(item["id"], modified_at):
-                    self.logger.debug(f"Skipping unchanged image {item['id']}")
-                    continue
+                # Check if file has changed since last sync
+                file_changed = self._has_file_changed(item["id"], modified_at)
+                stored_filename = None
+                if not file_changed:
+                    # Get stored filename for unchanged files
+                    stored_filename = self._get_stored_filename(item["id"])
+                    self.logger.debug(f"Image {item['id']} unchanged, skipping download")
 
                 # Extract imageUrl from data object
                 image_url = data.get("imageUrl", "")
@@ -898,7 +936,8 @@ class MiroSource(BaseSource):
                     # Base entity fields
                     entity_id=item["id"],
                     breadcrumbs=item_breadcrumbs,
-                    name=None,  # Will be extracted from Content-Disposition header
+                    # Use stored filename for unchanged files, otherwise extract during download
+                    name=stored_filename,
                     # FileEntity fields
                     url=image_url,  # API URL with format=original&redirect=true
                     size=0,  # Size not provided by API
@@ -918,36 +957,42 @@ class MiroSource(BaseSource):
                     modified_by=item.get("modifiedBy"),
                 )
 
-                # Download file using downloader
-                # Auth token needed for initial request, API redirects to file
-                try:
-                    await self.file_downloader.download_from_url(
-                        entity=file_entity,
-                        http_client_factory=self.http_client,
-                        access_token_provider=self.get_access_token,
-                        logger=self.logger,
-                    )
-
-                    # Verify download succeeded
-                    if not file_entity.local_path:
-                        raise ValueError(
-                            f"Download failed - no local path set for image {item['id']}"
+                # Only download if file has changed
+                if file_changed:
+                    # Download file using downloader
+                    # Auth token needed for initial request, API redirects to file
+                    try:
+                        await self.file_downloader.download_from_url(
+                            entity=file_entity,
+                            http_client_factory=self.http_client,
+                            access_token_provider=self.get_access_token,
+                            logger=self.logger,
                         )
 
-                    yield file_entity
+                        # Verify download succeeded
+                        if not file_entity.local_path:
+                            raise ValueError(
+                                f"Download failed - no local path set for image {item['id']}"
+                            )
 
-                    # Store metadata for future change detection
-                    self._store_file_metadata(item["id"], modified_at)
+                        # Store metadata (including filename) for future change detection
+                        self._store_file_metadata(
+                            item["id"], modified_at, filename=file_entity.name
+                        )
 
-                except FileSkippedException as e:
-                    self.logger.debug(f"Skipping image {item['id']}: {e.reason}")
-                    continue
+                    except FileSkippedException as e:
+                        self.logger.debug(f"Skipping image {item['id']}: {e.reason}")
+                        continue
 
-                except Exception as e:
-                    self.logger.error(
-                        f"Failed to download image {item['id']} from board {board_id}: {e}"
-                    )
-                    # Continue with next image, don't fail entire sync
+                    except Exception as e:
+                        self.logger.error(
+                            f"Failed to download image {item['id']} from board {board_id}: {e}"
+                        )
+                        # Continue with next image, don't fail entire sync
+                        continue
+
+                # Always yield entity (even unchanged ones need to be "kept" in sync)
+                yield file_entity
 
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
