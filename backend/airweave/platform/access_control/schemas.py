@@ -1,8 +1,54 @@
 """Access control schemas (Pydantic models)."""
 
+from enum import Enum
 from typing import List, Optional, Set
 
 from pydantic import BaseModel, Field
+
+
+class ACLChangeType(str, Enum):
+    """Type of ACL change for incremental sync."""
+
+    ADD = "add"  # Membership added
+    REMOVE = "remove"  # Membership removed
+    DELETE_USER = "delete_user"  # User deleted from AD
+    DELETE_GROUP = "delete_group"  # Group deleted from AD
+
+
+class MembershipChange(BaseModel):
+    """Represents a single membership change for incremental ACL sync.
+
+    Used by sources that support continuous ACL sync (e.g., AD DirSync).
+    Unlike MembershipTuple which represents state, this represents a change event.
+
+    Examples:
+    - User added to group: MembershipChange(
+        change_type=ACLChangeType.ADD,
+        member_id="john",
+        member_type="user",
+        group_id="ad:engineering",
+        group_name="Engineering"
+      )
+    - User removed from group: MembershipChange(
+        change_type=ACLChangeType.REMOVE,
+        member_id="john",
+        member_type="user",
+        group_id="ad:engineering"
+      )
+    - User deleted from AD: MembershipChange(
+        change_type=ACLChangeType.DELETE_USER,
+        member_id="john",
+        member_type="user"
+      )
+    """
+
+    change_type: ACLChangeType = Field(description="Type of change (add/remove/delete)")
+    member_id: str = Field(description="ID of the member affected")
+    member_type: str = Field(default="user", description="'user' or 'group'")
+    group_id: Optional[str] = Field(
+        default=None, description="Group ID (not set for delete_user/delete_group)"
+    )
+    group_name: Optional[str] = Field(default=None, description="Human-readable group name")
 
 
 class MembershipTuple(BaseModel):

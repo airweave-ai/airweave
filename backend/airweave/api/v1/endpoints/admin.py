@@ -11,7 +11,7 @@ from enum import Enum
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import Body, Depends, HTTPException, Query
+from fastapi import Body, Depends, HTTPException, Path, Query
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1320,6 +1320,189 @@ async def admin_search_collection_as_user(
     )
 
 
+@router.get(
+    "/collections/{readable_id}/user-principals",
+    response_model=List[str],
+    summary="Get resolved principals for a user in a collection",
+)
+async def admin_get_user_principals(
+    readable_id: str = Path(..., description="The readable ID of the collection"),
+    user_principal: str = Query(..., description="Username to resolve principals for"),
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+) -> List[str]:
+    """Admin-only: Get the resolved access principals for a user in a collection.
+
+    This endpoint returns all principals (user + group memberships) that would be
+    used for access control filtering when the user searches the collection.
+
+    Use this for:
+    - Verifying ACL sync correctness by checking principals before/after sync
+    - Debugging access control issues
+    - Testing incremental ACL sync (DirSync) by checking if new memberships appear
+
+    The principals are formatted as:
+    - "user:<username>" - direct user access
+    - "group:ad:<group_name>" - AD group membership
+    - "group:sp:<group_name>" - SharePoint group membership
+
+    Args:
+        readable_id: The readable ID of the collection
+        user_principal: Username to resolve principals for (e.g., "john" or "user00019")
+        db: Database session
+        ctx: API context
+
+    Returns:
+        List of principal strings the user has access to
+
+    Raises:
+        HTTPException: If not admin or collection not found
+    """
+    from airweave.platform.access_control.broker import access_broker
+
+    _require_admin_permission(ctx, FeatureFlagEnum.API_KEY_ADMIN_SYNC)
+
+    # Get collection
+    collection = await crud.collection.get_by_readable_id(db, readable_id=readable_id, ctx=ctx)
+
+    # Resolve access context for the user
+    access_context = await access_broker.resolve_access_context_for_collection(
+        db=db,
+        user_principal=user_principal,
+        readable_collection_id=readable_id,
+        organization_id=collection.organization_id,
+    )
+
+    if access_context is None:
+        # Collection has no access-control-enabled sources
+        return []
+
+    return list(access_context.all_principals)
+
+
+@router.get(
+    "/source-connections/{source_connection_id}/cursor",
+    response_model=dict,
+    summary="Get cursor state for a source connection",
+)
+async def admin_get_cursor(
+    source_connection_id: UUID = Path(..., description="The source connection UUID"),
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+) -> dict:
+    """Admin-only: Get the cursor state for a source connection.
+
+    The cursor contains incremental sync state like:
+    - site_collection_change_token: SharePoint change token for incremental entity sync
+    - acl_dirsync_cookie: AD DirSync cookie for incremental ACL sync
+    - Timestamps and counters for debugging
+
+    Args:
+        source_connection_id: The source connection UUID
+        db: Database session
+        ctx: API context
+
+    Returns:
+        Cursor data dictionary with sync state
+
+    Raises:
+        HTTPException: If not admin or source connection not found
+    """
+    from airweave.core.sync_cursor_service import sync_cursor_service
+    from airweave.models.source_connection import SourceConnection
+
+    _require_admin_permission(ctx, FeatureFlagEnum.API_KEY_ADMIN_SYNC)
+
+    # Get source connection (bypass org filtering for admin)
+    source_connection = await db.get(SourceConnection, source_connection_id)
+    if not source_connection:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Source connection {source_connection_id} not found",
+        )
+
+    if not source_connection.sync_id:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Source connection {source_connection_id} has no associated sync",
+        )
+
+    # Get cursor data
+    cursor_data = await sync_cursor_service.get_cursor_data(
+        db=db, sync_id=source_connection.sync_id, ctx=ctx
+    )
+
+    return {
+        "source_connection_id": str(source_connection_id),
+        "sync_id": str(source_connection.sync_id),
+        "cursor_data": cursor_data,
+    }
+
+
+@router.delete(
+    "/source-connections/{source_connection_id}/cursor",
+    summary="Delete cursor for a source connection (force full sync)",
+)
+async def admin_delete_cursor(
+    source_connection_id: UUID = Path(..., description="The source connection UUID"),
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+) -> dict:
+    """Admin-only: Delete the cursor for a source connection.
+
+    This forces the next sync to be a full sync instead of incremental.
+    Useful for testing or recovering from corrupted state.
+
+    Args:
+        source_connection_id: The source connection UUID
+        db: Database session
+        ctx: API context
+
+    Returns:
+        Success message
+
+    Raises:
+        HTTPException: If not admin or source connection not found
+    """
+    from airweave.core.sync_cursor_service import sync_cursor_service
+    from airweave.models.source_connection import SourceConnection
+
+    _require_admin_permission(ctx, FeatureFlagEnum.API_KEY_ADMIN_SYNC)
+
+    # Get source connection (bypass org filtering for admin)
+    source_connection = await db.get(SourceConnection, source_connection_id)
+    if not source_connection:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Source connection {source_connection_id} not found",
+        )
+
+    if not source_connection.sync_id:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Source connection {source_connection_id} has no associated sync",
+        )
+
+    # Delete cursor
+    deleted = await sync_cursor_service.delete_cursor(
+        db=db, sync_id=source_connection.sync_id, ctx=ctx
+    )
+
+    if deleted:
+        await db.commit()
+        return {
+            "message": "Cursor deleted successfully",
+            "source_connection_id": str(source_connection_id),
+            "sync_id": str(source_connection.sync_id),
+        }
+    else:
+        return {
+            "message": "No cursor found to delete",
+            "source_connection_id": str(source_connection_id),
+            "sync_id": str(source_connection.sync_id),
+        }
+
+
 @router.get("/syncs", response_model=List[AdminSyncInfo])
 async def admin_list_all_syncs(
     db: AsyncSession = Depends(deps.get_db),
@@ -1429,6 +1612,8 @@ async def admin_list_all_syncs(
     Raises:
         HTTPException: If not admin
     """
+    import time
+
     from sqlalchemy import func
     from sqlalchemy import select as sa_select
 
@@ -1439,8 +1624,6 @@ async def admin_list_all_syncs(
     from airweave.models.sync import Sync
     from airweave.models.sync_connection import SyncConnection
     from airweave.models.sync_job import SyncJob
-
-    import time
 
     _require_admin_permission(ctx, FeatureFlagEnum.API_KEY_ADMIN_SYNC)
 
@@ -1679,7 +1862,7 @@ async def admin_list_all_syncs(
 
         arf_count_tasks = [get_arf_count_safe(sync.id) for sync in syncs]
         arf_counts = await asyncio.gather(*arf_count_tasks)
-        arf_count_map = {sync.id: count for sync, count in zip(syncs, arf_counts)}
+        arf_count_map = {sync.id: count for sync, count in zip(syncs, arf_counts, strict=False)}
         timings["arf_counts"] = (time.monotonic() - arf_start) * 1000
     else:
         arf_count_map = {s.id: None for s in syncs}
@@ -1872,9 +2055,7 @@ async def _fetch_destination_counts(
         Tuple of (qdrant_count_map, vespa_count_map)
     """
     import asyncio
-    from uuid import UUID
 
-    from airweave.core.config import settings
     from airweave.platform.destinations.qdrant import QdrantDestination
     from airweave.platform.destinations.vespa import VespaDestination
 
@@ -2205,6 +2386,7 @@ async def admin_cancel_sync_by_id(
     """Admin-only: Cancel all pending/running jobs for a sync.
     This is a convenience endpoint that finds active jobs for a sync and cancels them.
     More practical than /sync-jobs/{job_id}/cancel when you know the sync ID.
+
     Args:
         sync_id: The sync ID whose jobs should be cancelled
         db: Database session
