@@ -64,8 +64,11 @@ class QueryBuilder:
         # Translate filter to YQL
         yql_filter = self._filter_translator.translate(filter)
 
+        # Get primary query to check for "match all" case
+        primary_query = queries[0] if queries else ""
+
         # Build retrieval clause based on strategy
-        retrieval_clause = self._build_retrieval_clause(queries, retrieval_strategy)
+        retrieval_clause = self._build_retrieval_clause(queries, retrieval_strategy, primary_query)
 
         # Base WHERE clause with collection filter and retrieval
         where_parts = [
@@ -82,16 +85,23 @@ class QueryBuilder:
         yql = f"select * from sources {all_schemas} where {' AND '.join(where_parts)}"
         return yql
 
-    def _build_retrieval_clause(self, queries: List[str], strategy: str) -> str:
+    def _build_retrieval_clause(
+        self, queries: List[str], strategy: str, primary_query: str = ""
+    ) -> str:
         """Build the retrieval clause based on strategy.
 
         Args:
             queries: List of search queries
             strategy: "hybrid", "neural", or "keyword"
+            primary_query: The primary query text, used to detect "match all" case
 
         Returns:
             YQL retrieval clause
         """
+        # Check for "match all" case: query is "*" or empty
+        # Vespa's userInput(@query) cannot parse "*" as a valid query term
+        is_match_all = not primary_query or primary_query.strip() in ("*", "")
+
         # Build nearestNeighbor operators for neural/hybrid
         nn_parts = []
         for i in range(len(queries)):
@@ -100,10 +110,14 @@ class QueryBuilder:
                 f'"hnsw.exploreAdditionalHits":{HNSW_EXPLORE_ADDITIONAL}}}'
                 f"nearestNeighbor(dense_embedding, q{i}))"
             )
-        nn_clause = " OR ".join(nn_parts)
+        nn_clause = " OR ".join(nn_parts) if nn_parts else "true"
 
-        # BM25 text search clause
-        bm25_clause = f"{{targetHits:{TARGET_HITS}}}userInput(@query)"
+        # BM25 text search clause - use "true" for match-all queries
+        if is_match_all:
+            # "true" matches all documents, useful when relying only on filters
+            bm25_clause = "true"
+        else:
+            bm25_clause = f"{{targetHits:{TARGET_HITS}}}userInput(@query)"
 
         if strategy == "neural":
             # Pure vector search only
@@ -113,6 +127,9 @@ class QueryBuilder:
             return bm25_clause
         else:
             # Default: hybrid - combine both
+            if is_match_all:
+                # For match-all, just use true (filters will do the work)
+                return "true"
             return f"({bm25_clause}) OR {nn_clause}"
 
     def build_params(
