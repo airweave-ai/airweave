@@ -509,7 +509,14 @@ class SourceContextBuilder:
             # Normal incremental sync - load cursor data
             cursor_data = await sync_cursor_service.get_cursor_data(db=db, sync_id=sync.id, ctx=ctx)
             if cursor_data:
+                # Debug: log keys loaded including ACL cookie status
+                acl_cookie = cursor_data.get("acl_dirsync_cookie", "")
                 logger.info(f"📊 Incremental sync: Using cursor data with {len(cursor_data)} keys")
+                logger.debug(
+                    f"📊 Cursor loaded: keys={list(cursor_data.keys())}, "
+                    f"has_acl_cookie={bool(acl_cookie)}, "
+                    f"acl_cookie_len={len(acl_cookie) if acl_cookie else 0}"
+                )
 
         return SyncCursor(
             sync_id=sync.id,

@@ -12,13 +12,27 @@ Access graph generation:
 - Requires AD credentials and server configuration
 - Expands SP groups → users/AD groups
 - Expands AD groups → users/nested groups via LDAP
+
+Continuous Sync:
+- Uses SharePoint GetChanges API (site collection level)
+- Tracks changes via change tokens (valid ~60 days)
+- Falls back to full sync when token expires
+
+Performance:
+- File downloads are parallelized (configurable concurrency)
+- Items are processed in batches to reduce memory pressure
 """
 
+import asyncio
 import json
+import time
+from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional, Union
 
 from airweave.platform.access_control.schemas import MembershipTuple
 from airweave.platform.configs.auth import SharePoint2019V2AuthConfig
+from airweave.platform.cursors.sharepoint2019v2 import SharePoint2019V2Cursor
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.sources._base import BaseSource
@@ -38,6 +52,25 @@ from airweave.platform.storage import FileSkippedException
 from airweave.platform.sync.exceptions import EntityProcessingError
 from airweave.schemas.source_connection import AuthenticationMethod
 
+# -------------------------------------------------------------------------
+# Configuration Constants
+# -------------------------------------------------------------------------
+
+# Maximum concurrent file downloads (balance between speed and SharePoint load)
+MAX_CONCURRENT_FILE_DOWNLOADS = 10
+
+# Batch size for collecting items before parallel processing
+# Larger batches = more parallelization, but more memory usage
+ITEM_BATCH_SIZE = 50
+
+
+@dataclass
+class PendingFileDownload:
+    """Holds a file entity pending download."""
+
+    entity: Any  # SharePoint2019V2FileEntity
+    site_url: str
+
 
 @source(
     name="SharePoint 2019 On-Premise V2",
@@ -46,7 +79,8 @@ from airweave.schemas.source_connection import AuthenticationMethod
     oauth_type=None,
     auth_config_class="SharePoint2019V2AuthConfig",
     config_class="SharePoint2019V2Config",
-    supports_continuous=False,
+    supports_continuous=True,  # Enable incremental sync via GetChanges API
+    cursor_class=SharePoint2019V2Cursor,  # Typed cursor for change token tracking
     supports_access_control=True,  # Enable access control sync
 )
 class SharePoint2019V2Source(BaseSource):
@@ -133,6 +167,17 @@ class SharePoint2019V2Source(BaseSource):
         # Track AD groups from item-level ACLs (populated during entity sync)
         # These are AD groups directly assigned to items, not via SP site groups
         instance._item_level_ad_groups: set = set()
+
+        # Test mode limits (optional - for quick testing)
+        instance._max_entities: Optional[int] = config.get("max_entities")
+        instance._max_memberships: Optional[int] = config.get("max_memberships")
+
+        if instance._max_entities:
+            instance.logger.info(f"🧪 TEST MODE: Limiting to {instance._max_entities} entities")
+        if instance._max_memberships:
+            instance.logger.info(
+                f"🧪 TEST MODE: Limiting to {instance._max_memberships} memberships"
+            )
 
         return instance
 
@@ -225,12 +270,214 @@ class SharePoint2019V2Source(BaseSource):
             self.logger.error(f"Failed to download file {entity.file_name}: {e}")
             raise EntityProcessingError(f"Failed to download file {entity.file_name}: {e}") from e
 
+    async def _download_files_parallel(
+        self,
+        pending_downloads: List[PendingFileDownload],
+        client,
+    ) -> List[BaseEntity]:
+        """Download multiple files in parallel with concurrency limit.
+
+        Args:
+            pending_downloads: List of PendingFileDownload with entity and site_url
+            client: httpx AsyncClient instance
+
+        Returns:
+            List of successfully downloaded file entities
+        """
+        if not pending_downloads:
+            return []
+
+        semaphore = asyncio.Semaphore(MAX_CONCURRENT_FILE_DOWNLOADS)
+        results: List[Optional[BaseEntity]] = []
+        start_time = time.monotonic()
+
+        async def download_with_semaphore(
+            pending: PendingFileDownload, index: int
+        ) -> Optional[BaseEntity]:
+            """Download a single file with semaphore control."""
+            async with semaphore:
+                try:
+                    entity = await self._download_and_save_file(
+                        pending.entity, client, pending.site_url
+                    )
+                    return entity
+                except FileSkippedException:
+                    self.logger.debug(f"Skipped file: {pending.entity.file_name}")
+                    return None
+                except EntityProcessingError as e:
+                    self.logger.warning(f"Failed to download file: {e}")
+                    return None
+
+        # Execute all downloads concurrently (limited by semaphore)
+        download_tasks = [
+            download_with_semaphore(pending, i) for i, pending in enumerate(pending_downloads)
+        ]
+        results = await asyncio.gather(*download_tasks)
+
+        # Filter out failed/skipped downloads
+        successful = [entity for entity in results if entity is not None]
+
+        elapsed = time.monotonic() - start_time
+        self.logger.info(
+            f"📥 Parallel download: {len(successful)}/{len(pending_downloads)} files "
+            f"in {elapsed:.2f}s ({MAX_CONCURRENT_FILE_DOWNLOADS} concurrent)"
+        )
+
+        return successful
+
+    async def _process_items_batch(
+        self,
+        items_batch: List[Dict[str, Any]],
+        site_url: str,
+        list_id: str,
+        breadcrumbs: List[Breadcrumb],
+        is_doc_lib: bool,
+        client,
+        ldap_client,
+    ) -> AsyncGenerator[BaseEntity, None]:
+        """Process a batch of items with parallel file downloads.
+
+        This method:
+        1. Separates file items from non-file items
+        2. Builds entities for all items (without downloading files)
+        3. Downloads all files in parallel
+        4. Yields all successfully processed entities
+
+        Args:
+            items_batch: List of item metadata dicts from SharePoint
+            site_url: Base URL of the site
+            list_id: GUID of the list containing these items
+            breadcrumbs: Parent breadcrumb trail
+            is_doc_lib: Whether this is a document library
+            client: httpx AsyncClient instance
+            ldap_client: LDAPClient for SID resolution
+
+        Yields:
+            Successfully processed entities
+        """
+        if not items_batch:
+            return
+
+        # Separate files from non-files and build entities
+        pending_files: List[PendingFileDownload] = []
+        non_file_entities: List[BaseEntity] = []
+
+        for item_meta in items_batch:
+            fs_obj_type: Optional[int] = item_meta.get("FileSystemObjectType")
+
+            if fs_obj_type is None:
+                item_id = item_meta.get("Id", "unknown")
+                self.logger.warning(f"Skipping item {item_id}: Missing FileSystemObjectType")
+                continue
+
+            # Skip folders
+            if fs_obj_type == 1:
+                continue
+
+            is_file = is_doc_lib and fs_obj_type == 0
+
+            if is_file:
+                try:
+                    file_entity = await build_file_entity(
+                        item_meta, site_url, list_id, breadcrumbs, ldap_client
+                    )
+                    pending_files.append(
+                        PendingFileDownload(
+                            entity=file_entity,
+                            site_url=site_url,
+                        )
+                    )
+                except EntityProcessingError as e:
+                    self.logger.warning(f"Skipping file entity build: {e}")
+            else:
+                try:
+                    item_entity = await build_item_entity(
+                        item_meta, site_url, list_id, breadcrumbs, ldap_client
+                    )
+                    non_file_entities.append(item_entity)
+                except EntityProcessingError as e:
+                    self.logger.warning(f"Skipping item: {e}")
+
+        # Yield non-file entities immediately (no download needed)
+        for entity in non_file_entities:
+            self._track_entity_ad_groups(entity)
+            yield entity
+
+        # Download files in parallel and yield
+        if pending_files:
+            downloaded_entities = await self._download_files_parallel(pending_files, client)
+            for entity in downloaded_entities:
+                self._track_entity_ad_groups(entity)
+                yield entity
+
     # -------------------------------------------------------------------------
-    # Entity Generation
+    # Entity Generation (with Incremental Sync Support)
     # -------------------------------------------------------------------------
 
+    def _should_do_full_sync(self) -> tuple[bool, str]:
+        """Determine if full sync is needed.
+
+        Returns:
+            Tuple of (should_full_sync, reason)
+        """
+        if not self.cursor:
+            return True, "No cursor available"
+
+        cursor_data = self.cursor.data
+        change_token = cursor_data.get("site_collection_change_token")
+
+        if not change_token:
+            return True, "No change token stored"
+
+        # Check token age (expire after 55 days to be safe)
+        last_sync = cursor_data.get("last_entity_sync_timestamp")
+        if last_sync:
+            try:
+                last_sync_dt = datetime.fromisoformat(last_sync.replace("Z", "+00:00"))
+                age_days = (datetime.now(last_sync_dt.tzinfo) - last_sync_dt).days
+                if age_days > 55:
+                    return True, f"Change token is {age_days} days old (max 60 days retention)"
+            except (ValueError, TypeError):
+                return True, "Invalid last_entity_sync_timestamp"
+
+        # Check if periodic full sync is needed (weekly for cleanup)
+        last_full = cursor_data.get("last_full_sync_timestamp")
+        if last_full:
+            try:
+                last_full_dt = datetime.fromisoformat(last_full.replace("Z", "+00:00"))
+                days_since_full = (datetime.now(last_full_dt.tzinfo) - last_full_dt).days
+                if days_since_full >= 7:
+                    return True, f"Periodic full sync needed ({days_since_full} days since last)"
+            except (ValueError, TypeError):
+                pass
+
+        return False, ""
+
     async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
-        """Generate all entities from SharePoint.
+        """Generate entities from SharePoint with incremental sync support.
+
+        Routing logic:
+        1. Check cursor for existing change token
+        2. If token valid: do incremental sync (fetch only changes)
+        3. If no token or expired: do full sync (fetch everything)
+        4. Update cursor with new token after sync
+
+        Yields:
+            BaseEntity instances (Site, List, Item, File)
+        """
+        should_full, reason = self._should_do_full_sync()
+
+        if should_full:
+            self.logger.info(f"🔄 FULL SYNC: {reason}")
+            async for entity in self._full_sync():
+                yield entity
+        else:
+            self.logger.info("⚡ INCREMENTAL SYNC: Using stored change token")
+            async for entity in self._incremental_sync():
+                yield entity
+
+    async def _full_sync(self) -> AsyncGenerator[BaseEntity, None]:
+        """Full sync: traverse entire site hierarchy.
 
         Traverses the site hierarchy:
         1. Fetch site metadata
@@ -238,7 +485,7 @@ class SharePoint2019V2Source(BaseSource):
         3. For each list, discover and process items/files
         4. Recursively discover subsites
 
-        Uses LDAP client for SID resolution in access control.
+        After sync completes, stores current change token for future incremental syncs.
 
         Yields:
             BaseEntity instances (Site, List, Item, File)
@@ -255,6 +502,18 @@ class SharePoint2019V2Source(BaseSource):
             logger=self.logger,
         )
 
+        entity_count = 0
+        limit_reached = False
+
+        def _check_limit() -> bool:
+            """Check if entity limit has been reached."""
+            if self._max_entities and entity_count >= self._max_entities:
+                self.logger.info(
+                    f"🧪 TEST MODE: Entity limit reached ({entity_count}/{self._max_entities})"
+                )
+                return True
+            return False
+
         try:
             async with self.http_client(verify=False) as client:
                 sp_client = self._create_client()
@@ -263,7 +522,7 @@ class SharePoint2019V2Source(BaseSource):
                 sites_to_process: List[tuple] = [(self._site_url, [])]
                 processed_sites: set = set()
 
-                while sites_to_process:
+                while sites_to_process and not limit_reached:
                     current_site_url, parent_breadcrumbs = sites_to_process.pop(0)
 
                     # Skip already processed sites
@@ -283,6 +542,11 @@ class SharePoint2019V2Source(BaseSource):
                         )
                         self._track_entity_ad_groups(site_entity)
                         yield site_entity
+                        entity_count += 1
+
+                        if _check_limit():
+                            limit_reached = True
+                            break
 
                         # Build breadcrumb for child entities
                         site_breadcrumb = Breadcrumb(
@@ -297,6 +561,9 @@ class SharePoint2019V2Source(BaseSource):
 
                     # Process lists in this site
                     async for list_meta in sp_client.discover_lists(client, current_site_url):
+                        if limit_reached:
+                            break
+
                         try:
                             list_entity = await build_list_entity(
                                 list_meta, current_site_url, current_site_breadcrumbs, ldap_client
@@ -306,6 +573,11 @@ class SharePoint2019V2Source(BaseSource):
                             )
                             self._track_entity_ad_groups(list_entity)
                             yield list_entity
+                            entity_count += 1
+
+                            if _check_limit():
+                                limit_reached = True
+                                break
 
                             # Build breadcrumb for items
                             list_breadcrumb = Breadcrumb(
@@ -315,30 +587,219 @@ class SharePoint2019V2Source(BaseSource):
                             )
                             list_breadcrumbs = current_site_breadcrumbs + [list_breadcrumb]
 
-                            # Process items in this list
+                            # Process items in this list (with batch parallelization)
                             is_doc_lib = list_entity.base_template == 101
+                            current_list_id = list_meta["Id"]
+                            items_batch: List[Dict[str, Any]] = []
+
                             async for item_meta in sp_client.discover_items(
-                                client, current_site_url, list_meta["Id"]
+                                client, current_site_url, current_list_id
                             ):
-                                async for entity in self._process_item(
-                                    item_meta,
+                                if limit_reached:
+                                    break
+
+                                items_batch.append(item_meta)
+
+                                # Process batch when full
+                                if len(items_batch) >= ITEM_BATCH_SIZE:
+                                    async for entity in self._process_items_batch(
+                                        items_batch,
+                                        current_site_url,
+                                        current_list_id,
+                                        list_breadcrumbs,
+                                        is_doc_lib,
+                                        client,
+                                        ldap_client,
+                                    ):
+                                        yield entity
+                                        entity_count += 1
+
+                                        if _check_limit():
+                                            limit_reached = True
+                                            break
+                                    items_batch = []
+
+                            # Process remaining items in final batch
+                            if items_batch and not limit_reached:
+                                async for entity in self._process_items_batch(
+                                    items_batch,
                                     current_site_url,
+                                    current_list_id,
                                     list_breadcrumbs,
                                     is_doc_lib,
                                     client,
                                     ldap_client,
                                 ):
                                     yield entity
+                                    entity_count += 1
+
+                                    if _check_limit():
+                                        limit_reached = True
+                                        break
 
                         except EntityProcessingError as e:
                             self.logger.warning(f"Skipping list: {e}")
                             continue
 
-                    # Discover subsites and add to queue
-                    async for subsite in sp_client.discover_subsites(client, current_site_url):
-                        subsite_url = subsite.get("Url", "").rstrip("/")
-                        if subsite_url:
-                            sites_to_process.append((subsite_url, current_site_breadcrumbs))
+                    # Discover subsites and add to queue (skip if limit reached)
+                    if not limit_reached:
+                        async for subsite in sp_client.discover_subsites(client, current_site_url):
+                            subsite_url = subsite.get("Url", "").rstrip("/")
+                            if subsite_url:
+                                sites_to_process.append((subsite_url, current_site_breadcrumbs))
+
+                # After full sync, get current change token for next incremental
+                if self.cursor:
+                    try:
+                        new_token = await sp_client.get_current_change_token(client, self._site_url)
+                        now = datetime.utcnow().isoformat() + "Z"
+                        self.cursor.update(
+                            site_collection_change_token=new_token,
+                            site_collection_url=self._site_url,
+                            last_entity_sync_timestamp=now,
+                            last_full_sync_timestamp=now,
+                            last_entity_changes_count=entity_count,
+                            total_entities_synced=entity_count,
+                            full_sync_required=False,
+                        )
+                        self.logger.info(
+                            f"📝 Stored change token for future incremental syncs "
+                            f"({entity_count} entities synced)"
+                        )
+                    except Exception as e:
+                        self.logger.warning(f"Failed to store change token: {e}")
+        finally:
+            ldap_client.close()
+
+    async def _incremental_sync(self) -> AsyncGenerator[BaseEntity, None]:
+        """Incremental sync: fetch only changed entities since last token.
+
+        Uses SharePoint GetChanges API at site collection level to retrieve:
+        - Added entities
+        - Updated entities
+        - Deleted entities (yielded as deletion markers)
+
+        Yields:
+            BaseEntity instances for changed items
+        """
+        from airweave.platform.sources.sharepoint2019v2.ldap import LDAPClient
+
+        cursor_data = self.cursor.data if self.cursor else {}
+        change_token = cursor_data.get("site_collection_change_token", "")
+
+        # Create LDAP client for SID resolution
+        ldap_client = LDAPClient(
+            server=self._ad_server,
+            username=self._ad_username,
+            password=self._ad_password,
+            domain=self._ad_domain,
+            search_base=self._ad_search_base,
+            logger=self.logger,
+        )
+
+        changes_count = 0
+        try:
+            async with self.http_client(verify=False) as client:
+                sp_client = self._create_client()
+
+                # Get changes since last token
+                changes, new_token = await sp_client.get_site_collection_changes(
+                    client,
+                    self._site_url,
+                    change_token=change_token,
+                    include_deletes=True,
+                )
+
+                self.logger.info(f"📊 Found {len(changes)} changes since last sync")
+
+                for change in changes:
+                    change_type = change.get("change_type")
+                    list_id = change.get("list_id")
+                    item_id = change.get("item_id")
+
+                    # Map change type codes: 1=Add, 2=Update, 3=Delete
+                    if change_type == 3:  # Delete
+                        # Yield deletion entity - orchestrator will handle removal from vector store
+                        if item_id and list_id:
+                            from airweave.platform.entities.sharepoint2019v2 import (
+                                SharePoint2019V2FileDeletionEntity,
+                                SharePoint2019V2ItemDeletionEntity,
+                            )
+
+                            # Determine if this was a file or item based on the list type
+                            # We need to check if the list is a document library
+                            list_meta = await sp_client.get_list_by_id(
+                                client, self._site_url, list_id
+                            )
+                            is_doc_lib = (
+                                list_meta.get("BaseTemplate") == 101 if list_meta else False
+                            )
+
+                            # Create the appropriate deletion entity
+                            # The sp_entity_id matches the format used during creation
+                            if is_doc_lib:
+                                deletion_entity = SharePoint2019V2FileDeletionEntity(
+                                    breadcrumbs=[],
+                                    list_id=list_id,
+                                    item_id=item_id,
+                                    sp_entity_id=f"sp2019v2:file:{list_id}:{item_id}",
+                                    label=f"Deleted file {item_id}",
+                                    deletion_status="removed",
+                                )
+                            else:
+                                deletion_entity = SharePoint2019V2ItemDeletionEntity(
+                                    breadcrumbs=[],
+                                    list_id=list_id,
+                                    item_id=item_id,
+                                    sp_entity_id=f"sp2019v2:item:{list_id}:{item_id}",
+                                    label=f"Deleted item {item_id}",
+                                    deletion_status="removed",
+                                )
+                            yield deletion_entity
+                            changes_count += 1
+                    else:  # Add (1) or Update (2)
+                        if item_id and list_id:
+                            try:
+                                # Fetch the changed item
+                                item_meta = await sp_client.get_item_by_id(
+                                    client, self._site_url, list_id, item_id
+                                )
+                                if item_meta:
+                                    # Determine if doc library item
+                                    list_meta = await sp_client.get_list_by_id(
+                                        client, self._site_url, list_id
+                                    )
+                                    is_doc_lib = (
+                                        list_meta.get("BaseTemplate") == 101 if list_meta else False
+                                    )
+
+                                    # Process item (yields file or item entity)
+                                    async for entity in self._process_item(
+                                        item_meta,
+                                        self._site_url,
+                                        list_id,
+                                        [],  # TODO: rebuild breadcrumbs
+                                        is_doc_lib,
+                                        client,
+                                        ldap_client,
+                                    ):
+                                        yield entity
+                                        changes_count += 1
+                            except Exception as e:
+                                self.logger.warning(
+                                    f"Failed to fetch changed item {list_id}/{item_id}: {e}"
+                                )
+
+                # Update cursor with new token
+                if self.cursor:
+                    now = datetime.utcnow().isoformat() + "Z"
+                    self.cursor.update(
+                        site_collection_change_token=new_token,
+                        last_entity_sync_timestamp=now,
+                        last_entity_changes_count=changes_count,
+                    )
+                    self.logger.info(f"📝 Updated change token ({changes_count} changes processed)")
+
         finally:
             ldap_client.close()
 
@@ -346,6 +807,7 @@ class SharePoint2019V2Source(BaseSource):
         self,
         item_meta: Dict[str, Any],
         site_url: str,
+        list_id: str,
         breadcrumbs: List[Breadcrumb],
         is_doc_lib: bool,
         client,
@@ -356,6 +818,7 @@ class SharePoint2019V2Source(BaseSource):
         Args:
             item_meta: Item metadata from SharePoint API
             site_url: Base URL of the site
+            list_id: GUID of the list containing this item
             breadcrumbs: Parent breadcrumb trail
             is_doc_lib: Whether this is a document library
             client: httpx AsyncClient instance
@@ -379,7 +842,9 @@ class SharePoint2019V2Source(BaseSource):
 
         if is_file:
             try:
-                file_entity = await build_file_entity(item_meta, site_url, breadcrumbs, ldap_client)
+                file_entity = await build_file_entity(
+                    item_meta, site_url, list_id, breadcrumbs, ldap_client
+                )
                 self.logger.debug(f"File entity: {json.dumps(file_entity, indent=2, default=str)}")
                 file_entity = await self._download_and_save_file(file_entity, client, site_url)
                 self._track_entity_ad_groups(file_entity)
@@ -391,7 +856,9 @@ class SharePoint2019V2Source(BaseSource):
                 return
         else:
             try:
-                item_entity = await build_item_entity(item_meta, site_url, breadcrumbs, ldap_client)
+                item_entity = await build_item_entity(
+                    item_meta, site_url, list_id, breadcrumbs, ldap_client
+                )
                 self.logger.debug(f"Item entity: {json.dumps(item_entity, indent=2, default=str)}")
                 self._track_entity_ad_groups(item_entity)
                 yield item_entity
@@ -545,9 +1012,20 @@ class SharePoint2019V2Source(BaseSource):
         """
         self.logger.info("Starting access control membership extraction")
         membership_count = 0
+        limit_reached = False
         ldap_client = self._create_ldap_client()
         # Track AD groups already expanded (to avoid duplicate work)
         expanded_ad_groups: set = set()
+
+        def _check_membership_limit() -> bool:
+            """Check if membership limit has been reached."""
+            if self._max_memberships and membership_count >= self._max_memberships:
+                self.logger.info(
+                    f"🧪 TEST MODE: Membership limit reached "
+                    f"({membership_count}/{self._max_memberships})"
+                )
+                return True
+            return False
 
         try:
             async with self.http_client(verify=False) as client:
@@ -555,6 +1033,9 @@ class SharePoint2019V2Source(BaseSource):
 
                 # Phase 1: Process SharePoint site groups
                 async for sp_group in sp_client.get_site_groups(client, self._site_url):
+                    if limit_reached:
+                        break
+
                     group_id = sp_group.get("Id")
                     group_title = sp_group.get("Title", "Unknown Group")
 
@@ -567,6 +1048,9 @@ class SharePoint2019V2Source(BaseSource):
                     async for member in sp_client.get_group_members(
                         client, self._site_url, group_id
                     ):
+                        if limit_reached:
+                            break
+
                         async for membership in self._process_sp_group_member(
                             member, sp_group_id, group_title, ldap_client
                         ):
@@ -576,12 +1060,20 @@ class SharePoint2019V2Source(BaseSource):
                             if membership.group_id.startswith("ad:"):
                                 expanded_ad_groups.add(membership.group_id)
 
+                            if _check_membership_limit():
+                                limit_reached = True
+                                break
+
             # Phase 2: Expand item-level AD groups that weren't in SP groups
-            async for membership in self._expand_item_level_ad_groups(
-                ldap_client, expanded_ad_groups
-            ):
-                yield membership
-                membership_count += 1
+            if not limit_reached:
+                async for membership in self._expand_item_level_ad_groups(
+                    ldap_client, expanded_ad_groups
+                ):
+                    yield membership
+                    membership_count += 1
+
+                    if _check_membership_limit():
+                        break
 
             self.logger.info(f"Access control extraction complete: {membership_count} memberships")
 
@@ -625,3 +1117,110 @@ class SharePoint2019V2Source(BaseSource):
             self.logger.debug(f"Expanding item-level AD group: {group_name}")
             async for membership in ldap_client.expand_group_recursive(login_name):
                 yield membership
+
+    # -------------------------------------------------------------------------
+    # Incremental ACL Sync (via AD DirSync)
+    # -------------------------------------------------------------------------
+
+    def _should_do_full_acl_sync(self) -> tuple[bool, str]:
+        """Determine if full ACL sync is needed.
+
+        Returns:
+            Tuple of (should_full_sync, reason)
+        """
+        if not self.cursor:
+            return True, "No cursor available"
+
+        cursor_data = self.cursor.data
+        dirsync_cookie = cursor_data.get("acl_dirsync_cookie", "")
+
+        if not dirsync_cookie:
+            return True, "No DirSync cookie stored"
+
+        # Check cookie age (expire after 55 days to be safe)
+        last_sync = cursor_data.get("last_acl_sync_timestamp", "")
+        if last_sync:
+            try:
+                from datetime import datetime
+
+                last_sync_dt = datetime.fromisoformat(last_sync.replace("Z", "+00:00"))
+                age_days = (datetime.now(last_sync_dt.tzinfo) - last_sync_dt).days
+                if age_days > 55:
+                    return True, f"DirSync cookie is {age_days} days old (max retention varies)"
+            except (ValueError, TypeError):
+                return True, "Invalid last_acl_sync_timestamp"
+
+        # Check if periodic full sync is needed (weekly for cleanup)
+        last_full = cursor_data.get("last_full_sync_timestamp", "")
+        if last_full:
+            try:
+                from datetime import datetime
+
+                last_full_dt = datetime.fromisoformat(last_full.replace("Z", "+00:00"))
+                days_since_full = (datetime.now(last_full_dt.tzinfo) - last_full_dt).days
+                if days_since_full >= 7:
+                    return True, f"Periodic full ACL sync ({days_since_full} days since last)"
+            except (ValueError, TypeError):
+                pass
+
+        return False, ""
+
+    async def get_acl_changes(
+        self,
+        dirsync_cookie: str = "",
+    ):
+        """Get ACL membership changes since last sync using AD DirSync.
+
+        This is the incremental ACL sync method. It uses the DirSync control
+        to efficiently fetch only the group membership changes since the last
+        sync (identified by the cookie).
+
+        For initial sync (no cookie), returns all current memberships as ADD changes.
+
+        Args:
+            dirsync_cookie: Base64-encoded cookie from previous sync (empty for first)
+
+        Returns:
+            DirSyncResult with list of MembershipChange objects and new cookie
+
+        Raises:
+            ValueError: If AD is not configured
+        """
+        from airweave.platform.sources.sharepoint2019v2.ldap import DirSyncResult, LDAPClient
+
+        if not self.has_ad_config:
+            raise ValueError(
+                "AD configuration required for incremental ACL sync. "
+                "Provide ad_username, ad_password, ad_domain, ad_server, ad_search_base."
+            )
+
+        # Late import to get the actual class for type checking
+        _ = DirSyncResult  # noqa: F841 - used for return type
+
+        ldap_client = LDAPClient(
+            server=self._ad_server,
+            username=self._ad_username,
+            password=self._ad_password,
+            domain=self._ad_domain,
+            search_base=self._ad_search_base,
+            logger=self.logger,
+        )
+
+        try:
+            result = await ldap_client.get_membership_changes(cookie_b64=dirsync_cookie)
+            ldap_client.log_cache_stats()
+            return result
+        finally:
+            ldap_client.close()
+
+    def supports_incremental_acl(self) -> bool:
+        """Check if this source supports incremental ACL sync.
+
+        Returns True if:
+        1. AD configuration is available
+        2. The source supports continuous sync
+
+        Returns:
+            True if incremental ACL sync is supported
+        """
+        return self.has_ad_config and getattr(self, "_supports_continuous", False)

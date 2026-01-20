@@ -4,22 +4,94 @@ This module provides LDAP connectivity to Active Directory for:
 - Expanding AD group memberships (group → users, group → nested groups)
 - Resolving AD principals to canonical identifiers
 - Resolving SIDs to sAMAccountNames for entity access control
+- Incremental membership sync via DirSync control
 
 Performance optimizations:
 - DN resolution caching: Avoids redundant LDAP lookups for the same Distinguished Names
 - Group expansion memoization: Caches fully-expanded group membership results
 - Automatic reconnection: Recovers from LDAP session timeouts
+
+DirSync support:
+- Uses LDAP_SERVER_DIRSYNC_OID (1.2.840.113556.1.4.841) for incremental sync
+- Tracks group membership changes with LDAP_DIRSYNC_INCREMENTAL_VALUES flag
+- Returns only added/removed members since last cookie
 """
 
+import base64
+import re
 import ssl
 import time
 from typing import Any, AsyncGenerator, Dict, List, Optional, Set, Tuple
 
 from ldap3 import BASE, SUBTREE, Connection, Server, Tls
 from ldap3.core.exceptions import LDAPSessionTerminatedByServerError, LDAPSocketOpenError
+from pyasn1.codec.ber import decoder as ber_decoder
+from pyasn1.type.univ import Sequence
 
-from airweave.platform.access_control.schemas import MembershipTuple
+from airweave.platform.access_control.schemas import (
+    ACLChangeType,
+    MembershipChange,
+    MembershipTuple,
+)
 from airweave.platform.sources.sharepoint2019v2.acl import extract_canonical_id
+
+# DirSync control constants
+LDAP_SERVER_DIRSYNC_OID = "1.2.840.113556.1.4.841"
+LDAP_SERVER_SHOW_DELETED_OID = "1.2.840.113556.1.4.417"
+
+# DirSync flags (can be combined with OR)
+LDAP_DIRSYNC_OBJECT_SECURITY = 0x00000001  # Return security info
+LDAP_DIRSYNC_ANCESTORS_FIRST_ORDER = 0x00000800  # Parents before children
+LDAP_DIRSYNC_PUBLIC_DATA_ONLY = 0x00002000  # Skip confidential attributes
+LDAP_DIRSYNC_INCREMENTAL_VALUES = 0x80000000  # Return only changed values (key for ACL!)
+
+# Flag combinations for different sync modes:
+# - INCREMENTAL_VALUES (0x80000000) returns only delta (added/removed members)
+#   This is preferred for ACL sync as it gives us true deltas
+# - flags=0 (default, same as .NET) returns full membership of changed groups
+# We use INCREMENTAL_VALUES as primary since it gives us true deltas for ACL sync
+DIRSYNC_FLAGS_FULL = LDAP_DIRSYNC_INCREMENTAL_VALUES  # Returns delta only (added/removed)
+DIRSYNC_FLAGS_BASIC = 0  # Fallback: returns full membership of changed groups
+
+
+class DirSyncPermissionError(Exception):
+    """Raised when DirSync control is rejected due to insufficient permissions."""
+
+    pass
+
+
+class DirSyncResult:
+    """Result of a DirSync query containing changes and new cookie.
+
+    Attributes:
+        changes: List of membership changes (ADDs for members, DELETE_GROUP for deleted)
+        new_cookie: Updated DirSync cookie for next incremental sync
+        modified_group_ids: Set of group IDs that were modified (for computing removals)
+        more_results: Whether more results are available (pagination)
+    """
+
+    def __init__(
+        self,
+        changes: List[MembershipChange],
+        new_cookie: bytes,
+        modified_group_ids: Optional[Set[str]] = None,
+        more_results: bool = False,
+    ):
+        """Initialize DirSync result with changes and cookie."""
+        self.changes = changes
+        self.new_cookie = new_cookie
+        self.modified_group_ids = modified_group_ids or set()
+        self.more_results = more_results
+
+    @property
+    def cookie_b64(self) -> str:
+        """Return cookie as base64 string for storage."""
+        return base64.b64encode(self.new_cookie).decode("ascii") if self.new_cookie else ""
+
+    @classmethod
+    def cookie_from_b64(cls, cookie_b64: str) -> bytes:
+        """Decode base64 cookie string to bytes."""
+        return base64.b64decode(cookie_b64) if cookie_b64 else b""
 
 
 class LDAPClient:
@@ -609,3 +681,719 @@ class LDAPClient:
             Tuple of (object_classes_list, sAMAccountName) or None
         """
         return self._query_member_cached(conn, member_dn)
+
+    # =========================================================================
+    # DirSync Support for Incremental ACL Sync
+    # =========================================================================
+
+    def _build_dirsync_control(
+        self,
+        cookie: bytes = b"",
+        flags: int = LDAP_DIRSYNC_INCREMENTAL_VALUES,
+        max_bytes: int = 1000000,
+    ) -> Tuple[str, bool, bytes]:
+        """Build a DirSync request control with correct BER encoding.
+
+        NOTE: We use manual BER encoding because both ldap3 and pyasn1 have bugs
+        that cause INCREMENTAL_VALUES (0x80000000) to be encoded incorrectly:
+
+        1. ldap3's dir_sync_control uses ctypes.c_long which is 8 bytes on 64-bit
+           systems (macOS, most Linux), so the signed conversion fails.
+
+        2. pyasn1 encodes large negative integers with unnecessary padding bytes
+           (e.g., -2147483648 becomes 5 bytes instead of 4).
+
+        AD expects the flags as a minimal 4-byte signed integer:
+        - 0x80000000 should be encoded as: 02 04 80 00 00 00
+        - NOT as 02 05 00 80 00 00 00 (unsigned, 5 bytes)
+        - NOT as 02 05 ff 80 00 00 00 (signed with padding, 5 bytes)
+
+        Args:
+            cookie: Previous sync cookie (empty for first sync)
+            flags: DirSync flags (default: INCREMENTAL_VALUES for ACL tracking)
+            max_bytes: Maximum bytes to return (server may limit further)
+
+        Returns:
+            Tuple of (OID, criticality, control_value_bytes) for ldap3
+        """
+        # Manually build the BER-encoded DirSync control value
+        # DirSyncRequestValue ::= SEQUENCE {
+        #     Flags      INTEGER,
+        #     MaxBytes   INTEGER,
+        #     Cookie     OCTET STRING
+        # }
+
+        def encode_ber_integer(value: int) -> bytes:
+            """Encode an integer using minimal BER encoding (signed)."""
+            if value == 0:
+                return bytes([0x02, 0x01, 0x00])
+
+            # Convert to signed 32-bit representation
+            if value < 0:
+                # For negative numbers, use 2's complement
+                value = value & 0xFFFFFFFF
+
+            # Convert to bytes (big-endian)
+            result = []
+            while value > 0 or (result and result[-1] & 0x80):
+                result.append(value & 0xFF)
+                value >>= 8
+            result.reverse()
+
+            # Handle sign: if high bit is set and we want negative, no padding needed
+            # If high bit is set and we want positive, add 0x00 padding
+            if flags & LDAP_DIRSYNC_INCREMENTAL_VALUES and len(result) == 4 and result[0] & 0x80:
+                # This is the INCREMENTAL_VALUES flag - keep as 4 bytes (minimal encoding)
+                pass
+            elif result and result[0] & 0x80 and value >= 0:
+                # Positive number with high bit set - add padding
+                result.insert(0, 0x00)
+
+            return bytes([0x02, len(result)]) + bytes(result)
+
+        # Encode flags (handle INCREMENTAL_VALUES specially for minimal encoding)
+        if flags & LDAP_DIRSYNC_INCREMENTAL_VALUES:
+            # Use exact 4-byte encoding: 02 04 80 00 00 00
+            flags_bytes = bytes([0x02, 0x04, 0x80, 0x00, 0x00, 0x00])
+        else:
+            flags_bytes = encode_ber_integer(flags)
+
+        # Encode max_bytes
+        maxbytes_bytes = encode_ber_integer(max_bytes)
+
+        # Encode cookie as OCTET STRING
+        cookie_len = len(cookie)
+        if cookie_len < 128:
+            cookie_bytes = bytes([0x04, cookie_len]) + cookie
+        else:
+            # Long form length encoding
+            len_bytes = []
+            temp = cookie_len
+            while temp > 0:
+                len_bytes.insert(0, temp & 0xFF)
+                temp >>= 8
+            cookie_bytes = bytes([0x04, 0x80 | len(len_bytes)]) + bytes(len_bytes) + cookie
+
+        # Wrap in SEQUENCE
+        content = flags_bytes + maxbytes_bytes + cookie_bytes
+        content_len = len(content)
+        if content_len < 128:
+            control_value = bytes([0x30, content_len]) + content
+        else:
+            len_bytes = []
+            temp = content_len
+            while temp > 0:
+                len_bytes.insert(0, temp & 0xFF)
+                temp >>= 8
+            control_value = bytes([0x30, 0x80 | len(len_bytes)]) + bytes(len_bytes) + content
+
+        return (LDAP_SERVER_DIRSYNC_OID, True, control_value)
+
+    def _parse_dirsync_response_control(self, controls) -> Tuple[bytes, bool]:
+        """Parse DirSync response control to extract new cookie.
+
+        Handles both formats returned by ldap3:
+        1. Dictionary format (when ldap3 can parse the control):
+           {'OID': {'value': {'more_results': bool, 'cookie': bytes}}}
+        2. List of tuples format (raw):
+           [(oid, criticality, value), ...]
+
+        Args:
+            controls: Response controls from LDAP operation (dict or list)
+
+        Returns:
+            Tuple of (new_cookie, more_results)
+        """
+        if not controls:
+            self.logger.warning("[DirSync] No response controls received from AD server")
+            return b"", False
+
+        # Handle dictionary format (ldap3 auto-parsed)
+        if isinstance(controls, dict):
+            self.logger.debug(f"[DirSync] Response controls (dict): {list(controls.keys())}")
+            if LDAP_SERVER_DIRSYNC_OID in controls:
+                ctrl_data = controls[LDAP_SERVER_DIRSYNC_OID]
+                if isinstance(ctrl_data, dict) and "value" in ctrl_data:
+                    value = ctrl_data["value"]
+                    if isinstance(value, dict):
+                        # ldap3 parsed it for us
+                        cookie = value.get("cookie", b"")
+                        more_results = value.get("more_results", False)
+                        self.logger.debug(
+                            f"[DirSync] Cookie extracted (auto-parsed): {len(cookie)} bytes, "
+                            f"more_results={more_results}"
+                        )
+                        return cookie, more_results
+
+        # Handle list of tuples format (raw controls)
+        if isinstance(controls, (list, tuple)):
+            self.logger.debug(f"[DirSync] Response controls (list): {len(controls)} controls")
+            for ctrl in controls:
+                if isinstance(ctrl, tuple) and len(ctrl) >= 3:
+                    oid, _criticality, value = ctrl[0], ctrl[1], ctrl[2]
+                    if oid == LDAP_SERVER_DIRSYNC_OID:
+                        # Decode the response value manually
+                        decoded, _ = ber_decoder.decode(value, asn1Spec=Sequence())
+                        more_results = int(decoded.getComponentByPosition(0)) != 0
+                        new_cookie = bytes(decoded.getComponentByPosition(2))
+                        self.logger.debug(
+                            f"[DirSync] Cookie extracted (raw): {len(new_cookie)} bytes, "
+                            f"more_results={more_results}"
+                        )
+                        return new_cookie, more_results
+
+        # No DirSync control found
+        self.logger.warning(
+            f"[DirSync] DirSync control OID ({LDAP_SERVER_DIRSYNC_OID}) not in response. "
+            "The AD user likely needs 'Replicating Directory Changes' permission on the domain NC."
+        )
+        return b"", False
+
+    async def get_membership_changes(
+        self,
+        cookie_b64: str = "",
+    ) -> DirSyncResult:
+        """Get group membership changes since last sync using DirSync.
+
+        Uses the LDAP_SERVER_DIRSYNC_OID control to efficiently retrieve
+        only the changes since the last sync (identified by cookie).
+
+        With LDAP_DIRSYNC_INCREMENTAL_VALUES flag, returns only:
+        - Added values: members added to groups
+        - Removed values: members removed from groups
+        - Deleted objects: groups/users deleted from AD
+
+        IMPORTANT: The sync account needs "Replicating Directory Changes"
+        permission on the domain NC root.
+
+        Args:
+            cookie_b64: Base64-encoded cookie from previous sync (empty for first sync)
+
+        Returns:
+            DirSyncResult with list of MembershipChange objects and new cookie
+        """
+        cookie = DirSyncResult.cookie_from_b64(cookie_b64)
+        is_initial = not cookie
+
+        self.logger.info(
+            f"🔄 DirSync ACL query: {'INITIAL (full)' if is_initial else 'INCREMENTAL'}"
+        )
+
+        changes: List[MembershipChange] = []
+        all_modified_group_ids: Set[str] = set()
+        new_cookie = cookie
+        more_results = True
+
+        # Keep querying until no more results (DirSync may paginate)
+        while more_results:
+            result = await self._execute_dirsync_query(new_cookie, is_initial)
+            changes.extend(result.changes)
+            all_modified_group_ids.update(result.modified_group_ids)
+            new_cookie = result.new_cookie
+            more_results = result.more_results
+
+            if more_results:
+                self.logger.debug(
+                    f"DirSync has more results, continuing (got {len(changes)} so far)"
+                )
+
+        self.logger.info(
+            f"✅ DirSync complete: {len(changes)} membership changes detected, "
+            f"{len(all_modified_group_ids)} groups modified"
+        )
+
+        return DirSyncResult(
+            changes=changes,
+            new_cookie=new_cookie,
+            modified_group_ids=all_modified_group_ids,
+            more_results=False,
+        )
+
+    async def _execute_dirsync_query(
+        self,
+        cookie: bytes,
+        is_initial: bool,
+        flags: Optional[int] = None,
+    ) -> DirSyncResult:
+        """Execute a single DirSync query with automatic flag fallback.
+
+        Tries INCREMENTAL_VALUES first (requires "Replicating Directory Changes All").
+        If that fails, falls back to PUBLIC_DATA_ONLY (only requires basic permission).
+
+        Args:
+            cookie: Current sync cookie
+            is_initial: Whether this is the initial (full) sync
+            flags: Optional specific flags to use (for retry with fallback)
+
+        Returns:
+            DirSyncResult with changes from this query page
+        """
+        # Track which flags to try
+        # INCREMENTAL_VALUES (FULL) gives us just the delta (added/removed members) - preferred
+        # flags=0 (BASIC) gives us all current members of changed groups - fallback
+        # We try INCREMENTAL_VALUES first since it's more efficient for ACL sync
+        flags_to_try = [DIRSYNC_FLAGS_FULL, DIRSYNC_FLAGS_BASIC] if flags is None else [flags]
+
+        # If we've already discovered which flags work, use those
+        if hasattr(self, "_dirsync_working_flags") and self._dirsync_working_flags is not None:
+            flags_to_try = [self._dirsync_working_flags]
+
+        last_error = None
+        for try_flags in flags_to_try:
+            try:
+                result = await self._execute_dirsync_query_with_flags(cookie, is_initial, try_flags)
+
+                # If successful, remember these flags for future queries
+                if not hasattr(self, "_dirsync_working_flags"):
+                    self._dirsync_working_flags = None
+                if self._dirsync_working_flags != try_flags:
+                    flag_name = (
+                        "INCREMENTAL_VALUES"
+                        if try_flags == DIRSYNC_FLAGS_FULL
+                        else "PUBLIC_DATA_ONLY"
+                    )
+                    self.logger.info(f"[DirSync] Using flags: {flag_name} (0x{try_flags:08x})")
+                    self._dirsync_working_flags = try_flags
+
+                return result
+
+            except DirSyncPermissionError as e:
+                last_error = e
+                flag_name = (
+                    "INCREMENTAL_VALUES" if try_flags == DIRSYNC_FLAGS_FULL else "PUBLIC_DATA_ONLY"
+                )
+                self.logger.warning(
+                    f"[DirSync] Flags {flag_name} not permitted, trying fallback..."
+                )
+                # Need to reconnect after failed critical control
+                await self.connect(force_reconnect=True)
+                continue
+
+        # All flag combinations failed
+        raise Exception(f"DirSync failed with all flag combinations: {last_error}")
+
+    async def _execute_dirsync_query_with_flags(
+        self,
+        cookie: bytes,
+        is_initial: bool,
+        flags: int,
+    ) -> DirSyncResult:
+        """Execute DirSync query with specific flags.
+
+        Args:
+            cookie: Current sync cookie
+            is_initial: Whether this is the initial (full) sync
+            flags: DirSync flags to use
+
+        Returns:
+            DirSyncResult with changes from this query page
+
+        Raises:
+            DirSyncPermissionError: If server rejects the control (permission issue)
+        """
+
+        async def query_func(conn: Connection) -> DirSyncResult:
+            self._stats["ldap_queries"] += 1
+
+            # Build DirSync control with specified flags
+            dirsync_control = self._build_dirsync_control(cookie=cookie, flags=flags)
+
+            # Also include show-deleted control to see tombstones
+            show_deleted_control = (LDAP_SERVER_SHOW_DELETED_OID, True, None)
+
+            # Query for group objects (where member attribute may have changed)
+            conn.search(
+                search_base=self.search_base,
+                search_filter="(objectClass=group)",
+                search_scope=SUBTREE,
+                attributes=[
+                    "sAMAccountName",
+                    "member",
+                    "isDeleted",
+                    "distinguishedName",
+                ],
+                controls=[dirsync_control, show_deleted_control],
+            )
+
+            # Debug: Log the full result structure to diagnose control issues
+            self.logger.debug(
+                f"[DirSync] LDAP result keys: {list(conn.result.keys()) if conn.result else 'None'}"
+            )
+            self.logger.debug(
+                f"[DirSync] LDAP result type: {conn.result.get('result', 'N/A')}, "
+                f"description: {conn.result.get('description', 'N/A')}"
+            )
+            self.logger.debug(f"[DirSync] Entries returned: {len(conn.entries)}")
+
+            # Check for permission error (unavailableCriticalExtension = 12)
+            result_code = conn.result.get("result", 0)
+            if result_code == 12:  # unavailableCriticalExtension
+                raise DirSyncPermissionError(
+                    f"DirSync control rejected (flags=0x{flags:08x}). "
+                    "This usually means missing 'Replicating Directory Changes All' permission."
+                )
+
+            # Get controls from the result
+            response_controls = conn.result.get("controls", [])
+
+            # Parse response control to get new cookie
+            new_cookie, more_results = self._parse_dirsync_response_control(response_controls)
+
+            # Process entries to extract membership changes
+            # Note: With PUBLIC_DATA_ONLY (no INCREMENTAL_VALUES), we get all current
+            # members of changed groups, not just the delta. We handle this the same
+            # way for now - the pipeline will deduplicate.
+            use_incremental_logic = flags == DIRSYNC_FLAGS_FULL
+            changes, modified_group_ids = self._process_dirsync_entries(
+                conn.entries, is_initial, incremental_mode=use_incremental_logic
+            )
+
+            return DirSyncResult(
+                changes=changes,
+                new_cookie=new_cookie,
+                modified_group_ids=modified_group_ids,
+                more_results=more_results,
+            )
+
+        return await self._execute_with_retry("dirsync_query", query_func)
+
+    def _process_dirsync_entries(
+        self,
+        entries: List[Any],
+        is_initial: bool,
+        incremental_mode: bool = True,
+    ) -> Tuple[List[MembershipChange], Set[str]]:
+        """Process DirSync entries to extract membership changes.
+
+        For initial sync: All members are treated as "add" operations
+        For incremental: Uses DirSync's incremental values (member;range=X-Y)
+
+        Args:
+            entries: LDAP entries from DirSync query
+            is_initial: Whether this is the initial (full) sync
+            incremental_mode: If True, we're using INCREMENTAL_VALUES flag (delta only).
+                            If False, we're using PUBLIC_DATA_ONLY (full membership).
+
+        Returns:
+            Tuple of (List of MembershipChange objects, Set of modified group IDs)
+            The modified_group_ids set is used by the pipeline to compute membership
+            removals by comparing against the database state.
+        """
+        changes: List[MembershipChange] = []
+        modified_group_ids: Set[str] = set()
+
+        mode_desc = "INCREMENTAL" if incremental_mode else "FULL_MEMBERSHIP"
+        self.logger.debug(
+            f"[DirSync] Processing {len(entries)} entries "
+            f"(is_initial={is_initial}, mode={mode_desc})"
+        )
+
+        for entry in entries:
+            # DEBUG: Log all available attributes on the entry
+            entry_attrs = []
+            if hasattr(entry, "entry_attributes"):
+                entry_attrs = list(entry.entry_attributes)
+            elif hasattr(entry, "__dict__"):
+                entry_attrs = [k for k in entry.__dict__.keys() if not k.startswith("_")]
+            self.logger.info(f"[DirSync DEBUG] Entry attributes available: {entry_attrs}")
+
+            # DEBUG: Log the raw entry for inspection
+            if hasattr(entry, "entry_dn"):
+                self.logger.info(f"[DirSync DEBUG] Entry DN: {entry.entry_dn}")
+            if hasattr(entry, "distinguishedName"):
+                self.logger.info(f"[DirSync DEBUG] distinguishedName: {entry.distinguishedName}")
+
+            # Get group identity
+            # In incremental DirSync mode, sAMAccountName may not be returned if it hasn't changed
+            # In that case, extract the CN (Common Name) from the DN as a fallback
+            group_name = self._get_entry_attr(entry, "sAMAccountName")
+            self.logger.info(
+                f"[DirSync DEBUG] sAMAccountName extracted: '{group_name}' "
+                f"(raw attr exists: {hasattr(entry, 'sAMAccountName')})"
+            )
+            if not group_name:
+                # Try to extract CN from the DN
+                dn = getattr(entry, "entry_dn", None)
+                if dn:
+                    # Parse DN to extract CN
+                    # e.g., "CN=group_name,CN=Users,DC=..." -> "group_name"
+                    cn_match = re.match(r"^CN=([^,]+)", dn, re.IGNORECASE)
+                    if cn_match:
+                        group_name = cn_match.group(1)
+                        # For deleted objects, AD appends "\0ADEL:<objectGUID>" to CN
+                        # The \0 is a null byte (or escaped as \0 in string repr)
+                        # Strip this suffix to get the original group name
+                        group_name = re.sub(
+                            r"(\x00|\\0)ADEL:[0-9a-f-]+$",
+                            "",
+                            group_name,
+                            flags=re.IGNORECASE,
+                        )
+                        self.logger.info(
+                            f"[DirSync DEBUG] Extracted group name from DN: '{group_name}'"
+                        )
+            if not group_name:
+                self.logger.warning(
+                    f"[DirSync DEBUG] Skipping entry - no sAMAccountName and "
+                    f"couldn't extract from DN! Entry type: {type(entry)}, "
+                    f"attrs: {entry_attrs}"
+                )
+                continue
+
+            group_name_lower = group_name.lower()
+            group_id = f"ad:{group_name_lower}"
+
+            # Check if group was deleted
+            is_deleted = self._get_entry_attr(entry, "isDeleted")
+            if is_deleted:
+                self.logger.debug(f"Group deleted: {group_name}")
+                changes.append(
+                    MembershipChange(
+                        change_type=ACLChangeType.DELETE_GROUP,
+                        member_id=group_id,
+                        member_type="group",
+                    )
+                )
+                continue
+
+            # Track this group as modified (for computing removals in pipeline)
+            # Only for non-deleted groups - deleted groups are handled by DELETE_GROUP
+            modified_group_ids.add(group_id)
+
+            # Get member attribute
+            # - With INCREMENTAL_VALUES: Only changed members (delta)
+            # - Without INCREMENTAL_VALUES: All current members of changed groups
+
+            # DEBUG: Log raw member attribute info
+            has_member_attr = hasattr(entry, "member")
+            self.logger.info(f"[DirSync DEBUG] Entry has 'member' attr: {has_member_attr}")
+            if has_member_attr:
+                raw_member = getattr(entry, "member", None)
+                self.logger.info(
+                    f"[DirSync DEBUG] Raw member attr type: {type(raw_member)}, value: {raw_member}"
+                )
+                if raw_member:
+                    if hasattr(raw_member, "values"):
+                        self.logger.info(
+                            f"[DirSync DEBUG] member.values: {list(raw_member.values)}"
+                        )
+                    if hasattr(raw_member, "value"):
+                        self.logger.info(f"[DirSync DEBUG] member.value: {raw_member.value}")
+
+            # Get added and removed members (separated by ranged attribute parsing)
+            # With INCREMENTAL_VALUES: range=0-X is REMOVED, range=(X+1)-* is ADDED
+            added_members, removed_members = self._get_entry_members(
+                entry, incremental_mode=(incremental_mode and not is_initial)
+            )
+            self.logger.info(
+                f"[DirSync DEBUG] _get_entry_members returned "
+                f"{len(added_members)} added, {len(removed_members)} removed"
+            )
+
+            total_members = len(added_members) + len(removed_members)
+            if total_members:
+                self.logger.debug(
+                    f"[DirSync] Group '{group_name}' has {total_members} member changes "
+                    f"({len(added_members)} added, {len(removed_members)} removed)"
+                )
+
+            # Process ADDED members
+            for member_dn in added_members:
+                member_info = self._resolve_member_dn_sync(member_dn)
+                if member_info:
+                    member_type, member_id = member_info
+                    changes.append(
+                        MembershipChange(
+                            change_type=ACLChangeType.ADD,
+                            member_id=member_id,
+                            member_type=member_type,
+                            group_id=group_id,
+                            group_name=group_name,
+                        )
+                    )
+
+            # Process REMOVED members (only in incremental mode)
+            for member_dn in removed_members:
+                member_info = self._resolve_member_dn_sync(member_dn)
+                if member_info:
+                    member_type, member_id = member_info
+                    changes.append(
+                        MembershipChange(
+                            change_type=ACLChangeType.REMOVE,
+                            member_id=member_id,
+                            member_type=member_type,
+                            group_id=group_id,
+                            group_name=group_name,
+                        )
+                    )
+
+        # DEBUG: Summary log
+        self.logger.info(
+            f"[DirSync DEBUG] Processing complete: {len(entries)} entries → "
+            f"{len(changes)} membership changes, {len(modified_group_ids)} modified groups"
+        )
+        if changes:
+            for i, c in enumerate(changes[:5]):  # Show first 5
+                self.logger.info(
+                    f"[DirSync DEBUG] Change {i + 1}: {c.change_type.name} "
+                    f"member={c.member_id} ({c.member_type}) → group={c.group_id}"
+                )
+            if len(changes) > 5:
+                self.logger.info(f"[DirSync DEBUG] ... and {len(changes) - 5} more changes")
+
+        return changes, modified_group_ids
+
+    def _get_entry_attr(self, entry: Any, attr_name: str) -> Optional[str]:
+        """Safely get an attribute value from an LDAP entry."""
+        if hasattr(entry, attr_name):
+            val = getattr(entry, attr_name)
+            if val:
+                return str(val.value) if hasattr(val, "value") else str(val)
+        return None
+
+    def _get_entry_members(
+        self, entry: Any, incremental_mode: bool = False
+    ) -> Tuple[List[str], List[str]]:
+        """Get member DNs from an LDAP entry (handles various attribute formats).
+
+        Handles both standard 'member' attribute and ranged 'member;range=X-Y' attributes
+        that AD returns for incremental DirSync operations.
+
+        IMPORTANT: With INCREMENTAL_VALUES flag in DirSync:
+        - member;range=0-X contains REMOVED members (delta since last cookie)
+        - member;range=(X+1)-* contains ADDED members (delta since last cookie)
+
+        Args:
+            entry: LDAP entry object
+            incremental_mode: If True, properly parse ranged attributes to separate
+                            added vs removed members. If False, treat all as current.
+
+        Returns:
+            Tuple of (added_members, removed_members) DNs
+        """
+        added_members = []
+        removed_members = []
+
+        def extract_values_from_attr(attr: Any, attr_name: str) -> List[str]:
+            """Extract string values from an LDAP attribute."""
+            extracted = []
+            self.logger.debug(
+                f"[_get_entry_members] {attr_name} type: {type(attr)}, "
+                f"bool: {bool(attr) if attr is not None else 'None'}"
+            )
+            if attr:
+                if hasattr(attr, "values"):
+                    vals = list(attr.values)
+                    self.logger.debug(
+                        f"[_get_entry_members] {attr_name} Using .values: {len(vals)} items"
+                    )
+                    extracted.extend([str(m) for m in vals])
+                elif hasattr(attr, "value"):
+                    # Single value case
+                    self.logger.debug(
+                        f"[_get_entry_members] {attr_name} Using .value: {attr.value}"
+                    )
+                    if attr.value:
+                        extracted.append(str(attr.value))
+                elif hasattr(attr, "__iter__") and not isinstance(attr, str):
+                    self.logger.debug(f"[_get_entry_members] {attr_name} Using __iter__")
+                    extracted.extend([str(m) for m in attr])
+                else:
+                    self.logger.debug(
+                        f"[_get_entry_members] {attr_name} Unknown format, trying str: {attr}"
+                    )
+            else:
+                self.logger.debug(f"[_get_entry_members] {attr_name} is falsy/empty")
+            return extracted
+
+        def parse_range_start(attr_name: str) -> Optional[int]:
+            """Parse the start index from a ranged attribute name like 'member;range=0-5'."""
+            # Format: member;range=START-END
+            match = re.match(r"member;range=(\d+)-", attr_name)
+            if match:
+                return int(match.group(1))
+            return None
+
+        # Standard member attribute (non-ranged) - these are current members
+        if hasattr(entry, "member"):
+            added_members.extend(extract_values_from_attr(entry.member, "member"))
+        else:
+            self.logger.debug("[_get_entry_members] No 'member' attribute on entry")
+
+        # Check for ranged member attributes (e.g., 'member;range=0-0')
+        # AD returns these in DirSync incremental mode
+        if hasattr(entry, "entry_attributes"):
+            for attr_name in entry.entry_attributes:
+                if attr_name.startswith("member;range="):
+                    self.logger.debug(f"[_get_entry_members] Found ranged attribute: {attr_name}")
+                    attr_value = getattr(
+                        entry, attr_name.replace(";", "_").replace("=", "_").replace("-", "_"), None
+                    )
+                    # ldap3 converts attribute names like "member;range=0-0" to "member_range_0_0"
+                    if attr_value is None:
+                        # Try accessing via entry's raw attributes
+                        attr_value = entry.entry_attributes_as_dict.get(attr_name)
+                    if attr_value:
+                        members_in_range = extract_values_from_attr(attr_value, attr_name)
+
+                        if incremental_mode:
+                            # With INCREMENTAL_VALUES, range starting at 0 = REMOVED
+                            range_start = parse_range_start(attr_name)
+                            if range_start == 0:
+                                self.logger.debug(
+                                    f"[_get_entry_members] {attr_name} is REMOVED range "
+                                    f"({len(members_in_range)} members)"
+                                )
+                                removed_members.extend(members_in_range)
+                            else:
+                                self.logger.debug(
+                                    f"[_get_entry_members] {attr_name} is ADDED range "
+                                    f"({len(members_in_range)} members)"
+                                )
+                                added_members.extend(members_in_range)
+                        else:
+                            # Not incremental - treat all as current members
+                            added_members.extend(members_in_range)
+
+        self.logger.debug(
+            f"[_get_entry_members] Returning {len(added_members)} added, "
+            f"{len(removed_members)} removed members"
+        )
+        return added_members, removed_members
+
+    def _resolve_member_dn_sync(self, member_dn: str) -> Optional[Tuple[str, str]]:
+        """Synchronously resolve a member DN to (type, id) tuple.
+
+        Uses the DN cache first (O(1) lookup), falls back to AD query if needed.
+        The cache is populated during initial sync and previous incremental syncs,
+        so most lookups will be cache hits.
+
+        Args:
+            member_dn: Distinguished Name of the member
+
+        Returns:
+            Tuple of (member_type, member_id) or None
+        """
+        # Check cache first - O(1), no AD query
+        if member_dn in self._dn_cache:
+            cached = self._dn_cache[member_dn]
+            if cached:
+                object_classes, sam_account_name = cached
+                if "user" in object_classes:
+                    return ("user", sam_account_name.lower())
+                elif "group" in object_classes:
+                    return ("group", f"ad:{sam_account_name.lower()}")
+            return None
+
+        # Cache miss - query AD for accurate type info
+        # This only happens for members we haven't seen before
+        if self._connection and self._connection.bound:
+            result = self._query_member_cached(self._connection, member_dn)
+            if result:
+                object_classes, sam_account_name = result
+                if "user" in object_classes:
+                    return ("user", sam_account_name.lower())
+                elif "group" in object_classes:
+                    return ("group", f"ad:{sam_account_name.lower()}")
+
+        return None

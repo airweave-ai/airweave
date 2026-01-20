@@ -231,7 +231,7 @@ class SharePointClient:
         endpoint = f"{site_url}/_api/web/lists(guid'{list_id}')/items"
         params = {
             "$expand": f"File,{self.ROLE_EXPAND},FieldValuesAsText",
-            "$top": 100,
+            "$top": 500,  # Increased from 100 for better batch efficiency
         }
         async for item in self.get_paginated(client, endpoint, params):
             yield item
@@ -285,6 +285,261 @@ class SharePointClient:
         endpoint = f"{site_url}/_api/web/sitegroups/getbyid({group_id})/users"
         async for member in self.get_paginated(client, endpoint):
             yield member
+
+    # -------------------------------------------------------------------------
+    # Change Tracking (Incremental Sync)
+    # -------------------------------------------------------------------------
+
+    async def _get_request_digest(
+        self,
+        client: httpx.AsyncClient,
+        site_url: str,
+    ) -> str:
+        """Get request digest for POST operations (CSRF protection).
+
+        SharePoint 2019 on-premises requires X-RequestDigest header for POST requests.
+
+        Args:
+            client: httpx AsyncClient instance
+            site_url: Base site URL
+
+        Returns:
+            Request digest value for X-RequestDigest header
+        """
+        auth = self._create_ntlm_auth()
+        contextinfo_url = f"{site_url.rstrip('/')}/_api/contextinfo"
+        self.logger.debug(f"Fetching request digest from {contextinfo_url}")
+        response = await client.post(
+            contextinfo_url,
+            auth=auth,
+            headers=self.ODATA_HEADERS,
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        data = response.json()
+        # Extract digest from response - structure varies by SharePoint version
+        digest = data.get("d", {}).get("GetContextWebInformation", {}).get("FormDigestValue")
+        if not digest:
+            raise ValueError(f"Could not extract FormDigestValue from contextinfo: {data}")
+        return digest
+
+    @retry(
+        stop=stop_after_attempt(3),
+        retry=retry_if_rate_limit_or_timeout,
+        wait=wait_rate_limit_with_backoff,
+        reraise=True,
+    )
+    async def post(
+        self,
+        client: httpx.AsyncClient,
+        url: str,
+        json_data: Optional[Dict] = None,
+    ) -> Dict[str, Any]:
+        """Make authenticated POST request to SharePoint REST API.
+
+        Args:
+            client: httpx AsyncClient instance
+            url: Full URL to request
+            json_data: JSON body to send
+
+        Returns:
+            Parsed JSON response
+
+        Raises:
+            httpx.HTTPStatusError: On non-2xx response
+        """
+        auth = self._create_ntlm_auth()
+
+        # Extract site URL from the full URL for contextinfo
+        # URL format: http://site/_api/... -> http://site
+        url_parts = url.split("/_api/")
+        site_url = url_parts[0] if len(url_parts) > 1 else url.rsplit("/", 1)[0]
+
+        # Get request digest for CSRF protection
+        request_digest = await self._get_request_digest(client, site_url)
+
+        # Merge headers with request digest
+        headers = {
+            **self.ODATA_HEADERS,
+            "X-RequestDigest": request_digest,
+        }
+
+        self.logger.debug(f"POST {url}")
+        response = await client.post(
+            url,
+            auth=auth,
+            headers=headers,
+            json=json_data,
+            timeout=60.0,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def get_site_collection_changes(
+        self,
+        client: httpx.AsyncClient,
+        site_url: str,
+        change_token: Optional[str] = None,
+        include_deletes: bool = True,
+    ) -> tuple[list[Dict[str, Any]], str]:
+        """Get changes for entire site collection since the specified token.
+
+        Uses /_api/site/getChanges which covers:
+        - All subsites (webs)
+        - All lists in all subsites
+        - All items in all lists
+
+        This is the RECOMMENDED scope for incremental sync as it provides
+        ONE change token that covers the entire site collection.
+
+        Change Types:
+        - 1: Add
+        - 2: Update
+        - 3: Delete
+        - 4: Rename
+        - 5: Move
+
+        Args:
+            client: HTTP client
+            site_url: Site collection root URL
+            change_token: Previous change token (None for first sync)
+            include_deletes: Whether to include deletion events
+
+        Returns:
+            Tuple of (changes, new_change_token):
+            - changes: List of change event dicts
+            - new_change_token: Token for next incremental sync
+        """
+        query = {
+            "__metadata": {"type": "SP.ChangeQuery"},
+            "Add": True,
+            "Update": True,
+            "DeleteObject": include_deletes,
+            "Move": True,
+            "Rename": True,
+            "Item": True,
+            "File": True,
+            "Folder": True,
+            "Web": True,
+            "List": True,
+            "Site": True,
+        }
+
+        if change_token:
+            query["ChangeTokenStart"] = {"StringValue": change_token}
+
+        # Use /_api/site/getChanges for site collection scope
+        endpoint = f"{site_url}/_api/site/getChanges"
+        response = await self.post(client, endpoint, json_data={"query": query})
+
+        # Parse changes
+        changes = []
+        d = response.get("d", {})
+        results = d.get("results", [])
+
+        for item in results:
+            changes.append(
+                {
+                    "change_type": item.get("ChangeType"),  # 1=Add, 2=Update, 3=Delete
+                    "item_id": item.get("ItemId"),
+                    "list_id": item.get("ListId"),
+                    "web_id": item.get("WebId"),
+                    "site_id": item.get("SiteId"),
+                    "time": item.get("Time"),
+                    "change_token": item.get("ChangeToken", {}).get("StringValue"),
+                }
+            )
+
+        # Get new token from last change or current token
+        new_token = await self.get_current_change_token(client, site_url)
+
+        self.logger.debug(f"Got {len(changes)} changes since last sync")
+        return changes, new_token
+
+    async def get_current_change_token(
+        self,
+        client: httpx.AsyncClient,
+        site_url: str,
+    ) -> str:
+        """Get the current change token for initial cursor setup.
+
+        Called during first sync to establish baseline token.
+        Retrieves token directly from site properties.
+
+        Args:
+            client: HTTP client
+            site_url: Site collection root URL
+
+        Returns:
+            Current change token string
+        """
+        # Get current change token directly from site properties
+        site_endpoint = f"{site_url}/_api/site"
+        params = {"$select": "CurrentChangeToken"}
+        site_data = await self.get(client, site_endpoint, params)
+
+        token_data = site_data.get("d", {}).get("CurrentChangeToken", {})
+        return token_data.get("StringValue", "")
+
+    async def get_item_by_id(
+        self,
+        client: httpx.AsyncClient,
+        site_url: str,
+        list_id: str,
+        item_id: int,
+    ) -> Optional[Dict[str, Any]]:
+        """Fetch a specific list item by ID.
+
+        Used during incremental sync to fetch changed items.
+
+        Args:
+            client: HTTP client
+            site_url: Base URL of the site
+            list_id: GUID of the list
+            item_id: Integer ID of the item
+
+        Returns:
+            Item metadata dict or None if not found
+        """
+        endpoint = f"{site_url}/_api/web/lists(guid'{list_id}')/items({item_id})"
+        params = {
+            "$expand": f"File,{self.ROLE_EXPAND},FieldValuesAsText",
+        }
+        try:
+            data = await self.get(client, endpoint, params)
+            return data.get("d", data)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return None
+            raise
+
+    async def get_list_by_id(
+        self,
+        client: httpx.AsyncClient,
+        site_url: str,
+        list_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Fetch a specific list by ID.
+
+        Used during incremental sync to fetch changed lists.
+
+        Args:
+            client: HTTP client
+            site_url: Base URL of the site
+            list_id: GUID of the list
+
+        Returns:
+            List metadata dict or None if not found
+        """
+        endpoint = f"{site_url}/_api/web/lists(guid'{list_id}')"
+        params = {"$expand": self.ROLE_EXPAND}
+        try:
+            data = await self.get(client, endpoint, params)
+            return data.get("d", data)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return None
+            raise
 
     # -------------------------------------------------------------------------
     # File Download

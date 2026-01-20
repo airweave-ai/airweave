@@ -5,13 +5,17 @@ Entity hierarchy:
 - SharePoint2019V2ListEntity (BaseEntity) - Lists and Document Libraries
 - SharePoint2019V2ItemEntity (BaseEntity) - Regular list items (contacts, tasks, etc.)
 - SharePoint2019V2FileEntity (FileEntity) - Files in Document Libraries
+
+Deletion entities:
+- SharePoint2019V2ItemDeletionEntity (DeletionEntity) - Deleted list items
+- SharePoint2019V2FileDeletionEntity (DeletionEntity) - Deleted files
 """
 
 from datetime import datetime
 from typing import Any, Dict, Optional
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity, FileEntity
+from airweave.platform.entities._base import BaseEntity, DeletionEntity, FileEntity
 
 
 class SharePoint2019V2SiteEntity(BaseEntity):
@@ -58,10 +62,19 @@ class SharePoint2019V2ItemEntity(BaseEntity):
 
     For regular list items like contacts, calendar events, tasks, etc.
     Files in Document Libraries use SharePoint2019V2FileEntity instead.
+
+    Entity ID format: sp2019v2:item:{list_id}:{item_id}
+    This format is deterministic and can be reconstructed during deletion.
     """
 
+    list_id: str = AirweaveField(..., description="List GUID containing this item")
     item_id: int = AirweaveField(..., description="Integer ID unique within the list")
-    guid: str = AirweaveField(..., description="Globally Unique ID (GUID)", is_entity_id=True)
+    sp_entity_id: str = AirweaveField(
+        ...,
+        description="Composite entity ID: sp2019v2:item:{list_id}:{item_id}",
+        is_entity_id=True,
+    )
+    guid: str = AirweaveField(..., description="SharePoint Globally Unique ID (GUID)")
     title: str = AirweaveField(..., description="Item Title", is_name=True, embeddable=True)
     web_url: str = AirweaveField(..., description="Full URL to view the item")
 
@@ -89,10 +102,19 @@ class SharePoint2019V2FileEntity(FileEntity):
     - file_type: File extension (required)
     - mime_type: MIME type (optional)
     - local_path: Local path after download (set by downloader)
+
+    Entity ID format: sp2019v2:file:{list_id}:{item_id}
+    This format is deterministic and can be reconstructed during deletion.
     """
 
+    list_id: str = AirweaveField(..., description="Document library GUID containing this file")
     item_id: int = AirweaveField(..., description="Integer ID unique within the list")
-    guid: str = AirweaveField(..., description="Globally Unique ID (GUID)", is_entity_id=True)
+    sp_entity_id: str = AirweaveField(
+        ...,
+        description="Composite entity ID: sp2019v2:file:{list_id}:{item_id}",
+        is_entity_id=True,
+    )
+    guid: str = AirweaveField(..., description="SharePoint Globally Unique ID (GUID)")
     title: str = AirweaveField(..., description="File Title", is_name=True, embeddable=True)
 
     web_url: str = AirweaveField(..., description="Full URL to view the file in browser")
@@ -111,5 +133,55 @@ class SharePoint2019V2FileEntity(FileEntity):
     fields: Dict[str, Any] = AirweaveField(
         default_factory=dict,
         description="Cleaned FieldValuesAsText containing searchable content",
+        embeddable=True,
+    )
+
+
+class SharePoint2019V2ItemDeletionEntity(DeletionEntity):
+    """Deletion signal for a SharePoint 2019 list item.
+
+    Used during incremental sync when the GetChanges API reports an item deletion.
+    The sp_entity_id matches the original item's entity_id format for proper deletion.
+    """
+
+    deletes_entity_class = SharePoint2019V2ItemEntity
+
+    list_id: str = AirweaveField(..., description="List GUID containing the deleted item")
+    item_id: int = AirweaveField(..., description="Integer ID of the deleted item")
+    sp_entity_id: str = AirweaveField(
+        ...,
+        description="Composite entity ID: sp2019v2:item:{list_id}:{item_id}",
+        is_entity_id=True,
+    )
+    label: str = AirweaveField(
+        ...,
+        description="Human-readable deletion label",
+        is_name=True,
+        embeddable=True,
+    )
+
+
+class SharePoint2019V2FileDeletionEntity(DeletionEntity):
+    """Deletion signal for a SharePoint 2019 file.
+
+    Used during incremental sync when the GetChanges API reports a file deletion.
+    The sp_entity_id matches the original file's entity_id format for proper deletion.
+    """
+
+    deletes_entity_class = SharePoint2019V2FileEntity
+
+    list_id: str = AirweaveField(
+        ..., description="Document library GUID containing the deleted file"
+    )
+    item_id: int = AirweaveField(..., description="Integer ID of the deleted file")
+    sp_entity_id: str = AirweaveField(
+        ...,
+        description="Composite entity ID: sp2019v2:file:{list_id}:{item_id}",
+        is_entity_id=True,
+    )
+    label: str = AirweaveField(
+        ...,
+        description="Human-readable deletion label",
+        is_name=True,
         embeddable=True,
     )
