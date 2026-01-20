@@ -284,9 +284,7 @@ class FileService:
         is_presigned_url = "X-Amz-Algorithm" in entity.url
         token = await access_token_provider()
         if not token and not is_presigned_url:
-            raise ValueError(
-                f"No access token available for downloading {entity.name or 'file'}"
-            )
+            raise ValueError(f"No access token available for downloading {entity.name or 'file'}")
 
         logger.debug(
             f"Downloading file from URL: {entity.name or '(filename from response)'} "

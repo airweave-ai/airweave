@@ -308,9 +308,7 @@ class MiroSource(BaseSource):
                 view_link=board.get("viewLink"),
             )
 
-    async def _get_board_tags(
-        self, client: httpx.AsyncClient, board_id: str
-    ) -> Dict[str, Dict]:
+    async def _get_board_tags(self, client: httpx.AsyncClient, board_id: str) -> Dict[str, Dict]:
         """Fetch all tags for a board in a single API call.
 
         Args:
@@ -405,11 +403,13 @@ class MiroSource(BaseSource):
             # Build breadcrumbs including parent frame if present
             item_breadcrumbs = list(board_breadcrumbs)
             if parent_frame_id and parent_frame_title:
-                item_breadcrumbs.append(Breadcrumb(
-                    entity_id=parent_frame_id,
-                    name=parent_frame_title,
-                    entity_type="MiroFrameEntity",
-                ))
+                item_breadcrumbs.append(
+                    Breadcrumb(
+                        entity_id=parent_frame_id,
+                        name=parent_frame_title,
+                        entity_type="MiroFrameEntity",
+                    )
+                )
 
             yield MiroStickyNoteEntity(
                 # Base entity fields
@@ -469,11 +469,13 @@ class MiroSource(BaseSource):
             # Build breadcrumbs including parent frame if present
             item_breadcrumbs = list(board_breadcrumbs)
             if parent_frame_id and parent_frame_title:
-                item_breadcrumbs.append(Breadcrumb(
-                    entity_id=parent_frame_id,
-                    name=parent_frame_title,
-                    entity_type="MiroFrameEntity",
-                ))
+                item_breadcrumbs.append(
+                    Breadcrumb(
+                        entity_id=parent_frame_id,
+                        name=parent_frame_title,
+                        entity_type="MiroFrameEntity",
+                    )
+                )
 
             yield MiroCardEntity(
                 # Base entity fields
@@ -534,11 +536,13 @@ class MiroSource(BaseSource):
             # Build breadcrumbs including parent frame if present
             item_breadcrumbs = list(board_breadcrumbs)
             if parent_frame_id and parent_frame_title:
-                item_breadcrumbs.append(Breadcrumb(
-                    entity_id=parent_frame_id,
-                    name=parent_frame_title,
-                    entity_type="MiroFrameEntity",
-                ))
+                item_breadcrumbs.append(
+                    Breadcrumb(
+                        entity_id=parent_frame_id,
+                        name=parent_frame_title,
+                        entity_type="MiroFrameEntity",
+                    )
+                )
 
             yield MiroTextEntity(
                 # Base entity fields
@@ -590,11 +594,13 @@ class MiroSource(BaseSource):
             # Build breadcrumbs including parent frame if present
             item_breadcrumbs = list(board_breadcrumbs)
             if parent_frame_id and parent_frame_title:
-                item_breadcrumbs.append(Breadcrumb(
-                    entity_id=parent_frame_id,
-                    name=parent_frame_title,
-                    entity_type="MiroFrameEntity",
-                ))
+                item_breadcrumbs.append(
+                    Breadcrumb(
+                        entity_id=parent_frame_id,
+                        name=parent_frame_title,
+                        entity_type="MiroFrameEntity",
+                    )
+                )
 
             yield MiroFrameEntity(
                 # Base entity fields
@@ -684,11 +690,13 @@ class MiroSource(BaseSource):
                 # Build breadcrumbs including parent frame if present
                 item_breadcrumbs = list(board_breadcrumbs)
                 if parent_frame_id and parent_frame_title:
-                    item_breadcrumbs.append(Breadcrumb(
-                        entity_id=parent_frame_id,
-                        name=parent_frame_title,
-                        entity_type="MiroFrameEntity",
-                    ))
+                    item_breadcrumbs.append(
+                        Breadcrumb(
+                            entity_id=parent_frame_id,
+                            name=parent_frame_title,
+                            entity_type="MiroFrameEntity",
+                        )
+                    )
 
                 yield MiroAppCardEntity(
                     # Base entity fields
@@ -779,11 +787,13 @@ class MiroSource(BaseSource):
                 # Build breadcrumbs including parent frame if present
                 item_breadcrumbs = list(board_breadcrumbs)
                 if parent_frame_id and parent_frame_title:
-                    item_breadcrumbs.append(Breadcrumb(
-                        entity_id=parent_frame_id,
-                        name=parent_frame_title,
-                        entity_type="MiroFrameEntity",
-                    ))
+                    item_breadcrumbs.append(
+                        Breadcrumb(
+                            entity_id=parent_frame_id,
+                            name=parent_frame_title,
+                            entity_type="MiroFrameEntity",
+                        )
+                    )
 
                 # Get title from API data
                 title = data.get("title") or item["id"]
@@ -897,9 +907,7 @@ class MiroSource(BaseSource):
                 # Extract imageUrl from data object
                 image_url = data.get("imageUrl", "")
                 if not image_url:
-                    self.logger.warning(
-                        f"No imageUrl for image {item['id']} on board {board_id}"
-                    )
+                    self.logger.warning(f"No imageUrl for image {item['id']} on board {board_id}")
                     continue
 
                 # Request original format (not preview) for full resolution
@@ -923,11 +931,13 @@ class MiroSource(BaseSource):
                 # Build breadcrumbs including parent frame if present
                 item_breadcrumbs = list(board_breadcrumbs)
                 if parent_frame_id and parent_frame_title:
-                    item_breadcrumbs.append(Breadcrumb(
-                        entity_id=parent_frame_id,
-                        name=parent_frame_title,
-                        entity_type="MiroFrameEntity",
-                    ))
+                    item_breadcrumbs.append(
+                        Breadcrumb(
+                            entity_id=parent_frame_id,
+                            name=parent_frame_title,
+                            entity_type="MiroFrameEntity",
+                        )
+                    )
 
                 # Get title from API data
                 title = data.get("title") or item["id"]
@@ -1042,7 +1052,9 @@ class MiroSource(BaseSource):
                     ):
                         yield sticky_note
                 except Exception as e:
-                    self.logger.error(f"Failed to generate sticky notes for board {board_name}: {e}")
+                    self.logger.error(
+                        f"Failed to generate sticky notes for board {board_name}: {e}"
+                    )
 
                 # Generate cards with error isolation
                 try:

@@ -329,8 +329,7 @@ class MiroConfig(SourceConfig):
         default="",
         title="Exclude Boards",
         description=(
-            "Skip boards containing this text in their name. "
-            "Leave empty to sync all boards."
+            "Skip boards containing this text in their name. Leave empty to sync all boards."
         ),
     )
 

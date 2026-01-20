@@ -21,9 +21,7 @@ class MiroBoardEntity(BaseEntity):
     """
 
     board_id: str = AirweaveField(..., description="Miro board ID", is_entity_id=True)
-    board_name: str = AirweaveField(
-        ..., description="Board name", is_name=True, embeddable=True
-    )
+    board_name: str = AirweaveField(..., description="Board name", is_name=True, embeddable=True)
     created_at: Optional[datetime] = AirweaveField(
         None, description="Created at", is_created_at=True
     )
@@ -37,9 +35,7 @@ class MiroBoardEntity(BaseEntity):
     team_id: Optional[str] = AirweaveField(
         None, description="Team ID this board belongs to", embeddable=False
     )
-    owner_id: Optional[str] = AirweaveField(
-        None, description="Owner user ID", embeddable=False
-    )
+    owner_id: Optional[str] = AirweaveField(None, description="Owner user ID", embeddable=False)
     owner_name: Optional[str] = AirweaveField(
         None, description="Owner display name", embeddable=True
     )
@@ -60,9 +56,7 @@ class MiroStickyNoteEntity(BaseEntity):
         https://developers.miro.com/reference/get-sticky-notes
     """
 
-    item_id: str = AirweaveField(
-        ..., description="Sticky note item ID", is_entity_id=True
-    )
+    item_id: str = AirweaveField(..., description="Sticky note item ID", is_entity_id=True)
     content: str = AirweaveField(
         ..., description="Sticky note text content", is_name=True, embeddable=True
     )
@@ -109,9 +103,7 @@ class MiroCardEntity(BaseEntity):
     """
 
     item_id: str = AirweaveField(..., description="Card item ID", is_entity_id=True)
-    title: str = AirweaveField(
-        ..., description="Card title", is_name=True, embeddable=True
-    )
+    title: str = AirweaveField(..., description="Card title", is_name=True, embeddable=True)
     created_at: Optional[datetime] = AirweaveField(
         None, description="Created at", is_created_at=True
     )
@@ -166,10 +158,10 @@ class MiroTextEntity(BaseEntity):
         https://developers.miro.com/reference/get-texts
     """
 
-    item_id: str = AirweaveField(..., description="Unique identifier of the text item", is_entity_id=True)
-    content: str = AirweaveField(
-        ..., description="Text content", is_name=True, embeddable=True
+    item_id: str = AirweaveField(
+        ..., description="Unique identifier of the text item", is_entity_id=True
     )
+    content: str = AirweaveField(..., description="Text content", is_name=True, embeddable=True)
     created_at: Optional[datetime] = AirweaveField(
         None, description="Created at", is_created_at=True
     )
@@ -210,9 +202,7 @@ class MiroFrameEntity(BaseEntity):
     """
 
     item_id: str = AirweaveField(..., description="Frame item ID", is_entity_id=True)
-    title: str = AirweaveField(
-        ..., description="Frame title", is_name=True, embeddable=True
-    )
+    title: str = AirweaveField(..., description="Frame title", is_name=True, embeddable=True)
     created_at: Optional[datetime] = AirweaveField(
         None, description="Created at", is_created_at=True
     )
@@ -259,9 +249,7 @@ class MiroTagEntity(BaseEntity):
     """
 
     tag_id: str = AirweaveField(..., description="Unique identifier of the tag", is_entity_id=True)
-    title: str = AirweaveField(
-        ..., description="Tag title", is_name=True, embeddable=True
-    )
+    title: str = AirweaveField(..., description="Tag title", is_name=True, embeddable=True)
     created_at: Optional[datetime] = AirweaveField(
         None, description="Created at (snapshot time)", is_created_at=True
     )
@@ -269,9 +257,7 @@ class MiroTagEntity(BaseEntity):
         None, description="Last modified at (snapshot time)", is_updated_at=True
     )
 
-    board_id: str = AirweaveField(
-        ..., description="Board ID this tag belongs to", embeddable=False
-    )
+    board_id: str = AirweaveField(..., description="Board ID this tag belongs to", embeddable=False)
     board_name: str = AirweaveField(
         ..., description="Board name this tag belongs to", embeddable=True
     )
@@ -290,9 +276,7 @@ class MiroAppCardEntity(BaseEntity):
     """
 
     item_id: str = AirweaveField(..., description="App card item ID", is_entity_id=True)
-    title: str = AirweaveField(
-        ..., description="App card title", is_name=True, embeddable=True
-    )
+    title: str = AirweaveField(..., description="App card title", is_name=True, embeddable=True)
     created_at: Optional[datetime] = AirweaveField(
         None, description="Created at", is_created_at=True
     )
@@ -344,10 +328,10 @@ class MiroDocumentEntity(FileEntity):
         https://developers.miro.com/reference/get-document-item
     """
 
-    item_id: str = AirweaveField(..., description="Unique identifier of the document item", is_entity_id=True)
-    title: str = AirweaveField(
-        ..., description="Document title", is_name=True, embeddable=True
+    item_id: str = AirweaveField(
+        ..., description="Unique identifier of the document item", is_entity_id=True
     )
+    title: str = AirweaveField(..., description="Document title", is_name=True, embeddable=True)
     created_at: Optional[datetime] = AirweaveField(
         None, description="Created at", is_created_at=True
     )
@@ -387,10 +371,10 @@ class MiroImageEntity(FileEntity):
         https://developers.miro.com/reference/get-image-item
     """
 
-    item_id: str = AirweaveField(..., description="Unique identifier of the image item", is_entity_id=True)
-    title: str = AirweaveField(
-        ..., description="Image title", is_name=True, embeddable=True
+    item_id: str = AirweaveField(
+        ..., description="Unique identifier of the image item", is_entity_id=True
     )
+    title: str = AirweaveField(..., description="Image title", is_name=True, embeddable=True)
     created_at: Optional[datetime] = AirweaveField(
         None, description="Created at", is_created_at=True
     )
