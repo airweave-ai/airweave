@@ -2,6 +2,10 @@
 
 Simpler than entity types - memberships are identified by
 (member_id, member_type, group_id) tuples.
+
+Supports two input types:
+- MembershipTuple: Full sync (state-based, requires orphan detection)
+- MembershipChange: Incremental sync (event-based, explicit adds/removes)
 """
 
 from dataclasses import dataclass, field
@@ -52,7 +56,11 @@ class ACUpdateAction:
 
 @dataclass
 class ACDeleteAction:
-    """Membership should be deleted (stale membership to remove)."""
+    """Membership should be deleted (specific membership to remove).
+
+    Used when a user is removed from a specific group.
+    Key: (member_id, member_type, group_id)
+    """
 
     membership: "MembershipTuple"
 
@@ -65,6 +73,29 @@ class ACDeleteAction:
     def group_id(self) -> str:
         """Get the group ID."""
         return self.membership.group_id
+
+
+@dataclass
+class ACDeleteMemberAction:
+    """Delete ALL memberships for a member (user/group deleted from AD).
+
+    Used when a user or group is deleted from Active Directory.
+    Removes all memberships where this entity is the member.
+    """
+
+    member_id: str
+    member_type: str  # "user" or "group"
+
+
+@dataclass
+class ACDeleteGroupAction:
+    """Delete ALL memberships where group_id matches (group deleted from AD).
+
+    Used when a group is deleted from Active Directory.
+    Removes all memberships where this group is the parent group.
+    """
+
+    group_id: str
 
 
 @dataclass
@@ -121,15 +152,33 @@ class ACActionBatch:
     keeps: List[ACKeepAction] = field(default_factory=list)
     upserts: List[ACUpsertAction] = field(default_factory=list)
 
+    # Bulk delete actions (for incremental sync when AD entities are deleted)
+    delete_members: List[ACDeleteMemberAction] = field(default_factory=list)
+    delete_groups: List[ACDeleteGroupAction] = field(default_factory=list)
+
     @property
     def has_mutations(self) -> bool:
         """Check if batch has any mutation actions."""
-        return bool(self.inserts or self.updates or self.deletes or self.upserts)
+        return bool(
+            self.inserts
+            or self.updates
+            or self.deletes
+            or self.upserts
+            or self.delete_members
+            or self.delete_groups
+        )
 
     @property
     def mutation_count(self) -> int:
         """Get total count of mutation actions."""
-        return len(self.inserts) + len(self.updates) + len(self.deletes) + len(self.upserts)
+        return (
+            len(self.inserts)
+            + len(self.updates)
+            + len(self.deletes)
+            + len(self.upserts)
+            + len(self.delete_members)
+            + len(self.delete_groups)
+        )
 
     @property
     def total_count(self) -> int:
@@ -149,6 +198,10 @@ class ACActionBatch:
             parts.append(f"{len(self.upserts)} upserts")
         if self.keeps:
             parts.append(f"{len(self.keeps)} keeps")
+        if self.delete_members:
+            parts.append(f"{len(self.delete_members)} delete_members")
+        if self.delete_groups:
+            parts.append(f"{len(self.delete_groups)} delete_groups")
         return ", ".join(parts) if parts else "empty"
 
     def get_memberships(self) -> List["MembershipTuple"]:

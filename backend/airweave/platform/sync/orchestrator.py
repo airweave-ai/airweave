@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from typing import List, Optional
+from typing import Optional
 
 from airweave import schemas
 from airweave.analytics import business_events
@@ -13,7 +13,6 @@ from airweave.core.shared_models import SyncJobStatus
 from airweave.core.sync_cursor_service import sync_cursor_service
 from airweave.core.sync_job_service import sync_job_service
 from airweave.db.session import get_db_context
-from airweave.platform.access_control.schemas import MembershipTuple
 from airweave.platform.contexts import SyncContext
 from airweave.platform.sync.access_control_pipeline import AccessControlPipeline
 from airweave.platform.sync.entity_pipeline import EntityPipeline
@@ -487,54 +486,16 @@ class SyncOrchestrator:
     async def _process_access_control_memberships(self) -> None:
         """Process access control memberships from the source.
 
-        Collects MembershipTuple objects from the source's
-        generate_access_control_memberships() method and processes them
-        through the AccessControlPipeline to persist to PostgreSQL.
-
-        Key security feature: Memberships encountered during this sync are
-        tracked in the access control pipeline to detect and delete orphans
-        (revoked permissions).
+        Delegates all ACL logic to the AccessControlPipeline, which:
+        - Decides whether to do incremental or full sync
+        - Collects memberships from the source
+        - Resolves to actions and dispatches to handlers
+        - Handles orphan cleanup (full sync only)
+        - Updates the cursor with DirSync cookie
         """
-        source = self.sync_context.source_instance
-        source_name = getattr(source, "_name", "unknown")
-
-        self.sync_context.logger.info(
-            f"🔐 Starting access control membership extraction from {source_name}"
-        )
-
-        # Check if source has the method
-        if not hasattr(source, "generate_access_control_memberships"):
-            self.sync_context.logger.warning(
-                f"Source {source_name} has supports_access_control=True but no "
-                "generate_access_control_memberships() method. Skipping ACL sync."
-            )
-            return
-
-        # Collect memberships from source generator
-        memberships: List[MembershipTuple] = []
-        try:
-            async for membership in source.generate_access_control_memberships():
-                memberships.append(membership)
-
-                # Log progress every 100 memberships collected
-                if len(memberships) % 100 == 0 and len(memberships) > 0:
-                    self.sync_context.logger.debug(
-                        f"🔐 Collected {len(memberships)} memberships so far..."
-                    )
-        except Exception as e:
-            self.sync_context.logger.error(
-                f"Error collecting access control memberships: {get_error_message(e)}",
-                exc_info=True,
-            )
-            # Don't fail the entire sync for ACL errors
-            # Also don't do orphan cleanup if collection failed (could delete valid memberships)
-            return
-
-        # Process through AccessControlPipeline (handles tracking + orphan detection)
-        # Note: Even if no new memberships, we still need to check for orphans!
         try:
             await self.access_control_pipeline.process(
-                memberships=memberships,
+                source=self.sync_context.source_instance,
                 sync_context=self.sync_context,
             )
         except Exception as e:
@@ -631,11 +592,19 @@ class SyncOrchestrator:
             return
 
         try:
+            cursor_data = self.sync_context.cursor.cursor_data
+            # Debug: log keys being saved to diagnose ACL cookie persistence
+            acl_cookie = cursor_data.get("acl_dirsync_cookie", "")
+            self.sync_context.logger.debug(
+                f"💾 Cursor data keys to save: {list(cursor_data.keys())}, "
+                f"has_acl_cookie={bool(acl_cookie)}, acl_cookie_len={len(acl_cookie) if acl_cookie else 0}"
+            )
+
             async with get_db_context() as db:
                 await sync_cursor_service.create_or_update_cursor(
                     db=db,
                     sync_id=self.sync_context.sync.id,
-                    cursor_data=self.sync_context.cursor.cursor_data,
+                    cursor_data=cursor_data,
                     ctx=self.sync_context.ctx,
                     cursor_field=self.sync_context.cursor.cursor_field,
                 )
