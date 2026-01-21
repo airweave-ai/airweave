@@ -963,7 +963,7 @@ async def resync_with_execution_config(
     ctx: ApiContext = Depends(deps.get_context),
     execution_config: Optional[SyncConfig] = Body(
         None,
-        description="Optional nested SyncConfig for sync behavior (destinations, handlers, cursor, behavior)",
+        description="Optional SyncConfig for sync behavior (destinations, handlers, cursor)",
         examples=[
             {
                 "summary": "ARF Capture Only",
@@ -1464,8 +1464,10 @@ async def admin_delete_cursor(
     Raises:
         HTTPException: If not admin or source connection not found
     """
-    from airweave.core.sync_cursor_service import sync_cursor_service
+    from sqlalchemy import delete as sa_delete
+
     from airweave.models.source_connection import SourceConnection
+    from airweave.models.sync_cursor import SyncCursor
 
     _require_admin_permission(ctx, FeatureFlagEnum.API_KEY_ADMIN_SYNC)
 
@@ -1483,13 +1485,19 @@ async def admin_delete_cursor(
             detail=f"Source connection {source_connection_id} has no associated sync",
         )
 
-    # Delete cursor
-    deleted = await sync_cursor_service.delete_cursor(
-        db=db, sync_id=source_connection.sync_id, ctx=ctx
+    # Delete cursor (bypass org filtering for admin - direct SQL)
+    # The sync_cursor_service uses org-filtered queries, so we need to bypass it
+    result = await db.execute(
+        sa_delete(SyncCursor).where(SyncCursor.sync_id == source_connection.sync_id)
     )
+    deleted = result.rowcount > 0
 
     if deleted:
         await db.commit()
+        ctx.logger.debug(
+            f"Admin deleted cursor for sync {source_connection.sync_id} "
+            f"(source_connection: {source_connection_id})"
+        )
         return {
             "message": "Cursor deleted successfully",
             "source_connection_id": str(source_connection_id),
@@ -1504,7 +1512,7 @@ async def admin_delete_cursor(
 
 
 @router.get("/syncs", response_model=List[AdminSyncInfo])
-async def admin_list_all_syncs(
+async def admin_list_all_syncs(  # noqa: C901
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
     skip: int = Query(0, description="Number of syncs to skip"),
@@ -1519,11 +1527,11 @@ async def admin_list_all_syncs(
     source_type: Optional[str] = Query(None, description="Filter by source short name"),
     has_source_connection: bool = Query(
         True,
-        description="Include only syncs with source connections (excludes orphaned syncs by default)",
+        description="Include only syncs with source connections (excludes orphaned syncs)",
     ),
     is_authenticated: Optional[bool] = Query(
         None,
-        description="Filter by source connection authentication status (true=authenticated, false=needs reauth)",
+        description="Filter by source connection auth status (true=auth'd, false=needs reauth)",
     ),
     status: Optional[str] = Query(
         None, description="Filter by sync status (active, inactive, error)"
@@ -1543,7 +1551,7 @@ async def admin_list_all_syncs(
         None,
         ge=1,
         le=10,
-        description="Filter to 'ghost syncs' - syncs where the last N jobs all failed (e.g., 5 for last 5 failures)",
+        description="Filter to 'ghost syncs' - syncs where last N jobs all failed",
     ),
     include_destination_counts: bool = Query(
         False,
@@ -1580,7 +1588,7 @@ async def admin_list_all_syncs(
         - last_job_status: Filter by last job status (any job type)
         - last_vespa_job_status: Filter by last Vespa job status for migration tracking
         - has_vespa_job: Filter by Vespa job existence (false=pending backfill)
-        - exclude_failed_last_n: Exclude syncs where last N non-running jobs all failed
+        - ghost_syncs_last_n: Filter to syncs where last N jobs all failed
         - include_destination_counts: Include Qdrant/Vespa counts (slower, queries destinations)
 
     **Performance Note**: Setting `include_destination_counts=true` or `include_arf_counts=true`
@@ -1602,7 +1610,7 @@ async def admin_list_all_syncs(
         last_job_status: Optional filter by last job status
         last_vespa_job_status: Optional filter by Vespa job status
         has_vespa_job: Optional filter by Vespa job existence
-        exclude_failed_last_n: Optional exclude syncs with N consecutive failures
+        ghost_syncs_last_n: Optional filter for syncs with N consecutive failures
         include_destination_counts: Whether to fetch Qdrant/Vespa counts (slower)
         include_arf_counts: Whether to fetch ARF entity counts (slower)
 
@@ -2039,7 +2047,7 @@ async def admin_list_all_syncs(
     return admin_syncs
 
 
-async def _fetch_destination_counts(
+async def _fetch_destination_counts(  # noqa: C901
     syncs: list, source_conn_map: dict, ctx: ApiContext
 ) -> tuple[dict, dict]:
     """Fetch document counts from Qdrant and Vespa for given syncs.
@@ -2129,7 +2137,7 @@ async def _fetch_destination_counts(
                 results = await asyncio.gather(
                     *[count_qdrant_sync(sync) for sync in collection_syncs]
                 )
-                return {sync_id: count for sync_id, count in results}
+                return dict(results)
 
             except Exception as e:
                 ctx.logger.warning(
@@ -2156,8 +2164,8 @@ async def _fetch_destination_counts(
                             yql = (
                                 f"select * from base_entity "
                                 f"where airweave_system_metadata_sync_id contains '{sync.id}' "
-                                f"and airweave_system_metadata_collection_id contains '{collection_id}' "
-                                f"limit 0"
+                                f"and airweave_system_metadata_collection_id "
+                                f"contains '{collection_id}' limit 0"
                             )
 
                             query_params = {"yql": yql}
@@ -2186,7 +2194,7 @@ async def _fetch_destination_counts(
                 results = await asyncio.gather(
                     *[count_vespa_sync(sync) for sync in collection_syncs]
                 )
-                return {sync_id: count for sync_id, count in results}
+                return dict(results)
 
             except Exception as e:
                 ctx.logger.warning(
@@ -2384,6 +2392,7 @@ async def admin_cancel_sync_by_id(
     ctx: ApiContext = Depends(deps.get_context),
 ) -> dict:
     """Admin-only: Cancel all pending/running jobs for a sync.
+
     This is a convenience endpoint that finds active jobs for a sync and cancels them.
     More practical than /sync-jobs/{job_id}/cancel when you know the sync ID.
 

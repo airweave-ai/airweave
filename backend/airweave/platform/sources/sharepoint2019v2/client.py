@@ -18,6 +18,7 @@ from httpx_ntlm import HttpNtlmAuth
 from tenacity import retry, stop_after_attempt
 
 from airweave.platform.sources.retry_helpers import (
+    retry_if_ntlm_auth_or_rate_limit_or_timeout,
     retry_if_rate_limit_or_timeout,
     wait_rate_limit_with_backoff,
 )
@@ -547,7 +548,7 @@ class SharePointClient:
 
     @retry(
         stop=stop_after_attempt(3),
-        retry=retry_if_rate_limit_or_timeout,
+        retry=retry_if_ntlm_auth_or_rate_limit_or_timeout,
         wait=wait_rate_limit_with_backoff,
         reraise=True,
     )
@@ -559,6 +560,10 @@ class SharePointClient:
     ) -> bytes:
         """Download file content from SharePoint.
 
+        Includes retry on 401 Unauthorized for NTLM re-authentication.
+        NTLM auth can fail when connection pool reuses connections that
+        lost their auth context.
+
         Args:
             client: httpx AsyncClient instance
             site_url: Base URL of the site
@@ -568,7 +573,7 @@ class SharePointClient:
             File content as bytes
 
         Raises:
-            httpx.HTTPStatusError: On non-2xx response
+            httpx.HTTPStatusError: On non-2xx response after retries
         """
         base_url = site_url.rstrip("/")
         url = f"{base_url}/_api/web/GetFileByServerRelativeUrl('{server_relative_url}')/$value"
