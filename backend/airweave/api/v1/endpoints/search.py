@@ -21,7 +21,11 @@ from airweave.core.guard_rail_service import GuardRailService
 from airweave.core.pubsub import core_pubsub
 from airweave.core.shared_models import ActionType
 from airweave.db.session import AsyncSessionLocal
-from airweave.schemas.search import SearchRequest, SearchResponse
+from airweave.schemas.search import (
+    AgenticSearchRequest,
+    SearchRequest,
+    SearchResponse,
+)
 from airweave.schemas.search_legacy import LegacySearchRequest, LegacySearchResponse, ResponseType
 from airweave.search.legacy_adapter import (
     convert_legacy_request_to_new,
@@ -350,6 +354,39 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
             "Access-Control-Allow-Origin": "*",
         },
     )
+
+
+@router.post("/{readable_id}/search/agentic")
+async def agentic_search(
+    readable_id: str = Path(
+        ...,
+        description="The unique readable identifier of the collection",
+    ),
+    request: AgenticSearchRequest = ...,
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+    guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
+) -> dict:
+    """Agentic search endpoint using LLM-powered query planning.
+
+    This endpoint uses an intelligent planner to analyze the collection and
+    generate optimal search queries. Currently in development.
+    """
+    from airweave.search.agentic_search import agent
+
+    await guard_rail.is_allowed(ActionType.QUERIES)
+
+    await agent.run(
+        query=request.query,
+        collection_id=readable_id,
+        db=db,
+        ctx=ctx,
+    )
+
+    await guard_rail.increment(ActionType.QUERIES)
+
+    # TODO: Return actual results once the agent loop is complete
+    return {"status": "ok"}
 
 
 @router.get("/internal/filter-schema")

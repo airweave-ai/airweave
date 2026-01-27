@@ -112,22 +112,22 @@ For each search plan, you must specify:
    Example - search Slack messages OR Notion pages:
    ```json
    [
-     {"conditions": [{"field": "source_name", "operator": "equals", "value": "slack"}]},
-     {"conditions": [{"field": "source_name", "operator": "equals", "value": "notion"}]}
+     {{"conditions": [{{"field": "source_name", "operator": "equals", "value": "slack"}}]}},
+     {{"conditions": [{{"field": "source_name", "operator": "equals", "value": "notion"}}]}}
    ]
    ```
 
    Example - search Slack #general OR Notion engineering workspace:
    ```json
    [
-     {"conditions": [
-       {"field": "source_name", "operator": "equals", "value": "slack"},
-       {"field": "channel", "operator": "equals", "value": "general"}
-     ]},
-     {"conditions": [
-       {"field": "source_name", "operator": "equals", "value": "notion"},
-       {"field": "workspace", "operator": "equals", "value": "engineering"}
-     ]}
+     {{"conditions": [
+       {{"field": "source_name", "operator": "equals", "value": "slack"}},
+       {{"field": "channel", "operator": "equals", "value": "general"}}
+     ]}},
+     {{"conditions": [
+       {{"field": "source_name", "operator": "equals", "value": "notion"}},
+       {{"field": "workspace", "operator": "equals", "value": "engineering"}}
+     ]}}
    ]
    ```
 

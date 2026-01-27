@@ -145,6 +145,7 @@ class CollectionInfoBuilder:
             "A team communication platform featuring channels, direct messages, and "
             "integrations for real-time collaboration."
         ),
+        "snapshot": ("Snapshot source that generates data from ARF, simulating the source."),
         "stripe": (
             "An online payments platform for processing transactions and managing "
             "financial infrastructure."
@@ -201,11 +202,13 @@ class CollectionInfoBuilder:
         source_short_names = await self._get_source_short_names(readable_collection_id)
         entity_counts = await self._get_entity_counts(readable_collection_id)
 
-        lines = [f"# Collection: {readable_collection_id}", ""]
+        # Note: This markdown is embedded inside "### Collection Info" in the prompt,
+        # so we use #### and ##### for proper nesting
+        lines = [f"**Collection:** `{readable_collection_id}`", ""]
 
         for short_name in sorted(source_short_names):
             description = self._get_source_description(short_name)
-            lines.append(f"## {short_name}")
+            lines.append(f"#### {short_name}")
             lines.append(f"{description}")
             lines.append("")
 
@@ -215,7 +218,7 @@ class CollectionInfoBuilder:
                 entity_name = entity_def["name"]
                 count = entity_counts.get(entity_name, 0)
 
-                lines.append(f"### {entity_name} ({count} entities)")
+                lines.append(f"##### {entity_name} ({count} entities)")
                 lines.append("")
                 lines.append("| Field | Description |")
                 lines.append("|-------|-------------|")

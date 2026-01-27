@@ -218,3 +218,25 @@ class SearchResponse(BaseModel):
             "across your connected data sources when generate_answer is true."
         ),
     )
+
+
+# --- Agentic Search Schemas ---
+
+
+class AgenticSearchRequest(BaseModel):
+    """Request schema for agentic search.
+
+    Agentic search uses an LLM-powered planner to intelligently construct
+    search queries based on the user's natural language query and the
+    available data sources in the collection.
+    """
+
+    query: str = Field(..., description="The natural language search query")
+
+    @field_validator("query")
+    @classmethod
+    def validate_query_not_empty(cls, v: str) -> str:
+        """Validate that query is not empty."""
+        if not v or not v.strip():
+            raise ValueError("Query cannot be empty")
+        return v
