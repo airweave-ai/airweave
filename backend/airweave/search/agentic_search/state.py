@@ -1,12 +1,15 @@
 """State management for agentic search loop."""
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING
 
+from airweave.schemas.search_result import AirweaveSearchResult
+from airweave.search.agentic_search.builder.schemas import VespaQuery
 from airweave.search.agentic_search.openai import QueryEmbeddings
 from airweave.search.agentic_search.planner.schemas import SearchPlan
 
-# TODO: type the yqls, results (AirweaveSearchResult), judgements, errors
+if TYPE_CHECKING:
+    from airweave.search.agentic_search.judge.schemas import Judgement
 
 
 @dataclass
@@ -18,13 +21,14 @@ class AgenticSearchState:
 
     Attributes:
         original_query: The user's original search query
-        collection_id: The collection to search (readable ID)
+        collection_id: The collection to search (readable ID, for display/logging)
+        collection_uuid: The collection's SQL UUID (for Vespa filtering)
         max_iterations: Maximum number of search iterations before stopping
         iteration: Current iteration number (0-indexed)
         collection_info: Markdown string describing the collection (built once)
         plans: Dict mapping iteration -> SearchPlan from the planner
         embeddings: Dict mapping iteration -> QueryEmbeddings (dense + sparse)
-        yqls: Dict mapping iteration -> YQL query string from the builder
+        vespa_queries: Dict mapping iteration -> VespaQuery from the builder
         results: Dict mapping iteration -> search results from Vespa
         judgements: Dict mapping iteration -> judgement from the judge
         errors: Dict mapping iteration -> error message (if query failed)
@@ -33,7 +37,8 @@ class AgenticSearchState:
 
     # Required inputs
     original_query: str
-    collection_id: str
+    collection_id: str  # Readable ID (for display/logging)
+    collection_uuid: str  # SQL UUID as string (for Vespa filtering)
 
     # Configuration
     max_iterations: int = 5
@@ -43,17 +48,18 @@ class AgenticSearchState:
 
     # Built once (by planner on first iteration)
     collection_info: str | None = None
+    collection_summary: dict | None = None  # Structured summary for user display
 
     # Per-iteration state (keyed by iteration number)
     plans: dict[int, SearchPlan] = field(default_factory=dict)
     embeddings: dict[int, QueryEmbeddings] = field(default_factory=dict)
-    yqls: dict[int, str] = field(default_factory=dict)
-    results: dict[int, list[Any]] = field(default_factory=dict)
-    judgements: dict[int, Any] = field(default_factory=dict)  # TODO: Judgement schema
+    vespa_queries: dict[int, VespaQuery] = field(default_factory=dict)
+    results: dict[int, list[AirweaveSearchResult]] = field(default_factory=dict)
+    judgements: dict[int, "Judgement"] = field(default_factory=dict)
     errors: dict[int, str] = field(default_factory=dict)
 
     # Final output (set when judge decides to stop)
-    final_results: list[Any] | None = None
+    final_results: list[AirweaveSearchResult] | None = None
 
     @property
     def is_first_iteration(self) -> bool:
@@ -73,7 +79,14 @@ class AgenticSearchState:
         return self.plans[max(self.plans.keys())]
 
     @property
-    def latest_results(self) -> list[Any] | None:
+    def latest_vespa_query(self) -> VespaQuery | None:
+        """Get the most recent VespaQuery, if any."""
+        if not self.vespa_queries:
+            return None
+        return self.vespa_queries[max(self.vespa_queries.keys())]
+
+    @property
+    def latest_results(self) -> list[AirweaveSearchResult] | None:
         """Get the most recent results, if any."""
         if not self.results:
             return None
@@ -85,6 +98,13 @@ class AgenticSearchState:
         if self.iteration not in self.errors:
             return None
         return self.errors[self.iteration]
+
+    @property
+    def latest_judgement(self) -> "Judgement | None":
+        """Get the most recent judgement, if any."""
+        if not self.judgements:
+            return None
+        return self.judgements[max(self.judgements.keys())]
 
     def format_for_logging(self, verbose: bool = False) -> str:
         """Format the state for readable logging output.
@@ -145,11 +165,11 @@ class AgenticSearchState:
         else:
             lines.append(box_line("Embeddings: (none)"))
 
-        # YQLs
-        if self.yqls:
-            lines.append(box_line(f"YQLs: {len(self.yqls)} generated"))
+        # Vespa Queries
+        if self.vespa_queries:
+            lines.append(box_line(f"Vespa Queries: {len(self.vespa_queries)} generated"))
         else:
-            lines.append(box_line("YQLs: (none)"))
+            lines.append(box_line("Vespa Queries: (none)"))
 
         # Results
         if self.results:

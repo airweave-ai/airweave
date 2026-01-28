@@ -370,23 +370,170 @@ async def agentic_search(
     """Agentic search endpoint using LLM-powered query planning.
 
     This endpoint uses an intelligent planner to analyze the collection and
-    generate optimal search queries. Currently in development.
+    generate optimal search queries. Returns results synchronously (no streaming).
     """
     from airweave.search.agentic_search import agent
+    from airweave.search.agentic_search.emitter import LoggingEmitter
 
     await guard_rail.is_allowed(ActionType.QUERIES)
 
-    await agent.run(
+    emitter = LoggingEmitter(ctx)
+    state = await agent.run(
         query=request.query,
         collection_id=readable_id,
         db=db,
         ctx=ctx,
+        emitter=emitter,
     )
 
     await guard_rail.increment(ActionType.QUERIES)
 
-    # TODO: Return actual results once the agent loop is complete
-    return {"status": "ok"}
+    # Return results (use mode='json' to handle datetime serialization)
+    results = state.final_results or state.latest_results or []
+    return {
+        "status": "ok",
+        "iterations": state.iteration,
+        "result_count": len(results),
+        "results": [r.model_dump(mode="json") for r in results],
+    }
+
+
+@router.post("/{readable_id}/search/agentic/stream")
+async def stream_agentic_search(  # noqa: C901 - streaming orchestration is acceptable
+    readable_id: str = Path(
+        ...,
+        description="The unique readable identifier of the collection",
+    ),
+    request: AgenticSearchRequest = ...,
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+    guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
+) -> StreamingResponse:
+    """Streaming agentic search endpoint using Server-Sent Events.
+
+    Streams progress events as the agent analyzes, plans, and searches.
+    Events include: messages, plans, reasoning, results, and completion status.
+    """
+    from airweave.search.agentic_search import agent
+    from airweave.search.agentic_search.emitter import PubSubEmitter
+
+    request_id = ctx.request_id
+    ctx.logger.info(
+        f"[AgenticSearchStream] Starting stream for collection '{readable_id}' id={request_id}"
+    )
+
+    await guard_rail.is_allowed(ActionType.QUERIES)
+
+    # Subscribe to events
+    pubsub = await core_pubsub.subscribe("agentic_search", request_id)
+    emitter = PubSubEmitter(request_id)
+
+    async def _run_search() -> None:
+        """Run the agentic search in background."""
+        try:
+            async with AsyncSessionLocal() as search_db:
+                await agent.run(
+                    query=request.query,
+                    collection_id=readable_id,
+                    db=search_db,
+                    ctx=ctx,
+                    emitter=emitter,
+                )
+        except Exception as e:
+            ctx.logger.exception(f"[AgenticSearchStream] Error in search {request_id}: {e}")
+            # Error event already emitted by agent
+
+    search_task = asyncio.create_task(_run_search())
+
+    async def event_stream():  # noqa: C901 - streaming loop is acceptable
+        """Generate streaming events from pubsub messages.
+
+        Progress events output just the message text for readability.
+        Final results output full JSON with all result data.
+        """
+        # Start with empty lines to separate from curl command
+        yield "\n\n"
+        first_message = True
+
+        try:
+            async for message in pubsub.listen():
+                if message["type"] == "message":
+                    data = message["data"]
+
+                    # Parse to determine event type
+                    try:
+                        parsed = json.loads(data)
+                        is_done = isinstance(parsed, dict) and parsed.get("done")
+                        is_error = isinstance(parsed, dict) and parsed.get("error")
+                        msg = parsed.get("message", "") if isinstance(parsed, dict) else ""
+
+                        # Double newline between events for readability
+                        separator = "" if first_message else "\n\n"
+                        first_message = False
+
+                        if is_done and not is_error:
+                            # Final success event - output full JSON with results
+                            yield f"{separator}{data}\n"
+                            ctx.logger.info(
+                                f"[AgenticSearchStream] Done event received for {request_id}"
+                            )
+                            try:
+                                await guard_rail.increment(ActionType.QUERIES)
+                            except Exception:
+                                pass
+                            break
+                        elif is_error:
+                            # Error event - output message only
+                            yield f"{separator}[ERROR] {msg}\n"
+                            if is_done:
+                                break
+                        elif msg:
+                            # Progress event - output just the message
+                            yield f"{separator}{msg}\n"
+                        else:
+                            # Unknown format - pass through raw
+                            yield f"{separator}{data}\n"
+
+                    except json.JSONDecodeError:
+                        # Not JSON - pass through raw
+                        yield f"{data}\n"
+
+                elif message["type"] == "subscribe":
+                    ctx.logger.info(
+                        f"[AgenticSearchStream] Subscribed to agentic_search:{request_id}"
+                    )
+
+        except asyncio.CancelledError:
+            ctx.logger.info(f"[AgenticSearchStream] Cancelled stream id={request_id}")
+        except Exception as e:
+            ctx.logger.error(f"[AgenticSearchStream] Error id={request_id}: {e}")
+            yield f"[ERROR] Stream error: {e}\n"
+        finally:
+            if not search_task.done():
+                search_task.cancel()
+                try:
+                    await search_task
+                except Exception:
+                    pass
+            try:
+                await pubsub.close()
+                ctx.logger.info(
+                    f"[AgenticSearchStream] Closed pubsub for agentic_search:{request_id}"
+                )
+            except Exception:
+                pass
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+            "Content-Type": "text/event-stream",
+            "Access-Control-Allow-Origin": "*",
+        },
+    )
 
 
 @router.get("/internal/filter-schema")

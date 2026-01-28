@@ -77,3 +77,29 @@ class AirweaveSearchResult(BaseModel):
         default_factory=dict,
         description="All source-specific fields (e.g., issue_key, summary for Jira)",
     )
+
+    @classmethod
+    def format_results_for_logging(cls, results: List["AirweaveSearchResult"]) -> str:
+        """Format a list of search results for readable logging.
+
+        Args:
+            results: List of search results to format
+
+        Returns:
+            Multi-line formatted string showing each result with full content
+        """
+        if not results:
+            return "(no results)"
+
+        lines = []
+        for i, result in enumerate(results, 1):
+            lines.append(f"\n{'=' * 80}")
+            lines.append(f"RESULT {i}: {result.name}")
+            lines.append(f"Score: {result.score:.4f} | Entity: {result.entity_id}")
+            lines.append(f"Type: {result.system_metadata.entity_type}")
+            lines.append(f"{'-' * 80}")
+            lines.append("TEXTUAL REPRESENTATION:")
+            lines.append(result.textual_representation)
+        lines.append(f"\n{'=' * 80}")
+
+        return "\n".join(lines)

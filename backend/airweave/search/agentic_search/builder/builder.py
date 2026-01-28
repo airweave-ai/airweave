@@ -4,7 +4,7 @@ Converts SearchPlan + QueryEmbeddings into a complete Vespa YQL query and parame
 This is the bridge between the planner's output and Vespa execution.
 """
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 from airweave.api.context import ApiContext
 from airweave.platform.destinations.vespa.config import (
@@ -13,6 +13,7 @@ from airweave.platform.destinations.vespa.config import (
     TARGET_HITS,
 )
 from airweave.search.agentic_search.builder.filter_translator import FilterGroupTranslator
+from airweave.search.agentic_search.builder.schemas import VespaQuery
 from airweave.search.agentic_search.openai import QueryEmbeddings
 from airweave.search.agentic_search.planner.schemas import RetrievalStrategy, SearchPlan
 
@@ -49,8 +50,8 @@ class AgenticQueryBuilder:
         plan: SearchPlan,
         embeddings: QueryEmbeddings,
         collection_id: str,
-    ) -> Tuple[str, Dict[str, Any]]:
-        """Build YQL query and parameters from search plan.
+    ) -> VespaQuery:
+        """Build VespaQuery from search plan.
 
         Args:
             plan: SearchPlan from the planner
@@ -58,7 +59,7 @@ class AgenticQueryBuilder:
             collection_id: Collection's readable ID for tenant filtering
 
         Returns:
-            Tuple of (yql_string, params_dict)
+            VespaQuery ready for execution
         """
         strategy = plan.retrieval_strategy.value
         self._log(f"Building YQL for {len(plan.queries)} queries, strategy={strategy}")
@@ -71,7 +72,7 @@ class AgenticQueryBuilder:
 
         self._log(f"Built YQL ({len(yql)} chars) with {len(params)} params")
 
-        return yql, params
+        return VespaQuery(yql=yql, params=params)
 
     def _build_yql(self, plan: SearchPlan, collection_id: str) -> str:
         """Build the complete YQL query string.

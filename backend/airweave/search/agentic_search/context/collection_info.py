@@ -231,6 +231,56 @@ class CollectionInfoBuilder:
 
         return "\n".join(lines)
 
+    async def build_summary(self, readable_collection_id: str) -> Dict[str, Any]:
+        """Build a structured summary of the collection for user display.
+
+        Returns counts per source per entity type, suitable for emitting to users.
+
+        Args:
+            readable_collection_id: The collection's readable ID
+
+        Returns:
+            Dict with structure:
+            {
+                "collection_id": "my-collection",
+                "sources": {
+                    "notion": {
+                        "NotionPageEntity": 150,
+                        "NotionDatabaseEntity": 10
+                    },
+                    "slack": {
+                        "SlackMessageEntity": 500
+                    }
+                },
+                "total_entities": 660
+            }
+        """
+        source_short_names = await self._get_source_short_names(readable_collection_id)
+        entity_counts = await self._get_entity_counts(readable_collection_id)
+
+        sources: Dict[str, Dict[str, int]] = {}
+
+        for short_name in source_short_names:
+            entity_defs = await self._get_entity_definitions(short_name)
+            source_counts: Dict[str, int] = {}
+
+            for entity_def in entity_defs:
+                entity_name = entity_def["name"]
+                count = entity_counts.get(entity_name, 0)
+                if count > 0:
+                    source_counts[entity_name] = count
+
+            if source_counts:
+                sources[short_name] = source_counts
+
+        total = sum(entity_counts.values())
+
+        return {
+            "collection_id": readable_collection_id,
+            "sources": sources,
+            "total_entities": total,
+        }
+
     async def _get_source_short_names(self, readable_collection_id: str) -> List[str]:
         """Get all unique source short names for a collection.
 

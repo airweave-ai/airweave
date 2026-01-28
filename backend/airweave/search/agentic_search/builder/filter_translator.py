@@ -38,6 +38,33 @@ FIELD_NAME_MAP = {
     "access_viewers": "access_viewers",
 }
 
+# Base fields that exist as actual Vespa schema fields (not in payload)
+# These fields can be filtered on directly
+BASE_VESPA_FIELDS = {
+    # Entity base fields
+    "entity_id",
+    "name",
+    "breadcrumbs",
+    "created_at",
+    "updated_at",
+    # System metadata fields (both short and mapped names)
+    "collection_id",
+    "entity_type",
+    "sync_id",
+    "sync_job_id",
+    "content_hash",
+    "hash",
+    "original_entity_id",
+    "source_name",
+    "chunk_index",
+    # Access control
+    "access_is_public",
+    "access_viewers",
+    # Content fields (for completeness, though typically not filtered)
+    "textual_representation",
+    "payload",
+}
+
 # Fields stored as epoch seconds in Vespa (for datetime conversion)
 EPOCH_FIELDS = {"created_at", "updated_at"}
 
@@ -126,8 +153,18 @@ class FilterGroupTranslator:
             condition: FilterCondition with field, operator, value
 
         Returns:
-            YQL clause for this condition
+            YQL clause for this condition, or None if field is not filterable
         """
+        # Check if this is a source-specific field (stored in payload, not directly filterable)
+        if not self._is_filterable_field(condition.field):
+            self._log(
+                f"Field '{condition.field}' is a source-specific field stored in payload. "
+                f"Source fields are searchable via keywords but not directly filterable. "
+                f"Consider using keyword search terms instead of filters for this field.",
+                level="warning",
+            )
+            return None
+
         field = self._map_field_name(condition.field)
         operator = condition.operator
         value = condition.value
@@ -138,6 +175,30 @@ class FilterGroupTranslator:
 
         # Dispatch to appropriate builder method
         return self._dispatch_operator(field, operator, value)
+
+    def _is_filterable_field(self, field: str) -> bool:
+        """Check if a field can be filtered on directly in Vespa.
+
+        Source-specific fields (like 'title', 'description', 'file_id', etc.) are stored
+        in the payload JSON string and indexed for BM25 search, but they cannot be
+        filtered on directly as structured fields.
+
+        Args:
+            field: The field name to check
+
+        Returns:
+            True if the field is a base/system field that can be filtered, False otherwise
+        """
+        # If the field is in our mapping, it's filterable
+        if field in FIELD_NAME_MAP:
+            return True
+
+        # If the field is a known base Vespa field, it's filterable
+        if field in BASE_VESPA_FIELDS:
+            return True
+
+        # Otherwise, it's likely a source-specific field stored in payload
+        return False
 
     def _dispatch_operator(self, field: str, operator: FilterOperator, value: Any) -> Optional[str]:
         """Dispatch to the appropriate operator handler."""

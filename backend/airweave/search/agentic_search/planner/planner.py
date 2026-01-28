@@ -5,10 +5,14 @@ from typing import TYPE_CHECKING
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
+from airweave.search.agentic_search.context import (
+    AIRWEAVE_BACKGROUND,
+    CollectionInfoBuilder,
+    SearchHistoryBuilder,
+)
 from airweave.search.agentic_search.openai import ReasoningEffort, StructuredOutputClient
-from airweave.search.agentic_search.planner.collection_info import CollectionInfoBuilder
-from airweave.search.agentic_search.planner.context import PLANNER_PROMPT
 from airweave.search.agentic_search.planner.schemas import SearchPlan
+from airweave.search.agentic_search.planner.task import PLANNER_TASK
 
 if TYPE_CHECKING:
     from airweave.search.agentic_search.state import AgenticSearchState
@@ -87,8 +91,11 @@ class Planner:
         # Step 1: Build collection info (once, on first iteration)
         if state.collection_info is None:
             ctx.logger.debug("[Planner] Building collection info...")
-            state.collection_info = await self._build_collection_info(state.collection_id, db, ctx)
+            state.collection_info, state.collection_summary = await self._build_collection_info(
+                state.collection_id, db, ctx
+            )
             ctx.logger.debug(f"[Planner] Collection info:\n{state.collection_info}")
+            ctx.logger.debug(f"[Planner] Collection summary: {state.collection_summary}")
 
         # Step 2 & 3: Build prompt with smart truncation
         prompt = self._build_prompt_with_truncation(state, ctx)
@@ -130,7 +137,7 @@ class Planner:
         """
         # Try with full history first
         search_history = self._build_search_history(state, skip_iterations=0)
-        prompt = PLANNER_PROMPT.format(
+        prompt = self._build_prompt(
             original_query=state.original_query,
             collection_info=state.collection_info,
             search_history=search_history,
@@ -150,7 +157,7 @@ class Planner:
         # Try skipping more and more old iterations
         for skip in range(1, state.iteration + 1):
             search_history = self._build_search_history(state, skip_iterations=skip)
-            prompt = PLANNER_PROMPT.format(
+            prompt = self._build_prompt(
                 original_query=state.original_query,
                 collection_info=state.collection_info,
                 search_history=search_history,
@@ -176,8 +183,8 @@ class Planner:
         collection_id: str,
         db: AsyncSession,
         ctx: ApiContext,
-    ) -> str:
-        """Build collection info markdown using CollectionInfoBuilder.
+    ) -> tuple[str, dict]:
+        """Build collection info markdown and summary using CollectionInfoBuilder.
 
         Args:
             collection_id: The collection's readable ID
@@ -185,10 +192,12 @@ class Planner:
             ctx: API context
 
         Returns:
-            Markdown string with collection sources, entity types, and fields
+            Tuple of (markdown string, summary dict)
         """
         builder = CollectionInfoBuilder(db, ctx)
-        return await builder.build_markdown(collection_id)
+        markdown = await builder.build_markdown(collection_id)
+        summary = await builder.build_summary(collection_id)
+        return markdown, summary
 
     def _build_search_history(
         self,
@@ -204,60 +213,71 @@ class Planner:
         Returns:
             Formatted string with previous plans, YQLs, judgements, and errors
         """
-        if state.is_first_iteration:
-            return "(No previous iterations)"
+        builder = SearchHistoryBuilder(state)
 
-        # Calculate which iterations to include
-        start_iteration = skip_iterations
-        if start_iteration >= state.iteration:
+        # Calculate max_iterations to include
+        if skip_iterations >= state.iteration:
             return "(Previous iterations truncated to fit context window)"
 
-        lines = []
+        max_iterations = state.iteration - skip_iterations if skip_iterations > 0 else None
 
-        if skip_iterations > 0:
-            lines.append(
-                f"*Note: {skip_iterations} oldest iteration(s) truncated to fit context window*"
-            )
-            lines.append("")
+        return builder.format_history_markdown(
+            max_iterations=max_iterations,
+            include_vespa_queries=True,
+            include_judgements=True,
+        )
 
-        for i in range(start_iteration, state.iteration):
-            lines.append(f"### Iteration {i + 1}")
-            lines.append("")
+    def _build_prompt(
+        self,
+        original_query: str,
+        collection_info: str,
+        search_history: str,
+    ) -> str:
+        """Build the full planner prompt from components.
 
-            # Plan
-            if i in state.plans:
-                plan = state.plans[i]
-                lines.append("**Plan:**")
-                lines.append(f"- Queries: {plan.queries}")
-                lines.append(f"- Filter groups: {len(plan.filter_groups)}")
-                lines.append(f"- Strategy: {plan.retrieval_strategy.value}")
-                lines.append(f"- Limit: {plan.limit}, Offset: {plan.offset}")
-                lines.append(f"- Reasoning: {plan.reasoning}")
-                lines.append("")
+        Args:
+            original_query: The user's search query
+            collection_info: Markdown describing the collection's sources and entity types
+            search_history: Formatted history of previous iterations
 
-            # YQL
-            if i in state.yqls:
-                lines.append("**YQL Query:**")
-                lines.append(f"```yql\n{state.yqls[i]}\n```")
-                lines.append("")
+        Returns:
+            Complete prompt string for the planner LLM
+        """
+        return f"""# Airweave Background
 
-            # Error (if any)
-            if i in state.errors:
-                lines.append("**Error:**")
-                lines.append(f"```\n{state.errors[i]}\n```")
-                lines.append("")
+{AIRWEAVE_BACKGROUND}
 
-            # Judgement
-            if i in state.judgements:
-                judgement = state.judgements[i]
-                lines.append("**Judge Evaluation:**")
-                lines.append(str(judgement))  # TODO: Format properly once schema exists
-                lines.append("")
+---
 
-            lines.append("---")
-            lines.append("")
+{PLANNER_TASK}
 
-        return "\n".join(lines)
+---
+
+## Context for This Search
+
+### Original User Query
+
+{original_query}
+
+### Collection Info
+
+{collection_info}
+
+---
+
+## Search History
+
+If this section is empty, this is the **first iteration** - analyze the query and collection
+to determine the best initial approach.
+
+If there is search history below, learn from previous attempts:
+- What worked or didn't work?
+- Did the judge provide specific feedback or advice?
+- Were there errors to avoid?
+- Should you broaden, narrow, or redirect the search?
+
+{search_history}
+"""
 
     def _log_plan(self, plan: SearchPlan, ctx: ApiContext) -> None:
         """Log the search plan in a readable format.
