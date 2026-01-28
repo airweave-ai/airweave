@@ -28,9 +28,24 @@ For **Claude Desktop, Cursor, and other desktop AI assistants**:
 ### 2. Hosted Mode (Cloud AI Platforms)
 
 For **OpenAI AgentBuilder and cloud-based AI platforms**:
-- Uses HTTP/SSE transport (Server-Sent Events)
+- Uses Streamable HTTP transport (MCP 2025-03-26)
 - Deployed to Azure Kubernetes Service
 - Accessible via `https://mcp.airweave.ai`
+- **Multi-tenant**: Each user provides their own API key and collection via custom headers
+
+**Configuration for OpenAI Agent Builder:**
+```
+MCP Server URL: https://mcp.airweave.ai/mcp
+
+Custom Headers:
+  Header 1:
+    name: X-API-Key
+    value: <your-airweave-api-key>
+  
+  Header 2:
+    name: X-Collection-Readable-ID
+    value: <your-collection-readable-id>
+```
 
 See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed hosting instructions.
 
@@ -55,16 +70,29 @@ npm run start
 
 ## Configuration
 
+### Local Mode Configuration
+
 The server requires environment variables to connect to your Airweave instance:
 
-### Required Environment Variables
-
+**Required Environment Variables:**
 - `AIRWEAVE_API_KEY`: Your Airweave API key (get this from your Airweave dashboard)
 - `AIRWEAVE_COLLECTION`: The readable ID of the collection to search
 
-### Optional Environment Variables
-
+**Optional Environment Variables:**
 - `AIRWEAVE_BASE_URL`: Base URL for the Airweave API (default: `https://api.airweave.ai`)
+
+### Hosted Mode Configuration
+
+For cloud-based AI platforms (OpenAI Agent Builder, etc.), configuration is provided via **custom headers** instead of environment variables:
+
+**Required Headers:**
+- `X-API-Key`: Your Airweave API key
+- `X-Collection-Readable-ID`: The readable ID of the collection to search
+
+**Optional Headers:**
+- None (base URL is configured at deployment)
+
+This approach enables **true multi-tenancy**: each user can search their own collections without requiring separate server deployments.
 
 ## Usage with Cursor/Claude Desktop
 
@@ -361,6 +389,47 @@ For debugging, you can check the stderr output where the server logs its startup
 # "Airweave MCP Search Server started"
 # "Collection: your-collection-id"
 # "Base URL: https://api.airweave.ai"
+```
+
+### Testing Hosted Mode
+
+You can test the hosted MCP server using curl:
+
+```bash
+# 1. Check server health
+curl https://mcp.airweave.ai/health
+
+# 2. Get server info
+curl https://mcp.airweave.ai/
+
+# 3. List available tools
+curl -X POST https://mcp.airweave.ai/mcp \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -H "X-Collection-Readable-ID: your-collection-id" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/list",
+    "id": 1
+  }'
+
+# 4. Execute a search
+curl -X POST https://mcp.airweave.ai/mcp \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -H "X-Collection-Readable-ID: your-collection-id" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "name": "search-your-collection-id",
+      "arguments": {
+        "query": "test query",
+        "limit": 5
+      }
+    },
+    "id": 2
+  }'
 ```
 
 ## Deployment to Production
