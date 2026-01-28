@@ -8,6 +8,7 @@ Handles:
 """
 
 import os
+import re
 import shutil
 from typing import TYPE_CHECKING, Callable, Optional, Tuple
 from uuid import UUID, uuid4
@@ -159,6 +160,35 @@ class FileService:
 
         return True, None
 
+    @staticmethod
+    def _extract_filename_from_content_disposition(content_disposition: str) -> Optional[str]:
+        """Extract filename from Content-Disposition header.
+
+        Handles formats like:
+        - attachment; filename="file.pdf"
+        - attachment; filename*=UTF-8''file%20name.pdf
+
+        Args:
+            content_disposition: Content-Disposition header value
+
+        Returns:
+            Extracted filename or None if not found
+        """
+        if not content_disposition:
+            return None
+
+        # Try quoted filename first: filename="file.pdf"
+        match = re.search(r'filename="([^"]+)"', content_disposition)
+        if match:
+            return match.group(1)
+
+        # Try unquoted filename: filename=file.pdf
+        match = re.search(r"filename=([^;\s]+)", content_disposition)
+        if match:
+            return match.group(1)
+
+        return None
+
     @retry(
         stop=stop_after_attempt(5),
         retry=retry_if_rate_limit_or_timeout,
@@ -172,13 +202,26 @@ class FileService:
         headers: dict,
         temp_path: str,
         logger: ContextualLogger,
-    ) -> None:
-        """Download file with retry logic for rate limits and timeouts."""
+    ) -> Optional[str]:
+        """Download file with retry logic for rate limits and timeouts.
+
+        Returns:
+            Extracted filename from Content-Disposition header, or None if not available.
+        """
+        extracted_filename = None
         try:
             async with client.stream(
                 "GET", url, headers=headers, follow_redirects=True
             ) as response:
                 response.raise_for_status()
+
+                # Extract filename from Content-Disposition header if present
+                content_disp = response.headers.get("Content-Disposition", "")
+                if content_disp:
+                    extracted_filename = self._extract_filename_from_content_disposition(
+                        content_disp
+                    )
+
                 os.makedirs(os.path.dirname(temp_path), exist_ok=True)
                 with open(temp_path, "wb") as f:
                     async for chunk in response.aiter_bytes():
@@ -191,6 +234,8 @@ class FileService:
                 )
             raise
 
+        return extracted_filename
+
     async def download_from_url(
         self,
         entity: FileEntity,
@@ -200,38 +245,49 @@ class FileService:
     ) -> FileEntity:
         """Download file from URL to temp directory.
 
+        If entity.name is not set, the filename will be extracted from the
+        Content-Disposition header during download.
+
         Args:
-            entity: FileEntity with url to fetch
+            entity: FileEntity with url to fetch (name can be None for redirect URLs)
             http_client_factory: Factory for HTTP client
             access_token_provider: Async callable returning access token
             logger: Logger for diagnostics
 
         Returns:
-            FileEntity with local_path set
+            FileEntity with local_path and name set
 
         Raises:
             FileSkippedException: If file should be skipped
-            ValueError: If url is missing
+            ValueError: If url is missing or filename cannot be determined
         """
-        should_download, skip_reason = await self._validate_file_before_download(
-            entity, http_client_factory, access_token_provider, logger
-        )
+        # If name is set, validate before download (existing behavior)
+        # If name is not set, we'll extract it from Content-Disposition after download
+        filename_known_upfront = bool(entity.name)
 
-        if not should_download:
-            logger.info(f"Skipping download of {entity.name}: {skip_reason}")
-            raise FileSkippedException(reason=skip_reason, filename=entity.name)
+        if filename_known_upfront:
+            should_download, skip_reason = await self._validate_file_before_download(
+                entity, http_client_factory, access_token_provider, logger
+            )
+
+            if not should_download:
+                logger.info(f"Skipping download of {entity.name}: {skip_reason}")
+                raise FileSkippedException(reason=skip_reason, filename=entity.name)
 
         file_uuid = str(uuid4())
-        safe_filename = self._safe_filename(entity.name)
+
+        # Use placeholder filename if name not known upfront
+        initial_filename = entity.name if entity.name else f"download_{file_uuid[:8]}"
+        safe_filename = self._safe_filename(initial_filename)
         temp_path = f"{self.base_temp_dir}/{file_uuid}-{safe_filename}"
 
         is_presigned_url = "X-Amz-Algorithm" in entity.url
         token = await access_token_provider()
         if not token and not is_presigned_url:
-            raise ValueError(f"No access token available for downloading {entity.name}")
+            raise ValueError(f"No access token available for downloading {entity.name or 'file'}")
 
         logger.debug(
-            f"Downloading file from URL: {entity.name} "
+            f"Downloading file from URL: {entity.name or '(filename from response)'} "
             f"(pre-signed: {is_presigned_url}, has_token: {bool(token)})"
         )
 
@@ -241,7 +297,41 @@ class FileService:
                 if token and not is_presigned_url:
                     headers["Authorization"] = f"Bearer {token}"
 
-                await self._download_with_retry(client, entity.url, headers, temp_path, logger)
+                extracted_filename = await self._download_with_retry(
+                    client, entity.url, headers, temp_path, logger
+                )
+
+            # If filename wasn't known upfront, use extracted filename
+            if not filename_known_upfront:
+                if extracted_filename:
+                    entity.name = extracted_filename
+
+                    # Validate the extracted filename's extension
+                    _, ext = os.path.splitext(extracted_filename)
+                    ext = ext.lower()
+                    if ext not in SUPPORTED_FILE_EXTENSIONS:
+                        # Clean up downloaded file
+                        if os.path.exists(temp_path):
+                            os.remove(temp_path)
+                        skip_reason = f"Unsupported file extension: {ext}"
+                        logger.info(f"Skipping download of {extracted_filename}: {skip_reason}")
+                        raise FileSkippedException(reason=skip_reason, filename=extracted_filename)
+
+                    # Rename temp file to use correct filename
+                    new_safe_filename = self._safe_filename(extracted_filename)
+                    new_temp_path = f"{self.base_temp_dir}/{file_uuid}-{new_safe_filename}"
+                    os.rename(temp_path, new_temp_path)
+                    temp_path = new_temp_path
+
+                    logger.debug(f"Extracted filename from response: {extracted_filename}")
+                else:
+                    # No filename in response - clean up and fail
+                    if os.path.exists(temp_path):
+                        os.remove(temp_path)
+                    raise ValueError(
+                        "Could not determine filename: entity.name not set and "
+                        "no Content-Disposition header in response"
+                    )
 
             logger.debug(f"Downloaded file to: {temp_path}")
             entity.local_path = temp_path

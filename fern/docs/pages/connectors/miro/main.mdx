@@ -1,0 +1,250 @@
+---
+title: "Miro"
+description: "Miro integration with Airweave"
+---
+
+{/* AUTO-GENERATED CONTENT START */}
+
+<div className="connector-header" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+  <img src="icon.svg" alt="Miro logo" width="48" height="48" className="connector-icon" />
+  <h1 style={{ margin: 0 }}>Miro</h1>
+</div>
+
+This connector enables AI agents and RAG systems to retrieve context from Miro through Airweave's unified search layer.
+
+## Configuration
+
+Miro source connector integrates with the Miro API to extract and synchronize data.
+
+Connects to your Miro boards and syncs boards, sticky notes, cards, text items,
+frames, tags, app cards, documents, and images.
+
+<Card
+  title="View Source Code"
+  icon="brands github"
+  href="https://github.com/airweave-ai/airweave/tree/main/backend/airweave/platform/sources/miro.py"
+>
+  Explore the Miro connector implementation
+</Card>
+
+### Authentication
+
+This connector uses **OAuth 2.0 authentication**. You can connect through the Airweave UI or API using the OAuth flow.
+
+**Supported authentication methods:**
+- OAuth Browser Flow (recommended for UI)
+- OAuth Token (for programmatic access)
+- Auth Provider (enterprise SSO)
+
+### Configuration Options
+
+The following configuration options are available for this connector:
+
+<Card
+  title="Configuration Parameters"
+  className="config-card"
+  style={{ backgroundColor: 'rgba(0, 0, 0, 0.05)', padding: '16px', marginBottom: '24px' }}
+>
+
+Miro configuration schema.
+<ParamField
+  path="exclude_boards"
+  type="str"
+  required={false}
+  default=""
+>
+  Skip boards containing this text in their name. Leave empty to sync all boards.
+</ParamField>
+</Card>
+
+## Data Models
+
+The following data models are available for this connector:
+
+<Accordion title="MiroBoardEntity">
+
+Schema for Miro board entities.
+
+Reference:
+    https://developers.miro.com/reference/get-boards
+
+| Field | Type | Description |
+|-------|------|-------------|
+| board_id | str | Miro board ID |
+| board_name | str | Board name |
+| created_at | Optional[datetime] | Created at |
+| modified_at | Optional[datetime] | Last modified at |
+| description | Optional[str] | Board description |
+| team_id | Optional[str] | Team ID this board belongs to |
+| owner_id | Optional[str] | Owner user ID |
+| owner_name | Optional[str] | Owner display name |
+| view_link | Optional[str] | URL to view the board |
+
+</Accordion>
+<Accordion title="MiroStickyNoteEntity">
+
+Schema for Miro sticky note items.
+
+Reference:
+    https://developers.miro.com/reference/get-sticky-notes
+
+| Field | Type | Description |
+|-------|------|-------------|
+| item_id | str | Sticky note item ID |
+| content | str | Sticky note text content |
+| created_at | Optional[datetime] | Created at |
+| modified_at | Optional[datetime] | Last modified at |
+| board_id | str | Board ID this item belongs to |
+| board_name | str | Board name this item belongs to |
+| created_by | Optional[Dict] | User who created the item |
+| modified_by | Optional[Dict] | User who last modified the item |
+| tags | List[Dict] | Tags attached to this item |
+
+</Accordion>
+<Accordion title="MiroCardEntity">
+
+Schema for Miro card items (Kanban-style cards).
+
+Reference:
+    https://developers.miro.com/reference/get-cards
+
+| Field | Type | Description |
+|-------|------|-------------|
+| item_id | str | Card item ID |
+| title | str | Card title |
+| created_at | Optional[datetime] | Created at |
+| modified_at | Optional[datetime] | Last modified at |
+| board_id | str | Board ID this card belongs to |
+| board_name | str | Board name this card belongs to |
+| description | Optional[str] | Card description |
+| due_date | Optional[str] | Due date for the card |
+| assignee_id | Optional[str] | Unique user identifier of the card assignee |
+| fields | List[Dict] | Custom fields on the card |
+| tags | List[Dict] | Tags attached to this card |
+| created_by | Optional[Dict] | User who created the card |
+| modified_by | Optional[Dict] | User who last modified the card |
+
+</Accordion>
+<Accordion title="MiroTextEntity">
+
+Schema for Miro text items.
+
+Reference:
+    https://developers.miro.com/reference/get-texts
+
+| Field | Type | Description |
+|-------|------|-------------|
+| item_id | str | Unique identifier of the text item |
+| content | str | Text content |
+| created_at | Optional[datetime] | Created at |
+| modified_at | Optional[datetime] | Last modified at |
+| board_id | str | Board ID this text belongs to |
+| board_name | str | Board name this text belongs to |
+| created_by | Optional[Dict] | User who created the text |
+| modified_by | Optional[Dict] | User who last modified the text |
+
+</Accordion>
+<Accordion title="MiroFrameEntity">
+
+Schema for Miro frame items (visual groupings/containers).
+
+Reference:
+    https://developers.miro.com/reference/get-frames
+
+| Field | Type | Description |
+|-------|------|-------------|
+| item_id | str | Frame item ID |
+| title | str | Frame title |
+| created_at | Optional[datetime] | Created at |
+| modified_at | Optional[datetime] | Last modified at |
+| board_id | str | Board ID this frame belongs to |
+| board_name | str | Board name this frame belongs to |
+| format | Optional[str] | Frame format (e.g. custom, a4, letter) |
+| frame_type | Optional[str] | Frame layout type (e.g. freeform, grid) |
+| created_by | Optional[Dict] | User who created the frame |
+| modified_by | Optional[Dict] | User who last modified the frame |
+
+</Accordion>
+<Accordion title="MiroTagEntity">
+
+Schema for Miro tag entities.
+
+Reference:
+    https://developers.miro.com/reference/get-tags-from-board
+
+| Field | Type | Description |
+|-------|------|-------------|
+| tag_id | str | Unique identifier of the tag |
+| title | str | Tag title |
+| created_at | Optional[datetime] | Created at (snapshot time) |
+| modified_at | Optional[datetime] | Last modified at (snapshot time) |
+| board_id | str | Board ID this tag belongs to |
+| board_name | str | Board name this tag belongs to |
+
+</Accordion>
+<Accordion title="MiroAppCardEntity">
+
+Schema for Miro app card items (integration cards from Jira, GitHub, etc.).
+
+Reference:
+    https://developers.miro.com/reference/get-app-card-item
+
+| Field | Type | Description |
+|-------|------|-------------|
+| item_id | str | App card item ID |
+| title | str | App card title |
+| created_at | Optional[datetime] | Created at |
+| modified_at | Optional[datetime] | Last modified at |
+| board_id | str | Board ID this app card belongs to |
+| board_name | str | Board name this app card belongs to |
+| description | Optional[str] | App card description |
+| status | Optional[str] | App card sync status |
+| fields | List[Dict] | Custom preview fields on the app card |
+| owned | Optional[bool] | Whether the app owns this card |
+| created_by | Optional[Dict] | User who created the app card |
+| modified_by | Optional[Dict] | User who last modified the app card |
+
+</Accordion>
+<Accordion title="MiroDocumentEntity">
+
+Schema for Miro document items (uploaded PDFs, DOCXs, etc.).
+
+Reference:
+    https://developers.miro.com/reference/get-document-item
+
+| Field | Type | Description |
+|-------|------|-------------|
+| item_id | str | Unique identifier of the document item |
+| title | str | Document title |
+| created_at | Optional[datetime] | Created at |
+| modified_at | Optional[datetime] | Last modified at |
+| board_id | str | Board ID this document belongs to |
+| board_name | str | Board name this document belongs to |
+| document_url | Optional[str] | URL to download the document |
+| created_by | Optional[Dict] | User who created the document |
+| modified_by | Optional[Dict] | User who last modified the document |
+
+</Accordion>
+<Accordion title="MiroImageEntity">
+
+Schema for Miro image items.
+
+Reference:
+    https://developers.miro.com/reference/get-image-item
+
+| Field | Type | Description |
+|-------|------|-------------|
+| item_id | str | Unique identifier of the image item |
+| title | str | Image title |
+| created_at | Optional[datetime] | Created at |
+| modified_at | Optional[datetime] | Last modified at |
+| board_id | str | Board ID this image belongs to |
+| board_name | str | Board name this image belongs to |
+| image_url | Optional[str] | URL to download the image |
+| created_by | Optional[Dict] | User who created the image |
+| modified_by | Optional[Dict] | User who last modified the image |
+
+</Accordion>
+
+
+{/* AUTO-GENERATED CONTENT END */}

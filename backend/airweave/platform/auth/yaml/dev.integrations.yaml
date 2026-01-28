@@ -351,7 +351,7 @@ integrations:
     request_token_url: "https://trello.com/1/OAuthGetRequestToken"
     authorization_url: "https://trello.com/1/OAuthAuthorizeToken"
     access_token_url: "https://trello.com/1/OAuthGetAccessToken"
-    consumer_key: "88e61134b0cbdbced53c8b652a1461bf"  # Get from https://trello.com/power-ups/admin
+    consumer_key: "88e61134b0cbdbced53c8b652a1461bf" # Get from https://trello.com/power-ups/admin
     consumer_secret: "ddc6b96b7c9f0854a05dd291bfac082d2a553630cda92c216073d6d39b94f775"
     scope: "read,write"
     expiration: "never"
@@ -422,6 +422,19 @@ integrations:
     scope: "ZohoCRM.modules.READ ZohoCRM.settings.READ ZohoCRM.users.READ"
     additional_frontend_params:
       access_type: "offline"
+      prompt: "consent"
+
+  miro:
+    oauth_type: "with_rotating_refresh"
+    url: "https://miro.com/oauth/authorize"
+    backend_url: "https://api.miro.com/v1/oauth/token"
+    grant_type: "authorization_code"
+    client_id: "8056634322379481062"
+    client_secret: "tYhh2K5raIrctV3yty90ZV0WNllqmUqi"
+    content_type: "application/x-www-form-urlencoded"
+    client_credential_location: "body"
+    scope: "boards:read identity:read"
+    additional_frontend_params:
       prompt: "consent"
 
   qdrant:
