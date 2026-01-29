@@ -47,9 +47,28 @@ async def list(
     # Initialize auth_fields for each source
     result_sources = []
     invalid_sources = []
+    enabled_features = ctx.organization.enabled_features or []
 
     for source in sources:
         try:
+            # Filter sources by feature flag at source level
+            if source.feature_flag:
+                from airweave.core.shared_models import FeatureFlag as FeatureFlagEnum
+
+                try:
+                    required_flag = FeatureFlagEnum(source.feature_flag)
+                    if required_flag not in enabled_features:
+                        ctx.logger.debug(
+                            f"🚫 Hidden source {source.short_name} "
+                            f"(requires feature flag: {source.feature_flag})"
+                        )
+                        continue  # Skip this source
+                except ValueError:
+                    ctx.logger.warning(
+                        f"Source {source.short_name} has invalid feature_flag: {source.feature_flag}"
+                    )
+                    # Continue processing if flag is invalid (fail open)
+
             # Config class is always required
             if not source.config_class:
                 invalid_sources.append(f"{source.short_name} (missing config_class)")
@@ -78,7 +97,6 @@ async def list(
                 config_fields_unfiltered = Fields.from_config_class(config_class)
 
                 # Filter config fields based on organization's enabled features
-                enabled_features = ctx.organization.enabled_features or []
                 config_fields = config_fields_unfiltered.filter_by_features(enabled_features)
 
                 # Log any fields that were filtered out due to missing feature flags
@@ -153,6 +171,25 @@ async def get(
         source = await crud.source.get_by_short_name(db, short_name)
         if not source:
             raise HTTPException(status_code=404, detail=f"Source not found: {short_name}")
+
+        # Check feature flag at source level
+        if source.feature_flag:
+            from airweave.core.shared_models import FeatureFlag as FeatureFlagEnum
+
+            try:
+                required_flag = FeatureFlagEnum(source.feature_flag)
+                enabled_features = ctx.organization.enabled_features or []
+
+                if required_flag not in enabled_features:
+                    ctx.logger.warning(
+                        f"Access denied to source {short_name} - requires feature: {source.feature_flag}"
+                    )
+                    raise HTTPException(status_code=404, detail=f"Source not found: {short_name}")
+            except ValueError:
+                ctx.logger.warning(
+                    f"Source {short_name} has invalid feature_flag: {source.feature_flag}"
+                )
+                # Continue processing if flag is invalid (fail open)
 
         # Config class is always required
         if not source.config_class:

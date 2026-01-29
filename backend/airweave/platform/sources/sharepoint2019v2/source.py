@@ -48,6 +48,7 @@ from airweave.schemas.source_connection import AuthenticationMethod
     config_class="SharePoint2019V2Config",
     supports_continuous=False,
     supports_access_control=True,  # Enable access control sync
+    feature_flag="sharepoint_2019_v2",  # Requires SHAREPOINT_2019_V2 feature flag
 )
 class SharePoint2019V2Source(BaseSource):
     """SharePoint 2019 On-Premise V2 source.

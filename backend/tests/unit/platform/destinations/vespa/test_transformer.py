@@ -5,7 +5,11 @@ from unittest.mock import MagicMock
 from uuid import UUID
 from datetime import datetime
 
-from airweave.platform.destinations.vespa.transformer import EntityTransformer
+from airweave.platform.destinations.vespa.transformer import (
+    EntityTransformer,
+    _sanitize_for_vespa,
+    _validate_text_quality,
+)
 from airweave.platform.destinations.vespa.types import VespaDocument
 
 
@@ -441,4 +445,221 @@ class TestEntityTransformer:
         assert result.fields["entity_id"] == "email-123"
         assert result.fields["access_is_public"] is False
         assert "user@example.com" in result.fields["access_viewers"]
+
+
+class TestSanitizeForVespa:
+    """Test _sanitize_for_vespa function."""
+
+    def test_sanitize_clean_text(self):
+        """Test sanitization of clean text."""
+        text = "Hello world! This is clean text."
+        result = _sanitize_for_vespa(text)
+        assert result == text
+
+    def test_sanitize_removes_null_bytes(self):
+        """Test removal of null bytes."""
+        text = "Hello\x00world"
+        result = _sanitize_for_vespa(text)
+        assert result == "Helloworld"
+        assert "\x00" not in result
+
+    def test_sanitize_removes_control_characters(self):
+        """Test removal of control characters."""
+        text = "Hello\x01\x02\x03world"
+        result = _sanitize_for_vespa(text)
+        assert result == "Helloworld"
+
+    def test_sanitize_preserves_newlines(self):
+        """Test preservation of newlines."""
+        text = "Hello\nworld\r\ntest"
+        result = _sanitize_for_vespa(text)
+        assert result == text
+
+    def test_sanitize_preserves_tabs(self):
+        """Test preservation of tabs."""
+        text = "Hello\tworld"
+        result = _sanitize_for_vespa(text)
+        assert result == text
+
+    def test_sanitize_removes_unicode_noncharacters(self):
+        """Test removal of Unicode noncharacters."""
+        text = "Hello\ufffeworld\uffff"
+        result = _sanitize_for_vespa(text)
+        assert result == "Helloworld"
+
+    def test_sanitize_removes_unicode_replacement_in_nonchar_range(self):
+        """Test removal of Unicode noncharacters in FDD0-FDEF range."""
+        text = "Hello\ufdd0world\ufdef"
+        result = _sanitize_for_vespa(text)
+        assert result == "Helloworld"
+
+    def test_sanitize_empty_string(self):
+        """Test sanitization of empty string."""
+        text = ""
+        result = _sanitize_for_vespa(text)
+        assert result == ""
+
+    def test_sanitize_none(self):
+        """Test sanitization of None."""
+        result = _sanitize_for_vespa(None)
+        assert result is None
+
+    def test_sanitize_unicode_text(self):
+        """Test sanitization preserves valid Unicode."""
+        text = "Hello 世界 🌍 こんにちは"
+        result = _sanitize_for_vespa(text)
+        assert result == text
+
+
+class TestValidateTextQuality:
+    """Test _validate_text_quality function."""
+
+    def test_validate_clean_text(self):
+        """Test validation of clean text returns None."""
+        text = "Hello world! This is clean text."
+        result = _validate_text_quality(text, "test-id")
+        assert result is None
+
+    def test_validate_empty_text(self):
+        """Test validation of empty text returns None."""
+        result = _validate_text_quality("", "test-id")
+        assert result is None
+
+    def test_validate_none_text(self):
+        """Test validation of None returns None."""
+        result = _validate_text_quality(None, "test-id")
+        assert result is None
+
+    def test_validate_text_with_no_replacement_chars(self):
+        """Test text without replacement characters passes."""
+        text = "Normal text with Unicode: 世界 🌍"
+        result = _validate_text_quality(text, "test-id")
+        assert result is None
+
+    def test_validate_text_with_few_replacement_chars(self):
+        """Test text with acceptable replacement characters passes."""
+        # 10 replacement chars out of 1000 chars = 1% (below 25% threshold)
+        text = "Hello" + "\ufffd" * 10 + "world" + "x" * 1000
+        result = _validate_text_quality(text, "test-id")
+        assert result is None
+
+    def test_validate_text_exceeds_absolute_threshold(self):
+        """Test text exceeding 5000 replacement characters fails."""
+        text = "Hello" + "\ufffd" * 6000 + "world" + "x" * 100000
+        result = _validate_text_quality(text, "test-id")
+        assert result is not None
+        assert "6000" in result
+        assert "replacement characters" in result
+
+    def test_validate_text_exceeds_ratio_threshold(self):
+        """Test text exceeding 25% replacement ratio fails."""
+        # 100 chars total, 30 replacement (30%)
+        text = "\ufffd" * 30 + "x" * 70
+        result = _validate_text_quality(text, "test-id")
+        assert result is not None
+        assert "30" in result
+        assert "replacement characters" in result
+
+    def test_validate_text_at_exact_threshold(self):
+        """Test text at exactly 5000 replacement chars passes."""
+        text = "\ufffd" * 5000 + "x" * 100000
+        result = _validate_text_quality(text, "test-id")
+        assert result is None
+
+    def test_validate_text_at_exact_ratio_threshold(self):
+        """Test text at exactly 25% replacement ratio passes."""
+        # 100 chars total, 25 replacement (25%)
+        text = "\ufffd" * 25 + "x" * 75
+        result = _validate_text_quality(text, "test-id")
+        assert result is None
+
+    def test_validate_error_message_includes_stats(self):
+        """Test error message includes character counts and ratio."""
+        text = "\ufffd" * 6000 + "x" * 2000
+        result = _validate_text_quality(text, "test-id")
+        assert result is not None
+        assert "6000" in result
+        assert "8000" in result  # total length
+        assert "%" in result  # should include percentage
+
+    def test_validate_100_percent_replacement_chars(self):
+        """Test text that is 100% replacement characters fails."""
+        text = "\ufffd" * 10000
+        result = _validate_text_quality(text, "test-id")
+        assert result is not None
+        assert "10000" in result
+
+
+class TestEntityTransformerWithValidation:
+    """Test EntityTransformer with text quality validation."""
+
+    def test_transform_rejects_corrupted_text(self):
+        """Test transform rejects entity with excessive replacement characters."""
+        transformer = EntityTransformer()
+        
+        entity = MagicMock()
+        entity.entity_id = "corrupted-123"
+        entity.name = "Corrupted File"
+        # Text with 6000 replacement chars out of 8000 total (75%)
+        entity.textual_representation = "\ufffd" * 6000 + "x" * 2000
+        entity.created_at = datetime(2024, 1, 1)
+        entity.updated_at = datetime(2024, 1, 1)
+        entity.breadcrumbs = []
+        entity.access = MagicMock()
+        entity.access.is_public = True
+        entity.access.viewers = []
+        entity.access.editors = []
+        entity.access.owners = []
+        entity.airweave_system_metadata = MagicMock()
+        entity.airweave_system_metadata.entity_type = "file"
+        entity.airweave_system_metadata.source_name = "GoogleDrive"
+        entity.airweave_system_metadata.sync_id = "sync-1"
+        entity.airweave_system_metadata.sync_job_id = None
+        entity.airweave_system_metadata.hash = "hash-1"
+        entity.airweave_system_metadata.collection_id = UUID("12345678-1234-1234-1234-123456789abc")
+        entity.airweave_system_metadata.chunk_index = None
+        entity.airweave_system_metadata.original_entity_id = "orig-1"
+        entity.airweave_system_metadata.dense_embedding = None
+        entity.airweave_system_metadata.sparse_embedding = None
+        entity.to_dict.return_value = {"entity_id": "corrupted-123"}
+        
+        with pytest.raises(ValueError) as exc_info:
+            transformer.transform(entity)
+        
+        assert "6000" in str(exc_info.value)
+        assert "replacement characters" in str(exc_info.value)
+
+    def test_transform_accepts_clean_text(self):
+        """Test transform accepts entity with clean text."""
+        transformer = EntityTransformer()
+        
+        entity = MagicMock()
+        entity.entity_id = "clean-123"
+        entity.name = "Clean File"
+        entity.textual_representation = "This is clean text without any corruption."
+        entity.created_at = datetime(2024, 1, 1)
+        entity.updated_at = datetime(2024, 1, 1)
+        entity.breadcrumbs = []
+        entity.access = MagicMock()
+        entity.access.is_public = True
+        entity.access.viewers = []
+        entity.access.editors = []
+        entity.access.owners = []
+        entity.airweave_system_metadata = MagicMock()
+        entity.airweave_system_metadata.entity_type = "file"
+        entity.airweave_system_metadata.source_name = "GoogleDrive"
+        entity.airweave_system_metadata.sync_id = "sync-1"
+        entity.airweave_system_metadata.sync_job_id = None
+        entity.airweave_system_metadata.hash = "hash-1"
+        entity.airweave_system_metadata.collection_id = UUID("12345678-1234-1234-1234-123456789abc")
+        entity.airweave_system_metadata.chunk_index = None
+        entity.airweave_system_metadata.original_entity_id = "orig-1"
+        entity.airweave_system_metadata.dense_embedding = None
+        entity.airweave_system_metadata.sparse_embedding = None
+        entity.to_dict.return_value = {"entity_id": "clean-123"}
+        
+        result = transformer.transform(entity)
+        
+        assert isinstance(result, VespaDocument)
+        assert result.fields["textual_representation"] == "This is clean text without any corruption."
 

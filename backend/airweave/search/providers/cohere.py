@@ -12,9 +12,9 @@ except ImportError:
     cohere = None
 
 from pydantic import BaseModel
-from tiktoken import Encoding
 
 from airweave.api.context import ApiContext
+from airweave.platform.tokenizers import BaseTokenizer
 
 from ._base import BaseProvider, ProviderError
 from .schemas import ProviderModelSpec
@@ -37,7 +37,7 @@ class CohereProvider(BaseProvider):
 
         self.ctx.logger.debug(f"[CohereProvider] Initialized with model spec: {model_spec}")
 
-        self.rerank_tokenizer: Optional[Encoding] = None
+        self.rerank_tokenizer: Optional[BaseTokenizer] = None
 
         if model_spec.rerank_model and model_spec.rerank_model.tokenizer:
             self.rerank_tokenizer = self._load_tokenizer(

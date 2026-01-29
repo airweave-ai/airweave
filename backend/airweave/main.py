@@ -35,6 +35,7 @@ from airweave.api.middleware import (
 from airweave.api.router import TrailingSlashRouter
 from airweave.api.v1.api import api_router
 from airweave.core.config import settings
+from airweave.core.embedding_validation import validate_and_raise
 from airweave.core.exceptions import (
     AirweaveException,
     InvalidStateError,
@@ -71,6 +72,9 @@ async def lifespan(app: FastAPI):
         if settings.RUN_DB_SYNC:
             await sync_platform_components(db)
         await init_db(db)
+
+    # Validate embedding stack configuration (raises if misconfigured)
+    validate_and_raise()
 
     # Initialize cleanup schedule for stuck sync jobs (if Temporal is enabled)
     if settings.TEMPORAL_ENABLED:

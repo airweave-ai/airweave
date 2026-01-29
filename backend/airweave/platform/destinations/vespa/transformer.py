@@ -60,6 +60,49 @@ def _sanitize_for_vespa(text: str) -> str:
     )
 
 
+def _validate_text_quality(text: str, entity_id: str) -> Optional[str]:
+    """Validate text doesn't contain excessive Unicode replacement characters.
+
+    Vespa rejects text with >25% replacement chars or >5000 total. Detect this
+    earlier to provide better error messages.
+
+    Args:
+        text: Text to validate
+        entity_id: Entity ID for error messages
+
+    Returns:
+        Error message if validation fails, None if OK
+
+    Raises:
+        ValueError: If text contains excessive replacement characters
+    """
+    if not text:
+        return None
+
+    # Count Unicode replacement characters (U+FFFD)
+    replacement_count = text.count("\ufffd")
+
+    if replacement_count == 0:
+        return None
+
+    text_length = len(text)
+    replacement_ratio = replacement_count / text_length if text_length > 0 else 0
+
+    # Vespa thresholds: max 5000 chars OR 25% ratio
+    MAX_REPLACEMENT_CHARS = 5000
+    MAX_REPLACEMENT_RATIO = 0.25
+
+    if replacement_count > MAX_REPLACEMENT_CHARS or replacement_ratio > MAX_REPLACEMENT_RATIO:
+        return (
+            f"Text contains {replacement_count} Unicode replacement characters "
+            f"({replacement_ratio:.1%} of {text_length} chars). This indicates "
+            f"corrupted or binary data incorrectly processed as text. "
+            f"File may have encoding issues or be a binary file misidentified as text."
+        )
+
+    return None
+
+
 def _get_system_metadata_fields() -> set[str]:
     """Get system metadata fields from AirweaveSystemMetadata class.
 
@@ -204,6 +247,17 @@ class EntityTransformer:
         if entity.updated_at:
             fields["updated_at"] = int(entity.updated_at.timestamp())
         if entity.textual_representation:
+            # Validate text quality before sanitization
+            validation_error = _validate_text_quality(
+                entity.textual_representation, entity.entity_id
+            )
+            if validation_error:
+                self._logger.error(
+                    f"[VespaTransformer] Text quality validation failed for "
+                    f"{entity.entity_id} ({entity.name}): {validation_error}"
+                )
+                raise ValueError(validation_error)
+
             # Sanitize text to remove control characters that Vespa rejects
             sanitized = _sanitize_for_vespa(entity.textual_representation)
 

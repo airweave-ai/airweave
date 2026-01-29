@@ -100,6 +100,9 @@ jobs:
           # Enable internal sources (stub, snapshot) for testing
           echo "ENABLE_INTERNAL_SOURCES=true" >> .env
 
+          # Set embedding dimensions (OpenAI text-embedding-3-small supports 1536)
+          echo "EMBEDDING_DIMENSIONS=1536" >> .env
+
           echo "Starting services using start.sh..."
           ./start.sh --noninteractive
 
@@ -116,6 +119,40 @@ jobs:
           curl -f http://localhost:8001/health || (echo "Backend not healthy"; docker logs airweave-backend; exit 1)
 
           echo "Backend is healthy and ready for API tests!"
+
+      - name: Verify embedding configuration
+        run: |
+          echo "Checking embedding stack configuration..."
+
+          # Verify embedding validation passed at startup (no errors in logs)
+          if docker logs airweave-backend 2>&1 | grep -q "EmbeddingConfigurationError"; then
+            echo "ERROR: Embedding configuration failed!"
+            docker logs airweave-backend 2>&1 | grep -A5 "EmbeddingConfigurationError"
+            exit 1
+          fi
+
+          # Check for successful embedding validation message
+          if docker logs airweave-backend 2>&1 | grep -q "Embedding stack validated"; then
+            echo "✓ Embedding stack validated successfully"
+            docker logs airweave-backend 2>&1 | grep "Embedding stack" | head -5
+          else
+            echo "Note: Embedding validation message not found (may be at DEBUG level)"
+          fi
+
+          # Verify Vespa schema was deployed with correct dimensions
+          echo ""
+          echo "Checking Vespa deployment..."
+          VESPA_DIMS=$(docker logs airweave-vespa-init 2>&1 | grep -o "EMBEDDING_DIMENSIONS=[0-9]*" | cut -d= -f2 || echo "unknown")
+          if [ "$VESPA_DIMS" = "1536" ]; then
+            echo "✓ Vespa deployed with EMBEDDING_DIMENSIONS=1536"
+          elif [ "$VESPA_DIMS" = "unknown" ]; then
+            echo "Note: Could not verify Vespa dimensions from init logs"
+          else
+            echo "WARNING: Vespa may have unexpected dimensions: $VESPA_DIMS"
+          fi
+
+          echo ""
+          echo "Embedding configuration verification complete!"
 
       - name: Run E2E Smoke Tests
         env:

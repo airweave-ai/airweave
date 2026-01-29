@@ -202,14 +202,14 @@ class CollectionInDBBase(CollectionBase):
         description=(
             "Vector dimensions used by this collection. Determines which embedding model "
             "is used: 3072 (text-embedding-3-large), 1536 (text-embedding-3-small), "
-            "or 384 (MiniLM-L6-v2)."
+            "1024 (mistral-embed), or 384 (MiniLM-L6-v2)."
         ),
     )
     embedding_model_name: str = Field(
         ...,
         description=(
             "Name of the embedding model used for this collection "
-            "(e.g., 'text-embedding-3-large', 'text-embedding-3-small'). "
+            "(e.g., 'text-embedding-3-large', 'text-embedding-3-small', 'mistral-embed'). "
             "This ensures queries use the same model as the indexed data."
         ),
     )

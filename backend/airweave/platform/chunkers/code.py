@@ -3,9 +3,10 @@
 from typing import Any, Dict, List, Optional
 
 from airweave.core.logging import logger
-from airweave.platform.chunkers._base import BaseChunker, TiktokenWrapperForChonkie
+from airweave.platform.chunkers._base import BaseChunker
 from airweave.platform.sync.async_helpers import run_in_thread_pool
 from airweave.platform.sync.exceptions import SyncFailureError
+from airweave.platform.tokenizers import TikTokenTokenizer, get_tokenizer
 
 
 class CodeChunker(BaseChunker):
@@ -64,32 +65,34 @@ class CodeChunker(BaseChunker):
             return
 
         try:
-            import tiktoken
             from chonkie import CodeChunker as ChonkieCodeChunker
             from chonkie import TokenChunker
 
-            # Initialize tiktoken tokenizer for accurate OpenAI token counting
-            self._tiktoken_tokenizer = tiktoken.get_encoding(self.TOKENIZER)
+            # Get tokenizer - we need the raw tiktoken encoding for Chonkie
+            # (Chonkie's backend detection looks for "tiktoken" in type string,
+            # but our wrapper path contains "tokenizers" which matches first)
+            tokenizer = get_tokenizer(self.TOKENIZER)
+            self._tiktoken_tokenizer = tokenizer
 
-            # Wrap tiktoken for Chonkie to handle special tokens like <|endoftext|>
-            # Chonkie's internal AutoTokenizer doesn't pass allowed_special="all",
-            # which causes failures when syncing code with special tokens
-            tiktoken_wrapper = TiktokenWrapperForChonkie(self._tiktoken_tokenizer)
+            if not isinstance(tokenizer, TikTokenTokenizer):
+                raise SyncFailureError(
+                    f"Chonkie requires tiktoken encoding, got {type(tokenizer).__name__}"
+                )
+
+            # Pass raw tiktoken encoding to Chonkie for proper backend detection
+            raw_encoding = tokenizer.encoding
 
             # Initialize Chonkie's CodeChunker with auto language detection
-            # Uses Magika (Google's ML-based language detector) to identify language
             self._code_chunker = ChonkieCodeChunker(
-                language="auto",  # Auto-detect using Magika
-                tokenizer=tiktoken_wrapper,  # Use wrapper that handles special tokens
+                language="auto",
+                tokenizer=raw_encoding,
                 chunk_size=self.CHUNK_SIZE,
                 include_nodes=False,
             )
 
             # Initialize TokenChunker for fallback
-            # Splits at exact token boundaries when code chunking produces oversized chunks
-            # GUARANTEES chunks ≤ MAX_TOKENS_PER_CHUNK (uses same tokenizer for encode/decode)
             self._token_chunker = TokenChunker(
-                tokenizer=tiktoken_wrapper,  # Use wrapper that handles special tokens
+                tokenizer=raw_encoding,
                 chunk_size=self.MAX_TOKENS_PER_CHUNK,
                 chunk_overlap=0,
             )

@@ -9,9 +9,9 @@ from typing import Any, Dict, List, Optional
 
 from groq import AsyncGroq
 from pydantic import BaseModel
-from tiktoken import Encoding
 
 from airweave.api.context import ApiContext
+from airweave.platform.tokenizers import BaseTokenizer
 
 from ._base import BaseProvider, ProviderError
 from .schemas import ProviderModelSpec
@@ -35,8 +35,8 @@ class GroqProvider(BaseProvider):
 
         self.ctx.logger.debug(f"[GroqProvider] Initialized with model spec: {model_spec}")
 
-        self.llm_tokenizer: Optional[Encoding] = None
-        self.rerank_tokenizer: Optional[Encoding] = None
+        self.llm_tokenizer: Optional[BaseTokenizer] = None
+        self.rerank_tokenizer: Optional[BaseTokenizer] = None
 
         if model_spec.llm_model:
             self.llm_tokenizer = self._load_tokenizer(model_spec.llm_model.tokenizer, "llm")

@@ -13,7 +13,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "i2j3k4l5m6n7"
-down_revision = "h1i2j3k4l5m6"
+down_revision = "p2q3r4s5t6u7"
 branch_labels = None
 depends_on = None
 
@@ -27,49 +27,59 @@ def upgrade():
     - User-to-group: ("john@acme.com", "user", "group-engineering")
     - Group-to-group: ("group-frontend", "group", "group-engineering")
     """
-    op.create_table(
-        "access_control_membership",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("organization_id", postgresql.UUID(as_uuid=True), nullable=False),
-        # Member (the principal joining the group)
-        sa.Column("member_id", sa.String(255), nullable=False),
-        sa.Column("member_type", sa.String(10), nullable=False),
-        # Parent group (the group being joined)
-        sa.Column("group_id", sa.String(255), nullable=False),
-        sa.Column("group_name", sa.String(255), nullable=True),
-        # Source info
-        sa.Column("source_name", sa.String(50), nullable=False),
-        sa.Column("source_connection_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
-        sa.Column("modified_at", sa.DateTime(), nullable=False),
-        sa.ForeignKeyConstraint(["organization_id"], ["organization.id"]),
-        sa.ForeignKeyConstraint(
-            ["source_connection_id"], ["source_connection.id"], ondelete="CASCADE"
-        ),
-    )
+    from sqlalchemy import inspect
+    from sqlalchemy.engine import reflection
 
-    # Create indexes for fast lookups
-    # Composite index on member (used for all queries)
-    op.create_index(
-        "idx_acl_membership_member",
-        "access_control_membership",
-        ["organization_id", "member_id", "member_type"],
-    )
-    # Index on parent group
-    op.create_index(
-        "idx_acl_membership_group", "access_control_membership", ["organization_id", "group_id"]
-    )
-    # Index for cleanup by source
-    op.create_index(
-        "idx_acl_membership_source", "access_control_membership", ["source_connection_id"]
-    )
-    # Unique constraint on (org, member, group, source_connection)
-    op.create_index(
-        "uq_acl_membership",
-        "access_control_membership",
-        ["organization_id", "member_id", "member_type", "group_id", "source_connection_id"],
-        unique=True,
-    )
+    conn = op.get_bind()
+    inspector = inspect(conn)
+    tables = inspector.get_table_names()
+
+    if "access_control_membership" not in tables:
+        op.create_table(
+            "access_control_membership",
+            sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+            sa.Column("organization_id", postgresql.UUID(as_uuid=True), nullable=False),
+            # Member (the principal joining the group)
+            sa.Column("member_id", sa.String(255), nullable=False),
+            sa.Column("member_type", sa.String(10), nullable=False),
+            # Parent group (the group being joined)
+            sa.Column("group_id", sa.String(255), nullable=False),
+            sa.Column("group_name", sa.String(255), nullable=True),
+            # Source info
+            sa.Column("source_name", sa.String(50), nullable=False),
+            sa.Column("source_connection_id", postgresql.UUID(as_uuid=True), nullable=False),
+            sa.Column("created_at", sa.DateTime(), nullable=False),
+            sa.Column("modified_at", sa.DateTime(), nullable=False),
+            sa.ForeignKeyConstraint(["organization_id"], ["organization.id"]),
+            sa.ForeignKeyConstraint(
+                ["source_connection_id"], ["source_connection.id"], ondelete="CASCADE"
+            ),
+        )
+
+        # Create indexes for fast lookups
+        # Composite index on member (used for all queries)
+        op.create_index(
+            "idx_acl_membership_member",
+            "access_control_membership",
+            ["organization_id", "member_id", "member_type"],
+        )
+        # Index on parent group
+        op.create_index(
+            "idx_acl_membership_group",
+            "access_control_membership",
+            ["organization_id", "group_id"],
+        )
+        # Index for cleanup by source
+        op.create_index(
+            "idx_acl_membership_source", "access_control_membership", ["source_connection_id"]
+        )
+        # Unique constraint on (org, member, group, source_connection)
+        op.create_index(
+            "uq_acl_membership",
+            "access_control_membership",
+            ["organization_id", "member_id", "member_type", "group_id", "source_connection_id"],
+            unique=True,
+        )
 
 
 def downgrade():

@@ -23,11 +23,8 @@ if TYPE_CHECKING:
     from airweave.platform.contexts import SyncContext
 
 
-class DenseEmbedder(BaseEmbedder):
-    """OpenAI dense embedder with dynamic model selection (non-singleton).
-
-    IMPORTANT: No longer a singleton! Each collection may use different embedding models,
-    so we create fresh instances with the correct model for each sync/search operation.
+class OpenAIDenseEmbedder(BaseEmbedder):
+    """OpenAI dense embedder with dynamic model selection.
 
     Features:
     - Dynamic model selection based on vector_size (3072 or 1536)
@@ -59,20 +56,13 @@ class DenseEmbedder(BaseEmbedder):
         if not settings.OPENAI_API_KEY:
             raise SyncFailureError("OPENAI_API_KEY required for dense embeddings")
 
-        # Fail-fast: vector_size should always be provided from collection
-        # Only allow None for backward compatibility, but warn
-        if vector_size is None:
-            # Fallback to large model but this shouldn't happen
-            self.MODEL_NAME = "text-embedding-3-large"
-            self.VECTOR_DIMENSIONS = 3072
-        else:
-            # Select model and dimensions based on vector_size
-            from airweave.platform.destinations.collection_strategy import (
-                get_openai_embedding_model_for_vector_size,
-            )
-
-            self.MODEL_NAME = get_openai_embedding_model_for_vector_size(vector_size)
-            self.VECTOR_DIMENSIONS = vector_size
+        # Select model based on dimensions
+        # text-embedding-3-small: up to 1536 dims (Matryoshka)
+        # text-embedding-3-large: up to 3072 dims (Matryoshka)
+        self.VECTOR_DIMENSIONS = vector_size or settings.EMBEDDING_DIMENSIONS
+        self.MODEL_NAME = (
+            "text-embedding-3-small" if self.VECTOR_DIMENSIONS <= 1536 else "text-embedding-3-large"
+        )
 
         # Create fresh client instance
         self._client = AsyncOpenAI(
@@ -108,13 +98,14 @@ class DenseEmbedder(BaseEmbedder):
         Raises:
             SyncFailureError: On any error (empty texts, API failures, etc.)
         """
-        # Extract logger from context (SyncContext has .logger, ContextualLogger is a logger)
+        # Extract logger: SyncContext has .logger attribute, ContextualLogger IS a logger
         if context is None:
             logger = default_logger
-        elif hasattr(context, "logger"):
-            logger = context.logger  # SyncContext
+        elif isinstance(context, ContextualLogger):
+            logger = context
         else:
-            logger = context  # ContextualLogger directly
+            # Must be SyncContext (or similar with .logger)
+            logger = context.logger
 
         # Use explicit dimensions if provided, else model default
         output_dims = dimensions or self.VECTOR_DIMENSIONS

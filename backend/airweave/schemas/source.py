@@ -122,6 +122,13 @@ class SourceBase(BaseModel):
             "'connection' (per-connection/per-user), or None (no rate limiting)."
         ),
     )
+    feature_flag: Optional[str] = Field(
+        None,
+        description=(
+            "Feature flag required to access this source. "
+            "If set, only organizations with this feature enabled can see/use this source."
+        ),
+    )
 
     @field_serializer("output_entity_definition_ids")
     def serialize_output_entity_definition_ids(

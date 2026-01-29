@@ -216,7 +216,7 @@ class ChunkEmbedProcessor(ContentProcessor):
         """Compute dense and sparse embeddings for all destinations.
 
         Both Qdrant and Vespa use:
-        - Dense embeddings (3072-dim) for neural/semantic search
+        - Dense embeddings (provider-specific dim) for neural/semantic search
         - Sparse embeddings (FastEmbed Qdrant/bm25) for keyword search scoring
 
         This ensures consistent keyword search behavior across both vector databases,
@@ -225,12 +225,25 @@ class ChunkEmbedProcessor(ContentProcessor):
         if not chunk_entities:
             return
 
-        from airweave.platform.embedders import DenseEmbedder, SparseEmbedder
+        from airweave.platform.embedders import SparseEmbedder, get_dense_embedder
 
-        # Dense embeddings (3072-dim for neural search)
+        # Dense embeddings (provider-specific dimensions for neural search)
         dense_texts = [e.textual_representation for e in chunk_entities]
-        dense_embedder = DenseEmbedder(vector_size=sync_context.collection.vector_size)
+        dense_embedder = get_dense_embedder(
+            vector_size=sync_context.collection.vector_size,
+            model_name=sync_context.collection.embedding_model_name,
+        )
         dense_embeddings = await dense_embedder.embed_many(dense_texts, sync_context)
+        if (
+            dense_embeddings
+            and dense_embeddings[0] is not None
+            and len(dense_embeddings[0]) != sync_context.collection.vector_size
+        ):
+            raise SyncFailureError(
+                "[ChunkEmbedProcessor] Dense embedding dimensions mismatch: "
+                f"got {len(dense_embeddings[0])}, "
+                f"expected {sync_context.collection.vector_size}."
+            )
 
         # Sparse embeddings (FastEmbed Qdrant/bm25 for keyword search scoring)
         # Uses full entity JSON (minus system metadata) to capture all searchable content

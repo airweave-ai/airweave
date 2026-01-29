@@ -3,10 +3,28 @@ set -euo pipefail
 
 # Deploy Vespa application package to config server
 # Usage: ./deploy.sh
+#
+# Reads EMBEDDING_DIMENSIONS from .env to configure schema dimensions.
+# Default: 1536 (OpenAI text-embedding-3-small)
 
 CONFIG_SERVER="http://localhost:19071"
-APP_DIR="$(dirname "$0")/app"
+SCRIPT_DIR="$(dirname "$0")"
+APP_DIR="${SCRIPT_DIR}/app"
+BUILD_DIR="${SCRIPT_DIR}/build"
 
+# Source .env from project root if it exists
+ENV_FILE="${SCRIPT_DIR}/../.env"
+if [ -f "${ENV_FILE}" ]; then
+    echo "Loading configuration from .env..."
+    # shellcheck disable=SC1090
+    source "${ENV_FILE}"
+fi
+
+# Get embedding dimensions (default: 1536 for OpenAI)
+EMBEDDING_DIM="${EMBEDDING_DIMENSIONS:-1536}"
+echo "Using EMBEDDING_DIMENSIONS=${EMBEDDING_DIM}"
+
+echo ""
 echo "Waiting for config server to be ready..."
 until curl -s "${CONFIG_SERVER}/state/v1/health" | grep -q '"up"'; do
     echo "  Config server not ready, waiting..."
@@ -15,8 +33,16 @@ done
 echo "Config server is ready!"
 
 echo ""
+echo "Templating schema files with EMBEDDING_DIM=${EMBEDDING_DIM}..."
+rm -rf "${BUILD_DIR}"
+cp -r "${APP_DIR}" "${BUILD_DIR}"
+
+# Replace {{EMBEDDING_DIM}} placeholder in all schema files
+find "${BUILD_DIR}/schemas" -name "*.sd" -exec sed -i '' "s/{{EMBEDDING_DIM}}/${EMBEDDING_DIM}/g" {} \;
+
+echo ""
 echo "Creating application package zip..."
-cd "${APP_DIR}"
+cd "${BUILD_DIR}"
 rm -f ../app.zip
 zip -r ../app.zip . -x ".*"
 cd ..

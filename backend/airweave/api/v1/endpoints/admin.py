@@ -14,6 +14,7 @@ from uuid import UUID
 from fastapi import Body, Depends, HTTPException, Query
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from airweave import crud, schemas
 from airweave.api import deps
@@ -392,9 +393,11 @@ async def list_all_organizations(
     """
     _require_admin(ctx)
 
-    # Build the base query with billing join
-    query = select(Organization).outerjoin(
-        OrganizationBilling, Organization.id == OrganizationBilling.organization_id
+    # Build the base query with billing join and eager load feature flags
+    query = (
+        select(Organization)
+        .outerjoin(OrganizationBilling, Organization.id == OrganizationBilling.organization_id)
+        .options(selectinload(Organization.feature_flags))
     )
 
     # Build sort subqueries based on sort_by field

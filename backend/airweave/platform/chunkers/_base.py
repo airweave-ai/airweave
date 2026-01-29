@@ -3,10 +3,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List
 
-# Re-export the wrapper for backwards compatibility
-from airweave.platform.chunkers.tiktoken_wrapper import TiktokenWrapperForChonkie
-
-__all__ = ["BaseChunker", "TiktokenWrapperForChonkie"]
+__all__ = ["BaseChunker"]
 
 
 class BaseChunker(ABC):

@@ -48,6 +48,9 @@ class Source(Base):
     rate_limit_level: Mapped[Optional[str]] = mapped_column(
         String, nullable=True
     )  # "org", "connection", or None
+    feature_flag: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )  # FeatureFlag enum value required to see this source
 
     __table_args__ = (UniqueConstraint("name", "organization_id", name="uq_source_name_org"),)
 

@@ -8,12 +8,17 @@ apk add --no-cache curl zip > /dev/null 2>&1 || true
 
 CONFIG_SERVER="${VESPA_CONFIG_SERVER:-http://vespa:19071}"
 APP_DIR="/app"
+BUILD_DIR="/tmp/vespa-build"
 MAX_RETRIES=60
 RETRY_INTERVAL=5
+
+# Get embedding dimensions from environment (default: 1536 for OpenAI)
+EMBEDDING_DIM="${EMBEDDING_DIMENSIONS:-1536}"
 
 echo "=== Vespa Init Container ==="
 echo "Config server: ${CONFIG_SERVER}"
 echo "Application directory: ${APP_DIR}"
+echo "Embedding dimensions: ${EMBEDDING_DIM}"
 
 # Wait for config server to be ready
 echo ""
@@ -38,10 +43,23 @@ if [ "$status_code" = "200" ]; then
     echo "Application already deployed, checking if update is needed..."
 fi
 
+# Template schema files with embedding dimensions
+echo ""
+echo "Templating schema files with EMBEDDING_DIM=${EMBEDDING_DIM}..."
+rm -rf "${BUILD_DIR}"
+cp -r "${APP_DIR}" "${BUILD_DIR}"
+
+# Replace {{EMBEDDING_DIM}} placeholder in all schema files
+for schema_file in "${BUILD_DIR}"/schemas/*.sd; do
+    if [ -f "$schema_file" ]; then
+        sed -i "s/{{EMBEDDING_DIM}}/${EMBEDDING_DIM}/g" "$schema_file"
+    fi
+done
+
 # Create application package zip
 echo ""
-echo "Creating application package from ${APP_DIR}..."
-cd "${APP_DIR}"
+echo "Creating application package from ${BUILD_DIR}..."
+cd "${BUILD_DIR}"
 rm -f /tmp/app.zip
 zip -rq /tmp/app.zip . -x ".*" -x "__MACOSX/*"
 echo "Application package created: $(ls -lh /tmp/app.zip | awk '{print $5}')"
@@ -107,14 +125,14 @@ while [ $retries -lt $MAX_DOC_API_RETRIES ]; do
             break
         fi
     fi
-    
+
     retries=$((retries + 1))
     if [ $retries -ge $MAX_DOC_API_RETRIES ]; then
         echo "❌ Document API not responding after ${MAX_DOC_API_RETRIES} attempts ($((MAX_DOC_API_RETRIES * 2))s)"
         rm -f /tmp/vespa_status
         break
     fi
-    
+
     echo "  ⏳ Document API not ready, waiting... (attempt ${retries}/${MAX_DOC_API_RETRIES})"
     sleep 2
 done

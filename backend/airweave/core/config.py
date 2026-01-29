@@ -44,6 +44,7 @@ class Settings(BaseSettings):
         TEXT2VEC_INFERENCE_URL (str): The URL for text2vec-transformers inference service.
         OPENAI_API_KEY (Optional[str]): The OpenAI API key.
         MISTRAL_API_KEY (Optional[str]): The Mistral AI API key.
+        EMBEDDING_DIMENSIONS (int): Embedding dimensions for the stack (provider, Vespa, Qdrant).
         FIRECRAWL_API_KEY (Optional[str]): The FireCrawl API key.
         TEMPORAL_HOST (str): The host of the Temporal server.
         TEMPORAL_PORT (int): The Temporal server port.
@@ -123,6 +124,11 @@ class Settings(BaseSettings):
     QDRANT_PORT: Optional[int] = None
     TEXT2VEC_INFERENCE_URL: str = "http://localhost:9878"
 
+    # Embedding configuration (source of truth for entire stack)
+    # Must match: provider model, Vespa schema, Qdrant collection
+    # Common values: 384 (local), 1024 (Mistral), 1536 (OpenAI small), 3072 (OpenAI large)
+    EMBEDDING_DIMENSIONS: int = 1536
+
     # Vespa configuration
     VESPA_URL: str = "http://localhost"
     VESPA_PORT: int = 8081
@@ -169,6 +175,7 @@ class Settings(BaseSettings):
     STRIPE_TEAM_YEARLY: str = ""
     STRIPE_ENTERPRISE_MONTHLY: str = ""
     STRIPE_YEARLY_DISCOUNT_COUPON_ID: str = ""
+    STRIPE_TEST_CLOCK: Optional[str] = None  # Only for non-production testing via env var
 
     # Email settings - only for production Airweave instance
     RESEND_API_KEY: Optional[str] = None

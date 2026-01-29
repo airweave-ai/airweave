@@ -211,12 +211,25 @@ class QdrantChunkEmbedProcessor(ContentProcessor):
         if not chunk_entities:
             return
 
-        from airweave.platform.embedders import DenseEmbedder, SparseEmbedder
+        from airweave.platform.embedders import SparseEmbedder, get_dense_embedder
 
         # Dense embeddings
         dense_texts = [e.textual_representation for e in chunk_entities]
-        dense_embedder = DenseEmbedder(vector_size=sync_context.collection.vector_size)
+        dense_embedder = get_dense_embedder(
+            vector_size=sync_context.collection.vector_size,
+            model_name=sync_context.collection.embedding_model_name,
+        )
         dense_embeddings = await dense_embedder.embed_many(dense_texts, sync_context)
+        if (
+            dense_embeddings
+            and dense_embeddings[0] is not None
+            and len(dense_embeddings[0]) != sync_context.collection.vector_size
+        ):
+            raise SyncFailureError(
+                "[QdrantChunkEmbedProcessor] Dense embedding dimensions mismatch: "
+                f"got {len(dense_embeddings[0])}, "
+                f"expected {sync_context.collection.vector_size}."
+            )
 
         # Sparse embeddings for hybrid search
         sparse_texts = [

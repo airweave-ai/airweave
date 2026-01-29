@@ -43,11 +43,27 @@ class HtmlConverter(BaseTextConverter):
                 try:
 
                     def _convert():
-                        # Read HTML file
-                        with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                            html_content = f.read()
+                        # Read raw bytes for encoding detection
+                        with open(path, "rb") as f:
+                            raw_bytes = f.read()
 
-                        if not html_content or not html_content.strip():
+                        if not raw_bytes:
+                            return None
+
+                        # Try UTF-8 first
+                        try:
+                            html_content = raw_bytes.decode("utf-8")
+                        except UnicodeDecodeError:
+                            # Fallback with replace to detect corruption
+                            html_content = raw_bytes.decode("utf-8", errors="replace")
+                            replacement_count = html_content.count("\ufffd")
+                            if replacement_count > 100:  # Lenient for HTML
+                                raise EntityProcessingError(
+                                    f"HTML contains excessive binary data "
+                                    f"({replacement_count} replacement chars)"
+                                )
+
+                        if not html_content.strip():
                             return None
 
                         # Convert to markdown using html-to-markdown (Rust-powered)

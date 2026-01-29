@@ -25,15 +25,22 @@ def upgrade():
     1. Sets entity.access on all yielded entities
     2. Implements generate_access_control_memberships() method
     """
-    op.add_column(
-        "source",
-        sa.Column(
-            "supports_access_control",
-            sa.Boolean(),
-            nullable=False,
-            server_default="false",
-        ),
-    )
+    from sqlalchemy import inspect
+
+    conn = op.get_bind()
+    inspector = inspect(conn)
+    columns = [col["name"] for col in inspector.get_columns("source")]
+
+    if "supports_access_control" not in columns:
+        op.add_column(
+            "source",
+            sa.Column(
+                "supports_access_control",
+                sa.Boolean(),
+                nullable=False,
+                server_default="false",
+            ),
+        )
 
 
 def downgrade():

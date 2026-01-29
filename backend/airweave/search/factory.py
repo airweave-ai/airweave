@@ -11,7 +11,7 @@ from airweave import crud
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
 from airweave.platform.destinations._base import BaseDestination
-from airweave.platform.destinations.collection_strategy import get_default_vector_size
+from airweave.platform.embedders.config import get_provider_for_model
 from airweave.platform.locator import resource_locator
 from airweave.platform.sources._base import BaseSource
 from airweave.platform.sync.token_manager import TokenManager
@@ -39,6 +39,7 @@ from airweave.search.providers._base import BaseProvider
 from airweave.search.providers.cerebras import CerebrasProvider
 from airweave.search.providers.cohere import CohereProvider
 from airweave.search.providers.groq import GroqProvider
+from airweave.search.providers.mistral import MistralProvider
 from airweave.search.providers.openai import OpenAIProvider
 from airweave.search.providers.schemas import (
     EmbeddingModelConfig,
@@ -146,6 +147,7 @@ class SearchFactory:
         # Select providers for operations
         # Note: Skip embedding provider if destination embeds server-side (e.g., Vespa)
         api_keys = self._get_available_api_keys()
+        embedding_provider = get_provider_for_model(collection.embedding_model_name)
         providers = self._create_provider_for_each_operation(
             api_keys,
             params,
@@ -153,6 +155,7 @@ class SearchFactory:
             has_vector_sources,
             ctx,
             vector_size,
+            embedding_provider=embedding_provider,
             requires_client_embedding=requires_embedding,
         )
 
@@ -298,7 +301,7 @@ class SearchFactory:
 
     def _get_vector_size(self) -> int:
         """Get the default vector size for embeddings."""
-        return get_default_vector_size()
+        return settings.EMBEDDING_DIMENSIONS
 
     async def _emit_skip_notices_if_needed(
         self,
@@ -521,6 +524,7 @@ class SearchFactory:
             "groq": getattr(settings, "GROQ_API_KEY", None),
             "openai": getattr(settings, "OPENAI_API_KEY", None),
             "cohere": getattr(settings, "COHERE_API_KEY", None),
+            "mistral": getattr(settings, "MISTRAL_API_KEY", None),
         }
 
     def _create_provider_for_each_operation(
@@ -531,6 +535,7 @@ class SearchFactory:
         has_vector_sources: bool,
         ctx: ApiContext,
         vector_size: int,
+        embedding_provider: Optional[str] = None,
         requires_client_embedding: bool = True,
     ) -> Dict[str, BaseProvider]:
         """Select and validate all required providers."""
@@ -538,7 +543,9 @@ class SearchFactory:
 
         # Create embedding provider if needed (skip if destination embeds server-side)
         if has_vector_sources and requires_client_embedding:
-            providers["embed"] = self._create_embedding_provider(api_keys, ctx, vector_size)
+            providers["embed"] = self._create_embedding_provider(
+                api_keys, ctx, vector_size, preferred_provider=embedding_provider
+            )
 
         # Create LLM providers for enabled operations
         providers.update(
@@ -556,7 +563,11 @@ class SearchFactory:
         return providers
 
     def _create_embedding_provider(
-        self, api_keys: Dict[str, Optional[str]], ctx: ApiContext, vector_size: int
+        self,
+        api_keys: Dict[str, Optional[str]],
+        ctx: ApiContext,
+        vector_size: int,
+        preferred_provider: Optional[str] = None,
     ) -> BaseProvider:
         """Create embedding provider for vector-backed search.
 
@@ -564,12 +575,14 @@ class SearchFactory:
         models within a collection and cannot fallback to different providers.
         """
         providers = self._init_all_providers_for_operation(
-            "embed_query", api_keys, ctx, vector_size
+            "embed_query",
+            api_keys,
+            ctx,
+            vector_size,
+            preferred_provider=preferred_provider,
         )
         if not providers:
-            raise ValueError(
-                "Embedding provider required for vector-backed search. Configure OPENAI_API_KEY"
-            )
+            raise ValueError("Embedding provider required for vector-backed search.")
         # Return first (and only) available embedding provider
         return providers[0]
 
@@ -851,12 +864,13 @@ class SearchFactory:
 
         return supporting_sources
 
-    def _init_all_providers_for_operation(
+    def _init_all_providers_for_operation(  # noqa: C901
         self,
         operation_name: str,
         api_keys: Dict[str, Optional[str]],
         ctx: ApiContext,
         vector_size: Optional[int] = None,
+        preferred_provider: Optional[str] = None,
     ) -> List[BaseProvider]:
         """Initialize ALL available providers for an operation in preference order.
 
@@ -868,6 +882,7 @@ class SearchFactory:
             api_keys: Dict of provider API keys
             ctx: API context
             vector_size: Optional vector dimensions for embedding model selection
+            preferred_provider: Optional preferred provider name to filter to
         """
         preferences = operation_preferences.get(operation_name, {})
         order = preferences.get("order", [])
@@ -879,6 +894,8 @@ class SearchFactory:
             provider_name = entry.get("provider")
             if not provider_name:
                 # Skip malformed entries
+                continue
+            if preferred_provider and provider_name != preferred_provider:
                 continue
 
             api_key = api_keys.get(provider_name)
@@ -920,6 +937,11 @@ class SearchFactory:
                         f"[Factory] Attempting to initialize OpenAIProvider for {operation_name}"
                     )
                     provider = OpenAIProvider(api_key=api_key, model_spec=model_spec, ctx=ctx)
+                elif provider_name == "mistral":
+                    ctx.logger.debug(
+                        f"[Factory] Attempting to initialize MistralProvider for {operation_name}"
+                    )
+                    provider = MistralProvider(api_key=api_key, model_spec=model_spec, ctx=ctx)
                 elif provider_name == "cohere":
                     ctx.logger.debug(
                         f"[Factory] Attempting to initialize CohereProvider for {operation_name}"
@@ -975,6 +997,7 @@ class SearchFactory:
         For OpenAI embeddings, selects between embedding_small and embedding_large:
         - 3072: uses embedding_large (text-embedding-3-large)
         - 1536: uses embedding_small (text-embedding-3-small)
+        For other providers, supports explicit embedding_{vector_size} keys.
         - Other: uses the provided model_key (e.g., "embedding" as fallback)
 
         Args:
@@ -994,6 +1017,10 @@ class SearchFactory:
             actual_model_key = "embedding_large"
         elif vector_size == 1536:
             actual_model_key = "embedding_small"
+        elif vector_size:
+            vector_key = f"embedding_{vector_size}"
+            if vector_key in provider_spec:
+                actual_model_key = vector_key
         # else: use provided model_key (fallback to "embedding" for other sizes)
 
         model_dict = provider_spec.get(actual_model_key)
@@ -1003,7 +1030,14 @@ class SearchFactory:
             if not model_dict:
                 return None
 
-        return EmbeddingModelConfig(**model_dict)
+        embedding_config = EmbeddingModelConfig(**model_dict)
+        if vector_size and embedding_config.dimensions != vector_size:
+            raise ValueError(
+                "Embedding dimensions mismatch for provider config: "
+                f"requested {vector_size}, model {embedding_config.name} "
+                f"({embedding_config.dimensions}-dim)."
+            )
+        return embedding_config
 
     def _build_rerank_config(
         self, provider_spec: dict, model_key: Optional[str]

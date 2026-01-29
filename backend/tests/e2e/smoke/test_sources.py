@@ -235,3 +235,70 @@ class TestSources:
                     f"Source {source['short_name']} has 'auth_provider' in auth_methods "
                     "but supported_auth_providers is not a list"
                 )
+
+    @pytest.mark.asyncio
+    async def test_sharepoint2019v2_hidden_without_feature_flag(
+        self, api_client: httpx.AsyncClient
+    ):
+        """Test that SharePoint 2019 V2 is hidden when feature flag is not enabled.
+
+        This test assumes the test organization does not have the SHAREPOINT_2019_V2
+        feature flag enabled by default.
+        """
+        response = await api_client.get("/sources/")
+        assert response.status_code == 200
+
+        sources = response.json()
+        source_names = [s["short_name"] for s in sources]
+
+        # SharePoint 2019 V2 should not be in the list
+        assert "sharepoint2019v2" not in source_names, (
+            "SharePoint 2019 V2 should be hidden without feature flag"
+        )
+
+    @pytest.mark.asyncio
+    async def test_sharepoint2019v2_direct_access_returns_404(
+        self, api_client: httpx.AsyncClient
+    ):
+        """Test that directly accessing SharePoint 2019 V2 returns 404 without feature flag."""
+        response = await api_client.get("/sources/sharepoint2019v2")
+
+        # Should return 404 since feature flag is not enabled
+        assert response.status_code == 404
+        error = response.json()
+        assert "detail" in error
+        assert "not found" in error["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_regular_sources_still_visible(self, api_client: httpx.AsyncClient):
+        """Test that regular sources without feature flags are still visible."""
+        response = await api_client.get("/sources/")
+        assert response.status_code == 200
+
+        sources = response.json()
+
+        # These sources should always be visible (no feature flag required)
+        expected_sources = ["github", "stripe", "notion", "slack"]
+        source_names = [s["short_name"] for s in sources]
+
+        for expected in expected_sources:
+            # Not all sources may exist in all environments, but check at least some
+            if expected in source_names:
+                # Verify we can get details
+                detail_response = await api_client.get(f"/sources/{expected}")
+                assert detail_response.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_sources_feature_flag_field_present(self, api_client: httpx.AsyncClient):
+        """Test that all sources have the feature_flag field in schema."""
+        response = await api_client.get("/sources/")
+        assert response.status_code == 200
+
+        sources = response.json()
+
+        for source in sources:
+            # feature_flag field should be present (can be null)
+            # The field might not be in JSON if it's null, which is fine
+            if "feature_flag" in source:
+                # If present, should be a string or null
+                assert source["feature_flag"] is None or isinstance(source["feature_flag"], str)

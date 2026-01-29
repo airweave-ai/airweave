@@ -34,16 +34,42 @@ class CodeConverter(BaseTextConverter):
         async def _convert_one(path: str):
             async with semaphore:
                 try:
-                    # Read file
-                    async with aiofiles.open(path, "r", encoding="utf-8", errors="ignore") as f:
-                        code = await f.read()
+                    # Read raw bytes for encoding detection
+                    async with aiofiles.open(path, "rb") as f:
+                        raw_bytes = await f.read()
 
-                    if not code or not code.strip():
+                    if not raw_bytes:
                         logger.warning(f"Code file {path} is empty")
                         results[path] = None
                         return
 
-                    # Return raw code (no fence - CodeChunker uses auto-detection)
+                    # Try UTF-8 first (most common for code)
+                    try:
+                        code = raw_bytes.decode("utf-8")
+                        if "\ufffd" not in code:
+                            results[path] = code
+                            logger.debug(f"Converted code file: {path} ({len(code)} characters)")
+                            return
+                    except UnicodeDecodeError:
+                        pass
+
+                    # Fallback: decode with replace to detect corruption
+                    code = raw_bytes.decode("utf-8", errors="replace")
+                    replacement_count = code.count("\ufffd")
+
+                    if replacement_count > 0:
+                        logger.warning(
+                            f"Code file {path} contains {replacement_count} "
+                            f"replacement characters - may be binary data"
+                        )
+                        results[path] = None
+                        return
+
+                    if not code.strip():
+                        logger.warning(f"Code file {path} produced no content after decoding")
+                        results[path] = None
+                        return
+
                     results[path] = code
                     logger.debug(f"Converted code file: {path} ({len(code)} characters)")
 

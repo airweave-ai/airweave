@@ -9,7 +9,7 @@ authors = [
 packages = [{ include = "airweave" }]
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = ">=3.11,<3.14"
 fastapi = "^0.115.12"
 uvicorn = { extras = ["standard"], version = "^0.27.0" }
 sqlalchemy = { extras = ["asyncio"], version = "^2.0.25" }
@@ -77,10 +77,11 @@ psutil = "^5.9.0"
 pyvespa = "^0.62.0"
 svix = "^1.84.1"
 pyjwt = "^2.10.1"
+mistral_common = {version = "1.8.8", extras = ["sentencepiece"]}
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
-pytest-asyncio = "^0.23.5"
+pytest-asyncio = "^0.24.0"
 pytest-cov = "^4.1.0"
 pytest-xdist = "^3.6.1"
 black = "^24.1.1"

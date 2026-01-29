@@ -5,9 +5,9 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
-from tiktoken import Encoding, get_encoding
 
 from airweave.api.context import ApiContext
+from airweave.platform.tokenizers import BaseTokenizer, get_tokenizer
 
 from .schemas import ProviderModelSpec
 
@@ -83,24 +83,26 @@ class BaseProvider(ABC):
 
         return False
 
-    def _load_tokenizer(self, tokenizer_name: str, model_type: str) -> Optional[Encoding]:
-        """Load a tokenizer by name with consistent error handling."""
+    def _load_tokenizer(self, tokenizer_name: str, model_type: str) -> Optional[BaseTokenizer]:
+        """Load a tokenizer by name with consistent error handling.
+
+        Uses the unified tokenizer factory to support tiktoken, Mistral, and
+        other tokenizer backends based on the name from defaults.yml.
+        """
         try:
-            return get_encoding(tokenizer_name)
+            return get_tokenizer(tokenizer_name)
         except Exception as e:
             raise RuntimeError(
                 f"Failed to load {model_type} tokenizer '{tokenizer_name}': {e}"
             ) from e
 
-    def count_tokens(self, text: str, tokenizer: Optional[Encoding]) -> int:
+    def count_tokens(self, text: str, tokenizer: Optional[BaseTokenizer]) -> int:
         """Count tokens in text using a specific tokenizer."""
         if tokenizer is None:
             raise RuntimeError("Tokenizer not initialized for token counting")
         if text is None:
             return 0
-        # Use allowed_special="all" to handle special tokens like <|endoftext|>
-        # that may appear in user content
-        return len(tokenizer.encode(text, allowed_special="all"))
+        return tokenizer.count_tokens(text)
 
     @abstractmethod
     async def generate(self, messages: List[Dict[str, str]]) -> str:

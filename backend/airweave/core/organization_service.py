@@ -95,17 +95,11 @@ class OrganizationService:
             # Step 2: Create Stripe customer if enabled
             if settings.STRIPE_ENABLED:
                 logger.info(f"Creating Stripe customer for: {org_data.name}")
-                # Optional test clock support for local/testing
+                # Test clock support only via environment variable in non-production
+                # SECURITY: Never accept test_clock from user input to prevent billing manipulation
                 test_clock_id = None
-                try:
-                    # Read from org_data.org_metadata.onboarding if present
-                    if hasattr(org_data, "org_metadata") and org_data.org_metadata:
-                        onboarding = org_data.org_metadata.get("onboarding", {})
-                        tc = onboarding.get("stripe_test_clock")
-                        if tc:
-                            test_clock_id = tc
-                except Exception:
-                    test_clock_id = None
+                if settings.ENVIRONMENT != "prd":
+                    test_clock_id = settings.STRIPE_TEST_CLOCK  # From env only, not user input
 
                 stripe_customer = await stripe_client.create_customer(
                     email=owner_user.email,

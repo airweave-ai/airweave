@@ -2,10 +2,16 @@
 # - Each chunk is a separate document
 # - entity_id: "{original_id}__chunk_{idx}"
 # - original_entity_id: tracks parent entity
-# - Single 3072-dim bfloat16 embedding for both matching and ranking
+# - Single {{EMBEDDING_DIM}}-dim bfloat16 embedding for both matching and ranking
+#
+# EMBEDDING DIMENSIONS: Controlled by EMBEDDING_DIMENSIONS in .env
+# This schema uses {{EMBEDDING_DIM}} dimensions - must match your embedding provider:
+#   - 1024 = Mistral (mistral-embed)
+#   - 1536 = OpenAI (text-embedding-3-small)
+#   - 3072 = OpenAI (text-embedding-3-large)
 #
 # MATCHING: hybrid (lexical + ANN) to maximize recall
-# - ANN index: bfloat16 3072-dim with angular distance
+# - ANN index: bfloat16 {{EMBEDDING_DIM}}-dim with angular distance
 # - HNSW: M=32 (higher recall), ef_construct=200
 # - Pre-filtering by collection_id (approximateThreshold=0.05 for exact NN fallback)
 # - targetHits: 5000 candidates (matches Qdrant)
@@ -129,16 +135,16 @@ schema base_entity {
         }
 
         # =============================================================================
-        # Embedding Field (unified 3072-dim - same as Qdrant)
+        # Embedding Field (unified {{EMBEDDING_DIM}}-dim - same as Qdrant)
         # =============================================================================
 
-        # Single 3072-dim bfloat16 embedding for both ANN matching and ranking
+        # Single {{EMBEDDING_DIM}}-dim bfloat16 embedding for both ANN matching and ranking
         # Client sends float32, Vespa auto-converts to bfloat16 for storage
         # Uses angular distance (maps to cosine similarity)
         # HNSW parameters tuned for high recall with 5000 candidates:
         # - M=32: more links per node for better recall
         # - ef_construct=200: more neighbors explored during index building
-        field dense_embedding type tensor<bfloat16>(x[3072]) {
+        field dense_embedding type tensor<bfloat16>(x[{{EMBEDDING_DIM}}]) {
             indexing: attribute | index
             attribute {
                 distance-metric: angular
@@ -209,19 +215,19 @@ schema base_entity {
     rank-profile default {
         inputs {
             # Query embedding for ranking - client sends float32
-            query(query_embedding) tensor<float>(x[3072])
+            query(query_embedding) tensor<float>(x[{{EMBEDDING_DIM}}])
             # Multi-query support: q0=primary, q1-q9=expanded queries
             # Each used by nearestNeighbor operators in YQL
-            query(q0) tensor<float>(x[3072])
-            query(q1) tensor<float>(x[3072])
-            query(q2) tensor<float>(x[3072])
-            query(q3) tensor<float>(x[3072])
-            query(q4) tensor<float>(x[3072])
-            query(q5) tensor<float>(x[3072])
-            query(q6) tensor<float>(x[3072])
-            query(q7) tensor<float>(x[3072])
-            query(q8) tensor<float>(x[3072])
-            query(q9) tensor<float>(x[3072])
+            query(q0) tensor<float>(x[{{EMBEDDING_DIM}}])
+            query(q1) tensor<float>(x[{{EMBEDDING_DIM}}])
+            query(q2) tensor<float>(x[{{EMBEDDING_DIM}}])
+            query(q3) tensor<float>(x[{{EMBEDDING_DIM}}])
+            query(q4) tensor<float>(x[{{EMBEDDING_DIM}}])
+            query(q5) tensor<float>(x[{{EMBEDDING_DIM}}])
+            query(q6) tensor<float>(x[{{EMBEDDING_DIM}}])
+            query(q7) tensor<float>(x[{{EMBEDDING_DIM}}])
+            query(q8) tensor<float>(x[{{EMBEDDING_DIM}}])
+            query(q9) tensor<float>(x[{{EMBEDDING_DIM}}])
 
             # Sparse query embedding for keyword SCORING (FastEmbed BM25)
             # Token IDs as strings mapped to weights
@@ -261,7 +267,7 @@ schema base_entity {
             expression: keyword_score() + semantic_score()
         }
 
-        # NO SECOND PHASE - bfloat16 with 3072 dimensions is accurate enough
+        # NO SECOND PHASE - bfloat16 with {{EMBEDDING_DIM}} dimensions is accurate enough
         # No need for expensive rescoring with float32 like in Qdrant
 
         # -----------------------------------------------------------------------

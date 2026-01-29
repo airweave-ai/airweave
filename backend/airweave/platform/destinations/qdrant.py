@@ -42,10 +42,6 @@ from airweave.core.logging import logger as default_logger
 from airweave.platform.configs.auth import QdrantAuthConfig
 from airweave.platform.decorators import destination
 from airweave.platform.destinations._base import VectorDBDestination
-from airweave.platform.destinations.collection_strategy import (
-    get_default_vector_size,
-    get_physical_collection_name,
-)
 from airweave.platform.entities._base import BaseEntity
 from airweave.schemas.search import AirweaveTemporalConfig, RetrievalStrategy
 from airweave.schemas.search_result import (
@@ -54,6 +50,11 @@ from airweave.schemas.search_result import (
     BreadcrumbResult,
     SystemMetadataResult,
 )
+
+
+def _get_collection_name(dimensions: int) -> str:
+    """Get Qdrant collection name for given dimensions."""
+    return f"airweave_vectors_{dimensions}"
 
 
 class DecayConfig(BaseModel):
@@ -158,10 +159,12 @@ class QdrantDestination(VectorDBDestination):
         instance.set_logger(logger or default_logger)
         instance.collection_id = collection_id
         instance.organization_id = organization_id
-        instance.vector_size = vector_size if vector_size is not None else get_default_vector_size()
+        instance.vector_size = (
+            vector_size if vector_size is not None else settings.EMBEDDING_DIMENSIONS
+        )
 
         # Map to physical shared collection
-        instance.collection_name = get_physical_collection_name(vector_size=instance.vector_size)
+        instance.collection_name = _get_collection_name(instance.vector_size)
         instance.logger.info(f"Mapped collection {collection_id} → {instance.collection_name}")
 
         # Extract from credentials (contains both auth and config)

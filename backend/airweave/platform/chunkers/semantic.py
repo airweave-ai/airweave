@@ -3,9 +3,10 @@
 from typing import Any, Dict, List, Optional
 
 from airweave.core.logging import logger
-from airweave.platform.chunkers._base import BaseChunker, TiktokenWrapperForChonkie
+from airweave.platform.chunkers._base import BaseChunker
 from airweave.platform.sync.async_helpers import run_in_thread_pool
 from airweave.platform.sync.exceptions import SyncFailureError
+from airweave.platform.tokenizers import TikTokenTokenizer, get_tokenizer
 
 
 class SemanticChunker(BaseChunker):
@@ -39,7 +40,7 @@ class SemanticChunker(BaseChunker):
     #
     # Note: These models are ONLY for finding semantic boundaries (chunking decisions).
     # Final search embeddings use OpenAI text-embedding-3-small separately.
-    EMBEDDING_MODEL = "minishlab/potion-base-128M"  # Default: Good speed/quality balance
+    EMBEDDING_MODEL = "minishlab/potion-base-8M"  # Default: Good speed/quality balance
 
     SIMILARITY_THRESHOLD = 0.01  # 0-1: Lower=larger chunks, Higher=smaller chunks
     SIMILARITY_WINDOW = 10  # Number of sentences to compare for similarity
@@ -97,46 +98,43 @@ class SemanticChunker(BaseChunker):
             return
 
         try:
-            import tiktoken
             from chonkie import SemanticChunker as ChonkieSemanticChunker
             from chonkie import TokenChunker
 
-            # Initialize tiktoken tokenizer for accurate OpenAI token counting
-            self._tiktoken_tokenizer = tiktoken.get_encoding(self.TOKENIZER)
+            # Get tokenizer - we need the raw tiktoken encoding for Chonkie
+            # (Chonkie's backend detection looks for "tiktoken" in type string,
+            # but our wrapper path contains "tokenizers" which matches first)
+            tokenizer = get_tokenizer(self.TOKENIZER)
+            self._tiktoken_tokenizer = tokenizer
 
-            # Wrap tiktoken for Chonkie to handle special tokens like <|endoftext|>
-            # Chonkie's internal AutoTokenizer doesn't pass allowed_special="all",
-            # which causes failures when syncing content with special tokens
-            tiktoken_wrapper = TiktokenWrapperForChonkie(self._tiktoken_tokenizer)
+            if not isinstance(tokenizer, TikTokenTokenizer):
+                raise SyncFailureError(
+                    f"Chonkie requires tiktoken encoding, got {type(tokenizer).__name__}"
+                )
 
-            # Initialize Chonkie's SemanticChunker with ALL parameters explicit
+            # Pass raw tiktoken encoding to Chonkie for proper backend detection
+            raw_encoding = tokenizer.encoding
+
+            # Initialize Chonkie's SemanticChunker
             # NOTE: Uses local embedding model for chunking decisions (fast, no API calls)
-            # This is separate from OpenAI embeddings used later for final search vectors
             self._semantic_chunker = ChonkieSemanticChunker(
-                # Embedding model for semantic similarity computation
                 embedding_model=self.EMBEDDING_MODEL,
-                # Size and threshold controls
-                chunk_size=self.SEMANTIC_CHUNK_SIZE,  # Soft target (2048 for search quality)
-                threshold=self.SIMILARITY_THRESHOLD,  # Lower=larger chunks, Higher=smaller
-                # Similarity calculation
-                similarity_window=self.SIMILARITY_WINDOW,  # Sentences to compare
-                # Sentence splitting configuration
+                chunk_size=self.SEMANTIC_CHUNK_SIZE,
+                threshold=self.SIMILARITY_THRESHOLD,
+                similarity_window=self.SIMILARITY_WINDOW,
                 min_sentences_per_chunk=self.MIN_SENTENCES_PER_CHUNK,
                 min_characters_per_sentence=self.MIN_CHARACTERS_PER_SENTENCE,
                 delim=self.SENTENCE_DELIMITERS,
                 include_delim=self.INCLUDE_DELIMITER,
-                # Advanced features (Savitzky-Golay filtering, skip-window merging)
-                skip_window=self.SKIP_WINDOW,  # Merge non-consecutive similar groups
-                filter_window=self.FILTER_WINDOW,  # Savitzky-Golay filter window
-                filter_polyorder=self.FILTER_POLYORDER,  # Polynomial order
-                filter_tolerance=self.FILTER_TOLERANCE,  # Boundary tolerance
+                skip_window=self.SKIP_WINDOW,
+                filter_window=self.FILTER_WINDOW,
+                filter_polyorder=self.FILTER_POLYORDER,
+                filter_tolerance=self.FILTER_TOLERANCE,
             )
 
             # Initialize TokenChunker for fallback
-            # Splits at exact token boundaries when semantic chunking produces oversized chunks
-            # GUARANTEES chunks ≤ MAX_TOKENS_PER_CHUNK (uses same tokenizer for encode/decode)
             self._token_chunker = TokenChunker(
-                tokenizer=tiktoken_wrapper,  # Use wrapper that handles special tokens
+                tokenizer=raw_encoding,
                 chunk_size=self.MAX_TOKENS_PER_CHUNK,
                 chunk_overlap=0,
             )

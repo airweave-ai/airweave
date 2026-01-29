@@ -9,9 +9,9 @@ from typing import Any, Dict, List, Optional
 
 from cerebras.cloud.sdk import AsyncCerebras
 from pydantic import BaseModel
-from tiktoken import Encoding
 
 from airweave.api.context import ApiContext
+from airweave.platform.tokenizers import BaseTokenizer
 
 from ._base import BaseProvider, ProviderError
 from .schemas import ProviderModelSpec
@@ -35,7 +35,7 @@ class CerebrasProvider(BaseProvider):
 
         self.ctx.logger.debug(f"[CerebrasProvider] Initialized with model spec: {model_spec}")
 
-        self.llm_tokenizer: Optional[Encoding] = None
+        self.llm_tokenizer: Optional[BaseTokenizer] = None
 
         if model_spec.llm_model:
             self.llm_tokenizer = self._load_tokenizer(model_spec.llm_model.tokenizer, "llm")

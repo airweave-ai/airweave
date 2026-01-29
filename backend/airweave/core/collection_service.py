@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
 from airweave.api.context import ApiContext
+from airweave.core.config import settings
 from airweave.core.exceptions import NotFoundException
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.platform.destinations.qdrant import QdrantDestination
@@ -46,7 +47,10 @@ class CollectionService:
         uow: UnitOfWork,
     ) -> schemas.Collection:
         """Create a new collection."""
-        from airweave.platform.destinations.collection_strategy import get_default_vector_size
+        from airweave.platform.embedders.config import (
+            get_default_provider,
+            get_embedding_model,
+        )
 
         # Check if the collection already exists
         try:
@@ -62,18 +66,9 @@ class CollectionService:
             )
 
         # Determine vector size and embedding model for this collection
-        vector_size = get_default_vector_size()
-
-        # Determine embedding model name based on vector size
-        from airweave.platform.destinations.collection_strategy import (
-            get_openai_embedding_model_for_vector_size,
-        )
-
-        try:
-            embedding_model_name = get_openai_embedding_model_for_vector_size(vector_size)
-        except ValueError:
-            # For non-OpenAI vector sizes (e.g., 384), use a generic name
-            embedding_model_name = "sentence-transformers/all-MiniLM-L6-v2"
+        vector_size = settings.EMBEDDING_DIMENSIONS
+        embedding_provider = get_default_provider()
+        embedding_model_name = get_embedding_model(embedding_provider)
 
         # Add vector_size and embedding_model_name to collection data
         collection_data = collection_in.model_dump()
@@ -110,6 +105,7 @@ class CollectionService:
                     config=None,
                     collection_id=collection.id,
                     organization_id=ctx.organization.id,
+                    vector_size=vector_size,
                     logger=ctx.logger,
                     sync_id=None,
                 )

@@ -180,12 +180,15 @@ class FilesystemBackend(StorageBackend):
 
     async def write_json(self, path: str, data: Dict[str, Any]) -> None:
         """Write JSON to filesystem."""
-        full_path = self._resolve(path)
-        full_path.parent.mkdir(parents=True, exist_ok=True)
 
-        try:
+        def _write_json_sync():
+            full_path = self._resolve(path)
+            full_path.parent.mkdir(parents=True, exist_ok=True)
             with open(full_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, default=str)
+
+        try:
+            await asyncio.to_thread(_write_json_sync)
         except Exception as e:
             raise StorageException(f"Failed to write JSON to {path}: {e}")
 
@@ -210,12 +213,15 @@ class FilesystemBackend(StorageBackend):
 
     async def write_file(self, path: str, content: bytes) -> None:
         """Write binary content to filesystem."""
-        full_path = self._resolve(path)
-        full_path.parent.mkdir(parents=True, exist_ok=True)
 
-        try:
+        def _write_file_sync():
+            full_path = self._resolve(path)
+            full_path.parent.mkdir(parents=True, exist_ok=True)
             with open(full_path, "wb") as f:
                 f.write(content)
+
+        try:
+            await asyncio.to_thread(_write_file_sync)
         except Exception as e:
             raise StorageException(f"Failed to write file to {path}: {e}")
 
@@ -242,17 +248,19 @@ class FilesystemBackend(StorageBackend):
 
     async def delete(self, path: str) -> bool:
         """Delete file or directory from filesystem."""
-        full_path = self._resolve(path)
 
-        if not full_path.exists():
-            return False
-
-        try:
+        def _delete_sync():
+            full_path = self._resolve(path)
+            if not full_path.exists():
+                return False
             if full_path.is_dir():
                 shutil.rmtree(full_path)
             else:
                 full_path.unlink()
             return True
+
+        try:
+            return await asyncio.to_thread(_delete_sync)
         except Exception as e:
             logger.error(f"Failed to delete {path}: {e}")
             return False
