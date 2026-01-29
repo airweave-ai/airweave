@@ -21,6 +21,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U airweave"]
       interval: 5s
@@ -137,7 +138,7 @@ services:
       SVIX_WHITELIST_SUBNETS: "[127.0.0.1/32, 172.17.0.0/16, 192.168.0.0/16, 10.0.0.0/8]" # Allow local calls to local for development.
       WAIT_FOR: "true" # We want to wait for the default services
       SVIX_REDIS_DSN: "redis://redis:6379"
-      SVIX_DB_DSN: "postgresql://airweave:airweave1234!@postgres:5432/airweave"
+      SVIX_DB_DSN: "postgresql://airweave:airweave1234!@postgres:5432/svix"
       SVIX_JWT_SECRET: 'default_signing_secret'
     ports:
       - "8071:8071"
