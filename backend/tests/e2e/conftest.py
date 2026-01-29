@@ -440,19 +440,33 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "api_rate_limit: tests that consume API rate limit quota (skipped in CI)"
     )
+    config.addinivalue_line(
+        "markers", "local_only: tests that require local environment (direct storage access)"
+    )
 
 
 def pytest_collection_modifyitems(config, items):
-    """Reorder tests to ensure rate_limit tests run last.
+    """Modify test collection: skip tests based on environment, reorder rate_limit tests.
 
-    This prevents rate limiting tests from interfering with other tests
-    by consuming the rate limit quota.
+    - Skip local_only tests when TEST_ENV is not "local"
+    - Move rate_limit tests to run last
     """
+    import os
+
+    test_env = os.environ.get("TEST_ENV", "local")
+    skip_local_only = pytest.mark.skip(
+        reason="Test requires local environment (TEST_ENV != local)"
+    )
+
     # Separate rate_limit tests from others
     rate_limit_tests = []
     other_tests = []
 
     for item in items:
+        # Skip local_only tests when not in local environment
+        if item.get_closest_marker("local_only") and test_env != "local":
+            item.add_marker(skip_local_only)
+
         if item.get_closest_marker("rate_limit"):
             rate_limit_tests.append(item)
         else:

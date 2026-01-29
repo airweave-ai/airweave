@@ -26,7 +26,7 @@ from airweave.platform.storage.paths import paths
 from airweave.platform.sync.file_types import SUPPORTED_FILE_EXTENSIONS
 
 if TYPE_CHECKING:
-    from airweave.platform.storage.backend import StorageBackend
+    from airweave.platform.storage.protocol import StorageBackend
 
 
 class FileService:

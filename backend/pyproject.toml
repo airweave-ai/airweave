@@ -78,6 +78,7 @@ pyvespa = "^0.62.0"
 svix = "^1.84.1"
 pyjwt = "^2.10.1"
 mistral_common = {version = "1.8.8", extras = ["sentencepiece"]}
+google-cloud-storage = "^3.8.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
@@ -167,6 +168,7 @@ addopts = "-v --cov=airweave --cov-report=term-missing --cov-report=xml:coverage
 markers = [
     "unit: mark a test as a unit test",
     "integration: mark a test as an integration test",
+    "live_integration: mark a test as requiring live cloud infrastructure",
     "e2e: mark a test as an end-to-end test",
     "slow: mark a test as slow running",
 ]

@@ -36,8 +36,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional
 
-from airweave.platform.storage.backend import StorageBackend
 from airweave.platform.storage.exceptions import StorageNotFoundError
+from airweave.platform.storage.protocol import StorageBackend
 from airweave.platform.sync.arf.schema import SyncManifest
 
 if TYPE_CHECKING:

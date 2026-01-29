@@ -2,25 +2,77 @@
 
 File storage abstractions for Airweave sync operations.
 
-## Components
+## Architecture
 
-| File | Description |
-|------|-------------|
-| `backend.py` | `StorageBackend` interface + Filesystem/Azure Blob implementations |
-| `paths.py` | `StoragePaths` - centralized path constants for ARF and temp storage |
-| `arf_reader.py` | `ArfReader` - entity reconstruction for replay |
-| `replay_source.py` | `ArfReplaySource` - internal source for ARF replay mode |
-| `file_service.py` | `FileService` - file download and restoration to temp directory |
-| `exceptions.py` | Storage-specific exceptions |
+The storage module uses a **protocol-based architecture** with pluggable backends:
+
+```
+storage/
+├── protocol.py         # StorageBackend Protocol (interface)
+├── factory.py          # get_storage_backend() factory
+├── backends/           # Backend implementations
+│   ├── filesystem.py   # Local filesystem / K8s PVC
+│   ├── azure_blob.py   # Azure Blob Storage
+│   ├── aws_s3.py       # AWS S3 (and S3-compatible)
+│   └── gcp_gcs.py      # Google Cloud Storage
+├── paths.py            # StoragePaths - centralized path constants
+├── arf_reader.py       # ArfReader - entity reconstruction for replay
+├── replay_source.py    # ArfReplaySource - internal source for ARF replay
+├── file_service.py     # FileService - file download/restoration
+├── sync_file_manager.py # SyncFileManager - sync-scoped file management
+└── exceptions.py       # Storage-specific exceptions
+```
+
+## Configuration
+
+Storage backend is selected via environment variables:
+
+```bash
+# Primary selector (auto-resolves from ENVIRONMENT if not set)
+STORAGE_BACKEND=filesystem|azure|aws|gcp
+
+# Filesystem
+STORAGE_PATH=/data/airweave
+
+# Azure Blob Storage
+STORAGE_AZURE_ACCOUNT=myaccount
+STORAGE_AZURE_CONTAINER=raw
+STORAGE_AZURE_PREFIX=
+
+# AWS S3
+STORAGE_AWS_BUCKET=mybucket
+STORAGE_AWS_REGION=us-east-1
+STORAGE_AWS_PREFIX=
+STORAGE_AWS_ENDPOINT_URL=  # For MinIO, LocalStack
+
+# GCP Cloud Storage
+STORAGE_GCP_BUCKET=mybucket
+STORAGE_GCP_PROJECT=myproject
+STORAGE_GCP_PREFIX=
+```
 
 ## Usage
 
 ```python
-from airweave.platform.storage import StorageManager
+from airweave.platform.storage import storage_backend, StorageBackend
 
-manager = StorageManager()
-await manager.save_file_from_entity(logger, sync_id, entity)
+# Use the singleton (configured from environment)
+await storage_backend.write_json("raw/sync123/manifest.json", {"key": "value"})
+data = await storage_backend.read_json("raw/sync123/manifest.json")
+
+# Or get a fresh instance
+from airweave.platform.storage import get_storage_backend
+backend = get_storage_backend()
 ```
+
+## Backend Implementations
+
+| Backend | Class | Auth Method |
+|---------|-------|-------------|
+| Filesystem | `FilesystemBackend` | N/A (local paths) |
+| Azure Blob | `AzureBlobBackend` | DefaultAzureCredential |
+| AWS S3 | `S3Backend` | Standard AWS credential chain |
+| GCP GCS | `GCSBackend` | Application Default Credentials |
 
 ---
 
@@ -63,7 +115,11 @@ Each entity JSON contains original fields plus reconstruction metadata:
 }
 ```
 
-### Location
+### Storage Locations
 
-- **Local**: `local_storage/raw/` (at repo root)
-- **Kubernetes**: PVC-mounted at configured `STORAGE_PATH`
+| Environment | Backend | Location |
+|-------------|---------|----------|
+| Local | Filesystem | `./local_storage/raw/` |
+| K8s (Azure) | Azure Blob | `{storage_account}/{container}/raw/` |
+| K8s (AWS) | S3 | `s3://{bucket}/raw/` |
+| K8s (GCP) | GCS | `gs://{bucket}/raw/` |
