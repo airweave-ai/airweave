@@ -33,8 +33,14 @@ export const TransformerNode = memo(({ data, selected, ...props }: NodeProps) =>
             onError={(e) => {
               // Fallback to initials if icon fails to load
               e.currentTarget.style.display = 'none';
+              const parent = e.currentTarget.parentElement!;
               const initials = data.name?.substring(0, 2).toUpperCase() || 'TR';
-              e.currentTarget.parentElement!.innerHTML = `<span class="text-foreground font-medium text-xs">${initials}</span>`;
+
+              // Create span element safely without innerHTML to prevent XSS
+              const span = document.createElement('span');
+              span.className = 'text-foreground font-medium text-xs';
+              span.textContent = initials;
+              parent.appendChild(span);
             }}
           />
         </div>
