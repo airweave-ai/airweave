@@ -1,0 +1,1 @@
+"""Spotlight search evaluator."""
