@@ -24,7 +24,7 @@ from .search_result import (
     SpotlightSystemMetadata,
 )
 from .search_result_summary import SpotlightSearchResultSummary
-from .state import CurrentSpotlightIteration, SpotlightState
+from .state import SpotlightCurrentIteration, SpotlightState
 
 __all__ = [
     # Answer
@@ -62,6 +62,6 @@ __all__ = [
     # Search result summary
     "SpotlightSearchResultSummary",
     # State
-    "CurrentSpotlightIteration",
+    "SpotlightCurrentIteration",
     "SpotlightState",
 ]
