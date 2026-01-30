@@ -322,6 +322,18 @@ class LinearConfig(SourceConfig):
     pass
 
 
+class MiroConfig(SourceConfig):
+    """Miro configuration schema."""
+
+    exclude_boards: str = Field(
+        default="",
+        title="Exclude Boards",
+        description=(
+            "Skip boards containing this text in their name. Leave empty to sync all boards."
+        ),
+    )
+
+
 class MondayConfig(SourceConfig):
     """Monday configuration schema."""
 
