@@ -49,17 +49,31 @@ in a vector database.
 ### How Data Becomes Searchable
 
 1. **Entity extraction**: Source connector generates raw entities with all fields
-2. **Textual representation**: A markdown-formatted `textual_representation` is built
+2. **Textual representation**: A markdown `textual_representation` is built from high-signal fields
 3. **Chunking**: Long content is split into smaller chunks sharing the same `original_entity_id`
 4. **Embedding**: Each chunk gets a dense embedding (semantic) and sparse embedding (keyword)
 5. **Indexing**: Entities are stored and become searchable
 
+### Textual Representation
+
+The `textual_representation` field is purpose-built for semantic search. Not all entity fields
+are equally useful for meaning-based matching—IDs, timestamps, and system metadata add noise.
+
+Airweave marks source fields as "embeddable" when they carry semantic value (e.g., title,
+description, content). The textual representation is a markdown document containing:
+- Entity metadata (name, breadcrumbs)
+- Embeddable source fields (title, description, labels, etc.)
+- File content (for document entities)
+
+This focused representation ensures semantic search matches on high-signal content, not polluted
+by system IDs or JSON structure. For exact matching, keyword search uses the full entity payload.
+
 ### How Search Works
 
-- **Keyword Search**: Matches against ALL entity fields. Best for exact terms, specific field
-  values, technical terms, IDs, proper nouns.
-- **Semantic Search**: Matches against `textual_representation`. Best for meaning-based queries,
-  conceptually related content, natural language questions.
+- **Keyword Search**: Matches against ALL entity fields (full JSON payload). Best for exact terms,
+  specific field values, technical terms, IDs, proper nouns.
+- **Semantic Search**: Matches against `textual_representation` only. Best for meaning-based
+  queries, conceptually related content, natural language questions.
 - **Hybrid Search**: Combines keyword filtering with semantic relevance.
 
 ### Filter Operators

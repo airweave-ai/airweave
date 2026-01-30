@@ -3,4 +3,5 @@
 Notes:
 - rate limits
 - context window
+- tokenizer
 """

@@ -131,7 +131,7 @@ class Retrieval(SearchOperation):
             temporal_config=temporal_config,
         )
 
-        # Convert SearchResult objects to dicts for downstream compatibility
+        # Convert AirweaveSearchResult objects to dicts for downstream compatibility
         results_as_dicts = self._results_to_dicts(raw_results)
 
         # For bulk search (query expansion), deduplicate results by chunk ID

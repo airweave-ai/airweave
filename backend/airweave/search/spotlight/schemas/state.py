@@ -20,7 +20,7 @@ class SpotlightCurrentIteration(BaseModel):
         default=None, description="Query embeddings."
     )
     compiled_query: str = Field(None, description="The compiled query.")
-    results: Optional[list[SpotlightSearchResult]] = Field(
+    search_results: Optional[list[SpotlightSearchResult]] = Field(
         default=None, description="Search results."
     )
     evaluation: Optional[SpotlightEvaluation] = Field(default=None, description="Evaluation.")
@@ -30,7 +30,6 @@ class SpotlightState(BaseModel):
     """Spotlight state schema."""
 
     user_query: str = Field(..., description="The user query.")
-    collection_id: str = Field(..., description="The collection ID.")
 
     collection_metadata: SpotlightCollectionMetadata = Field(
         ..., description="The collection metadata."
@@ -39,4 +38,4 @@ class SpotlightState(BaseModel):
     iteration: int = Field(..., description="The current iteration number.")
     current_iteration: SpotlightCurrentIteration = Field(..., description="The current iteration.")
 
-    history: SpotlightHistory = Field(..., description="The history.")
+    history: Optional[SpotlightHistory] = Field(default=None, description="The history.")

@@ -17,4 +17,6 @@ class SpotlightSourceMetadata(BaseModel):
 class SpotlightCollectionMetadata(BaseModel):
     """Collection metadata schema."""
 
+    collection_id: str = Field(..., description="The collection ID.")
+    collection_readable_id: str = Field(..., description="The collection readable ID.")
     sources: list[SpotlightSourceMetadata] = Field(..., description="Sources of the collection.")
