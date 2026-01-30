@@ -22,9 +22,7 @@ router = TrailingSlashRouter()
 @router.post("/{readable_id}/spotlight/search", response_model=SpotlightResponse)
 async def spotlight_search(
     request: SpotlightRequest,
-    collection_readable_id: str = Path(
-        ..., description="The unique readable identifier of the collection"
-    ),
+    readable_id: str = Path(..., description="The unique readable identifier of the collection"),
     ctx: ApiContext = Depends(deps.get_context),
     guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
 ) -> SpotlightResponse:
@@ -34,9 +32,9 @@ async def spotlight_search(
     services = await SpotlightServices.create(ctx)
 
     try:
-        agent = SpotlightAgent(services)
+        agent = SpotlightAgent(services, ctx)
 
-        response = await agent.run(collection_readable_id, request)
+        response = await agent.run(readable_id, request)
 
         await guard_rail.increment(ActionType.QUERIES)
 
