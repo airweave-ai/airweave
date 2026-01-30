@@ -19,6 +19,10 @@ class SpotlightDatabaseInterface(Protocol):
     schemas (like SpotlightCollectionMetadata) is done by the builder functions.
     """
 
+    async def close(self) -> None:
+        """Close the database connection."""
+        ...
+
     async def get_collection_by_readable_id(self, readable_id: str) -> Collection:
         """Get collection by readable_id."""
         ...

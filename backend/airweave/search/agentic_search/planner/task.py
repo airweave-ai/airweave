@@ -84,7 +84,9 @@ For each search plan, you must specify:
      - All entities in a specific folder/workspace (e.g., breadcrumbs contains "Engineering")
      - Siblings of a known entity (same parent path)
      - Children within a parent container
-   - `created_at`, `updated_at`: Filter by time ranges (ISO 8601 format)
+   - `created_at`, `updated_at`: Filter by time ranges (ISO 8601 format) using
+     `greater_than`/`less_than` operators
+     (e.g., "last 5 days" → `created_at` greater than 5 days ago)
 
    *System metadata (important for deep exploration):*
    - `source_name`: Filter to specific sources (e.g., "notion", "slack")

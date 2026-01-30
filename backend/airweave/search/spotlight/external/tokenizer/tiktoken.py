@@ -1,1 +1,1 @@
-"""Tiktoken tokenizer for spotlight search context window management."""
+"""TikToken tokenizer implementation for spotlight search."""

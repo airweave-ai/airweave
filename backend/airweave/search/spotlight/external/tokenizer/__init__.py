@@ -1,1 +1,1 @@
-"""Tokenizer integrations for spotlight search."""
+"""Tokenizer interface for spotlight search."""
