@@ -71,13 +71,15 @@ class OAuthTokenAuthentication(BaseModel):
 
     access_token: str = Field(..., description="OAuth access token")
     refresh_token: Optional[str] = Field(None, description="OAuth refresh token")
-    expires_at: Optional[datetime] = Field(None, description="Token expiry time")
+    expires_in: Optional[int] = Field(
+        None, description="Token expiry time in seconds (standard OAuth2 format)"
+    )
 
     @model_validator(mode="after")
     def validate_token(self):
-        """Validate token is not expired."""
-        if self.expires_at and self.expires_at < datetime.utcnow():
-            raise ValueError("Token has already expired")
+        """Validate expires_in is positive if provided."""
+        if self.expires_in is not None and self.expires_in <= 0:
+            raise ValueError("expires_in must be positive")
         return self
 
 
