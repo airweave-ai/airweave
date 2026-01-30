@@ -58,6 +58,23 @@ from .integration_credential import (
     IntegrationCredentialRawCreate,
     IntegrationCredentialUpdate,
 )
+from .oauth import (
+    OAuthAccessToken,
+    OAuthAccessTokenCreate,
+    OAuthAccessTokenUpdate,
+    OAuthAuthorizationCode,
+    OAuthAuthorizationCodeCreate,
+    OAuthAuthorizationCodeUpdate,
+    OAuthAuthorizationRequest,
+    OAuthAuthorizationResponse,
+    OAuthClient,
+    OAuthClientCreate,
+    OAuthClientUpdate,
+    OAuthErrorResponse,
+    OAuthServerMetadata,
+    OAuthTokenRequest,
+    OAuthTokenResponse,
+)
 from .invitation import (
     InvitationBase,
     InvitationCreate,

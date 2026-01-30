@@ -1,0 +1,133 @@
+name: OAuth Tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  backend-oauth-tests:
+    runs-on: ubuntu-latest
+    environment: dev
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: airweave
+          POSTGRES_PASSWORD: airweave_test_password
+          POSTGRES_DB: airweave_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install backend dependencies
+        run: |
+          cd backend
+          poetry install --no-interaction --no-ansi
+
+      - name: Run OAuth unit tests
+        run: |
+          cd backend
+          poetry run pytest tests/unit/core/test_oauth_service.py -v --tb=short
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_DB: airweave_test
+          POSTGRES_USER: airweave
+          POSTGRES_PASSWORD: airweave_test_password
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+
+      - name: Run OAuth CRUD tests
+        run: |
+          cd backend
+          poetry run pytest tests/unit/crud/test_oauth_crud.py -v --tb=short
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_DB: airweave_test
+          POSTGRES_USER: airweave
+          POSTGRES_PASSWORD: airweave_test_password
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+
+      # Note: OAuth smoke tests (tests/e2e/smoke/test_oauth.py) require a running backend API
+      # and are marked to only run in local development environments with -m oauth
+
+  mcp-oauth-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+          cache: 'npm'
+          cache-dependency-path: 'mcp/package-lock.json'
+
+      - name: Install MCP dependencies
+        run: |
+          cd mcp
+          npm ci
+
+      - name: Run MCP OAuth tests
+        run: |
+          cd mcp
+          npm run test -- oauth-flow.test.ts
+
+  frontend-oauth-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+          cache: 'npm'
+          cache-dependency-path: 'frontend/package-lock.json'
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Run OAuth component tests
+        run: |
+          cd frontend
+          npm test -- OAuthConsentScreen

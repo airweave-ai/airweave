@@ -13,6 +13,9 @@ from .crud_entity import entity
 from .crud_entity_count import entity_count
 from .crud_entity_definition import entity_definition
 from .crud_integration_credential import integration_credential
+from .oauth_access_token import oauth_access_token
+from .oauth_authorization_code import oauth_authorization_code
+from .oauth_client import oauth_client
 from .crud_organization import organization
 from .crud_organization_billing import organization_billing
 from .crud_redirect_session import redirect_session
@@ -42,6 +45,9 @@ __all__ = [
     "entity_count",
     "entity_definition",
     "integration_credential",
+    "oauth_access_token",
+    "oauth_authorization_code",
+    "oauth_client",
     "organization",
     "organization_billing",
     "search_query",

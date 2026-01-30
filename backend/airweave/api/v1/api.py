@@ -16,6 +16,7 @@ from airweave.api.v1.endpoints import (
     events,
     file_retrieval,
     health,
+    oauth,
     organizations,
     s3,
     search,
@@ -32,6 +33,7 @@ from airweave.core.config import settings
 # Use our custom router that handles trailing slashes
 api_router = TrailingSlashRouter()
 api_router.include_router(health.router, prefix="/health", tags=["health"])
+api_router.include_router(oauth.router)  # OAuth endpoints have their own prefix in the router
 api_router.include_router(api_keys.router, prefix="/api-keys", tags=["api-keys"])
 api_router.include_router(users.router, prefix="/users", tags=["users"])
 api_router.include_router(organizations.router, prefix="/organizations", tags=["organizations"])

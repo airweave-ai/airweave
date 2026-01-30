@@ -92,6 +92,12 @@ class Settings(BaseSettings):
     # Must be a strong, random secret in production
     STATE_SECRET: str
 
+    # OAuth 2.1 configuration for MCP authorization server
+    OAUTH_ENABLED: bool = True
+    OAUTH_AUTHORIZATION_CODE_TTL: int = 600  # 10 minutes
+    OAUTH_ACCESS_TOKEN_TTL: int = 3600  # 1 hour
+    OAUTH_REFRESH_TOKEN_TTL: int = 2592000  # 30 days
+
     CODE_SUMMARIZER_ENABLED: bool = False
 
     # Debug configuration

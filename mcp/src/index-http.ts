@@ -23,12 +23,17 @@ import { AirweaveClient } from './api/airweave-client.js';
 import { createSearchTool } from './tools/search-tool.js';
 import { createConfigTool } from './tools/config-tool.js';
 import { RedisSessionManager, SessionData, SessionWithTransport, SessionMetadata } from './session/redis-session-manager.js';
+import { OAuthTokenValidator } from './auth/oauth-validator.js';
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
 // Initialize Redis session manager
 const sessionManager = new RedisSessionManager();
+
+// Initialize OAuth token validator
+const baseUrl = process.env.AIRWEAVE_BASE_URL || 'https://api.airweave.ai';
+const oauthValidator = new OAuthTokenValidator(sessionManager, baseUrl);
 
 // Create MCP server instance with tools
 const createMcpServer = (apiKey: string, collection: string) => {
@@ -94,10 +99,22 @@ app.get('/health', async (req, res) => {
     });
 });
 
+// OAuth 2.1 Authorization Server Metadata
+app.get('/.well-known/oauth-authorization-server', (req, res) => {
+    res.json({
+        issuer: baseUrl,
+        authorization_endpoint: `${baseUrl}/oauth/authorize`,
+        token_endpoint: `${baseUrl}/oauth/token`,
+        grant_types_supported: ['authorization_code'],
+        response_types_supported: ['code'],
+        code_challenge_methods_supported: ['S256'],
+        token_endpoint_auth_methods_supported: ['none'],
+    });
+});
+
 // Root endpoint with server info
 app.get('/', (req, res) => {
     const defaultCollection = process.env.AIRWEAVE_COLLECTION || 'default';
-    const baseUrl = process.env.AIRWEAVE_BASE_URL || 'https://api.airweave.ai';
 
     res.json({
         name: "Airweave MCP Search Server",
@@ -107,18 +124,26 @@ app.get('/', (req, res) => {
         collection: defaultCollection + " (default, override with X-Collection-Readable-ID header)",
         endpoints: {
             health: "/health",
-            mcp: "/mcp"
+            mcp: "/mcp",
+            oauth_metadata: "/.well-known/oauth-authorization-server"
         },
         authentication: {
             required: true,
             methods: [
-                "X-API-Key: <your-api-key> (recommended)",
+                "OAuth 2.1 (recommended for desktop clients)",
+                "X-API-Key: <your-api-key>",
                 "Authorization: Bearer <your-api-key>",
                 "Query parameter: ?apiKey=your-key",
                 "Query parameter: ?api_key=your-key"
             ],
+            oauth: {
+                supported: true,
+                metadata_endpoint: "/.well-known/oauth-authorization-server",
+                authorization_endpoint: `${baseUrl}/oauth/authorize`,
+                token_endpoint: `${baseUrl}/oauth/token`
+            },
             headers: {
-                "X-API-Key": "Your Airweave API key (required)",
+                "X-API-Key": "Your Airweave API key (for platforms without OAuth support)",
                 "X-Collection-Readable-ID": "Collection readable ID to search (optional, falls back to default)"
             },
             openai_agent_builder: {
@@ -172,16 +197,56 @@ async function createSessionObjects(sessionData: SessionData, apiKey: string): P
 // Main MCP endpoint (Streamable HTTP) with Redis session management
 app.post('/mcp', async (req, res) => {
     try {
-        // Extract API key from request headers or query parameters
-        const apiKey = req.headers['x-api-key'] ||
-            req.headers['authorization']?.replace('Bearer ', '') ||
-            req.query.apiKey ||
-            req.query.api_key;
+        // Extract auth credentials from request headers or query parameters
+        const authHeader = req.headers['authorization'];
+        const apiKeyFromHeader = req.headers['x-api-key'] as string;
+        const apiKeyFromQuery = (req.query.apiKey || req.query.api_key) as string;
 
-        // Extract collection from custom header (supports multi-tenancy)
-        const collectionId = req.headers['x-collection-readable-id'] as string ||
-            process.env.AIRWEAVE_COLLECTION ||
-            'default';
+        let apiKey: string | undefined;
+        let collectionId: string;
+        let isOAuthToken = false;
+
+        // Try OAuth token first (Bearer token starting with 'oat_')
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+            const token = authHeader.replace('Bearer ', '');
+            
+            // Check if it's an OAuth token (starts with 'oat_')
+            if (token.startsWith('oat_')) {
+                console.log(`[${new Date().toISOString()}] Validating OAuth token`);
+                const validation = await oauthValidator.validateToken(token);
+                
+                if (validation.valid && validation.collectionId) {
+                    // OAuth token is valid - use it
+                    isOAuthToken = true;
+                    apiKey = token; // Use token as apiKey for session management
+                    collectionId = validation.collectionId;
+                    console.log(`[${new Date().toISOString()}] OAuth token valid for collection ${collectionId}`);
+                } else {
+                    res.status(401).json({
+                        jsonrpc: '2.0',
+                        error: {
+                            code: -32001,
+                            message: 'Invalid OAuth token',
+                            data: 'OAuth token is invalid, expired, or revoked'
+                        },
+                        id: req.body.id || null
+                    });
+                    return;
+                }
+            } else {
+                // Regular API key via Bearer token
+                apiKey = token;
+                collectionId = req.headers['x-collection-readable-id'] as string ||
+                    process.env.AIRWEAVE_COLLECTION ||
+                    'default';
+            }
+        } else {
+            // Try X-API-Key header or query params
+            apiKey = apiKeyFromHeader || apiKeyFromQuery;
+            collectionId = req.headers['x-collection-readable-id'] as string ||
+                process.env.AIRWEAVE_COLLECTION ||
+                'default';
+        }
 
         if (!apiKey) {
             res.status(401).json({
@@ -189,7 +254,7 @@ app.post('/mcp', async (req, res) => {
                 error: {
                     code: -32001,
                     message: 'Authentication required',
-                    data: 'Please provide an API key via X-API-Key header, Authorization header, or apiKey query parameter'
+                    data: 'Please provide an OAuth token (Bearer oat_xxx) or API key via X-API-Key header, Authorization header, or apiKey query parameter'
                 },
                 id: req.body.id || null
             });

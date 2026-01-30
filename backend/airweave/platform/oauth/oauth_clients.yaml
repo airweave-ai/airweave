@@ -1,0 +1,28 @@
+oauth_clients:
+  claude-desktop:
+    name: "Claude Desktop"
+    client_type: "public"
+    grant_types:
+      - "authorization_code"
+    redirect_uris:
+      - "http://localhost:3000/oauth/callback"
+      - "http://localhost:8080/oauth/callback"
+      - "vscode://anthropic.claude-desktop/oauth/callback"
+  
+  cursor:
+    name: "Cursor"
+    client_type: "public"
+    grant_types:
+      - "authorization_code"
+    redirect_uris:
+      - "http://localhost:*/oauth/callback"
+      - "cursor://oauth/callback"
+  
+  generic-mcp:
+    name: "Generic MCP Client"
+    client_type: "public"
+    grant_types:
+      - "authorization_code"
+    redirect_uris:
+      - "http://localhost:*/oauth/callback"
+      - "https://localhost:*/oauth/callback"

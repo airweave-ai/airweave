@@ -72,6 +72,14 @@ async def lifespan(app: FastAPI):
         if settings.RUN_DB_SYNC:
             await sync_platform_components(db)
         await init_db(db)
+        
+        # Load OAuth clients from YAML
+        try:
+            from airweave.platform.oauth.loader import load_oauth_clients
+            logger.info("Loading OAuth clients from YAML...")
+            await load_oauth_clients(db)
+        except Exception as e:
+            logger.warning(f"Failed to load OAuth clients: {e}")
 
     # Validate embedding stack configuration (raises if misconfigured)
     validate_and_raise()

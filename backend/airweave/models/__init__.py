@@ -15,6 +15,10 @@ from .entity_definition import EntityDefinition
 from .entity_relation import EntityRelation
 from .feature_flag import FeatureFlag
 from .integration_credential import IntegrationCredential
+from .oauth_access_token import OAuthAccessToken
+from .oauth_authorization_code import OAuthAuthorizationCode
+from .oauth_client import OAuthClient
+from .oauth_refresh_token import OAuthRefreshToken
 from .organization import Organization
 from .organization_billing import OrganizationBilling
 from .pg_field_catalog import PgFieldCatalogColumn, PgFieldCatalogTable
@@ -48,6 +52,10 @@ __all__ = [
     "EntityRelation",
     "FeatureFlag",
     "IntegrationCredential",
+    "OAuthAccessToken",
+    "OAuthAuthorizationCode",
+    "OAuthClient",
+    "OAuthRefreshToken",
     "Organization",
     "OrganizationBilling",
     "PgFieldCatalogColumn",
