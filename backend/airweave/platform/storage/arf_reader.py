@@ -19,9 +19,9 @@ from uuid import UUID
 
 from airweave.core.logging import ContextualLogger
 from airweave.core.logging import logger as default_logger
-from airweave.platform.storage.backend import StorageBackend
 from airweave.platform.storage.exceptions import StorageNotFoundError
 from airweave.platform.storage.paths import StoragePaths
+from airweave.platform.storage.protocol import StorageBackend
 
 if TYPE_CHECKING:
     from airweave.platform.entities._base import BaseEntity

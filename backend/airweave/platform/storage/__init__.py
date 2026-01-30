@@ -1,18 +1,18 @@
 """Storage integration module for Airweave.
 
 This module provides unified storage abstractions including:
-- StorageBackend: Abstract interface for persistent storage (filesystem, Azure Blob)
+- StorageBackend: Protocol interface for persistent storage
+- Backend implementations: Filesystem, Azure Blob, AWS S3, GCP GCS
 - FileService: File download and restoration to temp directory
 - paths: Centralized path constants for all storage operations
+
+Exports are lazy-loaded to avoid triggering heavy imports (like settings)
+when only specific submodules are needed.
 """
 
-from airweave.core.config import settings
-from airweave.platform.storage.arf_reader import ArfReader
-from airweave.platform.storage.backend import (
-    AzureBlobBackend,
-    FilesystemBackend,
-    StorageBackend,
-)
+from typing import TYPE_CHECKING
+
+# These imports are lightweight (no heavy dependencies)
 from airweave.platform.storage.exceptions import (
     FileSkippedException,
     StorageAuthenticationError,
@@ -21,24 +21,41 @@ from airweave.platform.storage.exceptions import (
     StorageNotFoundError,
     StorageQuotaExceededError,
 )
-from airweave.platform.storage.file_service import FileDownloadService, FileService
 from airweave.platform.storage.paths import StoragePaths, paths
-from airweave.platform.storage.replay_source import ArfReplaySource
-from airweave.platform.storage.sync_file_manager import (
-    SyncFileManager,
-    sync_file_manager,
-)
+from airweave.platform.storage.protocol import StorageBackend
+
+# Lazy imports for heavy modules
+if TYPE_CHECKING:
+    from airweave.platform.storage.arf_reader import ArfReader
+    from airweave.platform.storage.backends import (
+        AzureBlobBackend,
+        FilesystemBackend,
+        GCSBackend,
+        S3Backend,
+    )
+    from airweave.platform.storage.factory import get_storage_backend
+    from airweave.platform.storage.file_service import FileDownloadService, FileService
+    from airweave.platform.storage.replay_source import ArfReplaySource
+    from airweave.platform.storage.sync_file_manager import (
+        SyncFileManager,
+        sync_file_manager,
+    )
 
 __all__ = [
-    # Backend
+    # Protocol
     "StorageBackend",
+    # Backend implementations (lazy)
     "FilesystemBackend",
     "AzureBlobBackend",
+    "S3Backend",
+    "GCSBackend",
+    # Factory and singleton (lazy)
+    "get_storage_backend",
     "storage_backend",
-    # File service
+    # File service (lazy)
     "FileService",
-    "FileDownloadService",  # Backwards compatibility
-    # ARF
+    "FileDownloadService",
+    # ARF (lazy)
     "ArfReader",
     "ArfReplaySource",
     # Paths
@@ -51,23 +68,63 @@ __all__ = [
     "StorageNotFoundError",
     "StorageQuotaExceededError",
     "FileSkippedException",
-    # Sync file manager
+    # Sync file manager (lazy)
     "SyncFileManager",
     "sync_file_manager",
 ]
 
 
-def _get_storage_backend() -> StorageBackend:
-    """Factory function to get the appropriate storage backend based on settings."""
-    if settings.ENVIRONMENT in ["local", "test"]:
-        return FilesystemBackend(base_path=settings.STORAGE_PATH)
-    elif settings.ENVIRONMENT in ["dev", "prd"]:
-        return AzureBlobBackend(
-            storage_account=settings.AZURE_STORAGE_ACCOUNT_NAME,
-            container=settings.AZURE_RAW_DATA_CONTAINER,
+def __getattr__(name: str):
+    """Lazy import heavy modules on first access."""
+    if name in ("FilesystemBackend", "AzureBlobBackend", "S3Backend", "GCSBackend"):
+        from airweave.platform.storage.backends import (
+            AzureBlobBackend,
+            FilesystemBackend,
+            GCSBackend,
+            S3Backend,
         )
-    else:
-        raise ValueError(f"Unsupported environment for storage backend: {settings.ENVIRONMENT}")
 
+        return {
+            "FilesystemBackend": FilesystemBackend,
+            "AzureBlobBackend": AzureBlobBackend,
+            "S3Backend": S3Backend,
+            "GCSBackend": GCSBackend,
+        }[name]
 
-storage_backend: StorageBackend = _get_storage_backend()
+    if name == "get_storage_backend":
+        from airweave.platform.storage.factory import get_storage_backend
+
+        return get_storage_backend
+
+    if name == "storage_backend":
+        from airweave.platform.storage.factory import get_storage_backend
+
+        return get_storage_backend()
+
+    if name in ("FileService", "FileDownloadService"):
+        from airweave.platform.storage.file_service import (
+            FileDownloadService,
+            FileService,
+        )
+
+        return {"FileService": FileService, "FileDownloadService": FileDownloadService}[name]
+
+    if name == "ArfReader":
+        from airweave.platform.storage.arf_reader import ArfReader
+
+        return ArfReader
+
+    if name == "ArfReplaySource":
+        from airweave.platform.storage.replay_source import ArfReplaySource
+
+        return ArfReplaySource
+
+    if name in ("SyncFileManager", "sync_file_manager"):
+        from airweave.platform.storage.sync_file_manager import (
+            SyncFileManager,
+            sync_file_manager,
+        )
+
+        return {"SyncFileManager": SyncFileManager, "sync_file_manager": sync_file_manager}[name]
+
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

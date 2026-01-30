@@ -8,6 +8,8 @@ from typing import Optional
 from pydantic import PostgresDsn, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings
 
+from airweave.core.config.enums import Environment, StorageBackendType
+
 
 class Settings(BaseSettings):
     """Pydantic settings class.
@@ -70,7 +72,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Airweave"
     LOCAL_DEVELOPMENT: bool = False
     LOCAL_CURSOR_DEVELOPMENT: bool = False
-    ENVIRONMENT: str = "local"
+    ENVIRONMENT: str = Environment.LOCAL
     FRONTEND_LOCAL_DEVELOPMENT_PORT: int = 8080
 
     # Rate limiting
@@ -135,8 +137,31 @@ class Settings(BaseSettings):
     VESPA_TIMEOUT: float = 120.0
     VESPA_CLUSTER: str = "airweave"  # Vespa content cluster name for bulk operations
 
-    # Storage configuration (filesystem-based, cloud-agnostic)
+    # -------------------------------------------------------------------------
+    # Storage backend configuration
+    # -------------------------------------------------------------------------
+    # Primary selector: filesystem | azure | aws | gcp
+    # If not set, auto-resolves from ENVIRONMENT for backward compatibility
+    STORAGE_BACKEND: Optional[str] = None
+
+    # Filesystem backend (local development, K8s PVC)
     STORAGE_PATH: str = "./local_storage"  # In K8s: /data/airweave-storage (PVC mount)
+
+    # Azure Blob Storage
+    STORAGE_AZURE_ACCOUNT: Optional[str] = None
+    STORAGE_AZURE_CONTAINER: str = "raw"
+    STORAGE_AZURE_PREFIX: str = ""
+
+    # AWS S3
+    STORAGE_AWS_BUCKET: Optional[str] = None
+    STORAGE_AWS_REGION: Optional[str] = None
+    STORAGE_AWS_PREFIX: str = ""
+    STORAGE_AWS_ENDPOINT_URL: Optional[str] = None  # For MinIO, LocalStack
+
+    # GCP Cloud Storage
+    STORAGE_GCP_BUCKET: Optional[str] = None
+    STORAGE_GCP_PROJECT: Optional[str] = None
+    STORAGE_GCP_PREFIX: str = ""
 
     OPENAI_API_KEY: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
@@ -199,10 +224,6 @@ class Settings(BaseSettings):
     OPENAI_MAX_CONCURRENT: int = 20  # Max concurrent OpenAI API requests
     CTTI_MAX_CONCURRENT: int = 3  # Max concurrent CTTI (ClinicalTrials.gov) requests
 
-    # Azure storage config for non-local environments (auto-resolved from ENVIRONMENT)
-    AZURE_STORAGE_ACCOUNT_NAME: Optional[str] = None  # Auto-resolved if not set
-    AZURE_RAW_DATA_CONTAINER: str = "raw"  # Container for raw data
-
     API_REQUEST_BODY_SIZE_LIMIT: int = 10 * 1024 * 1024  # 10MB default
     API_REQUEST_TIMEOUT_SECONDS: int = 60
 
@@ -228,9 +249,32 @@ class Settings(BaseSettings):
             info: Validation context containing all field values.
         """
         environment = info.data.get("ENVIRONMENT", "local")
-        if environment in ["dev", "prd"] and not v:
-            return f"airweave-core-{environment}-kv"
+        if environment in [Environment.DEV, Environment.PRD, "dev", "prd"] and not v:
+            env_str = environment.value if isinstance(environment, Environment) else environment
+            return f"airweave-core-{env_str}-kv"
         return v
+
+    @field_validator("STORAGE_BACKEND", mode="before")
+    def resolve_storage_backend(cls, v: Optional[str], info: ValidationInfo) -> str:
+        """Auto-resolve storage backend from ENVIRONMENT if not explicitly set.
+
+        Provides backward compatibility:
+        - local/test -> filesystem
+        - dev/prd -> azure
+        """
+        if v:
+            # Normalize to lowercase string
+            return v.lower() if isinstance(v, str) else v.value.lower()
+
+        # Backward compatibility: derive from ENVIRONMENT
+        environment = info.data.get("ENVIRONMENT", "local")
+        env_str = environment.value if isinstance(environment, Environment) else environment
+
+        if env_str in [Environment.LOCAL, Environment.TEST, "local", "test"]:
+            return StorageBackendType.FILESYSTEM.value
+        elif env_str in [Environment.DEV, Environment.PRD, "dev", "prd"]:
+            return StorageBackendType.AZURE.value
+        return StorageBackendType.FILESYSTEM.value
 
     @field_validator("ADDITIONAL_CORS_ORIGINS", mode="before")
     def parse_cors_origins(cls, v: Optional[str]) -> Optional[list[str]]:
@@ -404,11 +448,14 @@ class Settings(BaseSettings):
         if self.API_FULL_URL:
             return self.API_FULL_URL
 
-        if self.ENVIRONMENT == "local":
+        env = self.ENVIRONMENT
+        env_str = env.value if isinstance(env, Environment) else env
+
+        if env_str == Environment.LOCAL or env_str == "local":
             return self.LOCAL_NGROK_SERVER or "http://localhost:8001"
-        if self.ENVIRONMENT == "prd":
+        if env_str == Environment.PRD or env_str == "prd":
             return "https://api.airweave.ai"
-        return f"https://api.{self.ENVIRONMENT}-airweave.com"
+        return f"https://api.{env_str}-airweave.com"
 
     @property
     def app_url(self) -> str:
@@ -420,11 +467,14 @@ class Settings(BaseSettings):
         if self.APP_FULL_URL:
             return self.APP_FULL_URL
 
-        if self.ENVIRONMENT == "local":
+        env = self.ENVIRONMENT
+        env_str = env.value if isinstance(env, Environment) else env
+
+        if env_str == Environment.LOCAL or env_str == "local":
             return f"http://localhost:{self.FRONTEND_LOCAL_DEVELOPMENT_PORT}"
-        if self.ENVIRONMENT == "prd":
+        if env_str == Environment.PRD or env_str == "prd":
             return "https://app.airweave.ai"
-        return f"https://app.{self.ENVIRONMENT}-airweave.com"
+        return f"https://app.{env_str}-airweave.com"
 
     @property
     def docs_url(self) -> str:
@@ -433,11 +483,14 @@ class Settings(BaseSettings):
         Returns:
             str: The docs URL.
         """
-        if self.ENVIRONMENT == "local":
+        env = self.ENVIRONMENT
+        env_str = env.value if isinstance(env, Environment) else env
+
+        if env_str == Environment.LOCAL or env_str == "local":
             return f"http://localhost:{self.FRONTEND_LOCAL_DEVELOPMENT_PORT}"
-        if self.ENVIRONMENT == "prd":
+        if env_str == Environment.PRD or env_str == "prd":
             return "https://docs.airweave.ai"
-        return f"https://docs.{self.ENVIRONMENT}-airweave.com"
+        return f"https://docs.{env_str}-airweave.com"
 
     @property
     def temporal_address(self) -> str:
@@ -447,6 +500,3 @@ class Settings(BaseSettings):
             str: The Temporal server address in host:port format.
         """
         return f"{self.TEMPORAL_HOST}:{self.TEMPORAL_PORT}"
-
-
-settings = Settings()
