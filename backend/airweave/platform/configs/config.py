@@ -241,6 +241,28 @@ class GoogleDocsConfig(SourceConfig):
     )
 
 
+class GoogleSheetsConfig(SourceConfig):
+    """Google Sheets configuration schema."""
+
+    include_trashed: bool = Field(
+        default=False,
+        title="Include Trashed Spreadsheets",
+        description="Include spreadsheets that have been moved to trash. Defaults to False.",
+    )
+
+    include_shared: bool = Field(
+        default=True,
+        title="Include Shared Spreadsheets",
+        description="Include spreadsheets shared with you by others. Defaults to True.",
+    )
+
+    max_rows_per_sheet: int = Field(
+        default=10000,
+        title="Maximum Rows Per Sheet",
+        description="Maximum number of rows to read from each sheet. Defaults to 10000.",
+    )
+
+
 class GoogleDriveConfig(SourceConfig):
     """Google Drive configuration schema."""
 
