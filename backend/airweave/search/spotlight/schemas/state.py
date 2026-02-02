@@ -35,7 +35,7 @@ class SpotlightState(BaseModel):
         ..., description="The collection metadata."
     )
 
-    iteration: int = Field(..., description="The current iteration number.")
+    iteration_number: int = Field(..., description="The current iteration number.")
     current_iteration: SpotlightCurrentIteration = Field(..., description="The current iteration.")
 
     history: Optional[SpotlightHistory] = Field(default=None, description="The history.")
