@@ -12,6 +12,10 @@ from .github import (
     GithubRepoEntity,
     GitHubRepositoryEntity,
 )
+from .google_sheets import (
+    GoogleSheetsSpreadsheetEntity,
+    GoogleSheetsWorksheetEntity,
+)
 from .sharepoint2019v2 import (
     SharePoint2019V2FileEntity,
     SharePoint2019V2ItemEntity,
@@ -31,6 +35,8 @@ __all__ = [
     "GitHubRepositoryEntity",
     "GithubRepoEntity",
     "GithubContentEntity",
+    "GoogleSheetsSpreadsheetEntity",
+    "GoogleSheetsWorksheetEntity",
     "SharePoint2019V2FileEntity",
     "SharePoint2019V2ItemEntity",
     "SharePoint2019V2ListEntity",

@@ -277,6 +277,22 @@ class GoogleSlidesConfig(SourceConfig):
     )
 
 
+class GoogleSheetsConfig(SourceConfig):
+    """Google Sheets configuration schema."""
+
+    include_trashed: bool = Field(
+        default=False,
+        title="Include Trashed Spreadsheets",
+        description="Include spreadsheets that have been moved to trash. Defaults to False.",
+    )
+
+    include_shared: bool = Field(
+        default=True,
+        title="Include Shared Spreadsheets",
+        description="Include spreadsheets shared with you by others. Defaults to True.",
+    )
+
+
 class HubspotConfig(SourceConfig):
     """Hubspot configuration schema."""
 
