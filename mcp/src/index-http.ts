@@ -27,6 +27,20 @@ import { RedisSessionManager, SessionData, SessionWithTransport, SessionMetadata
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
+// Workaround for OpenAI Agent Builder's broken MCP client
+// OpenAI doesn't send the required Accept header for Streamable HTTP transport
+// MCP SDK requires: "Accept: application/json, text/event-stream"
+app.use('/mcp', (req, res, next) => {
+    const accept = req.headers.accept || '';
+    
+    // If Accept header is missing or incomplete, fix it
+    if (!accept.includes('application/json') || !accept.includes('text/event-stream')) {
+        req.headers.accept = 'application/json, text/event-stream';
+    }
+    
+    next();
+});
+
 // Initialize Redis session manager
 const sessionManager = new RedisSessionManager();
 
