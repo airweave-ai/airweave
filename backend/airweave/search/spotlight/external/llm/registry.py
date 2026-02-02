@@ -1,29 +1,15 @@
 """Model registry for spotlight search.
 
-Single source of truth for provider-model relationships and model specifications.
-All identifiers are enums for type safety.
+Defines valid provider-model combinations and their specifications.
 """
 
 from dataclasses import dataclass
-from enum import Enum
 
-
-class LLMProvider(str, Enum):
-    """Supported LLM providers."""
-
-    CEREBRAS = "cerebras"
-
-
-class ModelName(str, Enum):
-    """Supported model names (global across providers)."""
-
-    GPT_OSS_120B = "gpt-oss-120b"
-
-
-class TokenizerEncoding(str, Enum):
-    """Supported tokenizer encodings."""
-
-    O200K_HARMONY = "o200k_harmony"
+from airweave.search.spotlight.config import LLMProvider, ModelName
+from airweave.search.spotlight.external.tokenizer.registry import (
+    TokenizerEncoding,
+    TokenizerType,
+)
 
 
 @dataclass(frozen=True)
@@ -35,13 +21,15 @@ class ModelSpec:
     Attributes:
         context_window: Maximum tokens the model can process (input + reasoning + output).
         max_output_tokens: Maximum tokens the model can generate.
-        tokenizer_encoding: The tokenizer encoding this model requires.
+        tokenizer_type: Which tokenizer library to use.
+        tokenizer_encoding: Which encoding to use (must be supported by tokenizer_type).
         rate_limit_rpm: Requests per minute limit.
         rate_limit_tpm: Tokens per minute limit.
     """
 
     context_window: int
     max_output_tokens: int
+    tokenizer_type: TokenizerType
     tokenizer_encoding: TokenizerEncoding
     rate_limit_rpm: int
     rate_limit_tpm: int
@@ -53,6 +41,7 @@ MODEL_REGISTRY: dict[LLMProvider, dict[ModelName, ModelSpec]] = {
         ModelName.GPT_OSS_120B: ModelSpec(
             context_window=131_000,
             max_output_tokens=40_000,
+            tokenizer_type=TokenizerType.TIKTOKEN,
             tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
             rate_limit_rpm=1_000,
             rate_limit_tpm=1_000_000,

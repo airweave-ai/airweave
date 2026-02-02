@@ -2,8 +2,6 @@
 
 from enum import Enum
 
-from airweave.search.spotlight.external.llm.registry import LLMProvider, ModelName
-
 
 class DatabaseImpl(str, Enum):
     """Supported database implementations."""
@@ -11,17 +9,20 @@ class DatabaseImpl(str, Enum):
     POSTGRESQL = "postgresql"
 
 
-class TokenizerImpl(str, Enum):
-    """Supported tokenizer implementations."""
+class LLMProvider(str, Enum):
+    """Supported LLM providers."""
 
-    TIKTOKEN = "tiktoken"
+    CEREBRAS = "cerebras"
+
+
+class ModelName(str, Enum):
+    """Supported model names (global across providers)."""
+
+    GPT_OSS_120B = "gpt-oss-120b"
 
 
 class SpotlightConfig:
-    """Spotlight module configuration.
-
-    Pure settings - no logic. The services layer handles lookups and validation.
-    """
+    """Spotlight module configuration."""
 
     # Database
     DATABASE_IMPL: DatabaseImpl = DatabaseImpl.POSTGRESQL
@@ -29,9 +30,6 @@ class SpotlightConfig:
     # LLM
     LLM_PROVIDER: LLMProvider = LLMProvider.CEREBRAS
     LLM_MODEL: ModelName = ModelName.GPT_OSS_120B
-
-    # Tokenizer implementation (encoding is derived from model at composition time)
-    TOKENIZER_IMPL: TokenizerImpl = TokenizerImpl.TIKTOKEN
 
 
 config = SpotlightConfig()

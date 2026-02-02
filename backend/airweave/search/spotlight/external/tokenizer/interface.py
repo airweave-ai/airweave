@@ -2,11 +2,14 @@
 
 from typing import Protocol
 
-from airweave.search.spotlight.external.llm.registry import TokenizerEncoding
+from airweave.search.spotlight.external.tokenizer.registry import TokenizerEncoding
 
 
 class SpotlightTokenizerInterface(Protocol):
-    """Tokenizer interface for spotlight search."""
+    """Tokenizer interface for spotlight search.
+
+    Minimal interface - the planner only needs to count tokens.
+    """
 
     @property
     def encoding(self) -> TokenizerEncoding:

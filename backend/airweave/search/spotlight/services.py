@@ -4,11 +4,15 @@ This is the composition root - where external dependencies are wired together.
 """
 
 from airweave.api.context import ApiContext
-from airweave.search.spotlight.config import DatabaseImpl, TokenizerImpl, config
+from airweave.search.spotlight.config import DatabaseImpl, LLMProvider, config
 from airweave.search.spotlight.external.database import SpotlightDatabaseInterface
 from airweave.search.spotlight.external.llm import SpotlightLLMInterface
-from airweave.search.spotlight.external.llm.registry import LLMProvider, get_model_spec
+from airweave.search.spotlight.external.llm.registry import get_model_spec
 from airweave.search.spotlight.external.tokenizer import SpotlightTokenizerInterface
+from airweave.search.spotlight.external.tokenizer.registry import (
+    TokenizerType,
+    is_encoding_supported,
+)
 
 
 class SpotlightServices:
@@ -79,26 +83,34 @@ class SpotlightServices:
 
     @staticmethod
     def _create_tokenizer() -> SpotlightTokenizerInterface:
-        """Create tokenizer based on config.
+        """Create tokenizer based on model spec.
 
-        Looks up the model spec to determine the required encoding.
+        The model spec specifies which tokenizer type and encoding to use.
+        Validates that the tokenizer type supports the encoding.
 
         Returns:
             Tokenizer interface implementation.
 
         Raises:
-            ValueError: If tokenizer implementation is unknown.
+            ValueError: If tokenizer type is unknown or doesn't support the encoding.
         """
         model_spec = get_model_spec(config.LLM_PROVIDER, config.LLM_MODEL)
 
-        if config.TOKENIZER_IMPL == TokenizerImpl.TIKTOKEN:
+        # Validate encoding is supported by the tokenizer type
+        if not is_encoding_supported(model_spec.tokenizer_type, model_spec.tokenizer_encoding):
+            raise ValueError(
+                f"Tokenizer '{model_spec.tokenizer_type.value}' does not support "
+                f"encoding '{model_spec.tokenizer_encoding.value}'"
+            )
+
+        if model_spec.tokenizer_type == TokenizerType.TIKTOKEN:
             from airweave.search.spotlight.external.tokenizer.tiktoken import (
                 TiktokenTokenizer,
             )
 
             return TiktokenTokenizer(model_spec.tokenizer_encoding)
 
-        raise ValueError(f"Unknown tokenizer implementation: {config.TOKENIZER_IMPL}")
+        raise ValueError(f"Unknown tokenizer type: {model_spec.tokenizer_type}")
 
     @staticmethod
     def _create_llm() -> SpotlightLLMInterface:
