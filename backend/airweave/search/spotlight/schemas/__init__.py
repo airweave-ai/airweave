@@ -4,7 +4,11 @@ This module exports all Pydantic schemas for the spotlight search module.
 """
 
 from .answer import SpotlightAnswer, SpotlightCitation
-from .collection_metadata import SpotlightCollectionMetadata, SpotlightSourceMetadata
+from .collection_metadata import (
+    SpotlightCollectionMetadata,
+    SpotlightEntityTypeMetadata,
+    SpotlightSourceMetadata,
+)
 from .database import (
     SpotlightCollection,
     SpotlightEntityCount,
@@ -39,6 +43,7 @@ __all__ = [
     "SpotlightCitation",
     # Collection metadata
     "SpotlightCollectionMetadata",
+    "SpotlightEntityTypeMetadata",
     "SpotlightSourceMetadata",
     # Database (internal schemas for database layer)
     "SpotlightCollection",

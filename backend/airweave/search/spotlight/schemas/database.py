@@ -42,6 +42,7 @@ class SpotlightEntityDefinition(BaseModel):
 
     id: UUID = Field(..., description="Entity definition UUID")
     name: str = Field(..., description="Entity type name (e.g., 'SlackMessage', 'GitHubIssue')")
+    entity_schema: dict = Field(..., description="JSON schema with field names and descriptions")
 
 
 class SpotlightEntityCount(BaseModel):

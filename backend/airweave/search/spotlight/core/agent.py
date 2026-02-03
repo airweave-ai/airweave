@@ -22,9 +22,11 @@ from airweave.search.spotlight.builders import (
     SpotlightCollectionMetadataBuilder,
     SpotlightStateBuilder,
 )
+from airweave.search.spotlight.core.planner import SpotlightPlanner
 from airweave.search.spotlight.schemas import (
     SpotlightAnswer,
     SpotlightCollectionMetadata,
+    SpotlightPlan,
     SpotlightRequest,
     SpotlightResponse,
     SpotlightState,
@@ -47,7 +49,6 @@ class SpotlightAgent:
         collection_metadata: SpotlightCollectionMetadata = await collection_metadata_builder.build(
             collection_readable_id
         )
-        self.ctx.logger.debug(f"Collection metadata: {collection_metadata.to_md()}")
 
         # Build initial state
         state_builder = SpotlightStateBuilder()
@@ -55,7 +56,17 @@ class SpotlightAgent:
             request=request,
             collection_metadata=collection_metadata,
         )
-        self.ctx.logger.debug(f"State initialized: {state}")
+
+        while True:
+            # Create search plan
+            planner = SpotlightPlanner(
+                llm=self.services.llm,
+                tokenizer=self.services.tokenizer,
+                logger=self.ctx.logger,
+            )
+            _plan: SpotlightPlan = await planner.plan(state)  # TODO: use in next steps
+
+            break
 
         return SpotlightResponse(
             results=[],

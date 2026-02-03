@@ -51,3 +51,35 @@ class SpotlightPlan(BaseModel):
             "What are you trying to find and why do you think this approach will work?"
         ),
     )
+
+    def to_md(self) -> str:
+        """Render the plan as markdown for history context.
+
+        Returns:
+            Markdown string representing this plan.
+        """
+        lines = ["**Plan:**"]
+        lines.append(f"- Query: `{self.query.primary}`")
+
+        if self.query.variations:
+            variations = ", ".join(f"`{v}`" for v in self.query.variations)
+            lines.append(f"- Variations: {variations}")
+
+        lines.append(f"- Strategy: {self.retrieval_strategy.value}")
+        lines.append(f"- Limit: {self.limit}, Offset: {self.offset}")
+
+        # Filter groups: AND within groups, OR between groups
+        if self.filter_groups:
+            lines.append("- Filters:")
+            for i, group in enumerate(self.filter_groups, 1):
+                conditions_str = " AND ".join(
+                    f"{c.field} {c.operator.value} {c.value!r}" for c in group.conditions
+                )
+                prefix = "  - " if i == 1 else "  - OR "
+                lines.append(f"{prefix}({conditions_str})")
+        else:
+            lines.append("- Filters: none")
+
+        lines.append(f"- Reasoning: {self.reasoning}")
+
+        return "\n".join(lines)

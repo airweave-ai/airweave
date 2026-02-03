@@ -117,7 +117,14 @@ class PostgreSQLSpotlightDatabase:
                 f"(expected IDs: {source.output_entity_definition_ids})"
             )
 
-        return [SpotlightEntityDefinition(id=m.id, name=m.name) for m in models]
+        return [
+            SpotlightEntityDefinition(
+                id=m.id,
+                name=m.name,
+                entity_schema=m.entity_schema or {},
+            )
+            for m in models
+        ]
 
     async def get_entity_type_count_of_source_connection(
         self,

@@ -19,7 +19,7 @@ class SpotlightCurrentIteration(BaseModel):
     query_embeddings: Optional[SpotlightQueryEmbeddings] = Field(
         default=None, description="Query embeddings."
     )
-    compiled_query: str = Field(None, description="The compiled query.")
+    compiled_query: Optional[str] = Field(None, description="The compiled query.")
     search_results: Optional[list[SpotlightSearchResult]] = Field(
         default=None, description="Search results."
     )

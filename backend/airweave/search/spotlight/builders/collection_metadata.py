@@ -3,8 +3,10 @@
 from airweave.search.spotlight.external.database import SpotlightDatabaseInterface
 from airweave.search.spotlight.schemas import (
     SpotlightCollectionMetadata,
+    SpotlightEntityTypeMetadata,
     SpotlightSourceMetadata,
 )
+from airweave.search.spotlight.schemas.database import SpotlightEntityDefinition
 
 
 class SpotlightCollectionMetadataBuilder:
@@ -198,22 +200,27 @@ class SpotlightCollectionMetadataBuilder:
             # Get entity definitions this source can produce
             entity_definitions = await self.db.get_entity_definitions_of_source(source)
 
-            # Get count for each entity type
-            entity_types: list[str] = []
-            counts: dict[str, int] = {}
+            # Build entity type metadata with fields and counts
+            entity_types: list[SpotlightEntityTypeMetadata] = []
             for entity_definition in entity_definitions:
                 entity_count = await self.db.get_entity_type_count_of_source_connection(
                     source_connection, entity_definition
                 )
-                entity_types.append(entity_definition.name)
-                counts[entity_definition.name] = entity_count.count
+                fields = self._extract_fields(entity_definition)
+
+                entity_types.append(
+                    SpotlightEntityTypeMetadata(
+                        name=entity_definition.name,
+                        count=entity_count.count,
+                        fields=fields,
+                    )
+                )
 
             sources.append(
                 SpotlightSourceMetadata(
                     short_name=source_connection.short_name,
                     description=self._get_source_description(source_connection.short_name),
                     entity_types=entity_types,
-                    counts=counts,
                 )
             )
 
@@ -222,3 +229,25 @@ class SpotlightCollectionMetadataBuilder:
             collection_readable_id=collection.readable_id,
             sources=sources,
         )
+
+    def _extract_fields(self, entity_definition: SpotlightEntityDefinition) -> dict[str, str]:
+        """Extract field names and descriptions from entity schema.
+
+        Args:
+            entity_definition: Entity definition with schema.
+
+        Returns:
+            Dict mapping field names to their descriptions.
+        """
+        fields: dict[str, str] = {}
+        schema = entity_definition.entity_schema
+
+        if not schema or "properties" not in schema:
+            return fields
+
+        for field_name, field_info in schema["properties"].items():
+            if isinstance(field_info, dict):
+                description = field_info.get("description", "No description")
+                fields[field_name] = description
+
+        return fields

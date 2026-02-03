@@ -57,6 +57,17 @@ class SpotlightServices:
         tokenizer = cls._create_tokenizer()
         llm = cls._create_llm(ctx, tokenizer)
 
+        # Log initialized services summary
+        model_spec = llm.model_spec
+        tok_type = model_spec.tokenizer_type.value
+        tok_enc = model_spec.tokenizer_encoding.value
+        ctx.logger.info(
+            f"[SpotlightServices] Initialized:\n"
+            f"  - Database: {config.DATABASE_IMPL.value}\n"
+            f"  - LLM: {config.LLM_PROVIDER.value} / {model_spec.api_model_name}\n"
+            f"  - Tokenizer: {tok_type} ({tok_enc})\n"
+        )
+
         return cls(db=db, tokenizer=tokenizer, llm=llm)
 
     @staticmethod

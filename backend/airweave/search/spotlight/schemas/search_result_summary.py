@@ -28,3 +28,18 @@ class SpotlightSearchResultSummary(BaseModel):
         description="1-2 sentence summary of what this result contains. "
         "Focus on key facts, topics, or data points relevant to the query.",
     )
+
+    def to_md(self, index: int) -> str:
+        """Render the result summary as a markdown list item.
+
+        Args:
+            index: 1-based index for numbering.
+
+        Returns:
+            Markdown string for this result summary.
+        """
+        return (
+            f"{index}. [{self.entity_id}] **{self.name}** "
+            f"({self.entity_type} from {self.source_name})\n"
+            f"   {self.content_summary}"
+        )
