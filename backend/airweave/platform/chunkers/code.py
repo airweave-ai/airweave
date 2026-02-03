@@ -3,7 +3,8 @@
 from typing import Any, Dict, List, Optional
 
 from airweave.core.logging import logger
-from airweave.platform.chunkers._base import BaseChunker, SafeTiktokenEncoding
+from airweave.platform.chunkers._base import BaseChunker
+from airweave.platform.chunkers.tiktoken_compat import SafeEncoding
 from airweave.platform.sync.async_helpers import run_in_thread_pool
 from airweave.platform.sync.exceptions import SyncFailureError
 from airweave.platform.tokenizers import TikTokenTokenizer, get_tokenizer
@@ -80,7 +81,7 @@ class CodeChunker(BaseChunker):
             # Wrap the raw encoding to allow special tokens like <|endoftext|>
             # that may appear in code comments/strings. Without this wrapper,
             # Chonkie calls encode() directly without allowed_special='all'.
-            safe_encoding = SafeTiktokenEncoding(tokenizer.encoding)
+            safe_encoding = SafeEncoding(tokenizer.encoding)
 
             # Initialize Chonkie's CodeChunker with auto language detection
             self._code_chunker = ChonkieCodeChunker(

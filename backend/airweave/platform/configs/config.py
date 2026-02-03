@@ -656,6 +656,24 @@ class StubConfig(SourceConfig):
         le=100,
     )
 
+    inject_special_tokens: bool = Field(
+        default=False,
+        title="Inject Special Tokens",
+        description=(
+            "If true, injects special tokenizer tokens (like <|endoftext|>) into generated "
+            "content. Used for testing chunker/embedder handling of edge cases."
+        ),
+    )
+
+    custom_content_prefix: Optional[str] = Field(
+        default=None,
+        title="Custom Content Prefix",
+        description=(
+            "Optional string to prepend to all generated content. Useful for testing "
+            "specific strings like special tokens or edge case characters."
+        ),
+    )
+
     @field_validator(
         "small_entity_weight",
         "medium_entity_weight",

@@ -291,21 +291,70 @@ export {{ {class_name}, {function1}, {function2} }};
 """
 
 
+# Special tokens that may appear in AI-generated content and need to be handled by chunkers
+SPECIAL_TOKENS = [
+    "<|endoftext|>",  # OpenAI GPT end-of-text token
+    "<|fim_prefix|>",  # Codex fill-in-middle tokens
+    "<|fim_suffix|>",
+    "<|fim_middle|>",
+    "<|im_start|>",  # ChatML tokens
+    "<|im_end|>",
+]
+
+
 class ContentGenerator:
     """Generates deterministic content using seeded random."""
 
-    def __init__(self, seed: int):
+    def __init__(
+        self,
+        seed: int,
+        inject_special_tokens: bool = False,
+        custom_content_prefix: Optional[str] = None,
+    ):
         """Initialize with a random seed.
 
         Args:
             seed: Random seed for reproducible generation.
+            inject_special_tokens: If True, randomly inject special tokenizer tokens.
+            custom_content_prefix: Optional string to prepend to all content.
         """
         self.rng = random.Random(seed)
         self.base_time = datetime(2024, 1, 1, 0, 0, 0)
+        self.inject_special_tokens = inject_special_tokens
+        self.custom_content_prefix = custom_content_prefix
 
     def _pick(self, items: List[str]) -> str:
         """Pick a random item from list."""
         return self.rng.choice(items)
+
+    def _maybe_inject_special_tokens(self, text: str) -> str:
+        """Optionally inject special tokens into text.
+
+        Args:
+            text: Original text content.
+
+        Returns:
+            Text with special tokens injected if configured.
+        """
+        result = text
+
+        # Add custom prefix if configured
+        if self.custom_content_prefix:
+            result = f"{self.custom_content_prefix}\n\n{result}"
+
+        # Inject special tokens randomly throughout the text if configured
+        if self.inject_special_tokens:
+            # Insert 1-3 special tokens at random positions
+            num_tokens = self.rng.randint(1, 3)
+            words = result.split()
+            for _ in range(num_tokens):
+                if words:
+                    token = self.rng.choice(SPECIAL_TOKENS)
+                    pos = self.rng.randint(0, len(words))
+                    words.insert(pos, token)
+            result = " ".join(words)
+
+        return result
 
     def _pick_n(self, items: List[str], n: int) -> List[str]:
         """Pick n unique random items from list."""
@@ -348,12 +397,14 @@ class ContentGenerator:
 
     def generate_small_content(self) -> str:
         """Generate small content (~100-200 chars)."""
-        return self._generate_paragraph(2)
+        content = self._generate_paragraph(2)
+        return self._maybe_inject_special_tokens(content)
 
     def generate_medium_content(self) -> str:
         """Generate medium content (~500-1000 chars)."""
         paragraphs = [self._generate_paragraph(4) for _ in range(2)]
-        return "\n\n".join(paragraphs)
+        content = "\n\n".join(paragraphs)
+        return self._maybe_inject_special_tokens(content)
 
     def generate_large_content(self) -> str:
         """Generate large content (~3000-5000 chars)."""
@@ -362,7 +413,8 @@ class ContentGenerator:
             section_title = f"## Section {i + 1}: {self.generate_title()}"
             section_content = "\n\n".join([self._generate_paragraph(5) for _ in range(3)])
             sections.append(f"{section_title}\n\n{section_content}")
-        return "\n\n".join(sections)
+        content = "\n\n".join(sections)
+        return self._maybe_inject_special_tokens(content)
 
     def generate_small_file_content(self) -> Tuple[str, str]:
         """Generate small file content (~1-5 KB).
@@ -371,7 +423,8 @@ class ContentGenerator:
             Tuple of (content, extension).
         """
         lines = [f"Row {i + 1}: {self._generate_sentence(6)}" for i in range(50)]
-        return "\n".join(lines), ".txt"
+        content = "\n".join(lines)
+        return self._maybe_inject_special_tokens(content), ".txt"
 
     def generate_large_file_content(self) -> Tuple[str, str]:
         """Generate large file content (~50-100 KB).
@@ -384,7 +437,8 @@ class ContentGenerator:
             section_title = f"# Chapter {i + 1}: {self.generate_title()}"
             paragraphs = [self._generate_paragraph(8) for _ in range(10)]
             sections.append(f"{section_title}\n\n" + "\n\n".join(paragraphs))
-        return "\n\n".join(sections), ".txt"
+        content = "\n\n".join(sections)
+        return self._maybe_inject_special_tokens(content), ".txt"
 
     def generate_code_file_content(self) -> Tuple[str, str, Dict[str, Any]]:
         """Generate code file content (~2-10 KB).
@@ -491,7 +545,15 @@ class StubSource(BaseSource):
             instance.weights = {k: 1 for k in instance.weights}
             total_weight = len(instance.weights)
 
-        instance.generator = ContentGenerator(instance.seed)
+        # Parse special token injection config
+        inject_special_tokens = config.get("inject_special_tokens", False)
+        custom_content_prefix = config.get("custom_content_prefix", None)
+
+        instance.generator = ContentGenerator(
+            seed=instance.seed,
+            inject_special_tokens=inject_special_tokens,
+            custom_content_prefix=custom_content_prefix,
+        )
 
         return instance
 

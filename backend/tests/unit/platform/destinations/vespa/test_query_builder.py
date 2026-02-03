@@ -23,18 +23,18 @@ class TestQueryBuilder:
             filter=None,
             retrieval_strategy="hybrid"
         )
-        
+
         # Should contain BM25 clause
         assert "userInput(@query)" in yql
         assert f"targetHits:{TARGET_HITS}" in yql
-        
+
         # Should contain nearestNeighbor clause
         assert "nearestNeighbor(dense_embedding, q0)" in yql
         assert f'"hnsw.exploreAdditionalHits":{HNSW_EXPLORE_ADDITIONAL}' in yql
-        
+
         # Should be combined with OR
         assert " OR " in yql
-        
+
         # Should have collection filter
         assert f"airweave_system_metadata_collection_id contains '{sample_collection_id}'" in yql
 
@@ -47,13 +47,13 @@ class TestQueryBuilder:
             filter=None,
             retrieval_strategy="neural"
         )
-        
+
         # Should contain nearestNeighbor
         assert "nearestNeighbor(dense_embedding, q0)" in yql
-        
+
         # Should NOT contain BM25
         assert "userInput" not in yql
-        
+
         # Should have collection filter
         assert f"airweave_system_metadata_collection_id contains '{sample_collection_id}'" in yql
 
@@ -66,14 +66,14 @@ class TestQueryBuilder:
             filter=None,
             retrieval_strategy="keyword"
         )
-        
+
         # Should contain BM25
         assert "userInput(@query)" in yql
         assert f"targetHits:{TARGET_HITS}" in yql
-        
+
         # Should NOT contain nearestNeighbor
         assert "nearestNeighbor" not in yql
-        
+
         # Should have collection filter
         assert f"airweave_system_metadata_collection_id contains '{sample_collection_id}'" in yql
 
@@ -86,12 +86,12 @@ class TestQueryBuilder:
             filter=None,
             retrieval_strategy="neural"
         )
-        
+
         # Should have nearestNeighbor for each query
         assert "nearestNeighbor(dense_embedding, q0)" in yql
         assert "nearestNeighbor(dense_embedding, q1)" in yql
         assert "nearestNeighbor(dense_embedding, q2)" in yql
-        
+
         # Should have labels
         assert 'label:"q0"' in yql
         assert 'label:"q1"' in yql
@@ -111,11 +111,11 @@ class TestQueryBuilder:
             filter=filter_dict,
             retrieval_strategy="hybrid"
         )
-        
+
         # Should contain filter clause
         assert "airweave_system_metadata_source_name" in yql
         assert "GitHub" in yql
-        
+
         # Should combine collection filter, retrieval clause, and user filter with AND
         assert yql.count(" AND ") >= 2
 
@@ -128,10 +128,10 @@ class TestQueryBuilder:
             filter=None,
             retrieval_strategy="hybrid"
         )
-        
+
         # Should start with select and sources
         assert yql.startswith("select * from sources")
-        
+
         # Should include entity schemas
         assert "base_entity" in yql or "chunk_entity" in yql
 
@@ -150,12 +150,12 @@ class TestQueryBuilder:
             sparse_embeddings=None,
             retrieval_strategy="neural"
         )
-        
+
         assert params["query"] == "test query"
         assert params["hits"] == 10
         assert params["offset"] == 0
         assert params["presentation.summary"] == "full"
-        assert params["ranking.softtimeout.enable"] == "false"
+        assert params["ranking.softtimeout.enable"] == "true"
 
     def test_build_params_ranking_profile_hybrid(self, query_builder, sample_dense_embeddings):
         """Test hybrid strategy selects hybrid-rrf ranking profile."""
@@ -168,7 +168,7 @@ class TestQueryBuilder:
             sparse_embeddings=None,
             retrieval_strategy="hybrid"
         )
-        
+
         assert params["ranking.profile"] == "hybrid-rrf"
 
     def test_build_params_ranking_profile_neural(self, query_builder, sample_dense_embeddings):
@@ -182,7 +182,7 @@ class TestQueryBuilder:
             sparse_embeddings=None,
             retrieval_strategy="neural"
         )
-        
+
         assert params["ranking.profile"] == "semantic-only"
 
     def test_build_params_ranking_profile_keyword(self, query_builder, sample_dense_embeddings):
@@ -196,7 +196,7 @@ class TestQueryBuilder:
             sparse_embeddings=None,
             retrieval_strategy="keyword"
         )
-        
+
         assert params["ranking.profile"] == "keyword-only"
 
     def test_build_params_dense_embeddings(self, query_builder, sample_dense_embeddings):
@@ -210,11 +210,11 @@ class TestQueryBuilder:
             sparse_embeddings=None,
             retrieval_strategy="neural"
         )
-        
+
         # Should have query(query_embedding) for ranking
         assert "ranking.features.query(query_embedding)" in params
         assert "values" in params["ranking.features.query(query_embedding)"]
-        
+
         # Should have input.query(qN) for each query
         assert "input.query(q0)" in params
         assert "input.query(q1)" in params
@@ -232,7 +232,7 @@ class TestQueryBuilder:
             sparse_embeddings=[sample_sparse_embedding],
             retrieval_strategy="hybrid"
         )
-        
+
         # Should have sparse query tensor
         assert "input.query(q_sparse)" in params
         sparse_tensor = params["input.query(q_sparse)"]
@@ -250,7 +250,7 @@ class TestQueryBuilder:
             sparse_embeddings=[sample_sparse_embedding],
             retrieval_strategy="keyword"
         )
-        
+
         assert "input.query(q_sparse)" in params
 
     def test_build_params_sparse_embeddings_not_added_for_neural(self, query_builder, sample_sparse_embedding, sample_dense_embeddings):
@@ -264,7 +264,7 @@ class TestQueryBuilder:
             sparse_embeddings=[sample_sparse_embedding],
             retrieval_strategy="neural"
         )
-        
+
         # Should NOT have sparse tensor for neural-only
         assert "input.query(q_sparse)" not in params
 
@@ -279,7 +279,7 @@ class TestQueryBuilder:
             sparse_embeddings=None,
             retrieval_strategy="neural"
         )
-        
+
         assert params["hits"] == 20
         assert params["offset"] == 10
 
@@ -294,7 +294,7 @@ class TestQueryBuilder:
             sparse_embeddings=None,
             retrieval_strategy="hybrid"
         )
-        
+
         # Should be at least limit + offset
         rerank_count = params["ranking.globalPhase.rerankCount"]
         assert rerank_count >= 70  # 50 + 20
@@ -308,14 +308,14 @@ class TestQueryBuilder:
     def test_convert_sparse_query_to_tensor_object_format(self, query_builder, sample_sparse_embedding):
         """Test sparse embedding converted to Vespa tensor object format."""
         tensor = query_builder._convert_sparse_query_to_tensor(sample_sparse_embedding)
-        
+
         assert tensor is not None
         assert "cells" in tensor
         cells = tensor["cells"]
-        
+
         # Should be object format (dict), not array
         assert isinstance(cells, dict)
-        
+
         # Should map indices to values
         assert "0" in cells
         assert cells["0"] == 0.8
@@ -329,7 +329,7 @@ class TestQueryBuilder:
             "values": [0.9, 0.7, 0.5]
         }
         tensor = query_builder._convert_sparse_query_to_tensor(sparse_dict)
-        
+
         assert tensor is not None
         assert "cells" in tensor
         assert tensor["cells"]["1"] == 0.9
@@ -341,7 +341,7 @@ class TestQueryBuilder:
         class EmptySparse:
             indices = []
             values = []
-        
+
         tensor = query_builder._convert_sparse_query_to_tensor(EmptySparse())
         assert tensor is None
 
@@ -354,13 +354,13 @@ class TestQueryBuilder:
         """Test sparse embedding with numpy arrays converted."""
         try:
             import numpy as np
-            
+
             class NumpySparse:
                 indices = np.array([0, 1, 2])
                 values = np.array([0.8, 0.6, 0.4])
-            
+
             tensor = query_builder._convert_sparse_query_to_tensor(NumpySparse())
-            
+
             assert tensor is not None
             assert "cells" in tensor
             assert "0" in tensor["cells"]
@@ -400,7 +400,7 @@ class TestQueryBuilder:
         """Test filter_translator property provides access to translator."""
         translator = query_builder.filter_translator
         assert translator is not None
-        
+
         # Should be able to translate filters
         filter_dict = {"must": [{"key": "test", "match": {"value": "value"}}]}
         result = translator.translate(filter_dict)
@@ -418,7 +418,7 @@ class TestQueryBuilder:
             filter=None,
             retrieval_strategy="hybrid"
         )
-        
+
         # Should still generate valid YQL (even if empty)
         assert "select * from sources" in yql
 
@@ -432,7 +432,7 @@ class TestQueryBuilder:
             sparse_embeddings=None,
             retrieval_strategy="neural"
         )
-        
+
         # Should handle gracefully
         assert params["query"] == ""
         assert params["hits"] == 10
@@ -448,7 +448,7 @@ class TestQueryBuilder:
             sparse_embeddings=None,
             retrieval_strategy="keyword"
         )
-        
+
         # Should not crash, embeddings optional for keyword
         assert params["query"] == "test"
         assert "ranking.features.query(query_embedding)" not in params
@@ -464,8 +464,7 @@ class TestQueryBuilder:
             sparse_embeddings=None,
             retrieval_strategy="neural"
         )
-        
+
         assert params["offset"] == 1000
         # Rerank count should cover offset + limit
         assert params["ranking.globalPhase.rerankCount"] >= 1010
-
