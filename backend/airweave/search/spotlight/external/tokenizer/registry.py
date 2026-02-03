@@ -1,40 +1,61 @@
-"""Tokenizer registry for spotlight search.
+"""Tokenizer model registry.
 
-Defines available tokenizer types, encodings, and which encodings each type supports.
+Centralizes knowledge about available tokenizer models and their capabilities.
 """
 
-from enum import Enum
+from dataclasses import dataclass
+
+from airweave.search.spotlight.config import TokenizerEncoding, TokenizerType
 
 
-class TokenizerType(str, Enum):
-    """Tokenizer implementations."""
+@dataclass(frozen=True)
+class TokenizerModelSpec:
+    """Specification for a tokenizer model.
 
-    TIKTOKEN = "tiktoken"
+    Attributes:
+        encoding_name: The encoding name string to pass to the tokenizer library
+                       (e.g., "o200k_harmony" for tiktoken).
+    """
+
+    encoding_name: str
 
 
-class TokenizerEncoding(str, Enum):
-    """Tokenizer encodings."""
-
-    O200K_HARMONY = "o200k_harmony"
-
-
-# Which encodings each tokenizer type supports
-SUPPORTED_ENCODINGS: dict[TokenizerType, set[TokenizerEncoding]] = {
+# Registry of all encodings by tokenizer type
+TOKENIZER_REGISTRY: dict[TokenizerType, dict[TokenizerEncoding, TokenizerModelSpec]] = {
     TokenizerType.TIKTOKEN: {
-        TokenizerEncoding.O200K_HARMONY,
+        TokenizerEncoding.O200K_HARMONY: TokenizerModelSpec(
+            encoding_name="o200k_harmony",
+        ),
     },
 }
 
 
-def is_encoding_supported(tokenizer_type: TokenizerType, encoding: TokenizerEncoding) -> bool:
-    """Check if a tokenizer type supports an encoding.
+def get_model_spec(
+    tokenizer_type: TokenizerType,
+    encoding: TokenizerEncoding,
+) -> TokenizerModelSpec:
+    """Get tokenizer model spec with validation.
 
     Args:
         tokenizer_type: The tokenizer implementation.
-        encoding: The encoding to check.
+        encoding: The encoding to use.
 
     Returns:
-        True if the tokenizer supports the encoding.
+        TokenizerModelSpec for the type/encoding combination.
+
+    Raises:
+        ValueError: If tokenizer type is not in the registry.
+        ValueError: If encoding is not supported by the tokenizer type.
     """
-    supported = SUPPORTED_ENCODINGS.get(tokenizer_type, set())
-    return encoding in supported
+    if tokenizer_type not in TOKENIZER_REGISTRY:
+        raise ValueError(f"Unknown tokenizer type: {tokenizer_type.value}")
+
+    type_encodings = TOKENIZER_REGISTRY[tokenizer_type]
+    if encoding not in type_encodings:
+        available = [e.value for e in type_encodings.keys()]
+        raise ValueError(
+            f"Encoding '{encoding.value}' not supported by {tokenizer_type.value}. "
+            f"Available: {available}"
+        )
+
+    return type_encodings[encoding]

@@ -6,7 +6,7 @@ This is a local operation - no network calls, no rate limiting needed.
 
 import tiktoken
 
-from airweave.search.spotlight.external.tokenizer.registry import TokenizerEncoding
+from airweave.search.spotlight.external.tokenizer.registry import TokenizerModelSpec
 
 
 class TiktokenTokenizer:
@@ -16,26 +16,28 @@ class TiktokenTokenizer:
     Only provides token counting - the planner doesn't need encode/decode.
     """
 
-    def __init__(self, encoding: TokenizerEncoding) -> None:
-        """Initialize with a tokenizer encoding.
+    def __init__(self, model_spec: TokenizerModelSpec) -> None:
+        """Initialize with a tokenizer model spec.
 
         Args:
-            encoding: The TokenizerEncoding enum (value is the tiktoken encoding name).
+            model_spec: Model specification from the registry.
 
         Raises:
-            ValueError: If tiktoken cannot load the encoding.
+            RuntimeError: If tiktoken cannot load the encoding.
         """
-        self._encoding_enum = encoding
+        self._model_spec = model_spec
 
         try:
-            self._tiktoken = tiktoken.get_encoding(encoding.value)
+            self._tiktoken = tiktoken.get_encoding(model_spec.encoding_name)
         except Exception as e:
-            raise ValueError(f"Failed to load tiktoken encoding '{encoding.value}': {e}") from e
+            raise RuntimeError(
+                f"Failed to load tiktoken encoding '{model_spec.encoding_name}': {e}"
+            ) from e
 
     @property
-    def encoding(self) -> TokenizerEncoding:
-        """The tokenizer encoding this instance uses."""
-        return self._encoding_enum
+    def model_spec(self) -> TokenizerModelSpec:
+        """Get the model specification."""
+        return self._model_spec
 
     def count_tokens(self, text: str) -> int:
         """Count tokens in text.

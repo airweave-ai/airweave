@@ -6,8 +6,9 @@ Defines valid provider-model combinations and their specifications.
 from dataclasses import dataclass
 from typing import Union
 
-from airweave.search.spotlight.config import LLMProvider, ModelName
-from airweave.search.spotlight.external.tokenizer.registry import (
+from airweave.search.spotlight.config import (
+    LLMModel,
+    LLMProvider,
     TokenizerEncoding,
     TokenizerType,
 )
@@ -34,8 +35,8 @@ class ReasoningConfig:
 
 
 @dataclass(frozen=True)
-class ModelSpec:
-    """Immutable specification for a model.
+class LLMModelSpec:
+    """Immutable specification for an LLM model.
 
     frozen=True makes this hashable and prevents accidental mutation.
 
@@ -43,8 +44,8 @@ class ModelSpec:
         api_model_name: The model name string to use in API calls (e.g., "gpt-oss-120b").
         context_window: Maximum tokens the model can process (input + reasoning + output).
         max_output_tokens: Maximum tokens the model can generate.
-        tokenizer_type: Which tokenizer library to use.
-        tokenizer_encoding: Which encoding to use (must be supported by tokenizer_type).
+        required_tokenizer_type: The tokenizer type this model requires.
+        required_tokenizer_encoding: The encoding this model requires.
         rate_limit_rpm: Requests per minute limit.
         rate_limit_tpm: Tokens per minute limit.
         reasoning: Model-specific reasoning configuration (None if model doesn't support it).
@@ -53,22 +54,22 @@ class ModelSpec:
     api_model_name: str
     context_window: int
     max_output_tokens: int
-    tokenizer_type: TokenizerType
-    tokenizer_encoding: TokenizerEncoding
+    required_tokenizer_type: TokenizerType
+    required_tokenizer_encoding: TokenizerEncoding
     rate_limit_rpm: int
     rate_limit_tpm: int
     reasoning: ReasoningConfig
 
 
 # Registry: provider -> model -> spec
-MODEL_REGISTRY: dict[LLMProvider, dict[ModelName, ModelSpec]] = {
+MODEL_REGISTRY: dict[LLMProvider, dict[LLMModel, LLMModelSpec]] = {
     LLMProvider.CEREBRAS: {
-        ModelName.GPT_OSS_120B: ModelSpec(
+        LLMModel.GPT_OSS_120B: LLMModelSpec(
             api_model_name="gpt-oss-120b",
             context_window=131_000,
             max_output_tokens=40_000,
-            tokenizer_type=TokenizerType.TIKTOKEN,
-            tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
+            required_tokenizer_type=TokenizerType.TIKTOKEN,
+            required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
             rate_limit_rpm=1_000,
             rate_limit_tpm=1_000_000,
             reasoning=ReasoningConfig(
@@ -80,7 +81,7 @@ MODEL_REGISTRY: dict[LLMProvider, dict[ModelName, ModelSpec]] = {
 }
 
 
-def get_model_spec(provider: LLMProvider, model: ModelName) -> ModelSpec:
+def get_model_spec(provider: LLMProvider, model: LLMModel) -> LLMModelSpec:
     """Get model spec with validation.
 
     Args:
@@ -88,7 +89,7 @@ def get_model_spec(provider: LLMProvider, model: ModelName) -> ModelSpec:
         model: The model name.
 
     Returns:
-        ModelSpec for the provider/model combination.
+        LLMModelSpec for the provider/model combination.
 
     Raises:
         ValueError: If provider doesn't support the model.
@@ -106,14 +107,14 @@ def get_model_spec(provider: LLMProvider, model: ModelName) -> ModelSpec:
     return provider_models[model]
 
 
-def get_available_models(provider: LLMProvider) -> list[ModelName]:
+def get_available_models(provider: LLMProvider) -> list[LLMModel]:
     """Get list of models available for a provider.
 
     Args:
         provider: The LLM provider.
 
     Returns:
-        List of ModelName enums available for this provider.
+        List of LLMModel enums available for this provider.
     """
     if provider not in MODEL_REGISTRY:
         raise ValueError(f"Unknown provider: {provider}")

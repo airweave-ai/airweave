@@ -1,17 +1,18 @@
 """Tokenizer integrations for spotlight search."""
 
+from airweave.search.spotlight.config import TokenizerEncoding, TokenizerType
 from airweave.search.spotlight.external.tokenizer.interface import (
     SpotlightTokenizerInterface,
 )
 from airweave.search.spotlight.external.tokenizer.registry import (
-    TokenizerEncoding,
-    TokenizerType,
-    is_encoding_supported,
+    TokenizerModelSpec,
+    get_model_spec,
 )
 
 __all__ = [
     "SpotlightTokenizerInterface",
     "TokenizerType",
     "TokenizerEncoding",
-    "is_encoding_supported",
+    "TokenizerModelSpec",
+    "get_model_spec",
 ]

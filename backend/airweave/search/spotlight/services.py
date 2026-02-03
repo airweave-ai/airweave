@@ -4,14 +4,31 @@ This is the composition root - where external dependencies are wired together.
 """
 
 from airweave.api.context import ApiContext
-from airweave.search.spotlight.config import DatabaseImpl, LLMProvider, config
+from airweave.search.spotlight.config import (
+    DatabaseImpl,
+    DenseEmbedderProvider,
+    LLMProvider,
+    SparseEmbedderProvider,
+    TokenizerType,
+    config,
+)
 from airweave.search.spotlight.external.database import SpotlightDatabaseInterface
+from airweave.search.spotlight.external.dense_embedder import SpotlightDenseEmbedderInterface
+from airweave.search.spotlight.external.dense_embedder.registry import (
+    get_model_spec as get_dense_model_spec,
+)
+from airweave.search.spotlight.external.dense_embedder.registry import validate_vector_size
 from airweave.search.spotlight.external.llm import SpotlightLLMInterface
-from airweave.search.spotlight.external.llm.registry import get_model_spec
+from airweave.search.spotlight.external.llm.registry import (
+    get_model_spec as get_llm_model_spec,
+)
+from airweave.search.spotlight.external.sparse_embedder import SpotlightSparseEmbedderInterface
+from airweave.search.spotlight.external.sparse_embedder.registry import (
+    get_model_spec as get_sparse_model_spec,
+)
 from airweave.search.spotlight.external.tokenizer import SpotlightTokenizerInterface
 from airweave.search.spotlight.external.tokenizer.registry import (
-    TokenizerType,
-    is_encoding_supported,
+    get_model_spec as get_tokenizer_model_spec,
 )
 
 
@@ -19,11 +36,13 @@ class SpotlightServices:
     """Container for external dependencies.
 
     This is the composition root - where external dependencies are wired together.
-    The planner uses these services:
+    Components use these services:
     - services.db for metadata queries
     - services.tokenizer.count_tokens() for token counting
     - services.llm.model_spec for context limits
     - services.llm.structured_output() for LLM calls
+    - services.dense_embedder.embed_batch() for semantic embeddings
+    - services.sparse_embedder.embed() for keyword embeddings
     """
 
     def __init__(
@@ -31,6 +50,8 @@ class SpotlightServices:
         db: SpotlightDatabaseInterface,
         tokenizer: SpotlightTokenizerInterface,
         llm: SpotlightLLMInterface,
+        dense_embedder: SpotlightDenseEmbedderInterface,
+        sparse_embedder: SpotlightSparseEmbedderInterface,
     ):
         """Initialize with external dependencies.
 
@@ -38,37 +59,59 @@ class SpotlightServices:
             db: Database interface for metadata queries.
             tokenizer: Tokenizer interface for token counting.
             llm: LLM interface for structured output.
+            dense_embedder: Dense embedder for semantic search.
+            sparse_embedder: Sparse embedder for keyword search.
         """
         self.db = db
         self.tokenizer = tokenizer
         self.llm = llm
+        self.dense_embedder = dense_embedder
+        self.sparse_embedder = sparse_embedder
 
     @classmethod
-    async def create(cls, ctx: ApiContext) -> "SpotlightServices":
+    async def create(cls, ctx: ApiContext, readable_id: str) -> "SpotlightServices":
         """Create services based on config.
 
         Args:
             ctx: API context for organization scoping and logging.
+            readable_id: Collection readable ID (used to get vector_size for embedders).
 
         Returns:
             SpotlightServices instance with all dependencies wired.
         """
         db = await cls._create_db(ctx)
+
         tokenizer = cls._create_tokenizer()
         llm = cls._create_llm(ctx, tokenizer)
 
+        vector_size = await db.get_collection_vector_size(readable_id)
+        dense_embedder = cls._create_dense_embedder(vector_size)
+        sparse_embedder = cls._create_sparse_embedder()
+
         # Log initialized services summary
-        model_spec = llm.model_spec
-        tok_type = model_spec.tokenizer_type.value
-        tok_enc = model_spec.tokenizer_encoding.value
+        llm_spec = llm.model_spec
+        tokenizer_spec = tokenizer.model_spec
+        dense_spec = dense_embedder.model_spec
+        sparse_spec = sparse_embedder.model_spec
+
         ctx.logger.info(
             f"[SpotlightServices] Initialized:\n"
             f"  - Database: {config.DATABASE_IMPL.value}\n"
-            f"  - LLM: {config.LLM_PROVIDER.value} / {model_spec.api_model_name}\n"
-            f"  - Tokenizer: {tok_type} ({tok_enc})\n"
+            f"  - LLM: {config.LLM_PROVIDER.value} / {llm_spec.api_model_name}\n"
+            f"  - Tokenizer: {config.TOKENIZER_TYPE.value} / {tokenizer_spec.encoding_name}\n"
+            f"  - Dense embedder: {config.DENSE_EMBEDDER_PROVIDER.value} / "
+            f"{dense_spec.api_model_name} (vector_size={vector_size})\n"
+            f"  - Sparse embedder: {config.SPARSE_EMBEDDER_PROVIDER.value} / "
+            f"{sparse_spec.model_name}"
         )
 
-        return cls(db=db, tokenizer=tokenizer, llm=llm)
+        return cls(
+            db=db,
+            tokenizer=tokenizer,
+            llm=llm,
+            dense_embedder=dense_embedder,
+            sparse_embedder=sparse_embedder,
+        )
 
     @staticmethod
     async def _create_db(ctx: ApiContext) -> SpotlightDatabaseInterface:
@@ -94,34 +137,47 @@ class SpotlightServices:
 
     @staticmethod
     def _create_tokenizer() -> SpotlightTokenizerInterface:
-        """Create tokenizer based on model spec.
+        """Create tokenizer based on config.
 
-        The model spec specifies which tokenizer type and encoding to use.
-        Validates that the tokenizer type supports the encoding.
+        Gets the model spec from the registry and validates that the
+        tokenizer is compatible with the configured LLM.
 
         Returns:
             Tokenizer interface implementation.
 
         Raises:
-            ValueError: If tokenizer type is unknown or doesn't support the encoding.
+            ValueError: If tokenizer type or encoding is unknown.
+            ValueError: If tokenizer doesn't match LLM requirements.
         """
-        model_spec = get_model_spec(config.LLM_PROVIDER, config.LLM_MODEL)
+        # Get tokenizer spec
+        model_spec = get_tokenizer_model_spec(
+            config.TOKENIZER_TYPE,
+            config.TOKENIZER_ENCODING,
+        )
 
-        # Validate encoding is supported by the tokenizer type
-        if not is_encoding_supported(model_spec.tokenizer_type, model_spec.tokenizer_encoding):
+        # Validate compatibility with LLM
+        llm_spec = get_llm_model_spec(config.LLM_PROVIDER, config.LLM_MODEL)
+        if config.TOKENIZER_TYPE != llm_spec.required_tokenizer_type:
             raise ValueError(
-                f"Tokenizer '{model_spec.tokenizer_type.value}' does not support "
-                f"encoding '{model_spec.tokenizer_encoding.value}'"
+                f"LLM '{config.LLM_MODEL.value}' requires tokenizer type "
+                f"'{llm_spec.required_tokenizer_type.value}', "
+                f"but config specifies '{config.TOKENIZER_TYPE.value}'"
+            )
+        if config.TOKENIZER_ENCODING != llm_spec.required_tokenizer_encoding:
+            raise ValueError(
+                f"LLM '{config.LLM_MODEL.value}' requires tokenizer encoding "
+                f"'{llm_spec.required_tokenizer_encoding.value}', "
+                f"but config specifies '{config.TOKENIZER_ENCODING.value}'"
             )
 
-        if model_spec.tokenizer_type == TokenizerType.TIKTOKEN:
+        if config.TOKENIZER_TYPE == TokenizerType.TIKTOKEN:
             from airweave.search.spotlight.external.tokenizer.tiktoken import (
                 TiktokenTokenizer,
             )
 
-            return TiktokenTokenizer(model_spec.tokenizer_encoding)
+            return TiktokenTokenizer(model_spec=model_spec)
 
-        raise ValueError(f"Unknown tokenizer type: {model_spec.tokenizer_type}")
+        raise ValueError(f"Unknown tokenizer type: {config.TOKENIZER_TYPE}")
 
     @staticmethod
     def _create_llm(
@@ -130,7 +186,7 @@ class SpotlightServices:
     ) -> SpotlightLLMInterface:
         """Create LLM based on config.
 
-        Looks up the model spec from the registry.
+        Gets the model spec from the registry.
 
         Args:
             ctx: API context for logging.
@@ -142,7 +198,7 @@ class SpotlightServices:
         Raises:
             ValueError: If LLM provider is unknown.
         """
-        model_spec = get_model_spec(config.LLM_PROVIDER, config.LLM_MODEL)
+        model_spec = get_llm_model_spec(config.LLM_PROVIDER, config.LLM_MODEL)
 
         if config.LLM_PROVIDER == LLMProvider.CEREBRAS:
             from airweave.search.spotlight.external.llm.cerebras import CerebrasLLM
@@ -155,7 +211,67 @@ class SpotlightServices:
 
         raise ValueError(f"Unknown LLM provider: {config.LLM_PROVIDER}")
 
+    @staticmethod
+    def _create_dense_embedder(vector_size: int) -> SpotlightDenseEmbedderInterface:
+        """Create dense embedder based on config.
+
+        Gets the model spec from the registry and validates that it supports
+        the collection's vector_size.
+
+        Args:
+            vector_size: Embedding dimension for the collection.
+
+        Returns:
+            Dense embedder interface implementation.
+
+        Raises:
+            ValueError: If dense embedder provider or model is unknown.
+            ValueError: If vector_size exceeds model's maximum.
+        """
+        model_spec = get_dense_model_spec(
+            config.DENSE_EMBEDDER_PROVIDER,
+            config.DENSE_EMBEDDER_MODEL,
+        )
+        validate_vector_size(model_spec, vector_size)
+
+        if config.DENSE_EMBEDDER_PROVIDER == DenseEmbedderProvider.OPENAI:
+            from airweave.search.spotlight.external.dense_embedder.openai import (
+                OpenAIDenseEmbedder,
+            )
+
+            return OpenAIDenseEmbedder(model_spec=model_spec, vector_size=vector_size)
+
+        raise ValueError(f"Unknown dense embedder provider: {config.DENSE_EMBEDDER_PROVIDER}")
+
+    @staticmethod
+    def _create_sparse_embedder() -> SpotlightSparseEmbedderInterface:
+        """Create sparse embedder based on config.
+
+        Gets the model spec from the registry.
+
+        Returns:
+            Sparse embedder interface implementation.
+
+        Raises:
+            ValueError: If sparse embedder provider or model is unknown.
+        """
+        model_spec = get_sparse_model_spec(
+            config.SPARSE_EMBEDDER_PROVIDER,
+            config.SPARSE_EMBEDDER_MODEL,
+        )
+
+        if config.SPARSE_EMBEDDER_PROVIDER == SparseEmbedderProvider.FASTEMBED:
+            from airweave.search.spotlight.external.sparse_embedder.fastembed import (
+                FastEmbedSparseEmbedder,
+            )
+
+            return FastEmbedSparseEmbedder(model_spec=model_spec)
+
+        raise ValueError(f"Unknown sparse embedder provider: {config.SPARSE_EMBEDDER_PROVIDER}")
+
     async def close(self) -> None:
         """Clean up all resources."""
         await self.db.close()
         await self.llm.close()
+        await self.dense_embedder.close()
+        await self.sparse_embedder.close()

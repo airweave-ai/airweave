@@ -7,7 +7,7 @@
 
 # X collection_readable_id -> create collection metadata -> collection_metadata
 # X user_query, collection_metadata -> initaliaze state -> state
-# state.collection_metadata.to_md(), state.user_query, state.history.to_md() -> planner -> plan
+# X state.collection_metadata.to_md(), state.user_query, state.history.to_md() -> planner -> plan
 # TODO: add user filters to plan (tell the evaluator that these can not be adjusted)
 # state.current_iteration.plan.query, state.current_iteration.plan.retrieval_strategy -> embed
 # state.current_iteration.plan, query_embeddings, collection_id -> vector_db.compile_query()
@@ -22,11 +22,13 @@ from airweave.search.spotlight.builders import (
     SpotlightCollectionMetadataBuilder,
     SpotlightStateBuilder,
 )
+from airweave.search.spotlight.core.embedder import SpotlightEmbedder
 from airweave.search.spotlight.core.planner import SpotlightPlanner
 from airweave.search.spotlight.schemas import (
     SpotlightAnswer,
     SpotlightCollectionMetadata,
     SpotlightPlan,
+    SpotlightQueryEmbeddings,
     SpotlightRequest,
     SpotlightResponse,
     SpotlightState,
@@ -64,7 +66,20 @@ class SpotlightAgent:
                 tokenizer=self.services.tokenizer,
                 logger=self.ctx.logger,
             )
-            _plan: SpotlightPlan = await planner.plan(state)  # TODO: use in next steps
+            plan: SpotlightPlan = await planner.plan(state)
+            state.current_iteration.plan = plan
+
+            # Embed queries based on retrieval strategy
+            embedder = SpotlightEmbedder(
+                dense_embedder=self.services.dense_embedder,
+                sparse_embedder=self.services.sparse_embedder,
+            )
+            embeddings: SpotlightQueryEmbeddings = await embedder.embed(
+                query=plan.query,
+                strategy=plan.retrieval_strategy,
+            )
+            state.current_iteration.query_embeddings = embeddings
+            self.ctx.logger.info(f"[SpotlightAgent] Query embeddings: {embeddings}")
 
             break
 

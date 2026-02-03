@@ -2,7 +2,7 @@
 
 from typing import Protocol
 
-from airweave.search.spotlight.external.tokenizer.registry import TokenizerEncoding
+from airweave.search.spotlight.external.tokenizer.registry import TokenizerModelSpec
 
 
 class SpotlightTokenizerInterface(Protocol):
@@ -12,8 +12,8 @@ class SpotlightTokenizerInterface(Protocol):
     """
 
     @property
-    def encoding(self) -> TokenizerEncoding:
-        """The tokenizer encoding this instance uses."""
+    def model_spec(self) -> TokenizerModelSpec:
+        """Get the model specification."""
         ...
 
     def count_tokens(self, text: str) -> int:

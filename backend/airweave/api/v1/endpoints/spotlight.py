@@ -29,7 +29,7 @@ async def spotlight_search(
     """Spotlight agentic search."""
     await guard_rail.is_allowed(ActionType.QUERIES)
 
-    services = await SpotlightServices.create(ctx)
+    services = await SpotlightServices.create(ctx, readable_id)
 
     try:
         agent = SpotlightAgent(services, ctx)
@@ -40,4 +40,4 @@ async def spotlight_search(
 
         return response
     finally:
-        await services.db.close()
+        await services.close()

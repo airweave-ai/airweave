@@ -62,13 +62,6 @@ class SpotlightHistory(BaseModel):
         description="Past iterations keyed by iteration number (1-indexed).",
     )
 
-    def to_md_empty(self) -> str:
-        """Return markdown indicating no history exists yet.
-
-        Used by the planner when this is the first iteration.
-        """
-        return "No search history yet. This is the first iteration."
-
     def iter_recent_first(self) -> Iterator[tuple[int, SpotlightIteration]]:
         """Iterate over iterations from most recent to oldest.
 
@@ -98,17 +91,3 @@ class SpotlightHistory(BaseModel):
                 "Iterations must be added sequentially."
             )
         self.iterations[iteration_number] = iteration
-
-    @property
-    def latest_iteration_number(self) -> int:
-        """Get the most recent iteration number.
-
-        Returns:
-            The highest iteration number in history.
-
-        Raises:
-            ValueError: If history is empty (should not happen in normal use).
-        """
-        if not self.iterations:
-            raise ValueError("History is empty - no iterations yet.")
-        return max(self.iterations.keys())

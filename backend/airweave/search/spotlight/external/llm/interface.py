@@ -4,7 +4,7 @@ from typing import Protocol, TypeVar
 
 from pydantic import BaseModel
 
-from airweave.search.spotlight.external.llm.registry import ModelSpec
+from airweave.search.spotlight.external.llm.registry import LLMModelSpec
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -13,7 +13,7 @@ class SpotlightLLMInterface(Protocol):
     """LLM interface for spotlight search."""
 
     @property
-    def model_spec(self) -> ModelSpec:
+    def model_spec(self) -> LLMModelSpec:
         """Get the model specification."""
         ...
 

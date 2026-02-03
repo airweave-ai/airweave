@@ -18,6 +18,7 @@ class SpotlightCollection(BaseModel):
 
     id: UUID = Field(..., description="Collection UUID")
     readable_id: str = Field(..., description="Human-readable collection ID")
+    vector_size: int = Field(..., description="Embedding vector size for this collection")
 
 
 class SpotlightSourceConnection(BaseModel):

@@ -15,8 +15,8 @@ from pydantic import BaseModel
 
 from airweave.core.config import settings
 from airweave.core.logging import ContextualLogger
-from airweave.search.spotlight.external.llm.rate_limiter import LLMRateLimiter
-from airweave.search.spotlight.external.llm.registry import ModelSpec
+from airweave.search.spotlight.external.llm.rate_limiter import get_shared_rate_limiter
+from airweave.search.spotlight.external.llm.registry import LLMModelSpec
 from airweave.search.spotlight.external.tokenizer import SpotlightTokenizerInterface
 
 T = TypeVar("T", bound=BaseModel)
@@ -45,7 +45,7 @@ class CerebrasLLM:
 
     def __init__(
         self,
-        model_spec: ModelSpec,
+        model_spec: LLMModelSpec,
         tokenizer: SpotlightTokenizerInterface,
         logger: ContextualLogger,
     ) -> None:
@@ -79,10 +79,9 @@ class CerebrasLLM:
         except Exception as e:
             raise RuntimeError(f"Failed to initialize Cerebras client: {e}") from e
 
-        # Initialize rate limiter with model spec limits
-        self._rate_limiter = LLMRateLimiter(
-            rpm_limit=model_spec.rate_limit_rpm,
-            tpm_limit=model_spec.rate_limit_tpm,
+        # Get shared rate limiter (singleton, created on first use)
+        self._rate_limiter = get_shared_rate_limiter(
+            model_spec=model_spec,
             logger=logger,
         )
 
@@ -93,7 +92,7 @@ class CerebrasLLM:
         )
 
     @property
-    def model_spec(self) -> ModelSpec:
+    def model_spec(self) -> LLMModelSpec:
         """Get the model specification."""
         return self._model_spec
 

@@ -2,19 +2,56 @@
 
 Provides sliding window rate limiting based on RPM (requests per minute)
 and TPM (tokens per minute) limits from model specifications.
+
+A single shared rate limiter instance is created on first use and reused
+across all requests. Use get_shared_rate_limiter() to access it.
 """
+
+from __future__ import annotations
 
 import asyncio
 import time
+from typing import Optional
 
 from airweave.core.logging import ContextualLogger
+from airweave.search.spotlight.external.llm.registry import LLMModelSpec
+
+# Module-level singleton
+_shared_rate_limiter: Optional[LLMRateLimiter] = None
+
+
+# NOTE if we make the model part of the request parameters, this will break
+def get_shared_rate_limiter(
+    model_spec: LLMModelSpec,
+    logger: ContextualLogger,
+) -> LLMRateLimiter:
+    """Get the shared rate limiter, creating it on first use.
+
+    Since provider/model are determined at startup via config, we only need
+    one rate limiter instance shared across all requests.
+
+    Args:
+        model_spec: Model specification containing rate limits.
+        logger: Logger for debug output (only used on first creation).
+
+    Returns:
+        Shared LLMRateLimiter instance.
+    """
+    global _shared_rate_limiter
+    if _shared_rate_limiter is None:
+        _shared_rate_limiter = LLMRateLimiter(
+            rpm_limit=model_spec.rate_limit_rpm,
+            tpm_limit=model_spec.rate_limit_tpm,
+            logger=logger,
+        )
+    return _shared_rate_limiter
 
 
 class LLMRateLimiter:
     """Rate limiter for LLM APIs based on RPM and TPM limits.
 
     Uses sliding window algorithm to enforce both limits.
-    Not a singleton - each LLM instance gets its own limiter.
+    Instances are shared across requests via get_rate_limiter().
 
     Attributes:
         rpm_limit: Maximum requests per minute.
