@@ -52,6 +52,7 @@ class ComposioAuthProvider(BaseAuthProvider):
         "teams": "microsoft_teams",
         "onenote": "one_drive",
         "word": "one_drive",
+        "cal_com": "cal",  # Cal.com integration slug in Composio
         # Add more mappings as needed
     }
 
@@ -379,6 +380,12 @@ class ComposioAuthProvider(BaseAuthProvider):
                 # Remove duplicates while preserving order
                 seen = set()
                 possible_fields = [x for x in possible_fields if not (x in seen or seen.add(x))]
+            elif airweave_field == "access_token":
+                # For access_token field, also check generic_api_key (Composio may provide API key as generic_api_key)
+                possible_fields.extend(["generic_api_key", "token"])
+                # Remove duplicates while preserving order
+                seen = set()
+                possible_fields = [x for x in possible_fields if not (x in seen or seen.add(x))]
 
             found = False
             for field_to_check in possible_fields:
@@ -398,6 +405,14 @@ class ComposioAuthProvider(BaseAuthProvider):
                     break
 
             if not found:
+                # If refresh_token is missing but access_token is found, assume API key auth
+                if airweave_field == "refresh_token" and "access_token" in found_credentials:
+                    found_credentials[airweave_field] = ""
+                    self.logger.info(
+                        f"\n  ⚠️ Provided empty 'refresh_token' for '{source_short_name}' as it's likely API key auth.\n"
+                    )
+                    continue
+
                 missing_fields.append(airweave_field)
                 self.logger.warning(
                     f"\n  ❌ Missing field: '{airweave_field}' (looked for "
