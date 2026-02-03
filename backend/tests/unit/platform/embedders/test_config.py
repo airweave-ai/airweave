@@ -221,10 +221,14 @@ class TestGetDenseEmbedder:
         from airweave.platform.embedders import OpenAIDenseEmbedder, get_dense_embedder
 
         with patch("airweave.platform.embedders.settings") as mock_settings, \
+             patch("airweave.platform.embedders.config.settings") as mock_config_settings, \
              patch("airweave.platform.embedders.OpenAIDenseEmbedder") as MockOpenAI:
             mock_settings.OPENAI_API_KEY = "sk-test"
             mock_settings.MISTRAL_API_KEY = None
             mock_settings.EMBEDDING_DIMENSIONS = 1536
+            mock_config_settings.OPENAI_API_KEY = "sk-test"
+            mock_config_settings.MISTRAL_API_KEY = None
+            mock_config_settings.EMBEDDING_DIMENSIONS = 1536
             MockOpenAI.return_value = MagicMock(spec=OpenAIDenseEmbedder, VECTOR_DIMENSIONS=1536)
 
             get_dense_embedder()
@@ -236,10 +240,14 @@ class TestGetDenseEmbedder:
         from airweave.platform.embedders import OpenAIDenseEmbedder, get_dense_embedder
 
         with patch("airweave.platform.embedders.settings") as mock_settings, \
+             patch("airweave.platform.embedders.config.settings") as mock_config_settings, \
              patch("airweave.platform.embedders.OpenAIDenseEmbedder") as MockOpenAI:
             mock_settings.OPENAI_API_KEY = "sk-test"
             mock_settings.MISTRAL_API_KEY = None
             mock_settings.EMBEDDING_DIMENSIONS = 1536
+            mock_config_settings.OPENAI_API_KEY = "sk-test"
+            mock_config_settings.MISTRAL_API_KEY = None
+            mock_config_settings.EMBEDDING_DIMENSIONS = 1536
             MockOpenAI.return_value = MagicMock(spec=OpenAIDenseEmbedder, VECTOR_DIMENSIONS=3072)
 
             get_dense_embedder(vector_size=3072)
@@ -272,30 +280,34 @@ class TestGetDenseEmbedder:
 
             assert "Unknown embedding provider" in str(exc_info.value)
 
-    def test_local_falls_back_to_openai(self):
-        """Test local provider falls back to OpenAI if available."""
-        from airweave.platform.embedders import OpenAIDenseEmbedder, get_dense_embedder
+    def test_local_uses_local_embedder(self):
+        """Test local provider uses LocalDenseEmbedder."""
+        from airweave.platform.embedders import LocalDenseEmbedder, get_dense_embedder
 
         with patch("airweave.platform.embedders.settings") as mock_settings, \
-             patch("airweave.platform.embedders.OpenAIDenseEmbedder") as MockOpenAI:
-            mock_settings.OPENAI_API_KEY = "sk-test"
-            mock_settings.MISTRAL_API_KEY = None
-            mock_settings.EMBEDDING_DIMENSIONS = 1536
-            MockOpenAI.return_value = MagicMock(spec=OpenAIDenseEmbedder)
+             patch("airweave.platform.embedders.config.settings") as mock_config_settings, \
+             patch("airweave.platform.embedders.LocalDenseEmbedder") as MockLocal:
+            mock_settings.EMBEDDING_DIMENSIONS = 384
+            mock_settings.TEXT2VEC_INFERENCE_URL = "http://localhost:9878"
+            mock_config_settings.EMBEDDING_DIMENSIONS = 384
+            MockLocal.return_value = MagicMock(spec=LocalDenseEmbedder)
 
             get_dense_embedder(provider="local")
-            MockOpenAI.assert_called_once()
+            MockLocal.assert_called_once()
 
-    def test_local_raises_when_no_api_keys(self):
-        """Test local provider raises when no API keys are available."""
+    def test_local_raises_when_no_inference_url(self):
+        """Test local provider raises when TEXT2VEC_INFERENCE_URL is not set."""
         from airweave.platform.embedders import get_dense_embedder
+        from airweave.platform.sync.exceptions import SyncFailureError
 
-        with patch("airweave.platform.embedders.settings") as mock_settings:
-            mock_settings.OPENAI_API_KEY = None
-            mock_settings.MISTRAL_API_KEY = None
+        with patch("airweave.platform.embedders.settings") as mock_settings, \
+             patch("airweave.platform.embedders.config.settings") as mock_config_settings, \
+             patch("airweave.platform.embedders.local.settings") as mock_local_settings:
             mock_settings.EMBEDDING_DIMENSIONS = 384
+            mock_config_settings.EMBEDDING_DIMENSIONS = 384
+            mock_local_settings.TEXT2VEC_INFERENCE_URL = None
 
-            with pytest.raises(ValueError) as exc_info:
+            with pytest.raises(SyncFailureError) as exc_info:
                 get_dense_embedder(provider="local")
 
-            assert "Local dense embeddings not yet implemented" in str(exc_info.value)
+            assert "TEXT2VEC_INFERENCE_URL" in str(exc_info.value)

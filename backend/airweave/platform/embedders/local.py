@@ -38,7 +38,7 @@ class LocalDenseEmbedder(BaseEmbedder):
     MAX_BATCH_SIZE = 64  # Local service can handle smaller batches faster
     REQUEST_TIMEOUT = 60.0  # Local inference is fast
 
-    def __new__(cls, vector_size: int = None):
+    def __new__(cls, vector_size: int = None, model_name: str = None):
         """Create fresh instance (override singleton from BaseEmbedder)."""
         return object.__new__(cls)
 

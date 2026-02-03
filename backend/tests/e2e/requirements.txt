@@ -1,6 +1,6 @@
 # Test requirements for async E2E tests
 pytest>=7.4.0
-pytest-asyncio>=0.21.0
+pytest-asyncio>=0.24.0
 pytest-xdist>=3.3.0
 httpx>=0.25.0
 pydantic>=2.0.0

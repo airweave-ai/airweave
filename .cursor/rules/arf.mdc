@@ -20,8 +20,8 @@ raw/{sync_id}/
 - **ArfReader**: `platform/storage/arf_reader.py` (entity reconstruction for replay)
 - **ArfReplaySource**: `platform/storage/replay_source.py` (internal source for ARF replay)
 - **RawDataService**: `platform/sync/raw_data.py` (write operations during sync)
-- **StorageBackend**: `platform/storage/backend.py` (Filesystem or Azure Blob)
-- **Config**: `AZURE_RAW_DATA_CONTAINER` (default: `"raw"`)
+- **StorageBackend**: `platform/storage/backends/` (Filesystem, Azure Blob, AWS S3, GCP GCS)
+- **Config**: `STORAGE_BACKEND` (filesystem, azure, aws, gcs), `STORAGE_AZURE_CONTAINER` (default: `"raw"`)
 
 ## Usage
 

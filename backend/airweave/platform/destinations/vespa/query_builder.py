@@ -156,7 +156,11 @@ class QueryBuilder:
             "hits": limit,
             "offset": offset,
             "presentation.summary": "full",
-            "ranking.softtimeout.enable": "false",
+            # Timeout: increase from default 500ms to prevent soft doom during setup
+            # Soft timeout: enable graceful degradation with partial results
+            # See: https://docs.vespa.ai/en/performance/graceful-degradation.html
+            "timeout": "10s",
+            "ranking.softtimeout.enable": "true",
             # Rerank count must be >= offset + limit to ensure correct pagination
             "ranking.globalPhase.rerankCount": global_phase_rerank,
         }

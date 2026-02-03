@@ -14,7 +14,6 @@ SCRIPT_NAME="./$(basename "$0")"
 NONINTERACTIVE="${NONINTERACTIVE:-}"
 SKIP_LOCAL_EMBEDDINGS="${SKIP_LOCAL_EMBEDDINGS:-}"
 SKIP_FRONTEND="${SKIP_FRONTEND:-}"
-SKIP_VESPA="${SKIP_VESPA:-1}"  # Vespa disabled by default for simpler local setup
 VERBOSE="${VERBOSE:-}"
 QUIET="${QUIET:-}"
 
@@ -23,6 +22,8 @@ ACTION_RESTART=""
 ACTION_RECREATE=""
 ACTION_DESTROY=""
 SKIP_CONTAINER_CREATION=""
+SKIP_ENV_SETUP=""
+SKIP_HEALTH_CHECKS=""
 
 # =============================================================================
 # Colors and Styling
@@ -63,8 +64,57 @@ subsection() {
 
 print_banner() {
     [[ -n $QUIET ]] && return
-    printf "\n${BOLD}☁️🪢 Airweave${RESET} — Local Development Setup\n"
-    printf "=======================================\n"
+
+    # Weave logo lines
+    local logo=(
+        "         ++             "
+        "        + .+++-         "
+        "    +++++   +++.        "
+        "    ++  ++- -   .+      "
+        "   +-   ++++- .++.      "
+        "     .++    -++++       "
+        "      -+++. ++          "
+        "          ++-           "
+    )
+
+    # Airweave ASCII text
+    local text=(
+        "    _    _                                 "
+        "   / \\  (_)_ ____      _____  __ ___   _____ "
+        "  / _ \\ | | '__\\ \\ /\\ / / _ \\/ _\` \\ \\ / / _ \\"
+        " / ___ \\| | |   \\ V  V /  __/ (_| |\\ V /  __/"
+        "/_/   \\_\\_|_|    \\_/\\_/ \\___|\\__,_| \\_/ \\___|"
+    )
+
+    printf "\n"
+
+    if [[ -z $NONINTERACTIVE ]]; then
+        # Animated version: draw logo and text together, line by line
+        for i in {0..7}; do
+            printf "%s" "${logo[$i]}"
+            if [[ $i -ge 1 && $i -le 5 ]]; then
+                printf "%s" "${text[$((i - 1))]}"
+            fi
+            printf "\n"
+            sleep 0.008
+        done
+
+        printf "\n"
+        printf "Local Development Setup\n"
+        sleep 0.05
+        printf "───────────────────────────────────────\n"
+    else
+        # Static version for CI/non-interactive
+        for i in {0..7}; do
+            printf "%s" "${logo[$i]}"
+            if [[ $i -ge 1 && $i -le 5 ]]; then
+                printf "%s" "${text[$((i - 1))]}"
+            fi
+            printf "\n"
+        done
+        printf "\nLocal Development Setup\n"
+        printf "───────────────────────────────────────\n"
+    fi
 }
 
 print_success() {
@@ -91,7 +141,8 @@ run_with_timeout() {
 
 get_env_value() {
     local key=$1
-    grep "^${key}=" .env 2>/dev/null | head -1 | cut -d'=' -f2- | tr -d '"' | tr -d "'"
+    # Note: Use || true to prevent pipefail from causing exit when key doesn't exist
+    grep "^${key}=" .env 2>/dev/null | head -1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || true
 }
 
 set_env_value() {
@@ -188,7 +239,6 @@ ${BOLD}Options:${RESET}
   --noninteractive          Skip all interactive prompts
   --skip-local-embeddings   Don't start local embeddings service
   --skip-frontend           Don't start frontend UI
-  --use-vespa               Enable Vespa vector search (disabled by default)
 
 ${BOLD}Actions:${RESET}
   --restart                 Restart existing containers (preserves data)
@@ -199,7 +249,6 @@ ${BOLD}Environment variables:${RESET}
   NONINTERACTIVE=1          Same as --noninteractive
   SKIP_LOCAL_EMBEDDINGS=1   Same as --skip-local-embeddings
   SKIP_FRONTEND=1           Same as --skip-frontend
-  SKIP_VESPA=0              Enable Vespa (same as --use-vespa)
   VERBOSE=1                 Same as --verbose
   QUIET=1                   Same as --quiet
   NO_COLOR=1                Disable colored output
@@ -208,7 +257,6 @@ ${BOLD}Examples:${RESET}
   $SCRIPT_NAME                        # Interactive setup
   $SCRIPT_NAME --noninteractive       # CI/automated setup
   $SCRIPT_NAME --skip-frontend        # Backend only
-  $SCRIPT_NAME --use-vespa            # Enable Vespa vector search
   $SCRIPT_NAME --restart              # Restart all services
   $SCRIPT_NAME --recreate             # Fresh containers, keep volumes
   $SCRIPT_NAME --destroy              # Complete cleanup
@@ -232,7 +280,6 @@ while [[ $# -gt 0 ]]; do
         --noninteractive) NONINTERACTIVE=1; shift ;;
         --skip-local-embeddings) SKIP_LOCAL_EMBEDDINGS=1; shift ;;
         --skip-frontend) SKIP_FRONTEND=1; shift ;;
-        --use-vespa) SKIP_VESPA=""; shift ;;
         --restart) ACTION_RESTART=1; shift ;;
         --recreate) ACTION_RECREATE=1; shift ;;
         --destroy) ACTION_DESTROY=1; shift ;;
@@ -254,51 +301,10 @@ done
 print_banner
 
 # -----------------------------------------------------------------------------
-# Check Environment
+# Detect Container Runtime (do this first to check for existing containers)
 # -----------------------------------------------------------------------------
-section "Checking Environment"
 
-# Create .env if needed
-if [[ ! -f .env ]]; then
-    cp .env.example .env
-    log_success "Created .env from .env.example"
-else
-    log_success ".env file exists"
-fi
-
-# Generate ENCRYPTION_KEY if needed
-existing_key=$(get_env_value "ENCRYPTION_KEY")
-if [[ -n $existing_key ]]; then
-    log_success "ENCRYPTION_KEY configured"
-else
-    new_key=$(openssl rand -base64 32)
-    set_env_value "ENCRYPTION_KEY" "$new_key"
-    log_success "ENCRYPTION_KEY generated"
-fi
-
-# Generate STATE_SECRET if needed
-existing_secret=$(get_env_value "STATE_SECRET")
-if [[ -n $existing_secret ]]; then
-    log_success "STATE_SECRET configured"
-else
-    new_secret=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))' 2>/dev/null || openssl rand -base64 32)
-    set_env_value "STATE_SECRET" "$new_secret"
-    log_success "STATE_SECRET generated"
-fi
-
-# Add SKIP_AZURE_STORAGE for faster local startup
-if ensure_env_value "SKIP_AZURE_STORAGE" "true"; then
-    log_debug "Added SKIP_AZURE_STORAGE=true"
-fi
-
-# Prompt for API keys (only if not already set)
-prompt_api_key "OPENAI_API_KEY" "OpenAI API key is required for files and natural language search."
-prompt_api_key "MISTRAL_API_KEY" "Mistral API key is required for certain AI functionality."
-
-# -----------------------------------------------------------------------------
-# Detect Container Runtime
-# -----------------------------------------------------------------------------
-section "Starting Services"
+COMPOSE_FILE="docker/docker-compose.yml"
 
 # Find compose command
 if docker compose version >/dev/null 2>&1; then
@@ -329,8 +335,6 @@ log_debug "Using: $CONTAINER_CMD + $COMPOSE_CMD"
 # -----------------------------------------------------------------------------
 # Handle Action Flags (--destroy, --recreate, --restart)
 # -----------------------------------------------------------------------------
-
-COMPOSE_FILE="docker/docker-compose.yml"
 
 # Handle --destroy: Remove everything and exit
 if [[ -n $ACTION_DESTROY ]]; then
@@ -375,30 +379,89 @@ if [[ -n $ACTION_RESTART ]]; then
     $COMPOSE_CMD -f "$COMPOSE_FILE" restart
     log_success "Services restarted"
 
-    # Jump to health checks (we'll use a flag to skip container creation)
+    # Skip container creation and env setup, but still do health checks
     SKIP_CONTAINER_CREATION=1
+    SKIP_ENV_SETUP=1
 fi
 
+# -----------------------------------------------------------------------------
+# Check for Existing Containers (before environment setup)
+# -----------------------------------------------------------------------------
+
 # Handle existing containers (normal startup without action flags)
-if [[ -z $ACTION_RECREATE && -z $ACTION_RESTART ]]; then
+if [[ -z $ACTION_RECREATE && -z $ACTION_RESTART && -z $SKIP_CONTAINER_CREATION ]]; then
     # Use compose to detect containers managed by this compose file
     existing_containers=$($COMPOSE_CMD -f "$COMPOSE_FILE" ps -a -q 2>/dev/null)
 
     if [[ -n $existing_containers ]]; then
-        if [[ -n $NONINTERACTIVE ]]; then
-            # Backward compatibility: auto-cleanup in noninteractive mode
-            log_info "Removing existing containers (noninteractive mode)..."
-            $COMPOSE_CMD -f "$COMPOSE_FILE" down --volumes --remove-orphans 2>/dev/null || true
-            log_success "Old containers and volumes removed"
+        # Check if containers are running
+        running_containers=$($COMPOSE_CMD -f "$COMPOSE_FILE" ps -q 2>/dev/null)
+
+        if [[ -n $running_containers ]]; then
+            # Containers are already running - just show status
+            log_success "Airweave is already running"
+            SKIP_CONTAINER_CREATION=1
+            SKIP_ENV_SETUP=1
+            SKIP_HEALTH_CHECKS=1
         else
-            log_warning "Existing Airweave containers detected"
-            echo ""
-            echo "   Alternatively, you can run with:"
-            echo "   ${BOLD}--restart${RESET}    Restart services (preserves data)"
-            echo "   ${BOLD}--recreate${RESET}   Fresh start (removes volumes)"
-            echo ""
+            # Containers exist but are stopped - start them
+            log_note "Airweave containers found (stopped)"
+            log_info "Starting existing containers..."
+
+            # Start the existing containers
+            $COMPOSE_CMD -f "$COMPOSE_FILE" up -d
+            log_success "Containers started"
+            SKIP_CONTAINER_CREATION=1
+            SKIP_ENV_SETUP=1
+            # Don't skip health checks - we just started them
         fi
     fi
+fi
+
+# -----------------------------------------------------------------------------
+# Check Environment (only for fresh start)
+# -----------------------------------------------------------------------------
+if [[ -z $SKIP_ENV_SETUP ]]; then
+    section "Checking Environment"
+
+    # Create .env if needed
+    if [[ ! -f .env ]]; then
+        cp .env.example .env
+        log_success "Created .env from .env.example"
+    else
+        log_success ".env file exists"
+    fi
+
+    # Generate ENCRYPTION_KEY if needed
+    existing_key=$(get_env_value "ENCRYPTION_KEY")
+    if [[ -n $existing_key ]]; then
+        log_success "ENCRYPTION_KEY configured"
+    else
+        new_key=$(openssl rand -base64 32)
+        set_env_value "ENCRYPTION_KEY" "$new_key"
+        log_success "ENCRYPTION_KEY generated"
+    fi
+
+    # Generate STATE_SECRET if needed
+    existing_secret=$(get_env_value "STATE_SECRET")
+    if [[ -n $existing_secret ]]; then
+        log_success "STATE_SECRET configured"
+    else
+        new_secret=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))' 2>/dev/null || openssl rand -base64 32)
+        set_env_value "STATE_SECRET" "$new_secret"
+        log_success "STATE_SECRET generated"
+    fi
+
+    # Add SKIP_AZURE_STORAGE for faster local startup
+    if ensure_env_value "SKIP_AZURE_STORAGE" "true"; then
+        log_debug "Added SKIP_AZURE_STORAGE=true"
+    fi
+
+    # Prompt for API keys (only if not already set)
+    prompt_api_key "OPENAI_API_KEY" "OpenAI API key is required for files and natural language search."
+    prompt_api_key "MISTRAL_API_KEY" "Mistral API key is required for certain AI functionality."
+
+    section "Starting Services"
 fi
 
 # -----------------------------------------------------------------------------
@@ -406,53 +469,58 @@ fi
 # -----------------------------------------------------------------------------
 USE_LOCAL_EMBEDDINGS=true
 USE_FRONTEND=true
+USE_VESPA=true  # Always enabled
 
 # Detect available API keys
 openai_key=$(get_env_value "OPENAI_API_KEY")
 mistral_key=$(get_env_value "MISTRAL_API_KEY")
 
-# Auto-detect OpenAI key to skip local embeddings
-if [[ -n $openai_key && $openai_key != "your-api-key-here" ]]; then
-    log_note "OpenAI detected — skipping local embeddings (~2GB)"
-    USE_LOCAL_EMBEDDINGS=false
-fi
-
-# Check explicit skip flags
-if [[ -n $SKIP_LOCAL_EMBEDDINGS ]]; then
-    log_note "Skipping local embeddings (flag set)"
-    USE_LOCAL_EMBEDDINGS=false
-fi
-
-# Set EMBEDDING_DIMENSIONS based on available providers (if not already set)
-# Priority: OpenAI (1536) > Mistral (1024) > Local (384)
-current_dim=$(get_env_value "EMBEDDING_DIMENSIONS")
-if [[ -z $current_dim ]]; then
+# Only show configuration messages when actually starting services fresh
+if [[ -z $SKIP_CONTAINER_CREATION ]]; then
+    # Auto-detect OpenAI key to skip local embeddings
     if [[ -n $openai_key && $openai_key != "your-api-key-here" ]]; then
-        set_env_value "EMBEDDING_DIMENSIONS" "1536"
-        log_success "EMBEDDING_DIMENSIONS=1536 (OpenAI)"
-    elif [[ -n $mistral_key && $mistral_key != "your-api-key-here" ]]; then
-        set_env_value "EMBEDDING_DIMENSIONS" "1024"
-        log_success "EMBEDDING_DIMENSIONS=1024 (Mistral)"
-    elif [[ $USE_LOCAL_EMBEDDINGS == true ]]; then
-        set_env_value "EMBEDDING_DIMENSIONS" "384"
-        log_success "EMBEDDING_DIMENSIONS=384 (local)"
+        log_note "OpenAI detected — skipping local embeddings (~2GB)"
+        USE_LOCAL_EMBEDDINGS=false
+    fi
+
+    # Check explicit skip flags
+    if [[ -n $SKIP_LOCAL_EMBEDDINGS ]]; then
+        log_note "Skipping local embeddings (flag set)"
+        USE_LOCAL_EMBEDDINGS=false
+    fi
+
+    # Set EMBEDDING_DIMENSIONS based on available providers (if not already set)
+    # Priority: OpenAI (1536) > Mistral (1024) > Local (384)
+    current_dim=$(get_env_value "EMBEDDING_DIMENSIONS")
+    if [[ -z $current_dim ]]; then
+        if [[ -n $openai_key && $openai_key != "your-api-key-here" ]]; then
+            set_env_value "EMBEDDING_DIMENSIONS" "1536"
+            log_success "EMBEDDING_DIMENSIONS=1536 (OpenAI)"
+        elif [[ -n $mistral_key && $mistral_key != "your-api-key-here" ]]; then
+            set_env_value "EMBEDDING_DIMENSIONS" "1024"
+            log_success "EMBEDDING_DIMENSIONS=1024 (Mistral)"
+        elif [[ $USE_LOCAL_EMBEDDINGS == true ]]; then
+            set_env_value "EMBEDDING_DIMENSIONS" "384"
+            log_success "EMBEDDING_DIMENSIONS=384 (local)"
+        else
+            log_warning "No embedding provider configured"
+        fi
     else
-        log_warning "No embedding provider configured"
+        log_success "EMBEDDING_DIMENSIONS=$current_dim (from .env)"
+    fi
+
+    if [[ -n $SKIP_FRONTEND ]]; then
+        log_note "Skipping frontend (flag set)"
+        USE_FRONTEND=false
     fi
 else
-    log_success "EMBEDDING_DIMENSIONS=$current_dim (from .env)"
-fi
-
-if [[ -n $SKIP_FRONTEND ]]; then
-    log_note "Skipping frontend (flag set)"
-    USE_FRONTEND=false
-fi
-
-# Check Vespa flag (disabled by default)
-USE_VESPA=false
-if [[ -z $SKIP_VESPA || $SKIP_VESPA == "0" ]]; then
-    log_note "Vespa enabled (--use-vespa)"
-    USE_VESPA=true
+    # When reusing existing containers, just set flags based on skip settings
+    if [[ -n $openai_key && $openai_key != "your-api-key-here" ]] || [[ -n $SKIP_LOCAL_EMBEDDINGS ]]; then
+        USE_LOCAL_EMBEDDINGS=false
+    fi
+    if [[ -n $SKIP_FRONTEND ]]; then
+        USE_FRONTEND=false
+    fi
 fi
 
 # -----------------------------------------------------------------------------
@@ -476,12 +544,12 @@ if [[ -z $SKIP_CONTAINER_CREATION ]]; then
 fi
 
 # -----------------------------------------------------------------------------
-# Wait for Services
+# Wait for Services (skip if containers were already running)
 # -----------------------------------------------------------------------------
-section "Waiting for Services"
+if [[ -z $SKIP_HEALTH_CHECKS ]]; then
+    section "Waiting for Services"
 
-# Wait for Vespa (only if enabled)
-if [[ $USE_VESPA == true ]]; then
+    # Wait for Vespa
     vespa_check() {
         local init_status init_exit_code doc_status
         init_status=$($CONTAINER_CMD inspect airweave-vespa-init --format='{{.State.Status}}' 2>/dev/null || echo "not_found")
@@ -511,28 +579,26 @@ if [[ $USE_VESPA == true ]]; then
         echo "  3. Check health:     curl http://localhost:8081/state/v1/health"
         exit 1
     fi
-else
-    log_note "Vespa skipped (enable with --use-vespa)"
-fi
 
-# Wait for backend
-backend_check() {
-    $CONTAINER_CMD exec airweave-backend curl -sf http://localhost:8001/health
-}
+    # Wait for backend
+    backend_check() {
+        $CONTAINER_CMD exec airweave-backend curl -sf http://localhost:8001/health
+    }
 
-if ! wait_for "Backend healthy" 30 backend_check; then
-    echo ""
-    echo "Backend troubleshooting:"
-    echo "  - Check logs: docker logs airweave-backend"
-    echo "  - Common issues: database connection, missing env vars"
-    exit 1
-fi
+    if ! wait_for "Backend healthy" 30 backend_check; then
+        echo ""
+        echo "Backend troubleshooting:"
+        echo "  - Check logs: docker logs airweave-backend"
+        echo "  - Common issues: database connection, missing env vars"
+        exit 1
+    fi
 
-# Start frontend if needed
-if [[ $USE_FRONTEND == true ]]; then
-    frontend_status=$($CONTAINER_CMD inspect airweave-frontend --format='{{.State.Status}}' 2>/dev/null || echo "")
-    if [[ $frontend_status == "created" || $frontend_status == "exited" ]]; then
-        $CONTAINER_CMD start airweave-frontend >/dev/null 2>&1 || true
+    # Start frontend if needed
+    if [[ $USE_FRONTEND == true ]]; then
+        frontend_status=$($CONTAINER_CMD inspect airweave-frontend --format='{{.State.Status}}' 2>/dev/null || echo "")
+        if [[ $frontend_status == "created" || $frontend_status == "exited" ]]; then
+            $CONTAINER_CMD start airweave-frontend >/dev/null 2>&1 || true
+        fi
     fi
 fi
 
@@ -568,14 +634,10 @@ printf "📊 Temporal UI     http://localhost:8088\n"
 printf "🗄️ PostgreSQL      localhost:5432\n"
 printf "🔍 Qdrant          http://localhost:6333\n"
 
-if [[ $USE_VESPA == true ]]; then
-    if curl -sf http://localhost:8081/state/v1/health 2>/dev/null | grep -q '"up"'; then
-        printf "🔎 Vespa           http://localhost:8081\n"
-    else
-        printf "⚠️  Vespa           Not responding\n"
-    fi
+if curl -sf http://localhost:8081/state/v1/health 2>/dev/null | grep -q '"up"'; then
+    printf "🔎 Vespa           http://localhost:8081\n"
 else
-    printf "⏭️  Vespa           Skipped (enable with --use-vespa)\n"
+    printf "⚠️  Vespa           Not responding\n"
 fi
 
 if [[ $USE_LOCAL_EMBEDDINGS == true ]]; then

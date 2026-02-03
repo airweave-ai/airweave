@@ -9,13 +9,14 @@ from tenacity import retry, stop_after_attempt
 from airweave.core.exceptions import TokenRefreshError
 from airweave.core.shared_models import RateLimitLevel
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import BaseEntity, Breadcrumb
+from airweave.platform.entities._base import AirweaveSystemMetadata, BaseEntity, Breadcrumb
 from airweave.platform.entities.slack import SlackMessageEntity
 from airweave.platform.sources._base import BaseSource
 from airweave.platform.sources.retry_helpers import (
     retry_if_rate_limit_or_timeout,
     wait_rate_limit_with_backoff,
 )
+from airweave.platform.sync.pipeline.text_builder import text_builder
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
@@ -283,18 +284,30 @@ class SlackSource(BaseSource):
             ]
 
             message_text = text or message_name
+            username = message.get("username")
 
-            return SlackMessageEntity(
+            # Build system metadata for federated search
+            # (normally built by EntityPipeline._enrich_early_metadata in sync pipeline)
+            system_metadata = AirweaveSystemMetadata(
+                source_name="slack",  # short_name from @source decorator
+                entity_type="SlackMessageEntity",
+                sync_id=None,  # No sync for federated search
+                sync_job_id=None,  # No sync job for federated search
+            )
+
+            # Create entity first (text_builder needs entity to extract embeddable fields)
+            entity = SlackMessageEntity(
                 # Base fields
                 entity_id=message.get("iid", message.get("ts", "")),
                 breadcrumbs=breadcrumbs,
                 name=message_name,
                 created_at=created_at,
                 updated_at=None,  # Messages don't have update timestamp
+                airweave_system_metadata=system_metadata,
                 # API fields
                 text=message_text,
                 user=message.get("user"),
-                username=message.get("username"),
+                username=username,
                 ts=message.get("ts", ""),
                 channel_id=channel_id,
                 channel_name=channel_name,
@@ -310,6 +323,15 @@ class SlackSource(BaseSource):
                 message_time=created_at or datetime.utcnow(),
                 web_url_value=message.get("permalink"),
             )
+
+            # Build textual representation using shared utility
+            # (normally built by TextualRepresentationBuilder in sync pipeline)
+            entity.textual_representation = text_builder.build_metadata_section(
+                entity=entity,
+                source_name="slack",
+            )
+
+            return entity
         except Exception as e:
             self.logger.error(f"Error creating message entity: {e}")
             return None

@@ -16,7 +16,7 @@ from airweave.core.logging import ContextualLogger
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.sources._base import BaseSource
 from airweave.platform.storage.arf_reader import ArfReader
-from airweave.platform.storage.backend import StorageBackend
+from airweave.platform.storage.protocol import StorageBackend
 
 if TYPE_CHECKING:
     pass

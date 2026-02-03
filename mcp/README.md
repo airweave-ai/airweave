@@ -1,22 +1,113 @@
 # Airweave MCP Search Server
 
-An MCP (Model Context Protocol) server that provides comprehensive search capabilities for Airweave collections. This server allows AI assistants to search through your Airweave data using natural language queries with full parameter control.
+[![npm version](https://img.shields.io/npm/v/airweave-mcp-search.svg)](https://www.npmjs.com/package/airweave-mcp-search)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js >= 18](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org/)
+[![MCP Protocol](https://img.shields.io/badge/MCP-2025--03--26-blue.svg)](https://modelcontextprotocol.io/)
+
+> **Official MCP server for Airweave** - Make your data searchable for AI assistants with semantic search, natural language queries, and advanced filtering.
+
+An MCP (Model Context Protocol) server that provides comprehensive search capabilities for Airweave collections. This server allows AI assistants (Claude, Cursor, OpenAI agents, etc.) to search through your Airweave data using natural language queries with full parameter control.
+
+**Compatibility:**
+- MCP Protocol: 2025-03-26 (Streamable HTTP) + legacy stdio
+- Node.js: 18.0.0 or higher
+- Works with: Claude Desktop, Cursor, OpenAI Agent Builder, and any MCP-compatible client
+- Airweave API: v1.0+
+
+---
+
+## Table of Contents
+
+- [Quick Example](#quick-example)
+- [Why Use This MCP Server?](#why-use-this-mcp-server)
+- [Features](#features)
+- [Deployment Modes](#deployment-modes)
+- [Quick Start (Local Mode)](#quick-start-local-mode)
+- [Configuration](#configuration)
+- [Authentication](#authentication)
+- [Usage with Cursor/Claude Desktop](#usage-with-cursorClaude-desktop)
+- [Available Tools](#available-tools)
+- [Testing](#testing)
+- [Development](#development)
+- [Deployment to Production](#deployment-to-production)
+- [Troubleshooting](#troubleshooting)
+- [Architecture Overview](#architecture-overview)
+- [Support](#support)
+
+---
+
+**What makes this special:**
+- **True Multi-tenancy**: Hosted mode supports thousands of users with per-session isolation
+- **Production-Ready**: Redis-backed sessions, rate limiting, OAuth2 support, comprehensive logging
+- **Advanced Search**: Hybrid search, query expansion, reranking, recency bias, and more
+- **Developer-Friendly**: Works with both desktop clients (stdio) and cloud platforms (HTTP)
+- **Fully Tested**: Comprehensive test suite including HTTP transport and session management
+
+## Quick Example
+
+```bash
+# Install and configure
+npx airweave-mcp-search
+
+# Use in Claude Desktop - add to config:
+{
+  "mcpServers": {
+    "airweave": {
+      "command": "npx",
+      "args": ["airweave-mcp-search"],
+      "env": {
+        "AIRWEAVE_API_KEY": "your-key",
+        "AIRWEAVE_COLLECTION": "your-collection-id"
+      }
+    }
+  }
+}
+
+# Then in Claude:
+# "Search for customer feedback about pricing"
+# "Find the most recent documents about API changes"
+# "Show me support tickets from the last week"
+```
+
+## Why Use This MCP Server?
+
+**For AI Assistant Users:**
+- Search your company's knowledge base directly from Claude Desktop or Cursor
+- Get AI-generated summaries of search results automatically
+- Use natural language - no need to learn complex query syntax
+- Works with any data source Airweave supports (APIs, databases, file systems, etc.)
+
+**For Developers:**
+- Production-ready hosted mode for building AI applications
+- OAuth2 integration for secure user authentication
+- Horizontal scaling with Redis-backed sessions
+- Comprehensive API with 10+ configurable parameters
+
+**For Enterprises:**
+- Multi-tenant architecture - one deployment serves all users
+- Built-in rate limiting and security features
+- Audit logging for compliance
+- Works with existing Airweave infrastructure
 
 ## Features
 
-- 🔍 **Enhanced Search Tool**: Query Airweave collections with natural language and full parameter control
-- 🤖 **AI Completion**: Get AI-processed responses from search results
-- 📊 **Pagination Control**: Limit results and control pagination with offset
-- ⏰ **Recency Bias**: Prioritize recent results with configurable recency weighting
-- ⚙️ **Configuration Tool**: View current server configuration
-- 🔐 **Secure**: Uses API key authentication
-- 🌐 **Flexible**: Configurable base URL for different environments
-- 🧪 **Comprehensive Testing**: Full test suite with LLM testing strategy
-- 🏗️ **Simple Architecture**: Clean, maintainable code structure without over-engineering
+- **Enhanced Search Tool**: Query Airweave collections with natural language and full parameter control
+- **AI Completion**: Get AI-processed responses from search results
+- **Pagination Control**: Limit results and control pagination with offset
+- **Recency Bias**: Prioritize recent results with configurable recency weighting
+- **Configuration Tool**: View current server configuration
+- **Secure**: Multiple authentication methods (API keys, OAuth2)
+- **Multi-tenant**: True multi-tenancy with per-session isolation in hosted mode
+- **Scalable**: Redis-backed session management for horizontal scaling
+- **Rate Limited**: Built-in rate limiting to prevent abuse
+- **Flexible**: Configurable base URL for different environments
+- **Comprehensive Testing**: Full test suite with LLM testing strategy
+- **Simple Architecture**: Clean, maintainable code structure without over-engineering
 
 ## Deployment Modes
 
-This MCP server supports two deployment modes:
+This MCP server supports two deployment modes with different use cases:
 
 ### 1. Local Mode (Desktop AI Clients)
 
@@ -28,11 +119,45 @@ For **Claude Desktop, Cursor, and other desktop AI assistants**:
 ### 2. Hosted Mode (Cloud AI Platforms)
 
 For **OpenAI AgentBuilder and cloud-based AI platforms**:
-- Uses HTTP/SSE transport (Server-Sent Events)
+- Uses Streamable HTTP transport (MCP 2025-03-26)
 - Deployed to Azure Kubernetes Service
 - Accessible via `https://mcp.airweave.ai`
+- **Multi-tenant**: Each user provides their own API key per request
+- **Session Management**: Redis-backed sessions for horizontal scaling
+- **Rate Limiting**: 100 sessions per hour per API key
+- **Security**: API key hashing, session binding (IP/User-Agent), audit logging
 
-See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed hosting instructions.
+**Architecture Highlights:**
+- **Per-Session Isolation**: Separate `McpServer` instances per session/API key
+- **Distributed Sessions**: Redis stores session metadata, local cache for performance
+- **Stateless Design**: Any pod can handle any request after session retrieval
+- **Automatic Cleanup**: 30-minute session TTL with automatic expiration
+
+**Configuration for OpenAI Agent Builder:**
+```
+MCP Server URL: https://mcp.airweave.ai/mcp
+
+Custom Headers:
+  Header 1:
+    name: X-API-Key
+    value: <your-airweave-api-key>
+  
+  Header 2:
+    name: X-Collection-Readable-ID
+    value: <your-collection-readable-id>
+```
+
+**Alternative: OAuth2 Authentication (Recommended for Production)**
+```
+MCP Server URL: https://mcp.airweave.ai/mcp
+
+Custom Headers:
+  Header 1:
+    name: Authorization
+    value: Bearer <oauth-access-token>
+```
+
+> OAuth tokens are validated and cached for performance. Collection access is determined automatically from your account.
 
 ## Quick Start (Local Mode)
 
@@ -41,7 +166,12 @@ See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed hosting instructions.
 The easiest way to use this server locally is via npx:
 
 ```bash
+# Run directly with npx (recommended)
 npx airweave-mcp-search
+
+# Or install globally
+npm install -g airweave-mcp-search
+airweave-mcp-search
 ```
 
 ### Installation from Source
@@ -53,18 +183,100 @@ npm run build
 npm run start
 ```
 
+### Development Installation Script
+
+For developers building from source, use the provided install script:
+
+```bash
+# Clone the repository first
+git clone https://github.com/airweave-ai/airweave.git
+cd airweave/mcp
+
+# Run the install script
+./install.sh
+```
+
+This script will:
+1. Check Node.js version (18+ required)
+2. Install dependencies
+3. Build the TypeScript project
+4. Run tests
+5. Provide next steps for configuration
+
+> **Note**: For end-users, we recommend using `npx airweave-mcp-search` instead of building from source.
+
 ## Configuration
+
+### Local Mode Configuration
 
 The server requires environment variables to connect to your Airweave instance:
 
-### Required Environment Variables
-
+**Required Environment Variables:**
 - `AIRWEAVE_API_KEY`: Your Airweave API key (get this from your Airweave dashboard)
 - `AIRWEAVE_COLLECTION`: The readable ID of the collection to search
 
-### Optional Environment Variables
-
+**Optional Environment Variables:**
 - `AIRWEAVE_BASE_URL`: Base URL for the Airweave API (default: `https://api.airweave.ai`)
+
+### Hosted Mode Configuration
+
+For cloud-based AI platforms (OpenAI Agent Builder, etc.), configuration is provided via **custom headers** instead of environment variables:
+
+**Required Headers:**
+- `X-API-Key`: Your Airweave API key
+- `X-Collection-Readable-ID`: The readable ID of the collection to search
+
+**Optional Headers:**
+- None (base URL is configured at deployment)
+
+This approach enables **true multi-tenancy**: each user can search their own collections without requiring separate server deployments.
+
+## Authentication
+
+The MCP server supports multiple authentication methods:
+
+### API Key Authentication (Local & Hosted Mode)
+
+**Local Mode (Environment Variable):**
+```bash
+export AIRWEAVE_API_KEY="your-api-key-here"
+```
+
+**Hosted Mode (HTTP Headers):**
+- `Authorization: Bearer <api-key>`
+- `X-API-Key: <api-key>`
+- Query parameters: `?apiKey=<key>` or `?api_key=<key>`
+
+**Security Features:**
+- API keys are hashed (SHA-256) before storage in Redis
+- Keys are never logged or exposed in error messages
+- Session binding prevents hijacking (IP + User-Agent)
+
+### OAuth2 Authentication (Hosted Mode Only)
+
+OAuth2 provides more secure authentication for production deployments:
+
+**Authorization Flow:**
+1. User authorizes via Airweave OAuth consent page
+2. Application receives OAuth access token
+3. Token is sent in `Authorization: Bearer <token>` header
+4. MCP server validates token and caches result (1-hour TTL)
+
+**Benefits:**
+- Fine-grained access control
+- Token revocation support
+- Automatic collection discovery
+- Better audit trail
+
+**Example (OpenAI Agent Builder):**
+```
+MCP Server URL: https://mcp.airweave.ai/mcp
+
+Custom Headers:
+  Header 1:
+    name: Authorization
+    value: Bearer <oauth-access-token>
+```
 
 ## Usage with Cursor/Claude Desktop
 
@@ -333,7 +545,7 @@ The server provides detailed error messages for common issues:
 
 ## Troubleshooting
 
-### Common Issues
+### Local Mode Issues
 
 1. **"Error: AIRWEAVE_API_KEY environment variable is required"**
    - Make sure you've set the `AIRWEAVE_API_KEY` environment variable
@@ -351,42 +563,202 @@ The server provides detailed error messages for common issues:
    - Check that your API key is valid
    - Ensure the API key has the necessary permissions
 
+### Hosted Mode Issues
+
+1. **"Rate limit exceeded"**
+   - You've created more than 100 sessions in the past hour
+   - Wait for the rate limit window to reset or contact support for increased limits
+
+2. **"Session not found"**
+   - Session expired after 30 minutes of inactivity
+   - Create a new session by making a request without the `mcp-session-id` header
+
+3. **"Invalid OAuth token"**
+   - Token may be expired or revoked
+   - Obtain a new OAuth access token through the authorization flow
+
+4. **"Redis connection failed"**
+   - Check Redis server is running and accessible
+   - Verify `REDIS_URL` environment variable is correct
+   - Check network connectivity between MCP server and Redis
+
+5. **"Session binding mismatch"**
+   - Your IP address or User-Agent changed during the session
+   - This is a security feature - create a new session
+
 ### Debug Mode
 
 For debugging, you can check the stderr output where the server logs its startup information:
 
 ```bash
-# The server logs to stderr (won't interfere with MCP protocol)
+# Local Mode - logs to stderr (won't interfere with MCP protocol)
 # Look for messages like:
 # "Airweave MCP Search Server started"
 # "Collection: your-collection-id"
 # "Base URL: https://api.airweave.ai"
+
+# Hosted Mode - check container logs for structured JSON logs:
+kubectl logs -n airweave deployment/mcp-server
+
+# Example log entries:
+# {"timestamp":"2026-02-02T10:00:00.000Z","service":"mcp-redis-session","operation":"session_created",...}
+# {"timestamp":"2026-02-02T10:00:05.000Z","service":"mcp-redis-session","operation":"session_accessed",...}
 ```
+
+### Performance Tips
+
+1. **Session Reuse**: Include `mcp-session-id` header to reuse sessions and avoid rate limits
+2. **Caching**: OAuth tokens are cached for 1 hour - no need to refresh frequently
+3. **Pagination**: Use `limit` and `offset` for large result sets instead of fetching everything
+4. **Search Method**: Use `keyword` search with `no_expansion` for fastest response times
+
+### Testing Hosted Mode
+
+You can test the hosted MCP server using curl:
+
+```bash
+# 1. Check server health
+curl https://mcp.airweave.ai/health
+
+# 2. Get server info
+curl https://mcp.airweave.ai/
+
+# 3. List available tools (API Key Auth)
+curl -X POST https://mcp.airweave.ai/mcp \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -H "X-Collection-Readable-ID: your-collection-id" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/list",
+    "id": 1
+  }'
+
+# 4. List available tools (OAuth2)
+curl -X POST https://mcp.airweave.ai/mcp \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-oauth-token" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/list",
+    "id": 1
+  }'
+
+# 5. Execute a search
+curl -X POST https://mcp.airweave.ai/mcp \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -H "X-Collection-Readable-ID: your-collection-id" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "name": "search-your-collection-id",
+      "arguments": {
+        "query": "test query",
+        "limit": 5
+      }
+    },
+    "id": 2
+  }'
+
+# 6. Session management - subsequent requests use same session
+curl -X POST https://mcp.airweave.ai/mcp \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -H "X-Collection-Readable-ID: your-collection-id" \
+  -H "mcp-session-id: your-session-id-from-previous-response" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "name": "search-your-collection-id",
+      "arguments": {
+        "query": "another query"
+      }
+    },
+    "id": 3
+  }'
+```
+
+**Session Handling:**
+- First request creates a new session with ID returned in response headers
+- Include `mcp-session-id` header in subsequent requests for session continuity
+- Sessions expire after 30 minutes of inactivity
+- Rate limit: 100 session creations per hour per API key
 
 ## Deployment to Production
 
 For hosting the MCP server for cloud-based AI platforms:
 
-1. **See [DEPLOYMENT.md](./DEPLOYMENT.md)** for comprehensive deployment guide
-2. **Docker**: Uses provided Dockerfile for containerization
-3. **Kubernetes**: Helm charts available in `/infra-core/helm/airweave/`
-4. **Hosted URLs**:
-   - Development: `https://mcp.dev-airweave.com`
-   - Production: `https://mcp.airweave.ai`
+### Prerequisites
+- **Docker**: For containerization
+- **Kubernetes**: For orchestration
+- **Redis**: For session management and caching
+- **Azure Container Registry**: For image storage
 
-Quick deployment:
+### Deployment Steps
+
+1. **Build Docker Image**
 ```bash
-# Build Docker image
 docker build -t airweavecoreacr.azurecr.io/mcp:v1.0.0 .
+```
 
-# Push to Azure Container Registry
+2. **Push to Azure Container Registry**
+```bash
 az acr login --name airweavecoreacr
 docker push airweavecoreacr.azurecr.io/mcp:v1.0.0
+```
 
-# Deploy with Helm
+3. **Deploy with Helm**
+```bash
 cd /infra-core
 ./helm-upgrade.sh prd v1.0.0 airweave true
 ```
+
+### Environment Configuration
+
+**Required Environment Variables:**
+- `AIRWEAVE_COLLECTION`: Default collection ID (can be overridden per request)
+- `AIRWEAVE_BASE_URL`: Airweave API endpoint
+- `REDIS_URL`: Redis connection string (e.g., `redis://redis:6379`)
+- `PORT`: HTTP server port (default: 8080)
+
+**Optional:**
+- `REDIS_PASSWORD`: Redis authentication password
+- `LOG_LEVEL`: Logging verbosity (default: info)
+
+### Hosted Endpoints
+- **Development**: `https://mcp.dev-airweave.com`
+- **Production**: `https://mcp.airweave.ai`
+
+### Health Checks
+- **Health**: `GET /health` - Returns server status
+- **Info**: `GET /` - Returns server info and available endpoints
+
+## Architecture Overview
+
+### Local Mode (Stdio Transport)
+```
+Claude Desktop/Cursor → Stdio Transport → MCP Server → Airweave API
+                     ↑
+                Environment Variables (API Key, Collection)
+```
+
+### Hosted Mode (HTTP Transport)
+```
+Cloud AI Platform → HTTPS → Load Balancer → MCP HTTP Server (Pod 1, 2, 3...)
+                                                    ↓
+                                            Redis Session Store
+                                                    ↓
+                                            Airweave API
+```
+
+**Key Components:**
+- **Session Manager**: Redis-backed distributed sessions with local caching
+- **OAuth Validator**: Token validation with 1-hour caching
+- **Rate Limiter**: Per-API-key rate limiting (100 sessions/hour)
+- **Transport Layer**: Stdio (local) or Streamable HTTP (hosted)
 
 ## License
 
@@ -395,7 +767,11 @@ MIT License - see LICENSE file for details.
 ## Support
 
 For issues and questions:
-- Check the [Airweave documentation](https://docs.airweave.ai)
-- See [DEPLOYMENT.md](./DEPLOYMENT.md) for deployment issues
-- Open an issue on GitHub
-- Contact your Airweave administrator for API key and access issues
+- **Documentation**: [Airweave Docs](https://docs.airweave.ai)
+- **GitHub Issues**: [Report bugs or request features](https://github.com/airweave-ai/airweave/issues)
+- **API Access**: Contact your Airweave administrator for API keys
+- **Security Issues**: See [SECURITY.md](../SECURITY.md) for reporting vulnerabilities
+
+## Contributing
+
+Contributions are welcome! Please read our [Contributing Guide](../CONTRIBUTING.md) before submitting PRs.

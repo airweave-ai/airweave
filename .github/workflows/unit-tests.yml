@@ -56,6 +56,25 @@ jobs:
       - name: Run unit tests with coverage
         run: poetry run pytest tests/unit/ -m "not slow" --cov=airweave --cov-report=xml:coverage.xml
 
+      - name: Run live integration tests (storage backends)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          # AWS credentials
+          AWS_ACCESS_KEY_ID: ${{ secrets.STORAGE_TEST_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.STORAGE_TEST_AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
+          # Azure credentials
+          AZURE_CLIENT_ID: ${{ secrets.STORAGE_TEST_AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.STORAGE_TEST_AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.STORAGE_TEST_AZURE_TENANT_ID }}
+          # GCP credentials
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.STORAGE_TEST_GCP_CREDENTIALS_JSON }}
+        run: |
+          # Write GCP credentials to file
+          echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/gcp-creds.json
+          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-creds.json
+          poetry run pytest tests/integration/storage/ -m "live_integration" -v --tb=short
+
       - name: Install diff-cover
         if: github.event_name == 'pull_request'
         run: pip install diff-cover

@@ -9,7 +9,6 @@ from typing import Literal, Optional
 
 import tiktoken
 from pydantic import BaseModel, Field, field_validator
-from qdrant_client.http.models import Filter as QdrantFilter
 
 
 class ResponseType(str, Enum):
@@ -77,10 +76,8 @@ class LegacySearchRequest(BaseModel):
             # If tokenization itself fails, let it through (shouldn't happen)
             return v
 
-    # Qdrant native filter support
-    filter: Optional[QdrantFilter] = Field(
-        None, description="Qdrant native filter for metadata-based filtering"
-    )
+    # Filter support (accepts any dict structure, converted by legacy_adapter)
+    filter: Optional[dict] = Field(None, description="Filter for metadata-based filtering")
 
     # Pagination
     offset: Optional[int] = Field(0, ge=0, description="Number of results to skip")

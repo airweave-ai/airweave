@@ -10,6 +10,9 @@ Accepts both Qdrant Filter objects and Airweave canonical filter dicts
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
+from fastapi import HTTPException
+from pydantic import ValidationError
+
 from airweave.api.context import ApiContext
 from airweave.schemas.search import AirweaveFilter
 from airweave.search.context import SearchContext
@@ -28,6 +31,20 @@ except ImportError:
 
 class UserFilter(SearchOperation):
     """Merge user-provided filter with extracted filters."""
+
+    # Boolean group keys for filter structure
+    FILTER_KEY_MUST = "must"
+    FILTER_KEY_MUST_NOT = "must_not"
+    FILTER_KEY_SHOULD = "should"
+    FILTER_KEY_MIN_SHOULD_MATCH = "minimum_should_match"
+
+    # FieldCondition keys (used for detecting bare conditions)
+    FIELD_CONDITION_KEY = "key"
+    FIELD_CONDITION_MATCH = "match"
+    FIELD_CONDITION_RANGE = "range"
+
+    # System metadata path prefix
+    SYSTEM_METADATA_PREFIX = "airweave_system_metadata."
 
     # System metadata fields that need path mapping (same as QueryInterpretation)
     NESTED_SYSTEM_FIELDS = {
@@ -110,6 +127,9 @@ class UserFilter(SearchOperation):
 
         Handles both Qdrant Filter objects (with .model_dump()) and plain dicts
         (Airweave canonical format).
+
+        Raises:
+            HTTPException: 422 if filter format is invalid
         """
         if not self.filter:
             return None
@@ -123,8 +143,66 @@ class UserFilter(SearchOperation):
             # Unknown type - try to use as-is
             filter_dict = dict(self.filter)
 
+        # Validate filter structure using Qdrant's model
+        self._validate_filter_structure(filter_dict)
+
         # Map field names in conditions
         return self._map_filter_keys(filter_dict)
+
+    def _validate_filter_structure(self, filter_dict: Dict[str, Any]) -> None:
+        """Validate that filter has correct Qdrant structure.
+
+        Uses Qdrant's Filter model for proper validation. This catches:
+        - Bare FieldConditions (missing must/should/must_not wrapper)
+        - Invalid field names or structures
+        - Type mismatches
+
+        Args:
+            filter_dict: The filter dictionary to validate
+
+        Raises:
+            HTTPException: 422 Unprocessable Entity if filter structure is invalid
+        """
+        if not filter_dict:
+            return
+
+        if QdrantFilter is None:
+            # Qdrant client not available, skip validation
+            return
+
+        try:
+            # Use Qdrant's actual Filter model for validation
+            QdrantFilter.model_validate(filter_dict)
+        except ValidationError as e:
+            # Check if this looks like a bare FieldCondition for better error message
+            if (
+                self.FIELD_CONDITION_KEY in filter_dict
+                or self.FIELD_CONDITION_MATCH in filter_dict
+                or self.FIELD_CONDITION_RANGE in filter_dict
+            ):
+                example_filter = {
+                    self.FILTER_KEY_MUST: [
+                        {
+                            self.FIELD_CONDITION_KEY: "source_name",
+                            self.FIELD_CONDITION_MATCH: {"value": "github"},
+                        }
+                    ]
+                }
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"Invalid filter format: received bare FieldCondition which must be "
+                        f"wrapped in '{self.FILTER_KEY_MUST}', '{self.FILTER_KEY_SHOULD}', "
+                        f"or '{self.FILTER_KEY_MUST_NOT}'. "
+                        f"Received: {filter_dict}. "
+                        f"Example of correct format: {example_filter}"
+                    ),
+                )
+            # Generic validation error
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid filter format: {e.errors()}",
+            )
 
     def _map_filter_keys(self, filter_dict: Dict[str, Any]) -> Dict[str, Any]:
         """Recursively map field names in filter dict to Qdrant paths."""
@@ -132,9 +210,10 @@ class UserFilter(SearchOperation):
             return filter_dict
 
         mapped = {}
+        boolean_groups = (self.FILTER_KEY_MUST, self.FILTER_KEY_MUST_NOT, self.FILTER_KEY_SHOULD)
 
         # Handle boolean groups (must, must_not, should)
-        for group_key in ("must", "must_not", "should"):
+        for group_key in boolean_groups:
             if group_key in filter_dict and isinstance(filter_dict[group_key], list):
                 mapped[group_key] = [
                     self._map_condition_keys(cond) for cond in filter_dict[group_key]
@@ -142,7 +221,7 @@ class UserFilter(SearchOperation):
 
         # Preserve other keys (like minimum_should_match)
         for key in filter_dict:
-            if key not in ("must", "must_not", "should"):
+            if key not in boolean_groups:
                 mapped[key] = filter_dict[key]
 
         return mapped
@@ -155,11 +234,12 @@ class UserFilter(SearchOperation):
         mapped = dict(condition)
 
         # Map the "key" field if present
-        if "key" in mapped and isinstance(mapped["key"], str):
-            mapped["key"] = self._map_to_qdrant_path(mapped["key"])
+        key_field = self.FIELD_CONDITION_KEY
+        if key_field in mapped and isinstance(mapped[key_field], str):
+            mapped[key_field] = self._map_to_qdrant_path(mapped[key_field])
 
         # Recursively handle nested boolean groups
-        for group_key in ("must", "must_not", "should"):
+        for group_key in (self.FILTER_KEY_MUST, self.FILTER_KEY_MUST_NOT, self.FILTER_KEY_SHOULD):
             if group_key in mapped and isinstance(mapped[group_key], list):
                 mapped[group_key] = [self._map_condition_keys(c) for c in mapped[group_key]]
 
@@ -168,12 +248,12 @@ class UserFilter(SearchOperation):
     def _map_to_qdrant_path(self, key: str) -> str:
         """Map field names to Qdrant payload paths."""
         # Already has prefix
-        if key.startswith("airweave_system_metadata."):
+        if key.startswith(self.SYSTEM_METADATA_PREFIX):
             return key
 
         # Needs prefix
         if key in self.NESTED_SYSTEM_FIELDS:
-            return f"airweave_system_metadata.{key}"
+            return f"{self.SYSTEM_METADATA_PREFIX}{key}"
 
         # Regular field, no mapping needed
         return key
@@ -192,23 +272,28 @@ class UserFilter(SearchOperation):
 
         # Both present - merge with AND semantics
         merged = {
-            "must": self._get_list(user_filter, "must") + self._get_list(extracted_filter, "must"),
-            "must_not": self._get_list(user_filter, "must_not")
-            + self._get_list(extracted_filter, "must_not"),
+            self.FILTER_KEY_MUST: (
+                self._get_list(user_filter, self.FILTER_KEY_MUST)
+                + self._get_list(extracted_filter, self.FILTER_KEY_MUST)
+            ),
+            self.FILTER_KEY_MUST_NOT: (
+                self._get_list(user_filter, self.FILTER_KEY_MUST_NOT)
+                + self._get_list(extracted_filter, self.FILTER_KEY_MUST_NOT)
+            ),
         }
 
         # Handle "should" clauses
-        user_should = self._get_list(user_filter, "should")
-        extracted_should = self._get_list(extracted_filter, "should")
+        user_should = self._get_list(user_filter, self.FILTER_KEY_SHOULD)
+        extracted_should = self._get_list(extracted_filter, self.FILTER_KEY_SHOULD)
 
         if user_should or extracted_should:
-            merged["should"] = user_should + extracted_should
+            merged[self.FILTER_KEY_SHOULD] = user_should + extracted_should
 
             # If both have should clauses, require at least one from each (AND-like behavior)
             if user_should and extracted_should:
-                merged["minimum_should_match"] = 2
+                merged[self.FILTER_KEY_MIN_SHOULD_MATCH] = 2
             else:
-                merged["minimum_should_match"] = 1
+                merged[self.FILTER_KEY_MIN_SHOULD_MATCH] = 1
 
         # Remove empty lists
         return {k: v for k, v in merged.items() if v}

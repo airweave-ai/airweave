@@ -31,8 +31,7 @@ app.use(express.json({ limit: '10mb' }));
 const sessionManager = new RedisSessionManager();
 
 // Create MCP server instance with tools
-const createMcpServer = (apiKey: string) => {
-    const collection = process.env.AIRWEAVE_COLLECTION || 'default';
+const createMcpServer = (apiKey: string, collection: string) => {
     const baseUrl = process.env.AIRWEAVE_BASE_URL || 'https://api.airweave.ai';
 
     const config = {
@@ -97,7 +96,7 @@ app.get('/health', async (req, res) => {
 
 // Root endpoint with server info
 app.get('/', (req, res) => {
-    const collection = process.env.AIRWEAVE_COLLECTION || 'default';
+    const defaultCollection = process.env.AIRWEAVE_COLLECTION || 'default';
     const baseUrl = process.env.AIRWEAVE_BASE_URL || 'https://api.airweave.ai';
 
     res.json({
@@ -105,7 +104,7 @@ app.get('/', (req, res) => {
         version: "2.1.0",
         transport: "Streamable HTTP",
         protocol: "MCP 2025-03-26",
-        collection: collection,
+        collection: defaultCollection + " (default, override with X-Collection-Readable-ID header)",
         endpoints: {
             health: "/health",
             mcp: "/mcp"
@@ -113,15 +112,20 @@ app.get('/', (req, res) => {
         authentication: {
             required: true,
             methods: [
-                "Authorization: Bearer <your-api-key> (recommended for OpenAI Agent Builder)",
-                "X-API-Key: <your-api-key>",
+                "X-API-Key: <your-api-key> (recommended)",
+                "Authorization: Bearer <your-api-key>",
                 "Query parameter: ?apiKey=your-key",
                 "Query parameter: ?api_key=your-key"
             ],
+            headers: {
+                "X-API-Key": "Your Airweave API key (required)",
+                "X-Collection-Readable-ID": "Collection readable ID to search (optional, falls back to default)"
+            },
             openai_agent_builder: {
                 url: "https://mcp.airweave.ai/mcp",
                 headers: {
-                    Authorization: "Bearer <your-airweave-api-key>"
+                    "X-API-Key": "<your-airweave-api-key>",
+                    "X-Collection-Readable-ID": "<your-collection-readable-id>"
                 }
             }
         }
@@ -139,8 +143,8 @@ const localSessionCache = new Map<string, SessionWithTransport>();
 async function createSessionObjects(sessionData: SessionData, apiKey: string): Promise<SessionWithTransport> {
     const { sessionId, collection, baseUrl } = sessionData;
 
-    // Create a new server with the API key
-    const server = createMcpServer(apiKey);
+    // Create a new server with the API key and collection
+    const server = createMcpServer(apiKey, collection);
 
     // Create a new transport for this session
     const transport = new StreamableHTTPServerTransport({
@@ -174,6 +178,11 @@ app.post('/mcp', async (req, res) => {
             req.query.apiKey ||
             req.query.api_key;
 
+        // Extract collection from custom header (supports multi-tenancy)
+        const collectionId = req.headers['x-collection-readable-id'] as string ||
+            process.env.AIRWEAVE_COLLECTION ||
+            'default';
+
         if (!apiKey) {
             res.status(401).json({
                 jsonrpc: '2.0',
@@ -191,7 +200,6 @@ app.post('/mcp', async (req, res) => {
         const sessionId = req.headers['mcp-session-id'] as string ||
             `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-        const collection = process.env.AIRWEAVE_COLLECTION || 'default';
         const baseUrl = process.env.AIRWEAVE_BASE_URL || 'https://api.airweave.ai';
 
         // Security: Extract client metadata for session binding
@@ -224,7 +232,7 @@ app.post('/mcp', async (req, res) => {
                 const newSessionData: SessionData = {
                     sessionId,
                     apiKeyHash: RedisSessionManager.hashApiKey(apiKey as string),
-                    collection,
+                    collection: collectionId,
                     baseUrl,
                     createdAt: Date.now(),
                     lastAccessedAt: Date.now(),
@@ -240,17 +248,11 @@ app.post('/mcp', async (req, res) => {
                 localSessionCache.set(sessionId, session);
             } else {
                 // Security: Validate session binding
+                // NOTE: Disabled for cloud platforms (OpenAI Agent Builder) that use load balancers
+                // Multiple IPs from the same client are expected in production
                 if (session.data.clientIP && session.data.clientIP !== clientIP) {
-                    console.warn(`[${new Date().toISOString()}] Session hijacking attempt detected: IP mismatch for ${sessionId}`);
-                    res.status(403).json({
-                        jsonrpc: '2.0',
-                        error: {
-                            code: -32003,
-                            message: 'Session validation failed: Client identity mismatch',
-                        },
-                        id: req.body.id || null
-                    });
-                    return;
+                    console.warn(`[${new Date().toISOString()}] IP changed for session ${sessionId} (load balancer): ${session.data.clientIP} -> ${clientIP}`);
+                    // Allow the request to proceed - cloud platforms use load balancers
                 }
             }
         } else {
@@ -279,17 +281,11 @@ app.post('/mcp', async (req, res) => {
                 }
 
                 // Security: Validate session binding
+                // NOTE: Disabled for cloud platforms (OpenAI Agent Builder) that use load balancers
+                // Multiple IPs from the same client are expected in production
                 if (sessionData.clientIP && sessionData.clientIP !== clientIP) {
-                    console.warn(`[${new Date().toISOString()}] Session hijacking attempt detected: IP mismatch for ${sessionId}`);
-                    res.status(403).json({
-                        jsonrpc: '2.0',
-                        error: {
-                            code: -32003,
-                            message: 'Session validation failed: Client identity mismatch',
-                        },
-                        id: req.body.id || null
-                    });
-                    return;
+                    console.warn(`[${new Date().toISOString()}] IP changed for session ${sessionId} (load balancer): ${sessionData.clientIP} -> ${clientIP}`);
+                    // Allow the request to proceed - cloud platforms use load balancers
                 }
 
                 // Recreate server and transport from session data
@@ -322,7 +318,7 @@ app.post('/mcp', async (req, res) => {
                 const newSessionData: SessionData = {
                     sessionId,
                     apiKeyHash: RedisSessionManager.hashApiKey(apiKey as string),
-                    collection,
+                    collection: collectionId,
                     baseUrl,
                     createdAt: Date.now(),
                     lastAccessedAt: Date.now(),

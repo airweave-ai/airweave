@@ -81,21 +81,24 @@ class TextualRepresentationBuilder:
         """
 
         async def build_metadata(entity: BaseEntity):
-            metadata = self._build_metadata_section(entity, source_name)
+            metadata = self.build_metadata_section(entity, source_name)
             if not metadata and not isinstance(entity, CodeFileEntity):
                 raise EntityProcessingError(f"Empty metadata for {entity.entity_id}")
             entity.textual_representation = metadata
 
         await asyncio.gather(*[build_metadata(e) for e in entities])
 
-    def _build_metadata_section(self, entity: BaseEntity, source_name: str) -> str:
+    def build_metadata_section(self, entity: BaseEntity, source_name: str) -> str:
         """Build metadata section for any entity type.
+
+        This method is public to allow federated search sources to build
+        textual representations without going through the full sync pipeline.
 
         For CodeFileEntity, returns empty string - code is self-documenting.
 
         Args:
             entity: Entity to build metadata for
-            source_name: Name of the source
+            source_name: Name of the source (e.g., "slack", "github")
 
         Returns:
             Markdown formatted metadata section
