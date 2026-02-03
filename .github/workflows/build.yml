@@ -65,6 +65,8 @@ jobs:
           platforms: ${{ matrix.platform.arch }}
           tags: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component.name }}:${{ steps.meta.outputs.version }}-${{ matrix.platform.suffix }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Disable provenance to create simple images instead of manifest lists with attestations
+          provenance: false
           cache-from: type=gha,scope=${{ matrix.component.name }}-${{ matrix.platform.suffix }}
           cache-to: type=gha,mode=max,scope=${{ matrix.component.name }}-${{ matrix.platform.suffix }}
 
