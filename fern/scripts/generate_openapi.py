@@ -114,6 +114,7 @@ def add_tag_display_names(openapi_schema: Dict[str, Any]) -> Dict[str, Any]:
         "collections": "Collections",
         "source-connections": "Source Connections",
         "sources": "Sources",
+        "events": "Events",
     }
 
     # Update existing tags with display names

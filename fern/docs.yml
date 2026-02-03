@@ -173,8 +173,11 @@ navigation:
     - GET /events/messages/{message_id}/attempts
     - GET /events/subscriptions
     - GET /events/subscriptions/{subscription_id}
+    - GET /events/subscriptions/{subscription_id}/secret
     - POST /events/subscriptions
     - PATCH /events/subscriptions/{subscription_id}
+    - POST /events/subscriptions/{subscription_id}/enable
+    - POST /events/subscriptions/{subscription_id}/recover
     - DELETE /events/subscriptions/{subscription_id}
   snippets:
     python: airweave-sdk

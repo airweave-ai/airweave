@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ChevronRight, Copy, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { StatusBadge, formatFullDate } from "./shared";
+import { StatusBadge, formatFullDate, formatRelativeTime, formatTime } from "./shared";
 import { useMessageAttempts, type Message } from "@/hooks/use-webhooks";
 
 /**
@@ -100,6 +100,17 @@ interface EventDetailProps {
   message: Message | null;
 }
 
+/**
+ * Get trigger type label
+ */
+function getTriggerTypeLabel(triggerType: number): string {
+  switch (triggerType) {
+    case 0: return "Scheduled";
+    case 1: return "Manual";
+    default: return "Unknown";
+  }
+}
+
 function DeliveryAttempts({
   messageId,
 }: {
@@ -128,11 +139,13 @@ function DeliveryAttempts({
     <div className="divide-y divide-border/30">
       {attempts.map((attempt) => {
         const isExpanded = expandedAttempt === attempt.id;
+        const isSuccess = attempt.responseStatusCode >= 200 && attempt.responseStatusCode < 300;
+
         return (
           <div key={attempt.id}>
             <button
               onClick={() => setExpandedAttempt(isExpanded ? null : attempt.id)}
-              className="w-full flex items-center gap-2 py-2 hover:bg-muted/30 transition-colors text-left group"
+              className="w-full flex items-center gap-2 py-2.5 hover:bg-muted/30 transition-colors text-left group"
             >
               <ChevronRight
                 className={cn(
@@ -141,16 +154,50 @@ function DeliveryAttempts({
                 )}
               />
               <StatusBadge statusCode={attempt.responseStatusCode} />
-              <span className="text-xs font-mono truncate flex-1 text-muted-foreground group-hover:text-foreground transition-colors">
+              <span className="text-[12px] font-mono truncate flex-1 text-muted-foreground group-hover:text-foreground transition-colors">
                 {attempt.url}
+              </span>
+              <span
+                className="text-[10px] text-muted-foreground/50 shrink-0"
+                title={formatFullDate(attempt.timestamp)}
+              >
+                {formatRelativeTime(attempt.timestamp)}
               </span>
             </button>
 
-            {isExpanded && attempt.response && (
-              <div className="pl-5 pb-2">
-                <pre className="text-[11px] font-mono text-muted-foreground/70 bg-muted/30 p-2 rounded overflow-auto max-h-20">
-                  {attempt.response}
-                </pre>
+            {isExpanded && (
+              <div className="ml-5 mb-3 p-3 bg-muted/20 rounded-md border border-border/30">
+                <div className="grid grid-cols-3 gap-4 text-[11px]">
+                  <div>
+                    <p className="text-muted-foreground/40 text-[10px] uppercase tracking-wide mb-0.5">Time</p>
+                    <p className="font-mono text-muted-foreground">{formatTime(attempt.timestamp)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground/40 text-[10px] uppercase tracking-wide mb-0.5">Trigger</p>
+                    <p className="text-muted-foreground">{getTriggerTypeLabel(attempt.triggerType)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground/40 text-[10px] uppercase tracking-wide mb-0.5">Attempt</p>
+                    <p className="font-mono text-muted-foreground truncate" title={attempt.id}>
+                      {attempt.id.slice(0, 16)}
+                    </p>
+                  </div>
+                </div>
+
+                {attempt.response && (
+                  <div className="mt-3 pt-3 border-t border-border/30">
+                    <p className="text-muted-foreground/40 text-[10px] uppercase tracking-wide mb-1.5">Response</p>
+                    <pre className="text-[11px] font-mono text-muted-foreground/80 bg-background/50 p-2.5 rounded border border-border/20 overflow-auto max-h-28">
+                      {attempt.response}
+                    </pre>
+                  </div>
+                )}
+
+                {!attempt.response && !isSuccess && (
+                  <div className="mt-3 pt-3 border-t border-border/30">
+                    <p className="text-[11px] text-muted-foreground/40 italic">No response body</p>
+                  </div>
+                )}
               </div>
             )}
           </div>

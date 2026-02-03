@@ -1,4 +1,6 @@
 export { EventsList } from "./EventsList";
 export { EventDetail } from "./EventDetail";
-export { WebhooksTab, CreateWebhookModal, EditWebhookModal } from "./WebhooksTab";
+export { WebhooksTab } from "./WebhooksTab";
+export { CreateWebhookModal } from "./CreateWebhookModal";
+export { EditWebhookModal } from "./EditWebhookModal";
 export * from "./shared";

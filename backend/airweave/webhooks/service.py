@@ -7,6 +7,7 @@ message delivery.
 
 import time
 import uuid
+from datetime import datetime
 from functools import wraps
 from typing import Callable, List, Optional, Tuple, TypeVar
 
@@ -23,9 +24,13 @@ from svix.api import (
     MessageListOptions,
     MessageOut,
     MessageStatus,
+    RecoverIn,
+    RecoverOut,
     SvixAsync,
     SvixOptions,
 )
+from svix.exceptions import HttpError as SvixHttpError
+from svix.exceptions import HTTPValidationError as SvixValidationError
 
 from airweave import schemas
 from airweave.core.config import settings
@@ -39,15 +44,79 @@ T = TypeVar("T")
 
 
 class WebhooksError:
-    """Error class for webhook operations."""
+    """Error class for webhook operations with HTTP status code mapping."""
 
-    def __init__(self, message: str) -> None:
-        """Initialize the error with a message.
+    def __init__(self, message: str, status_code: int = 500) -> None:
+        """Initialize the error with a message and HTTP status code.
 
         Args:
             message: The error message.
+            status_code: The HTTP status code (404, 422, 500, etc.).
         """
         self.message = message
+        self.status_code = status_code
+
+    @classmethod
+    def from_svix_error(cls, e: SvixHttpError, context: str = "") -> "WebhooksError":
+        """Create a WebhooksError from a Svix HttpError.
+
+        Maps Svix error codes to appropriate HTTP status codes:
+        - not_found -> 404
+        - validation/validation_error -> 422
+        - other -> 500
+
+        Args:
+            e: The Svix HttpError.
+            context: Optional context string for the error message.
+
+        Returns:
+            WebhooksError with appropriate status code.
+        """
+        prefix = f"{context}: " if context else ""
+        message = f"{prefix}{e.detail}"
+
+        # Map Svix error codes to HTTP status codes
+        if e.code == "not_found":
+            return cls(message, 404)
+        elif e.code in ("validation", "validation_error"):
+            return cls(message, 422)
+        else:
+            # Use Svix's status_code if available, otherwise 500
+            return cls(message, e.status_code if e.status_code else 500)
+
+    @classmethod
+    def from_validation_error(cls, e: SvixValidationError, context: str = "") -> "WebhooksError":
+        """Create a WebhooksError from a Svix HTTPValidationError.
+
+        Args:
+            e: The Svix HTTPValidationError.
+            context: Optional context string for the error message.
+
+        Returns:
+            WebhooksError with 422 status code.
+        """
+        prefix = f"{context}: " if context else ""
+        # Extract message from validation error details
+        messages = [err.msg for err in e.detail] if e.detail else ["Validation error"]
+        return cls(f"{prefix}{'; '.join(messages)}", 422)
+
+    @classmethod
+    def from_exception(cls, e: Exception, context: str = "") -> "WebhooksError":
+        """Create a WebhooksError from any exception.
+
+        Args:
+            e: The exception.
+            context: Optional context string for the error message.
+
+        Returns:
+            WebhooksError with appropriate status code.
+        """
+        if isinstance(e, SvixHttpError):
+            return cls.from_svix_error(e, context)
+        if isinstance(e, SvixValidationError):
+            return cls.from_validation_error(e, context)
+        prefix = f"{context}: " if context else ""
+        return cls(f"{prefix}{str(e)}", 500)
 
 
 # 10 years in seconds
@@ -169,7 +238,7 @@ class WebhooksService:
             return endpoint, None
         except Exception as e:
             self.logger.error(f"Failed to create endpoint: {getattr(e, 'detail', e)}")
-            return None, WebhooksError(f"Failed to create endpoint: {getattr(e, 'detail', e)}")
+            return None, WebhooksError.from_exception(e, "Failed to create endpoint")
 
     @auto_create_org_on_not_found
     async def _create_endpoint_internal(
@@ -205,7 +274,7 @@ class WebhooksService:
             return None
         except Exception as e:
             self.logger.error(f"Failed to delete endpoint {endpoint_id}: {getattr(e, 'detail', e)}")
-            return WebhooksError(f"Failed to delete endpoint: {getattr(e, 'detail', e)}")
+            return WebhooksError.from_exception(e, "Failed to delete endpoint")
 
     async def patch_endpoint(
         self,
@@ -213,6 +282,7 @@ class WebhooksService:
         endpoint_id: str,
         url: str | None = None,
         event_types: List[EventType] | None = None,
+        disabled: bool | None = None,
     ) -> Tuple[EndpointOut | None, WebhooksError | None]:
         """Update a webhook endpoint.
 
@@ -221,23 +291,31 @@ class WebhooksService:
             endpoint_id: The ID of the endpoint to update.
             url: Optional new URL for the webhook.
             event_types: Optional new list of event types.
+            disabled: Optional flag to enable/disable the endpoint.
 
         Returns:
             Tuple of (endpoint, error).
         """
         try:
+            # Only include fields that are explicitly set (not None)
+            # to avoid Svix validation errors for null values
+            patch_data = {}
+            if url is not None:
+                patch_data["url"] = url
+            if event_types is not None:
+                patch_data["channels"] = event_types
+            if disabled is not None:
+                patch_data["disabled"] = disabled
+
             endpoint = await self.svix.endpoint.patch(
                 organisation.id,
                 endpoint_id,
-                EndpointPatch(
-                    url=url,
-                    channels=event_types,
-                ),
+                EndpointPatch(**patch_data),
             )
             return endpoint, None
         except Exception as e:
             self.logger.error(f"Failed to patch endpoint {endpoint_id}: {getattr(e, 'detail', e)}")
-            return None, WebhooksError(f"Failed to patch endpoint: {getattr(e, 'detail', e)}")
+            return None, WebhooksError.from_exception(e, "Failed to patch endpoint")
 
     async def get_endpoints(
         self, organisation: schemas.Organization
@@ -255,7 +333,7 @@ class WebhooksService:
             return endpoints, None
         except Exception as e:
             self.logger.error(f"Failed to get endpoints: {getattr(e, 'detail', e)}")
-            return None, WebhooksError(f"Failed to get endpoints: {getattr(e, 'detail', e)}")
+            return None, WebhooksError.from_exception(e, "Failed to get endpoints")
 
     @auto_create_org_on_not_found
     async def _get_endpoints_internal(
@@ -280,7 +358,7 @@ class WebhooksService:
             return endpoint, None
         except Exception as e:
             self.logger.error(f"Failed to get endpoint {endpoint_id}: {getattr(e, 'detail', e)}")
-            return None, WebhooksError(f"Failed to get endpoint: {getattr(e, 'detail', e)}")
+            return None, WebhooksError.from_exception(e, "Failed to get endpoint")
 
     @auto_create_org_on_not_found
     async def _get_endpoint_internal(
@@ -307,13 +385,50 @@ class WebhooksService:
             self.logger.error(
                 f"Failed to get endpoint secret {endpoint_id}: {getattr(e, 'detail', e)}"
             )
-            return None, WebhooksError(f"Failed to get endpoint secret: {getattr(e, 'detail', e)}")
+            return None, WebhooksError.from_exception(e, "Failed to get endpoint secret")
 
     @auto_create_org_on_not_found
     async def _get_endpoint_secret_internal(
         self, organisation: schemas.Organization, endpoint_id: str
     ) -> EndpointSecretOut:
         return await self.svix.endpoint.get_secret(str(organisation.id), endpoint_id)
+
+    async def recover_failed_messages(
+        self,
+        organisation: schemas.Organization,
+        endpoint_id: str,
+        since: datetime,
+        until: datetime | None = None,
+    ) -> Tuple[RecoverOut | None, WebhooksError | None]:
+        """Recover (retry) all failed messages for an endpoint since a given time.
+
+        This is useful after re-enabling a disabled endpoint to retry all the
+        messages that failed while it was disabled.
+
+        Args:
+            organisation: The organization owning the endpoint.
+            endpoint_id: The ID of the endpoint.
+            since: Recover messages that failed after this time.
+            until: Optional upper bound for message recovery.
+
+        Returns:
+            Tuple of (recovery task info, error).
+        """
+        try:
+            result = await self.svix.endpoint.recover(
+                str(organisation.id),
+                endpoint_id,
+                RecoverIn(
+                    since=since,
+                    until=until,
+                ),
+            )
+            return result, None
+        except Exception as e:
+            self.logger.error(
+                f"Failed to recover messages for endpoint {endpoint_id}: {getattr(e, 'detail', e)}"
+            )
+            return None, WebhooksError.from_exception(e, "Failed to recover failed messages")
 
     async def publish_event_sync(
         self,
@@ -391,7 +506,7 @@ class WebhooksService:
             return messages, None
         except Exception as e:
             self.logger.error(f"Failed to get messages: {getattr(e, 'detail', e)}")
-            return None, WebhooksError(f"Failed to get messages: {getattr(e, 'detail', e)}")
+            return None, WebhooksError.from_exception(e, "Failed to get messages")
 
     async def get_message(
         self, organisation: schemas.Organization, message_id: str
@@ -410,7 +525,7 @@ class WebhooksService:
             return message, None
         except Exception as e:
             self.logger.error(f"Failed to get message {message_id}: {getattr(e, 'detail', e)}")
-            return None, WebhooksError(f"Failed to get message: {getattr(e, 'detail', e)}")
+            return None, WebhooksError.from_exception(e, "Failed to get message")
 
     @auto_create_org_on_not_found
     async def _get_message_internal(
@@ -452,7 +567,7 @@ class WebhooksService:
             self.logger.error(
                 f"Failed to get message attempts for {message_id}: {getattr(e, 'detail', e)}"
             )
-            return None, WebhooksError(f"Failed to get message attempts: {getattr(e, 'detail', e)}")
+            return None, WebhooksError.from_exception(e, "Failed to get message attempts")
 
     async def get_message_attempts_by_endpoint(
         self,
@@ -488,8 +603,8 @@ class WebhooksService:
             self.logger.error(
                 f"Failed to get message attempts for {endpoint_id}: {getattr(e, 'detail', e)}"
             )
-            return None, WebhooksError(
-                f"Failed to get message attempts by endpoint: {getattr(e, 'detail', e)}"
+            return None, WebhooksError.from_exception(
+                e, "Failed to get message attempts by endpoint"
             )
 
     async def get_all_message_attempts(
@@ -539,9 +654,7 @@ class WebhooksService:
             return all_attempts, None
         except Exception as e:
             self.logger.error(f"Failed to get all message attempts: {getattr(e, 'detail', e)}")
-            return None, WebhooksError(
-                f"Failed to get all message attempts: {getattr(e, 'detail', e)}"
-            )
+            return None, WebhooksError.from_exception(e, "Failed to get all message attempts")
 
 
 service = WebhooksService()

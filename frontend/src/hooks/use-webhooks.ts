@@ -67,6 +67,24 @@ export interface CreateSubscriptionRequest {
 export interface UpdateSubscriptionRequest {
   url?: string;
   event_types?: string[];
+  disabled?: boolean;
+}
+
+/**
+ * Recover messages request type
+ */
+export interface RecoverMessagesRequest {
+  since: string;
+  until?: string;
+}
+
+/**
+ * Recover messages response type
+ */
+export interface RecoverOut {
+  id: string;
+  status: string;
+  task: string;
 }
 
 /**
@@ -186,6 +204,41 @@ async function deleteSubscription(id: string): Promise<void> {
   if (!response.ok) {
     throw new Error(`Failed to delete subscription: ${response.status}`);
   }
+}
+
+/**
+ * Recover failed messages for a subscription
+ */
+async function recoverFailedMessages(
+  id: string,
+  data: RecoverMessagesRequest
+): Promise<RecoverOut> {
+  const response = await apiClient.post(`/events/subscriptions/${id}/recover`, data);
+  if (!response.ok) {
+    throw new Error(`Failed to recover messages: ${response.status}`);
+  }
+  return response.json();
+}
+
+/**
+ * Enable request type
+ */
+export interface EnableEndpointRequest {
+  recover_since?: string;
+}
+
+/**
+ * Enable an endpoint with optional message recovery
+ */
+async function enableEndpoint(
+  id: string,
+  data?: EnableEndpointRequest
+): Promise<Subscription> {
+  const response = await apiClient.post(`/events/subscriptions/${id}/enable`, data ?? {});
+  if (!response.ok) {
+    throw new Error(`Failed to enable endpoint: ${response.status}`);
+  }
+  return response.json();
 }
 
 // ============ HOOKS ============
@@ -312,6 +365,52 @@ export function useDeleteSubscriptions() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: webhookKeys.subscriptions() });
+    },
+  });
+}
+
+/**
+ * Hook to recover failed messages for a subscription
+ */
+export function useRecoverFailedMessages() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: RecoverMessagesRequest }) =>
+      recoverFailedMessages(id, data),
+    onSuccess: (_, { id }) => {
+      queryClient.invalidateQueries({ queryKey: webhookKeys.subscription(id) });
+    },
+  });
+}
+
+/**
+ * Hook to enable a disabled endpoint with optional message recovery
+ */
+export function useEnableEndpoint() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, recoverSince }: { id: string; recoverSince?: string }) =>
+      enableEndpoint(id, recoverSince ? { recover_since: recoverSince } : undefined),
+    onSuccess: (_, { id }) => {
+      queryClient.invalidateQueries({ queryKey: webhookKeys.subscriptions() });
+      queryClient.invalidateQueries({ queryKey: webhookKeys.subscription(id) });
+    },
+  });
+}
+
+/**
+ * Hook to disable an endpoint
+ */
+export function useDisableEndpoint() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => updateSubscription(id, { disabled: true }),
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: webhookKeys.subscriptions() });
+      queryClient.invalidateQueries({ queryKey: webhookKeys.subscription(id) });
     },
   });
 }
