@@ -48,14 +48,15 @@ class SpotlightServices:
         """Create services based on config.
 
         Args:
-            ctx: API context for organization scoping (used by database).
+            ctx: API context for organization scoping and logging.
 
         Returns:
             SpotlightServices instance with all dependencies wired.
         """
         db = await cls._create_db(ctx)
         tokenizer = cls._create_tokenizer()
-        llm = cls._create_llm()
+        # LLM needs the tokenizer for accurate token counting in rate limiting
+        llm = cls._create_llm(ctx, tokenizer)
 
         return cls(db=db, tokenizer=tokenizer, llm=llm)
 
@@ -113,10 +114,17 @@ class SpotlightServices:
         raise ValueError(f"Unknown tokenizer type: {model_spec.tokenizer_type}")
 
     @staticmethod
-    def _create_llm() -> SpotlightLLMInterface:
+    def _create_llm(
+        ctx: ApiContext,
+        tokenizer: SpotlightTokenizerInterface,
+    ) -> SpotlightLLMInterface:
         """Create LLM based on config.
 
         Looks up the model spec from the registry.
+
+        Args:
+            ctx: API context for logging.
+            tokenizer: Tokenizer for accurate token counting in rate limiting.
 
         Returns:
             LLM interface implementation.
@@ -129,7 +137,11 @@ class SpotlightServices:
         if config.LLM_PROVIDER == LLMProvider.CEREBRAS:
             from airweave.search.spotlight.external.llm.cerebras import CerebrasLLM
 
-            return CerebrasLLM(model_spec)
+            return CerebrasLLM(
+                model_spec=model_spec,
+                tokenizer=tokenizer,
+                logger=ctx.logger,
+            )
 
         raise ValueError(f"Unknown LLM provider: {config.LLM_PROVIDER}")
 

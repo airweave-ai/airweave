@@ -25,11 +25,11 @@ class SpotlightConfig:
     """Spotlight module configuration."""
 
     # Database
-    DATABASE_IMPL: DatabaseImpl = DatabaseImpl.POSTGRESQL
+    DATABASE_IMPL = DatabaseImpl.POSTGRESQL
 
     # LLM
-    LLM_PROVIDER: LLMProvider = LLMProvider.CEREBRAS
-    LLM_MODEL: ModelName = ModelName.GPT_OSS_120B
+    LLM_PROVIDER = LLMProvider.CEREBRAS
+    LLM_MODEL = ModelName.GPT_OSS_120B
 
 
 config = SpotlightConfig()
