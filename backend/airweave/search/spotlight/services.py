@@ -55,7 +55,6 @@ class SpotlightServices:
         """
         db = await cls._create_db(ctx)
         tokenizer = cls._create_tokenizer()
-        # LLM needs the tokenizer for accurate token counting in rate limiting
         llm = cls._create_llm(ctx, tokenizer)
 
         return cls(db=db, tokenizer=tokenizer, llm=llm)
