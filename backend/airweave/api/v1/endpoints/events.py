@@ -22,17 +22,8 @@ router = APIRouter()
 
 
 def _raise_for_error(error: WebhooksError | None) -> None:
-    """Raise appropriate HTTPException based on WebhooksError status code.
-
-    Args:
-        error: The WebhooksError to handle, or None.
-
-    Raises:
-        HTTPException: With the error's status code and message.
-    """
-    if error is None:
-        return
-    raise HTTPException(status_code=error.status_code, detail=error.message)
+    if error:
+        raise HTTPException(status_code=error.status_code, detail=error.message)
 
 
 class SubscriptionWithAttemptsOut(BaseModel):
