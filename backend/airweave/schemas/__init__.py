@@ -50,20 +50,22 @@ from .entity_definition import (
     EntityDefinitionUpdate,
     EntityType,
 )
+from .errors import (
+    ConflictErrorResponse,
+    NotFoundErrorResponse,
+    RateLimitErrorResponse,
+    ValidationErrorDetail,
+    ValidationErrorResponse,
+)
 from .events import (
     # Request schemas
     CreateSubscriptionRequest,
     # Response schemas
     DeliveryAttempt,
     EventMessage,
-    # Error response schemas
-    NotFoundErrorResponse,
     PatchSubscriptionRequest,
-    RateLimitErrorResponse,
     RecoverMessagesRequest,
     RecoveryTask,
-    ValidationErrorDetail,
-    ValidationErrorResponse,
     WebhookSubscription,
 )
 from .integration_credential import (

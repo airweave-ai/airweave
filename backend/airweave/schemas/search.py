@@ -86,9 +86,17 @@ class AirweaveTemporalConfig(BaseModel):
 
 
 class SearchRequest(BaseModel):
-    """Search request schema."""
+    """Search request for querying a collection.
 
-    query: str = Field(..., description="The search query text")
+    Provides fine-grained control over the search pipeline including retrieval strategy,
+    filtering, and AI-powered features like query expansion and answer generation.
+    """
+
+    query: str = Field(
+        ...,
+        description="The search query text (required, max 2048 tokens)",
+        json_schema_extra={"example": "How do I reset my password?"},
+    )
 
     @field_validator("query")
     @classmethod
@@ -127,13 +135,30 @@ class SearchRequest(BaseModel):
             return v
 
     retrieval_strategy: Optional[RetrievalStrategy] = Field(
-        default=None, description="The retrieval strategy to use"
+        default=None,
+        description=(
+            "Search strategy: 'hybrid' (default), 'neural' (semantic only), "
+            "or 'keyword' (BM25 only)"
+        ),
+        json_schema_extra={"example": "hybrid"},
     )
     filter: Optional[AirweaveFilter] = Field(
-        default=None, description="Filter for metadata-based filtering"
+        default=None,
+        description="Structured filter for metadata-based filtering (Qdrant filter format)",
+        json_schema_extra={
+            "example": {"must": [{"key": "source_name", "match": {"value": "GitHub"}}]}
+        },
     )
-    offset: Optional[int] = Field(default=None, description="Number of results to skip")
-    limit: Optional[int] = Field(default=None, description="Maximum number of results to return")
+    offset: Optional[int] = Field(
+        default=None,
+        description="Number of results to skip for pagination (default: 0)",
+        json_schema_extra={"example": 0},
+    )
+    limit: Optional[int] = Field(
+        default=None,
+        description="Maximum number of results to return (default: 1000)",
+        json_schema_extra={"example": 10},
+    )
 
     temporal_relevance: Optional[float] = Field(
         default=None,
@@ -142,6 +167,7 @@ class SearchRequest(BaseModel):
             "0 = no recency effect, 1 = only recent items matter. "
             "NOTE: This feature is currently under construction and will be ignored."
         ),
+        json_schema_extra={"example": 0.3},
     )
 
     @field_validator("temporal_relevance")
@@ -160,21 +186,68 @@ class SearchRequest(BaseModel):
         return v
 
     expand_query: Optional[bool] = Field(
-        default=None, description="Generate a few query variations to improve recall"
+        default=None,
+        description="Generate query variations to improve recall (default: true)",
+        json_schema_extra={"example": True},
     )
     interpret_filters: Optional[bool] = Field(
-        default=None, description="Extract structured filters from natural-language query"
+        default=None,
+        description=(
+            "Extract structured filters from natural language "
+            "(e.g., 'from last week' becomes a date filter)"
+        ),
+        json_schema_extra={"example": False},
     )
     rerank: Optional[bool] = Field(
         default=None,
-        description=(
-            "Reorder the top candidate results for improved relevance. "
-            "Max number of results that can be reranked is capped to around 1000."
-        ),
+        description="LLM-based reranking for improved relevance (default: true)",
+        json_schema_extra={"example": True},
     )
     generate_answer: Optional[bool] = Field(
-        default=None, description="Generate a natural-language answer to the query"
+        default=None,
+        description="Generate an AI answer based on search results (default: true)",
+        json_schema_extra={"example": True},
     )
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "summary": "Simple search",
+                    "value": {"query": "How do I reset my password?"},
+                },
+                {
+                    "summary": "Search with filters",
+                    "value": {
+                        "query": "deployment errors",
+                        "filter": {"must": [{"key": "source_name", "match": {"value": "GitHub"}}]},
+                        "limit": 20,
+                    },
+                },
+                {
+                    "summary": "Fast search (no AI features)",
+                    "value": {
+                        "query": "kubernetes config",
+                        "expand_query": False,
+                        "rerank": False,
+                        "generate_answer": False,
+                    },
+                },
+                {
+                    "summary": "Full-featured search",
+                    "value": {
+                        "query": "What are best practices for error handling?",
+                        "retrieval_strategy": "hybrid",
+                        "expand_query": True,
+                        "interpret_filters": True,
+                        "rerank": True,
+                        "generate_answer": True,
+                        "limit": 10,
+                    },
+                },
+            ]
+        }
+    }
 
 
 class SearchDefaults(BaseModel):
@@ -204,17 +277,60 @@ class SearchDefaults(BaseModel):
 
 
 class SearchResponse(BaseModel):
-    """Comprehensive search response containing results and metadata."""
+    """Search response containing results and optional AI-generated completion.
+
+    Each result includes the matched entity's content, metadata, relevance score,
+    and source information.
+    """
 
     results: list[dict] = Field(
+        ...,
         description=(
             "Array of search result objects containing the found documents, records, "
-            "or data entities."
-        )
-    )
-    completion: Optional[str] = Field(
-        description=(
-            "This provides natural language answers to your query based on the content found "
-            "across your connected data sources when generate_answer is true."
+            "or data entities. Each result includes entity_id, source_name, md_content, "
+            "metadata, score, breadcrumbs, and url."
         ),
     )
+    completion: Optional[str] = Field(
+        default=None,
+        description=(
+            "AI-generated natural language answer to your query based on the search results. "
+            "Only included when generate_answer is true in the request."
+        ),
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "results": [
+                    {
+                        "entity_id": "abc123-def456-789012",
+                        "source_name": "GitHub",
+                        "md_content": "# Password Reset Guide\n\nTo reset your password...",
+                        "metadata": {
+                            "file_path": "docs/auth/password-reset.md",
+                            "last_modified": "2024-03-15T09:30:00Z",
+                        },
+                        "score": 0.92,
+                        "breadcrumbs": ["docs", "auth", "password-reset.md"],
+                        "url": "https://github.com/company/docs/blob/main/docs/auth/password-reset.md",
+                    },
+                    {
+                        "entity_id": "xyz789-abc123-456789",
+                        "source_name": "Notion",
+                        "md_content": "## User Authentication\n\nPassword reset is available...",
+                        "metadata": {"page_id": "page-123", "workspace": "Engineering"},
+                        "score": 0.85,
+                        "breadcrumbs": ["Engineering", "User Authentication"],
+                        "url": "https://notion.so/page-123",
+                    },
+                ],
+                "completion": (
+                    "To reset your password, navigate to the login page and click "
+                    "'Forgot Password'. You'll receive an email with a reset link "
+                    "that expires in 24 hours. For security, ensure you're using "
+                    "a strong password with at least 12 characters."
+                ),
+            }
+        }
+    }

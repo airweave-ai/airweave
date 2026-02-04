@@ -7,20 +7,18 @@ INCLUDED_ENDPOINTS = {
     "/sources/{short_name}/": {"get": True},
     # Collections
     "/collections/": {"get": True, "post": True},
-    "/collections/{readable_id}/": {"get": True, "put": True, "delete": True},
+    "/collections/{readable_id}/": {"get": True, "patch": True, "delete": True},
     "/collections/{readable_id}/search/": {"get": True, "post": True},
     "/collections/{readable_id}/refresh_all/": {"post": True},
     # Source Connections
     "/source-connections/": {"get": True, "post": True},
-    "/source-connections/nested/": {"post": True},  # POC nested auth structure
     "/source-connections/{source_connection_id}/": {
         "get": True,
-        "patch": True,  # Update endpoint uses PATCH, not PUT
+        "patch": True,
         "delete": True,
     },
     "/source-connections/{source_connection_id}/run/": {"post": True},
     "/source-connections/{source_connection_id}/jobs/": {"get": True},
-    "/source-connections/{source_connection_id}/jobs/{job_id}/": {"get": True},
     "/source-connections/{source_connection_id}/jobs/{job_id}/cancel/": {"post": True},
     # Events
     "/events/messages/": {"get": True},

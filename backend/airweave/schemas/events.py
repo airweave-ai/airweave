@@ -14,105 +14,23 @@ from typing import List, Optional
 from pydantic import BaseModel, Field, HttpUrl, field_validator
 from svix.api import EndpointOut, MessageAttemptOut, MessageOut
 
+# Import shared error response models
+from airweave.schemas.errors import (
+    NotFoundErrorResponse,
+    RateLimitErrorResponse,
+    ValidationErrorDetail,
+    ValidationErrorResponse,
+)
 from airweave.webhooks.constants.event_types import EventType
 from airweave.webhooks.schemas import SyncEventPayload
 
-# =============================================================================
-# Error Response Models
-# =============================================================================
-
-
-class ValidationErrorDetail(BaseModel):
-    """Details about a validation error for a specific field."""
-
-    loc: List[str] = Field(
-        ...,
-        description="Location of the error (e.g., ['body', 'url'])",
-        json_schema_extra={"example": ["body", "url"]},
-    )
-    msg: str = Field(
-        ...,
-        description="Human-readable error message",
-        json_schema_extra={"example": "Invalid URL format"},
-    )
-    type: str = Field(
-        ...,
-        description="Error type identifier",
-        json_schema_extra={"example": "value_error.url"},
-    )
-
-
-class ValidationErrorResponse(BaseModel):
-    """Response returned when request validation fails (HTTP 422).
-
-    This occurs when the request body contains invalid data, such as
-    malformed URLs, invalid event types, or missing required fields.
-    """
-
-    detail: List[ValidationErrorDetail] = Field(
-        ...,
-        description="List of validation errors",
-    )
-
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "detail": [
-                    {
-                        "loc": ["body", "url"],
-                        "msg": "Invalid URL: scheme must be http or https",
-                        "type": "value_error.url.scheme",
-                    },
-                    {
-                        "loc": ["body", "event_types"],
-                        "msg": "event_types cannot be empty",
-                        "type": "value_error",
-                    },
-                ]
-            }
-        }
-    }
-
-
-class RateLimitErrorResponse(BaseModel):
-    """Response returned when rate limit is exceeded (HTTP 429).
-
-    The API enforces rate limits to ensure fair usage. When exceeded,
-    wait for the duration specified in the Retry-After header before retrying.
-    """
-
-    detail: str = Field(
-        ...,
-        description="Error message explaining the rate limit",
-        json_schema_extra={"example": "Rate limit exceeded. Please retry after 60 seconds."},
-    )
-
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "detail": "Rate limit exceeded. Please retry after 60 seconds.",
-            }
-        }
-    }
-
-
-class NotFoundErrorResponse(BaseModel):
-    """Response returned when a resource is not found (HTTP 404)."""
-
-    detail: str = Field(
-        ...,
-        description="Error message describing what was not found",
-        json_schema_extra={"example": "Subscription not found"},
-    )
-
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "detail": "Subscription not found",
-            }
-        }
-    }
-
+# Re-export for backwards compatibility
+__all__ = [
+    "NotFoundErrorResponse",
+    "RateLimitErrorResponse",
+    "ValidationErrorDetail",
+    "ValidationErrorResponse",
+]
 
 # =============================================================================
 # Unified Response Models (snake_case)

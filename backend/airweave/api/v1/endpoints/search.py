@@ -1,8 +1,14 @@
-"""Collections search endpoints.
+"""Search API endpoints for querying data within collections.
 
 These endpoints are mounted under the `/collections` prefix in `api/v1/api.py`,
-so paths remain `/collections/{readable_id}/search` et al., while being defined
-in this dedicated module.
+enabling powerful semantic and hybrid search across synced data sources.
+
+Key features:
+- Hybrid search combining neural (semantic) and keyword (BM25) matching
+- Optional query expansion for improved recall
+- Filter extraction from natural language queries
+- AI-powered answer generation from search results
+- Streaming support for real-time results
 """
 
 import asyncio
@@ -21,6 +27,11 @@ from airweave.core.guard_rail_service import GuardRailService
 from airweave.core.pubsub import core_pubsub
 from airweave.core.shared_models import ActionType
 from airweave.db.session import AsyncSessionLocal
+from airweave.schemas.errors import (
+    NotFoundErrorResponse,
+    RateLimitErrorResponse,
+    ValidationErrorResponse,
+)
 from airweave.schemas.search import SearchRequest, SearchResponse
 from airweave.schemas.search_legacy import LegacySearchRequest, LegacySearchResponse, ResponseType
 from airweave.search.legacy_adapter import (
@@ -36,15 +47,33 @@ router = TrailingSlashRouter()
     "/{readable_id}/search",
     response_model=LegacySearchResponse,
     deprecated=True,
+    summary="Search Collection (Legacy)",
+    description="""**DEPRECATED**: Use POST /collections/{readable_id}/search instead.
+
+This legacy GET endpoint provides basic search functionality via query parameters.
+Migrate to the POST endpoint for access to advanced features like:
+- Structured filters
+- Query expansion
+- Reranking
+- Streaming responses""",
+    responses={
+        200: {"model": LegacySearchResponse, "description": "Search results"},
+        404: {"model": NotFoundErrorResponse, "description": "Collection Not Found"},
+        422: {"model": ValidationErrorResponse, "description": "Validation Error"},
+        429: {"model": RateLimitErrorResponse, "description": "Rate Limit Exceeded"},
+    },
 )
 async def search_get_legacy(
     response: Response,
     readable_id: str = Path(
-        ..., description="The unique readable identifier of the collection to search"
+        ...,
+        description="The unique readable identifier of the collection to search",
+        json_schema_extra={"example": "customer-support-tickets-x7k9m"},
     ),
     query: str = Query(
         ...,
         description="The search query text to find relevant documents and data",
+        json_schema_extra={"example": "How do I reset my password?"},
     ),
     response_type: ResponseType = Query(
         ResponseType.RAW,
@@ -52,24 +81,33 @@ async def search_get_legacy(
             "Format of the response: 'raw' returns search results, "
             "'completion' returns AI-generated answers"
         ),
+        json_schema_extra={"example": "raw"},
     ),
-    limit: int = Query(100, ge=1, le=1000, description="Maximum number of results to return"),
-    offset: int = Query(0, ge=0, description="Number of results to skip for pagination"),
+    limit: int = Query(
+        100,
+        ge=1,
+        le=1000,
+        description="Maximum number of results to return",
+        json_schema_extra={"example": 10},
+    ),
+    offset: int = Query(
+        0,
+        ge=0,
+        description="Number of results to skip for pagination",
+        json_schema_extra={"example": 0},
+    ),
     recency_bias: float | None = Query(
         None,
         ge=0.0,
         le=1.0,
-        description="How much to weigh recency vs similarity (0..1)",
+        description="How much to weigh recency vs similarity (0=similarity only, 1=recency only)",
+        json_schema_extra={"example": 0.3},
     ),
     db: AsyncSession = Depends(deps.get_db),
     guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
     ctx: ApiContext = Depends(deps.get_context),
 ) -> LegacySearchResponse:
-    """Legacy GET search endpoint for backwards compatibility.
-
-    DEPRECATED: This endpoint uses the old schema. Please migrate to POST with the new
-    SearchRequest format for access to all features.
-    """
+    """Legacy GET search endpoint for backwards compatibility."""
     await guard_rail.is_allowed(ActionType.QUERIES)
 
     # Add deprecation warning headers
@@ -114,23 +152,44 @@ async def search_get_legacy(
 @router.post(
     "/{readable_id}/search",
     response_model=Union[SearchResponse, LegacySearchResponse],
+    summary="Search Collection",
+    description="""Search your collection using semantic and hybrid search.
+
+This is the primary search endpoint providing powerful AI-powered search capabilities:
+
+**Search Strategies:**
+- **hybrid** (default): Combines neural (semantic) and keyword (BM25) matching
+- **neural**: Pure semantic search using embeddings
+- **keyword**: Traditional keyword-based BM25 search
+
+**Features:**
+- **Query expansion**: Generate query variations to improve recall
+- **Filter interpretation**: Extract structured filters from natural language
+- **Reranking**: LLM-based reranking for improved relevance
+- **Answer generation**: AI-generated answers based on search results
+
+**Note**: Accepts both new SearchRequest and legacy LegacySearchRequest formats
+for backwards compatibility.""",
+    responses={
+        200: {"model": SearchResponse, "description": "Search results with optional AI completion"},
+        404: {"model": NotFoundErrorResponse, "description": "Collection Not Found"},
+        422: {"model": ValidationErrorResponse, "description": "Validation Error"},
+        429: {"model": RateLimitErrorResponse, "description": "Rate Limit Exceeded"},
+    },
 )
 async def search(
     http_response: Response,
     readable_id: str = Path(
         ...,
-        description="The unique readable identifier of the collection",
+        description="The unique readable identifier of the collection to search",
+        json_schema_extra={"example": "customer-support-tickets-x7k9m"},
     ),
     search_request: Union[SearchRequest, LegacySearchRequest] = ...,
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
     guard_rail: GuardRailService = Depends(deps.get_guard_rail_service),
 ) -> Union[SearchResponse, LegacySearchResponse]:
-    """Search your collection.
-
-    Accepts both new SearchRequest and legacy LegacySearchRequest formats
-    for backwards compatibility.
-    """
+    """Search your collection with AI-powered semantic search."""
     await guard_rail.is_allowed(ActionType.QUERIES)
 
     ctx.logger.info(f"Starting search for collection '{readable_id}'")

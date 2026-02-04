@@ -11,8 +11,8 @@
         "tags": [
           "sources"
         ],
-        "summary": "List",
-        "description": "List all available data source connectors.\n\n<br/><br/>\nReturns the complete catalog of source types that Airweave can connect to.",
+        "summary": "List Sources",
+        "description": "Retrieve all available data source connectors.\n\nReturns the complete catalog of source types that Airweave can connect to,\nincluding their authentication methods, configuration requirements, and\nsupported features. Use this endpoint to discover which integrations are\navailable for your organization.\n\nEach source includes:\n- **Authentication methods**: How to connect (OAuth, API key, etc.)\n- **Configuration schemas**: What settings are required or optional\n- **Supported auth providers**: Pre-configured OAuth providers available",
         "operationId": "list_sources_get",
         "parameters": [],
         "responses": {
@@ -73,6 +73,16 @@
               }
             }
           },
+          "429": {
+            "description": "Rate Limit Exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitErrorResponse"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -96,8 +106,8 @@
         "tags": [
           "sources"
         ],
-        "summary": "Get",
-        "description": "Get detailed information about a specific data source connector.",
+        "summary": "Get Source",
+        "description": "Retrieve detailed information about a specific data source connector.\n\nReturns the complete configuration for a source type, including:\n\n- **Authentication fields**: Schema for credentials required to connect\n- **Configuration fields**: Schema for optional settings and customization\n- **Supported auth providers**: Pre-configured OAuth providers available for this source\n\nUse this endpoint before creating a source connection to understand what\nauthentication and configuration values are required.",
         "operationId": "get_sources__short_name__get",
         "parameters": [
           {
@@ -107,6 +117,7 @@
             "schema": {
               "type": "string",
               "description": "Technical identifier of the source type (e.g., 'github', 'stripe', 'slack')",
+              "example": "github",
               "title": "Short Name"
             },
             "description": "Technical identifier of the source type (e.g., 'github', 'stripe', 'slack')"
@@ -164,6 +175,26 @@
               }
             }
           },
+          "404": {
+            "description": "Source Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate Limit Exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitErrorResponse"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -187,8 +218,8 @@
         "tags": [
           "collections"
         ],
-        "summary": "List",
-        "description": "List all collections that belong to your organization with optional search filtering.\n\nCollections are always sorted by creation date (newest first).",
+        "summary": "List Collections",
+        "description": "Retrieve all collections belonging to your organization.\n\nCollections are containers that group related data from one or more source\nconnections, enabling unified search across multiple data sources.\n\nResults are sorted by creation date (newest first) and support pagination\nand text search filtering.",
         "operationId": "list_collections_get",
         "parameters": [
           {
@@ -197,7 +228,9 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "minimum": 0,
               "description": "Number of collections to skip for pagination",
+              "example": 0,
               "default": 0,
               "title": "Skip"
             },
@@ -212,6 +245,7 @@
               "maximum": 1000,
               "minimum": 1,
               "description": "Maximum number of collections to return (1-1000)",
+              "example": 100,
               "default": 100,
               "title": "Limit"
             },
@@ -223,10 +257,11 @@
             "required": false,
             "schema": {
               "type": "string",
-              "description": "Search term to filter by name or readable_id",
+              "description": "Search term to filter collections by name or readable_id",
+              "example": "customer",
               "title": "Search"
             },
-            "description": "Search term to filter by name or readable_id"
+            "description": "Search term to filter collections by name or readable_id"
           }
         ],
         "responses": {
@@ -267,7 +302,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate Limit Exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitErrorResponse"
                 }
               }
             }
@@ -283,8 +328,8 @@
         "tags": [
           "collections"
         ],
-        "summary": "Create",
-        "description": "Create a new collection.\n\nThe newly created collection is initially empty and does not contain any data\nuntil you explicitly add source connections to it.",
+        "summary": "Create Collection",
+        "description": "Create a new collection in your organization.\n\nCollections are containers for organizing and searching across data from multiple\nsources. After creation, add source connections to begin syncing data.\n\nThe collection will be assigned a unique `readable_id` based on the name you provide,\nwhich is used in URLs and API calls. You can optionally configure:\n\n- **Sync schedule**: How frequently to automatically sync data from all sources\n- **Custom readable_id**: Provide your own identifier (must be unique and URL-safe)",
         "operationId": "create_collections_post",
         "parameters": [],
         "requestBody": {
@@ -299,7 +344,7 @@
         },
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Created collection",
             "content": {
               "application/json": {
                 "schema": {
@@ -313,7 +358,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate Limit Exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitErrorResponse"
                 }
               }
             }
@@ -331,8 +386,8 @@
         "tags": [
           "collections"
         ],
-        "summary": "Get",
-        "description": "Retrieve a specific collection by its readable ID.",
+        "summary": "Get Collection",
+        "description": "Retrieve details of a specific collection by its readable ID.\n\nReturns the complete collection configuration including sync settings, status,\nand metadata. Use this to check the current state of a collection or to get\nconfiguration details before making updates.",
         "operationId": "get_collections__readable_id__get",
         "parameters": [
           {
@@ -342,6 +397,7 @@
             "schema": {
               "type": "string",
               "description": "The unique readable identifier of the collection (e.g., 'finance-data-ab123')",
+              "example": "customer-support-tickets-x7k9m",
               "title": "Readable Id"
             },
             "description": "The unique readable identifier of the collection (e.g., 'finance-data-ab123')"
@@ -349,11 +405,31 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Collection details",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Collection"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Collection Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate Limit Exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitErrorResponse"
                 }
               }
             }
@@ -375,12 +451,91 @@
           }
         ]
       },
+      "patch": {
+        "tags": [
+          "collections"
+        ],
+        "summary": "Update Collection",
+        "description": "Update an existing collection's properties.\n\nYou can modify:\n- **Name**: The display name shown in the UI\n- **Sync configuration**: Schedule settings for automatic data synchronization\n\nNote that the `readable_id` cannot be changed after creation to maintain stable\nAPI endpoints and preserve existing integrations.",
+        "operationId": "update_collections__readable_id__patch",
+        "parameters": [
+          {
+            "name": "readable_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The unique readable identifier of the collection to update",
+              "example": "customer-support-tickets-x7k9m",
+              "title": "Readable Id"
+            },
+            "description": "The unique readable identifier of the collection to update"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated collection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Collection"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Collection Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate Limit Exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      },
       "delete": {
         "tags": [
           "collections"
         ],
-        "summary": "Delete",
-        "description": "Delete a collection and all associated data.\n\nPermanently removes a collection from your organization including all synced data\nfrom the destination systems. All source connections within this collection\nwill also be deleted as part of the cleanup process. This action cannot be undone.",
+        "summary": "Delete Collection",
+        "description": "Permanently delete a collection and all associated data.\n\nThis operation:\n- Removes all synced data from the vector database\n- Deletes all source connections within the collection\n- Cancels any scheduled sync jobs\n- Cleans up all related resources\n\n**Warning**: This action cannot be undone. All data will be permanently deleted.",
         "operationId": "delete_collections__readable_id__delete",
         "parameters": [
           {
@@ -390,6 +545,7 @@
             "schema": {
               "type": "string",
               "description": "The unique readable identifier of the collection to delete",
+              "example": "customer-support-tickets-x7k9m",
               "title": "Readable Id"
             },
             "description": "The unique readable identifier of the collection to delete"
@@ -397,11 +553,31 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Deleted collection",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Collection"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Collection Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate Limit Exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitErrorResponse"
                 }
               }
             }
@@ -429,8 +605,8 @@
         "tags": [
           "collections"
         ],
-        "summary": "Refresh All Source Connections",
-        "description": "Trigger data synchronization for all source connections in the collection.\n\nThe sync jobs run asynchronously in the background, so this endpoint\nreturns immediately with job details that you can use to track progress. You can\nmonitor the status of individual data synchronization using the source connection\nendpoints.",
+        "summary": "Refresh All Sources",
+        "description": "Trigger data synchronization for all source connections in a collection.\n\nStarts sync jobs for every source connection in the collection, pulling the latest\ndata from each connected source. Jobs run asynchronously in the background.\n\nReturns a list of sync jobs that were created. Use the source connection endpoints\nto monitor the progress and status of individual sync jobs.\n\n**Note**: If any source connection is already syncing, a new job will still be\ncreated and queued.",
         "operationId": "refresh_all_source_connections_collections__readable_id__refresh_all_post",
         "parameters": [
           {
@@ -440,6 +616,7 @@
             "schema": {
               "type": "string",
               "description": "The unique readable identifier of the collection to refresh",
+              "example": "customer-support-tickets-x7k9m",
               "title": "Readable Id"
             },
             "description": "The unique readable identifier of the collection to refresh"
@@ -491,6 +668,26 @@
               }
             }
           },
+          "404": {
+            "description": "Collection Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate Limit Exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitErrorResponse"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -514,8 +711,8 @@
         "tags": [
           "collections"
         ],
-        "summary": "Search Get Legacy",
-        "description": "Legacy GET search endpoint for backwards compatibility.\n\nDEPRECATED: This endpoint uses the old schema. Please migrate to POST with the new\nSearchRequest format for access to all features.",
+        "summary": "Search Collection (Legacy)",
+        "description": "**DEPRECATED**: Use POST /collections/{readable_id}/search instead.\n\nThis legacy GET endpoint provides basic search functionality via query parameters.\nMigrate to the POST endpoint for access to advanced features like:\n- Structured filters\n- Query expansion\n- Reranking\n- Streaming responses",
         "operationId": "search_get_legacy_collections__readable_id__search_get",
         "deprecated": true,
         "parameters": [
@@ -526,6 +723,7 @@
             "schema": {
               "type": "string",
               "description": "The unique readable identifier of the collection to search",
+              "example": "customer-support-tickets-x7k9m",
               "title": "Readable Id"
             },
             "description": "The unique readable identifier of the collection to search"
@@ -537,6 +735,7 @@
             "schema": {
               "type": "string",
               "description": "The search query text to find relevant documents and data",
+              "example": "How do I reset my password?",
               "title": "Query"
             },
             "description": "The search query text to find relevant documents and data"
@@ -548,6 +747,7 @@
             "schema": {
               "$ref": "#/components/schemas/ResponseType",
               "description": "Format of the response: 'raw' returns search results, 'completion' returns AI-generated answers",
+              "example": "raw",
               "default": "raw"
             },
             "description": "Format of the response: 'raw' returns search results, 'completion' returns AI-generated answers"
@@ -561,6 +761,7 @@
               "maximum": 1000,
               "minimum": 1,
               "description": "Maximum number of results to return",
+              "example": 10,
               "default": 100,
               "title": "Limit"
             },
@@ -574,6 +775,7 @@
               "type": "integer",
               "minimum": 0,
               "description": "Number of results to skip for pagination",
+              "example": 0,
               "default": 0,
               "title": "Offset"
             },
@@ -594,19 +796,30 @@
                   "type": "null"
                 }
               ],
-              "description": "How much to weigh recency vs similarity (0..1)",
+              "description": "How much to weigh recency vs similarity (0=similarity only, 1=recency only)",
+              "example": 0.3,
               "title": "Recency Bias"
             },
-            "description": "How much to weigh recency vs similarity (0..1)"
+            "description": "How much to weigh recency vs similarity (0=similarity only, 1=recency only)"
           }
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Search results",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LegacySearchResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Collection Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundErrorResponse"
                 }
               }
             }
@@ -616,7 +829,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate Limit Exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitErrorResponse"
                 }
               }
             }
@@ -632,8 +855,8 @@
         "tags": [
           "collections"
         ],
-        "summary": "Search",
-        "description": "Search your collection.\n\nAccepts both new SearchRequest and legacy LegacySearchRequest formats\nfor backwards compatibility.",
+        "summary": "Search Collection",
+        "description": "Search your collection using semantic and hybrid search.\n\nThis is the primary search endpoint providing powerful AI-powered search capabilities:\n\n**Search Strategies:**\n- **hybrid** (default): Combines neural (semantic) and keyword (BM25) matching\n- **neural**: Pure semantic search using embeddings\n- **keyword**: Traditional keyword-based BM25 search\n\n**Features:**\n- **Query expansion**: Generate query variations to improve recall\n- **Filter interpretation**: Extract structured filters from natural language\n- **Reranking**: LLM-based reranking for improved relevance\n- **Answer generation**: AI-generated answers based on search results\n\n**Note**: Accepts both new SearchRequest and legacy LegacySearchRequest formats\nfor backwards compatibility.",
         "operationId": "search_collections__readable_id__search_post",
         "parameters": [
           {
@@ -642,10 +865,11 @@
             "required": true,
             "schema": {
               "type": "string",
-              "description": "The unique readable identifier of the collection",
+              "description": "The unique readable identifier of the collection to search",
+              "example": "customer-support-tickets-x7k9m",
               "title": "Readable Id"
             },
-            "description": "The unique readable identifier of the collection"
+            "description": "The unique readable identifier of the collection to search"
           }
         ],
         "requestBody": {
@@ -668,7 +892,7 @@
         },
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Search results with optional AI completion",
             "content": {
               "application/json": {
                 "schema": {
@@ -680,7 +904,18 @@
                       "$ref": "#/components/schemas/LegacySearchResponse"
                     }
                   ],
-                  "title": "Response Search Collections  Readable Id  Search Post"
+                  "title": "Response Search Collections  Readable Id  Search Post",
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Collection Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundErrorResponse"
                 }
               }
             }
@@ -690,7 +925,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate Limit Exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitErrorResponse"
                 }
               }
             }
@@ -708,8 +953,8 @@
         "tags": [
           "source-connections"
         ],
-        "summary": "Create",
-        "description": "Create a new source connection.\n\nThe authentication configuration determines the flow:\n- DirectAuthentication: Immediate creation with provided credentials\n- OAuthBrowserAuthentication: Returns shell with authentication URL\n- OAuthTokenAuthentication: Immediate creation with provided token\n- AuthProviderAuthentication: Using external auth provider\n\nBYOC (Bring Your Own Client) is detected when client_id and client_secret\nare provided in OAuthBrowserAuthentication.\n\nsync_immediately defaults:\n- True for: direct, oauth_token, auth_provider\n- False for: oauth_browser, oauth_byoc (these sync after authentication)",
+        "summary": "Create Source Connection",
+        "description": "Create a new source connection to sync data from an external source.\n\nThe authentication method determines the creation flow:\n\n- **Direct**: Provide credentials (API key, token) directly. Connection is created immediately.\n- **OAuth Browser**: Returns a connection with an `auth_url` to redirect users for authentication.\n- **OAuth Token**: Provide an existing OAuth token. Connection is created immediately.\n- **Auth Provider**: Use a pre-configured auth provider (e.g., Composio, Pipedream).\n\nAfter successful authentication, data sync can begin automatically or on-demand.",
         "operationId": "create_source_connections_post",
         "parameters": [],
         "requestBody": {
@@ -724,7 +969,7 @@
         },
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Created source connection",
             "content": {
               "application/json": {
                 "schema": {
@@ -738,7 +983,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate Limit Exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitErrorResponse"
                 }
               }
             }
@@ -754,8 +1009,8 @@
         "tags": [
           "source-connections"
         ],
-        "summary": "List",
-        "description": "List source connections with minimal fields for performance.",
+        "summary": "List Source Connections",
+        "description": "Retrieve all source connections for your organization.\n\nReturns a lightweight list of source connections with essential fields for\ndisplay and navigation. Use the collection filter to see connections within\na specific collection.\n\nFor full connection details including sync history, use the GET /{id} endpoint.",
         "operationId": "list_source_connections_get",
         "parameters": [
           {
@@ -772,6 +1027,7 @@
                 }
               ],
               "description": "Filter by collection readable ID",
+              "example": "customer-support-tickets-x7k9m",
               "title": "Collection"
             },
             "description": "Filter by collection readable ID"
@@ -783,9 +1039,12 @@
             "schema": {
               "type": "integer",
               "minimum": 0,
+              "description": "Number of connections to skip for pagination",
+              "example": 0,
               "default": 0,
               "title": "Skip"
-            }
+            },
+            "description": "Number of connections to skip for pagination"
           },
           {
             "name": "limit",
@@ -795,14 +1054,17 @@
               "type": "integer",
               "maximum": 1000,
               "minimum": 1,
+              "description": "Maximum number of connections to return (1-1000)",
+              "example": 100,
               "default": 100,
               "title": "Limit"
-            }
+            },
+            "description": "Maximum number of connections to return (1-1000)"
           }
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "List of source connections",
             "content": {
               "application/json": {
                 "schema": {
@@ -810,7 +1072,7 @@
                   "items": {
                     "$ref": "#/components/schemas/SourceConnectionListItem"
                   },
-                  "title": "Response List Source Connections Get"
+                  "title": "Response 200 List Source Connections Get"
                 }
               }
             }
@@ -820,7 +1082,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate Limit Exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitErrorResponse"
                 }
               }
             }
@@ -838,8 +1110,8 @@
         "tags": [
           "source-connections"
         ],
-        "summary": "Get",
-        "description": "Get a source connection with optional depth expansion.",
+        "summary": "Get Source Connection",
+        "description": "Retrieve details of a specific source connection.\n\nReturns complete information about the connection including:\n- Configuration settings\n- Authentication status\n- Sync schedule and history\n- Entity statistics",
         "operationId": "get_source_connections__source_connection_id__get",
         "parameters": [
           {
@@ -849,17 +1121,40 @@
             "schema": {
               "type": "string",
               "format": "uuid",
+              "description": "Unique identifier of the source connection (UUID)",
+              "example": "550e8400-e29b-41d4-a716-446655440000",
               "title": "Source Connection Id"
-            }
+            },
+            "description": "Unique identifier of the source connection (UUID)"
           }
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Source connection details",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SourceConnection"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Source Connection Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate Limit Exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitErrorResponse"
                 }
               }
             }
@@ -885,8 +1180,8 @@
         "tags": [
           "source-connections"
         ],
-        "summary": "Update",
-        "description": "Update a source connection.\n\nUpdateable fields:\n- name, description\n- config_fields\n- cron_schedule\n- auth_fields (direct auth only)",
+        "summary": "Update Source Connection",
+        "description": "Update an existing source connection's configuration.\n\nYou can modify:\n- **Name and description**: Display information\n- **Configuration**: Source-specific settings (e.g., repository name, filters)\n- **Schedule**: Cron expression for automatic syncs\n- **Authentication**: Update credentials (direct auth only)\n\nOnly include the fields you want to change; omitted fields retain their current values.",
         "operationId": "update_source_connections__source_connection_id__patch",
         "parameters": [
           {
@@ -896,8 +1191,11 @@
             "schema": {
               "type": "string",
               "format": "uuid",
+              "description": "Unique identifier of the source connection to update (UUID)",
+              "example": "550e8400-e29b-41d4-a716-446655440000",
               "title": "Source Connection Id"
-            }
+            },
+            "description": "Unique identifier of the source connection to update (UUID)"
           }
         ],
         "requestBody": {
@@ -912,11 +1210,21 @@
         },
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Updated source connection",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SourceConnection"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Source Connection Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundErrorResponse"
                 }
               }
             }
@@ -926,7 +1234,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate Limit Exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitErrorResponse"
                 }
               }
             }
@@ -942,8 +1260,8 @@
         "tags": [
           "source-connections"
         ],
-        "summary": "Delete",
-        "description": "Delete a source connection and all related data.",
+        "summary": "Delete Source Connection",
+        "description": "Permanently delete a source connection and all its synced data.\n\nThis operation:\n- Removes all entities synced from this source from the vector database\n- Cancels any scheduled or running sync jobs\n- Deletes the connection configuration and credentials\n\n**Warning**: This action cannot be undone. All synced data will be permanently deleted.",
         "operationId": "delete_source_connections__source_connection_id__delete",
         "parameters": [
           {
@@ -953,17 +1271,40 @@
             "schema": {
               "type": "string",
               "format": "uuid",
+              "description": "Unique identifier of the source connection to delete (UUID)",
+              "example": "550e8400-e29b-41d4-a716-446655440000",
               "title": "Source Connection Id"
-            }
+            },
+            "description": "Unique identifier of the source connection to delete (UUID)"
           }
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Deleted source connection",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SourceConnection"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Source Connection Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate Limit Exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitErrorResponse"
                 }
               }
             }
@@ -991,8 +1332,8 @@
         "tags": [
           "source-connections"
         ],
-        "summary": "Run",
-        "description": "Trigger a sync run for a source connection.\n\nRuns are always executed through Temporal workflow engine.\n\nArgs:\n    db: Database session\n    source_connection_id: ID of the source connection to run\n    ctx: API context with organization and user information\n    guard_rail: Guard rail service for usage limits\n    force_full_sync: If True, forces a full sync with orphaned entity cleanup\n                    for continuous syncs. Raises 400 error if used on\n                    non-continuous syncs (which are always full syncs).",
+        "summary": "Run Sync",
+        "description": "Trigger a data synchronization job for a source connection.\n\nStarts an asynchronous sync job that pulls the latest data from the connected\nsource. The job runs in the background and you can monitor its progress using\nthe jobs endpoint.\n\nFor continuous sync connections, this performs an incremental sync by default.\nUse `force_full_sync=true` to perform a complete re-sync of all data.",
         "operationId": "run_source_connections__source_connection_id__run_post",
         "parameters": [
           {
@@ -1002,8 +1343,11 @@
             "schema": {
               "type": "string",
               "format": "uuid",
+              "description": "Unique identifier of the source connection to sync (UUID)",
+              "example": "550e8400-e29b-41d4-a716-446655440000",
               "title": "Source Connection Id"
-            }
+            },
+            "description": "Unique identifier of the source connection to sync (UUID)"
           },
           {
             "name": "force_full_sync",
@@ -1011,20 +1355,51 @@
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "Force a full sync ignoring cursor data instead of waiting for the daily cleanup schedule. Only allowed for continuous syncs.",
+              "description": "Force a full sync ignoring cursor data. Only applies to continuous sync connections. Non-continuous connections always perform full syncs.",
+              "example": false,
               "default": false,
               "title": "Force Full Sync"
             },
-            "description": "Force a full sync ignoring cursor data instead of waiting for the daily cleanup schedule. Only allowed for continuous syncs."
+            "description": "Force a full sync ignoring cursor data. Only applies to continuous sync connections. Non-continuous connections always perform full syncs."
           }
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Created sync job",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SourceConnectionJob"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Source Connection Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sync Already Running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate Limit Exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitErrorResponse"
                 }
               }
             }
@@ -1052,8 +1427,8 @@
         "tags": [
           "source-connections"
         ],
-        "summary": "Get Source Connection Jobs",
-        "description": "Get sync jobs for a source connection.",
+        "summary": "List Sync Jobs",
+        "description": "Retrieve the sync job history for a source connection.\n\nReturns a list of sync jobs ordered by creation time (newest first). Each job\nincludes status, timing information, and entity counts.\n\nJob statuses:\n- **PENDING**: Job is queued and waiting to start\n- **RUNNING**: Sync is actively pulling and processing data\n- **COMPLETED**: Sync finished successfully\n- **FAILED**: Sync encountered an error\n- **CANCELLED**: Sync was manually cancelled\n- **CANCELLING**: Cancellation has been requested",
         "operationId": "get_source_connection_jobs_source_connections__source_connection_id__jobs_get",
         "parameters": [
           {
@@ -1063,8 +1438,11 @@
             "schema": {
               "type": "string",
               "format": "uuid",
+              "description": "Unique identifier of the source connection (UUID)",
+              "example": "550e8400-e29b-41d4-a716-446655440000",
               "title": "Source Connection Id"
-            }
+            },
+            "description": "Unique identifier of the source connection (UUID)"
           },
           {
             "name": "limit",
@@ -1074,14 +1452,17 @@
               "type": "integer",
               "maximum": 1000,
               "minimum": 1,
+              "description": "Maximum number of jobs to return (1-1000)",
+              "example": 100,
               "default": 100,
               "title": "Limit"
-            }
+            },
+            "description": "Maximum number of jobs to return (1-1000)"
           }
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "List of sync jobs",
             "content": {
               "application/json": {
                 "schema": {
@@ -1089,7 +1470,27 @@
                   "items": {
                     "$ref": "#/components/schemas/SourceConnectionJob"
                   },
-                  "title": "Response Get Source Connection Jobs Source Connections  Source Connection Id  Jobs Get"
+                  "title": "Response 200 Get Source Connection Jobs Source Connections  Source Connection Id  Jobs Get"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Source Connection Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate Limit Exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitErrorResponse"
                 }
               }
             }
@@ -1117,8 +1518,8 @@
         "tags": [
           "source-connections"
         ],
-        "summary": "Cancel Job",
-        "description": "Cancel a running sync job for a source connection.\n\nThis endpoint requests cancellation and marks the job as CANCELLING.\nThe workflow updates the final status to CANCELLED when it processes\nthe cancellation request.",
+        "summary": "Cancel Sync Job",
+        "description": "Request cancellation of a running sync job.\n\nThe job will be marked as CANCELLING and the sync workflow will stop at the\nnext checkpoint. Already-processed entities are retained.\n\n**Note**: Cancellation is asynchronous. The job status will change to CANCELLED\nonce the workflow has fully stopped.",
         "operationId": "cancel_job_source_connections__source_connection_id__jobs__job_id__cancel_post",
         "parameters": [
           {
@@ -1128,8 +1529,11 @@
             "schema": {
               "type": "string",
               "format": "uuid",
+              "description": "Unique identifier of the source connection (UUID)",
+              "example": "550e8400-e29b-41d4-a716-446655440000",
               "title": "Source Connection Id"
-            }
+            },
+            "description": "Unique identifier of the source connection (UUID)"
           },
           {
             "name": "job_id",
@@ -1138,17 +1542,50 @@
             "schema": {
               "type": "string",
               "format": "uuid",
+              "description": "Unique identifier of the sync job to cancel (UUID)",
+              "example": "660e8400-e29b-41d4-a716-446655440001",
               "title": "Job Id"
-            }
+            },
+            "description": "Unique identifier of the sync job to cancel (UUID)"
           }
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Job with cancellation status",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SourceConnectionJob"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Job Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Job Cannot Be Cancelled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate Limit Exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitErrorResponse"
                 }
               }
             }
@@ -1289,7 +1726,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EventMessage"
+                  "$ref": "#/components/schemas/EventMessageWithAttempts"
                 }
               }
             }
@@ -1545,10 +1982,12 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Deleted subscription",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookSubscription"
+                }
               }
             }
           },
@@ -3182,19 +3621,19 @@
         ],
         "title": "Collection",
         "description": "Complete collection representation returned by the API.\n\nThis schema includes all collection metadata plus computed status information\nbased on the health and state of associated source connections.",
-        "examples": [
-          {
-            "created_at": "2024-01-15T09:30:00Z",
-            "created_by_email": "admin@company.com",
-            "id": "550e8400-e29b-41d4-a716-446655440000",
-            "modified_at": "2024-01-15T14:22:15Z",
-            "modified_by_email": "finance@company.com",
-            "name": "Finance Data",
-            "organization_id": "org12345-6789-abcd-ef01-234567890abc",
-            "readable_id": "finance-data-ab123",
-            "status": "ACTIVE"
-          }
-        ]
+        "example": {
+          "created_at": "2024-01-15T09:30:00Z",
+          "created_by_email": "admin@company.com",
+          "embedding_model_name": "text-embedding-3-large",
+          "id": "550e8400-e29b-41d4-a716-446655440000",
+          "modified_at": "2024-01-15T14:22:15Z",
+          "modified_by_email": "finance@company.com",
+          "name": "Finance Data",
+          "organization_id": "org12345-6789-abcd-ef01-234567890abc",
+          "readable_id": "finance-data-ab123",
+          "status": "ACTIVE",
+          "vector_size": 3072
+        }
       },
       "CollectionCreate": {
         "properties": {
@@ -3396,6 +3835,25 @@
         "type": "object",
         "title": "ConfigValues",
         "description": "Config values model.\n\nImplements \"flat dictionary\" semantics, where no values are dictionaries."
+      },
+      "ConflictErrorResponse": {
+        "properties": {
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "Error message describing the conflict",
+            "example": "A resource with this identifier already exists"
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "ConflictErrorResponse",
+        "description": "Response returned when a resource conflict occurs (HTTP 409).\n\nThis typically occurs when attempting to create a resource that already exists,\nor when an operation cannot be completed due to the current state of a resource.",
+        "example": {
+          "detail": "A resource with this identifier already exists"
+        }
       },
       "Connection": {
         "properties": {
@@ -4563,6 +5021,108 @@
           "timestamp": "2024-03-15T09:45:32Z"
         }
       },
+      "EventMessageWithAttempts": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique identifier for this message (UUID format)",
+            "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          },
+          "event_type": {
+            "type": "string",
+            "title": "Event Type",
+            "description": "The type of event (e.g., 'sync.completed', 'sync.failed')",
+            "example": "sync.completed"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/SyncEventPayload",
+            "description": "The event payload data, matching what is delivered to webhooks"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp",
+            "description": "When this message was created (ISO 8601 format, UTC)",
+            "example": "2024-03-15T09:45:32Z"
+          },
+          "channels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channels",
+            "description": "Channels this message was sent to (typically matches the event type)",
+            "example": [
+              "sync.completed"
+            ]
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags",
+            "description": "Tags associated with this message for filtering"
+          },
+          "delivery_attempts": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/DeliveryAttempt"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Attempts",
+            "description": "Delivery attempts for this message."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "event_type",
+          "payload",
+          "timestamp"
+        ],
+        "title": "EventMessageWithAttempts",
+        "description": "An event message with delivery attempts.",
+        "example": {
+          "channels": [
+            "sync.completed"
+          ],
+          "event_type": "sync.completed",
+          "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          "payload": {
+            "collection_name": "Customer Support Tickets",
+            "collection_readable_id": "customer-support-tickets-x7k9m",
+            "event_type": "sync.completed",
+            "job_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            "source_connection_id": "b2c3d4e5-f6a7-8901-bcde-f23456789012",
+            "source_type": "zendesk",
+            "status": "completed",
+            "timestamp": "2024-03-15T09:45:32Z"
+          },
+          "timestamp": "2024-03-15T09:45:32Z"
+        }
+      },
       "EventType": {
         "type": "string",
         "enum": [
@@ -5121,7 +5681,7 @@
             "type": "string",
             "title": "Detail",
             "description": "Error message describing what was not found",
-            "example": "Subscription not found"
+            "example": "Resource not found"
           }
         },
         "type": "object",
@@ -5131,7 +5691,7 @@
         "title": "NotFoundErrorResponse",
         "description": "Response returned when a resource is not found (HTTP 404).",
         "example": {
-          "detail": "Subscription not found"
+          "detail": "Resource not found"
         }
       },
       "OAuthBrowserAuthentication": {
@@ -6335,7 +6895,8 @@
           "query": {
             "type": "string",
             "title": "Query",
-            "description": "The search query text"
+            "description": "The search query text (required, max 2048 tokens)",
+            "example": "How do I reset my password?"
           },
           "retrieval_strategy": {
             "anyOf": [
@@ -6346,7 +6907,8 @@
                 "type": "null"
               }
             ],
-            "description": "The retrieval strategy to use"
+            "description": "Search strategy: 'hybrid' (default), 'neural' (semantic only), or 'keyword' (BM25 only)",
+            "example": "hybrid"
           },
           "filter": {
             "anyOf": [
@@ -6359,7 +6921,17 @@
               }
             ],
             "title": "Filter",
-            "description": "Filter for metadata-based filtering"
+            "description": "Structured filter for metadata-based filtering (Qdrant filter format)",
+            "example": {
+              "must": [
+                {
+                  "key": "source_name",
+                  "match": {
+                    "value": "GitHub"
+                  }
+                }
+              ]
+            }
           },
           "offset": {
             "anyOf": [
@@ -6371,7 +6943,8 @@
               }
             ],
             "title": "Offset",
-            "description": "Number of results to skip"
+            "description": "Number of results to skip for pagination (default: 0)",
+            "example": 0
           },
           "limit": {
             "anyOf": [
@@ -6383,7 +6956,8 @@
               }
             ],
             "title": "Limit",
-            "description": "Maximum number of results to return"
+            "description": "Maximum number of results to return (default: 1000)",
+            "example": 10
           },
           "temporal_relevance": {
             "anyOf": [
@@ -6395,7 +6969,8 @@
               }
             ],
             "title": "Temporal Relevance",
-            "description": "Weight recent content higher than older content; 0 = no recency effect, 1 = only recent items matter. NOTE: This feature is currently under construction and will be ignored."
+            "description": "Weight recent content higher than older content; 0 = no recency effect, 1 = only recent items matter. NOTE: This feature is currently under construction and will be ignored.",
+            "example": 0.3
           },
           "expand_query": {
             "anyOf": [
@@ -6407,7 +6982,8 @@
               }
             ],
             "title": "Expand Query",
-            "description": "Generate a few query variations to improve recall"
+            "description": "Generate query variations to improve recall (default: true)",
+            "example": true
           },
           "interpret_filters": {
             "anyOf": [
@@ -6419,7 +6995,8 @@
               }
             ],
             "title": "Interpret Filters",
-            "description": "Extract structured filters from natural-language query"
+            "description": "Extract structured filters from natural language (e.g., 'from last week' \u2192 date filter)",
+            "example": false
           },
           "rerank": {
             "anyOf": [
@@ -6431,7 +7008,8 @@
               }
             ],
             "title": "Rerank",
-            "description": "Reorder the top candidate results for improved relevance. Max number of results that can be reranked is capped to around 1000."
+            "description": "LLM-based reranking for improved relevance (default: true)",
+            "example": true
           },
           "generate_answer": {
             "anyOf": [
@@ -6443,7 +7021,8 @@
               }
             ],
             "title": "Generate Answer",
-            "description": "Generate a natural-language answer to the query"
+            "description": "Generate an AI answer based on search results (default: true)",
+            "example": true
           }
         },
         "type": "object",
@@ -6451,7 +7030,53 @@
           "query"
         ],
         "title": "SearchRequest",
-        "description": "Search request schema."
+        "description": "Search request for querying a collection.\n\nProvides fine-grained control over the search pipeline including retrieval strategy,\nfiltering, and AI-powered features like query expansion and answer generation.",
+        "examples": [
+          {
+            "summary": "Simple search",
+            "value": {
+              "query": "How do I reset my password?"
+            }
+          },
+          {
+            "summary": "Search with filters",
+            "value": {
+              "filter": {
+                "must": [
+                  {
+                    "key": "source_name",
+                    "match": {
+                      "value": "GitHub"
+                    }
+                  }
+                ]
+              },
+              "limit": 20,
+              "query": "deployment errors"
+            }
+          },
+          {
+            "summary": "Fast search (no AI features)",
+            "value": {
+              "expand_query": false,
+              "generate_answer": false,
+              "query": "kubernetes config",
+              "rerank": false
+            }
+          },
+          {
+            "summary": "Full-featured search",
+            "value": {
+              "expand_query": true,
+              "generate_answer": true,
+              "interpret_filters": true,
+              "limit": 10,
+              "query": "What are best practices for error handling?",
+              "rerank": true,
+              "retrieval_strategy": "hybrid"
+            }
+          }
+        ]
       },
       "SearchResponse": {
         "properties": {
@@ -6462,7 +7087,7 @@
             },
             "type": "array",
             "title": "Results",
-            "description": "Array of search result objects containing the found documents, records, or data entities."
+            "description": "Array of search result objects containing the found documents, records, or data entities. Each result includes entity_id, source_name, md_content, metadata, score, breadcrumbs, and url."
           },
           "completion": {
             "anyOf": [
@@ -6474,16 +7099,51 @@
               }
             ],
             "title": "Completion",
-            "description": "This provides natural language answers to your query based on the content found across your connected data sources when generate_answer is true."
+            "description": "AI-generated natural language answer to your query based on the search results. Only included when generate_answer is true in the request."
           }
         },
         "type": "object",
         "required": [
-          "results",
-          "completion"
+          "results"
         ],
         "title": "SearchResponse",
-        "description": "Comprehensive search response containing results and metadata."
+        "description": "Search response containing results and optional AI-generated completion.\n\nEach result includes the matched entity's content, metadata, relevance score,\nand source information.",
+        "example": {
+          "completion": "To reset your password, navigate to the login page and click 'Forgot Password'. You'll receive an email with a reset link that expires in 24 hours. For security, ensure you're using a strong password with at least 12 characters.",
+          "results": [
+            {
+              "breadcrumbs": [
+                "docs",
+                "auth",
+                "password-reset.md"
+              ],
+              "entity_id": "abc123-def456-789012",
+              "md_content": "# Password Reset Guide\n\nTo reset your password...",
+              "metadata": {
+                "file_path": "docs/auth/password-reset.md",
+                "last_modified": "2024-03-15T09:30:00Z"
+              },
+              "score": 0.92,
+              "source_name": "GitHub",
+              "url": "https://github.com/company/docs/blob/main/docs/auth/password-reset.md"
+            },
+            {
+              "breadcrumbs": [
+                "Engineering",
+                "User Authentication"
+              ],
+              "entity_id": "xyz789-abc123-456789",
+              "md_content": "## User Authentication\n\nPassword reset is available...",
+              "metadata": {
+                "page_id": "page-123",
+                "workspace": "Engineering"
+              },
+              "score": 0.85,
+              "source_name": "Notion",
+              "url": "https://notion.so/page-123"
+            }
+          ]
+        }
       },
       "SearchStatus": {
         "type": "string",
@@ -6872,11 +7532,15 @@
           "id": {
             "type": "string",
             "format": "uuid",
-            "title": "Id"
+            "title": "Id",
+            "description": "Unique identifier of the source connection",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
           },
           "name": {
             "type": "string",
-            "title": "Name"
+            "title": "Name",
+            "description": "Display name of the connection",
+            "example": "GitHub Docs Repo"
           },
           "description": {
             "anyOf": [
@@ -6887,31 +7551,44 @@
                 "type": "null"
               }
             ],
-            "title": "Description"
+            "title": "Description",
+            "description": "Optional description of the connection's purpose",
+            "example": "Main documentation repository"
           },
           "short_name": {
             "type": "string",
-            "title": "Short Name"
+            "title": "Short Name",
+            "description": "Source type identifier",
+            "example": "github"
           },
           "readable_collection_id": {
             "type": "string",
-            "title": "Readable Collection Id"
+            "title": "Readable Collection Id",
+            "description": "Collection this connection belongs to",
+            "example": "documentation-ab123"
           },
           "status": {
-            "$ref": "#/components/schemas/SourceConnectionStatus"
+            "$ref": "#/components/schemas/SourceConnectionStatus",
+            "description": "Current operational status of the connection",
+            "example": "ACTIVE"
           },
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "title": "Created At"
+            "title": "Created At",
+            "description": "When the connection was created (ISO 8601)",
+            "example": "2024-03-15T09:30:00Z"
           },
           "modified_at": {
             "type": "string",
             "format": "date-time",
-            "title": "Modified At"
+            "title": "Modified At",
+            "description": "When the connection was last modified (ISO 8601)",
+            "example": "2024-03-15T14:22:15Z"
           },
           "auth": {
-            "$ref": "#/components/schemas/AuthenticationDetails"
+            "$ref": "#/components/schemas/AuthenticationDetails",
+            "description": "Authentication status and details"
           },
           "config": {
             "anyOf": [
@@ -6923,7 +7600,12 @@
                 "type": "null"
               }
             ],
-            "title": "Config"
+            "title": "Config",
+            "description": "Source-specific configuration values",
+            "example": {
+              "branch": "main",
+              "repo_name": "company/docs"
+            }
           },
           "schedule": {
             "anyOf": [
@@ -6933,7 +7615,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Sync schedule configuration"
           },
           "sync": {
             "anyOf": [
@@ -6943,7 +7626,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Sync execution history and statistics"
           },
           "sync_id": {
             "anyOf": [
@@ -6956,7 +7640,8 @@
               }
             ],
             "title": "Sync Id",
-            "description": "ID of the associated sync"
+            "description": "ID of the associated sync (internal use)",
+            "example": "660e8400-e29b-41d4-a716-446655440001"
           },
           "entities": {
             "anyOf": [
@@ -6966,20 +7651,21 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Summary of synced entities by type"
           },
           "federated_search": {
             "type": "boolean",
             "title": "Federated Search",
-            "description": "Whether this source uses federated search",
-            "default": false
+            "description": "Whether this source uses federated (real-time) search instead of syncing",
+            "default": false,
+            "example": false
           }
         },
         "type": "object",
         "required": [
           "id",
           "name",
-          "description",
           "short_name",
           "readable_collection_id",
           "status",
@@ -6988,7 +7674,53 @@
           "auth"
         ],
         "title": "SourceConnection",
-        "description": "Complete source connection details."
+        "description": "Complete source connection details including auth, config, sync status, and entities.\n\nThis schema provides full information about a source connection, suitable for\ndetail views and monitoring sync progress.",
+        "example": {
+          "auth": {
+            "authenticated": true,
+            "authenticated_at": "2024-03-15T09:30:00Z",
+            "method": "direct"
+          },
+          "config": {
+            "branch": "main",
+            "repo_name": "company/docs"
+          },
+          "created_at": "2024-03-15T09:30:00Z",
+          "description": "Main documentation repository",
+          "entities": {
+            "by_type": {
+              "file": {
+                "count": 1250
+              }
+            },
+            "total_entities": 1250
+          },
+          "federated_search": false,
+          "id": "550e8400-e29b-41d4-a716-446655440000",
+          "modified_at": "2024-03-15T14:22:15Z",
+          "name": "GitHub Docs Repo",
+          "readable_collection_id": "documentation-ab123",
+          "schedule": {
+            "cron": "0 */6 * * *",
+            "next_run": "2024-03-15T18:00:00Z"
+          },
+          "short_name": "github",
+          "status": "ACTIVE",
+          "sync": {
+            "failed_runs": 1,
+            "last_job": {
+              "completed_at": "2024-03-15T12:05:32Z",
+              "duration_seconds": 332,
+              "entities_inserted": 45,
+              "entities_updated": 12,
+              "id": "770e8400-e29b-41d4-a716-446655440002",
+              "started_at": "2024-03-15T12:00:00Z",
+              "status": "COMPLETED"
+            },
+            "successful_runs": 14,
+            "total_runs": 15
+          }
+        }
       },
       "SourceConnectionCreate": {
         "properties": {
@@ -7004,17 +7736,20 @@
               }
             ],
             "title": "Name",
-            "description": "Connection name (defaults to '{Source Name} Connection')"
+            "description": "Display name for the connection. If not provided, defaults to '{Source Name} Connection'.",
+            "example": "My GitHub Connection"
           },
           "short_name": {
             "type": "string",
             "title": "Short Name",
-            "description": "Source identifier (e.g., 'slack', 'github')"
+            "description": "Source type identifier (e.g., 'slack', 'github', 'notion')",
+            "example": "github"
           },
           "readable_collection_id": {
             "type": "string",
             "title": "Readable Collection Id",
-            "description": "Collection readable ID"
+            "description": "The readable ID of the collection to add this connection to",
+            "example": "customer-support-tickets-x7k9m"
           },
           "description": {
             "anyOf": [
@@ -7027,7 +7762,8 @@
               }
             ],
             "title": "Description",
-            "description": "Connection description"
+            "description": "Optional description of what this connection is used for",
+            "example": "Production GitHub repository for documentation"
           },
           "config": {
             "anyOf": [
@@ -7040,7 +7776,11 @@
               }
             ],
             "title": "Config",
-            "description": "Source-specific configuration"
+            "description": "Source-specific configuration (e.g., repository name, filters)",
+            "example": {
+              "branch": "main",
+              "repo_name": "airweave-ai/airweave"
+            }
           },
           "schedule": {
             "anyOf": [
@@ -7050,7 +7790,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Optional sync schedule configuration"
           },
           "sync_immediately": {
             "anyOf": [
@@ -7062,7 +7803,8 @@
               }
             ],
             "title": "Sync Immediately",
-            "description": "Run initial sync after creation. Defaults to True for direct/token/auth_provider, False for OAuth browser/BYOC flows (which sync after authentication)"
+            "description": "Run initial sync after creation. Defaults to True for direct/token/auth_provider, False for OAuth browser/BYOC flows (which sync after authentication)",
+            "example": true
           },
           "authentication": {
             "anyOf": [
@@ -7083,7 +7825,7 @@
               }
             ],
             "title": "Authentication",
-            "description": "Authentication config (defaults to OAuth browser flow for OAuth sources)"
+            "description": "Authentication configuration. Type is auto-detected from provided fields."
           },
           "redirect_url": {
             "anyOf": [
@@ -7095,7 +7837,8 @@
               }
             ],
             "title": "Redirect Url",
-            "description": "URL to redirect to after OAuth flow completes (only used for OAuth flows)"
+            "description": "URL to redirect to after OAuth flow completes (only used for OAuth flows)",
+            "example": "https://app.example.com/connections"
           }
         },
         "type": "object",
@@ -7104,22 +7847,67 @@
           "readable_collection_id"
         ],
         "title": "SourceConnectionCreate",
-        "description": "Create source connection with nested authentication."
+        "description": "Create a source connection with authentication configuration.\n\nSource connections link a data source (e.g., GitHub, Slack) to a collection.\nThe authentication method determines how credentials are provided and whether\nthe connection is created immediately or requires an OAuth flow.",
+        "examples": [
+          {
+            "summary": "Direct auth (API key)",
+            "value": {
+              "authentication": {
+                "credentials": {
+                  "personal_access_token": "ghp_xxxxxxxxxxxx"
+                }
+              },
+              "config": {
+                "branch": "main",
+                "repo_name": "company/docs"
+              },
+              "name": "GitHub Docs Repo",
+              "readable_collection_id": "documentation-ab123",
+              "short_name": "github"
+            }
+          },
+          {
+            "summary": "OAuth browser flow",
+            "value": {
+              "name": "Slack Workspace",
+              "readable_collection_id": "team-comms-xy789",
+              "redirect_url": "https://app.example.com/connections",
+              "short_name": "slack"
+            }
+          },
+          {
+            "summary": "Auth provider",
+            "value": {
+              "authentication": {
+                "provider_readable_id": "composio-abc123"
+              },
+              "name": "Gmail via Composio",
+              "readable_collection_id": "emails-cd456",
+              "short_name": "gmail"
+            }
+          }
+        ]
       },
       "SourceConnectionJob": {
         "properties": {
           "id": {
             "type": "string",
             "format": "uuid",
-            "title": "Id"
+            "title": "Id",
+            "description": "Unique identifier of the sync job",
+            "example": "770e8400-e29b-41d4-a716-446655440002"
           },
           "source_connection_id": {
             "type": "string",
             "format": "uuid",
-            "title": "Source Connection Id"
+            "title": "Source Connection Id",
+            "description": "ID of the source connection this job belongs to",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
           },
           "status": {
-            "$ref": "#/components/schemas/SyncJobStatus"
+            "$ref": "#/components/schemas/SyncJobStatus",
+            "description": "Current status: PENDING, RUNNING, COMPLETED, FAILED, CANCELLED, or CANCELLING",
+            "example": "COMPLETED"
           },
           "started_at": {
             "anyOf": [
@@ -7131,7 +7919,9 @@
                 "type": "null"
               }
             ],
-            "title": "Started At"
+            "title": "Started At",
+            "description": "When the job started execution (ISO 8601)",
+            "example": "2024-03-15T12:00:00Z"
           },
           "completed_at": {
             "anyOf": [
@@ -7143,7 +7933,9 @@
                 "type": "null"
               }
             ],
-            "title": "Completed At"
+            "title": "Completed At",
+            "description": "When the job finished (ISO 8601). Null if still running.",
+            "example": "2024-03-15T12:05:32Z"
           },
           "duration_seconds": {
             "anyOf": [
@@ -7154,27 +7946,37 @@
                 "type": "null"
               }
             ],
-            "title": "Duration Seconds"
+            "title": "Duration Seconds",
+            "description": "Total execution time in seconds. Null if still running.",
+            "example": 332.5
           },
           "entities_inserted": {
             "type": "integer",
             "title": "Entities Inserted",
-            "default": 0
+            "description": "Number of new entities created during this sync",
+            "default": 0,
+            "example": 45
           },
           "entities_updated": {
             "type": "integer",
             "title": "Entities Updated",
-            "default": 0
+            "description": "Number of existing entities updated during this sync",
+            "default": 0,
+            "example": 12
           },
           "entities_deleted": {
             "type": "integer",
             "title": "Entities Deleted",
-            "default": 0
+            "description": "Number of entities removed during this sync",
+            "default": 0,
+            "example": 3
           },
           "entities_failed": {
             "type": "integer",
             "title": "Entities Failed",
-            "default": 0
+            "description": "Number of entities that failed to process",
+            "default": 0,
+            "example": 0
           },
           "error": {
             "anyOf": [
@@ -7185,7 +7987,8 @@
                 "type": "null"
               }
             ],
-            "title": "Error"
+            "title": "Error",
+            "description": "Error message if the job failed"
           },
           "error_details": {
             "anyOf": [
@@ -7197,7 +8000,8 @@
                 "type": "null"
               }
             ],
-            "title": "Error Details"
+            "title": "Error Details",
+            "description": "Additional error context for debugging"
           }
         },
         "type": "object",
@@ -7207,51 +8011,80 @@
           "status"
         ],
         "title": "SourceConnectionJob",
-        "description": "Individual sync job for a source connection."
+        "description": "A sync job representing a single synchronization run.\n\nSync jobs track the execution of data synchronization from a source connection.\nEach job includes timing information, entity counts, and error details if applicable.",
+        "example": {
+          "completed_at": "2024-03-15T12:05:32Z",
+          "duration_seconds": 332.5,
+          "entities_deleted": 3,
+          "entities_failed": 0,
+          "entities_inserted": 45,
+          "entities_updated": 12,
+          "id": "770e8400-e29b-41d4-a716-446655440002",
+          "source_connection_id": "550e8400-e29b-41d4-a716-446655440000",
+          "started_at": "2024-03-15T12:00:00Z",
+          "status": "COMPLETED"
+        }
       },
       "SourceConnectionListItem": {
         "properties": {
           "id": {
             "type": "string",
             "format": "uuid",
-            "title": "Id"
+            "title": "Id",
+            "description": "Unique identifier of the source connection",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
           },
           "name": {
             "type": "string",
-            "title": "Name"
+            "title": "Name",
+            "description": "Display name of the connection",
+            "example": "GitHub Docs Repo"
           },
           "short_name": {
             "type": "string",
-            "title": "Short Name"
+            "title": "Short Name",
+            "description": "Source type identifier",
+            "example": "github"
           },
           "readable_collection_id": {
             "type": "string",
-            "title": "Readable Collection Id"
+            "title": "Readable Collection Id",
+            "description": "Collection this connection belongs to",
+            "example": "documentation-ab123"
           },
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "title": "Created At"
+            "title": "Created At",
+            "description": "When the connection was created (ISO 8601)",
+            "example": "2024-03-15T09:30:00Z"
           },
           "modified_at": {
             "type": "string",
             "format": "date-time",
-            "title": "Modified At"
+            "title": "Modified At",
+            "description": "When the connection was last modified (ISO 8601)",
+            "example": "2024-03-15T14:22:15Z"
           },
           "is_authenticated": {
             "type": "boolean",
-            "title": "Is Authenticated"
+            "title": "Is Authenticated",
+            "description": "Whether the connection has valid credentials",
+            "example": true
           },
           "entity_count": {
             "type": "integer",
             "title": "Entity Count",
-            "default": 0
+            "description": "Total number of entities synced from this connection",
+            "default": 0,
+            "example": 1250
           },
           "federated_search": {
             "type": "boolean",
             "title": "Federated Search",
-            "description": "Whether this source uses federated search",
-            "default": false
+            "description": "Whether this source uses federated (real-time) search instead of syncing",
+            "default": false,
+            "example": false
           },
           "auth_method": {
             "$ref": "#/components/schemas/AuthenticationMethod",
@@ -7277,7 +8110,20 @@
           "status"
         ],
         "title": "SourceConnectionListItem",
-        "description": "Clean source connection for list views."
+        "description": "Lightweight source connection representation for list views.\n\nContains essential fields for display and navigation. For full details\nincluding sync history and configuration, use the GET /{id} endpoint.",
+        "example": {
+          "auth_method": "direct",
+          "created_at": "2024-03-15T09:30:00Z",
+          "entity_count": 1250,
+          "federated_search": false,
+          "id": "550e8400-e29b-41d4-a716-446655440000",
+          "is_authenticated": true,
+          "modified_at": "2024-03-15T14:22:15Z",
+          "name": "GitHub Docs Repo",
+          "readable_collection_id": "documentation-ab123",
+          "short_name": "github",
+          "status": "ACTIVE"
+        }
       },
       "SourceConnectionStatus": {
         "type": "string",
@@ -7305,7 +8151,9 @@
                 "type": "null"
               }
             ],
-            "title": "Name"
+            "title": "Name",
+            "description": "Updated display name for the connection",
+            "example": "Production GitHub Repo"
           },
           "description": {
             "anyOf": [
@@ -7317,7 +8165,9 @@
                 "type": "null"
               }
             ],
-            "title": "Description"
+            "title": "Description",
+            "description": "Updated description",
+            "example": "Main production repository"
           },
           "config": {
             "anyOf": [
@@ -7330,7 +8180,11 @@
               }
             ],
             "title": "Config",
-            "description": "Source-specific configuration"
+            "description": "Updated source-specific configuration",
+            "example": {
+              "branch": "develop",
+              "repo_name": "company/new-repo"
+            }
           },
           "schedule": {
             "anyOf": [
@@ -7340,7 +8194,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Updated sync schedule configuration"
           },
           "authentication": {
             "anyOf": [
@@ -7361,12 +8216,37 @@
               }
             ],
             "title": "Authentication",
-            "description": "Authentication config (defaults to OAuth browser flow for OAuth sources)"
+            "description": "Updated authentication credentials (direct auth only)"
           }
         },
         "type": "object",
         "title": "SourceConnectionUpdate",
-        "description": "Update schema for source connections."
+        "description": "Update an existing source connection's configuration.\n\nAll fields are optional. Only include fields you want to change;\nomitted fields retain their current values.",
+        "examples": [
+          {
+            "summary": "Update name",
+            "value": {
+              "name": "Updated Connection Name"
+            }
+          },
+          {
+            "summary": "Update config",
+            "value": {
+              "config": {
+                "branch": "main",
+                "repo_name": "company/new-repo"
+              }
+            }
+          },
+          {
+            "summary": "Update schedule",
+            "value": {
+              "schedule": {
+                "cron": "0 */6 * * *"
+              }
+            }
+          }
+        ]
       },
       "SourceRateLimit": {
         "properties": {
