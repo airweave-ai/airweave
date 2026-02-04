@@ -4,7 +4,7 @@ from typing import Protocol
 
 from airweave.search.spotlight.schemas.plan import SpotlightPlan
 from airweave.search.spotlight.schemas.query_embeddings import SpotlightQueryEmbeddings
-from airweave.search.spotlight.schemas.search_result import SpotlightSearchResult
+from airweave.search.spotlight.schemas.search_result import SpotlightSearchResults
 
 
 class SpotlightVectorDBInterface(Protocol):
@@ -38,14 +38,14 @@ class SpotlightVectorDBInterface(Protocol):
     async def execute_query(
         self,
         compiled_query: str,
-    ) -> list[SpotlightSearchResult]:
+    ) -> SpotlightSearchResults:
         """Execute a compiled query and return search results.
 
         Args:
             compiled_query: The string returned by compile_query().
 
         Returns:
-            List of search results, ordered by relevance.
+            Search results container, ordered by relevance.
 
         Raises:
             RuntimeError: If query execution fails.

@@ -23,17 +23,22 @@ from airweave.search.spotlight.builders import (
     SpotlightStateBuilder,
 )
 from airweave.search.spotlight.core.embedder import SpotlightEmbedder
+from airweave.search.spotlight.core.evaluator import SpotlightEvaluator
 from airweave.search.spotlight.core.planner import SpotlightPlanner
 from airweave.search.spotlight.schemas import (
     SpotlightAnswer,
     SpotlightCollectionMetadata,
+    SpotlightCurrentIteration,
+    SpotlightEvaluation,
+    SpotlightHistory,
+    SpotlightHistoryIteration,
     SpotlightPlan,
     SpotlightQueryEmbeddings,
     SpotlightRequest,
     SpotlightResponse,
-    SpotlightSearchResult,
     SpotlightState,
 )
+from airweave.search.spotlight.schemas.search_result import SpotlightSearchResults
 from airweave.search.spotlight.services import SpotlightServices
 
 
@@ -90,23 +95,48 @@ class SpotlightAgent:
             state.current_iteration.compiled_query = compiled_query
 
             # Execute query
-            search_results: list[
-                SpotlightSearchResult
-            ] = await self.services.vector_db.execute_query(compiled_query)
+            search_results: SpotlightSearchResults = await self.services.vector_db.execute_query(
+                compiled_query
+            )
             state.current_iteration.search_results = search_results
-            self.ctx.logger.debug(
-                "[SpotlightAgent] Search results: \n"
-                + "\n\n".join([r.to_md() for r in search_results])
+
+            # Evaluate results
+            evaluator = SpotlightEvaluator(
+                llm=self.services.llm,
+                tokenizer=self.services.tokenizer,
+                logger=self.ctx.logger,
+            )
+            evaluation: SpotlightEvaluation = await evaluator.evaluate(state)
+            state.current_iteration.evaluation = evaluation
+            self.ctx.logger.debug(f"[SpotlightAgent] Evaluation: {evaluation.to_md()}")
+
+            if not state.current_iteration.evaluation.should_continue:
+                break
+
+            # Create history iteration from completed current iteration
+            history_iteration = SpotlightHistoryIteration(
+                plan=state.current_iteration.plan,
+                compiled_query=state.current_iteration.compiled_query,
+                evaluation=state.current_iteration.evaluation,
             )
 
-            # TODO: evaluator
-            # add to state
-            # add to history
-            # TODO: dont forget to add history.
-            break
+            # Initialize or add to history
+            if state.history is None:
+                state.history = SpotlightHistory(
+                    iterations={state.iteration_number: history_iteration}
+                )
+            else:
+                state.history.add_iteration(state.iteration_number, history_iteration)
+
+            # Prepare for next iteration
+            state.iteration_number += 1
+            state.current_iteration = SpotlightCurrentIteration()
+
+        # TODO: state.current_iteration: plan, compiled_query, search_results, evaluation
+        # , history -> answer
 
         return SpotlightResponse(
-            results=[],
+            results=state.current_iteration.search_results.results,
             answer=SpotlightAnswer(
                 text="",
                 citations=[],

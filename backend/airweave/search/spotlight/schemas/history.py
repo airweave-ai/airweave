@@ -1,27 +1,40 @@
 """Spotlight history schema.
 
 History is created after the first full iteration completes.
-It stores past iterations so the planner can learn from previous attempts.
+It stores past iterations so the planner and evaluator can learn from previous attempts.
 """
+
+from __future__ import annotations
 
 from typing import Iterator
 
 from pydantic import BaseModel, Field
 
+from airweave.search.spotlight.external.tokenizer.interface import SpotlightTokenizerInterface
+
 from .evaluation import SpotlightEvaluation
 from .plan import SpotlightPlan
 
+# Module-level constants for history formatting
+NO_HISTORY_MESSAGE = "No search history yet. This is the first iteration."
+TRUNCATION_NOTICE = "\n*(Earlier iterations truncated to fit context window)*"
+HISTORY_FULLY_TRUNCATED_NOTICE = (
+    "*(Search history exists but was truncated to fit context window. "
+    "Previous iterations were performed but details are not shown.)*"
+)
 
-class SpotlightIteration(BaseModel):
-    """A single completed search iteration.
 
-    Stored in history after the iteration completes (plan -> search -> evaluate).
+class SpotlightHistoryIteration(BaseModel):
+    """A single completed search iteration stored in history.
+
+    Created after an iteration completes (plan -> search -> evaluate).
+    Contains only the fields needed for history context, not the full search results.
     """
 
     plan: SpotlightPlan = Field(..., description="Plan used for this iteration.")
     compiled_query: str = Field(..., description="The compiled query.")
     evaluation: SpotlightEvaluation = Field(
-        ..., description="Evaluation of the results used for this iteration."
+        ..., description="Evaluation of the results from this iteration."
     )
 
     def to_md(self, iteration_number: int) -> str:
@@ -54,15 +67,57 @@ class SpotlightHistory(BaseModel):
     """History of completed search iterations.
 
     Stores all past iterations keyed by iteration number.
-    The planner uses this to learn from previous attempts.
+    The planner and evaluator use this to learn from previous attempts.
     """
 
-    iterations: dict[int, SpotlightIteration] = Field(
+    iterations: dict[int, SpotlightHistoryIteration] = Field(
         ...,
         description="Past iterations keyed by iteration number (1-indexed).",
     )
 
-    def iter_recent_first(self) -> Iterator[tuple[int, SpotlightIteration]]:
+    @classmethod
+    def get_truncation_reserve_tokens(cls, tokenizer: SpotlightTokenizerInterface) -> int:
+        """Get the maximum tokens needed for truncation notices.
+
+        Use this when calculating budget to ensure truncation notices always fit.
+
+        Args:
+            tokenizer: Tokenizer for counting tokens.
+
+        Returns:
+            Maximum tokens needed for either truncation notice.
+        """
+        return max(
+            tokenizer.count_tokens(TRUNCATION_NOTICE),
+            tokenizer.count_tokens(HISTORY_FULLY_TRUNCATED_NOTICE),
+        )
+
+    @classmethod
+    def build_history_section(
+        cls,
+        history: SpotlightHistory | None,
+        tokenizer: SpotlightTokenizerInterface,
+        budget: int,
+    ) -> str:
+        """Build history markdown within token budget, handling None case.
+
+        This is the main entry point for planner/evaluator to get history markdown.
+        Handles the case where history is None (first iteration).
+
+        Args:
+            history: The history object, or None if first iteration.
+            tokenizer: Tokenizer for counting tokens.
+            budget: Maximum tokens for history content.
+
+        Returns:
+            Markdown string with history (or NO_HISTORY_MESSAGE if None).
+        """
+        if history is None:
+            return NO_HISTORY_MESSAGE
+
+        return history.to_md_with_budget(tokenizer, budget)
+
+    def iter_recent_first(self) -> Iterator[tuple[int, SpotlightHistoryIteration]]:
         """Iterate over iterations from most recent to oldest.
 
         Yields:
@@ -71,7 +126,7 @@ class SpotlightHistory(BaseModel):
         for num in sorted(self.iterations.keys(), reverse=True):
             yield num, self.iterations[num]
 
-    def add_iteration(self, iteration_number: int, iteration: SpotlightIteration) -> None:
+    def add_iteration(self, iteration_number: int, iteration: SpotlightHistoryIteration) -> None:
         """Add a completed iteration to history.
 
         Iterations must be added sequentially. The first iteration must be 1,
@@ -91,3 +146,46 @@ class SpotlightHistory(BaseModel):
                 "Iterations must be added sequentially."
             )
         self.iterations[iteration_number] = iteration
+
+    def to_md_with_budget(
+        self,
+        tokenizer: SpotlightTokenizerInterface,
+        budget: int,
+    ) -> str:
+        """Build history markdown within the token budget.
+
+        History is added from most recent to oldest until budget is exhausted.
+        If truncation occurs, a notice is appended. The caller should reserve
+        tokens for the truncation notice in their budget calculation using
+        `SpotlightHistory.get_truncation_reserve_tokens()`.
+
+        Args:
+            tokenizer: Tokenizer for counting tokens.
+            budget: Maximum tokens for history content.
+
+        Returns:
+            Markdown string with history, potentially truncated.
+        """
+        history_parts: list[str] = []
+        tokens_used = 0
+
+        for iter_num, iteration in self.iter_recent_first():
+            iter_md = iteration.to_md(iter_num)
+            iter_tokens = tokenizer.count_tokens(iter_md)
+
+            # Check if adding this iteration would exceed budget
+            if tokens_used + iter_tokens > budget:
+                # Add truncation notice
+                if history_parts:
+                    history_parts.append(TRUNCATION_NOTICE)
+                break
+
+            history_parts.append(iter_md)
+            tokens_used += iter_tokens
+
+        # If we couldn't fit any history, indicate that
+        if not history_parts:
+            return HISTORY_FULLY_TRUNCATED_NOTICE
+
+        # Join with separators (most recent first)
+        return "\n\n---\n\n".join(history_parts)

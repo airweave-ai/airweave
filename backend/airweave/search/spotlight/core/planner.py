@@ -9,6 +9,7 @@ from pathlib import Path
 from airweave.core.logging import ContextualLogger
 from airweave.search.spotlight.external.llm.interface import SpotlightLLMInterface
 from airweave.search.spotlight.external.tokenizer.interface import SpotlightTokenizerInterface
+from airweave.search.spotlight.schemas.history import SpotlightHistory
 from airweave.search.spotlight.schemas.plan import SpotlightPlan
 from airweave.search.spotlight.schemas.state import SpotlightState
 
@@ -27,13 +28,6 @@ class SpotlightPlanner:
 
     # Reserve this fraction of context_window for reasoning (CoT)
     REASONING_BUFFER_FRACTION = 0.15
-
-    # Messages used when history is truncated (pre-defined so we can count their tokens)
-    TRUNCATION_NOTICE = "\n*(Earlier iterations truncated to fit context window)*"
-    HISTORY_FULLY_TRUNCATED_NOTICE = (
-        "*(Search history exists but was truncated to fit context window. "
-        "Previous iterations were performed but details are not shown.)*"
-    )
 
     def __init__(
         self,
@@ -55,12 +49,6 @@ class SpotlightPlanner:
         # Load static context files once
         self._airweave_overview = self._load_context_file("airweave_overview.md")
         self._planner_task = self._load_context_file("planner_task.md")
-
-        # Pre-calculate tokens for truncation messages (used in budget calculation)
-        self._truncation_notice_tokens = self._tokenizer.count_tokens(self.TRUNCATION_NOTICE)
-        self._fully_truncated_notice_tokens = self._tokenizer.count_tokens(
-            self.HISTORY_FULLY_TRUNCATED_NOTICE
-        )
 
     def _load_context_file(self, filename: str) -> str:
         """Load a context markdown file.
@@ -89,7 +77,9 @@ class SpotlightPlanner:
         prompt = self._build_prompt(state)
 
         # Log only the dynamic parts (not static airweave_overview and planner_task)
-        history_section = self._build_history_section(state, self._calculate_history_budget(0))
+        history_section = SpotlightHistory.build_history_section(
+            state.history, self._tokenizer, self._calculate_history_budget(0)
+        )
         self._log_dynamic_context(state, history_section)
 
         prompt_tokens = self._tokenizer.count_tokens(prompt)
@@ -139,7 +129,9 @@ class SpotlightPlanner:
         budget_for_history = self._calculate_history_budget(static_tokens)
 
         # Build history section with budget
-        history_section = self._build_history_section(state, budget_for_history)
+        history_section = SpotlightHistory.build_history_section(
+            state.history, self._tokenizer, budget_for_history
+        )
 
         # Combine into final prompt
         return f"""{static_prompt}
@@ -208,57 +200,11 @@ This is iteration **{state.iteration_number}**."""
             model_spec.context_window - model_spec.max_output_tokens - reasoning_buffer
         )
 
-        # Reserve space for truncation notices (use the larger of the two)
-        truncation_reserve = max(
-            self._truncation_notice_tokens,
-            self._fully_truncated_notice_tokens,
-        )
+        # Reserve space for truncation notices
+        truncation_reserve = SpotlightHistory.get_truncation_reserve_tokens(self._tokenizer)
 
         # Budget for history = input budget - static prompt - truncation reserve
         budget = max_input_tokens - static_tokens - truncation_reserve
 
         # Ensure non-negative
         return max(0, budget)
-
-    def _build_history_section(self, state: SpotlightState, budget: int) -> str:
-        """Build the history section within the token budget.
-
-        History is added from most recent to oldest until budget is exhausted.
-        The budget already accounts for truncation notice tokens, so we're
-        guaranteed to fit within the context window.
-
-        Args:
-            state: The current spotlight state.
-            budget: Maximum tokens for history content (excludes truncation notices).
-
-        Returns:
-            Markdown string with history (or message if first iteration).
-        """
-        # First iteration - no history yet
-        if state.history is None:
-            return "No search history yet. This is the first iteration."
-
-        # Build history from most recent to oldest
-        history_parts: list[str] = []
-        tokens_used = 0
-
-        for iter_num, iteration in state.history.iter_recent_first():
-            iter_md = iteration.to_md(iter_num)
-            iter_tokens = self._tokenizer.count_tokens(iter_md)
-
-            # Check if adding this iteration would exceed budget
-            if tokens_used + iter_tokens > budget:
-                # Add truncation notice (tokens already reserved in budget calculation)
-                if history_parts:
-                    history_parts.append(self.TRUNCATION_NOTICE)
-                break
-
-            history_parts.append(iter_md)
-            tokens_used += iter_tokens
-
-        # If we couldn't fit any history, indicate that (tokens already reserved)
-        if not history_parts:
-            return self.HISTORY_FULLY_TRUNCATED_NOTICE
-
-        # Join with separators (most recent first)
-        return "\n\n---\n\n".join(history_parts)

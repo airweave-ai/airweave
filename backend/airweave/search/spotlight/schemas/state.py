@@ -9,7 +9,7 @@ from .evaluation import SpotlightEvaluation
 from .history import SpotlightHistory
 from .plan import SpotlightPlan
 from .query_embeddings import SpotlightQueryEmbeddings
-from .search_result import SpotlightSearchResult
+from .search_result import SpotlightSearchResults
 
 
 class SpotlightCurrentIteration(BaseModel):
@@ -20,7 +20,7 @@ class SpotlightCurrentIteration(BaseModel):
         default=None, description="Query embeddings."
     )
     compiled_query: Optional[str] = Field(None, description="The compiled query.")
-    search_results: Optional[list[SpotlightSearchResult]] = Field(
+    search_results: Optional[SpotlightSearchResults] = Field(
         default=None, description="Search results."
     )
     evaluation: Optional[SpotlightEvaluation] = Field(default=None, description="Evaluation.")

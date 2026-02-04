@@ -1,12 +1,24 @@
 """Spotlight search result schema."""
 
+from __future__ import annotations
+
 import json
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 from pydantic import BaseModel, Field
 
+from airweave.search.spotlight.external.tokenizer.interface import SpotlightTokenizerInterface
+
 # NOTE: a lot more required than in the sync pipeline
+
+# Module-level constants for results formatting
+NO_RESULTS_MESSAGE = "No search results returned."
+RESULTS_TRUNCATION_NOTICE = "\n*(Additional results truncated to fit context window)*"
+RESULTS_FULLY_TRUNCATED_NOTICE = (
+    "*(Search results exist but were truncated to fit context window. "
+    "Results were found but details are not shown.)*"
+)
 
 
 class SpotlightBreadcrumb(BaseModel):
@@ -90,6 +102,7 @@ class SpotlightSearchResult(BaseModel):
 
     entity_id: str = Field(..., description="Original entity ID.")
     name: str = Field(..., description="Entity display name.")
+    relevance_score: float = Field(..., description="Relevance score from the search engine.")
     breadcrumbs: list[SpotlightBreadcrumb] = Field(
         ..., description="Breadcrumbs showing entity hierarchy."
     )
@@ -131,6 +144,7 @@ class SpotlightSearchResult(BaseModel):
             f"### {self.name}",
             "",
             f"**Entity ID:** {self.entity_id}",
+            f"**Relevance Score:** {self.relevance_score:.4f}",
             f"**Web URL:** {self.web_url}",
         ]
 
@@ -178,3 +192,119 @@ class SpotlightSearchResult(BaseModel):
         lines.append("```")
 
         return "\n".join(lines)
+
+
+class SpotlightSearchResults(BaseModel):
+    """Container for search results with budget-aware rendering.
+
+    Results are stored in relevance order (highest first, as returned by Vespa).
+    """
+
+    results: list[SpotlightSearchResult] = Field(
+        default_factory=list,
+        description="Search results ordered by relevance (highest first).",
+    )
+
+    def __len__(self) -> int:
+        """Return the number of results."""
+        return len(self.results)
+
+    @classmethod
+    def get_truncation_reserve_tokens(cls, tokenizer: SpotlightTokenizerInterface) -> int:
+        """Get the maximum tokens needed for truncation notices.
+
+        Use this when calculating budget to ensure truncation notices always fit.
+
+        Args:
+            tokenizer: Tokenizer for counting tokens.
+
+        Returns:
+            Maximum tokens needed for either truncation notice.
+        """
+        return max(
+            tokenizer.count_tokens(RESULTS_TRUNCATION_NOTICE),
+            tokenizer.count_tokens(RESULTS_FULLY_TRUNCATED_NOTICE),
+        )
+
+    @classmethod
+    def build_results_section(
+        cls,
+        results: SpotlightSearchResults | None,
+        tokenizer: SpotlightTokenizerInterface,
+        budget: int,
+    ) -> str:
+        """Build results markdown within token budget, handling None case.
+
+        This is the main entry point for the evaluator to get results markdown.
+        Handles the case where results is None (search not yet executed).
+
+        Args:
+            results: The results object, or None if search not executed.
+            tokenizer: Tokenizer for counting tokens.
+            budget: Maximum tokens for results content.
+
+        Returns:
+            Markdown string with results (or NO_RESULTS_MESSAGE if None/empty).
+        """
+        if results is None or len(results) == 0:
+            return NO_RESULTS_MESSAGE
+
+        return results.to_md_with_budget(tokenizer, budget)
+
+    def iter_by_relevance(self) -> Iterator[SpotlightSearchResult]:
+        """Iterate over results from highest to lowest relevance.
+
+        Results are already stored in relevance order from Vespa.
+
+        Yields:
+            SpotlightSearchResult objects in descending relevance order.
+        """
+        yield from self.results
+
+    def to_md_with_budget(
+        self,
+        tokenizer: SpotlightTokenizerInterface,
+        budget: int,
+    ) -> str:
+        """Build results markdown within the token budget.
+
+        Results are added by relevance (highest first) until budget is exhausted.
+        If truncation occurs, a notice is appended. The caller should reserve
+        tokens for the truncation notice in their budget calculation using
+        `SpotlightSearchResults.get_truncation_reserve_tokens()`.
+
+        Args:
+            tokenizer: Tokenizer for counting tokens.
+            budget: Maximum tokens for results content.
+
+        Returns:
+            Markdown string with results, potentially truncated.
+        """
+        result_parts: list[str] = []
+        tokens_used = 0
+        results_included = 0
+
+        for result in self.iter_by_relevance():
+            result_md = result.to_md()
+            result_tokens = tokenizer.count_tokens(result_md)
+
+            # Check if adding this result would exceed budget
+            if tokens_used + result_tokens > budget:
+                # Add truncation notice
+                if result_parts:
+                    result_parts.append(RESULTS_TRUNCATION_NOTICE)
+                break
+
+            result_parts.append(result_md)
+            tokens_used += result_tokens
+            results_included += 1
+
+        # If we couldn't fit any results, indicate that
+        if not result_parts:
+            return RESULTS_FULLY_TRUNCATED_NOTICE
+
+        # Add header with counts
+        total = len(self.results)
+        header = f"**{results_included} of {total} results shown** (by relevance):\n\n"
+
+        return header + "\n\n---\n\n".join(result_parts)

@@ -8,6 +8,10 @@ class SpotlightRequest(BaseModel):
 
     query: str = Field(..., description="The natural language search query")
 
+    # filter
+    # instant / agentic
+    # model
+
     @field_validator("query")
     @classmethod
     def validate_query_not_empty(cls, v: str) -> str:

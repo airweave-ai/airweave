@@ -18,7 +18,7 @@ from .database import (
 )
 from .evaluation import SpotlightEvaluation
 from .filter import SpotlightFilterCondition, SpotlightFilterGroup, SpotlightFilterOperator
-from .history import SpotlightHistory, SpotlightIteration
+from .history import SpotlightHistory, SpotlightHistoryIteration
 from .plan import SpotlightPlan, SpotlightSearchQuery
 from .query_embeddings import (
     SpotlightDenseEmbedding,
@@ -59,7 +59,7 @@ __all__ = [
     "SpotlightFilterOperator",
     # History
     "SpotlightHistory",
-    "SpotlightIteration",
+    "SpotlightHistoryIteration",
     # Plan
     "SpotlightPlan",
     "SpotlightSearchQuery",

@@ -33,6 +33,7 @@ from airweave.search.spotlight.schemas.search_result import (
     SpotlightAccessControl,
     SpotlightBreadcrumb,
     SpotlightSearchResult,
+    SpotlightSearchResults,
     SpotlightSystemMetadata,
 )
 
@@ -145,7 +146,7 @@ class VespaVectorDB:
     async def execute_query(
         self,
         compiled_query: str,
-    ) -> list[SpotlightSearchResult]:
+    ) -> SpotlightSearchResults:
         """Execute compiled query against Vespa.
 
         Runs the query in a thread pool since pyvespa is synchronous.
@@ -154,7 +155,7 @@ class VespaVectorDB:
             compiled_query: JSON string from compile_query().
 
         Returns:
-            List of search results, ordered by relevance.
+            Search results container, ordered by relevance.
 
         Raises:
             RuntimeError: If query execution fails.
@@ -371,22 +372,23 @@ class VespaVectorDB:
     # Hit Conversion
     # =========================================================================
 
-    def _convert_hits_to_results(self, hits: List[Dict[str, Any]]) -> List[SpotlightSearchResult]:
-        """Convert Vespa hits to SpotlightSearchResult objects.
+    def _convert_hits_to_results(self, hits: List[Dict[str, Any]]) -> SpotlightSearchResults:
+        """Convert Vespa hits to SpotlightSearchResults container.
 
         Args:
             hits: List of Vespa hit dictionaries.
 
         Returns:
-            List of SpotlightSearchResult objects.
+            SpotlightSearchResults container with results ordered by relevance.
         """
-        results = []
+        results: list[SpotlightSearchResult] = []
         for i, hit in enumerate(hits):
             fields = hit.get("fields", {})
+            relevance = hit.get("relevance", 0.0)
 
             # Log debug info for first few hits
             if i < 5:
-                self._log_hit_debug(i, fields, hit.get("relevance", 0.0))
+                self._log_hit_debug(i, fields, relevance)
 
             # Validate required fields
             entity_id = fields.get("entity_id")
@@ -400,6 +402,7 @@ class VespaVectorDB:
             result = SpotlightSearchResult(
                 entity_id=entity_id,
                 name=self._get_required_field(fields, "name", entity_id),
+                relevance_score=relevance,
                 breadcrumbs=self._extract_breadcrumbs(fields.get("breadcrumbs", [])),
                 created_at=self._parse_timestamp(fields.get("created_at")),
                 updated_at=self._parse_timestamp(fields.get("updated_at")),
@@ -414,7 +417,7 @@ class VespaVectorDB:
             )
             results.append(result)
 
-        return results
+        return SpotlightSearchResults(results=results)
 
     def _get_required_field(self, fields: Dict[str, Any], field_name: str, entity_id: str) -> str:
         """Get a required field, logging warning if missing."""
