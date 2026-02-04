@@ -35,6 +35,13 @@ Consider:
 - Further searching is unlikely to improve results
 - We've tried multiple strategies without improvement (check history)
 - Results are good enough even if not perfect
+- **Don't keep the user waiting**: If 10+ iterations have passed with no meaningful progress,
+  stop and return what you have rather than continuing indefinitely
+
+## When Uncertain
+
+**Prefer CONTINUE over STOP** - it's better to search more thoroughly than to miss the answer.
+Only stop when you're confident the results are sufficient.
 
 ## Before Stopping: Coverage Check
 
