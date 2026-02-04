@@ -99,6 +99,7 @@ mcp = "^1.3.0"
 vulture = "^2.10"
 watchfiles = "^1.1.0"
 debugpy = "^1.8.16"
+import-linter = "^2.1"
 
 [build-system]
 requires = ["poetry-core"]
@@ -173,3 +174,16 @@ markers = [
     "slow: mark a test as slow running",
 ]
 extend-exclude = ["backend (old, neena, only for inspiration)"]
+
+[tool.importlinter]
+root_package = "airweave"
+
+[[tool.importlinter.contracts]]
+name = "Container access restricted to entry points"
+type = "protected"
+protected_modules = ["airweave.core.container"]
+allowed_importers = [
+    "airweave.main",
+    "airweave.platform.temporal.worker",
+    "airweave.platform.temporal.worker.wiring",
+]

@@ -21,6 +21,15 @@ repos:
 
   - repo: local
     hooks:
+      - id: import-linter
+        name: import-linter
+        entry: bash -c 'cd backend && poetry run lint-imports'
+        language: system
+        files: ^backend/.*\.py$
+        pass_filenames: false
+
+  - repo: local
+    hooks:
       - id: eslint
         name: eslint
         entry: bash -c 'cd frontend && npx eslint'
