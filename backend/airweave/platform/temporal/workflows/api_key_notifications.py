@@ -6,7 +6,7 @@ from temporalio import workflow
 from temporalio.common import RetryPolicy
 
 with workflow.unsafe.imports_passed_through():
-    from airweave.platform.temporal.activities.api_key_notifications import (
+    from airweave.platform.temporal.activities import (
         check_and_notify_expiring_keys_activity,
     )
 

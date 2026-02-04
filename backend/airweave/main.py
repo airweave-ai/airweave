@@ -55,8 +55,15 @@ from airweave.platform.db_sync import sync_platform_components
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown events.
 
-    Runs alembic migrations and syncs platform components.
+    Initializes the DI container, runs alembic migrations, and syncs platform components.
     """
+    # Initialize the dependency injection container (fail fast if wiring is broken)
+    from airweave.core.container import initialize_container
+
+    logger.info("Initializing dependency injection container...")
+    initialize_container(settings)
+    logger.info("Container initialized successfully")
+
     async with AsyncSessionLocal() as db:
         if settings.RUN_ALEMBIC_MIGRATIONS:
             logger.info("Running alembic migrations...")
