@@ -18,15 +18,13 @@ When creating a plan, consider:
 
 For each search plan, you must specify:
 
-1. **Queries** (`queries`): A list of 1-5 search queries to execute in parallel.
+1. **Query** (`query`): A primary query plus optional variations.
 
-   You can provide multiple queries to improve recall. All queries are embedded and searched
-   via semantic similarity (vector search), with results merged - documents matching ANY query
-   are returned, and those matching multiple queries rank higher.
+   - `primary`: Your main query - used for BOTH keyword (BM25) AND semantic search. Make it keyword-optimized.
+   - `variations`: Up to 4 additional queries for semantic search only. Use for paraphrases/synonyms.
 
-   Only the **first query** is used for keyword/BM25 matching. Additional queries
-   (2-5) are matched **semantically only**. Therefore, put your best keyword-optimized query
-   first, and use additional queries for semantic variations.
+   All queries are embedded and searched via semantic similarity, with results merged.
+   Documents matching ANY query are returned, and those matching multiple rank higher.
 
    Use multiple queries when:
    - The user's intent could be expressed in different ways
@@ -44,6 +42,13 @@ For each search plan, you must specify:
    - Conditions **within** a group are combined with **AND**
    - Multiple groups are combined with **OR**
    - This allows expressions like: `(A AND B) OR (C AND D)`
+
+   **When to use filters:**
+   - Use filters when the user explicitly mentions a source, time range, or location
+   - For small collections (< 50 total entities), prefer **no filters** - let semantic search
+     find the best matches across all entity types
+   - On the first iteration, be conservative - broad searches find unexpected answers
+   - Add filters in later iterations if results are too noisy or off-topic
 
    Example - search Slack messages OR Notion pages:
    ```json

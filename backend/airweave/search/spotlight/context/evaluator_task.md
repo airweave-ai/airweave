@@ -36,6 +36,14 @@ Consider:
 - We've tried multiple strategies without improvement (check history)
 - Results are good enough even if not perfect
 
+## Before Stopping: Coverage Check
+
+If you found an answer, verify you've searched broadly enough:
+- For small collections (< 50 entities), all entity types should be considered
+- If filters excluded entity types (e.g., only searched tasks, not files), consider if
+  the answer could be better documented elsewhere
+- A single relevant result warrants more confidence-checking than multiple confirming results
+
 ## What You Must Provide
 
 ### 1. result_summaries (REQUIRED for every result)

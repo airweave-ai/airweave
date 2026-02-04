@@ -11,6 +11,7 @@ class SpotlightRequest(BaseModel):
     # filter
     # instant / agentic
     # model
+    # limit?
 
     @field_validator("query")
     @classmethod
