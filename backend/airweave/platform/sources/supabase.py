@@ -100,8 +100,17 @@ class SupabaseSource(BaseSource):
         )
         instance.project_url = instance.config["project_url"].rstrip("/")
         instance.api_key = instance.config["api_key"]
-        instance.page_size = config.get("page_size", 1000) if config else 1000
-        instance.respect_rls = config.get("respect_rls", True) if config else True
+
+        # Properly handle config parameters
+        if config:
+            instance.tables = config.get("tables", "*")
+            instance.page_size = config.get("page_size", 1000)
+            instance.respect_rls = config.get("respect_rls", True)
+        else:
+            instance.tables = "*"
+            instance.page_size = 1000
+            instance.respect_rls = True
+
         return instance
 
     def _get_headers(self) -> Dict[str, str]:
@@ -389,9 +398,8 @@ class SupabaseSource(BaseSource):
             tables = await self._discover_tables(client)
 
             # Filter tables based on config
-            tables_config = self.config.get("tables", "*") or "*"
-            if tables_config != "*":
-                requested_tables = [t.strip() for t in tables_config.split(",") if t.strip()]
+            if self.tables != "*":
+                requested_tables = [t.strip() for t in self.tables.split(",") if t.strip()]
                 tables = [t for t in tables if t in requested_tables]
 
             self.logger.info(f"Processing {len(tables)} table(s)")
