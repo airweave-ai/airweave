@@ -70,6 +70,15 @@ class SparseEmbedderModel(str, Enum):
     BM25 = "Qdrant/bm25"
 
 
+# --- Vector Database ---
+
+
+class VectorDBProvider(str, Enum):
+    """Supported vector database providers."""
+
+    VESPA = "vespa"
+
+
 # --- Config ---
 
 
@@ -89,15 +98,15 @@ class SpotlightConfig:
     TOKENIZER_ENCODING = TokenizerEncoding.O200K_HARMONY
 
     # Dense embedder
-    # Note: Larger models (e.g., text-embedding-3-large) produce better embeddings
-    # even when truncated to smaller dimensions via Matryoshka.
     DENSE_EMBEDDER_PROVIDER = DenseEmbedderProvider.OPENAI
     DENSE_EMBEDDER_MODEL = DenseEmbedderModel.TEXT_EMBEDDING_3_LARGE
 
     # Sparse embedder
-    # Note: Must match the model used for indexing (platform/embedders/fastembed.py)
     SPARSE_EMBEDDER_PROVIDER = SparseEmbedderProvider.FASTEMBED
     SPARSE_EMBEDDER_MODEL = SparseEmbedderModel.BM25
+
+    # Vector database
+    VECTOR_DB_PROVIDER = VectorDBProvider.VESPA
 
 
 config = SpotlightConfig()

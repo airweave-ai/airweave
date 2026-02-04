@@ -200,14 +200,9 @@ class AgenticQueryBuilder:
             strategy: Retrieval strategy
 
         Returns:
-            Vespa ranking profile name
+            Vespa ranking profile name (matches strategy value directly)
         """
-        if strategy == RetrievalStrategy.SEMANTIC:
-            return "semantic-only"
-        elif strategy == RetrievalStrategy.KEYWORD:
-            return "keyword-only"
-        else:
-            return "hybrid-rrf"
+        return strategy.value
 
     def _convert_sparse_to_tensor(self, sparse_emb: Any) -> Optional[Dict[str, Any]]:
         """Convert FastEmbed sparse embedding to Vespa tensor format.

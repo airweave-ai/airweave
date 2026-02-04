@@ -105,7 +105,7 @@ schema base_entity {
         }
 
         # =============================================================================
-        # Access Control Fields
+        # Access Control Fields (flattened from AccessControl model)
         # =============================================================================
         field access_is_public type bool {
             indexing: attribute | summary
@@ -256,7 +256,7 @@ schema base_entity {
     # HYBRID RANK PROFILE with RRF (Reciprocal Rank Fusion)
     # Uses FastEmbed sparse embeddings for keyword scoring instead of Vespa BM25
     # =========================================================================
-    rank-profile hybrid-rrf inherits default {
+    rank-profile hybrid inherits default {
 
         # -----------------------------------------------------------------------
         # FIRST PHASE: Runs on all matched candidates
@@ -292,19 +292,19 @@ schema base_entity {
     }
 
     # =========================================================================
-    # SEMANTIC-ONLY RANK PROFILE (for neural-only search)
+    # SEMANTIC RANK PROFILE (for neural-only search)
     # =========================================================================
-    rank-profile semantic-only inherits default {
+    rank-profile semantic inherits default {
         first-phase {
             expression: semantic_score()
         }
     }
 
     # =========================================================================
-    # KEYWORD-ONLY RANK PROFILE (for keyword-only search)
+    # KEYWORD RANK PROFILE (for keyword-only search)
     # Uses FastEmbed sparse embeddings for consistent behavior with Qdrant
     # =========================================================================
-    rank-profile keyword-only inherits default {
+    rank-profile keyword inherits default {
         first-phase {
             expression: keyword_score()
         }

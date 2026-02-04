@@ -227,12 +227,11 @@ class QueryBuilder:
         Returns:
             Vespa ranking profile name
         """
+        # Map "neural" to "semantic" profile (Vespa uses "semantic" profile name)
         if retrieval_strategy == "neural":
-            return "semantic-only"
-        elif retrieval_strategy == "keyword":
-            return "keyword-only"
-        else:
-            return "hybrid-rrf"
+            return "semantic"
+        # Other strategies (keyword, hybrid) map directly
+        return retrieval_strategy
 
     def escape_query(self, query: str) -> str:
         """Escape a query string for safe inclusion in YQL.

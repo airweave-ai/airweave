@@ -48,21 +48,21 @@ For each search plan, you must specify:
    Example - search Slack messages OR Notion pages:
    ```json
    [
-     {"conditions": [{"field": "source_name", "operator": "equals", "value": "slack"}]},
-     {"conditions": [{"field": "source_name", "operator": "equals", "value": "notion"}]}
+     {"conditions": [{"field": "airweave_system_metadata.source_name", "operator": "equals", "value": "slack"}]},
+     {"conditions": [{"field": "airweave_system_metadata.source_name", "operator": "equals", "value": "notion"}]}
    ]
    ```
 
-   Example - search Slack #general OR Notion engineering workspace:
+   Example - Slack messages from last week OR Notion pages in "Engineering" folder:
    ```json
    [
      {"conditions": [
-       {"field": "source_name", "operator": "equals", "value": "slack"},
-       {"field": "channel", "operator": "equals", "value": "general"}
+       {"field": "airweave_system_metadata.source_name", "operator": "equals", "value": "slack"},
+       {"field": "created_at", "operator": "greater_than", "value": "2024-01-15T00:00:00Z"}
      ]},
      {"conditions": [
-       {"field": "source_name", "operator": "equals", "value": "notion"},
-       {"field": "workspace", "operator": "equals", "value": "engineering"}
+       {"field": "airweave_system_metadata.source_name", "operator": "equals", "value": "notion"},
+       {"field": "breadcrumbs.name", "operator": "contains", "value": "Engineering"}
      ]}
    ]
    ```
@@ -72,28 +72,37 @@ For each search plan, you must specify:
    *Base fields:*
    - `entity_id`: Target a specific chunk (format: `original_entity_id__chunk_{chunk_index}`)
    - `name`: Filter by entity name (also in textual_representation, so semantically searchable)
-   - `breadcrumbs`: **Powerful for navigation** - filter by location hierarchy to find:
-     - All entities in a specific folder/workspace (e.g., breadcrumbs contains "Engineering")
-     - Siblings of a known entity (same parent path)
-     - Children within a parent container
    - `created_at`, `updated_at`: Filter by time ranges (ISO 8601 format) using
      `greater_than`/`less_than` operators
      (e.g., "last 5 days" → `created_at` greater than 5 days ago)
+  - Breadcrumb fields - **Powerful for navigation** by location hierarchy:
+
+    Each entity has breadcrumbs representing its location path (e.g., Workspace → Project → Page).
+    Breadcrumbs are an array of objects with three searchable fields:
+    - `breadcrumbs.entity_id`: The source ID of a parent entity
+    - `breadcrumbs.name`: The display name of a parent (e.g., "Engineering", "Q4 Planning")
+    - `breadcrumbs.entity_type`: The type of parent entity (e.g., "NotionWorkspaceEntity")
+
+    Use breadcrumb filters to:
+    - Find all entities in a specific folder/workspace: `breadcrumbs.name contains "Engineering"`
+    - Find children of a known parent: `breadcrumbs.entity_id equals "parent-id-123"`
+    - Find entities under a specific type: `breadcrumbs.entity_type equals "AsanaProjectEntity"`
 
    *System metadata (important for deep exploration):*
-   - `source_name`: Filter to specific sources (e.g., "notion", "slack")
-   - `entity_type`: Filter to specific entity types (e.g., "NotionPageEntity")
-   - `original_entity_id`: **Critical for document exploration** - all chunks from the same
-     original (pre-chunked) entity share this ID. If you find an interesting chunk, filter by its
-     `original_entity_id` to retrieve ALL chunks from that entity for full context.
-   - `chunk_index`: **Navigate within a document** - chunks are numbered sequentially.
-     If chunk 3 is relevant, you can fetch chunks 2 and 4 (before/after) for surrounding
+   - `airweave_system_metadata.source_name`: Filter to specific sources (e.g., "notion", "slack")
+   - `airweave_system_metadata.entity_type`: Filter to specific entity types (e.g., "NotionPageEntity")
+   - `airweave_system_metadata.original_entity_id`: **Critical for document exploration** - all chunks
+     from the same original (pre-chunked) entity share this ID. If you find an interesting chunk,
+     filter by its `airweave_system_metadata.original_entity_id` to retrieve ALL chunks for full context.
+   - `airweave_system_metadata.chunk_index`: **Navigate within a document** - chunks are numbered
+     sequentially. If chunk 3 is relevant, you can fetch chunks 2 and 4 (before/after) for surrounding
      context, or get chunk 0 for the document's beginning.
 
-   *Source-specific fields:*
-   - Available fields vary by entity type - see Collection Info below
-   - **Warning**: Filtering on a source-specific field will exclude entities without that field.
-     For example, filtering on `channel` will exclude all non-Slack entities.
+   **Important: Source-specific fields (like `channel`, `workspace`, `status`) are NOT filterable.**
+   These fields are stored in the entity payload and can only be searched via **keyword search**,
+   not filtered directly. To find entities with specific source field values, include those terms
+   in your search query instead of using filters. The Collection Info section shows available
+   source-specific fields - use them to craft better search queries, not filters.
 
 3. **Result Count** (`limit`, `offset`): How many results to fetch and pagination offset.
    - Consider that results must fit in the LLM-as-a-judge's (evaluator) context window

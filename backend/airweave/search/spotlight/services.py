@@ -3,6 +3,8 @@
 This is the composition root - where external dependencies are wired together.
 """
 
+from __future__ import annotations
+
 from airweave.api.context import ApiContext
 from airweave.search.spotlight.config import (
     DatabaseImpl,
@@ -10,6 +12,7 @@ from airweave.search.spotlight.config import (
     LLMProvider,
     SparseEmbedderProvider,
     TokenizerType,
+    VectorDBProvider,
     config,
 )
 from airweave.search.spotlight.external.database import SpotlightDatabaseInterface
@@ -30,6 +33,7 @@ from airweave.search.spotlight.external.tokenizer import SpotlightTokenizerInter
 from airweave.search.spotlight.external.tokenizer.registry import (
     get_model_spec as get_tokenizer_model_spec,
 )
+from airweave.search.spotlight.external.vector_database import SpotlightVectorDBInterface
 
 
 class SpotlightServices:
@@ -43,6 +47,7 @@ class SpotlightServices:
     - services.llm.structured_output() for LLM calls
     - services.dense_embedder.embed_batch() for semantic embeddings
     - services.sparse_embedder.embed() for keyword embeddings
+    - services.vector_db.compile_query() and execute_query() for search
     """
 
     def __init__(
@@ -52,6 +57,7 @@ class SpotlightServices:
         llm: SpotlightLLMInterface,
         dense_embedder: SpotlightDenseEmbedderInterface,
         sparse_embedder: SpotlightSparseEmbedderInterface,
+        vector_db: SpotlightVectorDBInterface,
     ):
         """Initialize with external dependencies.
 
@@ -61,15 +67,17 @@ class SpotlightServices:
             llm: LLM interface for structured output.
             dense_embedder: Dense embedder for semantic search.
             sparse_embedder: Sparse embedder for keyword search.
+            vector_db: Vector database for query compilation and execution.
         """
         self.db = db
         self.tokenizer = tokenizer
         self.llm = llm
         self.dense_embedder = dense_embedder
         self.sparse_embedder = sparse_embedder
+        self.vector_db = vector_db
 
     @classmethod
-    async def create(cls, ctx: ApiContext, readable_id: str) -> "SpotlightServices":
+    async def create(cls, ctx: ApiContext, readable_id: str) -> SpotlightServices:
         """Create services based on config.
 
         Args:
@@ -88,6 +96,8 @@ class SpotlightServices:
         dense_embedder = cls._create_dense_embedder(vector_size)
         sparse_embedder = cls._create_sparse_embedder()
 
+        vector_db = await cls._create_vector_db(ctx)
+
         # Log initialized services summary
         llm_spec = llm.model_spec
         tokenizer_spec = tokenizer.model_spec
@@ -102,7 +112,8 @@ class SpotlightServices:
             f"  - Dense embedder: {config.DENSE_EMBEDDER_PROVIDER.value} / "
             f"{dense_spec.api_model_name} (vector_size={vector_size})\n"
             f"  - Sparse embedder: {config.SPARSE_EMBEDDER_PROVIDER.value} / "
-            f"{sparse_spec.model_name}"
+            f"{sparse_spec.model_name}\n"
+            f"  - Vector DB: {config.VECTOR_DB_PROVIDER.value}"
         )
 
         return cls(
@@ -111,6 +122,7 @@ class SpotlightServices:
             llm=llm,
             dense_embedder=dense_embedder,
             sparse_embedder=sparse_embedder,
+            vector_db=vector_db,
         )
 
     @staticmethod
@@ -269,9 +281,32 @@ class SpotlightServices:
 
         raise ValueError(f"Unknown sparse embedder provider: {config.SPARSE_EMBEDDER_PROVIDER}")
 
+    @staticmethod
+    async def _create_vector_db(ctx: ApiContext) -> SpotlightVectorDBInterface:
+        """Create vector database based on config.
+
+        Args:
+            ctx: API context for logging.
+
+        Returns:
+            Vector database interface implementation.
+
+        Raises:
+            ValueError: If vector DB provider is unknown.
+        """
+        if config.VECTOR_DB_PROVIDER == VectorDBProvider.VESPA:
+            from airweave.search.spotlight.external.vector_database.vespa import (
+                VespaVectorDB,
+            )
+
+            return await VespaVectorDB.create(ctx)
+
+        raise ValueError(f"Unknown vector DB provider: {config.VECTOR_DB_PROVIDER}")
+
     async def close(self) -> None:
         """Clean up all resources."""
         await self.db.close()
         await self.llm.close()
         await self.dense_embedder.close()
         await self.sparse_embedder.close()
+        await self.vector_db.close()

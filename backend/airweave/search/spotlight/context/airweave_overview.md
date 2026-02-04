@@ -31,13 +31,17 @@ in a vector database.
 
 | Field | Description |
 |-------|-------------|
-| `source_name` | Source type (e.g., "notion", "slack") |
-| `entity_type` | Entity class (e.g., "NotionPageEntity") |
-| `original_entity_id` | ID before chunking (shared by all chunks from the same item) |
-| `chunk_index` | Position if content was split into chunks |
+| `airweave_system_metadata.source_name` | Source type (e.g., "notion", "slack") |
+| `airweave_system_metadata.entity_type` | Entity class (e.g., "NotionPageEntity") |
+| `airweave_system_metadata.original_entity_id` | ID before chunking (shared by all chunks from the same item) |
+| `airweave_system_metadata.chunk_index` | Position if content was split into chunks |
 
 **Source-Specific Fields:** Each source has unique entity types with different fields
 (e.g., `status`, `labels`, `assignee`). See the Collection Info section for available fields.
+
+**Important:** Source-specific fields are stored in the entity payload and are **searchable via
+keyword search** but **NOT filterable**. To find entities with specific field values, include
+those terms in your search query rather than using filters.
 
 ### How Data Becomes Searchable
 
@@ -79,6 +83,9 @@ For each filter condition, specify:
 
 ### Important Fields for Deep Exploration
 
-- `breadcrumbs`: Filter by location hierarchy (e.g., "Engineering" workspace)
-- `original_entity_id`: Get ALL chunks from the same original entity for full context
-- `chunk_index`: Navigate within a document (get surrounding chunks)
+- `airweave_system_metadata.source_name`: Filter to specific sources (e.g., "notion", "slack")
+- `airweave_system_metadata.entity_type`: Filter to specific entity types (e.g., "NotionPageEntity")
+- `breadcrumbs.entity_id`, `breadcrumbs.name`, `breadcrumbs.entity_type`: Filter by location hierarchy
+- `airweave_system_metadata.original_entity_id`: Get ALL chunks from the same original entity for full context
+- `airweave_system_metadata.chunk_index`: Navigate within a document (get surrounding chunks)
+- `created_at`, `updated_at`: Filter by time ranges

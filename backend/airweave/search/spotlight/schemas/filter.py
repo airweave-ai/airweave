@@ -1,9 +1,40 @@
-"""Filter schemas for spotlight search."""
+"""Filter schemas for spotlight search.
+
+Defines the allowed filterable fields and operators for search filters.
+Pydantic automatically validates all filter inputs.
+"""
 
 from enum import Enum
 from typing import List, Union
 
 from pydantic import BaseModel, Field
+
+
+class SpotlightFilterableField(str, Enum):
+    """Filterable fields in spotlight search.
+
+    Uses dot notation for nested fields (e.g., breadcrumbs.name,
+    airweave_system_metadata.source_name).
+    """
+
+    # Base entity fields
+    ENTITY_ID = "entity_id"
+    NAME = "name"
+    CREATED_AT = "created_at"
+    UPDATED_AT = "updated_at"
+
+    # Breadcrumb struct fields (for hierarchy navigation)
+    BREADCRUMBS_ENTITY_ID = "breadcrumbs.entity_id"
+    BREADCRUMBS_NAME = "breadcrumbs.name"
+    BREADCRUMBS_ENTITY_TYPE = "breadcrumbs.entity_type"
+
+    # System metadata fields
+    SYSTEM_METADATA_ENTITY_TYPE = "airweave_system_metadata.entity_type"
+    SYSTEM_METADATA_SOURCE_NAME = "airweave_system_metadata.source_name"
+    SYSTEM_METADATA_ORIGINAL_ENTITY_ID = "airweave_system_metadata.original_entity_id"
+    SYSTEM_METADATA_CHUNK_INDEX = "airweave_system_metadata.chunk_index"
+    SYSTEM_METADATA_SYNC_ID = "airweave_system_metadata.sync_id"
+    SYSTEM_METADATA_SYNC_JOB_ID = "airweave_system_metadata.sync_job_id"
 
 
 class SpotlightFilterOperator(str, Enum):
@@ -23,15 +54,24 @@ class SpotlightFilterOperator(str, Enum):
 class SpotlightFilterCondition(BaseModel):
     """A single filter condition.
 
+    Pydantic validates that:
+    - `field` is a valid SpotlightFilterableField enum value
+    - `operator` is a valid SpotlightFilterOperator enum value
+    - `value` matches the expected types
+
+    Invalid filters raise pydantic.ValidationError automatically.
+
     Examples:
-        - {"field": "source_name", "operator": "equals", "value": "notion"}
-        - {"field": "entity_type", "operator": "in", "value": ["SlackMessageEntity", ...]}
-        - {"field": "created_at", "operator": "greater_than", "value": "2024-01-01T00:00:00Z"}
+        {"field": "airweave_system_metadata.source_name", "operator": "equals",
+         "value": "notion"}
+        {"field": "created_at", "operator": "greater_than",
+         "value": "2024-01-01T00:00:00Z"}
+        {"field": "breadcrumbs.name", "operator": "contains", "value": "Engineering"}
     """
 
-    field: str = Field(
+    field: SpotlightFilterableField = Field(
         ...,
-        description="Field name to filter on (e.g., 'source_name', 'entity_type').",
+        description="Field to filter on (use dot notation for nested fields).",
     )
     operator: SpotlightFilterOperator = Field(..., description="The comparison operator to use.")
     value: Union[str, int, float, bool, List[str], List[int]] = Field(
@@ -49,17 +89,25 @@ class SpotlightFilterGroup(BaseModel):
     Examples:
         Single group (AND):
             {"conditions": [
-                {"field": "source_name", "operator": "equals", "value": "slack"},
-                {"field": "entity_type", "operator": "equals", "value": "SlackMessageEntity"}
+                {"field": "airweave_system_metadata.source_name",
+                 "operator": "equals", "value": "slack"},
+                {"field": "airweave_system_metadata.entity_type",
+                 "operator": "equals", "value": "SlackMessageEntity"}
             ]}
-            → source_name = "slack" AND entity_type = "SlackMessageEntity"
 
         Multiple groups (OR between groups, AND within):
             [
-                {"conditions": [{"field": "source_name", "operator": "equals", "value": "slack"}]},
-                {"conditions": [{"field": "source_name", "operator": "equals", "value": "notion"}]}
+                {"conditions": [{"field": "name", "operator": "equals",
+                                 "value": "doc1"}]},
+                {"conditions": [{"field": "name", "operator": "equals",
+                                 "value": "doc2"}]}
             ]
-            → source_name = "slack" OR source_name = "notion"
+
+        Breadcrumb filtering:
+            {"conditions": [
+                {"field": "breadcrumbs.name", "operator": "contains",
+                 "value": "Engineering"}
+            ]}
     """
 
     conditions: List[SpotlightFilterCondition] = Field(

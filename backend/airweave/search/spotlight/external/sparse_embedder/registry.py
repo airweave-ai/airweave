@@ -18,7 +18,6 @@ class SparseEmbedderModelSpec:
     """
 
     model_name: str
-    description: str
 
 
 # Registry of all models by provider
