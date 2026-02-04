@@ -13,7 +13,6 @@ import {
 import { cn } from "@/lib/utils";
 import {
   useSubscription,
-  useSubscriptionSecret,
   useUpdateSubscription,
   useDeleteSubscription,
   useEnableEndpoint,
@@ -137,20 +136,22 @@ function EventTypeSelector({
 function SecretField({ subscriptionId }: { subscriptionId: string }) {
   const [isRevealed, setIsRevealed] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
-  const { data: secretData, isLoading, refetch } = useSubscriptionSecret(subscriptionId, isRevealed);
+  // Only fetch with secret when revealed
+  const { data, isLoading, refetch } = useSubscription(subscriptionId, isRevealed);
+  const secret = data?.secret;
 
   const handleReveal = () => {
     if (isRevealed) {
       setIsRevealed(false);
     } else {
       setIsRevealed(true);
-      if (!secretData) refetch();
+      if (!secret) refetch();
     }
   };
 
   const handleCopy = async () => {
-    if (!secretData?.key) return;
-    await navigator.clipboard.writeText(secretData.key);
+    if (!secret) return;
+    await navigator.clipboard.writeText(secret);
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
   };
@@ -163,8 +164,8 @@ function SecretField({ subscriptionId }: { subscriptionId: string }) {
       <div className="flex items-center gap-2">
         <div className="flex-1 bg-muted/40 border rounded-md px-3 h-7 flex items-center overflow-hidden">
           <span className="block truncate font-mono text-[11px] text-muted-foreground">
-            {isRevealed && secretData?.key
-              ? secretData.key
+            {isRevealed && secret
+              ? secret
               : "••••••••••••••••••••••••••••••••"}
           </span>
         </div>
@@ -172,7 +173,7 @@ function SecretField({ subscriptionId }: { subscriptionId: string }) {
           variant="outline"
           size="icon"
           onClick={handleCopy}
-          disabled={!secretData?.key}
+          disabled={!secret}
           className="h-7 w-7 shrink-0"
         >
           {isCopied ? <Check className="size-3 text-emerald-500" /> : <Copy className="size-3" />}
@@ -266,11 +267,11 @@ export function EditWebhookModal({
 
   // Sync form state when modal opens or data changes
   useEffect(() => {
-    if (open && data?.endpoint) {
-      setUrl(data.endpoint.url);
-      setSelectedEventTypes(data.endpoint.channels || []);
+    if (open && data) {
+      setUrl(data.url);
+      setSelectedEventTypes(data.filter_types || []);
     }
-  }, [open, data?.endpoint]);
+  }, [open, data]);
 
   const handleUpdate = async () => {
     if (!subscriptionId) return;
@@ -321,8 +322,8 @@ export function EditWebhookModal({
 
   if (!subscriptionId) return null;
 
-  const endpoint = data?.endpoint;
-  const isDisabled = endpoint?.disabled ?? false;
+  const subscription = data;
+  const isDisabled = subscription?.disabled ?? false;
   const isValid = url && selectedEventTypes.length > 0;
   const isPending = updateMutation.isPending || deleteMutation.isPending;
   const isToggling = enableMutation.isPending || disableMutation.isPending;
@@ -360,7 +361,7 @@ export function EditWebhookModal({
                   Endpoint ID
                 </p>
                 <p className="text-[12px] font-mono text-muted-foreground/70 break-all leading-relaxed">
-                  {endpoint?.id}
+                  {subscription?.id}
                 </p>
               </div>
 
@@ -369,7 +370,7 @@ export function EditWebhookModal({
                   Created
                 </p>
                 <p className="text-[13px] text-muted-foreground/80">
-                  {endpoint?.createdAt ? formatFullDate(endpoint.createdAt) : "—"}
+                  {subscription?.created_at ? formatFullDate(subscription.created_at) : "—"}
                 </p>
               </div>
 
@@ -378,7 +379,7 @@ export function EditWebhookModal({
                   Last updated
                 </p>
                 <p className="text-[13px] text-muted-foreground/80">
-                  {endpoint?.updatedAt ? formatFullDate(endpoint.updatedAt) : "—"}
+                  {subscription?.updated_at ? formatFullDate(subscription.updated_at) : "—"}
                 </p>
               </div>
             </div>

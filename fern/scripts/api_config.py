@@ -25,11 +25,8 @@ INCLUDED_ENDPOINTS = {
     # Events
     "/events/messages/": {"get": True},
     "/events/messages/{message_id}/": {"get": True},
-    "/events/messages/{message_id}/attempts/": {"get": True},
     "/events/subscriptions/": {"get": True, "post": True},
     "/events/subscriptions/{subscription_id}/": {"get": True, "patch": True, "delete": True},
-    "/events/subscriptions/{subscription_id}/secret/": {"get": True},
-    "/events/subscriptions/{subscription_id}/enable/": {"post": True},
     "/events/subscriptions/{subscription_id}/recover/": {"post": True},
 }
 

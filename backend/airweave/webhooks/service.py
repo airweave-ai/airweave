@@ -254,6 +254,7 @@ class WebhooksService:
                 url=url,
                 channels=event_types,
                 secret=secret,
+                uid=str(uuid.uuid4()),  # Our UUID for bidirectional mapping
             ),
         )
 

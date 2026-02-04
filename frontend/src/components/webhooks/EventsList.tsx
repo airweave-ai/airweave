@@ -68,7 +68,7 @@ export function EventsList({
                 >
                   <div className="min-w-0 mr-3">
                     <p className="font-mono text-[13px] truncate">
-                      {message.eventType}
+                      {message.event_type}
                     </p>
                     {summary && (
                       <p className="text-[11px] text-muted-foreground/70 truncate">

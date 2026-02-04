@@ -1,20 +1,34 @@
 """Events API endpoints for webhook subscriptions and event messages.
 
 This module provides endpoints for managing webhook subscriptions and
-retrieving event messages sent to those webhooks.
+retrieving event messages sent to those webhooks. Webhooks allow you to
+receive real-time notifications when events occur in Airweave, such as
+sync job completions or failures.
+
+All response models use snake_case field names for consistency with the
+webhook payloads delivered to your endpoints.
 """
 
-from datetime import datetime
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, HttpUrl, field_validator
-from svix.api import EndpointOut, EndpointSecretOut, MessageAttemptOut, MessageOut, RecoverOut
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 
 from airweave.analytics import business_events
 from airweave.api import deps
 from airweave.api.context import ApiContext
-from airweave.webhooks.constants.event_types import EventType
+from airweave.schemas.events import (
+    CreateSubscriptionRequest,
+    DeliveryAttempt,
+    EventMessage,
+    EventMessageWithAttempts,
+    NotFoundErrorResponse,
+    PatchSubscriptionRequest,
+    RateLimitErrorResponse,
+    RecoverMessagesRequest,
+    RecoveryTask,
+    ValidationErrorResponse,
+    WebhookSubscription,
+)
 from airweave.webhooks.service import WebhooksError
 from airweave.webhooks.service import service as webhooks_service
 
@@ -26,177 +40,194 @@ def _raise_for_error(error: WebhooksError | None) -> None:
         raise HTTPException(status_code=error.status_code, detail=error.message)
 
 
-class SubscriptionWithAttemptsOut(BaseModel):
-    """Response model for a subscription with its message attempts."""
+@router.get(
+    "/messages",
+    response_model=List[EventMessage],
+    summary="List Messages",
+    description="""Retrieve all event messages for your organization.
 
-    endpoint: EndpointOut
-    message_attempts: List[MessageAttemptOut]
+Event messages represent webhook payloads that were sent (or attempted to be sent)
+to your subscribed endpoints. Each message contains the event type, payload data,
+and delivery status information.
 
-    class Config:
-        """Pydantic config for arbitrary types."""
-
-        arbitrary_types_allowed = True
-
-
-class CreateSubscriptionRequest(BaseModel):
-    """Request model for creating a new webhook subscription."""
-
-    url: HttpUrl
-    event_types: List[EventType]
-    secret: str | None = None
-
-    @field_validator("event_types")
-    @classmethod
-    def event_types_not_empty(cls, v: List[EventType]) -> List[EventType]:
-        """Validate that event_types is not empty."""
-        if not v:
-            raise ValueError("event_types cannot be empty")
-        return v
-
-    @field_validator("secret")
-    @classmethod
-    def secret_min_length(cls, v: str | None) -> str | None:
-        """Validate secret minimum length if provided."""
-        if v is not None and len(v) < 24:
-            raise ValueError("secret must be at least 24 characters")
-        return v
-
-
-class PatchSubscriptionRequest(BaseModel):
-    """Request model for updating an existing webhook subscription."""
-
-    url: HttpUrl | None = None
-    event_types: List[EventType] | None = None
-    disabled: bool | None = None
-
-
-class RecoverMessagesRequest(BaseModel):
-    """Request model for recovering failed messages."""
-
-    since: datetime
-    until: datetime | None = None
-
-
-class EnableEndpointRequest(BaseModel):
-    """Request model for enabling an endpoint with optional recovery."""
-
-    recover_since: datetime | None = None
-
-
-@router.get("/messages", response_model=List[MessageOut])
+Use the `event_types` query parameter to filter messages by specific event types,
+such as `sync.completed` or `sync.failed`.""",
+    responses={
+        200: {"model": List[EventMessage], "description": "List of event messages"},
+        422: {"model": ValidationErrorResponse, "description": "Validation Error"},
+        429: {"model": RateLimitErrorResponse, "description": "Rate Limit Exceeded"},
+    },
+)
 async def get_messages(
-    ctx: ApiContext = Depends(deps.get_context), event_types: List[str] | None = Query(default=None)
-) -> List[MessageOut]:
-    """Get event messages for the current organization.
-
-    Args:
-        ctx: The API context containing organization info.
-        event_types: Optional list of event types to filter by.
-
-    Returns:
-        List of event messages.
-    """
+    ctx: ApiContext = Depends(deps.get_context),
+    event_types: List[str] | None = Query(
+        default=None,
+        description="Filter messages by event type(s). "
+        "Accepts multiple values, e.g., `?event_types=sync.completed&event_types=sync.failed`.",
+        json_schema_extra={"example": ["sync.completed", "sync.failed"]},
+    ),
+) -> List[EventMessage]:
+    """Retrieve event messages for the current organization."""
     messages, error = await webhooks_service.get_messages(ctx.organization, event_types=event_types)
     _raise_for_error(error)
-    return messages
+    return [EventMessage.from_svix(msg) for msg in messages]
 
 
-@router.get("/messages/{message_id}", response_model=MessageOut)
+@router.get(
+    "/messages/{message_id}",
+    response_model=EventMessageWithAttempts,
+    summary="Get Message",
+    description="""Retrieve a specific event message by its ID.
+
+Returns the full message details including the event type, payload data,
+timestamp, and delivery channel information. Use this to inspect the
+exact payload that was sent to your webhook endpoints.
+
+Use `include_attempts=true` to also retrieve delivery attempts for this message,
+which include HTTP response codes, response bodies, and timestamps for debugging
+delivery failures.""",
+    responses={
+        200: {"model": EventMessageWithAttempts, "description": "Event message details"},
+        404: {"model": NotFoundErrorResponse, "description": "Message Not Found"},
+        422: {"model": ValidationErrorResponse, "description": "Validation Error"},
+        429: {"model": RateLimitErrorResponse, "description": "Rate Limit Exceeded"},
+    },
+)
 async def get_message(
-    message_id: str,
+    message_id: str = Path(
+        ...,
+        description="The unique identifier of the message to retrieve (UUID).",
+        json_schema_extra={"example": "550e8400-e29b-41d4-a716-446655440000"},
+    ),
+    include_attempts: bool = Query(
+        default=False,
+        description="Include delivery attempts for this message. Each attempt includes "
+        "the HTTP response code, response body, and timestamp.",
+    ),
     ctx: ApiContext = Depends(deps.get_context),
-) -> MessageOut:
-    """Get a specific event message by ID.
-
-    Args:
-        message_id: The ID of the message to retrieve.
-        ctx: The API context containing organization info.
-
-    Returns:
-        The event message with its payload.
-    """
+) -> EventMessageWithAttempts:
+    """Retrieve a specific event message by ID."""
     message, error = await webhooks_service.get_message(ctx.organization, message_id)
     _raise_for_error(error)
-    return message
+
+    attempts = None
+    if include_attempts:
+        attempts_list, attempts_error = await webhooks_service.get_message_attempts_by_message(
+            ctx.organization, message_id
+        )
+        _raise_for_error(attempts_error)
+        attempts = [DeliveryAttempt.from_svix(a) for a in (attempts_list or [])]
+
+    return EventMessageWithAttempts.from_svix(message, attempts=attempts)
 
 
-@router.get("/messages/{message_id}/attempts", response_model=List[MessageAttemptOut])
-async def get_message_attempts(
-    message_id: str,
-    ctx: ApiContext = Depends(deps.get_context),
-) -> List[MessageAttemptOut]:
-    """Get delivery attempts for a specific message.
+@router.get(
+    "/subscriptions",
+    response_model=List[WebhookSubscription],
+    summary="List Subscriptions",
+    description="""List all webhook subscriptions for your organization.
 
-    Args:
-        message_id: The ID of the message.
-        ctx: The API context containing organization info.
-
-    Returns:
-        List of delivery attempts for this message.
-    """
-    attempts, error = await webhooks_service.get_message_attempts_by_message(
-        ctx.organization, message_id
-    )
-    _raise_for_error(error)
-    return attempts or []
-
-
-@router.get("/subscriptions", response_model=List[EndpointOut])
+Returns all configured webhook endpoints, including their URLs, subscribed
+event types, and current status (enabled/disabled). Use this to audit
+your webhook configuration or find a specific subscription.""",
+    responses={
+        200: {"model": List[WebhookSubscription], "description": "List of webhook subscriptions"},
+        422: {"model": ValidationErrorResponse, "description": "Validation Error"},
+        429: {"model": RateLimitErrorResponse, "description": "Rate Limit Exceeded"},
+    },
+)
 async def get_subscriptions(
     ctx: ApiContext = Depends(deps.get_context),
-) -> List[EndpointOut]:
-    """Get all webhook subscriptions for the current organization.
-
-    Args:
-        ctx: The API context containing organization info.
-
-    Returns:
-        List of webhook subscriptions.
-    """
+) -> List[WebhookSubscription]:
+    """List all webhook subscriptions for the organization."""
     endpoints, error = await webhooks_service.get_endpoints(ctx.organization)
     _raise_for_error(error)
-    return endpoints
+    return [WebhookSubscription.from_svix(ep) for ep in endpoints]
 
 
-@router.get("/subscriptions/{subscription_id}", response_model=SubscriptionWithAttemptsOut)
+@router.get(
+    "/subscriptions/{subscription_id}",
+    response_model=WebhookSubscription,
+    summary="Get Subscription",
+    description="""Retrieve a specific webhook subscription with its recent delivery attempts.
+
+Returns the subscription configuration along with a history of message delivery
+attempts. This is useful for debugging delivery issues or verifying that your
+endpoint is correctly receiving events.
+
+Use `include_secret=true` to also retrieve the signing secret for webhook
+signature verification. Keep this secret secure.""",
+    responses={
+        200: {"model": WebhookSubscription, "description": "Subscription with delivery attempts"},
+        404: {"model": NotFoundErrorResponse, "description": "Subscription Not Found"},
+        422: {"model": ValidationErrorResponse, "description": "Validation Error"},
+        429: {"model": RateLimitErrorResponse, "description": "Rate Limit Exceeded"},
+    },
+)
 async def get_subscription(
-    subscription_id: str,
+    subscription_id: str = Path(
+        ...,
+        description="The unique identifier of the subscription to retrieve (UUID).",
+        json_schema_extra={"example": "550e8400-e29b-41d4-a716-446655440000"},
+    ),
+    include_secret: bool = Query(
+        default=False,
+        description="Include the signing secret for webhook signature verification. "
+        "Keep this secret secure and use it to verify the 'svix-signature' header.",
+    ),
     ctx: ApiContext = Depends(deps.get_context),
-) -> SubscriptionWithAttemptsOut:
-    """Get a specific webhook subscription with its delivery attempts.
-
-    Args:
-        subscription_id: The ID of the subscription to retrieve.
-        ctx: The API context containing organization info.
-
-    Returns:
-        The subscription details with message delivery attempts.
-    """
+) -> WebhookSubscription:
+    """Retrieve a specific webhook subscription with delivery attempts."""
     endpoint, error = await webhooks_service.get_endpoint(ctx.organization, subscription_id)
     _raise_for_error(error)
 
+    # Fetch delivery attempts
     message_attempts, attempts_error = await webhooks_service.get_message_attempts_by_endpoint(
         ctx.organization, subscription_id
     )
     _raise_for_error(attempts_error)
+    delivery_attempts = [DeliveryAttempt.from_svix(a) for a in (message_attempts or [])]
 
-    return SubscriptionWithAttemptsOut(endpoint=endpoint, message_attempts=message_attempts or [])
+    # Optionally fetch secret
+    secret = None
+    if include_secret:
+        secret_out, secret_error = await webhooks_service.get_endpoint_secret(
+            ctx.organization, subscription_id
+        )
+        _raise_for_error(secret_error)
+        secret = secret_out.key
+
+    return WebhookSubscription.from_svix(
+        endpoint, delivery_attempts=delivery_attempts, secret=secret
+    )
 
 
-@router.post("/subscriptions", response_model=EndpointOut)
+@router.post(
+    "/subscriptions",
+    response_model=WebhookSubscription,
+    summary="Create Subscription",
+    description="""Create a new webhook subscription.
+
+Webhook subscriptions allow you to receive real-time notifications when events
+occur in Airweave. When you create a subscription, you specify:
+
+- **URL**: The HTTPS endpoint where events will be delivered
+- **Event Types**: Which events you want to receive (e.g., `sync.completed`, `sync.failed`)
+- **Secret** (optional): A custom signing secret for verifying webhook signatures
+
+After creation, Airweave will send HTTP POST requests to your URL whenever
+matching events occur. Each request includes a signature header for verification.""",
+    responses={
+        200: {"model": WebhookSubscription, "description": "Created subscription"},
+        422: {"model": ValidationErrorResponse, "description": "Validation Error"},
+        429: {"model": RateLimitErrorResponse, "description": "Rate Limit Exceeded"},
+    },
+)
 async def create_subscription(
     request: CreateSubscriptionRequest,
     ctx: ApiContext = Depends(deps.get_context),
-) -> EndpointOut:
-    """Create a new webhook subscription.
-
-    Args:
-        request: The subscription creation request.
-        ctx: The API context containing organization info.
-
-    Returns:
-        The created subscription.
-    """
+) -> WebhookSubscription:
+    """Create a new webhook subscription."""
     endpoint, error = await webhooks_service.create_endpoint(
         ctx.organization, str(request.url), request.event_types, request.secret
     )
@@ -210,43 +241,86 @@ async def create_subscription(
         event_types=[e.value for e in request.event_types],
     )
 
-    return endpoint
+    return WebhookSubscription.from_svix(endpoint)
 
 
-@router.delete("/subscriptions/{subscription_id}")
+@router.delete(
+    "/subscriptions/{subscription_id}",
+    response_model=WebhookSubscription,
+    summary="Delete Subscription",
+    description="""Permanently delete a webhook subscription.
+
+Once deleted, Airweave will stop sending events to this endpoint immediately.
+This action cannot be undone. Any pending message deliveries will be cancelled.
+
+If you want to temporarily stop receiving events, consider disabling the
+subscription instead using the PATCH endpoint.""",
+    responses={
+        200: {"model": WebhookSubscription, "description": "Deleted subscription"},
+        404: {"model": NotFoundErrorResponse, "description": "Subscription Not Found"},
+        422: {"model": ValidationErrorResponse, "description": "Validation Error"},
+        429: {"model": RateLimitErrorResponse, "description": "Rate Limit Exceeded"},
+    },
+)
 async def delete_subscription(
-    subscription_id: str,
+    subscription_id: str = Path(
+        ...,
+        description="The unique identifier of the subscription to delete (UUID).",
+        json_schema_extra={"example": "550e8400-e29b-41d4-a716-446655440000"},
+    ),
     ctx: ApiContext = Depends(deps.get_context),
-) -> None:
-    """Delete a webhook subscription.
+) -> WebhookSubscription:
+    """Delete a webhook subscription permanently."""
+    # Fetch the subscription before deleting
+    endpoint, get_error = await webhooks_service.get_endpoint(ctx.organization, subscription_id)
+    _raise_for_error(get_error)
 
-    Args:
-        subscription_id: The ID of the subscription to delete.
-        ctx: The API context containing organization info.
-    """
+    # Delete the subscription
     error = await webhooks_service.delete_endpoint(ctx.organization, subscription_id)
     _raise_for_error(error)
 
     # Track webhook subscription deletion
     business_events.track_webhook_subscription_deleted(ctx=ctx, endpoint_id=subscription_id)
 
+    return WebhookSubscription.from_svix(endpoint)
 
-@router.patch("/subscriptions/{subscription_id}", response_model=EndpointOut)
+
+@router.patch(
+    "/subscriptions/{subscription_id}",
+    response_model=WebhookSubscription,
+    summary="Update Subscription",
+    description="""Update an existing webhook subscription.
+
+Use this endpoint to modify a subscription's configuration. You can:
+
+- **Change the URL**: Update where events are delivered
+- **Update event types**: Modify which events trigger notifications
+- **Enable/disable**: Temporarily pause delivery without deleting the subscription
+- **Recover messages**: When re-enabling, optionally recover missed messages
+
+Only include the fields you want to change. Omitted fields will retain their
+current values.
+
+When re-enabling a subscription (`disabled: false`), you can optionally provide
+`recover_since` to automatically retry all messages that were generated while
+the subscription was disabled.""",
+    responses={
+        200: {"model": WebhookSubscription, "description": "Updated subscription"},
+        404: {"model": NotFoundErrorResponse, "description": "Subscription Not Found"},
+        422: {"model": ValidationErrorResponse, "description": "Validation Error"},
+        429: {"model": RateLimitErrorResponse, "description": "Rate Limit Exceeded"},
+    },
+)
 async def patch_subscription(
-    subscription_id: str,
-    request: PatchSubscriptionRequest,
+    subscription_id: str = Path(
+        ...,
+        description="The unique identifier of the subscription to update (UUID).",
+        json_schema_extra={"example": "550e8400-e29b-41d4-a716-446655440000"},
+    ),
+    request: PatchSubscriptionRequest = ...,
     ctx: ApiContext = Depends(deps.get_context),
-) -> EndpointOut:
-    """Update a webhook subscription.
-
-    Args:
-        subscription_id: The ID of the subscription to update.
-        request: The subscription update request.
-        ctx: The API context containing organization info.
-
-    Returns:
-        The updated subscription.
-    """
+) -> WebhookSubscription:
+    """Update an existing webhook subscription."""
     url = str(request.url) if request.url else None
     endpoint, error = await webhooks_service.patch_endpoint(
         ctx.organization,
@@ -257,6 +331,17 @@ async def patch_subscription(
     )
     _raise_for_error(error)
 
+    # If re-enabling (disabled=False) and recovery was requested, trigger it
+    if request.disabled is False and request.recover_since:
+        _, recover_error = await webhooks_service.recover_failed_messages(
+            ctx.organization,
+            subscription_id,
+            since=request.recover_since,
+        )
+        if recover_error:
+            # Log but don't fail - endpoint is already updated
+            pass
+
     # Track webhook subscription update
     business_events.track_webhook_subscription_updated(
         ctx=ctx,
@@ -266,90 +351,41 @@ async def patch_subscription(
         new_event_types=[e.value for e in request.event_types] if request.event_types else None,
     )
 
-    return endpoint
+    return WebhookSubscription.from_svix(endpoint)
 
 
-@router.post("/subscriptions/{subscription_id}/enable", response_model=EndpointOut)
-async def enable_subscription(
-    subscription_id: str,
-    request: EnableEndpointRequest | None = None,
-    ctx: ApiContext = Depends(deps.get_context),
-) -> EndpointOut:
-    """Enable a disabled webhook subscription, optionally recovering failed messages.
+@router.post(
+    "/subscriptions/{subscription_id}/recover",
+    response_model=RecoveryTask,
+    summary="Recover Failed Messages",
+    description="""Retry failed message deliveries for a webhook subscription.
 
-    Args:
-        subscription_id: The ID of the subscription to enable.
-        request: Optional request with recovery time range.
-        ctx: The API context containing organization info.
+Triggers a recovery process that replays all failed messages within the
+specified time window. This is useful when:
 
-    Returns:
-        The enabled subscription.
-    """
-    # Enable the endpoint
-    endpoint, error = await webhooks_service.patch_endpoint(
-        ctx.organization,
-        subscription_id,
-        disabled=False,
-    )
-    _raise_for_error(error)
+- Your endpoint was temporarily down and you want to catch up
+- You've fixed a bug in your webhook handler
+- You want to reprocess events after re-enabling a disabled subscription
 
-    # If recovery was requested, trigger it
-    if request and request.recover_since:
-        _, recover_error = await webhooks_service.recover_failed_messages(
-            ctx.organization,
-            subscription_id,
-            since=request.recover_since,
-        )
-        if recover_error:
-            # Log but don't fail - endpoint is already enabled
-            pass
-
-    return endpoint
-
-
-@router.get("/subscriptions/{subscription_id}/secret", response_model=EndpointSecretOut)
-async def get_subscription_secret(
-    subscription_id: str,
-    ctx: ApiContext = Depends(deps.get_context),
-) -> EndpointSecretOut:
-    """Get the signing secret for a webhook subscription.
-
-    Args:
-        subscription_id: The ID of the subscription.
-        ctx: The API context containing organization info.
-
-    Returns:
-        The subscription's signing secret.
-    """
-    secret, error = await webhooks_service.get_endpoint_secret(ctx.organization, subscription_id)
-    _raise_for_error(error)
-
-    # Track webhook secret viewing (security audit trail)
-    business_events.track_webhook_secret_viewed(ctx=ctx, endpoint_id=subscription_id)
-
-    return secret
-
-
-@router.post("/subscriptions/{subscription_id}/recover", response_model=RecoverOut)
+Messages are retried in chronological order. Successfully delivered messages
+are skipped; only failed or pending messages are retried.""",
+    responses={
+        200: {"model": RecoveryTask, "description": "Recovery task information"},
+        404: {"model": NotFoundErrorResponse, "description": "Subscription Not Found"},
+        422: {"model": ValidationErrorResponse, "description": "Validation Error"},
+        429: {"model": RateLimitErrorResponse, "description": "Rate Limit Exceeded"},
+    },
+)
 async def recover_failed_messages(
-    subscription_id: str,
-    request: RecoverMessagesRequest,
+    subscription_id: str = Path(
+        ...,
+        description="The unique identifier of the subscription to recover messages for (UUID).",
+        json_schema_extra={"example": "550e8400-e29b-41d4-a716-446655440000"},
+    ),
+    request: RecoverMessagesRequest = ...,
     ctx: ApiContext = Depends(deps.get_context),
-) -> RecoverOut:
-    """Recover (retry) failed messages for a webhook subscription.
-
-    This endpoint triggers a recovery of all failed messages since the specified
-    time. Useful after re-enabling a disabled endpoint to retry messages that
-    failed while the endpoint was down.
-
-    Args:
-        subscription_id: The ID of the subscription to recover messages for.
-        request: The recovery request with time range.
-        ctx: The API context containing organization info.
-
-    Returns:
-        Information about the recovery task.
-    """
+) -> RecoveryTask:
+    """Retry failed message deliveries for a subscription."""
     result, error = await webhooks_service.recover_failed_messages(
         ctx.organization,
         subscription_id,
@@ -358,4 +394,8 @@ async def recover_failed_messages(
     )
     _raise_for_error(error)
 
-    return result
+    # Map Svix status to string
+    status_map = {0: "running", 1: "completed"}
+    status_str = status_map.get(result.status, "unknown")
+
+    return RecoveryTask(id=result.id, status=status_str)

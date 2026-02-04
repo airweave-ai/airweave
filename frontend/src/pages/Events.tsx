@@ -30,7 +30,7 @@ function LogsTab() {
   const filteredMessages = messages.filter((msg) => {
     if (!searchQuery) return true;
     return (
-      msg.eventType.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      msg.event_type.toLowerCase().includes(searchQuery.toLowerCase()) ||
       msg.id.toLowerCase().includes(searchQuery.toLowerCase())
     );
   });

@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { ChevronRight, Copy, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StatusBadge, formatFullDate, formatRelativeTime, formatTime } from "./shared";
-import { useMessageAttempts, type Message } from "@/hooks/use-webhooks";
+import { useMessage, type Message, type MessageAttempt } from "@/hooks/use-webhooks";
 
 /**
  * Syntax-highlighted JSON renderer
@@ -101,12 +101,13 @@ interface EventDetailProps {
 }
 
 /**
- * Get trigger type label
+ * Get status label for display
  */
-function getTriggerTypeLabel(triggerType: number): string {
-  switch (triggerType) {
-    case 0: return "Scheduled";
-    case 1: return "Manual";
+function getStatusLabel(status: string): string {
+  switch (status) {
+    case "success": return "Success";
+    case "pending": return "Pending";
+    case "failed": return "Failed";
     default: return "Unknown";
   }
 }
@@ -116,7 +117,9 @@ function DeliveryAttempts({
 }: {
   messageId: string;
 }) {
-  const { data: attempts = [], isLoading } = useMessageAttempts(messageId);
+  // Fetch message with delivery attempts included
+  const { data: message, isLoading } = useMessage(messageId, true);
+  const attempts: MessageAttempt[] = message?.delivery_attempts ?? [];
   const [expandedAttempt, setExpandedAttempt] = useState<string | null>(null);
 
   if (isLoading) {
@@ -139,7 +142,7 @@ function DeliveryAttempts({
     <div className="divide-y divide-border/30">
       {attempts.map((attempt) => {
         const isExpanded = expandedAttempt === attempt.id;
-        const isSuccess = attempt.responseStatusCode >= 200 && attempt.responseStatusCode < 300;
+        const isSuccess = attempt.response_status_code >= 200 && attempt.response_status_code < 300;
 
         return (
           <div key={attempt.id}>
@@ -153,9 +156,9 @@ function DeliveryAttempts({
                   isExpanded && "rotate-90"
                 )}
               />
-              <StatusBadge statusCode={attempt.responseStatusCode} />
+              <StatusBadge statusCode={attempt.response_status_code} />
               <span className="text-[12px] font-mono truncate flex-1 text-muted-foreground group-hover:text-foreground transition-colors">
-                {attempt.url}
+                {attempt.endpoint_id}
               </span>
               <span
                 className="text-[10px] text-muted-foreground/50 shrink-0"
@@ -173,8 +176,8 @@ function DeliveryAttempts({
                     <p className="font-mono text-muted-foreground">{formatTime(attempt.timestamp)}</p>
                   </div>
                   <div>
-                    <p className="text-muted-foreground/40 text-[10px] uppercase tracking-wide mb-0.5">Trigger</p>
-                    <p className="text-muted-foreground">{getTriggerTypeLabel(attempt.triggerType)}</p>
+                    <p className="text-muted-foreground/40 text-[10px] uppercase tracking-wide mb-0.5">Status</p>
+                    <p className="text-muted-foreground">{getStatusLabel(attempt.status)}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground/40 text-[10px] uppercase tracking-wide mb-0.5">Attempt</p>
@@ -229,7 +232,7 @@ export function EventDetail({ message }: EventDetailProps) {
       <div className="p-4 space-y-5">
         {/* Header */}
         <div>
-          <h2 className="font-mono text-[13px]">{message.eventType}</h2>
+          <h2 className="font-mono text-[13px]">{message.event_type}</h2>
           <p className="text-[11px] text-muted-foreground/50 mt-0.5 font-mono">
             {message.id}
           </p>

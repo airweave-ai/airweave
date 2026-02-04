@@ -3,7 +3,7 @@
   "info": {
     "title": "Airweave",
     "version": "0.1.0",
-    "description": "\n\n## API Groups\nThis API spec only includes the following API groups:\n- **Sources**: API endpoints for discovering available data source connectors and their configuration requirements\n- **Collections**: API endpoints for managing collections - logical groups of data sources that provide unified search capabilities\n- **Source Connections**: API endpoints for managing live connections to data sources. Source connections are the actual configured instances that Airweave uses to sync data from your apps and databases, transforming it into searchable, structured information within collections\n"
+    "description": "\n\n## API Groups\nThis API spec only includes the following API groups:\n- **Sources**: API endpoints for discovering available data source connectors and their configuration requirements\n- **Collections**: API endpoints for managing collections - logical groups of data sources that provide unified search capabilities\n- **Source Connections**: API endpoints for managing live connections to data sources. Source connections are the actual configured instances that Airweave uses to sync data from your apps and databases, transforming it into searchable, structured information within collections\n- **Events**: API endpoints for managing webhook subscriptions and event messages. Subscribe to events like sync completions to receive real-time notifications at your webhook URL\n"
   },
   "paths": {
     "/sources": {
@@ -188,7 +188,7 @@
           "collections"
         ],
         "summary": "List",
-        "description": "List all collections that belong to your organization.",
+        "description": "List all collections that belong to your organization with optional search filtering.\n\nCollections are always sorted by creation date (newest first).",
         "operationId": "list_collections_get",
         "parameters": [
           {
@@ -216,6 +216,17 @@
               "title": "Limit"
             },
             "description": "Maximum number of collections to return (1-1000)"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Search term to filter by name or readable_id",
+              "title": "Search"
+            },
+            "description": "Search term to filter by name or readable_id"
           }
         ],
         "responses": {
@@ -1159,6 +1170,585 @@
           }
         ]
       }
+    },
+    "/events/messages": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "List Messages",
+        "description": "Retrieve all event messages for your organization.\n\nEvent messages represent webhook payloads that were sent (or attempted to be sent)\nto your subscribed endpoints. Each message contains the event type, payload data,\nand delivery status information.\n\nUse the `event_types` query parameter to filter messages by specific event types,\nsuch as `sync.completed` or `sync.failed`.",
+        "operationId": "get_messages_events_messages_get",
+        "parameters": [
+          {
+            "name": "event_types",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter messages by event type(s). Accepts multiple values, e.g., `?event_types=sync.completed&event_types=sync.failed`.",
+              "example": [
+                "sync.completed",
+                "sync.failed"
+              ],
+              "title": "Event Types"
+            },
+            "description": "Filter messages by event type(s). Accepts multiple values, e.g., `?event_types=sync.completed&event_types=sync.failed`."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of event messages",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EventMessage"
+                  },
+                  "title": "Response 200 Get Messages Events Messages Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate Limit Exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/events/messages/{message_id}": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Get Message",
+        "description": "Retrieve a specific event message by its ID.\n\nReturns the full message details including the event type, payload data,\ntimestamp, and delivery channel information. Use this to inspect the\nexact payload that was sent to your webhook endpoints.\n\nUse `include_attempts=true` to also retrieve delivery attempts for this message,\nwhich include HTTP response codes, response bodies, and timestamps for debugging\ndelivery failures.",
+        "operationId": "get_message_events_messages__message_id__get",
+        "parameters": [
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The unique identifier of the message to retrieve (UUID).",
+              "example": "550e8400-e29b-41d4-a716-446655440000",
+              "title": "Message Id"
+            },
+            "description": "The unique identifier of the message to retrieve (UUID)."
+          },
+          {
+            "name": "include_attempts",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include delivery attempts for this message. Each attempt includes the HTTP response code, response body, and timestamp.",
+              "default": false,
+              "title": "Include Attempts"
+            },
+            "description": "Include delivery attempts for this message. Each attempt includes the HTTP response code, response body, and timestamp."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Event message details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventMessage"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Message Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate Limit Exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/events/subscriptions": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "List Subscriptions",
+        "description": "List all webhook subscriptions for your organization.\n\nReturns all configured webhook endpoints, including their URLs, subscribed\nevent types, and current status (enabled/disabled). Use this to audit\nyour webhook configuration or find a specific subscription.",
+        "operationId": "get_subscriptions_events_subscriptions_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "List of webhook subscriptions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WebhookSubscription"
+                  },
+                  "title": "Response 200 Get Subscriptions Events Subscriptions Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate Limit Exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Create Subscription",
+        "description": "Create a new webhook subscription.\n\nWebhook subscriptions allow you to receive real-time notifications when events\noccur in Airweave. When you create a subscription, you specify:\n\n- **URL**: The HTTPS endpoint where events will be delivered\n- **Event Types**: Which events you want to receive (e.g., `sync.completed`, `sync.failed`)\n- **Secret** (optional): A custom signing secret for verifying webhook signatures\n\nAfter creation, Airweave will send HTTP POST requests to your URL whenever\nmatching events occur. Each request includes a signature header for verification.",
+        "operationId": "create_subscription_events_subscriptions_post",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSubscriptionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created subscription",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookSubscription"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate Limit Exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/events/subscriptions/{subscription_id}": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Get Subscription",
+        "description": "Retrieve a specific webhook subscription with its recent delivery attempts.\n\nReturns the subscription configuration along with a history of message delivery\nattempts. This is useful for debugging delivery issues or verifying that your\nendpoint is correctly receiving events.\n\nUse `include_secret=true` to also retrieve the signing secret for webhook\nsignature verification. Keep this secret secure.",
+        "operationId": "get_subscription_events_subscriptions__subscription_id__get",
+        "parameters": [
+          {
+            "name": "subscription_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The unique identifier of the subscription to retrieve (UUID).",
+              "example": "550e8400-e29b-41d4-a716-446655440000",
+              "title": "Subscription Id"
+            },
+            "description": "The unique identifier of the subscription to retrieve (UUID)."
+          },
+          {
+            "name": "include_secret",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include the signing secret for webhook signature verification. Keep this secret secure and use it to verify the 'svix-signature' header.",
+              "default": false,
+              "title": "Include Secret"
+            },
+            "description": "Include the signing secret for webhook signature verification. Keep this secret secure and use it to verify the 'svix-signature' header."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Subscription with delivery attempts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookSubscription"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Subscription Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate Limit Exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Delete Subscription",
+        "description": "Permanently delete a webhook subscription.\n\nOnce deleted, Airweave will stop sending events to this endpoint immediately.\nThis action cannot be undone. Any pending message deliveries will be cancelled.\n\nIf you want to temporarily stop receiving events, consider disabling the\nsubscription instead using the PATCH endpoint.",
+        "operationId": "delete_subscription_events_subscriptions__subscription_id__delete",
+        "parameters": [
+          {
+            "name": "subscription_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The unique identifier of the subscription to delete (UUID).",
+              "example": "550e8400-e29b-41d4-a716-446655440000",
+              "title": "Subscription Id"
+            },
+            "description": "The unique identifier of the subscription to delete (UUID)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Subscription Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate Limit Exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Update Subscription",
+        "description": "Update an existing webhook subscription.\n\nUse this endpoint to modify a subscription's configuration. You can:\n\n- **Change the URL**: Update where events are delivered\n- **Update event types**: Modify which events trigger notifications\n- **Enable/disable**: Temporarily pause delivery without deleting the subscription\n- **Recover messages**: When re-enabling, optionally recover missed messages\n\nOnly include the fields you want to change. Omitted fields will retain their\ncurrent values.\n\nWhen re-enabling a subscription (`disabled: false`), you can optionally provide\n`recover_since` to automatically retry all messages that were generated while\nthe subscription was disabled.",
+        "operationId": "patch_subscription_events_subscriptions__subscription_id__patch",
+        "parameters": [
+          {
+            "name": "subscription_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The unique identifier of the subscription to update (UUID).",
+              "example": "550e8400-e29b-41d4-a716-446655440000",
+              "title": "Subscription Id"
+            },
+            "description": "The unique identifier of the subscription to update (UUID)."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchSubscriptionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated subscription",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookSubscription"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Subscription Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate Limit Exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/events/subscriptions/{subscription_id}/recover": {
+      "post": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Recover Failed Messages",
+        "description": "Retry failed message deliveries for a webhook subscription.\n\nTriggers a recovery process that replays all failed messages within the\nspecified time window. This is useful when:\n\n- Your endpoint was temporarily down and you want to catch up\n- You've fixed a bug in your webhook handler\n- You want to reprocess events after re-enabling a disabled subscription\n\nMessages are retried in chronological order. Successfully delivered messages\nare skipped; only failed or pending messages are retried.",
+        "operationId": "recover_failed_messages_events_subscriptions__subscription_id__recover_post",
+        "parameters": [
+          {
+            "name": "subscription_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The unique identifier of the subscription to recover messages for (UUID).",
+              "example": "550e8400-e29b-41d4-a716-446655440000",
+              "title": "Subscription Id"
+            },
+            "description": "The unique identifier of the subscription to recover messages for (UUID)."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecoverMessagesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Recovery task information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryTask"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Subscription Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate Limit Exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -1310,6 +1900,287 @@
         ],
         "title": "ActionCheckResponse",
         "description": "Response containing per-action check results."
+      },
+      "AdminSearchDestination": {
+        "type": "string",
+        "enum": [
+          "qdrant",
+          "vespa"
+        ],
+        "title": "AdminSearchDestination",
+        "description": "Destination options for admin search."
+      },
+      "AdminSyncInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "source_connection_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Connection Id"
+          },
+          "destination_connection_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Destination Connection Ids"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "cron_schedule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cron Schedule"
+          },
+          "next_scheduled_run": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Scheduled Run"
+          },
+          "temporal_schedule_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temporal Schedule Id"
+          },
+          "sync_type": {
+            "type": "string",
+            "title": "Sync Type",
+            "default": "full"
+          },
+          "sync_metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sync Metadata"
+          },
+          "sync_config": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SyncConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/SyncStatus"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "organization_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Organization Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "modified_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Modified At"
+          },
+          "created_by_email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Email"
+          },
+          "modified_by_email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modified By Email"
+          },
+          "total_entity_count": {
+            "type": "integer",
+            "title": "Total Entity Count",
+            "default": 0
+          },
+          "total_arf_entity_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Arf Entity Count"
+          },
+          "total_qdrant_entity_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Qdrant Entity Count"
+          },
+          "total_vespa_entity_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Vespa Entity Count"
+          },
+          "last_job_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Job Status"
+          },
+          "last_job_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Job At"
+          },
+          "last_job_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Job Error"
+          },
+          "all_tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "All Tags"
+          },
+          "source_short_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Short Name"
+          },
+          "source_is_authenticated": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Is Authenticated"
+          },
+          "readable_collection_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Readable Collection Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "source_connection_id",
+          "destination_connection_ids",
+          "status",
+          "id",
+          "organization_id",
+          "created_at",
+          "modified_at"
+        ],
+        "title": "AdminSyncInfo",
+        "description": "Extended sync info for admin listing with entity counts and status."
       },
       "AuthProvider": {
         "properties": {
@@ -1776,6 +2647,31 @@
         "title": "AuthenticationMethod",
         "description": "Authentication methods for source connections."
       },
+      "BehaviorConfig": {
+        "properties": {
+          "skip_hash_comparison": {
+            "type": "boolean",
+            "title": "Skip Hash Comparison",
+            "description": "Force INSERT for all entities",
+            "default": false
+          },
+          "replay_from_arf": {
+            "type": "boolean",
+            "title": "Replay From Arf",
+            "description": "Replay from ARF storage instead of calling source",
+            "default": false
+          },
+          "skip_guardrails": {
+            "type": "boolean",
+            "title": "Skip Guardrails",
+            "description": "Skip usage guardrails (entity count checks)",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "BehaviorConfig",
+        "description": "Miscellaneous execution behavior flags."
+      },
       "BillingPeriod": {
         "properties": {
           "organization_id": {
@@ -2056,6 +2952,92 @@
         ],
         "title": "Body_connect_slack_with_token_connections_direct_token_slack_post"
       },
+      "Body_resync_with_execution_config_admin_resync__sync_id__post": {
+        "properties": {
+          "execution_config": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SyncConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional nested SyncConfig for sync behavior (destinations, handlers, cursor, behavior)",
+            "examples": [
+              {
+                "summary": "ARF Capture Only",
+                "value": {
+                  "behavior": {
+                    "skip_hash_comparison": true
+                  },
+                  "cursor": {
+                    "skip_load": true,
+                    "skip_updates": true
+                  },
+                  "handlers": {
+                    "enable_postgres_handler": false,
+                    "enable_raw_data_handler": true,
+                    "enable_vector_handlers": false
+                  }
+                }
+              },
+              {
+                "summary": "ARF Replay to Vector DBs",
+                "value": {
+                  "behavior": {
+                    "replay_from_arf": true,
+                    "skip_hash_comparison": true
+                  },
+                  "cursor": {
+                    "skip_load": true,
+                    "skip_updates": true
+                  },
+                  "handlers": {
+                    "enable_postgres_handler": false,
+                    "enable_raw_data_handler": false,
+                    "enable_vector_handlers": true
+                  }
+                }
+              },
+              {
+                "summary": "Skip Vespa",
+                "value": {
+                  "destinations": {
+                    "skip_vespa": true
+                  }
+                }
+              }
+            ]
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags",
+            "description": "Optional tags for filtering and organizing sync jobs (e.g., ['vespa-backfill-01-22-2026', 'manual'])",
+            "examples": [
+              [
+                "vespa-backfill-01-22-2026",
+                "manual"
+              ],
+              [
+                "production"
+              ]
+            ]
+          }
+        },
+        "type": "object",
+        "title": "Body_resync_with_execution_config_admin_resync__sync_id__post"
+      },
       "CheckoutSessionRequest": {
         "properties": {
           "plan": {
@@ -2119,12 +3101,23 @@
           "vector_size": {
             "type": "integer",
             "title": "Vector Size",
-            "description": "Vector dimensions used by this collection. Determines which embedding model is used: 3072 (text-embedding-3-large), 1536 (text-embedding-3-small), or 384 (MiniLM-L6-v2)."
+            "description": "Vector dimensions used by this collection. Determines which embedding model is used: 3072 (text-embedding-3-large), 1536 (text-embedding-3-small), 1024 (mistral-embed), or 384 (MiniLM-L6-v2)."
           },
           "embedding_model_name": {
             "type": "string",
             "title": "Embedding Model Name",
-            "description": "Name of the embedding model used for this collection (e.g., 'text-embedding-3-large', 'text-embedding-3-small'). This ensures queries use the same model as the indexed data."
+            "description": "Name of the embedding model used for this collection (e.g., 'text-embedding-3-large', 'text-embedding-3-small', 'mistral-embed'). This ensures queries use the same model as the indexed data."
+          },
+          "sync_config": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SyncConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Default sync configuration for all syncs in this collection. Overridable at sync and job level."
           },
           "created_at": {
             "type": "string",
@@ -2234,6 +3227,17 @@
               "customer-support-xy789",
               "marketing-analytics-cd456"
             ]
+          },
+          "sync_config": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SyncConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Default sync configuration for all syncs in this collection. This provides collection-level defaults that can be overridden at sync or job level."
           }
         },
         "type": "object",
@@ -2241,7 +3245,7 @@
           "name"
         ],
         "title": "CollectionCreate",
-        "description": "Schema for creating a new collection.\n\nCollections serve as logical containers for organizing related data sources.\nOnce created, you can add source connections to populate the collection with data\nfrom various sources like databases, APIs, and file systems.",
+        "description": "Schema for creating a new collection.\n\nCollections serve as logical containers for organizing related data sources.\nOnce created, you can add source connections to populate the collection with data\nfrom various sources like databases, APIs, and file systems.\n\nYou can optionally set a default sync configuration that will apply to all syncs\nwithin this collection unless overridden at the sync or job level.",
         "examples": [
           {
             "name": "Finance Data",
@@ -2249,6 +3253,15 @@
           },
           {
             "name": "Customer Support"
+          },
+          {
+            "name": "ARF Test Collection",
+            "sync_config": {
+              "handlers": {
+                "enable_postgres_handler": false,
+                "enable_vector_handlers": false
+              }
+            }
           }
         ]
       },
@@ -2277,17 +3290,33 @@
             ],
             "title": "Name",
             "description": "Updated display name for the collection. Must be between 4 and 64 characters."
+          },
+          "sync_config": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SyncConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Default sync configuration for all syncs in this collection. This provides collection-level defaults that can be overridden at sync or job level."
           }
         },
         "type": "object",
         "title": "CollectionUpdate",
-        "description": "Schema for updating an existing collection.\n\nOnly the collection's display name can be updated. The readable_id is immutable\nto maintain stable API endpoints and references.",
+        "description": "Schema for updating an existing collection.\n\nAllows updating the collection's display name and default sync configuration.\nThe readable_id is immutable to maintain stable API endpoints and references.",
         "examples": [
           {
             "name": "Updated Finance Data"
           },
           {
-            "name": "Marketing Analytics - Q1 2024"
+            "name": "Marketing Analytics - Q1 2024",
+            "sync_config": {
+              "handlers": {
+                "enable_vector_handlers": true
+              }
+            }
           },
           {
             "name": "Customer Support Archive"
@@ -2323,6 +3352,33 @@
             "type": "boolean",
             "title": "Required",
             "default": true
+          },
+          "items_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items Type"
+          },
+          "feature_flag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feature Flag"
+          },
+          "is_secret": {
+            "type": "boolean",
+            "title": "Is Secret",
+            "default": false
           }
         },
         "type": "object",
@@ -2467,6 +3523,78 @@
         "title": "ConnectionStatus",
         "description": "Connection status enum."
       },
+      "CreateSubscriptionRequest": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "maxLength": 2083,
+            "minLength": 1,
+            "format": "uri",
+            "title": "Url",
+            "description": "The HTTPS URL where webhook events will be delivered. Must be a publicly accessible endpoint that returns a 2xx status code.",
+            "example": "https://api.mycompany.com/webhooks/airweave"
+          },
+          "event_types": {
+            "items": {
+              "$ref": "#/components/schemas/EventType"
+            },
+            "type": "array",
+            "title": "Event Types",
+            "description": "List of event types to subscribe to. Events not in this list will not be delivered to this subscription. Available types: `sync.pending`, `sync.running`, `sync.completed`, `sync.failed`, `sync.cancelled`.",
+            "example": [
+              "sync.completed",
+              "sync.failed"
+            ]
+          },
+          "secret": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 24
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secret",
+            "description": "Optional custom signing secret for webhook signature verification. If not provided, a secure secret will be auto-generated. Must be at least 24 characters if specified.",
+            "example": "whsec_C2FVsBQIhrscChlQIMV10R9X4jZ8"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url",
+          "event_types"
+        ],
+        "title": "CreateSubscriptionRequest",
+        "description": "Create a new webhook subscription.\n\nWebhook subscriptions define where Airweave should send event notifications.\nYou can subscribe to specific event types to receive only the events you care about.",
+        "example": {
+          "event_types": [
+            "sync.completed",
+            "sync.failed"
+          ],
+          "url": "https://api.mycompany.com/webhooks/airweave"
+        }
+      },
+      "CursorConfig": {
+        "properties": {
+          "skip_load": {
+            "type": "boolean",
+            "title": "Skip Load",
+            "description": "Don't load cursor (fetch all entities)",
+            "default": false
+          },
+          "skip_updates": {
+            "type": "boolean",
+            "title": "Skip Updates",
+            "description": "Don't persist cursor progress",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "CursorConfig",
+        "description": "Controls incremental sync cursor behavior."
+      },
       "CustomerPortalRequest": {
         "properties": {
           "return_url": {
@@ -2497,81 +3625,96 @@
         "title": "CustomerPortalResponse",
         "description": "Response with customer portal URL."
       },
-      "DatetimeRange": {
+      "DeliveryAttempt": {
         "properties": {
-          "lt": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "string",
-                "format": "date"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lt",
-            "description": "point.key &lt; range.lt"
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique identifier for this delivery attempt",
+            "example": "atmpt_2bVxUn3RFnLYHa8z6ZKHMT9PqPX"
           },
-          "gt": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "string",
-                "format": "date"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Gt",
-            "description": "point.key &gt; range.gt"
+          "message_id": {
+            "type": "string",
+            "title": "Message Id",
+            "description": "The event message that was being delivered",
+            "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
           },
-          "gte": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "string",
-                "format": "date"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Gte",
-            "description": "point.key &gt;= range.gte"
+          "endpoint_id": {
+            "type": "string",
+            "title": "Endpoint Id",
+            "description": "The subscription endpoint this was delivered to",
+            "example": "c3d4e5f6-a7b8-9012-cdef-345678901234"
           },
-          "lte": {
+          "response": {
             "anyOf": [
               {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "string",
-                "format": "date"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Lte",
-            "description": "point.key &lt;= range.lte"
+            "title": "Response",
+            "description": "The response body returned by your webhook endpoint (truncated to 1KB)",
+            "example": "{\"status\": \"processed\", \"id\": \"evt_123\"}"
+          },
+          "response_status_code": {
+            "type": "integer",
+            "title": "Response Status Code",
+            "description": "HTTP status code returned by your webhook endpoint. 2xx codes indicate success; other codes trigger retries.",
+            "example": 200
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Delivery status: `success` (2xx response), `pending` (awaiting delivery), or `failed` (non-2xx response or timeout)",
+            "example": "success"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp",
+            "description": "When this delivery attempt occurred (ISO 8601 format, UTC)",
+            "example": "2024-03-15T09:45:33Z"
           }
         },
-        "additionalProperties": false,
         "type": "object",
-        "title": "DatetimeRange",
-        "description": "Range filter request"
+        "required": [
+          "id",
+          "message_id",
+          "endpoint_id",
+          "response_status_code",
+          "status",
+          "timestamp"
+        ],
+        "title": "DeliveryAttempt",
+        "description": "A delivery attempt for a webhook message.\n\nEach time Airweave attempts to deliver a message to your webhook endpoint,\na delivery attempt is recorded. Failed attempts are automatically retried\nwith exponential backoff.",
+        "examples": [
+          {
+            "summary": "Successful Delivery",
+            "value": {
+              "endpoint_id": "c3d4e5f6-a7b8-9012-cdef-345678901234",
+              "id": "atmpt_2bVxUn3RFnLYHa8z6ZKHMT9PqPX",
+              "message_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+              "response": "{\"status\": \"processed\", \"id\": \"evt_123\"}",
+              "response_status_code": 200,
+              "status": "success",
+              "timestamp": "2024-03-15T09:45:33Z"
+            }
+          },
+          {
+            "summary": "Failed Delivery",
+            "value": {
+              "endpoint_id": "c3d4e5f6-a7b8-9012-cdef-345678901234",
+              "id": "atmpt_3cWyVo4SGmMZb9a7ALINT0QrQYQ",
+              "message_id": "b2c3d4e5-f6a7-8901-bcde-f23456789012",
+              "response": "Internal Server Error",
+              "response_status_code": 500,
+              "status": "failed",
+              "timestamp": "2024-03-15T10:12:05Z"
+            }
+          }
+        ]
       },
       "Destination": {
         "properties": {
@@ -2689,6 +3832,57 @@
         ],
         "title": "Destination",
         "description": "Schema for Destination."
+      },
+      "DestinationConfig": {
+        "properties": {
+          "skip_qdrant": {
+            "type": "boolean",
+            "title": "Skip Qdrant",
+            "description": "Skip writing to native Qdrant",
+            "default": false
+          },
+          "skip_vespa": {
+            "type": "boolean",
+            "title": "Skip Vespa",
+            "description": "Skip writing to native Vespa",
+            "default": false
+          },
+          "target_destinations": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Destinations",
+            "description": "If set, ONLY write to these destination UUIDs"
+          },
+          "exclude_destinations": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exclude Destinations",
+            "description": "Skip these destination UUIDs"
+          }
+        },
+        "type": "object",
+        "title": "DestinationConfig",
+        "description": "Controls where entities are written."
       },
       "DestinationWithAuthenticationFields": {
         "properties": {
@@ -3282,137 +4476,117 @@
         "title": "EntityTypeStats",
         "description": "Statistics for a specific entity type."
       },
+      "EventMessage": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique identifier for this message (UUID format)",
+            "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          },
+          "event_type": {
+            "type": "string",
+            "title": "Event Type",
+            "description": "The type of event (e.g., 'sync.completed', 'sync.failed')",
+            "example": "sync.completed"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/SyncEventPayload",
+            "description": "The event payload data, matching what is delivered to webhooks"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp",
+            "description": "When this message was created (ISO 8601 format, UTC)",
+            "example": "2024-03-15T09:45:32Z"
+          },
+          "channels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channels",
+            "description": "Channels this message was sent to (typically matches the event type)",
+            "example": [
+              "sync.completed"
+            ]
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags",
+            "description": "Tags associated with this message for filtering"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "event_type",
+          "payload",
+          "timestamp"
+        ],
+        "title": "EventMessage",
+        "description": "An event message that was sent (or attempted) to webhook subscribers.\n\nThe payload contains the actual event data matching the webhook delivery format.",
+        "example": {
+          "channels": [
+            "sync.completed"
+          ],
+          "event_type": "sync.completed",
+          "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          "payload": {
+            "collection_name": "Customer Support Tickets",
+            "collection_readable_id": "customer-support-tickets-x7k9m",
+            "event_type": "sync.completed",
+            "job_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            "source_connection_id": "b2c3d4e5-f6a7-8901-bcde-f23456789012",
+            "source_type": "zendesk",
+            "status": "completed",
+            "timestamp": "2024-03-15T09:45:32Z"
+          },
+          "timestamp": "2024-03-15T09:45:32Z"
+        }
+      },
+      "EventType": {
+        "type": "string",
+        "enum": [
+          "sync.pending",
+          "sync.running",
+          "sync.completed",
+          "sync.failed",
+          "sync.cancelled"
+        ],
+        "title": "EventType",
+        "description": "Enumeration of webhook event types."
+      },
       "FeatureFlag": {
         "type": "string",
         "enum": [
           "s3_destination",
-          "priority_support"
+          "priority_support",
+          "source_rate_limiting",
+          "zephyr_scale",
+          "sharepoint_2019_v2",
+          "api_key_admin_sync"
         ],
         "title": "FeatureFlag",
         "description": "Available feature flags in Airweave.\n\nAdd new flags here to enable feature gating at the organization level."
-      },
-      "FieldCondition": {
-        "properties": {
-          "key": {
-            "type": "string",
-            "title": "Key",
-            "description": "Payload key"
-          },
-          "match": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/MatchValue"
-              },
-              {
-                "$ref": "#/components/schemas/MatchText"
-              },
-              {
-                "$ref": "#/components/schemas/MatchPhrase"
-              },
-              {
-                "$ref": "#/components/schemas/MatchAny"
-              },
-              {
-                "$ref": "#/components/schemas/MatchExcept"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Match",
-            "description": "Check if point has field with a given value"
-          },
-          "range": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Range"
-              },
-              {
-                "$ref": "#/components/schemas/DatetimeRange"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Range",
-            "description": "Check if points value lies in a given range"
-          },
-          "geo_bounding_box": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/GeoBoundingBox"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Check if points geolocation lies in a given area"
-          },
-          "geo_radius": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/GeoRadius"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Check if geo point is within a given radius"
-          },
-          "geo_polygon": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/GeoPolygon"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Check if geo point is within a given polygon"
-          },
-          "values_count": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ValuesCount"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Check number of values of the field"
-          },
-          "is_empty": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Is Empty",
-            "description": "Check that the field is empty, alternative syntax for `is_empty: 'field_name'`"
-          },
-          "is_null": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Is Null",
-            "description": "Check that the field is null, alternative syntax for `is_null: 'field_name'`"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "key"
-        ],
-        "title": "FieldCondition",
-        "description": "All possible payload filtering conditions"
       },
       "Fields": {
         "properties": {
@@ -3431,310 +4605,6 @@
         "title": "Fields",
         "description": "Fields model."
       },
-      "Filter": {
-        "properties": {
-          "should": {
-            "anyOf": [
-              {
-                "items": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/FieldCondition"
-                    },
-                    {
-                      "$ref": "#/components/schemas/IsEmptyCondition"
-                    },
-                    {
-                      "$ref": "#/components/schemas/IsNullCondition"
-                    },
-                    {
-                      "$ref": "#/components/schemas/HasIdCondition"
-                    },
-                    {
-                      "$ref": "#/components/schemas/HasVectorCondition"
-                    },
-                    {
-                      "$ref": "#/components/schemas/NestedCondition"
-                    },
-                    {
-                      "$ref": "#/components/schemas/Filter"
-                    }
-                  ]
-                },
-                "type": "array"
-              },
-              {
-                "$ref": "#/components/schemas/FieldCondition"
-              },
-              {
-                "$ref": "#/components/schemas/IsEmptyCondition"
-              },
-              {
-                "$ref": "#/components/schemas/IsNullCondition"
-              },
-              {
-                "$ref": "#/components/schemas/HasIdCondition"
-              },
-              {
-                "$ref": "#/components/schemas/HasVectorCondition"
-              },
-              {
-                "$ref": "#/components/schemas/NestedCondition"
-              },
-              {
-                "$ref": "#/components/schemas/Filter"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Should",
-            "description": "At least one of those conditions should match"
-          },
-          "min_should": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/MinShould"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "At least minimum amount of given conditions should match"
-          },
-          "must": {
-            "anyOf": [
-              {
-                "items": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/FieldCondition"
-                    },
-                    {
-                      "$ref": "#/components/schemas/IsEmptyCondition"
-                    },
-                    {
-                      "$ref": "#/components/schemas/IsNullCondition"
-                    },
-                    {
-                      "$ref": "#/components/schemas/HasIdCondition"
-                    },
-                    {
-                      "$ref": "#/components/schemas/HasVectorCondition"
-                    },
-                    {
-                      "$ref": "#/components/schemas/NestedCondition"
-                    },
-                    {
-                      "$ref": "#/components/schemas/Filter"
-                    }
-                  ]
-                },
-                "type": "array"
-              },
-              {
-                "$ref": "#/components/schemas/FieldCondition"
-              },
-              {
-                "$ref": "#/components/schemas/IsEmptyCondition"
-              },
-              {
-                "$ref": "#/components/schemas/IsNullCondition"
-              },
-              {
-                "$ref": "#/components/schemas/HasIdCondition"
-              },
-              {
-                "$ref": "#/components/schemas/HasVectorCondition"
-              },
-              {
-                "$ref": "#/components/schemas/NestedCondition"
-              },
-              {
-                "$ref": "#/components/schemas/Filter"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Must",
-            "description": "All conditions must match"
-          },
-          "must_not": {
-            "anyOf": [
-              {
-                "items": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/FieldCondition"
-                    },
-                    {
-                      "$ref": "#/components/schemas/IsEmptyCondition"
-                    },
-                    {
-                      "$ref": "#/components/schemas/IsNullCondition"
-                    },
-                    {
-                      "$ref": "#/components/schemas/HasIdCondition"
-                    },
-                    {
-                      "$ref": "#/components/schemas/HasVectorCondition"
-                    },
-                    {
-                      "$ref": "#/components/schemas/NestedCondition"
-                    },
-                    {
-                      "$ref": "#/components/schemas/Filter"
-                    }
-                  ]
-                },
-                "type": "array"
-              },
-              {
-                "$ref": "#/components/schemas/FieldCondition"
-              },
-              {
-                "$ref": "#/components/schemas/IsEmptyCondition"
-              },
-              {
-                "$ref": "#/components/schemas/IsNullCondition"
-              },
-              {
-                "$ref": "#/components/schemas/HasIdCondition"
-              },
-              {
-                "$ref": "#/components/schemas/HasVectorCondition"
-              },
-              {
-                "$ref": "#/components/schemas/NestedCondition"
-              },
-              {
-                "$ref": "#/components/schemas/Filter"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Must Not",
-            "description": "All conditions must NOT match"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "title": "Filter"
-      },
-      "GeoBoundingBox": {
-        "properties": {
-          "top_left": {
-            "$ref": "#/components/schemas/GeoPoint",
-            "description": "Geo filter request  Matches coordinates inside the rectangle, described by coordinates of lop-left and bottom-right edges"
-          },
-          "bottom_right": {
-            "$ref": "#/components/schemas/GeoPoint",
-            "description": "Geo filter request  Matches coordinates inside the rectangle, described by coordinates of lop-left and bottom-right edges"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "top_left",
-          "bottom_right"
-        ],
-        "title": "GeoBoundingBox",
-        "description": "Geo filter request  Matches coordinates inside the rectangle, described by coordinates of lop-left and bottom-right edges"
-      },
-      "GeoLineString": {
-        "properties": {
-          "points": {
-            "items": {
-              "$ref": "#/components/schemas/GeoPoint"
-            },
-            "type": "array",
-            "title": "Points",
-            "description": "Ordered sequence of GeoPoints representing the line"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "points"
-        ],
-        "title": "GeoLineString",
-        "description": "Ordered sequence of GeoPoints representing the line"
-      },
-      "GeoPoint": {
-        "properties": {
-          "lon": {
-            "type": "number",
-            "title": "Lon",
-            "description": "Geo point payload schema"
-          },
-          "lat": {
-            "type": "number",
-            "title": "Lat",
-            "description": "Geo point payload schema"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "lon",
-          "lat"
-        ],
-        "title": "GeoPoint",
-        "description": "Geo point payload schema"
-      },
-      "GeoPolygon": {
-        "properties": {
-          "exterior": {
-            "$ref": "#/components/schemas/GeoLineString",
-            "description": "Geo filter request  Matches coordinates inside the polygon, defined by `exterior` and `interiors`"
-          },
-          "interiors": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/GeoLineString"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Interiors",
-            "description": "Interior lines (if present) bound holes within the surface each GeoLineString must consist of a minimum of 4 points, and the first and last points must be the same."
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "exterior"
-        ],
-        "title": "GeoPolygon",
-        "description": "Geo filter request  Matches coordinates inside the polygon, defined by `exterior` and `interiors`"
-      },
-      "GeoRadius": {
-        "properties": {
-          "center": {
-            "$ref": "#/components/schemas/GeoPoint",
-            "description": "Geo filter request  Matches coordinates inside the circle of `radius` and center with coordinates `center`"
-          },
-          "radius": {
-            "type": "number",
-            "title": "Radius",
-            "description": "Radius of the area in meters"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "center",
-          "radius"
-        ],
-        "title": "GeoRadius",
-        "description": "Geo filter request  Matches coordinates inside the circle of `radius` and center with coordinates `center`"
-      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -3748,47 +4618,30 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
-      "HasIdCondition": {
+      "HandlerConfig": {
         "properties": {
-          "has_id": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "type": "array",
-            "title": "Has Id",
-            "description": "ID-based filtering condition"
+          "enable_vector_handlers": {
+            "type": "boolean",
+            "title": "Enable Vector Handlers",
+            "description": "Enable VectorDBHandler",
+            "default": true
+          },
+          "enable_raw_data_handler": {
+            "type": "boolean",
+            "title": "Enable Raw Data Handler",
+            "description": "Enable RawDataHandler (ARF)",
+            "default": true
+          },
+          "enable_postgres_handler": {
+            "type": "boolean",
+            "title": "Enable Postgres Handler",
+            "description": "Enable EntityPostgresHandler",
+            "default": true
           }
         },
-        "additionalProperties": false,
         "type": "object",
-        "required": [
-          "has_id"
-        ],
-        "title": "HasIdCondition",
-        "description": "ID-based filtering condition"
-      },
-      "HasVectorCondition": {
-        "properties": {
-          "has_vector": {
-            "type": "string",
-            "title": "Has Vector",
-            "description": "Filter points which have specific vector assigned"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "has_vector"
-        ],
-        "title": "HasVectorCondition",
-        "description": "Filter points which have specific vector assigned"
+        "title": "HandlerConfig",
+        "description": "Controls which handlers run during sync."
       },
       "IntegrationCredentialInDB": {
         "properties": {
@@ -4001,55 +4854,25 @@
         "title": "InvitationResponse",
         "description": "Schema for invitation responses."
       },
-      "IsEmptyCondition": {
-        "properties": {
-          "is_empty": {
-            "$ref": "#/components/schemas/PayloadField",
-            "description": "Select points with empty payload for a specified field"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "is_empty"
-        ],
-        "title": "IsEmptyCondition",
-        "description": "Select points with empty payload for a specified field"
-      },
-      "IsNullCondition": {
-        "properties": {
-          "is_null": {
-            "$ref": "#/components/schemas/PayloadField",
-            "description": "Select points with null payload for a specified field"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "is_null"
-        ],
-        "title": "IsNullCondition",
-        "description": "Select points with null payload for a specified field"
-      },
       "LegacySearchRequest": {
         "properties": {
           "query": {
             "type": "string",
-            "maxLength": 1000,
-            "minLength": 1,
             "title": "Query",
-            "description": "The search query text"
+            "description": "The search query text (max 2048 tokens)"
           },
           "filter": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/Filter"
+                "additionalProperties": true,
+                "type": "object"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Qdrant native filter for metadata-based filtering"
+            "title": "Filter",
+            "description": "Filter for metadata-based filtering"
           },
           "offset": {
             "anyOf": [
@@ -4214,122 +5037,6 @@
         "title": "LegacySearchResponse",
         "description": "Legacy search response schema for backwards compatibility."
       },
-      "MatchAny": {
-        "properties": {
-          "any": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "items": {
-                  "type": "integer"
-                },
-                "type": "array"
-              }
-            ],
-            "title": "Any",
-            "description": "Exact match on any of the given values"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "any"
-        ],
-        "title": "MatchAny",
-        "description": "Exact match on any of the given values"
-      },
-      "MatchExcept": {
-        "properties": {
-          "except": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "items": {
-                  "type": "integer"
-                },
-                "type": "array"
-              }
-            ],
-            "title": "Except",
-            "description": "Should have at least one value not matching the any given values"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "except"
-        ],
-        "title": "MatchExcept",
-        "description": "Should have at least one value not matching the any given values"
-      },
-      "MatchPhrase": {
-        "properties": {
-          "phrase": {
-            "type": "string",
-            "title": "Phrase",
-            "description": "Full-text phrase match of the string."
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "phrase"
-        ],
-        "title": "MatchPhrase",
-        "description": "Full-text phrase match of the string."
-      },
-      "MatchText": {
-        "properties": {
-          "text": {
-            "type": "string",
-            "title": "Text",
-            "description": "Full-text match of the strings."
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "text"
-        ],
-        "title": "MatchText",
-        "description": "Full-text match of the strings."
-      },
-      "MatchValue": {
-        "properties": {
-          "value": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "integer"
-              },
-              {
-                "type": "string"
-              }
-            ],
-            "title": "Value",
-            "description": "Exact match of the given value"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "value"
-        ],
-        "title": "MatchValue",
-        "description": "Exact match of the given value"
-      },
       "MemberResponse": {
         "properties": {
           "id": {
@@ -4395,52 +5102,6 @@
         "title": "MessageResponse",
         "description": "Generic message response."
       },
-      "MinShould": {
-        "properties": {
-          "conditions": {
-            "items": {
-              "anyOf": [
-                {
-                  "$ref": "#/components/schemas/FieldCondition"
-                },
-                {
-                  "$ref": "#/components/schemas/IsEmptyCondition"
-                },
-                {
-                  "$ref": "#/components/schemas/IsNullCondition"
-                },
-                {
-                  "$ref": "#/components/schemas/HasIdCondition"
-                },
-                {
-                  "$ref": "#/components/schemas/HasVectorCondition"
-                },
-                {
-                  "$ref": "#/components/schemas/NestedCondition"
-                },
-                {
-                  "$ref": "#/components/schemas/Filter"
-                }
-              ]
-            },
-            "type": "array",
-            "title": "Conditions",
-            "description": ""
-          },
-          "min_count": {
-            "type": "integer",
-            "title": "Min Count",
-            "description": ""
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "conditions",
-          "min_count"
-        ],
-        "title": "MinShould"
-      },
       "MinuteLevelScheduleConfig": {
         "properties": {
           "cron_expression": {
@@ -4454,40 +5115,24 @@
         "title": "MinuteLevelScheduleConfig",
         "description": "Configuration for minute-level incremental sync schedules."
       },
-      "Nested": {
+      "NotFoundErrorResponse": {
         "properties": {
-          "key": {
+          "detail": {
             "type": "string",
-            "title": "Key",
-            "description": "Select points with payload for a specified nested field"
-          },
-          "filter": {
-            "$ref": "#/components/schemas/Filter",
-            "description": "Select points with payload for a specified nested field"
+            "title": "Detail",
+            "description": "Error message describing what was not found",
+            "example": "Subscription not found"
           }
         },
-        "additionalProperties": false,
         "type": "object",
         "required": [
-          "key",
-          "filter"
+          "detail"
         ],
-        "title": "Nested",
-        "description": "Select points with payload for a specified nested field"
-      },
-      "NestedCondition": {
-        "properties": {
-          "nested": {
-            "$ref": "#/components/schemas/Nested",
-            "description": ""
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "nested"
-        ],
-        "title": "NestedCondition"
+        "title": "NotFoundErrorResponse",
+        "description": "Response returned when a resource is not found (HTTP 404).",
+        "example": {
+          "detail": "Subscription not found"
+        }
       },
       "OAuthBrowserAuthentication": {
         "properties": {
@@ -5118,7 +5763,7 @@
           "source_connection_count": {
             "type": "integer",
             "title": "Source Connection Count",
-            "description": "Number of source connections (from Usage.source_connections)",
+            "description": "Number of source connections (computed from source_connection table)",
             "default": 0
           },
           "entity_count": {
@@ -5278,21 +5923,112 @@
         "title": "OrganizationWithRole",
         "description": "Organization schema with user's role information."
       },
-      "PayloadField": {
+      "PatchSubscriptionRequest": {
         "properties": {
-          "key": {
-            "type": "string",
-            "title": "Key",
-            "description": "Payload field name"
+          "url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2083,
+                "minLength": 1,
+                "format": "uri"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url",
+            "description": "New URL for webhook delivery. Must be a publicly accessible HTTPS endpoint.",
+            "example": "https://api.mycompany.com/webhooks/airweave-v2"
+          },
+          "event_types": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/EventType"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Types",
+            "description": "New list of event types to subscribe to. This replaces the existing list entirely.",
+            "example": [
+              "sync.completed",
+              "sync.failed",
+              "sync.running"
+            ]
+          },
+          "disabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disabled",
+            "description": "Set to `true` to pause delivery to this subscription, or `false` to resume. Disabled subscriptions will not receive events.",
+            "example": false
+          },
+          "recover_since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recover Since",
+            "description": "When re-enabling a subscription (`disabled: false`), optionally recover failed messages from this timestamp. Only applies when enabling.",
+            "example": "2024-03-14T00:00:00Z"
           }
         },
-        "additionalProperties": false,
         "type": "object",
-        "required": [
-          "key"
-        ],
-        "title": "PayloadField",
-        "description": "Payload field"
+        "title": "PatchSubscriptionRequest",
+        "description": "Update an existing webhook subscription.\n\nAll fields are optional. Only provided fields will be updated;\nomitted fields retain their current values.\n\nWhen re-enabling a subscription (setting `disabled: false`), you can optionally\nprovide `recover_since` to replay messages that were missed while disabled.",
+        "examples": [
+          {
+            "summary": "Update event types",
+            "value": {
+              "event_types": [
+                "sync.completed",
+                "sync.failed",
+                "sync.running"
+              ]
+            }
+          },
+          {
+            "summary": "Disable subscription",
+            "value": {
+              "disabled": true
+            }
+          },
+          {
+            "summary": "Enable subscription",
+            "value": {
+              "disabled": false
+            }
+          },
+          {
+            "summary": "Enable with message recovery",
+            "value": {
+              "disabled": false,
+              "recover_since": "2024-03-14T00:00:00Z"
+            }
+          },
+          {
+            "summary": "Change URL",
+            "value": {
+              "url": "https://api.mycompany.com/webhooks/airweave-v2"
+            }
+          }
+        ]
       },
       "QueryExpansionStrategy": {
         "type": "string",
@@ -5304,61 +6040,97 @@
         "title": "QueryExpansionStrategy",
         "description": "Query expansion strategies for search."
       },
-      "Range": {
+      "RateLimitErrorResponse": {
         "properties": {
-          "lt": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lt",
-            "description": "point.key &lt; range.lt"
-          },
-          "gt": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Gt",
-            "description": "point.key &gt; range.gt"
-          },
-          "gte": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Gte",
-            "description": "point.key &gt;= range.gte"
-          },
-          "lte": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lte",
-            "description": "point.key &lt;= range.lte"
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "Error message explaining the rate limit",
+            "example": "Rate limit exceeded. Please retry after 60 seconds."
           }
         },
-        "additionalProperties": false,
         "type": "object",
-        "title": "Range",
-        "description": "Range filter request"
+        "required": [
+          "detail"
+        ],
+        "title": "RateLimitErrorResponse",
+        "description": "Response returned when rate limit is exceeded (HTTP 429).\n\nThe API enforces rate limits to ensure fair usage. When exceeded,\nwait for the duration specified in the Retry-After header before retrying.",
+        "example": {
+          "detail": "Rate limit exceeded. Please retry after 60 seconds."
+        }
+      },
+      "RecoverMessagesRequest": {
+        "properties": {
+          "since": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Since",
+            "description": "Start of the recovery time window (inclusive). All failed messages from this time onward will be retried.",
+            "example": "2024-03-14T00:00:00Z"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until",
+            "description": "End of the recovery time window (exclusive). If not specified, recovers all failed messages up to now.",
+            "example": "2024-03-15T00:00:00Z"
+          }
+        },
+        "type": "object",
+        "required": [
+          "since"
+        ],
+        "title": "RecoverMessagesRequest",
+        "description": "Request to retry failed message deliveries.\n\nUse this to replay events that failed to deliver during a specific time window,\nfor example after fixing an issue with your webhook endpoint.",
+        "examples": [
+          {
+            "summary": "Recover last 24 hours",
+            "value": {
+              "since": "2024-03-14T00:00:00Z",
+              "until": "2024-03-15T00:00:00Z"
+            }
+          },
+          {
+            "summary": "Recover from timestamp to now",
+            "value": {
+              "since": "2024-03-14T12:00:00Z"
+            }
+          }
+        ]
+      },
+      "RecoveryTask": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique identifier for this recovery task (Svix internal ID)",
+            "example": "rcvr_2bVxUn3RFnLYHa8z6ZKHMT9PqPX"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Recovery task status: 'running' or 'completed'",
+            "example": "running"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status"
+        ],
+        "title": "RecoveryTask",
+        "description": "Information about a message recovery task.\n\nWhen you trigger a recovery of failed messages, this object is returned\nto track the recovery progress. The status indicates whether the recovery\nis still in progress or has completed.",
+        "example": {
+          "id": "rcvr_2bVxUn3RFnLYHa8z6ZKHMT9PqPX",
+          "status": "running"
+        }
       },
       "ResponseType": {
         "type": "string",
@@ -5381,15 +6153,15 @@
       },
       "S3ConfigRequest": {
         "properties": {
-          "aws_access_key_id": {
+          "role_arn": {
             "type": "string",
-            "title": "Aws Access Key Id",
-            "description": "AWS access key ID"
+            "title": "Role Arn",
+            "description": "IAM Role ARN to assume (e.g., arn:aws:iam::123456789012:role/airweave-writer)"
           },
-          "aws_secret_access_key": {
+          "external_id": {
             "type": "string",
-            "title": "Aws Secret Access Key",
-            "description": "AWS secret access key"
+            "title": "External Id",
+            "description": "External ID for secure cross-account trust policy"
           },
           "bucket_name": {
             "type": "string",
@@ -5400,41 +6172,23 @@
             "type": "string",
             "title": "Bucket Prefix",
             "description": "Prefix for Airweave data",
-            "default": "airweave-outbound/"
+            "default": "airweave/"
           },
           "aws_region": {
             "type": "string",
             "title": "Aws Region",
             "description": "AWS region",
             "default": "us-east-1"
-          },
-          "endpoint_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Endpoint Url",
-            "description": "Custom S3 endpoint"
-          },
-          "use_ssl": {
-            "type": "boolean",
-            "title": "Use Ssl",
-            "description": "Use SSL/TLS",
-            "default": true
           }
         },
         "type": "object",
         "required": [
-          "aws_access_key_id",
-          "aws_secret_access_key",
+          "role_arn",
+          "external_id",
           "bucket_name"
         ],
         "title": "S3ConfigRequest",
-        "description": "Request to configure S3 destination."
+        "description": "Request to configure S3 destination with IAM role."
       },
       "S3ConfigResponse": {
         "properties": {
@@ -5597,13 +6351,15 @@
           "filter": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/Filter"
+                "additionalProperties": true,
+                "type": "object"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Qdrant native filter for metadata-based filtering"
+            "title": "Filter",
+            "description": "Filter for metadata-based filtering"
           },
           "offset": {
             "anyOf": [
@@ -5639,7 +6395,7 @@
               }
             ],
             "title": "Temporal Relevance",
-            "description": "Weight recent content higher than older content; 0 = no recency effect, 1 = only recent items matter"
+            "description": "Weight recent content higher than older content; 0 = no recency effect, 1 = only recent items matter. NOTE: This feature is currently under construction and will be ignored."
           },
           "expand_query": {
             "anyOf": [
@@ -5928,6 +6684,36 @@
             "title": "Supports Temporal Relevance",
             "description": "Whether this source's entities have timestamps that enable recency-based ranking. Sources without file-level timestamps (e.g., code repositories) cannot use temporal relevance for search result weighting.",
             "default": true
+          },
+          "supports_access_control": {
+            "type": "boolean",
+            "title": "Supports Access Control",
+            "description": "Whether this source supports document-level access control. Sources with this capability extract ACL information from the source and apply it during search to filter results based on user permissions.",
+            "default": false
+          },
+          "rate_limit_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Limit Level",
+            "description": "Rate limiting level for this source: 'org' (organization-wide), 'connection' (per-connection/per-user), or None (no rate limiting)."
+          },
+          "feature_flag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feature Flag",
+            "description": "Feature flag required to access this source. If set, only organizations with this feature enabled can see/use this source."
           },
           "id": {
             "type": "string",
@@ -6582,6 +7368,145 @@
         "title": "SourceConnectionUpdate",
         "description": "Update schema for source connections."
       },
+      "SourceRateLimit": {
+        "properties": {
+          "source_short_name": {
+            "type": "string",
+            "title": "Source Short Name",
+            "description": "Source identifier (e.g., 'google_drive', 'notion')"
+          },
+          "limit": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Limit",
+            "description": "Maximum requests allowed per window"
+          },
+          "window_seconds": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Window Seconds",
+            "description": "Time window in seconds (60=per minute, 86400=per day, etc.)",
+            "default": 60
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "organization_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Organization Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "modified_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Modified At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_short_name",
+          "limit",
+          "id",
+          "organization_id",
+          "created_at",
+          "modified_at"
+        ],
+        "title": "SourceRateLimit",
+        "description": "Complete source rate limit schema."
+      },
+      "SourceRateLimitResponse": {
+        "properties": {
+          "source_short_name": {
+            "type": "string",
+            "title": "Source Short Name"
+          },
+          "rate_limit_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Limit Level",
+            "description": "'org' (organization-wide), 'connection' (per-user), or None (not supported)"
+          },
+          "limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit",
+            "description": "Configured limit, None if not set"
+          },
+          "window_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window Seconds",
+            "description": "Configured window, None if not set"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id",
+            "description": "DB record ID, None if not configured"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_short_name"
+        ],
+        "title": "SourceRateLimitResponse",
+        "description": "Response schema with source metadata merged for UI display."
+      },
+      "SourceRateLimitUpdateRequest": {
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Limit",
+            "description": "Maximum requests allowed per window"
+          },
+          "window_seconds": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Window Seconds",
+            "description": "Time window in seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "limit",
+          "window_seconds"
+        ],
+        "title": "SourceRateLimitUpdateRequest",
+        "description": "Request schema for updating rate limits via API."
+      },
       "SubscriptionInfo": {
         "properties": {
           "plan": {
@@ -6878,6 +7803,16 @@
             ],
             "title": "Sync Metadata"
           },
+          "sync_config": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SyncConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "status": {
             "$ref": "#/components/schemas/SyncStatus"
           },
@@ -6939,6 +7874,25 @@
         ],
         "title": "Sync",
         "description": "Schema for Sync."
+      },
+      "SyncConfig": {
+        "properties": {
+          "destinations": {
+            "$ref": "#/components/schemas/DestinationConfig"
+          },
+          "handlers": {
+            "$ref": "#/components/schemas/HandlerConfig"
+          },
+          "cursor": {
+            "$ref": "#/components/schemas/CursorConfig"
+          },
+          "behavior": {
+            "$ref": "#/components/schemas/BehaviorConfig"
+          }
+        },
+        "type": "object",
+        "title": "SyncConfig",
+        "description": "Sync configuration with automatic env var loading.\n\nEnv vars use double underscore as delimiter:\n    SYNC_CONFIG__DESTINATIONS__SKIP_QDRANT=true\n    SYNC_CONFIG__HANDLERS__ENABLE_VECTOR_HANDLERS=false"
       },
       "SyncCreate": {
         "properties": {
@@ -7021,6 +7975,16 @@
             ],
             "title": "Sync Metadata"
           },
+          "sync_config": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SyncConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "status": {
             "anyOf": [
               {
@@ -7078,6 +8042,135 @@
         "type": "object",
         "title": "SyncDetails",
         "description": "Sync execution details."
+      },
+      "SyncEventPayload": {
+        "properties": {
+          "event_type": {
+            "$ref": "#/components/schemas/EventType",
+            "description": "The type of sync event",
+            "example": "sync.completed"
+          },
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id",
+            "description": "Unique identifier for this sync job",
+            "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          },
+          "collection_readable_id": {
+            "type": "string",
+            "title": "Collection Readable Id",
+            "description": "Human-readable identifier for the collection (e.g., 'finance-data-ab123')",
+            "example": "customer-support-tickets-x7k9m"
+          },
+          "collection_name": {
+            "type": "string",
+            "title": "Collection Name",
+            "description": "Display name of the collection",
+            "example": "Customer Support Tickets"
+          },
+          "source_connection_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Connection Id",
+            "description": "Unique identifier for the source connection",
+            "example": "b2c3d4e5-f6a7-8901-bcde-f23456789012"
+          },
+          "source_type": {
+            "type": "string",
+            "title": "Source Type",
+            "description": "Short name of the source type (e.g., 'hubspot', 'notion', 'salesforce')",
+            "example": "hubspot"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SyncJobStatus",
+            "description": "Current status of the sync job",
+            "example": "completed"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp",
+            "description": "When this event occurred (ISO 8601 format, UTC)",
+            "example": "2024-03-15T09:45:32Z"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "Error message if the sync failed (only present for failed events)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_type",
+          "job_id",
+          "collection_readable_id",
+          "collection_name",
+          "source_type",
+          "status",
+          "timestamp"
+        ],
+        "title": "SyncEventPayload",
+        "description": "Payload for sync-related webhook events.\n\nThis schema defines the data sent to webhook subscribers when sync events occur\n(e.g., sync.pending, sync.running, sync.completed, sync.failed, sync.cancelled).",
+        "examples": [
+          {
+            "description": "A successful sync job completion event",
+            "summary": "Sync Completed",
+            "value": {
+              "collection_name": "Customer Support Tickets",
+              "collection_readable_id": "customer-support-tickets-x7k9m",
+              "event_type": "sync.completed",
+              "job_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+              "source_connection_id": "b2c3d4e5-f6a7-8901-bcde-f23456789012",
+              "source_type": "zendesk",
+              "status": "completed",
+              "timestamp": "2024-03-15T09:45:32Z"
+            }
+          },
+          {
+            "description": "A failed sync job with error details",
+            "summary": "Sync Failed",
+            "value": {
+              "collection_name": "Sales Pipeline Data",
+              "collection_readable_id": "sales-pipeline-data-p4q8r",
+              "error": "Authentication failed: OAuth token expired. Please reconnect the source.",
+              "event_type": "sync.failed",
+              "job_id": "c3d4e5f6-a7b8-9012-cdef-345678901234",
+              "source_connection_id": "d4e5f6a7-b8c9-0123-def0-456789012345",
+              "source_type": "salesforce",
+              "status": "failed",
+              "timestamp": "2024-03-15T10:12:05Z"
+            }
+          },
+          {
+            "description": "A sync job queued for execution",
+            "summary": "Sync Pending",
+            "value": {
+              "collection_name": "Engineering Documentation",
+              "collection_readable_id": "engineering-docs-m2n5p",
+              "event_type": "sync.pending",
+              "job_id": "e5f6a7b8-c9d0-1234-ef01-567890123456",
+              "source_connection_id": "f6a7b8c9-d0e1-2345-f012-678901234567",
+              "source_type": "confluence",
+              "status": "pending",
+              "timestamp": "2024-03-15T08:30:00Z"
+            }
+          }
+        ]
       },
       "SyncJob": {
         "properties": {
@@ -7227,6 +8320,28 @@
               }
             ],
             "title": "Access Token"
+          },
+          "sync_config": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SyncConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sync_metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sync Metadata"
           },
           "id": {
             "type": "string",
@@ -7465,6 +8580,16 @@
             ],
             "title": "Sync Metadata"
           },
+          "sync_config": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SyncConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "status": {
             "anyOf": [
               {
@@ -7501,159 +8626,6 @@
         "type": "object",
         "title": "SyncUpdate",
         "description": "Schema for updating a Sync object."
-      },
-      "SyncWithSourceConnection": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "source_connection_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Source Connection Id"
-          },
-          "destination_connection_ids": {
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "type": "array",
-            "title": "Destination Connection Ids"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "cron_schedule": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cron Schedule"
-          },
-          "next_scheduled_run": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Next Scheduled Run"
-          },
-          "temporal_schedule_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Temporal Schedule Id"
-          },
-          "sync_type": {
-            "type": "string",
-            "title": "Sync Type",
-            "default": "full"
-          },
-          "sync_metadata": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sync Metadata"
-          },
-          "status": {
-            "$ref": "#/components/schemas/SyncStatus"
-          },
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id"
-          },
-          "organization_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Organization Id"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "modified_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Modified At"
-          },
-          "created_by_email": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "email"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Created By Email"
-          },
-          "modified_by_email": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "email"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Modified By Email"
-          },
-          "source_connection": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Connection"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "source_connection_id",
-          "destination_connection_ids",
-          "status",
-          "id",
-          "organization_id",
-          "created_at",
-          "modified_at"
-        ],
-        "title": "SyncWithSourceConnection",
-        "description": "Schema for Sync with source connection."
       },
       "Transformer": {
         "properties": {
@@ -8147,6 +9119,11 @@
             "title": "Is Admin",
             "default": false
           },
+          "is_superuser": {
+            "type": "boolean",
+            "title": "Is Superuser",
+            "default": false
+          },
           "last_active_at": {
             "anyOf": [
               {
@@ -8274,61 +9251,197 @@
         ],
         "title": "ValidationError"
       },
-      "ValuesCount": {
+      "ValidationErrorDetail": {
         "properties": {
-          "lt": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lt",
-            "description": "point.key.length() &lt; values_count.lt"
+          "loc": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Loc",
+            "description": "Location of the error (e.g., ['body', 'url'])",
+            "example": [
+              "body",
+              "url"
+            ]
           },
-          "gt": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Gt",
-            "description": "point.key.length() &gt; values_count.gt"
+          "msg": {
+            "type": "string",
+            "title": "Msg",
+            "description": "Human-readable error message",
+            "example": "Invalid URL format"
           },
-          "gte": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Gte",
-            "description": "point.key.length() &gt;= values_count.gte"
-          },
-          "lte": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lte",
-            "description": "point.key.length() &lt;= values_count.lte"
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "Error type identifier",
+            "example": "value_error.url"
           }
         },
-        "additionalProperties": false,
         "type": "object",
-        "title": "ValuesCount",
-        "description": "Values count filter request"
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationErrorDetail",
+        "description": "Details about a validation error for a specific field."
+      },
+      "ValidationErrorResponse": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationErrorDetail"
+            },
+            "type": "array",
+            "title": "Detail",
+            "description": "List of validation errors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "ValidationErrorResponse",
+        "description": "Response returned when request validation fails (HTTP 422).\n\nThis occurs when the request body contains invalid data, such as\nmalformed URLs, invalid event types, or missing required fields.",
+        "example": {
+          "detail": [
+            {
+              "loc": [
+                "body",
+                "url"
+              ],
+              "msg": "Invalid URL: scheme must be http or https",
+              "type": "value_error.url.scheme"
+            },
+            {
+              "loc": [
+                "body",
+                "event_types"
+              ],
+              "msg": "event_types cannot be empty",
+              "type": "value_error"
+            }
+          ]
+        }
+      },
+      "WebhookSubscription": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique identifier for this subscription (UUID format)",
+            "example": "c3d4e5f6-a7b8-9012-cdef-345678901234"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "The URL where webhook events are delivered",
+            "example": "https://api.mycompany.com/webhooks/airweave"
+          },
+          "filter_types": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filter Types",
+            "description": "Event types this subscription is filtered to receive. Available types: `sync.pending`, `sync.running`, `sync.completed`, `sync.failed`, `sync.cancelled`.",
+            "example": [
+              "sync.completed",
+              "sync.failed"
+            ]
+          },
+          "disabled": {
+            "type": "boolean",
+            "title": "Disabled",
+            "description": "Whether this subscription is currently disabled. Disabled subscriptions do not receive event deliveries.",
+            "default": false,
+            "example": false
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "Optional human-readable description of this subscription",
+            "example": "Production notifications for data team"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When this subscription was created (ISO 8601 format, UTC)",
+            "example": "2024-03-01T08:00:00Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "When this subscription was last updated (ISO 8601 format, UTC)",
+            "example": "2024-03-15T14:30:00Z"
+          },
+          "delivery_attempts": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/DeliveryAttempt"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Attempts",
+            "description": "Recent delivery attempts for this subscription. Only included when fetching a single subscription via GET /subscriptions/{id}."
+          },
+          "secret": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secret",
+            "description": "The signing secret for webhook signature verification. Only included when include_secret=true is passed to the API. Keep this secret secure.",
+            "example": "whsec_C2FVsBQIhrscChlQIMV10R9X4jZ8"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "url",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "WebhookSubscription",
+        "description": "A webhook subscription (endpoint) configuration.",
+        "example": {
+          "created_at": "2024-03-01T08:00:00Z",
+          "description": "Production notifications for data team",
+          "disabled": false,
+          "filter_types": [
+            "sync.completed",
+            "sync.failed"
+          ],
+          "id": "c3d4e5f6-a7b8-9012-cdef-345678901234",
+          "updated_at": "2024-03-15T14:30:00Z",
+          "url": "https://api.mycompany.com/webhooks/airweave"
+        }
       }
     },
     "securitySchemes": {
@@ -8355,6 +9468,11 @@
       "name": "sources",
       "x-display-name": "Sources",
       "description": "API endpoints for discovering available data source connectors and their configuration requirements"
+    },
+    {
+      "name": "events",
+      "x-display-name": "Events",
+      "description": "API endpoints for managing webhook subscriptions and event messages. Subscribe to events like sync completions to receive real-time notifications at your webhook URL"
     }
   ],
   "servers": [
@@ -8367,18 +9485,6 @@
       "url": "http://localhost:8001",
       "description": "Local",
       "x-fern-server-name": "Local"
-    }
-  ],
-  "x-fern-global-headers": [
-    {
-      "header": "X-Framework-Name",
-      "name": "framework_name",
-      "optional": true
-    },
-    {
-      "header": "X-Framework-Version",
-      "name": "framework_version",
-      "optional": true
     }
   ]
 }

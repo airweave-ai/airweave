@@ -1,0 +1,121 @@
+---
+title: Events Overview
+description: Real-time notifications for sync lifecycle events via webhooks
+edit-this-page-url: https://github.com/airweave-ai/airweave/blob/main/fern/docs/pages/events/overview.mdx
+slug: events/overview
+---
+
+<Warning>
+**Beta Feature**
+
+The Events API is currently in beta. The API is stable but may receive enhancements based on feedback.
+</Warning>
+
+## What are Events?
+
+Events are real-time notifications that Airweave sends when things happen in your organization. Instead of constantly polling the API to check if a sync completed, you register a webhook endpoint and Airweave pushes updates to you the moment they occur.
+
+This is the foundation for building reactive integrations—trigger downstream workflows, update dashboards, send alerts, or sync state with external systems automatically.
+
+## Why Use Webhooks?
+
+| Polling | Webhooks |
+|---------|----------|
+| You repeatedly ask "is it done yet?" | Airweave tells you when it's done |
+| Wastes API calls when nothing changed | Only fires when something happens |
+| Delays depend on poll interval | Near-instant notifications |
+| Simple but inefficient | Efficient and scalable |
+
+Webhooks are the preferred approach for production integrations where you need to react to events in real-time.
+
+## Available Event Types
+
+All events are related to sync job lifecycle:
+
+| Event | Description | When it fires |
+|-------|-------------|---------------|
+| `sync.pending` | Sync job queued | Job created and waiting to start |
+| `sync.running` | Sync job started | Job begins processing |
+| `sync.completed` | Sync job finished successfully | All data synced without errors |
+| `sync.failed` | Sync job failed | Job encountered an error |
+| `sync.cancelled` | Sync job cancelled | Job was manually cancelled |
+
+<Tip>
+Most integrations only need `sync.completed` and `sync.failed`. Subscribe to additional events if you need granular progress tracking.
+</Tip>
+
+## How It Works
+
+```
+┌─────────────┐      ┌─────────────┐      ┌─────────────┐
+│   Airweave  │ ──── │    Svix     │ ──── │ Your Server │
+│  (Events)   │      │  (Delivery) │      │  (Webhook)  │
+└─────────────┘      └─────────────┘      └─────────────┘
+```
+
+1. **Something happens** — A sync job completes, fails, or changes state
+2. **Airweave creates an event** — The event is recorded with full payload data
+3. **Svix delivers it** — Our webhook infrastructure (powered by [Svix](https://www.svix.com/)) sends an HTTP POST to your registered endpoints
+4. **You process it** — Your server receives the payload and takes action
+
+Svix handles retries, signature verification, and delivery guarantees so you don't have to build that infrastructure yourself.
+
+## Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Trigger Workflows" icon="bolt">
+    Start a data pipeline, refresh a cache, or kick off downstream processing when a sync completes.
+  </Card>
+
+  <Card title="Send Alerts" icon="bell">
+    Notify your team via Slack, email, or PagerDuty when a sync fails.
+  </Card>
+
+  <Card title="Update Dashboards" icon="chart-line">
+    Push real-time sync status to monitoring dashboards or admin panels.
+  </Card>
+
+  <Card title="Audit & Logging" icon="scroll">
+    Record every sync event to your own logging system for compliance or debugging.
+  </Card>
+</CardGroup>
+
+## Quick Example
+
+Here's what a webhook delivery looks like when a sync completes:
+
+**HTTP Request to your endpoint:**
+
+```http
+POST /webhooks/airweave HTTP/1.1
+Host: your-server.com
+Content-Type: application/json
+svix-id: msg_2xKvB8LPqM4nRst
+svix-timestamp: 1705329000
+svix-signature: v1,g0hM9SsE+OTPJTGt/tmIKtSyZlE3uFJELVlNIOLJ1OE=
+
+{
+  "event_type": "sync.completed",
+  "job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "collection_readable_id": "sales-data-ab123",
+  "collection_name": "Sales Data",
+  "source_connection_id": "660e8400-e29b-41d4-a716-446655440001",
+  "source_type": "salesforce",
+  "status": "completed",
+  "timestamp": "2025-01-15T14:30:00Z"
+}
+```
+
+Your server responds with `200 OK` to acknowledge receipt.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Types & Formats" icon="code" href="/events/types-and-formats">
+    Learn the detailed structure of event payloads and delivery format.
+  </Card>
+
+  <Card title="Setup Guide" icon="wrench" href="/events/setup">
+    Create your first webhook subscription and start receiving events.
+  </Card>
+</CardGroup>

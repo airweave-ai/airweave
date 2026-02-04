@@ -149,14 +149,14 @@ export function WebhooksTab({
                 </TableCell>
                 <TableCell>
                   <div className="flex flex-wrap gap-1">
-                    {(subscription.channels || []).slice(0, 2).map((ch) => (
+                    {(subscription.filter_types || []).slice(0, 2).map((ch) => (
                       <Badge key={ch} variant="secondary" className="text-xs font-normal">
                         {getEventTypeLabel(ch)}
                       </Badge>
                     ))}
-                    {(subscription.channels?.length || 0) > 2 && (
+                    {(subscription.filter_types?.length || 0) > 2 && (
                       <Badge variant="secondary" className="text-xs font-normal">
-                        +{(subscription.channels?.length || 0) - 2}
+                        +{(subscription.filter_types?.length || 0) - 2}
                       </Badge>
                     )}
                   </div>

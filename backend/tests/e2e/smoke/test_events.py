@@ -158,7 +158,7 @@ class TestEventsMessages:
 
         # All returned messages should be sync.completed
         for msg in messages:
-            assert msg["eventType"] == "sync.completed"
+            assert msg["event_type"] == "sync.completed"
 
     @pytest.mark.svix
     async def test_messages_created_after_sync(
@@ -193,8 +193,8 @@ class TestEventsMessages:
 
         # Verify message structure
         assert "id" in message
-        assert "eventType" in message
-        assert message["eventType"] == "sync.completed"
+        assert "event_type" in message
+        assert message["event_type"] == "sync.completed"
         assert "payload" in message
 
 
@@ -328,8 +328,8 @@ class TestWebhookSubscriptions:
         )
         assert response.status_code == 200
         data = response.json()
-        assert data["endpoint"]["id"] == webhook_subscription["id"]
-        assert "message_attempts" in data
+        assert data["id"] == webhook_subscription["id"]
+        assert "delivery_attempts" in data
 
     async def test_update_subscription_url(
         self,
@@ -349,7 +349,7 @@ class TestWebhookSubscriptions:
     async def test_delete_subscription(
         self, api_client: httpx.AsyncClient, unique_webhook_url: str
     ):
-        """Test deleting a webhook subscription."""
+        """Test deleting a webhook subscription returns the deleted object."""
         # Create a subscription to delete
         create_response = await api_client.post(
             "/events/subscriptions",
@@ -366,18 +366,78 @@ class TestWebhookSubscriptions:
         )
         assert delete_response.status_code == 200
 
-    async def test_get_subscription_secret(
+        # Verify the response contains the deleted subscription
+        deleted = delete_response.json()
+        assert deleted["id"] == subscription["id"]
+        assert deleted["url"].rstrip("/") == unique_webhook_url.rstrip("/")
+        assert "filter_types" in deleted
+        assert "created_at" in deleted
+        assert "updated_at" in deleted
+
+    async def test_delete_subscription_returns_correct_fields(
+        self, api_client: httpx.AsyncClient, unique_webhook_url: str
+    ):
+        """Test that delete returns all expected subscription fields."""
+        # Create a subscription with specific event types
+        event_types = ["sync.completed", "sync.failed"]
+        create_response = await api_client.post(
+            "/events/subscriptions",
+            json={
+                "url": unique_webhook_url,
+                "event_types": event_types,
+            },
+        )
+        assert create_response.status_code == 200
+        subscription = create_response.json()
+
+        # Delete and verify all fields are returned
+        delete_response = await api_client.delete(
+            f"/events/subscriptions/{subscription['id']}"
+        )
+        assert delete_response.status_code == 200
+        deleted = delete_response.json()
+
+        # Verify structure matches the created subscription
+        assert deleted["id"] == subscription["id"]
+        assert deleted["url"] == subscription["url"]
+        assert set(deleted["filter_types"]) == set(event_types)
+        assert deleted["disabled"] == subscription["disabled"]
+        assert deleted["created_at"] == subscription["created_at"]
+
+    async def test_delete_subscription_not_found(
+        self, api_client: httpx.AsyncClient
+    ):
+        """Test deleting a non-existent subscription returns 404."""
+        fake_id = "00000000-0000-0000-0000-000000000000"
+        response = await api_client.delete(f"/events/subscriptions/{fake_id}")
+        assert response.status_code == 404
+
+    async def test_get_subscription_with_secret(
         self, api_client: httpx.AsyncClient, webhook_subscription: Dict
     ):
-        """Test retrieving the signing secret for a subscription."""
+        """Test retrieving a subscription with include_secret=true."""
         response = await api_client.get(
-            f"/events/subscriptions/{webhook_subscription['id']}/secret"
+            f"/events/subscriptions/{webhook_subscription['id']}",
+            params={"include_secret": True},
         )
         assert response.status_code == 200
-        secret_data = response.json()
-        assert "key" in secret_data
+        data = response.json()
+        assert "secret" in data
+        assert data["secret"] is not None
         # Svix secrets start with whsec_
-        assert secret_data["key"].startswith("whsec_")
+        assert data["secret"].startswith("whsec_")
+
+    async def test_get_subscription_without_secret(
+        self, api_client: httpx.AsyncClient, webhook_subscription: Dict
+    ):
+        """Test retrieving a subscription without include_secret (default)."""
+        response = await api_client.get(
+            f"/events/subscriptions/{webhook_subscription['id']}"
+        )
+        assert response.status_code == 200
+        data = response.json()
+        # Secret should be null when not requested
+        assert data.get("secret") is None
 
 
 @pytest.mark.asyncio
@@ -402,7 +462,7 @@ class TestWebhookDisableEnable:
         # Verify it's disabled when fetching
         get_response = await api_client.get(f"/events/subscriptions/{subscription_id}")
         assert get_response.status_code == 200
-        assert get_response.json()["endpoint"]["disabled"] is True
+        assert get_response.json()["disabled"] is True
 
     async def test_enable_subscription_via_patch(
         self, api_client: httpx.AsyncClient, webhook_subscription: Dict
@@ -444,10 +504,10 @@ class TestWebhookDisableEnable:
         assert updated["url"].rstrip("/") == new_url.rstrip("/")
         assert updated["disabled"] is True
 
-    async def test_enable_endpoint_via_dedicated_endpoint(
+    async def test_enable_subscription_via_patch(
         self, api_client: httpx.AsyncClient, webhook_subscription: Dict
     ):
-        """Test the POST /enable endpoint for enabling a disabled subscription."""
+        """Test enabling a subscription via PATCH with disabled=false."""
         subscription_id = webhook_subscription["id"]
 
         # First disable it
@@ -456,30 +516,10 @@ class TestWebhookDisableEnable:
             json={"disabled": True},
         )
 
-        # Enable via the dedicated endpoint
-        response = await api_client.post(
-            f"/events/subscriptions/{subscription_id}/enable",
-            json={},
-        )
-        assert response.status_code == 200
-        updated = response.json()
-        assert updated["disabled"] is False
-
-    async def test_enable_endpoint_without_body(
-        self, api_client: httpx.AsyncClient, webhook_subscription: Dict
-    ):
-        """Test the POST /enable endpoint works without a request body."""
-        subscription_id = webhook_subscription["id"]
-
-        # First disable it
-        await api_client.patch(
+        # Enable via PATCH
+        response = await api_client.patch(
             f"/events/subscriptions/{subscription_id}",
-            json={"disabled": True},
-        )
-
-        # Enable without body - should still work
-        response = await api_client.post(
-            f"/events/subscriptions/{subscription_id}/enable",
+            json={"disabled": False},
         )
         assert response.status_code == 200
         updated = response.json()
@@ -504,9 +544,9 @@ class TestWebhookDisableEnable:
         # Enable with recovery - use a recent timestamp
         recover_since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
 
-        response = await api_client.post(
-            f"/events/subscriptions/{subscription_id}/enable",
-            json={"recover_since": recover_since},
+        response = await api_client.patch(
+            f"/events/subscriptions/{subscription_id}",
+            json={"disabled": False, "recover_since": recover_since},
         )
         assert response.status_code == 200
         updated = response.json()
@@ -519,9 +559,9 @@ class TestWebhookDisableEnable:
         subscription_id = webhook_subscription["id"]
 
         # Enable when already enabled - should succeed
-        response = await api_client.post(
-            f"/events/subscriptions/{subscription_id}/enable",
-            json={},
+        response = await api_client.patch(
+            f"/events/subscriptions/{subscription_id}",
+            json={"disabled": False},
         )
         assert response.status_code == 200
         assert response.json()["disabled"] is False
@@ -603,123 +643,6 @@ class TestWebhookRecovery:
         assert response.status_code == 200
         result = response.json()
         assert result is not None
-
-
-@pytest.mark.asyncio
-class TestSubscriptionWithAttempts:
-    """Tests for subscription endpoints that return message attempts."""
-
-    async def test_get_subscription_returns_message_attempts_field(
-        self, api_client: httpx.AsyncClient, webhook_subscription: Dict
-    ):
-        """Test that GET /subscriptions/{id} returns message_attempts array."""
-        subscription_id = webhook_subscription["id"]
-
-        response = await api_client.get(f"/events/subscriptions/{subscription_id}")
-        assert response.status_code == 200
-        data = response.json()
-
-        assert "endpoint" in data
-        assert "message_attempts" in data
-        assert isinstance(data["message_attempts"], list)
-
-    async def test_disabled_subscription_still_returns_attempts(
-        self, api_client: httpx.AsyncClient, webhook_subscription: Dict
-    ):
-        """Test that disabled subscriptions still return their message attempts."""
-        subscription_id = webhook_subscription["id"]
-
-        # Disable the subscription
-        await api_client.patch(
-            f"/events/subscriptions/{subscription_id}",
-            json={"disabled": True},
-        )
-
-        # Get subscription - should still work and include attempts
-        response = await api_client.get(f"/events/subscriptions/{subscription_id}")
-        assert response.status_code == 200
-        data = response.json()
-
-        assert data["endpoint"]["disabled"] is True
-        assert "message_attempts" in data
-        assert isinstance(data["message_attempts"], list)
-
-    async def test_re_enabled_subscription_returns_attempts(
-        self, api_client: httpx.AsyncClient, webhook_subscription: Dict
-    ):
-        """Test that re-enabled subscriptions return message attempts."""
-        subscription_id = webhook_subscription["id"]
-
-        # Disable then re-enable
-        await api_client.patch(
-            f"/events/subscriptions/{subscription_id}",
-            json={"disabled": True},
-        )
-        await api_client.post(
-            f"/events/subscriptions/{subscription_id}/enable",
-            json={},
-        )
-
-        # Get subscription
-        response = await api_client.get(f"/events/subscriptions/{subscription_id}")
-        assert response.status_code == 200
-        data = response.json()
-
-        assert data["endpoint"]["disabled"] is False
-        assert "message_attempts" in data
-        assert isinstance(data["message_attempts"], list)
-
-    @pytest.mark.svix
-    async def test_attempts_created_after_sync_event(
-        self,
-        api_client: httpx.AsyncClient,
-        webhook_subscription: Dict,
-        collection: Dict,
-    ):
-        """Test that message attempts are created after a sync triggers an event.
-
-        This test requires Svix to be running and will create actual delivery attempts.
-        Note: Svix delivery to dummy URLs may take time or fail silently.
-        """
-        subscription_id = webhook_subscription["id"]
-
-        # Trigger a sync that will generate a sync.completed event
-        response = await api_client.post(
-            "/source-connections",
-            json={
-                "name": "Stub Attempts Test",
-                "description": "Testing message attempts creation",
-                "short_name": "stub",
-                "readable_collection_id": collection["readable_id"],
-                "authentication": {"credentials": {"stub_key": "key"}},
-                "config": {"entity_count": "1"},
-                "sync_immediately": True,
-            },
-        )
-        assert response.status_code == 200
-
-        # Wait for sync to complete and event to be sent
-        await wait_for_sync_completed_message(api_client, timeout=WEBHOOK_TIMEOUT)
-
-        # Give Svix more time to attempt delivery (may need multiple retries)
-        await asyncio.sleep(5)
-
-        # Check subscription for attempts
-        sub_response = await api_client.get(f"/events/subscriptions/{subscription_id}")
-        assert sub_response.status_code == 200
-        data = sub_response.json()
-
-        # Verify the structure is correct (attempts may or may not exist depending on Svix timing)
-        assert "message_attempts" in data
-        assert isinstance(data["message_attempts"], list)
-
-        # If attempts exist, verify their structure
-        if len(data["message_attempts"]) > 0:
-            attempt = data["message_attempts"][0]
-            assert "id" in attempt
-            assert "url" in attempt
-            assert "responseStatusCode" in attempt
-            assert "timestamp" in attempt
 
 
 @pytest.mark.asyncio
@@ -916,11 +839,13 @@ class TestSubscriptionSecretValidation:
         # May succeed or fail depending on secret format requirements
         if response.status_code == 200:
             subscription = response.json()
-            # Verify we can retrieve the secret
+            # Verify we can retrieve the secret via include_secret param
             secret_response = await api_client.get(
-                f"/events/subscriptions/{subscription['id']}/secret"
+                f"/events/subscriptions/{subscription['id']}",
+                params={"include_secret": True},
             )
             assert secret_response.status_code == 200
+            assert secret_response.json().get("secret") is not None
             await api_client.delete(f"/events/subscriptions/{subscription['id']}")
 
     async def test_create_subscription_with_short_secret(
@@ -992,9 +917,9 @@ class TestNonExistentResources:
         Expected: 404 Not Found.
         """
         fake_id = "ep_nonexistent123456789"
-        response = await api_client.post(
-            f"/events/subscriptions/{fake_id}/enable",
-            json={},
+        response = await api_client.patch(
+            f"/events/subscriptions/{fake_id}",
+            json={"disabled": False},
         )
         assert response.status_code == 404
 
@@ -1021,7 +946,10 @@ class TestNonExistentResources:
         Expected: 404 Not Found.
         """
         fake_id = "ep_nonexistent123456789"
-        response = await api_client.get(f"/events/subscriptions/{fake_id}/secret")
+        response = await api_client.get(
+            f"/events/subscriptions/{fake_id}",
+            params={"include_secret": True},
+        )
         assert response.status_code == 404
 
     async def test_get_non_existent_message(
@@ -1040,11 +968,14 @@ class TestNonExistentResources:
     ):
         """Test getting attempts for a message that doesn't exist.
 
-        Expected: 404 Not Found (or 200 with empty list).
+        Expected: 404 Not Found.
         """
         fake_id = "msg_nonexistent123456789"
-        response = await api_client.get(f"/events/messages/{fake_id}/attempts")
-        assert response.status_code in [200, 404]
+        response = await api_client.get(
+            f"/events/messages/{fake_id}",
+            params={"include_attempts": True},
+        )
+        assert response.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -1162,7 +1093,7 @@ class TestDisableEnableEdgeCases:
 
         # Final state should be enabled
         get_response = await api_client.get(f"/events/subscriptions/{subscription_id}")
-        assert get_response.json()["endpoint"]["disabled"] is False
+        assert get_response.json()["disabled"] is False
 
     async def test_patch_with_empty_body(
         self, api_client: httpx.AsyncClient, webhook_subscription: Dict
@@ -1175,18 +1106,6 @@ class TestDisableEnableEdgeCases:
             json={},
         )
         # Should succeed as a no-op
-        assert response.status_code == 200
-
-    async def test_enable_with_empty_body(
-        self, api_client: httpx.AsyncClient, webhook_subscription: Dict
-    ):
-        """Test POST /enable with empty JSON body."""
-        subscription_id = webhook_subscription["id"]
-
-        response = await api_client.post(
-            f"/events/subscriptions/{subscription_id}/enable",
-            json={},
-        )
         assert response.status_code == 200
 
     async def test_enable_preserves_other_fields(
@@ -1202,10 +1121,10 @@ class TestDisableEnableEdgeCases:
             json={"disabled": True},
         )
 
-        # Enable
-        response = await api_client.post(
-            f"/events/subscriptions/{subscription_id}/enable",
-            json={},
+        # Enable via PATCH with disabled=false
+        response = await api_client.patch(
+            f"/events/subscriptions/{subscription_id}",
+            json={"disabled": False},
         )
         assert response.status_code == 200
         updated = response.json()
@@ -1267,9 +1186,9 @@ class TestSubscriptionUpdateEdgeCases:
     async def test_updated_at_changes_after_patch(
         self, api_client: httpx.AsyncClient, webhook_subscription: Dict
     ):
-        """Test that updatedAt timestamp changes after PATCH."""
+        """Test that updated_at timestamp changes after PATCH."""
         subscription_id = webhook_subscription["id"]
-        original_updated_at = webhook_subscription.get("updatedAt")
+        original_updated_at = webhook_subscription.get("updated_at")
 
         # Small delay to ensure timestamp difference
         await asyncio.sleep(0.1)
@@ -1281,16 +1200,16 @@ class TestSubscriptionUpdateEdgeCases:
         assert response.status_code == 200
 
         if original_updated_at:
-            # updatedAt should be different (or at least not before)
-            new_updated_at = response.json().get("updatedAt")
+            # updated_at should be different (or at least not before)
+            new_updated_at = response.json().get("updated_at")
             assert new_updated_at is not None
 
     async def test_created_at_unchanged_after_patch(
         self, api_client: httpx.AsyncClient, webhook_subscription: Dict
     ):
-        """Test that createdAt timestamp doesn't change after PATCH."""
+        """Test that created_at timestamp doesn't change after PATCH."""
         subscription_id = webhook_subscription["id"]
-        original_created_at = webhook_subscription.get("createdAt")
+        original_created_at = webhook_subscription.get("created_at")
 
         response = await api_client.patch(
             f"/events/subscriptions/{subscription_id}",
@@ -1299,7 +1218,7 @@ class TestSubscriptionUpdateEdgeCases:
         assert response.status_code == 200
 
         if original_created_at:
-            new_created_at = response.json().get("createdAt")
+            new_created_at = response.json().get("created_at")
             assert new_created_at == original_created_at
 
 
@@ -1330,7 +1249,7 @@ class TestMessageQueryEdgeCases:
         messages = response.json()
         # All returned messages should be one of the filtered types
         for msg in messages:
-            assert msg["eventType"] in ["sync.completed", "sync.failed", "sync.running"]
+            assert msg["event_type"] in ["sync.completed", "sync.failed", "sync.running"]
 
 
 @pytest.mark.asyncio
@@ -1402,7 +1321,7 @@ class TestListOperationsEdgeCases:
             # Verify required fields exist
             assert "id" in sub
             assert "url" in sub
-            assert "createdAt" in sub
+            assert "created_at" in sub
             # disabled may or may not be present
 
     async def test_list_messages_returns_correct_structure(
@@ -1415,5 +1334,5 @@ class TestListOperationsEdgeCases:
 
         for msg in messages:
             assert "id" in msg
-            assert "eventType" in msg
+            assert "event_type" in msg
             assert "timestamp" in msg

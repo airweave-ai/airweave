@@ -6,50 +6,43 @@ import { create } from 'zustand';
 import { apiClient } from '../api';
 
 /**
- * Event message type based on Svix MessageOut
+ * Event message type (snake_case to match API response)
  */
 export interface EventMessage {
   id: string;
-  eventType: string;
+  event_type: string;
   payload: Record<string, unknown>;
   timestamp: string;
   channels?: string[];
+  delivery_attempts?: MessageAttempt[] | null;
 }
 
 /**
- * Subscription type based on Svix EndpointOut
+ * Subscription type (snake_case to match API response)
  */
 export interface Subscription {
   id: string;
   url: string;
-  channels?: string[];
-  createdAt: string;
-  updatedAt: string;
+  filter_types?: string[] | null;
+  created_at: string;
+  updated_at: string;
   description?: string;
   disabled?: boolean;
+  delivery_attempts?: MessageAttempt[] | null;
+  secret?: string | null;
 }
 
 /**
- * Message attempt type based on Svix MessageAttemptOut
+ * Message attempt type (snake_case to match API response)
  */
 export interface MessageAttempt {
   id: string;
-  url: string;
-  msgId: string;
-  endpointId: string;
-  response: string;
-  responseStatusCode: number;
+  message_id: string;
+  endpoint_id: string;
+  response: string | null;
+  response_status_code: number;
   timestamp: string;
-  status: number;
-  triggerType: number;
-}
-
-/**
- * Subscription with message attempts response type
- */
-export interface SubscriptionWithAttempts {
-  endpoint: Subscription;
-  message_attempts: MessageAttempt[];
+  status: string;
 }
 
 /**
@@ -69,13 +62,6 @@ export interface UpdateSubscriptionRequest {
   event_types?: string[];
 }
 
-/**
- * Subscription secret response type
- */
-export interface SubscriptionSecret {
-  key: string;
-}
-
 interface EventsState {
   subscriptions: Subscription[];
   messages: EventMessage[];
@@ -86,12 +72,11 @@ interface EventsState {
   // Actions
   fetchSubscriptions: () => Promise<void>;
   fetchMessages: (eventTypes?: string[]) => Promise<void>;
-  fetchSubscription: (subscriptionId: string) => Promise<SubscriptionWithAttempts>;
+  fetchSubscription: (subscriptionId: string, includeSecret?: boolean) => Promise<Subscription>;
   createSubscription: (request: CreateSubscriptionRequest) => Promise<Subscription>;
   updateSubscription: (subscriptionId: string, request: UpdateSubscriptionRequest) => Promise<Subscription>;
   deleteSubscription: (subscriptionId: string) => Promise<void>;
   deleteSubscriptions: (subscriptionIds: string[]) => Promise<void>;
-  fetchSubscriptionSecret: (subscriptionId: string) => Promise<SubscriptionSecret>;
   clearEvents: () => void;
 }
 
@@ -142,8 +127,15 @@ export const useEventsStore = create<EventsState>((set, get) => ({
     }
   },
 
-  fetchSubscription: async (subscriptionId: string) => {
-    const response = await apiClient.get(`/events/subscriptions/${subscriptionId}`);
+  fetchSubscription: async (subscriptionId: string, includeSecret = false) => {
+    const params = new URLSearchParams();
+    if (includeSecret) {
+      params.set("include_secret", "true");
+    }
+    const url = params.toString()
+      ? `/events/subscriptions/${subscriptionId}?${params}`
+      : `/events/subscriptions/${subscriptionId}`;
+    const response = await apiClient.get(url);
     if (!response.ok) {
       throw new Error(`Failed to fetch subscription: ${response.status}`);
     }
@@ -197,14 +189,6 @@ export const useEventsStore = create<EventsState>((set, get) => ({
 
     // Refresh subscriptions list
     get().fetchSubscriptions();
-  },
-
-  fetchSubscriptionSecret: async (subscriptionId: string) => {
-    const response = await apiClient.get(`/events/subscriptions/${subscriptionId}/secret`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch subscription secret: ${response.status}`);
-    }
-    return response.json();
   },
 
   clearEvents: () => {

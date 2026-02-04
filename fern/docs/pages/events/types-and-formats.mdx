@@ -1,0 +1,247 @@
+---
+title: Types & Formats
+description: Event payload structures and delivery format
+edit-this-page-url: https://github.com/airweave-ai/airweave/blob/main/fern/docs/pages/events/types-and-formats.mdx
+slug: events/types-and-formats
+---
+
+This page documents the structure of webhook payloads, delivery headers, and the data models used throughout the Events API.
+
+## Event Types
+
+### sync.pending
+
+Fired when a sync job is created and queued for processing.
+
+```json
+{
+  "event_type": "sync.pending",
+  "job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "collection_readable_id": "finance-data-ab123",
+  "collection_name": "Finance Data",
+  "source_connection_id": "660e8400-e29b-41d4-a716-446655440001",
+  "source_type": "notion",
+  "status": "pending",
+  "timestamp": "2025-01-15T14:00:00Z"
+}
+```
+
+### sync.running
+
+Fired when the sync job starts processing.
+
+```json
+{
+  "event_type": "sync.running",
+  "job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "collection_readable_id": "finance-data-ab123",
+  "collection_name": "Finance Data",
+  "source_connection_id": "660e8400-e29b-41d4-a716-446655440001",
+  "source_type": "notion",
+  "status": "running",
+  "timestamp": "2025-01-15T14:00:05Z"
+}
+```
+
+### sync.completed
+
+Fired when the sync job finishes successfully.
+
+```json
+{
+  "event_type": "sync.completed",
+  "job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "collection_readable_id": "finance-data-ab123",
+  "collection_name": "Finance Data",
+  "source_connection_id": "660e8400-e29b-41d4-a716-446655440001",
+  "source_type": "notion",
+  "status": "completed",
+  "timestamp": "2025-01-15T14:05:00Z"
+}
+```
+
+### sync.failed
+
+Fired when the sync job encounters an error. Includes an `error` field with details.
+
+```json
+{
+  "event_type": "sync.failed",
+  "job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "collection_readable_id": "finance-data-ab123",
+  "collection_name": "Finance Data",
+  "source_connection_id": "660e8400-e29b-41d4-a716-446655440001",
+  "source_type": "notion",
+  "status": "failed",
+  "timestamp": "2025-01-15T14:02:30Z",
+  "error": "Authentication token expired"
+}
+```
+
+### sync.cancelled
+
+Fired when the sync job is manually cancelled.
+
+```json
+{
+  "event_type": "sync.cancelled",
+  "job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "collection_readable_id": "finance-data-ab123",
+  "collection_name": "Finance Data",
+  "source_connection_id": "660e8400-e29b-41d4-a716-446655440001",
+  "source_type": "notion",
+  "status": "cancelled",
+  "timestamp": "2025-01-15T14:01:15Z"
+}
+```
+
+## Payload Schema
+
+Every event payload follows this structure:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `event_type` | string | The event type (e.g., `sync.completed`) |
+| `job_id` | UUID | Unique identifier for the sync job |
+| `collection_readable_id` | string | Human-readable collection ID (e.g., `sales-data-ab123`) |
+| `collection_name` | string | Display name of the collection |
+| `source_connection_id` | UUID | Unique identifier for the source connection |
+| `source_type` | string | Short name of the source (e.g., `slack`, `notion`, `github`) |
+| `status` | string | Current job status: `pending`, `running`, `completed`, `failed`, `cancelled` |
+| `timestamp` | ISO 8601 | When the event occurred |
+| `error` | string | Error message (only present for `sync.failed` events) |
+
+## Delivery Format
+
+When Airweave delivers an event to your webhook endpoint, the HTTP request includes:
+
+### Headers
+
+| Header | Description | Example |
+|--------|-------------|---------|
+| `Content-Type` | Always `application/json` | `application/json` |
+| `svix-id` | Unique message identifier | `msg_2xKvB8LPqM4nRst` |
+| `svix-timestamp` | Unix timestamp of delivery | `1705329000` |
+| `svix-signature` | HMAC-SHA256 signature for verification | `v1,g0hM9SsE+OTPJTGt/...` |
+
+### Body
+
+The request body is the raw event payload (JSON).
+
+### Expected Response
+
+Your endpoint should return a `2xx` status code to acknowledge receipt:
+
+| Response | Meaning |
+|----------|---------|
+| `200-299` | Success — message delivered |
+| `4xx` | Client error — will retry |
+| `5xx` | Server error — will retry |
+| Timeout (30s) | Delivery failed — will retry |
+
+## Webhook Subscription
+
+When you create or retrieve a subscription, you'll see this structure:
+
+```json
+{
+  "id": "ep_2bVxUn3RFnLYHa8z6ZKHMT9PqPX",
+  "url": "https://your-server.com/webhooks/airweave",
+  "filter_types": ["sync.completed", "sync.failed"],
+  "disabled": false,
+  "description": "Production webhook endpoint",
+  "created_at": "2025-01-15T10:30:00Z",
+  "updated_at": "2025-01-15T10:30:00Z"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique subscription ID (prefix: `ep_`) |
+| `url` | string | Your webhook endpoint URL |
+| `filter_types` | array | Event types this subscription receives |
+| `disabled` | boolean | Whether delivery is paused |
+| `description` | string | Optional description |
+| `created_at` | ISO 8601 | When the subscription was created |
+| `updated_at` | ISO 8601 | When the subscription was last modified |
+
+## Event Message
+
+When retrieving messages via the API, each message has this structure:
+
+```json
+{
+  "id": "msg_2bVxUn3RFnLYHa8z6ZKHMT9PqPX",
+  "event_type": "sync.completed",
+  "payload": {
+    "event_type": "sync.completed",
+    "job_id": "550e8400-e29b-41d4-a716-446655440000",
+    "collection_readable_id": "finance-data-ab123",
+    "collection_name": "Finance Data",
+    "source_connection_id": "880e8400-e29b-41d4-a716-446655440003",
+    "source_type": "slack",
+    "status": "completed",
+    "timestamp": "2025-01-15T14:22:15Z"
+  },
+  "timestamp": "2025-01-15T14:22:15Z",
+  "channels": ["sync.completed"],
+  "event_id": "evt_550e8400e29b41d4a716446655440000",
+  "tags": ["sync", "slack"]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique message ID (prefix: `msg_`) |
+| `event_type` | string | The event type |
+| `payload` | object | The full event payload |
+| `timestamp` | ISO 8601 | When the message was created |
+| `channels` | array | Delivery channels (typically matches event type) |
+| `event_id` | string | Deduplication ID for idempotency |
+| `tags` | array | Tags for filtering |
+
+## Delivery Attempt
+
+When you retrieve delivery attempts (via `include_attempts=true` or the subscription endpoint), each attempt has this structure:
+
+```json
+{
+  "id": "atmpt_2bVxUn3RFnLYHa8z6ZKHMT9PqPX",
+  "message_id": "msg_2bVxUn3RFnLYHa8z6ZKHMT9PqPX",
+  "endpoint_id": "ep_2bVxUn3RFnLYHa8z6ZKHMT9PqPX",
+  "response": "{\"received\": true}",
+  "response_status_code": 200,
+  "status": "success",
+  "timestamp": "2025-01-15T14:22:15Z"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique attempt ID (prefix: `atmpt_`) |
+| `message_id` | string | The message being delivered |
+| `endpoint_id` | string | The subscription endpoint |
+| `response` | string | Response body from your endpoint |
+| `response_status_code` | integer | HTTP status code returned |
+| `status` | string | `success`, `pending`, or `failed` |
+| `timestamp` | ISO 8601 | When the attempt occurred |
+
+## Retry Schedule
+
+Failed deliveries are retried with exponential backoff:
+
+| Attempt | Delay After Failure |
+|---------|---------------------|
+| 1 | Immediate |
+| 2 | 5 seconds |
+| 3 | 5 minutes |
+| 4 | 30 minutes |
+| 5 | 2 hours |
+
+After 5 failed attempts, the message is marked as failed. You can manually recover failed messages using the [recover endpoint](/events/setup#recovering-failed-messages).
+
+## Next Steps
+
+<Card title="Setup Guide" icon="wrench" href="/events/setup">
+  Learn how to create subscriptions, verify signatures, and handle events in your application.
+</Card>
