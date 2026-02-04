@@ -8,6 +8,9 @@ Each class declares its dependencies in __init__, making them:
 """
 
 import asyncio
+import sys
+import time
+import traceback
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
@@ -129,6 +132,7 @@ class RunSyncActivity:
             tracking_context = None
 
         try:
+<<<<<<< HEAD
             # Start the sync task
             sync_task = asyncio.create_task(
                 self._run_sync_task(
@@ -139,6 +143,102 @@ class RunSyncActivity:
                     ctx,
                     access_token,
                     force_full_sync,
+=======
+            # Track timing for stack trace dumps
+            heartbeat_start_time = time.time()
+            last_stack_dump_time = heartbeat_start_time
+            stack_dump_interval = 600
+
+            while True:
+                done, _ = await asyncio.wait({sync_task}, timeout=1)
+                if sync_task in done:
+                    # Propagate result/exception (including CancelledError from inner task)
+                    await sync_task
+                    break
+
+                current_time = time.time()
+                elapsed_seconds = int(current_time - heartbeat_start_time)
+
+                # Dump stack trace for long-running syncs (every 5 minutes)
+                if (
+                    elapsed_seconds > 600
+                    and (current_time - last_stack_dump_time) >= stack_dump_interval
+                ):
+                    # Collect all thread/task stack traces
+                    stack_traces = []
+
+                    # Main thread stack
+                    for thread_id, frame in sys._current_frames().items():
+                        stack_traces.append(f"\n=== Thread {thread_id} ===")
+                        stack_traces.append("".join(traceback.format_stack(frame)))
+
+                    # All async tasks
+                    all_tasks = asyncio.all_tasks()
+                    stack_traces.append(f"\n=== Async Tasks ({len(all_tasks)} total) ===")
+                    for task in all_tasks:
+                        if not task.done():
+                            task_name = task.get_name()
+                            coro = task.get_coro()
+                            if hasattr(coro, "cr_frame") and coro.cr_frame:
+                                frame = coro.cr_frame
+                                stack_traces.append(f"\nTask: {task_name}")
+                                stack_traces.append(
+                                    f"  at {frame.f_code.co_filename}:{frame.f_lineno} in {frame.f_code.co_name}"
+                                )
+
+                    stack_trace_str = "".join(stack_traces)
+                    ctx.logger.debug(
+                        f"[STACK_TRACE_DUMP] sync={sync.id} sync_job={sync_job.id} elapsed={elapsed_seconds}s",
+                        extra={
+                            "elapsed_seconds": elapsed_seconds,
+                            "sync_id": str(sync.id),
+                            "sync_job_id": str(sync_job.id),
+                            "stack_traces": stack_trace_str,
+                        },
+                    )
+                    last_stack_dump_time = current_time
+
+                ctx.logger.debug("HEARTBEAT: Sync in progress")
+                activity.heartbeat("Sync in progress")
+
+            # Fetch updated sync_job with metrics for COMPLETED webhook
+            from airweave import crud
+            from airweave.db.session import get_db_context
+
+            async with get_db_context() as db:
+                updated_sync_job_model = await crud.sync_job.get(db, id=sync_job.id, ctx=ctx)
+                if updated_sync_job_model:
+                    completed_sync_job = schemas.SyncJob.model_validate(
+                        updated_sync_job_model, from_attributes=True
+                    )
+                    completed_sync_job = completed_sync_job.model_copy(
+                        update={"status": SyncJobStatus.COMPLETED}
+                    )
+                    await webhooks_service.publish_event_sync(
+                        source_connection_id=sync.source_connection_id,
+                        organisation=organization,
+                        sync_job=completed_sync_job,
+                        collection=collection,
+                        source_type=connection.short_name,
+                    )
+            ctx.logger.info(f"\n\nCompleted sync activity for job {sync_job.id}\n\n")
+
+        except asyncio.CancelledError:
+            ctx.logger.info(f"\n\n[ACTIVITY] Sync activity cancelled for job {sync_job.id}\n\n")
+            # 1) Flip job status to CANCELLED immediately so UI reflects truth
+            try:
+                # Import inside to avoid sandbox issues
+                from airweave.core.datetime_utils import utc_now_naive
+                from airweave.core.shared_models import SyncJobStatus
+                from airweave.core.sync_job_service import sync_job_service
+
+                await sync_job_service.update_status(
+                    sync_job_id=sync_job.id,
+                    status=SyncJobStatus.CANCELLED,
+                    ctx=ctx,
+                    error="Workflow was cancelled",
+                    failed_at=utc_now_naive(),
+>>>>>>> main
                 )
             )
 
