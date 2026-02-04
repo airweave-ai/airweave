@@ -5,8 +5,11 @@ Handles query compilation (plan + embeddings → YQL) and execution.
 
 from __future__ import annotations
 
+import asyncio
 import json
-from typing import TYPE_CHECKING, Any, Dict, Optional
+import time
+from datetime import datetime
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
@@ -26,7 +29,12 @@ from airweave.search.spotlight.schemas.query_embeddings import (
     SpotlightSparseEmbedding,
 )
 from airweave.search.spotlight.schemas.retrieval_strategy import SpotlightRetrievalStrategy
-from airweave.search.spotlight.schemas.search_result import SpotlightSearchResult
+from airweave.search.spotlight.schemas.search_result import (
+    SpotlightAccessControl,
+    SpotlightBreadcrumb,
+    SpotlightSearchResult,
+    SpotlightSystemMetadata,
+)
 
 if TYPE_CHECKING:
     from vespa.application import Vespa
@@ -122,9 +130,15 @@ class VespaVectorDB:
 
         compiled = {"yql": yql, "params": params}
 
+        # Log summary
         self._logger.debug(
             f"[VespaVectorDB] Compiled query: YQL={len(yql)} chars, params={len(params)} keys"
         )
+
+        # Log readable breakdown
+        self._logger.debug(f"[VespaVectorDB] YQL:\n{yql}")
+        params_for_log = {k: v for k, v in params.items() if not k.startswith("input.query(")}
+        self._logger.debug(f"[VespaVectorDB] Params: {json.dumps(params_for_log, indent=2)}")
 
         return json.dumps(compiled)
 
@@ -145,7 +159,44 @@ class VespaVectorDB:
         Raises:
             RuntimeError: If query execution fails.
         """
-        raise NotImplementedError("execute_query not yet implemented")
+        # Parse compiled query
+        compiled = json.loads(compiled_query)
+        yql = compiled["yql"]
+        params = compiled["params"]
+
+        # Merge YQL into params (pyvespa expects all in one dict)
+        query_params = {**params, "yql": yql}
+
+        # Execute query in thread pool (pyvespa is synchronous)
+        start_time = time.monotonic()
+        try:
+            response = await asyncio.to_thread(self._app.query, body=query_params)
+        except Exception as e:
+            self._logger.error(f"[VespaVectorDB] Query execution failed: {e}")
+            raise RuntimeError(f"Vespa query failed: {e}") from e
+        query_time_ms = (time.monotonic() - start_time) * 1000
+
+        # Check for errors
+        if not response.is_successful():
+            error_msg = getattr(response, "json", {}).get("error", str(response))
+            self._logger.error(f"[VespaVectorDB] Vespa returned error: {error_msg}")
+            raise RuntimeError(f"Vespa query error: {error_msg}")
+
+        # Extract metrics
+        raw_json = response.json if hasattr(response, "json") else {}
+        root = raw_json.get("root", {})
+        coverage = root.get("coverage", {})
+        total_count = root.get("fields", {}).get("totalCount", 0)
+        hits = response.hits or []
+
+        self._logger.info(
+            f"[VespaVectorDB] Query completed in {query_time_ms:.1f}ms, "
+            f"total={total_count}, hits={len(hits)}, "
+            f"coverage={coverage.get('coverage', 100.0):.1f}%"
+        )
+
+        # Convert hits to results
+        return self._convert_hits_to_results(hits)
 
     async def close(self) -> None:
         """Close the Vespa connection.
@@ -176,7 +227,7 @@ class VespaVectorDB:
 
         # Build WHERE clause parts
         where_parts = [
-            # Collection filter (multi-tenant)
+            # Collection filter (multi-tenant) - use contains with single quotes
             f"airweave_system_metadata_collection_id contains '{collection_id}'",
             # Retrieval clause (nearestNeighbor and/or userInput)
             f"({retrieval_clause})",
@@ -264,12 +315,13 @@ class VespaVectorDB:
         global_phase_rerank = max(DEFAULT_GLOBAL_PHASE_RERANK_COUNT, effective_rerank)
 
         # Ranking profile name matches strategy value directly (semantic, keyword, hybrid)
+        # Note: We don't specify presentation.summary - Vespa's default summary includes
+        # ALL fields with "summary" indexing, including fields from child schemas (like url)
         params: Dict[str, Any] = {
             "query": plan.query.primary,
             "ranking.profile": plan.retrieval_strategy.value,
             "hits": plan.limit,
             "offset": plan.offset,
-            "presentation.summary": "full",
             "ranking.softtimeout.enable": "false",
             "ranking.globalPhase.rerankCount": global_phase_rerank,
         }
@@ -314,3 +366,143 @@ class VespaVectorDB:
             cells[str(idx)] = float(val)
 
         return {"cells": cells}
+
+    # =========================================================================
+    # Hit Conversion
+    # =========================================================================
+
+    def _convert_hits_to_results(self, hits: List[Dict[str, Any]]) -> List[SpotlightSearchResult]:
+        """Convert Vespa hits to SpotlightSearchResult objects.
+
+        Args:
+            hits: List of Vespa hit dictionaries.
+
+        Returns:
+            List of SpotlightSearchResult objects.
+        """
+        results = []
+        for i, hit in enumerate(hits):
+            fields = hit.get("fields", {})
+
+            # Log debug info for first few hits
+            if i < 5:
+                self._log_hit_debug(i, fields, hit.get("relevance", 0.0))
+
+            # Validate required fields
+            entity_id = fields.get("entity_id")
+            if not entity_id:
+                self._logger.warning(f"[VespaVectorDB] Skipping hit {i}: missing entity_id")
+                continue
+
+            # Parse payload for source_fields (contains web_url and other source-specific data)
+            source_fields = self._parse_payload(fields.get("payload"))
+
+            result = SpotlightSearchResult(
+                entity_id=entity_id,
+                name=self._get_required_field(fields, "name", entity_id),
+                breadcrumbs=self._extract_breadcrumbs(fields.get("breadcrumbs", [])),
+                created_at=self._parse_timestamp(fields.get("created_at")),
+                updated_at=self._parse_timestamp(fields.get("updated_at")),
+                textual_representation=self._get_required_field(
+                    fields, "textual_representation", entity_id
+                ),
+                airweave_system_metadata=self._extract_system_metadata(fields, entity_id),
+                access=self._extract_access_control(fields),
+                web_url=self._get_required_field(source_fields, "web_url", entity_id),
+                url=fields.get("url"),  # Only present for FileEntity (download link)
+                source_fields=source_fields,
+            )
+            results.append(result)
+
+        return results
+
+    def _get_required_field(self, fields: Dict[str, Any], field_name: str, entity_id: str) -> str:
+        """Get a required field, logging warning if missing."""
+        value = fields.get(field_name)
+        if not value:
+            self._logger.warning(
+                f"[VespaVectorDB] Entity {entity_id}: missing required field '{field_name}'"
+            )
+            return ""
+        return str(value)
+
+    def _log_hit_debug(self, index: int, fields: Dict[str, Any], relevance: float) -> None:
+        """Log debug info for a hit."""
+        entity_name = fields.get("name", "N/A")
+        entity_type = fields.get("airweave_system_metadata_entity_type", "N/A")
+        truncated_name = entity_name[:40] if entity_name else "N/A"
+        self._logger.debug(
+            f"[VespaVectorDB] Hit {index}: name='{truncated_name}' "
+            f"type={entity_type} relevance={relevance:.4f}"
+        )
+
+    def _extract_system_metadata(
+        self, fields: Dict[str, Any], entity_id: str
+    ) -> SpotlightSystemMetadata:
+        """Extract system metadata from flattened Vespa fields.
+
+        Logs warnings for missing required metadata fields.
+        """
+        source_name = fields.get("airweave_system_metadata_source_name")
+        entity_type = fields.get("airweave_system_metadata_entity_type")
+
+        if not source_name:
+            self._logger.warning(
+                f"[VespaVectorDB] Entity {entity_id}: missing source_name in metadata"
+            )
+        if not entity_type:
+            self._logger.warning(
+                f"[VespaVectorDB] Entity {entity_id}: missing entity_type in metadata"
+            )
+
+        return SpotlightSystemMetadata(
+            source_name=source_name or "",
+            entity_type=entity_type or "",
+            sync_id=fields.get("airweave_system_metadata_sync_id") or "",
+            sync_job_id=fields.get("airweave_system_metadata_sync_job_id") or "",
+            chunk_index=fields.get("airweave_system_metadata_chunk_index") or 0,
+            original_entity_id=fields.get("airweave_system_metadata_original_entity_id") or "",
+        )
+
+    def _extract_access_control(self, fields: Dict[str, Any]) -> SpotlightAccessControl:
+        """Extract access control from flattened Vespa fields."""
+        return SpotlightAccessControl(
+            is_public=fields.get("access_is_public"),
+            viewers=fields.get("access_viewers"),
+        )
+
+    def _extract_breadcrumbs(self, raw_breadcrumbs: List[Any]) -> List[SpotlightBreadcrumb]:
+        """Extract breadcrumbs from Vespa list of dicts."""
+        breadcrumbs = []
+        for bc in raw_breadcrumbs:
+            if isinstance(bc, dict):
+                breadcrumbs.append(
+                    SpotlightBreadcrumb(
+                        entity_id=bc.get("entity_id", ""),
+                        name=bc.get("name", ""),
+                        entity_type=bc.get("entity_type", ""),
+                    )
+                )
+        return breadcrumbs
+
+    def _parse_timestamp(self, epoch_value: Any) -> Optional[datetime]:
+        """Convert epoch timestamp to datetime.
+
+        Vespa stores timestamps as epoch seconds. This returns a datetime
+        object which Pydantic will serialize to ISO format.
+        """
+        if not epoch_value:
+            return None
+        try:
+            return datetime.fromtimestamp(epoch_value)
+        except (ValueError, TypeError, OSError):
+            return None
+
+    def _parse_payload(self, payload_str: Any) -> Dict[str, Any]:
+        """Parse payload JSON string into source_fields dict."""
+        if not payload_str or not isinstance(payload_str, str):
+            return {}
+        try:
+            return json.loads(payload_str)
+        except json.JSONDecodeError:
+            return {}

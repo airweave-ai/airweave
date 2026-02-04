@@ -79,6 +79,14 @@ class SpotlightFilterCondition(BaseModel):
         description="Value to compare against. Use a list for 'in' and 'not_in' operators.",
     )
 
+    def to_md(self) -> str:
+        """Render the condition as markdown.
+
+        Returns:
+            Markdown string: `field operator value`
+        """
+        return f"`{self.field.value}` {self.operator.value} `{self.value!r}`"
+
 
 class SpotlightFilterGroup(BaseModel):
     """A group of filter conditions combined with AND.
@@ -115,3 +123,14 @@ class SpotlightFilterGroup(BaseModel):
         min_length=1,
         description="Filter conditions within this group, combined with AND",
     )
+
+    def to_md(self) -> str:
+        """Render the filter group as markdown.
+
+        Conditions are joined with AND.
+
+        Returns:
+            Markdown string: (condition1 AND condition2 AND ...)
+        """
+        conditions_md = " AND ".join(c.to_md() for c in self.conditions)
+        return f"({conditions_md})"

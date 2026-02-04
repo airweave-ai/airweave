@@ -9,7 +9,7 @@
 # X user_query, collection_metadata -> initaliaze state -> state
 # X state.collection_metadata.to_md(), state.user_query, state.history.to_md() -> planner -> plan
 # TODO: add user filters to plan (tell the evaluator that these can not be adjusted)
-# state.current_iteration.plan.query, state.current_iteration.plan.retrieval_strategy -> embed
+# X state.current_iteration.plan.query, state.current_iteration.plan.retrieval_strategy -> embed
 # state.current_iteration.plan, query_embeddings, collection_id -> vector_db.compile_query()
 # state.current_iteration.compiled_query -> vector_db.execute_query() -> search_results
 # state context -> evaluator -> evaluation
@@ -31,6 +31,7 @@ from airweave.search.spotlight.schemas import (
     SpotlightQueryEmbeddings,
     SpotlightRequest,
     SpotlightResponse,
+    SpotlightSearchResult,
     SpotlightState,
 )
 from airweave.search.spotlight.services import SpotlightServices
@@ -75,12 +76,33 @@ class SpotlightAgent:
                 sparse_embedder=self.services.sparse_embedder,
             )
             embeddings: SpotlightQueryEmbeddings = await embedder.embed(
-                query=plan.query,
-                strategy=plan.retrieval_strategy,
+                query=state.current_iteration.plan.query,
+                strategy=state.current_iteration.plan.retrieval_strategy,
             )
             state.current_iteration.query_embeddings = embeddings
-            self.ctx.logger.info(f"[SpotlightAgent] Query embeddings: {embeddings}")
 
+            # Compile query
+            compiled_query: str = await self.services.vector_db.compile_query(
+                plan=state.current_iteration.plan,
+                embeddings=state.current_iteration.query_embeddings,
+                collection_id=state.collection_metadata.collection_id,
+            )
+            state.current_iteration.compiled_query = compiled_query
+
+            # Execute query
+            search_results: list[
+                SpotlightSearchResult
+            ] = await self.services.vector_db.execute_query(compiled_query)
+            state.current_iteration.search_results = search_results
+            self.ctx.logger.debug(
+                "[SpotlightAgent] Search results: \n"
+                + "\n\n".join([r.to_md() for r in search_results])
+            )
+
+            # TODO: evaluator
+            # add to state
+            # add to history
+            # TODO: dont forget to add history.
             break
 
         return SpotlightResponse(

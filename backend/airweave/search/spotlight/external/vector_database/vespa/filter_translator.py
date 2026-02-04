@@ -197,9 +197,12 @@ class FilterTranslator:
         raise FilterTranslationError(f"Unknown operator: {operator}")
 
     def _build_equals(self, field: str, value: Union[str, int, float, bool]) -> str:
-        """Build equals clause."""
+        """Build equals clause.
+
+        For string attributes in Vespa, use contains with single quotes.
+        """
         if isinstance(value, str):
-            return f'{field} contains "{self._escape_string(value)}"'
+            return f"{field} contains '{self._escape_string(value)}'"
         elif isinstance(value, bool):
             return f"{field} = {str(value).lower()}"
         else:
@@ -208,30 +211,30 @@ class FilterTranslator:
     def _build_not_equals(self, field: str, value: Union[str, int, float, bool]) -> str:
         """Build not equals clause."""
         if isinstance(value, str):
-            return f'!({field} contains "{self._escape_string(value)}")'
+            return f"!({field} contains '{self._escape_string(value)}')"
         elif isinstance(value, bool):
             return f"{field} != {str(value).lower()}"
         else:
             return f"{field} != {value}"
 
     def _build_contains(self, field: str, value: str) -> str:
-        """Build contains clause (substring match)."""
-        return f'{field} contains "{self._escape_string(value)}"'
+        """Build contains clause (substring match for text fields)."""
+        return f"{field} contains '{self._escape_string(value)}'"
 
     def _build_in(self, field: str, values: List) -> str:
-        """Build IN clause (OR of equals)."""
+        """Build IN clause (OR of contains)."""
         if not values:
             # Empty IN list matches nothing
             return "false"
-        clauses = [f'{field} contains "{self._escape_string(v)}"' for v in values]
+        clauses = [f"{field} contains '{self._escape_string(v)}'" for v in values]
         return f"({' OR '.join(clauses)})"
 
     def _build_not_in(self, field: str, values: List) -> str:
-        """Build NOT IN clause (AND of not equals)."""
+        """Build NOT IN clause (AND of not contains)."""
         if not values:
             # Empty NOT IN matches everything
             return "true"
-        clauses = [f'!({field} contains "{self._escape_string(v)}")' for v in values]
+        clauses = [f"!({field} contains '{self._escape_string(v)}')" for v in values]
         return f"({' AND '.join(clauses)})"
 
     def _format_numeric_value(self, value: Union[int, float]) -> str:
@@ -245,9 +248,9 @@ class FilterTranslator:
             value: String value to escape.
 
         Returns:
-            Escaped string safe for YQL.
+            Escaped string safe for YQL (single-quoted).
         """
-        return value.replace("\\", "\\\\").replace('"', '\\"')
+        return value.replace("\\", "\\\\").replace("'", "\\'")
 
     def _parse_datetime_to_epoch(self, value: str, field: str) -> int:
         """Parse ISO datetime string to epoch seconds.

@@ -188,26 +188,9 @@ schema base_entity {
         fields: textual_representation, payload
     }
 
-    # Full summary - returns all fields needed for complete search results
-    document-summary full {
-        summary entity_id {}
-        summary name {}
-        summary breadcrumbs {}
-        summary created_at {}
-        summary updated_at {}
-        summary airweave_system_metadata_collection_id {}
-        summary airweave_system_metadata_entity_type {}
-        summary airweave_system_metadata_sync_id {}
-        summary airweave_system_metadata_sync_job_id {}
-        summary airweave_system_metadata_hash {}
-        summary airweave_system_metadata_original_entity_id {}
-        summary airweave_system_metadata_source_name {}
-        summary airweave_system_metadata_chunk_index {}
-        summary access_is_public {}
-        summary access_viewers {}
-        summary textual_representation {}
-        summary payload {}
-    }
+    # Note: We use Vespa's default summary (no explicit document-summary)
+    # which automatically includes ALL fields with "summary" in their indexing,
+    # including fields from child schemas (e.g., url from file_entity)
 
     # =========================================================================
     # BASE RANK PROFILE - shared inputs and functions

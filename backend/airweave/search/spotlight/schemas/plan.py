@@ -23,6 +23,18 @@ class SpotlightSearchQuery(BaseModel):
         "Useful for paraphrases, synonyms, or alternative phrasings.",
     )
 
+    def to_md(self) -> str:
+        """Render the search query as markdown.
+
+        Returns:
+            Markdown string with primary query and variations.
+        """
+        lines = [f"- Primary: `{self.primary}`"]
+        if self.variations:
+            variations_md = ", ".join(f"`{v}`" for v in self.variations)
+            lines.append(f"- Variations: {variations_md}")
+        return "\n".join(lines)
+
 
 class SpotlightPlan(BaseModel):
     """Spotlight plan."""
@@ -55,28 +67,26 @@ class SpotlightPlan(BaseModel):
     def to_md(self) -> str:
         """Render the plan as markdown for history context.
 
+        Uses nested to_md() methods for query and filter groups.
+
         Returns:
             Markdown string representing this plan.
         """
         lines = ["**Plan:**"]
-        lines.append(f"- Query: `{self.query.primary}`")
 
-        if self.query.variations:
-            variations = ", ".join(f"`{v}`" for v in self.query.variations)
-            lines.append(f"- Variations: {variations}")
+        # Query (uses SpotlightSearchQuery.to_md())
+        lines.append("**Query:**")
+        lines.append(self.query.to_md())
 
         lines.append(f"- Strategy: {self.retrieval_strategy.value}")
         lines.append(f"- Limit: {self.limit}, Offset: {self.offset}")
 
-        # Filter groups: AND within groups, OR between groups
+        # Filter groups (uses SpotlightFilterGroup.to_md())
         if self.filter_groups:
             lines.append("- Filters:")
             for i, group in enumerate(self.filter_groups, 1):
-                conditions_str = " AND ".join(
-                    f"{c.field} {c.operator.value} {c.value!r}" for c in group.conditions
-                )
                 prefix = "  - " if i == 1 else "  - OR "
-                lines.append(f"{prefix}({conditions_str})")
+                lines.append(f"{prefix}{group.to_md()}")
         else:
             lines.append("- Filters: none")
 
