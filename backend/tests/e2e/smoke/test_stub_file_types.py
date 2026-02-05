@@ -25,9 +25,35 @@ from typing import Dict, List, Optional
 import httpx
 import pytest
 import pytest_asyncio
-from pydantic import ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
-from airweave.schemas.search_result import AirweaveSearchResult
+
+# ── Lightweight response models (mirrors API shape, no backend import) ──
+
+
+class _SystemMetadata(BaseModel):
+    entity_type: str
+    source_name: Optional[str] = None
+    sync_id: Optional[str] = None
+    sync_job_id: Optional[str] = None
+    original_entity_id: Optional[str] = None
+    chunk_index: Optional[int] = None
+
+
+class AirweaveSearchResult(BaseModel):
+    """Minimal mirror of the API search-result payload for E2E assertions."""
+
+    id: str
+    score: float
+    entity_id: str
+    name: str
+    textual_representation: str
+    system_metadata: _SystemMetadata
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    breadcrumbs: list = Field(default_factory=list)
+    access: Optional[dict] = None
+    source_fields: dict = Field(default_factory=dict)
 
 TRACKING_PREFIX = "FILE_STUB_E2E"
 SEARCH_LIMIT = 50
